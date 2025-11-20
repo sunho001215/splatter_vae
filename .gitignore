@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+all_python_sources.txt
+data/
+logs/
+checkpoints/
+outputs/
+runs/
