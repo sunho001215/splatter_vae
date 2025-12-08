@@ -62,3 +62,10 @@ def infonce_loss(query, positive_keys, negative_keys=None, temperature=0.1, nega
         logits = q @ kpos.t()                                # (B, B)
         labels = torch.arange(q.size(0), device=q.device)
         return F.cross_entropy(logits / temperature, labels, reduction='mean')
+
+def masked_mse(pred, target, mask):
+    # pred, target: (B,3,H,W), mask: (B,1,H,W)
+    diff2 = (pred - target) ** 2
+    diff2 = diff2 * mask
+    denom = mask.sum() * 3.0 + 1e-8  # 3 channels
+    return diff2.sum() / denom

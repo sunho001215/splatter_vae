@@ -1,6 +1,10 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 import cv2
+import math
+import random
 
 
 def load_image_rgb(path: str) -> np.ndarray:
@@ -92,3 +96,111 @@ def flatten_vector(x: torch.Tensor) -> torch.Tensor:
     Matches GaussianSplatPredictor.flatten_vector.
     """
     return x.reshape(x.shape[0], x.shape[1], -1).permute(0, 2, 1)
+
+
+def rot6d_to_matrix(rot_6d: torch.Tensor) -> torch.Tensor:
+    """
+    Convert 6D rotation representation to a valid 3x3 rotation matrix.
+
+    rot_6d: (..., 6) where first 3 numbers are the first column of the
+            rotation matrix, and the next 3 numbers are the second column
+            BEFORE orthogonalization.
+
+    Returns:
+        R: (..., 3, 3) rotation matrices with orthonormal columns.
+    """
+    a1 = rot_6d[..., 0:3]   # (..., 3)
+    a2 = rot_6d[..., 3:6]   # (..., 3)
+
+    # First basis vector
+    b1 = F.normalize(a1, dim=-1)
+
+    # Make second vector orthogonal to first
+    proj = (b1 * a2).sum(dim=-1, keepdim=True) * b1
+    b2 = F.normalize(a2 - proj, dim=-1)
+
+    # Third basis vector via cross-product
+    b3 = torch.cross(b1, b2, dim=-1)
+
+    # Stack as columns to form rotation matrix
+    R = torch.stack((b1, b2, b3), dim=-1)  # (..., 3, 3)
+    return R
+
+
+def compute_rotation_translation_errors(
+    T_pred: torch.Tensor,
+    T_gt: torch.Tensor,
+):
+    """
+    Compute:
+      - mean rotation angle error (degrees)
+      - mean translation (position) error (L2 norm)
+
+    between predicted and ground-truth T_ij.
+
+    T_pred, T_gt: (B, 4, 4)
+    """
+    device = T_pred.device
+    B = T_pred.shape[0]
+
+    R_pred = T_pred[:, :3, :3]  # (B,3,3)
+    R_gt   = T_gt[:, :3, :3]    # (B,3,3)
+
+    # Relative rotation: should be close to identity
+    R_err = torch.matmul(R_pred, R_gt.transpose(1, 2))  # (B,3,3)
+    trace = R_err[:, 0, 0] + R_err[:, 1, 1] + R_err[:, 2, 2]
+    cos_theta = torch.clamp((trace - 1.0) / 2.0, -1.0, 1.0)
+    angles = torch.acos(cos_theta)  # radians, in [0, pi]
+    angles_deg = angles * (180.0 / math.pi)
+
+    angle_error_deg = angles_deg.mean()
+
+    # Translation error
+    t_pred = T_pred[:, :3, 3]
+    t_gt   = T_gt[:, :3, 3]
+    pos_error = torch.norm(t_pred - t_gt, dim=1)  # (B,)
+    pos_error_mean = pos_error.mean()
+
+    return angle_error_deg, pos_error_mean
+
+
+def compute_intrinsics_errors(
+    K_pred: torch.Tensor,
+    K_gt: torch.Tensor,
+):
+    """
+    Compute mean absolute error for (fx, fy, cx, cy) between predicted and
+    ground-truth intrinsics.
+
+    K_pred, K_gt: (B, 3, 3)
+    """
+    fx_pred = K_pred[:, 0, 0]
+    fy_pred = K_pred[:, 1, 1]
+    cx_pred = K_pred[:, 0, 2]
+    cy_pred = K_pred[:, 1, 2]
+
+    fx_gt = K_gt[:, 0, 0]
+    fy_gt = K_gt[:, 1, 1]
+    cx_gt = K_gt[:, 0, 2]
+    cy_gt = K_gt[:, 1, 2]
+
+    fx_err = (fx_pred - fx_gt).abs().mean()
+    fy_err = (fy_pred - fy_gt).abs().mean()
+    cx_err = (cx_pred - cx_gt).abs().mean()
+    cy_err = (cy_pred - cy_gt).abs().mean()
+
+    return fx_err, fy_err, cx_err, cy_err
+
+
+def set_random_seed(seed: int = 42):
+    """
+    Set random seed for reproducibility.
+    """
+    import random
+    import numpy as np
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)

@@ -1,0 +1,90 @@
+# config.yaml
+
+dataset:
+  root: /home/data/cube_cleanup/
+  train_manifest: train.json
+  valid_manifest: valid.json
+  cameras_json: cameras.json
+  batch_size: 128
+  num_workers: 8
+  pin_memory: true
+
+train:
+  num_epochs: 38
+  lr: 3.0e-5
+  device: cuda:0
+  eval_every: 500
+  save_every: 5000
+  ckpt_dir: ./checkpoints/default/
+  resume_from_last: true
+
+  # loss weights
+  rec_weight: 1.0
+  vq_weight: 0.25
+  inv_contrastive_weight: 1.0
+  dep_contrastive_weight: 0.1
+  temperature: 0.1
+
+  # camera prediction
+  predict_camera_params: false
+  pose_cycle_weight: 0.001
+  crossview_start_step: 0
+
+splatter:
+  data:
+    znear: 0.1
+    zfar: 2.0
+    white_background: false
+    inverted_x: false
+    inverted_y: false
+    category: generic
+
+  model:
+    max_sh_degree: 1
+    isotropic: true
+    depth_scale: 1.0
+    depth_bias: 0.0
+    xyz_scale: 0.1
+    xyz_bias: 0.0
+    opacity_scale: 1.0
+    opacity_bias: -2.0
+    scale_scale: 0.02
+    scale_bias: -4.0
+
+transformer:
+  # STTransConfig fields; block_size & n_tokens_per_frame
+  # will be overwritten based on image size
+  block_size: 64
+  vocab_size: 0
+  n_tokens_per_frame: 64
+  n_layer: 8
+  n_head: 8
+  n_embed: 256
+  dropout: 0.1
+  bias: false
+  mask_rate: null
+
+codebook:
+  invariant:
+    n_embed: 512
+    embed_dim: 64
+    beta: 0.25
+  dependent:
+    n_embed: 512
+    embed_dim: 64
+    beta: 0.25
+
+model:
+  fusion_style: cat          # 'cat' or 'plus'
+  use_dependent_vq: true
+  is_dependent_ae: false
+  use_invariant_vq: true
+  is_invariant_ae: false
+
+  # grid of tokens (e.g., 8x8 = 64 tokens)
+  grid_tokens_h: 8
+  grid_tokens_w: 8
+
+wandb:
+  project: splatter_vae
+  entity: null

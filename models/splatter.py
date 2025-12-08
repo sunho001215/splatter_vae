@@ -6,10 +6,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 
-from diff_gaussian_rasterization import (
-    GaussianRasterizationSettings,
-    GaussianRasterizer
-)
+from gsplat.rendering import rasterization
 
 from utils.general_utils import (
     flatten_vector,
@@ -154,49 +151,52 @@ class VAESplatterToGaussians(nn.Module):
     def _get_ray_dirs(
         self,
         device: torch.device,
-        intrinsics: torch.Tensor
+        intrinsics: torch.Tensor,
     ) -> torch.Tensor:
         """
         Get ray directions in camera coordinates.
 
         If `intrinsics` is provided:
-            - (3,3): single K matrix -> returns (1,3,H,W)
-            - (B,3,3): per-sample intrinsics -> returns (B,3,H,W)
-        Otherwise, fall back to cfg.data.{fx,fy,cx,cy} and cached rays
-        (shape (1,3,H,W), later broadcast to batch).
+            - (3,3): single K -> returns (1,3,H,W)
+            - (B,3,3): per-sample Ks -> returns (B,3,H,W)
+
+        This implementation keeps gradients w.r.t. intrinsics.
         """
         H = self.cfg.data.img_height
         W = self.cfg.data.img_width
 
-        # Per-call intrinsics override
         if intrinsics is not None:
             if intrinsics.dim() == 2:
                 # Single K
                 Ks = intrinsics.unsqueeze(0)  # (1,3,3)
             elif intrinsics.dim() == 3:
-                # Per-sample Ks
                 Ks = intrinsics  # (B,3,3)
             else:
                 raise ValueError("intrinsics must be (3,3) or (B,3,3).")
 
-            ray_dirs_list = []
-            for K in Ks:
-                fx = float(K[0, 0].item())
-                fy = float(K[1, 1].item())
-                cx = float(K[0, 2].item())
-                cy = float(K[1, 2].item())
+            # Extract fx, fy, cx, cy **as tensors** so autograd works
+            fx = Ks[:, 0, 0]  # (B,)
+            fy = Ks[:, 1, 1]  # (B,)
+            cx = Ks[:, 0, 2]  # (B,)
+            cy = Ks[:, 1, 2]  # (B,)
 
-                ray_dirs_k = build_ray_dirs_from_intrinsics(
-                    H, W, fx, fy, cx, cy, device,
-                    inverted_x=self.cfg.data.inverted_x,
-                    inverted_y=self.cfg.data.inverted_y,
-                )  # (1,3,H,W)
-                ray_dirs_list.append(ray_dirs_k)
+            # This call is now fully differentiable w.r.t. fx, fy, cx, cy
+            ray_dirs = build_ray_dirs_from_intrinsics(
+                H=H,
+                W=W,
+                fx=fx,
+                fy=fy,
+                cx=cx,
+                cy=cy,
+                device=device,
+                inverted_x=self.cfg.data.inverted_x,
+                inverted_y=self.cfg.data.inverted_y,
+            )  # (B,3,H,W)
+            return ray_dirs
 
-            # (B,3,H,W)
-            return torch.cat(ray_dirs_list, dim=0)
-
-        return self.ray_dirs  # (1,3,H,W)
+        # Fallback to cached rays (non-parametric case)
+        # self.ray_dirs should be (1,3,H,W) and can be broadcast later.
+        return self.ray_dirs
 
     # --------- core forward ---------------------------------------------------
 
@@ -233,7 +233,9 @@ class VAESplatterToGaussians(nn.Module):
         assert H == self.cfg.data.img_height and W == self.cfg.data.img_width, \
             f"Splatter resolution ({H},{W}) does not match cfg.data ({self.cfg.data.img_height},{self.cfg.data.img_width})"
 
-        # Ray directions (1,3,H,W) in camera frame
+        model_cfg = self.cfg.model
+
+        # Ray directions (1,3,H,W) in camera frame or (B,3,H,W) if per-sample Ks
         ray_dirs_xy = self._get_ray_dirs(splatter.device, intrinsics=intrinsics)
 
         # Split channels according to layout
@@ -248,14 +250,17 @@ class VAESplatterToGaussians(nn.Module):
         features_dc       = split_tensors[5]  # (B,3,H,W)
         features_rest_raw = split_tensors[6] if len(split_tensors) > 6 else None
 
-        # ---- depth in [znear, zfar] -----------------------------------------
+        # ---- depth in [znear, zfar] with affine pre-transform ----------------
         if activate_output:
-            depth = self.depth_act(depth_logits) * (self.cfg.data.zfar - self.cfg.data.znear) + self.cfg.data.znear
+            depth_pre = depth_logits * model_cfg.depth_scale + model_cfg.depth_bias
+            depth = self.depth_act(depth_pre) * (self.cfg.data.zfar - self.cfg.data.znear) + self.cfg.data.znear
         else:
             depth = depth_logits  # raw logits if you want to regularize differently
 
-        # ---- xyz in camera coordinates: ray_dirs * depth + offset -----------
-        pos_cam = ray_dirs_xy * depth + offset  # (B,3,H,W)
+        # ---- offset / xyz in camera coordinates ------------------------------
+        # Apply xyz_scale / xyz_bias to the offset branch
+        offset_cam = offset * model_cfg.xyz_scale + model_cfg.xyz_bias  # (B,3,H,W)
+        pos_cam = ray_dirs_xy * depth + offset_cam                      # (B,3,H,W)
 
         # ---- convert xyz_cam -> xyz_world -----------------------------------
         # Flatten to (B,N,3)
@@ -269,20 +274,23 @@ class VAESplatterToGaussians(nn.Module):
         pos_world_h = torch.bmm(pos_h, source_cameras_view_to_world)  # (B,N,4)
         pos_world = pos_world_h[:, :, :3] / (pos_world_h[:, :, 3:].clamp(min=1e-10))  # (B,N,3)
 
-        # ---- scaling ---------------------------------------------------------
+        # ---- scaling (log-space affine + exp) --------------------------------
         if self.cfg.model.isotropic:
             s = scaling_logits[:, :1, ...]
             scaling_logits = torch.cat([s, s, s], dim=1)
 
         if activate_output:
-            scaling = self.scaling_activation(scaling_logits)  # positive scales
+            # log-scale affine: raw -> log_s
+            log_scales = scaling_logits * model_cfg.scale_scale + model_cfg.scale_bias
+            scaling = self.scaling_activation(log_scales)  # exp(log_s) -> positive scales
         else:
             scaling = scaling_logits
         scaling = flatten_vector(scaling)  # (B,N,3)
 
-        # ---- opacity ---------------------------------------------------------
+        # ---- opacity (affine + sigmoid) --------------------------------------
         if activate_output:
-            opacity = self.opacity_activation(opacity_logits)
+            opacity_pre = opacity_logits * model_cfg.opacity_scale + model_cfg.opacity_bias
+            opacity = self.opacity_activation(opacity_pre)
         else:
             opacity = opacity_logits
         opacity = flatten_vector(opacity)  # (B,N,1)
@@ -337,134 +345,131 @@ class VAESplatterToGaussians(nn.Module):
 
 def render_predicted(
     pc: Dict[str, torch.Tensor],
-    world_view_transform: torch.Tensor,
-    full_proj_transform: torch.Tensor,
-    camera_center: torch.Tensor,
-    bg_color: torch.Tensor,
+    world_view_transform: torch.Tensor,   # (B, V, 4, 4) world -> view for each camera
+    intrinsics: torch.Tensor,            # (B, V, 3, 3) pinhole Ks for each camera
+    bg_color: torch.Tensor,              # (3,) or (B, V, 3) in [0,1]
     cfg: SplatterConfig,
-    intrinsics: Optional[torch.Tensor] = None,
     scaling_modifier: float = 1.0,
     override_color: Optional[torch.Tensor] = None,
+    packed: bool = False,
+    render_mode: str = "RGB",
 ) -> Dict[str, torch.Tensor]:
     """
-    Render the scene as specified by the dictionary of Gaussians.
+    Differentiable Gaussian splat rendering using **gsplat**.
 
-    Args:
-        pc: dict with keys:
-            "xyz":          (B,N,3)
-            "opacity":      (B,N,1)
-            "scaling":      (B,N,3)
-            "rotation":     (B,N,4)
-            "features_dc":  (B,N,1,3)
-            "features_rest":(B,N,SH_rest,3)   # may be empty if no SH
-        world_view_transform: (4,4) matrix for target camera (world->view)
-        full_proj_transform:  (4,4) projection matrix
-        camera_center:        (3,) camera center in world space
-        bg_color:             (3,) tensor (on any device; moved as needed)
-        cfg:                  SplatterConfig
-        intrinsics:           optional K for this *target* camera
-                              (for tanfovx/tanfovy; see below)
-        scaling_modifier:     optional global scale factor
-        override_color:       if not None, precomputed RGB instead of SH
+    Assumptions (no shape juggling inside this function):
+      - pc["xyz"]          : (B, N, 3)
+      - pc["scaling"]      : (B, N, 3)
+      - pc["rotation"]     : (B, N, 4)        # quaternions
+      - pc["opacity"]      : (B, N, 1)
+      - pc["features_dc"]  : (B, N, 1, 3)
+      - pc["features_rest"]: (B, N, SH_rest, 3)  # possibly empty, can be missing
 
-    Returns:
-        dict with:
-          "render":          (B,3,H,W)
-          "viewspace_points":(B,N,3) placeholder for gradients
-          "visibility_filter":(B,N) visibility mask
-          "radii":           (B,N) projected radii
+      - world_view_transform: (B, V, 4, 4)  world -> view for each of V cameras
+      - intrinsics         : (B, V, 3, 3)  camera intrinsics K for each view
+      - bg_color           : (3,) (same for all) or (B, V, 3) per view
+
+    gsplat.rasterization is fully differentiable, so gradients flow from the
+    rendered images back into the Gaussian parameters and, through them, into
+    your network.
     """
-    means3D = pc["xyz"]  # (B,N,3)
-    if means3D.dim() == 2:
-        means3D = means3D.unsqueeze(0)
-    B, N, _ = means3D.shape
-    device = means3D.device
-
-    # Screen-space placeholder (for gradient wrt 2D positions)
-    screenspace_points = torch.zeros_like(means3D, device=device, requires_grad=True)
-    try:
-        screenspace_points.retain_grad()
-    except Exception:
-        pass
-
-    # Background
-    bg_color = bg_color.to(device)
-
+    device = pc["xyz"].device
     H = cfg.data.img_height
     W = cfg.data.img_width
 
-    # --- Intrinsics -> tan(fov) conversion for rasterizer -------------------
-    #
-    # The GaussianRasterizer expects tan(fov_x/2) and tan(fov_y/2). If we
-    # know fx, fy in pixels, then:
-    #
-    #   tan(fov_x / 2) = (W / 2) / fx
-    #   tan(fov_y / 2) = (H / 2) / fy
-    #
-    if intrinsics is not None:
-        if intrinsics.dim() == 2:
-            K = intrinsics
-        elif intrinsics.dim() == 3:
-            K = intrinsics[0]
-        else:
-            raise ValueError("intrinsics must be (3,3) or (B,3,3).")
+    # ------------------------------------------------------------------
+    # 1) Basic Gaussian parameters
+    # ------------------------------------------------------------------
+    means = pc["xyz"]                                # (B, N, 3)
+    scales = pc["scaling"] * scaling_modifier        # (B, N, 3)
+    quats = pc["rotation"]                           # (B, N, 4)
+    opacities = pc["opacity"].squeeze(-1)            # (B, N)
 
-        fx = float(K[0, 0].item())
-        fy = float(K[1, 1].item())
+    # ------------------------------------------------------------------
+    # 2) Colors: SH (DC + rest) or override RGB
+    # ------------------------------------------------------------------
+    if override_color is not None:
+        # Use override_color as plain RGB features (no SH)
+        # Expected: override_color: (B, N, 3) or (B, N, D)
+        colors = override_color
+        sh_degree = None
     else:
-        fx = cfg.data.fx
-        fy = cfg.data.fy
+        features_dc = pc["features_dc"]              # (B, N, 1, 3)
+        features_rest = pc.get("features_rest", None)
 
-    tanfovx = (W * 0.5) / fx
-    tanfovy = (H * 0.5) / fy
-
-    # Rasterization settings
-    raster_settings = GaussianRasterizationSettings(
-        image_height=int(H),
-        image_width=int(W),
-        tanfovx=tanfovx,
-        tanfovy=tanfovy,
-        bg=bg_color,
-        scale_modifier=scaling_modifier,
-        viewmatrix=world_view_transform.to(device),
-        projmatrix=full_proj_transform.to(device),
-        sh_degree=cfg.model.max_sh_degree,
-        campos=camera_center.to(device),
-        prefiltered=False,
-        debug=False,
-    )
-
-    rasterizer = GaussianRasterizer(raster_settings=raster_settings)
-
-    scales = pc["scaling"]        # (B,N,3)
-    rotations = pc["rotation"]    # (B,N,4)
-    opacities = pc["opacity"]     # (B,N,1)
-
-    # SH features
-    if override_color is None:
-        if "features_rest" in pc and pc["features_rest"].shape[2] > 0:
-            shs = torch.cat([pc["features_dc"], pc["features_rest"]], dim=2).contiguous()
+        if features_rest is not None and features_rest.numel() > 0:
+            # Concatenate DC + SH_rest → (B, N, K, 3)
+            colors = torch.cat([features_dc, features_rest], dim=2)
+            sh_degree = cfg.model.max_sh_degree      # e.g. 1
         else:
-            shs = pc["features_dc"]
-        colors_precomp = None
-    else:
-        shs = None
-        colors_precomp = override_color
+            # Only DC term: treat as SH degree 0
+            colors = features_dc                     # (B, N, 1, 3)
+            sh_degree = 0
 
-    rendered_image, radii = rasterizer(
-        means3D=means3D,
-        means2D=screenspace_points,
-        shs=shs,
-        colors_precomp=colors_precomp,
-        opacities=opacities,
+    # ------------------------------------------------------------------
+    # 3) Backgrounds: broadcast bg_color to (B, V, 3) if needed
+    # ------------------------------------------------------------------
+    if bg_color.dim() == 1:
+        # Single RGB vector → expand to all batches/views
+        B, V = world_view_transform.shape[0], world_view_transform.shape[1]
+        backgrounds = bg_color.to(device).view(1, 1, 3).expand(B, V, 3)
+    else:
+        # Assume caller already provided (B, V, 3) or compatible
+        backgrounds = bg_color.to(device)
+
+    # ------------------------------------------------------------------
+    # 4) Call gsplat rasterization
+    # ------------------------------------------------------------------
+    # Expected shapes:
+    #   means        : (B, N, 3)
+    #   quats        : (B, N, 4)
+    #   scales       : (B, N, 3)
+    #   opacities    : (B, N)
+    #   colors       : (B, N, K, 3)   if SH
+    #   viewmats     : (B, V, 4, 4)
+    #   Ks           : (B, V, 3, 3)
+    #
+    # Returned:
+    #   render_colors: (B, V, H, W, D)  (D = 3 for RGB)
+    #   render_alphas: (B, V, H, W, 1)
+    #   meta["radii"]: (B, V, N)
+    render_colors, render_alphas, meta = rasterization(
+        means=means,
+        quats=quats,
         scales=scales,
-        rotations=rotations,
-        cov3D_precomp=None,
+        opacities=opacities,
+        colors=colors,
+        viewmats=world_view_transform,
+        Ks=intrinsics,
+        width=W,
+        height=H,
+        near_plane=cfg.data.znear,
+        far_plane=cfg.data.zfar,
+        sh_degree=sh_degree,
+        backgrounds=backgrounds,
+        packed=packed,
+        render_mode=render_mode,
     )
+
+    # ------------------------------------------------------------------
+    # 5) Convert render to channel-first: (B, V, 3, H, W)
+    # ------------------------------------------------------------------
+    # render_colors: (B, V, H, W, 3) → (B, V, 3, H, W)
+    rendered_image = render_colors.permute(0, 1, 4, 2, 3).contiguous()
+
+    # ------------------------------------------------------------------
+    # 6) Radii and visibility filter
+    # ------------------------------------------------------------------
+    radii = meta.get("radii", None)  # (B, V, N)
+    visibility_filter = radii > 0 if radii is not None else None
+
+    # We don’t need screenspace_points for gsplat; keep a placeholder
+    # to satisfy old call sites if needed.
+    viewspace_points = None
 
     return {
-        "render": rendered_image,            # (B,3,H,W)
-        "viewspace_points": screenspace_points,
-        "visibility_filter": radii > 0,
+        "render": rendered_image,         # (B, V, 3, H, W)
+        "viewspace_points": viewspace_points,
+        "visibility_filter": visibility_filter,
         "radii": radii,
     }

@@ -77,8 +77,15 @@ class MultiViewTemporalDataset(Dataset):
                 dtype=np.float32,
             )
 
-            # OpenGL-style camera-to-world matrix (row-major).
-            c2w = np.array(info["c2w"], dtype=np.float32)
+            # cameras.json stores c2w in **OpenGL-style** camera coordinates:
+            #   +x right, +y up, +z backward (camera looks along -Z)
+            c2w_gl = np.array(info["c2w"], dtype=np.float32)
+
+            # We want to use **OpenCV-style** camera coordinates everywhere:
+            #   +x right, +y down, +z forward.
+            S = np.diag([1.0, -1.0, -1.0, 1.0]).astype(np.float32)
+            c2w = c2w_gl @ S
+
             # Compute world-to-camera (view) matrix.
             w2c = invert_4x4(c2w)
 
@@ -154,28 +161,26 @@ class MultiViewTemporalDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    # -------------------- internal helper: load masked image ------------------
+    # -------------------- internal helper: load image + mask ------------------
 
-    def _load_masked_image_tensor(
+    def _load_image_and_mask(
         self,
         rgb_path: str,
         scene_name: str,
         cam_id: str,
-    ) -> torch.Tensor:
+    ):
         """
-        Load RGB image and apply dynamic union mask:
+        Load RGB image (unmasked) and the dynamic union mask.
 
-            mask_path = dataset_root / scene_name / "masks" / "_union_dynamic" / cam_id / <frame>.png
-
-        Masked pixels keep original RGB; background becomes black.
-        The output is passed through image_to_tensor, so final format is
-        (3,H,W) float32 in [-1,1], same as before.
+        Returns:
+            image_tensor: (3,H,W) float32 in [-1,1]
+            mask_tensor:  (1,H,W) float32 in {0,1}
         """
-        # Load RGB as HxWx3 uint8
+        # Load RGB as HxWx3 uint8 (original image, no masking)
         img = load_image_rgb(rgb_path)  # np.uint8, (H,W,3)
         H, W, _ = img.shape
 
-        # Build mask path: same filename as RGB, under _union_dynamic/<cam_id>/
+        # Build mask path: same filename as RGB, under masks/_union_dynamic/<cam_id>/
         scene_root = os.path.join(self.dataset_root, scene_name)
         filename = os.path.basename(rgb_path)
         mask_path = os.path.join(
@@ -196,13 +201,14 @@ class MultiViewTemporalDataset(Dataset):
             # If mask file does not exist, fall back to full 1s (no masking)
             mask = np.ones((H, W), dtype=np.uint8) * 255
 
-        # Convert mask to {0,1} and apply to all 3 channels
-        mask01 = (mask > 0).astype(np.uint8)  # (H,W)
-        img_masked = img * mask01[..., None]  # background -> 0 (black)
+        # Convert mask to {0,1} float and add channel dim → (1,H,W)
+        mask01 = (mask > 0).astype(np.float32)          # (H,W)
+        mask_tensor = torch.from_numpy(mask01)[None, :] # (1,H,W)
 
-        # Convert to tensor in [-1,1], (3,H,W) float32
-        tensor = image_to_tensor(img_masked)
-        return tensor
+        # Original image tensor in [-1,1], (3,H,W)
+        image_tensor = image_to_tensor(img)
+
+        return image_tensor, mask_tensor
 
     # -------------------------------------------------------------------
 
@@ -213,8 +219,8 @@ class MultiViewTemporalDataset(Dataset):
             image_j_t:  (3,H,W) float32 in [-1,1], masked by dynamic union mask
             image_i_t1: (3,H,W) float32 in [-1,1], masked by dynamic union mask
             T_ij:       (4,4) float32 (transform cam_i -> cam_j view)
-            K_i:        (3,3) float32 intrinsics for cam_i (downscaled)
-            K_j:        (3,3) float32 intrinsics for cam_j (downscaled)
+            K_i:        (3,3) float32 intrinsics for cam_i 
+            K_j:        (3,3) float32 intrinsics for cam_j 
             scene_id, t, t1, cam_i, cam_j: metadata (for debugging)
         """
         s_idx, t_idx, ci_idx, cj_idx = self.samples[idx]
@@ -231,30 +237,28 @@ class MultiViewTemporalDataset(Dataset):
         cams_info = sinfo["cams_info"]
         scene_name = sinfo["name"]
 
-        # --------------------- Load masked images -----------------------
+        # --------------------- Load original images + masks -------------------
         # image_i_t: cam_i, timestep t
         rel_i_t = cams_info[cam_i]["path_format"].format(t)
         path_i_t = os.path.join(images_root, rel_i_t)
-        tensor_i_t = self._load_masked_image_tensor(path_i_t, scene_name, cam_i)
+        tensor_i_t, mask_i_t = self._load_image_and_mask(path_i_t, scene_name, cam_i)
 
         # image_j_t: cam_j, timestep t
         rel_j_t = cams_info[cam_j]["path_format"].format(t)
         path_j_t = os.path.join(images_root, rel_j_t)
-        tensor_j_t = self._load_masked_image_tensor(path_j_t, scene_name, cam_j)
+        tensor_j_t, mask_j_t = self._load_image_and_mask(path_j_t, scene_name, cam_j)
 
         # image_i_t1: same camera i, random different timestep t1
         if len(timesteps) > 1:
-            # choose a different timestep index
             other_indices = [k for k in range(len(timesteps)) if k != t_idx]
             t1_idx = random.choice(other_indices)
         else:
-            # edge case: only 1 frame, fall back to same t (not ideal but safe)
             t1_idx = t_idx
         t1 = timesteps[t1_idx]
 
         rel_i_t1 = cams_info[cam_i]["path_format"].format(t1)
         path_i_t1 = os.path.join(images_root, rel_i_t1)
-        tensor_i_t1 = self._load_masked_image_tensor(path_i_t1, scene_name, cam_i)
+        tensor_i_t1, mask_i_t1 = self._load_image_and_mask(path_i_t1, scene_name, cam_i)
 
         # ---------------------- Camera matrices ------------------
         cam_i_meta = self.cameras[cam_i]
@@ -280,9 +284,17 @@ class MultiViewTemporalDataset(Dataset):
         T_ij = torch.from_numpy(T_ij_np.astype(np.float32))  # (4,4)
 
         return {
+            # Original images (no masking), in [-1,1]
             "image_i_t": tensor_i_t,
             "image_j_t": tensor_j_t,
             "image_i_t1": tensor_i_t1,
+
+            # Dynamic masks in {0,1}, shape (1,H,W)
+            "mask_i_t": mask_i_t,
+            "mask_j_t": mask_j_t,
+            "mask_i_t1": mask_i_t1,
+
+            # Camera transforms & metadata
             "T_ij": T_ij,
             "K_i": K_i,
             "K_j": K_j,
@@ -333,14 +345,14 @@ def build_train_valid_loaders(
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=True,
+        drop_last=False,
     )
 
     valid_loader = DataLoader(
         valid_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
+        batch_size=batch_size*2,
+        shuffle=True,
+        num_workers=1,
         pin_memory=pin_memory,
         drop_last=False,
     )
