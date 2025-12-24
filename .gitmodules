@@ -1,0 +1,6 @@
+[submodule "dataset/mimicgen"]
+	path = dataset/mimicgen
+	url = https://github.com/NVlabs/mimicgen.git
+[submodule "dataset/robomimic"]
+	path = dataset/robomimic
+	url = https://github.com/ARISE-Initiative/robomimic.git

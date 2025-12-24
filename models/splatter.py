@@ -4,6 +4,7 @@ from typing import Dict, Tuple, Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import rearrange
 
 from gsplat.rendering import rasterization
@@ -49,9 +50,9 @@ class SplatterModelConfig:
     so that the higher-order block has size 3 (SH1) per color, i.e. 3*3.
     :contentReference[oaicite:3]{index=3}
     """
-    max_sh_degree: int = 1           # we assume 0 or 1, see asserts below
-    isotropic: bool = True          # if True: same scale for xyz
-
+    max_sh_degree: int = 1            # we assume 0 or 1, see asserts below
+    isotropic: bool = False           # if True: same scale for xyz
+    num_gaussians_per_pixel: int = 5  # number of splat Gaussians per pixel
     depth_scale: float = 1.0
     depth_bias: float = 0.0
     xyz_scale: float = 1.0
@@ -104,6 +105,8 @@ class VAESplatterToGaussians(nn.Module):
         self.cfg = cfg
         assert cfg.model.max_sh_degree in (0, 1), \
             "VAESplatterToGaussians currently supports max_sh_degree ∈ {0,1}."
+        assert cfg.model.num_gaussians_per_pixel >= 1, \
+            "num_gaussians_per_pixel must be >= 1."
 
         self.depth_act = nn.Sigmoid()
         self.opacity_activation = torch.sigmoid
@@ -131,15 +134,25 @@ class VAESplatterToGaussians(nn.Module):
 
     def get_split_dimensions(self) -> Tuple[int, ...]:
         """
-        Channel splits identical to "with offset" network:
-          depth(1), offset(3), opacity(1), scaling(3),
-          rotation(4), features_dc(3), [features_rest(3*SH_rest)]
+        Channel splits for depth-ordered K layers per pixel:
+          depth(K), offset(3K), opacity(K), scaling(3K),
+          rotation(4K), features_dc(3K), [features_rest(K * 3 * SH_rest)]
+
+        Each pixel has K Gaussians with a canonical (front-to-back) ordering.
         """
-        split_dimensions = [1, 3, 1, 3, 4, 3]  # depth, offset, opacity, scaling, rotation, features_dc
+        K = int(self.cfg.model.num_gaussians_per_pixel)
+        split_dimensions = [
+            1 * K,  # depth
+            3 * K,  # offset
+            1 * K,  # opacity
+            3 * K,  # scaling
+            4 * K,  # rotation
+            3 * K,  # features_dc
+        ]
 
         if self.cfg.model.max_sh_degree != 0:
             sh_num = (self.cfg.model.max_sh_degree + 1) ** 2 - 1  # for L=1 -> 3
-            split_dimensions.append(sh_num * 3)  # SH_rest * 3 (RGB)
+            split_dimensions.append(K * sh_num * 3)  # K * SH_rest * 3 (RGB)
 
         return tuple(split_dimensions)
 
@@ -242,29 +255,46 @@ class VAESplatterToGaussians(nn.Module):
         splits = self.get_split_dimensions()
         split_tensors = torch.split(splatter, splits, dim=1)
 
-        depth_logits      = split_tensors[0]  # (B,1,H,W)
-        offset            = split_tensors[1]  # (B,3,H,W)
-        opacity_logits    = split_tensors[2]  # (B,1,H,W)
-        scaling_logits    = split_tensors[3]  # (B,3,H,W)
-        rotation_raw      = split_tensors[4]  # (B,4,H,W)
-        features_dc       = split_tensors[5]  # (B,3,H,W)
-        features_rest_raw = split_tensors[6] if len(split_tensors) > 6 else None
+        # Reshape splite tensors into explicit K-layer structure.
+        # Each becomes (B, K, ... , H, W)
+        K = int(model_cfg.num_gaussians_per_pixel)
+        depth_logits   = split_tensors[0].reshape(B, K, H, W)
+        offset         = split_tensors[1].reshape(B, K, 3, H, W)
+        opacity_logits = split_tensors[2].reshape(B, K, 1, H, W)
+        scaling_logits = split_tensors[3].reshape(B, K, 3, H, W)
+        rotation_raw   = split_tensors[4].reshape(B, K, 4, H, W)
+        features_dc    = split_tensors[5].reshape(B, K, 3, H, W)
+        features_rest_raw = None
+        if self.cfg.model.max_sh_degree != 0:
+            features_rest_raw = split_tensors[6].reshape(B, K, -1, H, W)
 
         # ---- depth in [znear, zfar] with affine pre-transform ----------------
         if activate_output:
+            # 1) Use the first depth value as the base
+            # 2) For k > 0: depth[k] = depth[k-1] + exp(depth_pre[k]) to ensure monotonicity
             depth_pre = depth_logits * model_cfg.depth_scale + model_cfg.depth_bias
-            depth = self.depth_act(depth_pre) * (self.cfg.data.zfar - self.cfg.data.znear) + self.cfg.data.znear
+
+            if K == 1:
+                depth_stack = depth_pre
+            else:
+                base = depth_pre[:, :1, ...]  # (B,1,H,W)
+                inc = torch.exp(depth_pre[:, 1:, ...])              # (B,K-1,H,W)
+                depth_tail = base + torch.cumsum(inc, dim=1)        # (B,K-1,H,W)
+                depth_stack = torch.cat([base, depth_tail], dim=1)  # (B,K,H,W)
+            
+            depth = self.depth_act(depth_stack) * (self.cfg.data.zfar - self.cfg.data.znear) + self.cfg.data.znear
         else:
             depth = depth_logits  # raw logits if you want to regularize differently
 
         # ---- offset / xyz in camera coordinates ------------------------------
         # Apply xyz_scale / xyz_bias to the offset branch
-        offset_cam = offset * model_cfg.xyz_scale + model_cfg.xyz_bias  # (B,3,H,W)
-        pos_cam = ray_dirs_xy * depth + offset_cam                      # (B,3,H,W)
+        offset_cam = offset * model_cfg.xyz_scale + model_cfg.xyz_bias  # (B,K,3,H,W)
+        ray_dirs_expanded = ray_dirs_xy.unsqueeze(1)                    # (B,1,3,H,W)
+        pos_cam = ray_dirs_expanded * depth.unsqueeze(2) + offset_cam   # (B,K,3,H,W)
 
         # ---- convert xyz_cam -> xyz_world -----------------------------------
         # Flatten to (B,N,3)
-        pos = flatten_vector(pos_cam)  # (B,N,3)
+        pos = pos_cam.permute(0, 1, 3, 4, 2).reshape(B, K * H * W, 3)  # (B,N,3)
         pos_h = torch.cat(
             [pos, torch.ones((B, pos.shape[1], 1), device=pos.device, dtype=pos.dtype)],
             dim=2,
@@ -276,8 +306,8 @@ class VAESplatterToGaussians(nn.Module):
 
         # ---- scaling (log-space affine + exp) --------------------------------
         if self.cfg.model.isotropic:
-            s = scaling_logits[:, :1, ...]
-            scaling_logits = torch.cat([s, s, s], dim=1)
+            s = scaling_logits[ :, :, :1, ...]  # (B,K,1,H,W)
+            scaling_logits = torch.cat([s, s, s], dim=2)
 
         if activate_output:
             # log-scale affine: raw -> log_s
@@ -285,7 +315,7 @@ class VAESplatterToGaussians(nn.Module):
             scaling = self.scaling_activation(log_scales)  # exp(log_s) -> positive scales
         else:
             scaling = scaling_logits
-        scaling = flatten_vector(scaling)  # (B,N,3)
+        scaling = scaling.permute(0, 1, 3, 4, 2).reshape(B, K * H * W, 3)  # (B,N,3)
 
         # ---- opacity (affine + sigmoid) --------------------------------------
         if activate_output:
@@ -293,25 +323,21 @@ class VAESplatterToGaussians(nn.Module):
             opacity = self.opacity_activation(opacity_pre)
         else:
             opacity = opacity_logits
-        opacity = flatten_vector(opacity)  # (B,N,1)
+        opacity = opacity.permute(0, 1, 3, 4, 2).reshape(B, K * H * W, 1)  # (B,N,1)
 
         # ---- rotations: normalize quaternions & convert to world frame -------
-        rotation = self.rotation_activation(rotation_raw, dim=1)  # (B,4,H,W)
-        rotation = flatten_vector(rotation)  # (B,N,4)
+        rotation = self.rotation_activation(rotation_raw, dim=2)  # (B,K,4,H,W)
+        rotation = rotation.permute(0, 1, 3, 4, 2).reshape(B, K * H * W, 4)  # (B,N,4)
         rotation_world = transform_rotations(rotation, source_cv2wT_quat)  # (B,N,4)
 
         # ---- features_dc & SH rest -------------------------------------------
-        features_dc_flat = flatten_vector(features_dc)  # (B,N,3)
+        features_dc_flat = features_dc.permute(0, 1, 3, 4, 2).reshape(B, K * H * W, 3)  # (B,N,3)
         features_dc_flat = features_dc_flat.unsqueeze(2)  # (B,N,1,3)
 
         if self.cfg.model.max_sh_degree > 0 and features_rest_raw is not None:
-            features_rest_flat = flatten_vector(features_rest_raw)  # (B,N,rest*3)
-            features_rest = features_rest_flat.reshape(
-                features_rest_flat.shape[0],
-                features_rest_flat.shape[1],
-                -1,
-                3,
-            )  # (B,N,SH_rest,3)
+            sh_num = (self.cfg.model.max_sh_degree + 1) ** 2 - 1  # for L=1 -> 3
+            fr = features_rest_raw.view(B, K, sh_num, 3, H, W)  # (B,K,SH_rest,3,H,W)
+            features_rest = fr.permute(0, 1, 4, 5, 2, 3).reshape(B, K * H * W, sh_num, 3)  # (B,N,SH_rest,3)
 
             # transform SH from camera to world
             features_rest = transform_SHs(

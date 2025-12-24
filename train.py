@@ -159,7 +159,7 @@ def compute_reconstruction_and_renders(
     Args:
         z_inv_i_t, z_dep_i_t, z_dep_j_t: latents
         T_ij, K_i, K_j: camera transforms/intrinsics (may be GT or predicted)
-        gt_i_t_01, gt_j_t_01: ground truth images in [0,1] with masks applied
+        gt_i_t_01, gt_j_t_01: ground truth images in [0,1]
 
     Returns:
         dict with:
@@ -208,7 +208,7 @@ def compute_reconstruction_and_renders(
     rendered_self_i = renders_ij[:, 0]                      # (B,3,H,W)
     rendered_from_j = renders_ij[:, 1]                      # (B,3,H,W)
 
-    # Reconstruction losses vs masked GT
+    # Reconstruction losses vs GT
     rec_loss_self_i = F.mse_loss(rendered_self_i, gt_i_t_01)
     rec_loss_cross  = F.mse_loss(rendered_from_j, gt_j_t_01)
 
@@ -329,7 +329,7 @@ def log_validation_images(
           2) rendered_j_from_i    : image_i_t → j-view (cross-view)
           3) rendered_i_from_shuf : shuffled latents, rendered to i-view
           4) rendered_j_from_shuf : shuffled latents, rendered to j-view
-          5) gt_i_t, gt_j_t       : ground truth masked images
+          5) gt_i_t, gt_j_t       : ground truth images
 
       - Compute contrastive losses on the full batch
       - If camera_predictor is provided:
@@ -355,9 +355,6 @@ def log_validation_images(
     image_j_t  = batch["image_j_t"].to(device)   # (B,3,H,W)
     image_i_t1 = batch["image_i_t1"].to(device)  # (B,3,H,W)
 
-    mask_i_t   = batch["mask_i_t"].to(device)    # (B,1,H,W) in {0,1}
-    mask_j_t   = batch["mask_j_t"].to(device)    # (B,1,H,W)
-
     # Ground-truth camera parameters (used for metrics, and as fallback if no predictor)
     T_ij_gt = batch["T_ij"].to(device)           # (B,4,4) cam_i -> cam_j
     K_i_gt  = batch["K_i"].to(device)            # (B,3,3)
@@ -366,10 +363,9 @@ def log_validation_images(
     B, _, H, W = image_i_t.shape
     n_vis = min(max_vis, B)
 
-    # Convert original images from [-1,1] to [0,1] and apply dynamic masks
-    # (masked-out background becomes black)
-    gt_i_t_01 = (image_i_t + 1.0) * 0.5 * mask_i_t   # (B,3,H,W)
-    gt_j_t_01 = (image_j_t + 1.0) * 0.5 * mask_j_t   # (B,3,H,W)
+    # Convert original images from [-1,1] to [0,1]
+    gt_i_t_01 = (image_i_t + 1.0) * 0.5   # (B,3,H,W)
+    gt_j_t_01 = (image_j_t + 1.0) * 0.5   # (B,3,H,W)
 
     # -------------------- Encode triplet into latents --------------------
     (
@@ -486,7 +482,6 @@ def log_validation_images(
     # -------------------- Log to wandb --------------------
     wandb.log(log_dict, step=global_step)
 
-
 # -------------------------------------------------------------------------
 # Main training loop (now with wandb + validation renders + checkpoints)
 # -------------------------------------------------------------------------
@@ -536,7 +531,7 @@ def train_splatter_vae(
     global_step = 0
     if resume_ckpt is not None and os.path.isfile(resume_ckpt):
         print(f"[Resume] Loading checkpoint from: {resume_ckpt}")
-        ckpt = torch.load(resume_ckpt, map_location=device)
+        ckpt = torch.load(resume_ckpt, map_location=device, weight_only=False)
 
         vae.load_state_dict(ckpt["vae_state_dict"])
         splatter_to_gaussians.load_state_dict(ckpt["splatter_to_gaussians_state_dict"])
@@ -559,24 +554,22 @@ def train_splatter_vae(
     # Ensure checkpoint directory exists
     os.makedirs(cfg_train.ckpt_dir, exist_ok=True)
 
-    global_step = 0
-
     for epoch in range(start_epoch, cfg_train.num_epochs):
-        vae.train()
-        splatter_to_gaussians.train()
-        if camera_predictor is not None:
-            camera_predictor.train()
-
         for step, batch in enumerate(train_dataloader):
+            # ---------------------------------------------------------
+            # 0. Set models to train mode
+            # ---------------------------------------------------------
+            vae.train()
+            splatter_to_gaussians.train()
+            if camera_predictor is not None:
+                camera_predictor.train()
+
             # ---------------------------------------------------------
             # 1. Move batch to device
             # ---------------------------------------------------------
             image_i_t  = batch["image_i_t"].to(device)   # (B,3,H,W)
             image_j_t  = batch["image_j_t"].to(device)   # (B,3,H,W)
             image_i_t1 = batch["image_i_t1"].to(device)  # (B,3,H,W)
-
-            mask_i_t   = batch["mask_i_t"].to(device)    # (B,1,H,W)
-            mask_j_t   = batch["mask_j_t"].to(device)    # (B,1,H,W)
 
             # Ground-truth camera params (only used for validation/metrics, not for training)
             T_ij_gt = batch["T_ij"].to(device)           # (B,4,4)
@@ -585,9 +578,9 @@ def train_splatter_vae(
 
             B, _, H, W = image_i_t.shape
 
-            # Images are in [-1,1]; convert to [0,1] and apply masks
-            gt_i_t_01 = (image_i_t + 1.0) * 0.5 * mask_i_t   # (B,3,H,W)
-            gt_j_t_01 = (image_j_t + 1.0) * 0.5 * mask_j_t
+            # Images are in [-1,1]; convert to [0,1]
+            gt_i_t_01 = (image_i_t + 1.0) * 0.5   # (B,3,H,W)
+            gt_j_t_01 = (image_j_t + 1.0) * 0.5
 
             # ---------------------------------------------------------
             # 2. Encode three images into invariant + view-dependent latents
@@ -847,48 +840,42 @@ def main():
     # -------------------------------------------------
     with open(cli_args.config, "r") as f:
         cfg = yaml.safe_load(f)
-    set_random_seed(42)  # for reproducibility
 
     # -------------------------------------------------
-    # 1) Dataset config + dataloaders
+    # 1) Dataset config + dataloaders (UPDATED for MimicGen HDF5)
     # -------------------------------------------------
     ds_cfg = cfg.get("dataset", {})
-    dataset_root = ds_cfg.get("root", ".")
-    train_manifest = ds_cfg.get("train_manifest", "train.json")
-    valid_manifest = ds_cfg.get("valid_manifest", "valid.json")
-    cameras_json = ds_cfg.get("cameras_json", "cameras.json")
+
+    dataset_path = ds_cfg.get("hdf5_path", None)
+    if dataset_path is None:
+        raise ValueError('Config "dataset.hdf5_path" must be provided for MimicGen HDF5 loading.')
+
     batch_size = ds_cfg.get("batch_size", 128)
     num_workers = ds_cfg.get("num_workers", 8)
     pin_memory = ds_cfg.get("pin_memory", True)
 
-    # Resolve manifest paths relative to dataset_root if not absolute
-    train_manifest_path = (
-        train_manifest
-        if os.path.isabs(train_manifest)
-        else os.path.join(dataset_root, train_manifest)
-    )
-    valid_manifest_path = (
-        valid_manifest
-        if os.path.isabs(valid_manifest)
-        else os.path.join(dataset_root, valid_manifest)
-    )
-    cameras_json_path = (
-        cameras_json
-        if os.path.isabs(cameras_json)
-        else os.path.join(dataset_root, cameras_json)
-    )
+    # Optional split controls
+    train_ratio = float(ds_cfg.get("train_ratio", 0.90))
+    seed = int(ds_cfg.get("seed", 42))
+    num_episodes = ds_cfg.get("num_episodes", None)
+    max_frames_per_demo = ds_cfg.get("max_frames_per_demo", None)
 
+    # Set random seed for reproducibility
+    set_random_seed(seed)
+
+    # Build dataloaders
     train_loader, valid_loader = build_train_valid_loaders(
-        dataset_root=dataset_root,
-        train_manifest=train_manifest_path,
-        valid_manifest=valid_manifest_path,
-        cameras_json_path=cameras_json_path,
+        dataset_path=dataset_path,
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        train_ratio=train_ratio,
+        seed=seed,
+        num_episodes=num_episodes,
+        max_frames_per_demo=max_frames_per_demo,
     )
 
-    # Peek a batch to get input resolution (H, W)
+    # Peek a batch to get input resolution (H, W) (same as before)
     sample_batch = next(iter(train_loader))
     _, _, H, W = sample_batch["image_i_t"].shape
     print(f"[Info] Training image resolution: H={H}, W={W}")
@@ -993,7 +980,7 @@ def main():
     # 5) wandb init from YAML
     # -------------------------------------------------
     wandb_cfg = cfg.get("wandb", {})
-    wandb_project = wandb_cfg.get("project", "splatter_vae")
+    wandb_project = wandb_cfg.get("project", "MimicGen-SplatterVAE")
     wandb_entity = wandb_cfg.get("entity", None)
 
     wandb.init(
@@ -1001,10 +988,7 @@ def main():
         entity=wandb_entity,
         config={
             # Log the most important hyperparams
-            "dataset_root": dataset_root,
-            "train_manifest": train_manifest_path,
-            "valid_manifest": valid_manifest_path,
-            "cameras_json": cameras_json_path,
+            "dataset_path": dataset_path,
             "batch_size": batch_size,
             "num_workers": num_workers,
             "pin_memory": pin_memory,

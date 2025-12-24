@@ -526,5 +526,7 @@ class InvariantDependentSplatterVAE(nn.Module):
     def load_checkpoint(self, checkpoint_file: str):
         state = torch.load(checkpoint_file, map_location="cpu")
         self.load_state_dict(state)
+        if hasattr(self.invariant_output_head, "init_kmeans"):
+            self.invariant_output_head.init_kmeans = False
         if hasattr(self.dependent_output_head, "init_kmeans"):
             self.dependent_output_head.init_kmeans = False
