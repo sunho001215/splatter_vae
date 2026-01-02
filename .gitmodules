@@ -4,3 +4,6 @@
 [submodule "dataset/robomimic"]
 	path = dataset/robomimic
 	url = https://github.com/ARISE-Initiative/robomimic.git
+[submodule "dataset/robosuite"]
+	path = dataset/robosuite
+	url = https://github.com/ARISE-Initiative/robosuite.git

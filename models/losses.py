@@ -32,7 +32,7 @@ def infonce_loss(query, positive_keys, negative_keys=None, temperature=0.1, nega
     kpos = F.normalize(positive_keys, dim=-1)
     if negative_keys is not None:
         knegs = F.normalize(negative_keys, dim=-1)
-
+    
     if negative_mode == 'mixed':
         # Logits for all pairs in the batch
         logits_full = q @ kpos.t()

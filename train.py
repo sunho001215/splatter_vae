@@ -677,7 +677,7 @@ def train_splatter_vae(
             # ---------------------------------------------------------
             # 8. Curriculum on loss terms:s
             # ---------------------------------------------------------
-            if global_step < cfg_train.crossview_start_step:
+            if camera_predictor is not None and global_step < cfg_train.crossview_start_step:
                 # -------- warm-up stage: only camera-coordinate terms --------
                 rec_loss_active = 0.5 * (rec_loss_self_i + rec_loss_shuffle_j)
                 pose_cycle_weight = 0.0

@@ -6,6 +6,7 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 from dataclasses import dataclass
 
+from vector_quantize_pytorch import VectorQuantize
 from .transformer import STransformer 
 
 # -------------------------------------------------------------------------
@@ -21,99 +22,6 @@ class CodebookConfig:
     n_embed: int = 512   # codebook size (K)
     embed_dim: int = 64  # embedding dim (D)
     beta: float = 0.25     # commitment cost
-
-# -----------------------------------------------------------------------------
-# Vector Quantizer
-# -----------------------------------------------------------------------------
-
-class VectorQuantizer(nn.Module):
-    """
-    VQ layer.
-
-    - num_embeddings: size of codebook (K).
-    - embedding_dim: dimensionality of each code (D).
-    - commitment_cost: beta in VQ-VAE loss.
-    - init_kmeans: if True, run a one-off KMeans init on first forward.
-    """
-
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost, init_kmeans=True):
-        super(VectorQuantizer, self).__init__()
-        self.embedding_dim = embedding_dim
-        self.num_embeddings = num_embeddings
-        self.commitment_cost = commitment_cost
-        self.init_kmeans = init_kmeans
-
-        self.embeddings = nn.Embedding(num_embeddings, embedding_dim)
-        if not init_kmeans:
-            # Uniform initialization if we skip KMeans
-            self.embeddings.weight.data.uniform_(-1 / num_embeddings, 1 / num_embeddings)
-
-    def kmeans_init(self, data: torch.Tensor):
-        """
-        Initialize embeddings using KMeans on the provided data.
-
-        NOTE: In practice you might want to call this on a *large* buffer of
-        latents collected over many batches, not a single mini-batch.
-        """
-        from sklearn.cluster import KMeans  # imported lazily
-
-        print("Start init k-means!")
-        flat_inputs = data.reshape(-1, self.embedding_dim).cpu().detach().numpy()
-        kmeans = KMeans(n_clusters=self.num_embeddings, n_init=10)
-        kmeans.fit(flat_inputs[:min(self.num_embeddings * 2, flat_inputs.shape[0])])
-        init_embeddings = torch.tensor(kmeans.cluster_centers_, dtype=torch.float32)
-        self.embeddings.weight.data.copy_(init_embeddings)
-        print("K-means init successfully!")
-
-    def forward(self, inputs: torch.Tensor):
-        """
-        inputs: (..., D) where D = embedding_dim
-
-        Returns:
-            quantized: (..., D)
-            loss: scalar VQ loss
-            encoding_indices: (N,) long with indices in the codebook
-        """
-        if self.init_kmeans:
-            # One-shot KMeans init on first usage
-            self.kmeans_init(inputs)
-            self.init_kmeans = False
-
-        # Flatten to (N, D)
-        flat_inputs = inputs.reshape(-1, self.embedding_dim)  # (N, D)
-
-        # Compute squared Euclidean distance to all embeddings
-        # (N, D) -> (N, K, D) -> (N, K)
-        distances = torch.sum(
-            (flat_inputs.unsqueeze(1) - self.embeddings.weight) ** 2, dim=2
-        )
-
-        # For each vector, find nearest embedding index
-        encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)  # (N, 1)
-
-        # Convert to one-hot encodings
-        encoding_onehot = torch.zeros(
-            encoding_indices.shape[0],
-            self.num_embeddings,
-            device=inputs.device
-        )
-        encoding_onehot.scatter_(1, encoding_indices, 1)
-
-        # Map back to embedding space: (N, K) * (K, D) -> (N, D)
-        quantized = torch.matmul(encoding_onehot, self.embeddings.weight).view(inputs.shape)
-
-        # VQ loss terms (codebook + commitment loss, as in VQ-VAE)
-        e_latent_loss = torch.mean((quantized.detach() - inputs) ** 2)
-        q_latent_loss = torch.mean((quantized - inputs.detach()) ** 2)
-        loss = q_latent_loss + self.commitment_cost * e_latent_loss
-
-        # Straight-through estimator: copy gradients from inputs
-        quantized = inputs + (quantized - inputs).detach()
-
-        # encoding_indices as (N,) for convenience
-        encoding_indices = encoding_indices.squeeze(1)
-        return quantized, loss, encoding_indices
-
 
 # -----------------------------------------------------------------------------
 # Invariant/Dependent VAE that outputs Splatter Image instead of RGB
@@ -287,11 +195,14 @@ class InvariantDependentSplatterVAE(nn.Module):
         # VQ or Gaussian heads for invariant & dependent branches
         # -------------------------------------------------------------
         self.invariant_output_head = (
-            VectorQuantizer(
-                invariant_cb_config.n_embed,
-                invariant_cb_config.embed_dim,
-                invariant_cb_config.beta,
-                init_kmeans=True,
+            VectorQuantize(
+                dim=invariant_cb_config.embed_dim,
+                codebook_size=invariant_cb_config.n_embed,
+                commitment_weight=invariant_cb_config.beta,
+                use_cosine_sim=True,
+                kmeans_init=True,
+                kmeans_iters=10,
+                threshold_ema_dead_code=2,
             )
             if use_invariant_vq
             else nn.Linear(
@@ -301,11 +212,14 @@ class InvariantDependentSplatterVAE(nn.Module):
         )
 
         self.dependent_output_head = (
-            VectorQuantizer(
-                dependent_cb_config.n_embed,
-                dependent_cb_config.embed_dim,
-                dependent_cb_config.beta,
-                init_kmeans=True,
+            VectorQuantize(
+                dim=dependent_cb_config.embed_dim,
+                codebook_size=dependent_cb_config.n_embed,
+                commitment_weight=dependent_cb_config.beta,
+                use_cosine_sim=True,
+                kmeans_init=True,
+                kmeans_iters=10,
+                threshold_ema_dead_code=2
             )
             if use_dependent_vq
             else nn.Linear(
@@ -371,7 +285,8 @@ class InvariantDependentSplatterVAE(nn.Module):
         # Invariant branch: VQ or Gaussian
         # -------------------------
         if self.use_invariant_vq:
-            z_inv, inv_embed_loss, invariant_encoding_indices = self.invariant_output_head(h_inv)
+            z_inv, invariant_encoding_indices, inv_aux_loss = self.invariant_output_head(h_inv)
+            inv_embed_loss = inv_aux_loss.mean()
         else:
             z_inv_output = self.invariant_output_head(h_inv)  # (B, T, 2*D_inv)
             D_half = z_inv_output.shape[-1] // 2
@@ -392,8 +307,9 @@ class InvariantDependentSplatterVAE(nn.Module):
         # Dependent branch: VQ or Gaussian
         # -------------------------
         if self.use_dependent_vq:
-            z_dep, dep_embed_loss, dependent_encoding_indices = self.dependent_output_head(h_dep)
+            z_dep, dependent_encoding_indices, dep_aux_loss = self.dependent_output_head(h_dep)
             z_dep = self.dependent_output_final_proj(z_dep)
+            dep_embed_loss = dep_aux_loss.mean()
         else:
             z_dep_output = torch.tanh(self.dependent_output_head(h_dep))  # (B, T, 2*D_dep)
             D_half = z_dep_output.shape[-1] // 2
@@ -461,40 +377,6 @@ class InvariantDependentSplatterVAE(nn.Module):
         splatter = self.to_splatter(dec_tokens).contiguous()  # (B, C_s, H, W)
         return splatter
 
-    def decode_by_encoding(self, z_inv: torch.Tensor, dep_encodings: torch.Tensor) -> torch.Tensor:
-        """
-        Decode given invariant latents z_inv and dependent codebook indices dep_encodings.
-
-        This is analogous to the original decode_by_encoding, but for
-        invariant/dependent and returns a Splatter Image.
-
-        Args:
-            z_inv: (B, T, D_inv)
-            dep_encodings: (B*T,) or (B, T) long indices into dependent VQ codebook
-
-        Returns:
-            splatter: (B, splatter_channels, H, W)
-        """
-        assert self.use_dependent_vq, "decode_by_encoding assumes dependent VQ is enabled."
-
-        # If dep_encodings is (B, T) reshape to flat, then back to (B, T)
-        if dep_encodings.dim() == 2:
-            B, T = dep_encodings.shape
-            flat_indices = dep_encodings.reshape(-1)
-        else:
-            flat_indices = dep_encodings
-            B = z_inv.shape[0]
-            T = z_inv.shape[1]
-
-        # Look up in dependent codebook: (N, D_dep)
-        z_dep = self.dependent_output_head.embeddings(flat_indices)  # (N, D_dep)
-        z_dep = self.dependent_output_final_proj(z_dep)              # (N, D_dep)
-
-        # Reshape back to (B, T, D_dep)
-        z_dep = z_dep.view(B, T, -1)
-
-        return self.decode(z_inv, z_dep)
-
     # ------------------------------------------------------------------
     # Optional forward shortcut (e.g. for reconstruction training)
     # ------------------------------------------------------------------
@@ -526,7 +408,6 @@ class InvariantDependentSplatterVAE(nn.Module):
     def load_checkpoint(self, checkpoint_file: str):
         state = torch.load(checkpoint_file, map_location="cpu")
         self.load_state_dict(state)
-        if hasattr(self.invariant_output_head, "init_kmeans"):
-            self.invariant_output_head.init_kmeans = False
-        if hasattr(self.dependent_output_head, "init_kmeans"):
-            self.dependent_output_head.init_kmeans = False
+        for head in [self.invariant_output_head, self.dependent_output_head]:
+            if isinstance(head, VectorQuantize) and hasattr(head, "kmeans_init"):
+                head.kmeans_init = False

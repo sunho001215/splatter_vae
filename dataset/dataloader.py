@@ -19,9 +19,6 @@ class MimicGenMultiViewTemporalHDF5Dataset(Dataset):
       - image_i_t1  : view_i at timestep t1 (same demo, but far from t) <-- can be used as temporal negative
       - T_ij        : (4,4) transform from camera-i coords to camera-j coords
       - K_i, K_j    : intrinsics
-
-    The dataset index is intentionally (demo_key, t) only.
-    view_i/view_j selection happens in __getitem__ to prevent false-negative duplication.
     """
 
     def __init__(
@@ -31,7 +28,7 @@ class MimicGenMultiViewTemporalHDF5Dataset(Dataset):
         views: Optional[List[str]] = None,
         max_frames_per_demo: Optional[int] = None,
         seed: int = 0,
-        min_time_gap: int = 10,  # k=10 as requested
+        min_time_gap: int = 10,
     ):
         super().__init__()
         self.dataset_path = dataset_path
@@ -338,7 +335,7 @@ def build_train_valid_loaders(
     num_episodes: Optional[int] = None,
     max_frames_per_demo: Optional[int] = None,
     views: Optional[List[str]] = None,
-    min_time_gap: int = 10,  # k=10 as requested
+    min_time_gap: int = 25,
     drop_last_train: bool = True,
     shuffle_train: bool = True,
     shuffle_valid: bool = True,
