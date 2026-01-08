@@ -48,7 +48,7 @@ def make_teleop_device(
     if name == "spacemouse":
         # Try robosuite SpaceMouse first (may fail on Linux depending on HID setup)
         try:
-            from robosuite.devices import SpaceMouse
+            from robosuite.devices.spacemouse import SpaceMouse
             device = _construct_device(
                 SpaceMouse,
                 env=env,
@@ -66,7 +66,7 @@ def make_teleop_device(
             )
 
     elif name == "keyboard":
-        from robosuite.devices import Keyboard
+        from robosuite.devices.keyboard import Keyboard
 
         device = _construct_device(
             Keyboard,
@@ -77,7 +77,7 @@ def make_teleop_device(
         )
 
     elif name == "dualsense":
-        from robosuite.devices import DualSense
+        from robosuite.devices.dualsense import DualSense
 
         device = _construct_device(
             DualSense,
@@ -88,7 +88,7 @@ def make_teleop_device(
         )
 
     elif name == "mjgui":
-        from robosuite.devices import MJGUI
+        from robosuite.devices.mjgui import MJGUI
 
         device = _construct_device(MJGUI, env=env, **kwargs)
 

@@ -7,7 +7,6 @@ requires-python = ">=3.10"
 dependencies = [
     "cython<3",
     "einops>=0.8.1",
-    "gsplat",
     "numpy<2.0.0",
     "opencv-python>=4.11.0.86",
     "pyyaml>=6.0.3",
@@ -24,7 +23,9 @@ dependencies = [
     "gymnasium>=1.2.3",
     "pyspacemouse>=1.1.5",
     "matplotlib>=3.10.8",
+    "gsplat"
 ]
+
 [tool.uv.extra-build-dependencies]
 gsplat = ["torch"]
 

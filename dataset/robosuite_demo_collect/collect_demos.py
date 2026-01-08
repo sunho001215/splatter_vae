@@ -1,33 +1,20 @@
-# ./collect_demos.py
-"""
-Demo collection (10 Hz) using SpaceMouse teleoperation + async HDF5 writer.
-
-Key fix vs your current version:
-- We DO NOT pass custom camera_names to suite.make() with use_camera_obs=True,
-  because robosuite validates camera names during env initialization.
-- Instead:
-    1) Create env with use_camera_obs=False
-    2) Inject custom cameras into MJCF via reset_from_xml_string
-    3) Render RGB + segmentation each step via env.sim.render(camera_name=..., segmentation=...)
-
-robosuite binding_utils.MjSim.render supports camera_name and segmentation flags. :contentReference[oaicite:1]{index=1}
-"""
-
 from __future__ import annotations
 
+import time
 import argparse
 import datetime as dt
 import os
 import subprocess
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 import numpy as np
 import robosuite as suite
 
 from demo_collector.async_hdf5_writer import AsyncHDF5Writer, StepPacket
-from demo_collector.camera_config import load_camera_json, apply_custom_cameras_to_env
+from demo_collector.camera_config import apply_custom_cameras_to_env, make_spherical_cameras
 from demo_collector.camera_params import get_camera_intrinsics, get_camera_extrinsics_world_T_cam
 from demo_collector.device_factory import make_teleop_device
+from demo_collector.render import render_rgb, render_segmentation
 from demo_collector.viz import MultiCamVisualizer
 
 
@@ -60,64 +47,7 @@ def flatten_action_for_storage(action: Any) -> np.ndarray:
         return np.concatenate(parts, axis=0) if parts else np.zeros((0,), dtype=np.float32)
     return np.asarray(action).ravel()
 
-
-def _to_uint8_image(x: Any) -> np.ndarray:
-    """Ensure RGB is uint8 HxWx3."""
-    arr = np.asarray(x)
-    if arr.dtype == np.uint8:
-        return arr
-    if np.issubdtype(arr.dtype, np.floating):
-        arr = np.clip(arr, 0.0, 1.0)
-        return (arr * 255.0).round().astype(np.uint8)
-    return arr.astype(np.uint8)
-
-
-def _to_int32_mask(x: Any) -> np.ndarray:
-    """
-    Ensure segmentation is int32 HxW.
-    Notes:
-      - Some render paths may return HxWx2 (objtype, objid). If so, we keep objid by default.
-      - Some may return HxWx1.
-    """
-    arr = np.asarray(x)
-    if arr.ndim == 3 and arr.shape[-1] == 2:
-        # Common MuJoCo segmentation buffer: (objtype, objid)
-        arr = arr[..., 1]
-    elif arr.ndim == 3 and arr.shape[-1] == 1:
-        arr = arr[..., 0]
-    if arr.ndim != 2:
-        raise RuntimeError(f"Segmentation must be HxW (or HxWx1/HxWx2). Got {arr.shape}")
-    return arr.astype(np.int32)
-
-
-def render_rgb(sim, camera_name: str, H: int, W: int) -> np.ndarray:
-    """
-    Render RGB via robosuite's MjSim.render wrapper.
-    Robustly handle if some backends return (rgb, depth) tuple.
-    """
-    out = sim.render(width=W, height=H, camera_name=camera_name, depth=False, segmentation=False)
-    if isinstance(out, tuple):
-        out = out[0]
-    return _to_uint8_image(out)
-
-
-def render_segmentation(sim, camera_name: str, H: int, W: int) -> np.ndarray:
-    """
-    Render segmentation via MjSim.render(segmentation=True).
-    Different MuJoCo bindings / renderers may return:
-      - seg only
-      - (rgb, seg)
-      - (rgb, depth, seg)
-    We always take the *last* element if a tuple is returned.
-    """
-    out = sim.render(width=W, height=H, camera_name=camera_name, depth=False, segmentation=True)
-    if isinstance(out, tuple):
-        out = out[-1]
-    return _to_int32_mask(out)
-
-
 # ------------------------- main -------------------------
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -126,36 +56,40 @@ def main():
     parser.add_argument("--robot", type=str, default="Panda")
     parser.add_argument("--output", type=str, default="demo.hdf5")
 
-    # 6 user cameras
-    parser.add_argument("--camera_json", type=str, required=True)
+    # 6 cameras from spherical inputs: r (1), theta (2), phi (3) => 6 cams
+    parser.add_argument("--cam_r", type=float, required=True, help="Radius for spherical camera placement")
+    parser.add_argument("--cam_theta", type=float, nargs=2, required=True, help="2 elevation angles (deg by default)")
+    parser.add_argument("--cam_phi", type=float, nargs=3, required=True, help="3 azimuth angles (deg by default)")
+    parser.add_argument("--cam_fovy", type=float, default=45.0, help="Vertical field-of-view (deg)")
+    parser.add_argument(
+        "--cam_lookat",
+        type=float,
+        nargs=3,
+        default=None,
+        help="Look-at center (world xyz). Default: env.sim.model.stat.center if available, else (0,0,0)",
+    )
+    parser.add_argument("--cam_up", type=float, nargs=3, default=(0.0, 0.0, 1.0), help="World up vector (xyz)")
+    parser.add_argument("--cam_angles_in_rad", action="store_true", help="If set, theta/phi are in radians")
+
     parser.add_argument("--img_h", type=int, default=224)
     parser.add_argument("--img_w", type=int, default=224)
 
     # Teleop
-    parser.add_argument("--device", type=str, default="spacemouse", choices=["spacemouse", "keyboard", "dualsense", "mjgui"])
+    parser.add_argument("--device", type=str, default="spacemouse",
+                        choices=["spacemouse", "keyboard", "dualsense", "mjgui"])
     parser.add_argument("--pos_sensitivity", type=float, default=1.0)
     parser.add_argument("--rot_sensitivity", type=float, default=1.0)
 
     # 10 Hz sampling: one env.step == one sample
     parser.add_argument("--control_freq", type=float, default=10.0)
-    parser.add_argument("--horizon", type=int, default=500)
-    parser.add_argument("--num_demos", type=int, default=10)
-
-    # DINO options (writer thread)
-    parser.add_argument("--dino_source", type=str, default="torchhub", choices=["torchhub", "hf"])
-    parser.add_argument("--dino_mode", type=str, default="patch", choices=["patch", "pixel"])
-    parser.add_argument("--dino_device", type=str, default="cuda")
+    parser.add_argument("--horizon", type=int, default=3000)
+    parser.add_argument("--num_demos", type=int, default=120)
 
     args = parser.parse_args()
 
-    cams = load_camera_json(args.camera_json)
-    camera_names = [c.name for c in cams]
     H, W = args.img_h, args.img_w
 
-    # Visualizer
-    viz = MultiCamVisualizer(
-        camera_names=camera_names, H=H, W=W,
-    )
+    # ----------------- env creation -----------------
 
     # Create env WITHOUT camera observables first (use_camera_obs=False).
     # This prevents robosuite from validating camera_names that don't exist yet.
@@ -171,10 +105,51 @@ def main():
         renderer="mujoco",
     )
 
-    # Inject user-defined cameras, rebuild sim/model from modified XML
+    # Initialize sim so we can choose a default lookat
+    _ = env.reset()
+
+    # ----------------- camera configuration -----------------
+
+    if args.cam_lookat is None:
+        try:
+            lookat = np.array(env.sim.model.stat.center, dtype=np.float64)
+        except Exception:
+            lookat = np.zeros(3, dtype=np.float64)
+    else:
+        lookat = np.array(args.cam_lookat, dtype=np.float64)
+
+    # 6 spherical cameras that will be saved to the dataset
+    cams = make_spherical_cameras(
+        r=float(args.cam_r),
+        theta_list=list(args.cam_theta),
+        phi_list=list(args.cam_phi),
+        lookat=lookat.tolist(),
+        up=list(args.cam_up),
+        degrees=(not args.cam_angles_in_rad),
+        fovy=float(args.cam_fovy),
+        name_prefix="cam",
+    )
+    # Cameras that are actually written to disk (data cameras)
+    data_camera_names = [c.name for c in cams]
+
+    # Name of robosuite's default wrist / eye-in-hand camera
+    # (this exists for single-arm robots as "robot0_eye_in_hand")
+    WRIST_CAM_NAME = "robot0_eye_in_hand"
+
+    # Visualization cameras = 6 data cams + 1 wrist cam
+    # We will render all of these on-screen,
+    # but only data_camera_names will be stored in the HDF5 dataset.
+    viz_camera_names = data_camera_names + [WRIST_CAM_NAME]
+
+    # Visualizer now uses the *viz* camera list (includes wrist)
+    viz = MultiCamVisualizer(camera_names=viz_camera_names, H=H, W=W)
+
+    # Inject the 6 custom spherical cameras into the MJCF and rebuild sim
+    # (this does NOT remove default cameras like "robot0_eye_in_hand")
     apply_custom_cameras_to_env(env, cams)
 
-    # Create SpaceMouse AFTER camera injection (safe either way, but clean)
+    # ----------------- teleop device -----------------
+
     device = make_teleop_device(
         args.device,
         env,
@@ -182,27 +157,37 @@ def main():
         rot_sensitivity=args.rot_sensitivity,
     )
 
-    # Writer init (robosuite-like root attrs)
+    # ----------------- writer init -----------------
+
     now = dt.datetime.now()
     root_attrs = {
         "date": now.strftime("%Y-%m-%d"),
         "time": now.strftime("%H:%M:%S"),
         "repository_version": get_repo_version(),
         "env": args.env,
+        "camera_r": float(args.cam_r),
+        "camera_theta": str(list(args.cam_theta)),
+        "camera_phi": str(list(args.cam_phi)),
+        "camera_fovy": float(args.cam_fovy),
+        "camera_lookat": str(lookat.tolist()),
+        "camera_up": str(list(args.cam_up)),
+        "camera_angles_in_rad": bool(args.cam_angles_in_rad),
     }
 
+    # IMPORTANT:
+    #   AsyncHDF5Writer gets only the data_camera_names.
+    #   It will *ignore* the wrist camera, so wrist images are never saved.
     writer = AsyncHDF5Writer(
         output_path=args.output,
-        camera_names=camera_names,
-        compression="lzf",
-        max_queue=256,
-        dino_device=args.dino_device,
-        dino_source=args.dino_source,
-        dino_mode=args.dino_mode,
+        camera_names=data_camera_names,   # <--- only the 6 spherical cams
+        compression=None,
+        max_queue=1024
     )
     writer.start(root_attrs)
 
     # ---------------------- collect demos ----------------------
+    dt_sim = 1.0 / args.control_freq
+
     for demo_i in range(args.num_demos):
         obs = env.reset()
         done = False
@@ -211,9 +196,9 @@ def main():
         # Model xml (robosuite demo format)
         model_xml = env.model.get_xml() if hasattr(env.model, "get_xml") else str(env.model)
 
-        # Camera params (after reset so sim.data is valid)
-        intrinsics = {cam: get_camera_intrinsics(env.sim, cam, H, W) for cam in camera_names}
-        extrinsics = {cam: get_camera_extrinsics_world_T_cam(env.sim, cam) for cam in camera_names}
+        # Camera params (only for data cameras, since only they are saved)
+        intrinsics = {cam: get_camera_intrinsics(env.sim, cam, H, W) for cam in data_camera_names}
+        extrinsics = {cam: get_camera_extrinsics_world_T_cam(env.sim, cam) for cam in data_camera_names}
 
         demo_name = f"demo{demo_i + 1}"  # matches "demo1", "demo2", ...
         writer.begin_demo(
@@ -224,25 +209,24 @@ def main():
             image_hw=(H, W),
             extra_demo_attrs={
                 "control_freq": float(args.control_freq),
-                "camera_json": os.path.basename(args.camera_json),
                 "teleop_device": args.device,
-                "note": "RGB/seg captured via sim.render (not use_camera_obs)",
+                "note": "RGB/seg captured via sim.render (not use_camera_obs); cameras from spherical inputs",
             },
         )
 
-        while not done and t < args.horizon:
-            # Teleop -> action
+        # Stop when task succeeds OR horizon reached
+        while not env._check_success() and t < args.horizon:
+            loop_start = time.perf_counter()
+
+            # Get action from device
             action = device.input2action(goal_update_mode="target")
 
             if action is None:
-                # Device asked for reset. We keep the same demo group but restart the episode stream.
-                # If you prefer to discard partial demos, you’d need an 'abort_demo' command in the writer.
                 print("[teleop] reset triggered from device; resetting env and continuing same demo group.")
                 obs = env.reset()
                 t = 0
                 continue
 
-            # Step sim
             obs, reward, done, info = env.step(action)
 
             # 1) state
@@ -251,29 +235,54 @@ def main():
             # 2) action (flatten for storage)
             action_flat = flatten_action_for_storage(action).astype(np.float32).copy()
 
-            # 3) RGB + segmentation via sim.render for each custom cam
-            rgb_by_cam: Dict[str, np.ndarray] = {}
-            seg_by_cam: Dict[str, np.ndarray] = {}
+            # 3) RGB + segmentation via sim.render
+            #    We build two dicts:
+            #      - full_rgb / full_seg: includes wrist cam (for visualization)
+            #      - data_rgb / data_seg: only data cams (for writer / HDF5)
+            full_rgb_by_cam: Dict[str, np.ndarray] = {}
+            full_seg_by_cam: Dict[str, np.ndarray] = {}
 
-            for cam in camera_names:
-                rgb_by_cam[cam] = render_rgb(env.sim, cam, H, W)
-                seg_by_cam[cam] = render_segmentation(env.sim, cam, H, W)
+            # Render all data cameras (these are saved + visualized)
+            for cam in data_camera_names:
+                full_rgb_by_cam[cam] = render_rgb(env.sim, cam, H, W)
+                full_seg_by_cam[cam] = render_segmentation(env, cam, H, W)
 
-            # 4) enqueue (writer thread will compute DINO + write HDF5)
+            # Render wrist view ONLY for visualization (not stored)
+            try:
+                wrist_rgb = render_rgb(env.sim, WRIST_CAM_NAME, H, W)
+                wrist_seg = render_segmentation(env, WRIST_CAM_NAME, H, W)
+                full_rgb_by_cam[WRIST_CAM_NAME] = wrist_rgb
+                full_seg_by_cam[WRIST_CAM_NAME] = wrist_seg
+            except Exception as e:
+                # If the robot / env combo does not have this camera, skip it gracefully
+                pass
+
+            # Subset dicts that only contain data cameras for writing
+            data_rgb_by_cam = {cam: full_rgb_by_cam[cam] for cam in data_camera_names}
+            data_seg_by_cam = {cam: full_seg_by_cam[cam] for cam in data_camera_names}
+
+            # 4) enqueue (writer thread will write HDF5)
             writer.enqueue_step(
                 StepPacket(
                     state=state,
                     action=action_flat,
-                    rgb_by_cam=rgb_by_cam,
-                    seg_by_cam=seg_by_cam,
+                    rgb_by_cam=data_rgb_by_cam,   # <--- only 6 cams
+                    seg_by_cam=data_seg_by_cam,   # <--- only 6 cams
+                    obs=obs,
                     t=float(t),
                 )
             )
 
-            # 5) visualize
-            key = viz.update(rgb_by_cam, seg_by_cam, step_i=t)
+            # 5) visualize (uses full set including wrist)
+            _ = viz.update(full_rgb_by_cam, full_seg_by_cam, step_i=t)
 
             t += 1
+
+            # 6) real-time throttling
+            elapsed = time.perf_counter() - loop_start
+            sleep_time = dt_sim - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
         writer.end_demo()
         print(f"[demo] finished {demo_name} (steps attempted={t})")
