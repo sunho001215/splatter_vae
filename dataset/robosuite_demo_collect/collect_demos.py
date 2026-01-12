@@ -9,6 +9,8 @@ from typing import Any, Dict
 
 import numpy as np
 import robosuite as suite
+import h5py
+import re
 
 from demo_collector.async_hdf5_writer import AsyncHDF5Writer, StepPacket
 from demo_collector.camera_config import apply_custom_cameras_to_env, make_spherical_cameras
@@ -83,11 +85,35 @@ def main():
     # 10 Hz sampling: one env.step == one sample
     parser.add_argument("--control_freq", type=float, default=10.0)
     parser.add_argument("--horizon", type=int, default=3000)
+    
+    # Demo
     parser.add_argument("--num_demos", type=int, default=120)
+    parser.add_argument("--start_demo", type=int, default=1)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--overwrite_output", action="store_true")
+    parser.add_argument("--stop_key", type=str, default="q")
+    parser.add_argument("--overwrite_existing_demos", action="store_true")
+    parser.add_argument("--auto_skip_existing", action="store_true", default=True)
 
     args = parser.parse_args()
 
     H, W = args.img_h, args.img_w
+
+    # Decide file open mode for the writer.
+    # - If output exists:
+    #     * --resume  => open with "r+" and append
+    #     * else      => error unless --overwrite_output
+    output_exists = os.path.exists(args.output)
+    if output_exists and (not args.resume) and (not args.overwrite_output):
+        raise FileExistsError(
+            f"Output already exists: {args.output}. "
+            f"Use --resume to append, or --overwrite_output to overwrite."
+        )
+    file_mode = "w"
+    if args.overwrite_output:
+        file_mode = "w"
+    elif args.resume and output_exists:
+        file_mode = "r+"
 
     # ----------------- env creation -----------------
 
@@ -181,17 +207,21 @@ def main():
         output_path=args.output,
         camera_names=data_camera_names,   # <--- only the 6 spherical cams
         compression=None,
-        max_queue=1024
+        max_queue=1024,
+        file_mode=file_mode,
     )
     writer.start(root_attrs)
 
     # ---------------------- collect demos ----------------------
     dt_sim = 1.0 / args.control_freq
 
-    for demo_i in range(args.num_demos):
+    demo_idx = int(args.start_demo)  # 1-indexed
+    stop_requested = False
+
+    while demo_idx <= int(args.num_demos):
         obs = env.reset()
-        done = False
         t = 0
+        aborted = False  # True => discard this demo and retry same demo_idx
 
         # Model xml (robosuite demo format)
         model_xml = env.model.get_xml() if hasattr(env.model, "get_xml") else str(env.model)
@@ -200,7 +230,7 @@ def main():
         intrinsics = {cam: get_camera_intrinsics(env.sim, cam, H, W) for cam in data_camera_names}
         extrinsics = {cam: get_camera_extrinsics_world_T_cam(env.sim, cam) for cam in data_camera_names}
 
-        demo_name = f"demo{demo_i + 1}"  # matches "demo1", "demo2", ...
+        demo_name = f"demo{demo_idx}"  # keep demo numbering stable across retries/resume.
         writer.begin_demo(
             demo_name=demo_name,
             model_xml=model_xml,
@@ -222,10 +252,10 @@ def main():
             action = device.input2action(goal_update_mode="target")
 
             if action is None:
-                print("[teleop] reset triggered from device; resetting env and continuing same demo group.")
-                obs = env.reset()
-                t = 0
-                continue
+                # SpaceMouse reset => discard the entire current episode (demo group)
+                print("[teleop] reset triggered: aborting current demo and retrying same demo index.")
+                aborted = True
+                break
 
             obs, reward, done, info = env.step(action)
 
@@ -274,7 +304,15 @@ def main():
             )
 
             # 5) visualize (uses full set including wrist)
-            _ = viz.update(full_rgb_by_cam, full_seg_by_cam, step_i=t)
+            key = viz.update(full_rgb_by_cam, full_seg_by_cam, step_i=t)
+
+            # Stop collection on keyboard input from the OpenCV window.
+            # Press 'q' (default) or ESC to stop. Current demo is discarded.
+            if key in (ord(args.stop_key.lower()), ord(args.stop_key.upper()), 27):
+                print("[user] stop requested: aborting current demo and exiting.")
+                aborted = True
+                stop_requested = True
+                break
 
             t += 1
 
@@ -284,13 +322,22 @@ def main():
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
+        if aborted:
+            # Delete the demo group from disk (no partial episodes)
+            writer.abort_demo()
+            if stop_requested:
+                break
+            # Retry the SAME demo_idx (demo number is preserved)
+            continue
+
         writer.end_demo()
         print(f"[demo] finished {demo_name} (steps attempted={t})")
+        demo_idx += 1
 
     viz.close()
     writer.close()
     env.close()
-    print(f"[DONE] Wrote {args.num_demos} demos to {args.output}. Dropped steps: {writer.dropped_steps}")
+    print(f"[DONE] Finished up to demo{demo_idx - 1}. Output: {args.output}. Dropped steps: {writer.dropped_steps}")
 
 
 if __name__ == "__main__":

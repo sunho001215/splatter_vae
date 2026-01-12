@@ -47,7 +47,7 @@ class SpaceMousePySpaceMouse:
         pos_sensitivity: float = 1.0,
         rot_sensitivity: float = 1.0,
         deadband: float = 0.005,
-        max_raw: float = 1.5,
+        max_raw: float = 1.0,
         reset_button_index: int = 1,
         gripper_button_index: int = 0,
     ):

@@ -35,12 +35,14 @@ class AsyncHDF5Writer:
         camera_names: List[str],
         compression: str = "lzf",
         max_queue: int = 256,
-        block_on_full: bool = True,   # NEW: guarantee no drops if True
+        block_on_full: bool = True,
+        file_mode: str = "w"        # "w" (new file) or "r+" (resume/append)
     ):
         self.output_path = output_path
         self.camera_names = camera_names
         self.compression = compression
         self.block_on_full = bool(block_on_full)
+        self.file_mode = file_mode
 
         self.q: "queue.Queue[Tuple[str, Any]]" = queue.Queue(maxsize=max_queue)
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -55,7 +57,7 @@ class AsyncHDF5Writer:
         if self._started:
             return
         self._started = True
-        self.q.put(("__init_file__", root_attrs))  # blocking put is fine here
+        self.q.put(("__init_file__", {"root_attrs": root_attrs, "file_mode": self.file_mode}))
         self.thread.start()
 
     def begin_demo(
@@ -108,6 +110,17 @@ class AsyncHDF5Writer:
         self.q.put(("end_demo", None))  # blocking
         if wait:
             # Wait until ALL queued commands (including this end_demo) are processed.
+            self.q.join()
+    
+    def abort_demo(self, wait: bool = True) -> None:
+        """
+        Abort current demo and DELETE it from the HDF5 file.
+        This is used when:
+          - SpaceMouse reset button is pressed
+          - User requests to stop collection mid-run
+        """
+        self.q.put(("abort_demo", None))  # blocking
+        if wait:
             self.q.join()
 
     def flush(self) -> None:
@@ -170,6 +183,10 @@ class AsyncHDF5Writer:
         # Per-key env observation datasets for the current demo
         ds_obs_dict: Dict[str, h5py.Dataset] = {}
 
+        # Track current demo so we can roll back / delete it on abort
+        current_demo_name: Optional[str] = None
+        current_demo_steps: int = 0
+
         # -----------------------------
         # Main loop: consume commands from the queue forever
         # -----------------------------
@@ -182,21 +199,27 @@ class AsyncHDF5Writer:
             # (1) "__init_file__": create the HDF5 file and /data group
             # =========================================================
             if cmd == "__init_file__":
-                # Payload is root attributes dict
-                root_attrs = payload
+                # Payload carries root_attrs and file_mode ("w" or "r+")
+                root_attrs = payload["root_attrs"]
+                file_mode = str(payload.get("file_mode", "w"))
 
-                # Create new HDF5 file
-                f = h5py.File(self.output_path, "w")
+                # "w": create new file (overwrite), "r+": open existing and append
+                f = h5py.File(self.output_path, file_mode)
 
-                # Create /data root group
-                data_grp = f.create_group("data")
+                # Create or reuse /data group
+                if "data" in f:
+                    data_grp = f["data"]
+                else:
+                    data_grp = f.create_group("data")
 
-                # Attach user-provided root metadata as attributes on /data
+                # Only set missing root attributes when resuming (do not overwrite existing metadata)
                 for k, v in root_attrs.items():
-                    data_grp.attrs[k] = v
+                    if k not in data_grp.attrs:
+                        data_grp.attrs[k] = v
 
-                # Track total number of steps written across all demos
-                data_grp.attrs["total"] = 0
+                # Ensure "total" exists
+                if "total" not in data_grp.attrs:
+                    data_grp.attrs["total"] = 0
 
                 # Mark this queue item complete
                 self.q.task_done()
@@ -217,8 +240,40 @@ class AsyncHDF5Writer:
                 camera_extrinsics = payload["camera_extrinsics"]   # dict cam -> world_T_cam
                 extra_demo_attrs = payload["extra_demo_attrs"]     # any additional per-demo attrs
 
-                # Create demo group: /data/demoX
+                # If a demo group with the same name already exists, overwrite it.
+                # This enables resume from an earlier index and "force overwrite" behavior.
+                if demo_name in data_grp:
+                    old_demo = data_grp[demo_name]
+
+                    # Try to rollback the global step counter using old demo length.
+                    old_steps = 0
+                    try:
+                        old_steps = int(old_demo.attrs.get("num_samples", 0))
+                    except Exception:
+                        old_steps = 0
+                    if old_steps <= 0 and "states" in old_demo:
+                        # Fallback if num_samples attr is missing/stale
+                        try:
+                            old_steps = int(old_demo["states"].shape[0])
+                        except Exception:
+                            old_steps = 0
+
+                    # Roll back /data total safely
+                    try:
+                        total = int(data_grp.attrs.get("total", 0))
+                        data_grp.attrs["total"] = max(0, total - int(old_steps))
+                    except Exception:
+                        pass
+
+                    # Delete the existing demo group (hard overwrite)
+                    del data_grp[demo_name]
+                    f.flush()
+
+                # Create demo group: /data/demoX (fresh)
                 demo_grp = data_grp.create_group(demo_name)
+
+                current_demo_name = demo_name
+                current_demo_steps = 0
 
                 # Save demo-level metadata
                 demo_grp.attrs["model_file"] = model_xml
@@ -340,6 +395,7 @@ class AsyncHDF5Writer:
 
                 # total increments for every step written across all demos
                 data_grp.attrs["total"] = int(data_grp.attrs["total"]) + 1
+                current_demo_steps += 1
 
                 # Mark this queue item complete
                 self.q.task_done()
@@ -355,7 +411,50 @@ class AsyncHDF5Writer:
                 if f is not None:
                     f.flush()
 
+                # Clear current demo state (demo successfully committed)
+                current_demo_name = None
+                current_demo_steps = 0
+                demo_grp = None
+                obs_grp = None
+                env_obs_grp = None
+                ds_states = None
+                ds_actions = None
+                ds_rgb = {}
+                ds_seg = {}
+                ds_obs_dict = {}
+
                 # Mark this queue item complete
+                self.q.task_done()
+                continue
+
+            # =========================================================
+            # (4.5) "abort_demo": delete the current demo group and roll back counters
+            # =========================================================
+            if cmd == "abort_demo":
+                if f is not None and data_grp is not None and current_demo_name is not None:
+                    # Roll back global step counter
+                    try:
+                        data_grp.attrs["total"] = int(data_grp.attrs["total"]) - int(current_demo_steps)
+                    except Exception:
+                        pass
+
+                    # Delete the entire demo group
+                    if current_demo_name in data_grp:
+                        del data_grp[current_demo_name]
+                    f.flush()
+
+                # Reset current demo state (demo is discarded)
+                current_demo_name = None
+                current_demo_steps = 0
+                demo_grp = None
+                obs_grp = None
+                env_obs_grp = None
+                ds_states = None
+                ds_actions = None
+                ds_rgb = {}
+                ds_seg = {}
+                ds_obs_dict = {}
+
                 self.q.task_done()
                 continue
 
