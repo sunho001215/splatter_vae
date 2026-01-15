@@ -7,7 +7,7 @@ from einops.layers.torch import Rearrange
 from dataclasses import dataclass
 
 from vector_quantize_pytorch import VectorQuantize
-from .transformer import STransformer 
+from .swin_transformer import SwinTransformerV2, SwinTransformerV2Decoder
 
 # -------------------------------------------------------------------------
 # Small configs to mimic ReViWo's ViT-style encoders/decoder
@@ -38,24 +38,31 @@ class InvariantDependentSplatterVAE(nn.Module):
 
     Structure (same as original, just renamed):
 
-      invariant_encoder: STransformer for view-invariant representation
-      dependent_encoder: STransformer for view-dependent representation
-      decoder          : STransformer over fused tokens
+      invariant_encoder: SwinTransformerV2 for view-invariant representation
+      dependent_encoder: SwinTransformerV2 for view-dependent representation
+      decoder          : SwinTransformerV2Decoder over fused tokens
 
       invariant_output_head: VQ or Gaussian head for invariant branch
       dependent_output_head: VQ or Gaussian head for dependent branch
     """
 
+class InvariantDependentSplatterVAE(nn.Module):
+    """
+    ReViWo-style multi-view VAE, now using Swin Transformers for the
+    invariant / dependent encoders and a Swin-based decoder that directly
+    produces a Splatter Image.
+
+    The Swin architecture (embed_dim, depths, num_heads, patch_size, ...)
+    is fully controlled by the YAML file via the `swin` section.
+    """
+
     def __init__(
         self,
-        invariant_encoder_config,
-        dependent_encoder_config,
-        decoder_config,
+        swin_cfg,
         invariant_cb_config,
         dependent_cb_config,
         img_height: int,
         img_width: int,
-        patch_size,
         splatter_channels: int,
         fusion_style: str = "cat",
         use_dependent_vq: bool = True,
@@ -66,133 +73,159 @@ class InvariantDependentSplatterVAE(nn.Module):
         super().__init__()
 
         # -------------------------------------------------------------
-        # Handle non-square image + (possibly) non-square patch size
+        # Image + patch configuration (from YAML)
         # -------------------------------------------------------------
-        if isinstance(patch_size, int):
-            patch_h = patch_w = patch_size
+        self.img_height = img_height
+        self.img_width = img_width
+
+        patch_size_cfg = swin_cfg.get("patch_size", 4)
+        if isinstance(patch_size_cfg, int):
+            patch_h = patch_w = patch_size_cfg
         else:
-            assert (
-                len(patch_size) == 2
-            ), "patch_size must be int or (patch_h, patch_w) tuple."
-            patch_h, patch_w = patch_size
+            assert len(patch_size_cfg) == 2, "swin.patch_size must be int or (h, w)."
+            patch_h, patch_w = patch_size_cfg
 
-        assert img_height % patch_h == 0, "img_height must be divisible by patch_h."
-        assert img_width % patch_w == 0, "img_width must be divisible by patch_w."
+        assert img_height % patch_h == 0, f"img_height={img_height} not divisible by patch_h={patch_h}"
+        assert img_width % patch_w == 0, f"img_width={img_width} not divisible by patch_w={patch_w}"
 
-        n_patches_h = img_height // patch_h
-        n_patches_w = img_width // patch_w
-        n_tokens_per_frame = n_patches_h * n_patches_w
+        self.patch_h = patch_h
+        self.patch_w = patch_w
 
-        # -------------------------------------------------------------
-        # Update transformer configs (same style as original ReViWo)
-        # -------------------------------------------------------------
-        invariant_encoder_config = invariant_encoder_config.update(
-            {
-                "n_tokens_per_frame": n_tokens_per_frame,
-                "block_size": n_tokens_per_frame,
-                "vocab_size": 0,  # STransformer returns features directly
-            }
-        )
-
-        dependent_encoder_config = dependent_encoder_config.update(
-            {
-                "n_tokens_per_frame": n_tokens_per_frame,
-                "block_size": n_tokens_per_frame,
-                "vocab_size": 0,
-            }
-        )
-
-        decoder_config = decoder_config.update(
-            {
-                "n_tokens_per_frame": n_tokens_per_frame,
-                "block_size": n_tokens_per_frame,
-                "vocab_size": 0,
-            }
+        # Swin hyperparameters (all can be overridden in YAML)
+        embed_dim = swin_cfg.get("embed_dim", 96)
+        depths = swin_cfg.get("depths", [2, 2, 6, 2])
+        num_heads = swin_cfg.get("num_heads", [3, 6, 12, 24])
+        window_size = swin_cfg.get("window_size", 7)
+        mlp_ratio = swin_cfg.get("mlp_ratio", 4.0)
+        qkv_bias = swin_cfg.get("qkv_bias", True)
+        drop_rate = swin_cfg.get("drop_rate", 0.0)
+        attn_drop_rate = swin_cfg.get("attn_drop_rate", 0.0)
+        drop_path_rate = swin_cfg.get("drop_path_rate", 0.1)
+        ape = swin_cfg.get("ape", False)
+        patch_norm = swin_cfg.get("patch_norm", True)
+        use_checkpoint = swin_cfg.get("use_checkpoint", False)
+        pretrained_window_sizes = swin_cfg.get(
+            "pretrained_window_sizes",
+            [0 for _ in range(len(depths))],
         )
 
         # -------------------------------------------------------------
-        # Transformers: invariant encoder, dependent encoder, decoder
+        # Swin encoders for invariant and dependent representations
         # -------------------------------------------------------------
-        self.invariant_encoder = STransformer(invariant_encoder_config)
-        self.dependent_encoder = STransformer(dependent_encoder_config)
-        self.decoder = STransformer(decoder_config)
-
-        # -------------------------------------------------------------
-        # Shared patch embedding for both encoders
-        #   (B, 3, H, W) -> (B, T, C), T = n_tokens_per_frame
-        # -------------------------------------------------------------
-        self.to_patch_embed = nn.Sequential(
-            nn.Conv2d(
-                in_channels=3,
-                out_channels=invariant_encoder_config.n_embed,
-                kernel_size=(patch_h, patch_w),
-                stride=(patch_h, patch_w),
-            ),
-            # Result is (B, C, n_patches_h, n_patches_w)
-            Rearrange("b c h w -> b (h w) c"),
+        self.invariant_encoder = SwinTransformerV2(
+            img_size=(img_height, img_width),
+            patch_size=(patch_h, patch_w),
+            in_chans=3,
+            num_classes=0,  # no classification head
+            embed_dim=embed_dim,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            norm_layer=nn.LayerNorm,
+            ape=ape,
+            patch_norm=patch_norm,
+            use_checkpoint=use_checkpoint,
+            pretrained_window_sizes=pretrained_window_sizes,
         )
 
+        self.dependent_encoder = SwinTransformerV2(
+            img_size=(img_height, img_width),
+            patch_size=(patch_h, patch_w),
+            in_chans=3,
+            num_classes=0,
+            embed_dim=embed_dim,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            norm_layer=nn.LayerNorm,
+            ape=ape,
+            patch_norm=patch_norm,
+            use_checkpoint=use_checkpoint,
+            pretrained_window_sizes=pretrained_window_sizes,
+        )
+
+        # Swin bottleneck channel dimension
+        latent_dim = self.invariant_encoder.num_features
+
+        # Swin bottleneck spatial resolution (H_lat, W_lat)
+        patches_resolution = self.invariant_encoder.patches_resolution
+        num_layers = self.invariant_encoder.num_layers
+        self.latent_patches_h = patches_resolution[0] // (2 ** (num_layers - 1))
+        self.latent_patches_w = patches_resolution[1] // (2 ** (num_layers - 1))
+
+        # Number of tokens per frame at the bottleneck (used by camera predictor)
+        self.n_tokens_per_frame = self.latent_patches_h * self.latent_patches_w
+
+        # -------------------------------------------------------------
+        # Swin decoder: fused latents -> Splatter Image
+        # -------------------------------------------------------------
+        self.decoder = SwinTransformerV2Decoder(
+            img_size=(img_height, img_width),
+            patch_size=(patch_h, patch_w),
+            out_chans=splatter_channels,
+            embed_dim=embed_dim,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            norm_layer=nn.LayerNorm,
+            patch_norm=patch_norm,
+            use_checkpoint=use_checkpoint,
+            pretrained_window_sizes=pretrained_window_sizes,
+        )
+
+        # -------------------------------------------------------------
         # Project encoder outputs into VQ codebook embedding spaces
+        # -------------------------------------------------------------
         self.invariant_encoder_output_proj = nn.Linear(
-            invariant_encoder_config.n_embed,
+            latent_dim,
             invariant_cb_config.embed_dim,
-            bias=invariant_encoder_config.bias,
+            bias=True,
         )
         self.dependent_encoder_output_proj = nn.Linear(
-            dependent_encoder_config.n_embed,
+            latent_dim,
             dependent_cb_config.embed_dim,
-            bias=dependent_encoder_config.bias,
+            bias=True,
         )
 
         # -------------------------------------------------------------
-        # Fusion + decoder input projection
+        # Fusion + projection into Swin bottleneck dim
         # -------------------------------------------------------------
-        # z_inv: (B, T, D_inv)  and  z_dep: (B, T, D_dep)
-        # fusion_style:
-        #   - 'plus': D_inv == D_dep, element-wise sum -> D_inv
-        #   - 'cat' : concat -> (D_inv + D_dep)
-        # Then map to decoder_config.n_embed for decoder transformer.
-        # -------------------------------------------------------------
+        self.fusion_style = fusion_style
         if fusion_style == "plus":
-            self.decoder_input_proj = nn.Linear(
-                invariant_cb_config.embed_dim,
-                decoder_config.n_embed,
-                bias=decoder_config.bias,
-            )
+            assert (
+                invariant_cb_config.embed_dim == dependent_cb_config.embed_dim
+            ), "fusion_style='plus' requires equal invariant and dependent embed_dim."
+            decoder_in_dim = invariant_cb_config.embed_dim
         elif fusion_style == "cat":
-            self.decoder_input_proj = nn.Linear(
-                invariant_cb_config.embed_dim + dependent_cb_config.embed_dim,
-                decoder_config.n_embed,
-                bias=decoder_config.bias,
+            decoder_in_dim = (
+                invariant_cb_config.embed_dim + dependent_cb_config.embed_dim
             )
         else:
             raise NotImplementedError(f"Unknown fusion_style: {fusion_style}")
 
-        # -------------------------------------------------------------
-        # Decoder output: Splatter Image instead of RGB
-        #
-        #   - Input: decoder tokens (B, T, C_dec)
-        #   - Reshape back to spatial grid (B, C_dec, n_patches_h, n_patches_w)
-        #   - ConvTranspose2d to (B, splatter_channels, H, W)
-        # -------------------------------------------------------------
-        self.to_splatter = nn.Sequential(
-            # (B, T, C) -> (B, C, n_patches_h, n_patches_w)
-            Rearrange(
-                "b (h w) c -> b c h w",
-                h=n_patches_h,
-                w=n_patches_w,
-            ),
-            # De-patchify: conv transpose to original H, W resolution
-            nn.ConvTranspose2d(
-                in_channels=decoder_config.n_embed,
-                out_channels=splatter_channels,
-                kernel_size=(patch_h, patch_w),
-                stride=(patch_h, patch_w),
-            ),
+        self.decoder_input_proj = nn.Linear(
+            decoder_in_dim,
+            latent_dim,
+            bias=True,
         )
 
         # -------------------------------------------------------------
-        # VQ or Gaussian heads for invariant & dependent branches
+        # VQ or Gaussian heads (same logic as before)
         # -------------------------------------------------------------
         self.invariant_output_head = (
             VectorQuantize(
@@ -219,7 +252,7 @@ class InvariantDependentSplatterVAE(nn.Module):
                 use_cosine_sim=True,
                 kmeans_init=True,
                 kmeans_iters=10,
-                threshold_ema_dead_code=2
+                threshold_ema_dead_code=2,
             )
             if use_dependent_vq
             else nn.Linear(
@@ -228,22 +261,11 @@ class InvariantDependentSplatterVAE(nn.Module):
             )
         )
 
-        # Same as original latent_output_final_proj: Identity by default
+        # Same as original: optional final projection on dependent branch
         self.dependent_output_final_proj = nn.Identity()
 
-        # -------------------------------------------------------------
-        # Store basic config info
-        # -------------------------------------------------------------
-        self.img_height = img_height
-        self.img_width = img_width
-        self.patch_h = patch_h
-        self.patch_w = patch_w
-        self.n_patches_h = n_patches_h
-        self.n_patches_w = n_patches_w
-        self.n_tokens_per_frame = n_tokens_per_frame
+        # Store flags
         self.splatter_channels = splatter_channels
-
-        self.fusion_style = fusion_style
         self.use_dependent_vq = use_dependent_vq
         self.is_dependent_ae = is_dependent_ae
         self.use_invariant_vq = use_invariant_vq
@@ -262,11 +284,11 @@ class InvariantDependentSplatterVAE(nn.Module):
         x: (B, 3, H, W) RGB image(s)
 
         Returns:
-            z_inv: (B, T, D_inv)  - invariant embedding (quantized or sampled)
+            z_inv: (B, T, D_inv)
             inv_embed_loss: scalar
-            z_dep: (B, T, D_dep)  - dependent embedding (quantized or sampled)
+            z_dep: (B, T, D_dep)
             dep_embed_loss: scalar
-            (dependent_encoding_indices, invariant_encoding_indices): codebook indices
+            (dependent_indices, invariant_indices)
         """
         B, C, H, W = x.shape
         assert H == self.img_height and W == self.img_width, (
@@ -274,18 +296,30 @@ class InvariantDependentSplatterVAE(nn.Module):
             f"got ({H}, {W})"
         )
 
-        # Shared patch embedding: (B, 3, H, W) -> (B, T, C_embed)
-        patch_embed = self.to_patch_embed(x).contiguous()  # (B, T, C_enc)
+        # ---------------------------------------------------------
+        # Swin encoders: image -> bottleneck token sequences
+        # ---------------------------------------------------------
+        # (B, T_latent, latent_dim), T_latent = n_tokens_per_frame
+        h_inv_tokens = self.invariant_encoder(x)
+        h_dep_tokens = self.dependent_encoder(x)
 
-        # Invariant / dependent transformer encoders
-        h_inv = self.invariant_encoder_output_proj(self.invariant_encoder(patch_embed))  # (B, T, D_inv)
-        h_dep = self.dependent_encoder_output_proj(self.dependent_encoder(patch_embed))  # (B, T, D_dep)
+        _, T_latent, _ = h_inv_tokens.shape
+        assert T_latent == self.n_tokens_per_frame, (
+            f"Expected {self.n_tokens_per_frame} latent tokens, "
+            f"but encoder returned {T_latent}."
+        )
+
+        # Project to codebook embedding spaces
+        h_inv = self.invariant_encoder_output_proj(h_inv_tokens)  # (B, T, D_inv)
+        h_dep = self.dependent_encoder_output_proj(h_dep_tokens)  # (B, T, D_dep)
 
         # -------------------------
         # Invariant branch: VQ or Gaussian
         # -------------------------
         if self.use_invariant_vq:
-            z_inv, invariant_encoding_indices, inv_aux_loss = self.invariant_output_head(h_inv)
+            z_inv, invariant_encoding_indices, inv_aux_loss = self.invariant_output_head(
+                h_inv
+            )
             inv_embed_loss = inv_aux_loss.mean()
         else:
             z_inv_output = self.invariant_output_head(h_inv)  # (B, T, 2*D_inv)
@@ -293,11 +327,13 @@ class InvariantDependentSplatterVAE(nn.Module):
             z_inv_mu = torch.tanh(z_inv_output[..., :D_half])
             if self.is_invariant_ae or deterministic_invariant:
                 z_inv = z_inv_mu
-                inv_embed_loss = torch.tensor(0.0, dtype=torch.float32, device=z_inv.device)
+                inv_embed_loss = torch.tensor(
+                    0.0, dtype=torch.float32, device=z_inv.device
+                )
             else:
                 z_inv_sigma = torch.exp(z_inv_output[..., D_half:].clamp(-20, 2))
                 inv_embed_loss = -0.5 * torch.mean(
-                    1 + torch.log(z_inv_sigma ** 2) - z_inv_mu ** 2 - z_inv_sigma ** 2
+                    1 + torch.log(z_inv_sigma**2) - z_inv_mu**2 - z_inv_sigma**2
                 )
                 dist = torch.distributions.Normal(z_inv_mu, z_inv_sigma)
                 z_inv = dist.rsample() if self.training else dist.sample()
@@ -307,7 +343,9 @@ class InvariantDependentSplatterVAE(nn.Module):
         # Dependent branch: VQ or Gaussian
         # -------------------------
         if self.use_dependent_vq:
-            z_dep, dependent_encoding_indices, dep_aux_loss = self.dependent_output_head(h_dep)
+            z_dep, dependent_encoding_indices, dep_aux_loss = self.dependent_output_head(
+                h_dep
+            )
             z_dep = self.dependent_output_final_proj(z_dep)
             dep_embed_loss = dep_aux_loss.mean()
         else:
@@ -316,11 +354,13 @@ class InvariantDependentSplatterVAE(nn.Module):
             z_dep_mu = z_dep_output[..., :D_half]
             if self.is_dependent_ae or deterministic_dependent:
                 z_dep = z_dep_mu
-                dep_embed_loss = torch.tensor(0.0, dtype=torch.float32, device=z_dep.device)
+                dep_embed_loss = torch.tensor(
+                    0.0, dtype=torch.float32, device=z_dep.device
+                )
             else:
                 z_dep_sigma = torch.exp(z_dep_output[..., D_half:].clamp(-20, 2))
                 dep_embed_loss = -0.5 * torch.mean(
-                    1 + torch.log(z_dep_sigma ** 2) - z_dep_mu ** 2 - z_dep_sigma ** 2
+                    1 + torch.log(z_dep_sigma**2) - z_dep_mu**2 - z_dep_sigma**2
                 )
                 dist = torch.distributions.Normal(z_dep_mu, z_dep_sigma)
                 z_dep = dist.rsample() if self.training else dist.sample()
@@ -362,19 +402,15 @@ class InvariantDependentSplatterVAE(nn.Module):
 
         Returns:
             splatter: (B, splatter_channels, H, W)
-                      H, W are img_height, img_width.
         """
-        # Fuse invariant + dependent
+        # Fuse invariant + dependent latents
         quant = self.fusion(z_inv, z_dep)  # (B, T, D_fused)
 
-        # Map to decoder transformer embedding dimension
-        dec_tokens = self.decoder_input_proj(quant)  # (B, T, n_embed_dec)
+        # Project into Swin bottleneck channel dimension
+        dec_tokens = self.decoder_input_proj(quant)  # (B, T, latent_dim)
 
-        # Transformer over tokens
-        dec_tokens = self.decoder(dec_tokens)  # (B, T, n_embed_dec)
-
-        # Convert token grid back into spatial Splatter Image
-        splatter = self.to_splatter(dec_tokens).contiguous()  # (B, C_s, H, W)
+        # Swin decoder handles upsampling + de-patchifying
+        splatter = self.decoder(dec_tokens).contiguous()  # (B, C_s, H, W)
         return splatter
 
     # ------------------------------------------------------------------

@@ -204,3 +204,84 @@ def set_random_seed(seed: int = 42):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def rot6d_to_rotmat_np(rot6d: np.ndarray, eps: float = 1e-8) -> np.ndarray:
+    """
+    Inverse of rotmat_to_rot6d: build a rotation matrix from 6D representation.
+
+    rot6d: (6,) = [a(3), b(3)] corresponding to first 2 columns, then orthonormalize.
+    Returns: (3,3)
+    """
+    r = np.asarray(rot6d, dtype=np.float64).reshape(6)
+    a = r[0:3]
+    b = r[3:6]
+
+    # Gram-Schmidt
+    a = a / (np.linalg.norm(a) + eps)
+    b = b - a * float(np.dot(a, b))
+    b = b / (np.linalg.norm(b) + eps)
+    c = np.cross(a, b)
+    c = c / (np.linalg.norm(c) + eps)
+
+    R = np.stack([a, b, c], axis=1)  # columns
+    return R
+
+
+def mat_to_axisangle_np(R: np.ndarray) -> np.ndarray:
+    """
+    Convert rotation matrix to axis-angle vector (3,) = axis * angle.
+
+    We try robosuite's transform_utils first (if available), else fallback.
+    """
+    R = np.asarray(R, dtype=np.float64).reshape(3, 3)
+
+    try:
+        from robosuite.utils import transform_utils as T
+        aa = T.mat2axisangle(R)
+        return np.asarray(aa, dtype=np.float64).reshape(3)
+    except Exception:
+        # Minimal fallback (numerically ok for small angles; good enough for evaluation)
+        tr = float(np.trace(R))
+        cos_theta = (tr - 1.0) * 0.5
+        cos_theta = float(np.clip(cos_theta, -1.0, 1.0))
+        theta = float(np.arccos(cos_theta))
+
+        if theta < 1e-8:
+            return np.zeros(3, dtype=np.float64)
+
+        wx = R[2, 1] - R[1, 2]
+        wy = R[0, 2] - R[2, 0]
+        wz = R[1, 0] - R[0, 1]
+        axis = np.array([wx, wy, wz], dtype=np.float64) / (2.0 * np.sin(theta) + 1e-12)
+        return axis * theta
+
+
+def quat_xyzw_to_rotmat_np(q_xyzw: np.ndarray) -> np.ndarray:
+    """Use robosuite transform_utils if possible; fallback to your own math if not."""
+    q = np.asarray(q_xyzw, dtype=np.float64).reshape(4)
+    try:
+        from robosuite.utils import transform_utils as T
+        # robosuite quat is commonly xyzw
+        return np.asarray(T.quat2mat(q), dtype=np.float64).reshape(3, 3)
+    except Exception:
+        # Fallback: same convention (x,y,z,w)
+        x, y, z, w = q
+        n = float(np.linalg.norm(q))
+        if n < 1e-12:
+            return np.eye(3, dtype=np.float64)
+        x, y, z, w = (q / n).tolist()
+
+        xx, yy, zz = x * x, y * y, z * z
+        xy, xz, yz = x * y, x * z, y * z
+        wx, wy, wz = w * x, w * y, w * z
+
+        return np.array(
+            [
+                [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz),       2.0 * (xz + wy)],
+                [2.0 * (xy + wz),       1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx)],
+                [2.0 * (xz - wy),       2.0 * (yz + wx),       1.0 - 2.0 * (xx + yy)],
+            ],
+            dtype=np.float64,
+        )
+

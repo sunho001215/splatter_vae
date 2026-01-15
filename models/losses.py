@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+from fused_ssim import fused_ssim
+
 
 def infonce_loss(query, positive_keys, negative_keys=None, temperature=0.1, negative_mode='unpaired'):
     """
@@ -69,3 +71,21 @@ def masked_mse(pred, target, mask):
     diff2 = diff2 * mask
     denom = mask.sum() * 3.0 + 1e-8  # 3 channels
     return diff2.sum() / denom
+
+def compute_reconstruction_loss(
+    predicted: torch.Tensor,
+    ground_truth: torch.Tensor,
+    ssim_weight: float = 0.2,
+):
+    """
+    Compute combined MSE + SSIM reconstruction loss.
+
+    predicted, ground_truth: (B,3,H,W), values in [0,1]
+    ssim_weight: weight for SSIM term in [0,1]
+    """
+    mse_loss = F.mse_loss(predicted, ground_truth)
+    ssim_map = fused_ssim(predicted, ground_truth)  # (B,H,W)
+    ssim_loss = 1.0 - ssim_map.mean()
+
+    total_loss = (1 - ssim_weight) * mse_loss + ssim_weight * ssim_loss
+    return total_loss

@@ -1,7 +1,8 @@
+import os
 import yaml
 import math
+import argparse
 from dataclasses import dataclass
-import os
 from typing import Optional, Dict, Any
 
 import torch
@@ -19,12 +20,11 @@ from models.splatter import (
     SplatterModelConfig,
     render_predicted,
 )
-from models.losses import infonce_loss
-
-from dataset.dataloader import build_train_valid_loaders
+from models.losses import infonce_loss, compute_reconstruction_loss
 from models.transformer import STTransConfig
 from models.vae import CodebookConfig
 from models.camera_predictor import CameraParamPredictor
+from dataset.dataloader import build_train_valid_loaders_robosuite
 from utils.general_utils import compute_intrinsics_errors, compute_rotation_translation_errors, set_random_seed
 
 # -------------------------------------------------------------------------
@@ -33,11 +33,15 @@ from utils.general_utils import compute_intrinsics_errors, compute_rotation_tran
 
 @dataclass
 class TrainConfig:
+    # If max_global_steps is set, it will override num_epochs as the stopping condition
     num_epochs: int = 50
+    max_global_steps: Optional[int] = None
+
     lr: float = 1e-4
     device: str = "cuda"
     # Loss weights
     rec_weight: float = 1.0
+    ssim_weight: float = 0.2
     vq_weight: float = 0.25
     inv_contrastive_weight: float = 1.0
     dep_contrastive_weight: float = 0.1
@@ -56,7 +60,6 @@ class TrainConfig:
     pose_cycle_weight: float = 1e-3
     # Step at which we start using cross-view & pose-related terms
     crossview_start_step: int = 10000
-
 
 # -------------------------------------------------------------------------
 # Shared helper functions
@@ -152,6 +155,7 @@ def compute_reconstruction_and_renders(
     K_j: torch.Tensor,
     bg: torch.Tensor,
     return_renders: bool = False,
+    ssim_weight: float = 0.2,
 ) -> Dict[str, Any]:
     """
     Common reconstruction + rendering code used by both training and validation.
@@ -209,8 +213,8 @@ def compute_reconstruction_and_renders(
     rendered_from_j = renders_ij[:, 1]                      # (B,3,H,W)
 
     # Reconstruction losses vs GT
-    rec_loss_self_i = F.mse_loss(rendered_self_i, gt_i_t_01)
-    rec_loss_cross  = F.mse_loss(rendered_from_j, gt_j_t_01)
+    rec_loss_self_i = compute_reconstruction_loss(rendered_self_i, gt_i_t_01, ssim_weight=ssim_weight)
+    rec_loss_cross  = compute_reconstruction_loss(rendered_from_j, gt_j_t_01, ssim_weight=ssim_weight)
 
     # ---------------------------------------------------------
     # 3) Shuffle loss: world == cam_j
@@ -249,8 +253,8 @@ def compute_reconstruction_and_renders(
     rendered_shuffle_j        = renders_shuffle[:, 0]       # (B,3,H,W)
     rendered_shuffle_i_from_j = renders_shuffle[:, 1]       # (B,3,H,W)
 
-    rec_loss_shuffle_j = F.mse_loss(rendered_shuffle_j,        gt_j_t_01)
-    rec_loss_shuffle_i_from_j = F.mse_loss(rendered_shuffle_i_from_j, gt_i_t_01)
+    rec_loss_shuffle_j = compute_reconstruction_loss(rendered_shuffle_j, gt_j_t_01, ssim_weight=ssim_weight)
+    rec_loss_shuffle_i_from_j = compute_reconstruction_loss(rendered_shuffle_i_from_j, gt_i_t_01, ssim_weight=ssim_weight)
 
     rec_loss_shuffle = 0.5 * (rec_loss_shuffle_j + rec_loss_shuffle_i_from_j)
 
@@ -432,7 +436,16 @@ def log_validation_images(
         K_j=K_j_gt,
         bg=bg,
         return_renders=True,
+        ssim_weight=cfg_train.ssim_weight,
     )
+
+    # -------------------- Grab reconstruction losses --------------------
+    rec_loss                  = rec_out["rec_loss"]
+    rec_loss_cross            = rec_out["rec_loss_cross"]
+    rec_loss_self_i           = rec_out["rec_loss_self_i"]
+    rec_loss_shuffle          = rec_out["rec_loss_shuffle"]
+    rec_loss_shuffle_j        = rec_out["rec_loss_shuffle_j"]
+    rec_loss_shuffle_i_from_j = rec_out["rec_loss_shuffle_i_from_j"]
 
     # Grab the rendered images for visualization (first n_vis only)
     renders_i_from_i    = rec_out["rendered_self_i"][:n_vis]           # i -> i
@@ -460,6 +473,12 @@ def log_validation_images(
         "val/gt_j_t":             wandb.Image(grid_gt_j),
         "val/inv_contrastive_loss": inv_contrastive_loss.item(),
         "val/dep_contrastive_loss": dep_contrastive_loss.item(),
+        "val/rec_loss":              rec_loss.item(),
+        "val/rec_loss_cross":        rec_loss_cross.item(),
+        "val/rec_loss_self_i":       rec_loss_self_i.item(),
+        "val/rec_loss_shuffle":      rec_loss_shuffle.item(),
+        "val/rec_loss_shuffle_j":    rec_loss_shuffle_j.item(),
+        "val/rec_loss_shuffle_i_from_j": rec_loss_shuffle_i_from_j.item(),
     }
 
     # Add camera error metrics only if predictor is present
@@ -554,8 +573,18 @@ def train_splatter_vae(
     # Ensure checkpoint directory exists
     os.makedirs(cfg_train.ckpt_dir, exist_ok=True)
 
-    for epoch in range(start_epoch, cfg_train.num_epochs):
+    epoch = start_epoch
+    while True:
         for step, batch in enumerate(train_dataloader):
+
+            # -----------------------------------------
+            # Early exit if we've hit max_global_steps
+            # -----------------------------------------
+            if cfg_train.max_global_steps is not None and global_step >= cfg_train.max_global_steps:
+                print(f"[Stop] Reached max_global_steps={cfg_train.max_global_steps}.")
+                print("Training finished.")
+                return
+
             # ---------------------------------------------------------
             # 0. Set models to train mode
             # ---------------------------------------------------------
@@ -596,8 +625,6 @@ def train_splatter_vae(
             # ---------------------------------------------------------
             # 3. Predict camera parameters (if enabled)
             # ---------------------------------------------------------
-            # These predicted cameras are used for training; GT cameras
-            # are only used for validation/metrics.
             if camera_predictor is not None:
                 T_ij_pred, T_ji_pred, K_i_pred, K_j_pred = predict_cameras_from_latents(
                     camera_predictor=camera_predictor,
@@ -605,21 +632,18 @@ def train_splatter_vae(
                     z_dep_j_t=z_dep_j_t,
                 )
                 if global_step < cfg_train.crossview_start_step:
-                    # During warm-up, detach predicted cameras to avoid training them
                     T_ij_train = T_ij_pred.detach()
                     K_i_train  = K_i_pred.detach()
                     K_j_train  = K_j_pred.detach()
                 else:
-                    # After warm-up, train predicted cameras normally
                     T_ij_train = T_ij_pred
                     K_i_train  = K_i_pred
                     K_j_train  = K_j_pred
             else:
-                # Fall back to dataset cameras if camera prediction is disabled
                 T_ij_train = T_ij_gt
                 K_i_train  = K_i_gt
                 K_j_train  = K_j_gt
-                T_ji_pred  = None  # for pose cycle loss
+                T_ji_pred  = None
                 T_ij_pred  = None
 
             # ---------------------------------------------------------
@@ -641,6 +665,7 @@ def train_splatter_vae(
                 K_j=K_j_train,
                 bg=bg,
                 return_renders=False,
+                ssim_weight=cfg_train.ssim_weight,
             )
 
             rec_loss                  = rec_out["rec_loss"]
@@ -651,7 +676,7 @@ def train_splatter_vae(
             rec_loss_shuffle_i_from_j = rec_out["rec_loss_shuffle_i_from_j"]
 
             # ---------------------------------------------------------
-            # 5. Contrastive losses (view-invariant + view-dependent)
+            # 5. Contrastive losses
             # ---------------------------------------------------------
             inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
                 z_inv_i_t, z_inv_j_t, z_inv_i_t1,
@@ -660,12 +685,12 @@ def train_splatter_vae(
             )
 
             # ---------------------------------------------------------
-            # 6. VQ losses from encodings (already averaged in encode_triplet)
+            # 6. VQ loss
             # ---------------------------------------------------------
             vq_loss = inv_vq_loss + dep_vq_loss
 
             # ---------------------------------------------------------
-            # 7. Pose cycle-consistency loss (if we have predicted cameras)
+            # 7. Pose cycle-consistency loss
             # ---------------------------------------------------------
             if camera_predictor is not None and T_ij_pred is not None and T_ji_pred is not None:
                 comp_ij = torch.matmul(T_ij_pred, T_ji_pred)  # (B,4,4)
@@ -675,26 +700,19 @@ def train_splatter_vae(
                 pose_cycle_loss = torch.tensor(0.0, device=device)
 
             # ---------------------------------------------------------
-            # 8. Curriculum on loss terms:s
+            # 8. Curriculum on loss terms
             # ---------------------------------------------------------
             if camera_predictor is not None and global_step < cfg_train.crossview_start_step:
-                # -------- warm-up stage: only camera-coordinate terms --------
                 rec_loss_active = 0.5 * (rec_loss_self_i + rec_loss_shuffle_j)
                 pose_cycle_weight = 0.0
             else:
-                # -------- full stage: enable cross-view & cycle losses -------
                 rec_loss_active = (
                     rec_loss_self_i
                     + rec_loss_shuffle_j
                     + rec_loss_cross
                     + rec_loss_shuffle_i_from_j
                 ) / 4.0
-
-                # Now we actually use the configured pose_cycle_weight
                 pose_cycle_weight = cfg_train.pose_cycle_weight
-
-            # Total VQ loss is unchanged: inv_vq_loss + dep_vq_loss
-            vq_loss = inv_vq_loss + dep_vq_loss
 
             total_loss = (
                 cfg_train.rec_weight * rec_loss_active
@@ -709,24 +727,18 @@ def train_splatter_vae(
             optimizer.step()
 
             # ---------------------------------------------------------
-            # 9. wandb logging (scalars)
+            # 9. wandb logging
             # ---------------------------------------------------------
             wandb.log(
                 {
                     "train/total_loss": total_loss.item(),
-
-                    # Active reconstruction loss actually used in total_loss
                     "train/rec_loss_active": rec_loss_active.item(),
-
-                    # Full reconstruction combination (always computed, not always used)
                     "train/rec_loss_all": rec_loss.item(),
-
                     "train/rec_cross": rec_loss_cross.item(),
                     "train/rec_self_i": rec_loss_self_i.item(),
                     "train/rec_shuffle": rec_loss_shuffle.item(),
                     "train/rec_shuffle_j": rec_loss_shuffle_j.item(),
                     "train/rec_shuffle_i_from_j": rec_loss_shuffle_i_from_j.item(),
-
                     "train/vq_loss": vq_loss.item(),
                     "train/inv_vq_loss": inv_vq_loss.item(),
                     "train/dep_vq_loss": dep_vq_loss.item(),
@@ -755,7 +767,7 @@ def train_splatter_vae(
                 )
 
             # ---------------------------------------------------------
-            # 10. Periodic validation renders (also batched, logged to wandb)
+            # 10. Periodic validation
             # ---------------------------------------------------------
             if (
                 cfg_train.eval_every > 0
@@ -804,7 +816,16 @@ def train_splatter_vae(
 
             global_step += 1
 
+        # Completed one pass over train_dataloader
+        epoch += 1
+
+        # Fallback: if max_global_steps is not set, stop by num_epochs
+        if cfg_train.max_global_steps is None and epoch >= cfg_train.num_epochs:
+            print(f"[Stop] Reached num_epochs={cfg_train.num_epochs}.")
+            break
+
     print("Training finished.")
+
 
 
 # -------------------------------------------------------------------------
@@ -823,8 +844,6 @@ def main():
     - Optionally instantiates a camera predictor to learn T_ij & intrinsics
     - Runs training with wandb logging and periodic checkpoints
     """
-    import argparse
-    import os
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -864,7 +883,7 @@ def main():
     set_random_seed(seed)
 
     # Build dataloaders
-    train_loader, valid_loader = build_train_valid_loaders(
+    train_loader, valid_loader = build_train_valid_loaders_robosuite(
         dataset_path=dataset_path,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -905,12 +924,8 @@ def main():
     del tmp_converter
 
     # -------------------------------------------------
-    # 3) Transformer + codebook + VAE config from YAML
+    # 3) Transformer / Swin + codebook + VAE config
     # -------------------------------------------------
-    # Base transformer config (many defaults; YAML can override)
-    trans_cfg_dict = cfg.get("transformer", {})
-    base_trans_cfg = STTransConfig(**trans_cfg_dict)
-
     # Codebook configs (invariant / dependent)
     cb_cfg = cfg.get("codebook", {})
     inv_cb_cfg_dict = cb_cfg.get("invariant", {})
@@ -919,7 +934,7 @@ def main():
     inv_cb_cfg = CodebookConfig(**inv_cb_cfg_dict)
     dep_cb_cfg = CodebookConfig(**dep_cb_cfg_dict)
 
-    # Model-level config: fusion style, VQ switches, grid tokens
+    # Model-level config (fusion style, VQ switches, etc.)
     model_cfg = cfg.get("model", {})
     fusion_style = model_cfg.get("fusion_style", "cat")
     use_dependent_vq = model_cfg.get("use_dependent_vq", True)
@@ -927,29 +942,37 @@ def main():
     use_invariant_vq = model_cfg.get("use_invariant_vq", True)
     is_invariant_ae = model_cfg.get("is_invariant_ae", False)
 
-    grid_tokens_h = model_cfg.get("grid_tokens_h", 8)
-    grid_tokens_w = model_cfg.get("grid_tokens_w", 8)
+    # Swin backbone configuration (all architecture hyper-parameters live here)
+    swin_cfg_dict = cfg.get("swin", {})
 
-    # We expect H, W divisible by grid_tokens_h / grid_tokens_w
-    assert H % grid_tokens_h == 0 and W % grid_tokens_w == 0, \
-        f"Expected H divisible by grid_tokens_h and W by grid_tokens_w, got H={H}, W={W}, grid={grid_tokens_h}x{grid_tokens_w}"
+    # If 'patch_size' is not explicitly provided in the 'swin' section,
+    # fall back to the previous grid_tokens_h/w interface:
+    if "patch_size" not in swin_cfg_dict:
+        grid_tokens_h = model_cfg.get("grid_tokens_h", 8)
+        grid_tokens_w = model_cfg.get("grid_tokens_w", 8)
 
-    patch_size = (H // grid_tokens_h, W // grid_tokens_w)
+        assert H % grid_tokens_h == 0 and W % grid_tokens_w == 0, (
+            f"Expected H divisible by grid_tokens_h and W by grid_tokens_w, "
+            f"got H={H}, W={W}, grid={grid_tokens_h}x{grid_tokens_w}"
+        )
+        patch_size = (H // grid_tokens_h, W // grid_tokens_w)
+        # Store the derived patch_size back into the Swin config
+        swin_cfg_dict["patch_size"] = list(patch_size)
+    else:
+        # Normalise possible int / list formats
+        ps = swin_cfg_dict["patch_size"]
+        if isinstance(ps, int):
+            swin_cfg_dict["patch_size"] = [ps, ps]
+        else:
+            assert len(ps) == 2, "swin.patch_size must be an int or length-2 list/tuple."
 
-    # All three transformers share the same base config
-    invariant_encoder_config = base_trans_cfg
-    dependent_encoder_config = base_trans_cfg
-    decoder_config = base_trans_cfg
-
+    # Instantiate the Swin-based multi-view VAE
     vae = InvariantDependentSplatterVAE(
-        invariant_encoder_config=invariant_encoder_config,
-        dependent_encoder_config=dependent_encoder_config,
-        decoder_config=decoder_config,
+        swin_cfg=swin_cfg_dict,
         invariant_cb_config=inv_cb_cfg,
         dependent_cb_config=dep_cb_cfg,
         img_height=H,
         img_width=W,
-        patch_size=patch_size,
         splatter_channels=splatter_channels,
         fusion_style=fusion_style,
         use_dependent_vq=use_dependent_vq,
@@ -1009,7 +1032,7 @@ def main():
 
             "splatter_data": spl_data_cfg_dict,
             "splatter_model": spl_model_cfg_dict,
-            "transformer": trans_cfg_dict,
+            "swin_transformer": swin_cfg_dict,
             "codebook_invariant": inv_cb_cfg_dict,
             "codebook_dependent": dep_cb_cfg_dict,
             "model": model_cfg,
