@@ -116,9 +116,6 @@ def main() -> None:
     # Device select (single-GPU selection)
     ap.add_argument("--device", type=str, default="cuda:0", help="e.g. cuda:0, cuda:1, or cpu")
 
-    # Dataset action target style
-    ap.add_argument("--action_mode", type=str, default="abs_pose", choices=["delta_pose", "abs_pose"])
-
     # Stats cache
     ap.add_argument("--max_stat_frames", type=int, default=200_000)
     ap.add_argument("--stats_cache", type=str, default="")
@@ -145,7 +142,6 @@ def main() -> None:
     dataset = RobosuiteHDF5DiffusionDataset(
         hdf5_path=args.hdf5,
         window=window,
-        action_mode=args.action_mode,
         seed=args.seed,
     )
 

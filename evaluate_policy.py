@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
+import cv2
 import torch
 import robosuite as suite
 
@@ -190,7 +191,6 @@ def abs_pose10_to_env_action_delta(
     obs: Dict[str, Any],
     pos_k: str,
     quat_k: str,
-    gripper_open_close_mid: float,
     dpos_scale: float,
     drot_scale: float,
     action_dim: int,
@@ -221,7 +221,7 @@ def abs_pose10_to_env_action_delta(
     drot_cmd = np.clip(drot / float(drot_scale), -1.0, 1.0)
 
     # Map predicted gripper scalar -> open/close command in {+1,-1}
-    grip_cmd = 1.0 if tgt_grip >= float(gripper_open_close_mid) else -1.0
+    grip_cmd = float(np.clip(np.sign(tgt_grip), -1.0, 1.0))
 
     act7 = np.concatenate([dpos_cmd, drot_cmd, np.array([grip_cmd], dtype=np.float64)], axis=0).astype(np.float32)
 
@@ -267,11 +267,12 @@ def main() -> None:
     ap.add_argument("--cam_theta", type=float, required=True)
     ap.add_argument("--cam_phi", type=float, required=True)
     ap.add_argument("--cam_fovy", type=float, default=45.0)
+    ap.add_argument("--cam_lookat", type=float, nargs=3, required=True)
     ap.add_argument("--cam_angles_in_rad", action="store_true")
 
     # Execution scaling (absolute pose -> normalized delta)
-    ap.add_argument("--dpos_scale", type=float, default=0.05)
-    ap.add_argument("--drot_scale", type=float, default=0.35)
+    ap.add_argument("--dpos_scale", type=float, default=0.1)
+    ap.add_argument("--drot_scale", type=float, default=0.7)
 
     args = ap.parse_args()
 
@@ -286,15 +287,6 @@ def main() -> None:
     if not stats_path.exists():
         raise FileNotFoundError(f"Missing dataset_stats.pt at: {stats_path}")
     dataset_stats = torch.load(stats_path, map_location="cpu")
-
-    # Gripper threshold (midpoint of action min/max on last dim)
-    if "action" in dataset_stats and "min" in dataset_stats["action"] and "max" in dataset_stats["action"]:
-        a_min = dataset_stats["action"]["min"].detach().cpu().numpy().reshape(-1)
-        a_max = dataset_stats["action"]["max"].detach().cpu().numpy().reshape(-1)
-        gripper_mid = float(0.5 * (a_min[-1] + a_max[-1]))
-    else:
-        gripper_mid = 0.0
-    print(f"[info] gripper_mid={gripper_mid:.6f}")
 
     # Load policy
     policy = DiffusionPolicy.from_pretrained(str(ckpt_dir), dataset_stats=dataset_stats).to(device)
@@ -324,10 +316,6 @@ def main() -> None:
 
     # Reset once to access sim center
     obs = env.reset()
-    try:
-        lookat = np.array(env.sim.model.stat.center, dtype=np.float64)
-    except Exception:
-        lookat = np.zeros(3, dtype=np.float64)
 
     # Inject ONE custom input camera
     cam_name = "eval_cam"
@@ -336,7 +324,7 @@ def main() -> None:
         r=float(args.cam_r),
         theta=float(args.cam_theta),
         phi=float(args.cam_phi),
-        lookat=lookat,
+        lookat=np.array(args.cam_lookat, dtype=np.float64),
         up=np.array([0.0, 0.0, 1.0], dtype=np.float64),
         degrees=(not args.cam_angles_in_rad),
         fovy=float(args.cam_fovy),
@@ -386,7 +374,6 @@ def main() -> None:
                 obs=obs,
                 pos_k=pos_k,
                 quat_k=quat_k,
-                gripper_open_close_mid=gripper_mid,
                 dpos_scale=float(args.dpos_scale),
                 drot_scale=float(args.drot_scale),
                 action_dim=action_dim,
@@ -396,6 +383,11 @@ def main() -> None:
 
             obs, reward, done, info = env.step(act)
             trial_max_reward = max(trial_max_reward, float(reward))
+
+            # Visualize
+            disp = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            cv2.imshow("Robosuite Evaluation", disp)
+            cv2.waitKey(1)
 
             if env._check_success():
                 trial_success = True
