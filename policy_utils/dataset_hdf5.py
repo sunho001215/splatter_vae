@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import h5py
 import numpy as np
@@ -27,6 +27,43 @@ import torch
 from torch.utils.data import Dataset
 
 from .pose10 import pose10_from_obs
+
+
+def pick_obs_keys(obs: Dict[str, Any]) -> Tuple[str, str, str]:
+    """Best-effort selection of (eef_pos_key, eef_quat_key, gripper_key) from robosuite obs dict."""
+    keys = list(obs.keys())
+
+    pos_candidates = ["robot0_eef_pos", "eef_pos"]
+    quat_candidates = ["robot0_eef_quat", "eef_quat"]
+    grip_candidates = [
+        "robot0_gripper_qpos",
+        "robot0_gripper_pos",
+        "robot0_gripper_state",
+        "gripper_qpos",
+        "gripper_pos",
+        "gripper_state",
+    ]
+
+    def pick(cands, shape_pred) -> Optional[str]:
+        for c in cands:
+            if c in keys and shape_pred(np.asarray(obs[c]).shape):
+                return c
+        for k in keys:
+            if any(tok in k for tok in cands) and shape_pred(np.asarray(obs[k]).shape):
+                return k
+        return None
+
+    pos_k = pick(pos_candidates, lambda s: (len(s) >= 1 and s[-1] == 3))
+    quat_k = pick(quat_candidates, lambda s: (len(s) >= 1 and s[-1] == 4))
+    grip_k = pick(grip_candidates, lambda s: True)
+
+    if pos_k is None or quat_k is None or grip_k is None:
+        raise RuntimeError(
+            "Could not locate required keys in robosuite obs dict.\n"
+            f"Found keys: {keys}\n"
+            f"Picked: pos={pos_k}, quat={quat_k}, grip={grip_k}"
+        )
+    return pos_k, quat_k, grip_k
 
 
 @dataclass(frozen=True)
@@ -186,48 +223,6 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             worker_id = 0 if wi is None else int(wi.id)
             self._rng = np.random.default_rng(self.seed + 1000 * worker_id)
 
-    def _pick_obs_env_keys(self, env_obs_grp: h5py.Group, demo_name: str) -> Tuple[str, str, str]:
-        """
-        Identify keys in /obs_env for:
-          - eef position (3,)
-          - eef quaternion (4,) in xyzw
-          - gripper signal (scalar or small vector)
-
-        We cache per demo_name so this is done once per demo in each worker.
-        """
-        if demo_name in self._demo_env_keys:
-            return self._demo_env_keys[demo_name]
-
-        keys = list(env_obs_grp.keys())
-
-        # Common robosuite naming
-        pos_candidates = ["robot0_eef_pos", "eef_pos"]
-        quat_candidates = ["robot0_eef_quat", "eef_quat"]
-
-        def pick(cands: List[str], shape_pred) -> Optional[str]:
-            # 1) direct match on common names
-            for c in cands:
-                if c in keys and shape_pred(env_obs_grp[c].shape):
-                    return c
-            # 2) fuzzy fallback: contains substring
-            for k in keys:
-                if any(tok in k for tok in cands) and shape_pred(env_obs_grp[k].shape):
-                    return k
-            return None
-
-        pos_k = pick(pos_candidates, lambda s: len(s) >= 2 and s[-1] == 3)
-        quat_k = pick(quat_candidates, lambda s: len(s) >= 2 and s[-1] == 4)
-
-        if pos_k is None or quat_k is None:
-            raise RuntimeError(
-                "Could not locate required obs_env keys.\n"
-                f"Found keys: {keys}\n"
-                f"Picked: pos={pos_k}, quat={quat_k}"
-            )
-
-        self._demo_env_keys[demo_name] = (pos_k, quat_k)
-        return pos_k, quat_k
-
     @staticmethod
     def _reduce_gripper(grip_raw: np.ndarray) -> np.ndarray:
         """
@@ -241,27 +236,28 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             return grip_raw.astype(np.float64)
         return np.mean(grip_raw.astype(np.float64), axis=-1)
 
-    def _load_pose10_seq_abs_with_grip_cmd(
+    def _load_pose10_seq_abs_with_grip_state(
         self,
         env_obs_grp: h5py.Group,
         pos_k: str,
         quat_k: str,
-        grip_cmd_seq: np.ndarray,   # (N,) gripper command at each requested timestep (e.g., +/-1)
+        grip_k: str,
         t_indices: List[int],
     ) -> np.ndarray:
         """
-        Load absolute 10D pose for multiple timesteps, but use gripper *command*
-        (from /actions[:, -1]) instead of gripper *state* (from obs_env).
+        Load absolute 10D pose for multiple timesteps using gripper *state* from obs_env.
         Returns: (N,10) float64
         """
-        pos = np.asarray(env_obs_grp[pos_k][t_indices], dtype=np.float64)    # (N,3)
-        quat = np.asarray(env_obs_grp[quat_k][t_indices], dtype=np.float64)  # (N,4)
+        pos = np.asarray(env_obs_grp[pos_k][t_indices], dtype=np.float64)     # (N,3)
+        quat = np.asarray(env_obs_grp[quat_k][t_indices], dtype=np.float64)   # (N,4)
 
-        grip_cmd_seq = np.asarray(grip_cmd_seq, dtype=np.float64).reshape(-1)  # (N,)
+        # Gripper state may be scalar or vector per timestep -> reduce to scalar
+        grip_raw = np.asarray(env_obs_grp[grip_k][t_indices])
+        grip = self._reduce_gripper(grip_raw).astype(np.float64).reshape(-1)  # (N,)
 
         out = np.zeros((len(t_indices), 10), dtype=np.float64)
         for i in range(len(t_indices)):
-            out[i] = pose10_from_obs(pos[i], quat[i], float(grip_cmd_seq[i]))  # <- command, not state
+            out[i] = pose10_from_obs(pos[i], quat[i], float(grip[i]))  # <- gripper *state*
         return out
 
     # ------------------------- main access -------------------------
@@ -303,21 +299,19 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
         obs_img_t = torch.from_numpy(obs_imgs).permute(0, 3, 1, 2).contiguous().float() / 255.0
 
         # ---- obs_env keys ----
-        pos_k, quat_k = self._pick_obs_env_keys(env_obs_grp, demo_name)
-        
-        # Gripper command for the observation timesteps
-        obs_grip_cmd = np.asarray(actions_ds[obs_t, -1], dtype=np.float64)
+        pos_k, quat_k, grip_k = self._pick_obs_env_keys(env_obs_grp, demo_name)
 
-        # observation.state: (2,10)
-        obs_state = self._load_pose10_seq_abs_with_grip_cmd(
-            env_obs_grp, pos_k, quat_k, obs_grip_cmd, obs_t
+        # observation.state: (n_obs, 10)
+        # Use gripper *state* from obs_env (not action command)
+        obs_state = self._load_pose10_seq_abs_with_grip_state(
+            env_obs_grp, pos_k, quat_k, grip_k, obs_t
         )
         obs_state_t = torch.from_numpy(obs_state).float()
 
         # ---- Action targets timesteps (length == horizon) ----
         act_t = [center_t + di for di in self.window.act_indices]
 
-        # Gripper command for action target timesteps
+        # Action gripper comes from demo["actions"][:, -1]
         act_grip_cmd = np.asarray(actions_ds[act_t, -1], dtype=np.float64)
 
         act_vec = self._load_pose10_seq_abs_with_grip_cmd(

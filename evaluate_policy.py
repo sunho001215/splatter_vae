@@ -28,6 +28,7 @@ from dataset.robosuite_demo_collect.demo_collector.camera_config import (
 )
 from dataset.robosuite_demo_collect.demo_collector.render import render_rgb
 from policy_utils.pose10 import pose10_from_obs
+from policy_utils.dataset_hdf5 import pick_obs_keys
 from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
 
 from utils.general_utils import (
@@ -37,43 +38,6 @@ from utils.general_utils import (
 )
 
 # ----------------------------- obs parsing -----------------------------
-
-def pick_obs_keys(obs: Dict[str, Any]) -> Tuple[str, str, str]:
-    """Best-effort selection of (eef_pos_key, eef_quat_key, gripper_key) from robosuite obs dict."""
-    keys = list(obs.keys())
-
-    pos_candidates = ["robot0_eef_pos", "eef_pos"]
-    quat_candidates = ["robot0_eef_quat", "eef_quat"]
-    grip_candidates = [
-        "robot0_gripper_qpos",
-        "robot0_gripper_pos",
-        "robot0_gripper_state",
-        "gripper_qpos",
-        "gripper_pos",
-        "gripper_state",
-    ]
-
-    def pick(cands, shape_pred) -> Optional[str]:
-        for c in cands:
-            if c in keys and shape_pred(np.asarray(obs[c]).shape):
-                return c
-        for k in keys:
-            if any(tok in k for tok in cands) and shape_pred(np.asarray(obs[k]).shape):
-                return k
-        return None
-
-    pos_k = pick(pos_candidates, lambda s: (len(s) >= 1 and s[-1] == 3))
-    quat_k = pick(quat_candidates, lambda s: (len(s) >= 1 and s[-1] == 4))
-    grip_k = pick(grip_candidates, lambda s: True)
-
-    if pos_k is None or quat_k is None or grip_k is None:
-        raise RuntimeError(
-            "Could not locate required keys in robosuite obs dict.\n"
-            f"Found keys: {keys}\n"
-            f"Picked: pos={pos_k}, quat={quat_k}, grip={grip_k}"
-        )
-    return pos_k, quat_k, grip_k
-
 
 def reduce_gripper(grip_raw: Any) -> float:
     """Convert robosuite gripper observation to a scalar (mean if vector)."""
