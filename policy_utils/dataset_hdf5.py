@@ -68,15 +68,9 @@ def pick_obs_keys(obs: Dict[str, Any]) -> Tuple[str, str, str]:
 def reduce_gripper(grip_raw: np.ndarray) -> np.ndarray:
     """
     Convert gripper observations into a scalar per timestep.
-
-    - If already (T,) -> use it
-    - If (T,2) or similar -> mean over last dim
+    - If (...,2) -> select the first finger joint only.
     """
-    grip_raw = np.asarray(grip_raw)
-    if grip_raw.ndim == 1:
-        return grip_raw.astype(np.float64)
-    return np.mean(grip_raw.astype(np.float64), axis=-1)
-
+    return grip_raw[..., 0]
 
 @dataclass(frozen=True)
 class WindowSpec:

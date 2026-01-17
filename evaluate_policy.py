@@ -175,7 +175,7 @@ def abs_pose10_to_env_action_delta(
     drot_cmd = np.clip(drot / float(drot_scale), -1.0, 1.0)
 
     # Map predicted gripper scalar -> open/close command in {+1,-1}
-    grip_cmd = float(np.clip(np.sign(tgt_grip), -1.0, 1.0))
+    grip_cmd = 1.0 if tgt_grip >= 0.0 else -1.0
 
     act7 = np.concatenate([dpos_cmd, drot_cmd, np.array([grip_cmd], dtype=np.float64)], axis=0).astype(np.float32)
 
