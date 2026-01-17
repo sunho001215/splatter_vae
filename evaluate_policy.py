@@ -28,7 +28,7 @@ from dataset.robosuite_demo_collect.demo_collector.camera_config import (
 )
 from dataset.robosuite_demo_collect.demo_collector.render import render_rgb
 from policy_utils.pose10 import pose10_from_obs
-from policy_utils.dataset_hdf5 import pick_obs_keys
+from policy_utils.dataset_hdf5 import pick_obs_keys, reduce_gripper
 from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
 
 from utils.general_utils import (
@@ -36,16 +36,6 @@ from utils.general_utils import (
     mat_to_axisangle_np,
     rot6d_to_rotmat_np,
 )
-
-# ----------------------------- obs parsing -----------------------------
-
-def reduce_gripper(grip_raw: Any) -> float:
-    """Convert robosuite gripper observation to a scalar (mean if vector)."""
-    arr = np.asarray(grip_raw, dtype=np.float64)
-    if arr.ndim == 0:
-        return float(arr)
-    return float(np.mean(arr.reshape(-1)))
-
 
 # ----------------------------- camera setup -----------------------------
 

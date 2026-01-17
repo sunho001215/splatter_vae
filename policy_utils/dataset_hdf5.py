@@ -65,6 +65,18 @@ def pick_obs_keys(obs: Dict[str, Any]) -> Tuple[str, str, str]:
         )
     return pos_k, quat_k, grip_k
 
+def reduce_gripper(grip_raw: np.ndarray) -> np.ndarray:
+    """
+    Convert gripper observations into a scalar per timestep.
+
+    - If already (T,) -> use it
+    - If (T,2) or similar -> mean over last dim
+    """
+    grip_raw = np.asarray(grip_raw)
+    if grip_raw.ndim == 1:
+        return grip_raw.astype(np.float64)
+    return np.mean(grip_raw.astype(np.float64), axis=-1)
+
 
 @dataclass(frozen=True)
 class WindowSpec:
@@ -223,19 +235,6 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             worker_id = 0 if wi is None else int(wi.id)
             self._rng = np.random.default_rng(self.seed + 1000 * worker_id)
 
-    @staticmethod
-    def _reduce_gripper(grip_raw: np.ndarray) -> np.ndarray:
-        """
-        Convert gripper observations into a scalar per timestep.
-
-        - If already (T,) -> use it
-        - If (T,2) or similar -> mean over last dim
-        """
-        grip_raw = np.asarray(grip_raw)
-        if grip_raw.ndim == 1:
-            return grip_raw.astype(np.float64)
-        return np.mean(grip_raw.astype(np.float64), axis=-1)
-
     def _load_pose10_seq_abs_with_grip_state(
         self,
         env_obs_grp: h5py.Group,
@@ -253,11 +252,34 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
 
         # Gripper state may be scalar or vector per timestep -> reduce to scalar
         grip_raw = np.asarray(env_obs_grp[grip_k][t_indices])
-        grip = self._reduce_gripper(grip_raw).astype(np.float64).reshape(-1)  # (N,)
+        grip = reduce_gripper(grip_raw).astype(np.float64).reshape(-1)  # (N,)
 
         out = np.zeros((len(t_indices), 10), dtype=np.float64)
         for i in range(len(t_indices)):
             out[i] = pose10_from_obs(pos[i], quat[i], float(grip[i]))  # <- gripper *state*
+        return out
+
+    def _load_pose10_seq_abs_with_grip_cmd(
+        self,
+        env_obs_grp: h5py.Group,
+        pos_k: str,
+        quat_k: str,
+        grip_cmd_seq: np.ndarray,   # (N,) gripper command at each requested timestep (e.g., +/-1)
+        t_indices: List[int],
+    ) -> np.ndarray:
+        """
+        Load absolute 10D pose for multiple timesteps, but use gripper *command*
+        (from /actions[:, -1]) instead of gripper *state* (from obs_env).
+        Returns: (N,10) float64
+        """
+        pos = np.asarray(env_obs_grp[pos_k][t_indices], dtype=np.float64)    # (N,3)
+        quat = np.asarray(env_obs_grp[quat_k][t_indices], dtype=np.float64)  # (N,4)
+
+        grip_cmd_seq = np.asarray(grip_cmd_seq, dtype=np.float64).reshape(-1)  # (N,)
+
+        out = np.zeros((len(t_indices), 10), dtype=np.float64)
+        for i in range(len(t_indices)):
+            out[i] = pose10_from_obs(pos[i], quat[i], float(grip_cmd_seq[i]))  # <- command, not state
         return out
 
     # ------------------------- main access -------------------------
@@ -299,7 +321,7 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
         obs_img_t = torch.from_numpy(obs_imgs).permute(0, 3, 1, 2).contiguous().float() / 255.0
 
         # ---- obs_env keys ----
-        pos_k, quat_k, grip_k = self._pick_obs_env_keys(env_obs_grp, demo_name)
+        pos_k, quat_k, grip_k = pick_obs_keys(env_obs_grp)
 
         # observation.state: (n_obs, 10)
         # Use gripper *state* from obs_env (not action command)
