@@ -225,8 +225,8 @@ def main() -> None:
     ap.add_argument("--cam_angles_in_rad", action="store_true")
 
     # Execution scaling (absolute pose -> normalized delta)
-    ap.add_argument("--dpos_scale", type=float, default=0.1)
-    ap.add_argument("--drot_scale", type=float, default=0.7)
+    ap.add_argument("--dpos_scale", type=float, default=0.024)
+    ap.add_argument("--drot_scale", type=float, default=0.212)
 
     args = ap.parse_args()
 

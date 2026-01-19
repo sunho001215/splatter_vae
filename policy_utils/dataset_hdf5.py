@@ -155,8 +155,8 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
                     continue
                 T = int(obs_grp[key0].shape[0])
 
-                t_min = max(-min_obs, -min_act)
-                t_max = min(T - 1 - max_obs, T - 1 - max_act)
+                t_min = -min_obs
+                t_max = T - 1 - max_obs
                 if t_max < t_min:
                     continue
 
@@ -276,6 +276,21 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             out[i] = pose10_from_obs(pos[i], quat[i], float(grip_cmd_seq[i]))  # <- command, not state
         return out
 
+    def _make_padded_indices(self, t_list: List[int], T: int) -> Tuple[List[int], np.ndarray]:
+        """
+        Clamp indices into [0, T-1] for reading, and return a pad mask.
+        pad_mask[i]=True means this timestep was out of range and is padded.
+        """
+        pad_mask = np.zeros((len(t_list),), dtype=np.bool_)
+        clamped = []
+        for i, t in enumerate(t_list):
+            if t < 0 or t >= T:
+                pad_mask[i] = True
+                clamped.append(np.clip(t, 0, T - 1))
+            else:
+                clamped.append(t)
+        return clamped, pad_mask
+
     # ------------------------- main access -------------------------
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
@@ -305,7 +320,7 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             raise KeyError(f"Could not find RGB dataset for camera '{cam}' in demo '{demo_name}'")
 
         rgb_ds = obs_grp[rgb_key]  # (T,H,W,3) uint8
-        H, W = int(rgb_ds.shape[1]), int(rgb_ds.shape[2])
+        T, H, W = int(rgb_ds.shape[0]), int(rgb_ds.shape[1]), int(rgb_ds.shape[2])
 
         # Observations: e.g. [-1,0]
         obs_t = [center_t + di for di in self.window.obs_indices]
@@ -324,10 +339,11 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
         )
         obs_state_t = torch.from_numpy(obs_state).float()
 
-        # ---- Action targets timesteps (length == horizon) ----
-        act_t = [center_t + di for di in self.window.act_indices]
+        # Action targets timesteps (length == horizon)
+        act_t_raw = [center_t + di for di in self.window.act_indices]
+        act_t, pad_mask_np = self._make_padded_indices(act_t_raw, T)
 
-        # Action gripper comes from demo["actions"][:, -1]
+        # Gripper command for these timesteps (clamped read)
         act_grip_cmd = np.asarray(actions_ds[act_t, -1], dtype=np.float64)
 
         act_vec = self._load_pose10_seq_abs_with_grip_cmd(
@@ -336,10 +352,8 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
 
         act_torch = torch.from_numpy(act_vec).float()
 
-        # ---- REQUIRED by LeRobot diffusion loss: padding mask ----
-        # Shape must align with action sequence length (horizon).
-        # False = real action, True = padded action.
-        action_is_pad = torch.zeros((len(self.window.act_indices),), dtype=torch.bool)
+        # action_is_pad: True where padded (ignored by loss)
+        action_is_pad = torch.from_numpy(pad_mask_np.astype(np.bool_))
 
         return {
             "observation.image": obs_img_t,
