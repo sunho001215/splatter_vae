@@ -226,7 +226,7 @@ def main() -> None:
 
     # Execution scaling (absolute pose -> normalized delta)
     ap.add_argument("--dpos_scale", type=float, default=0.1)
-    ap.add_argument("--drot_scale", type=float, default=1.0)
+    ap.add_argument("--drot_scale", type=float, default=0.7)
 
     args = ap.parse_args()
 

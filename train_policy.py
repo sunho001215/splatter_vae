@@ -10,7 +10,11 @@ from torch.utils.data import DataLoader
 
 from policy_utils.config_loader import load_diffusion_config_json
 from policy_utils.dataset_hdf5 import RobosuiteHDF5DiffusionDataset, WindowSpec
-from policy_utils.stats10 import estimate_pose10_stats, build_dataset_stats_for_lerobot
+from policy_utils.stats10 import (
+    estimate_pose10_stats,
+    estimate_pose10_action_stats_from_actions,
+    build_dataset_stats_for_lerobot
+)
 from utils.general_utils import set_random_seed
 
 from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
@@ -161,8 +165,9 @@ def main() -> None:
         dataset_stats = torch.load(stats_cache_path, map_location="cpu")
     else:
         print(f"[stats] computing 10D stats (max_frames={args.max_stat_frames}) ...")
-        vec_stats = estimate_pose10_stats(args.hdf5, max_frames=args.max_stat_frames)
-        dataset_stats = build_dataset_stats_for_lerobot(vec_stats)
+        state_stats = estimate_pose10_stats(args.hdf5, max_frames=args.max_stat_frames)
+        action_stats = estimate_pose10_action_stats_from_actions(args.hdf5, max_frames=args.max_stat_frames)
+        dataset_stats = build_dataset_stats_for_lerobot(state_stats, action_stats)
         torch.save(dataset_stats, stats_cache_path)
         print(f"[stats] saved stats to: {stats_cache_path}")
 

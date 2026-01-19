@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 from .pose10 import pose10_from_obs
+from .dataset_hdf5 import reduce_gripper
 
 
 def _pick_env_keys(env_obs_grp) -> tuple[str, str, str] | None:
@@ -63,13 +64,6 @@ def _pick_env_keys(env_obs_grp) -> tuple[str, str, str] | None:
     return pos_k, quat_k, grip_k
 
 
-def _reduce_gripper(grip_raw: np.ndarray) -> np.ndarray:
-    grip_raw = np.asarray(grip_raw)
-    if grip_raw.ndim == 1:
-        return grip_raw.astype(np.float64)
-    return np.mean(grip_raw.astype(np.float64), axis=-1)
-
-
 def estimate_pose10_stats(
     hdf5_path: str,
     max_frames: int = 200_000,
@@ -108,7 +102,7 @@ def estimate_pose10_stats(
 
             pos = np.asarray(env_obs[pos_k], dtype=np.float64)    # (T,3)
             quat = np.asarray(env_obs[quat_k], dtype=np.float64)  # (T,4)
-            grip = _reduce_gripper(np.asarray(env_obs[grip_k]))   # (T,)
+            grip = reduce_gripper(np.asarray(env_obs[grip_k]))   # (T,)
 
             T = int(pos.shape[0])
             for t in range(T):
@@ -141,17 +135,81 @@ def estimate_pose10_stats(
     }
 
 
-def build_dataset_stats_for_lerobot(vec_stats_10d: Dict[str, torch.Tensor]) -> Dict[str, Dict[str, torch.Tensor]]:
+def estimate_pose10_action_stats_from_actions(
+    hdf5_path: str,
+    max_frames: int = 200_000,
+) -> Dict[str, torch.Tensor]:
     """
-    Build a LeRobot-compatible dataset_stats dict.
+    Stats for ACTION pose10 where the last dim is gripper *command* from /actions[:, -1].
+    pos/quat still come from obs_env at the same timestep.
+    """
+    count = 0
+    mean = np.zeros((10,), dtype=np.float64)
+    m2 = np.zeros((10,), dtype=np.float64)
+    vmin = np.full((10,), np.inf, dtype=np.float64)
+    vmax = np.full((10,), -np.inf, dtype=np.float64)
 
-    LeRobot's configs define features with types (STATE/VISUAL/ACTION).
-    LeRobot diffusion example passes dataset_metadata.stats into DiffusionPolicy.
+    with h5py.File(hdf5_path, "r") as f:
+        data = f["data"]
+        demo_names = sorted([k for k in data.keys() if k.startswith("demo")])
 
-    For images:
-      - Our dataset yields float images in [0,1].
-      - A simple and common normalization is mean=0.5, std=0.5 (per-channel),
-        mapping roughly to [-1,1] after normalization.
+        for dn in demo_names:
+            demo = data[dn]
+            if "obs_env" not in demo or "actions" not in demo:
+                continue
+
+            env_obs = demo["obs_env"]
+            actions = demo["actions"]
+
+            keys = _pick_env_keys(env_obs)
+            if keys is None:
+                continue
+            pos_k, quat_k, _grip_state_k = keys
+
+            pos = np.asarray(env_obs[pos_k], dtype=np.float64)     # (T,3)
+            quat = np.asarray(env_obs[quat_k], dtype=np.float64)   # (T,4)
+            grip_cmd = np.asarray(actions[:, -1], dtype=np.float64)  # (T,)
+
+            T = int(pos.shape[0])
+            T2 = int(grip_cmd.shape[0])
+            T = min(T, T2)
+
+            for t in range(T):
+                x = pose10_from_obs(pos[t], quat[t], float(grip_cmd[t]))  # last dim = command
+
+                count += 1
+                delta = x - mean
+                mean += delta / count
+                m2 += delta * (x - mean)
+
+                vmin = np.minimum(vmin, x)
+                vmax = np.maximum(vmax, x)
+
+                if count >= max_frames:
+                    break
+            if count >= max_frames:
+                break
+
+    if count < 2:
+        raise RuntimeError("Not enough frames to estimate ACTION stats.")
+
+    var = m2 / (count - 1)
+    std = np.sqrt(np.maximum(var, 1e-12))
+
+    return {
+        "mean": torch.tensor(mean, dtype=torch.float32),
+        "std": torch.tensor(std, dtype=torch.float32),
+        "min": torch.tensor(vmin, dtype=torch.float32),
+        "max": torch.tensor(vmax, dtype=torch.float32),
+    }
+
+
+def build_dataset_stats_for_lerobot(
+    state_stats_10d: Dict[str, torch.Tensor],
+    action_stats_10d: Dict[str, torch.Tensor],
+) -> Dict[str, Dict[str, torch.Tensor]]:
+    """
+    Build the dataset_stats dict for LeRobot diffusion policy.
     """
     img_mean = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32).view(3, 1, 1)
     img_std = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32).view(3, 1, 1)
@@ -160,8 +218,8 @@ def build_dataset_stats_for_lerobot(vec_stats_10d: Dict[str, torch.Tensor]) -> D
 
     return {
         "observation.image": {"mean": img_mean, "std": img_std, "min": img_min, "max": img_max},
-        "observation.state": dict(vec_stats_10d),
-        "action": dict(vec_stats_10d),
+        "observation.state": dict(state_stats_10d),  # gripper state stats
+        "action": dict(action_stats_10d),            # gripper command stats
     }
 
 
