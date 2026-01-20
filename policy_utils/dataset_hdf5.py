@@ -229,6 +229,37 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             worker_id = 0 if wi is None else int(wi.id)
             self._rng = np.random.default_rng(self.seed + 1000 * worker_id)
 
+    @staticmethod
+    def _h5_take(ds: h5py.Dataset, rows: List[int], col: Optional[int] = None) -> np.ndarray:
+        """
+        Safe 'take' for h5py datasets.
+
+        h5py fancy indexing requires indices to be strictly increasing (no duplicates).
+        When we replicate the last timestep (T-1), indices like [..., T-1, T-1, T-1]
+        appear and would crash. This helper:
+        1) reads using sorted unique indices
+        2) gathers back to the original order (including duplicates)
+        """
+        rows_np = np.asarray(rows, dtype=np.int64)
+        uniq = np.unique(rows_np)  # sorted unique
+
+        if col is None:
+            block = ds[uniq]
+        else:
+            block = ds[uniq, col]
+
+        inv = np.searchsorted(uniq, rows_np)  # map each requested row -> index in uniq
+        return block[inv]
+
+    def _clamp_indices_to_last(self, t_list: List[int], T: int) -> List[int]:
+        """
+        Replicate the last timestep for any out-of-range index.
+        This implements: "if timestep > T-1, use T-1".
+        (Also clamps negative indices defensively.)
+        """
+        last = T - 1
+        return [last if t > last else (0 if t < 0 else t) for t in t_list]
+    
     def _load_pose10_seq_abs_with_grip_state(
         self,
         env_obs_grp: h5py.Group,
@@ -241,12 +272,12 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
         Load absolute 10D pose for multiple timesteps using gripper *state* from obs_env.
         Returns: (N,10) float64
         """
-        pos = np.asarray(env_obs_grp[pos_k][t_indices], dtype=np.float64)     # (N,3)
-        quat = np.asarray(env_obs_grp[quat_k][t_indices], dtype=np.float64)   # (N,4)
+        pos = self._h5_take(env_obs_grp[pos_k], t_indices).astype(np.float64)    # (N,3)
+        quat = self._h5_take(env_obs_grp[quat_k], t_indices).astype(np.float64)  # (N,4)
 
         # Gripper state may be scalar or vector per timestep -> reduce to scalar
-        grip_raw = np.asarray(env_obs_grp[grip_k][t_indices])
-        grip = reduce_gripper(grip_raw).astype(np.float64).reshape(-1)  # (N,)
+        grip_raw = self._h5_take(env_obs_grp[grip_k], t_indices)
+        grip = reduce_gripper(np.asarray(grip_raw)).astype(np.float64).reshape(-1)  # (N,)
 
         out = np.zeros((len(t_indices), 10), dtype=np.float64)
         for i in range(len(t_indices)):
@@ -266,8 +297,8 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
         (from /actions[:, -1]) instead of gripper *state* (from obs_env).
         Returns: (N,10) float64
         """
-        pos = np.asarray(env_obs_grp[pos_k][t_indices], dtype=np.float64)    # (N,3)
-        quat = np.asarray(env_obs_grp[quat_k][t_indices], dtype=np.float64)  # (N,4)
+        pos = self._h5_take(env_obs_grp[pos_k], t_indices).astype(np.float64)    # (N,3)
+        quat = self._h5_take(env_obs_grp[quat_k], t_indices).astype(np.float64)  # (N,4)
 
         grip_cmd_seq = np.asarray(grip_cmd_seq, dtype=np.float64).reshape(-1)  # (N,)
 
@@ -276,20 +307,6 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             out[i] = pose10_from_obs(pos[i], quat[i], float(grip_cmd_seq[i]))  # <- command, not state
         return out
 
-    def _make_padded_indices(self, t_list: List[int], T: int) -> Tuple[List[int], np.ndarray]:
-        """
-        Clamp indices into [0, T-1] for reading, and return a pad mask.
-        pad_mask[i]=True means this timestep was out of range and is padded.
-        """
-        pad_mask = np.zeros((len(t_list),), dtype=np.bool_)
-        clamped = []
-        for i, t in enumerate(t_list):
-            if t < 0 or t >= T:
-                pad_mask[i] = True
-                clamped.append(np.clip(t, 0, T - 1))
-            else:
-                clamped.append(t)
-        return clamped, pad_mask
 
     # ------------------------- main access -------------------------
 
@@ -341,19 +358,20 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
 
         # Action targets timesteps (length == horizon)
         act_t_raw = [center_t + di for di in self.window.act_indices]
-        act_t, pad_mask_np = self._make_padded_indices(act_t_raw, T)
 
-        # Gripper command for these timesteps (clamped read)
-        act_grip_cmd = np.asarray(actions_ds[act_t, -1], dtype=np.float64)
+        # Replicate last timestep (T-1) for out-of-range action indices
+        act_t = self._clamp_indices_to_last(act_t_raw, T)
+
+        # Gripper command for these timesteps (safe read even if act_t has duplicates)
+        act_grip_cmd = self._h5_take(actions_ds, act_t, col=-1).astype(np.float64)
 
         act_vec = self._load_pose10_seq_abs_with_grip_cmd(
             env_obs_grp, pos_k, quat_k, act_grip_cmd, act_t
         )
-
         act_torch = torch.from_numpy(act_vec).float()
 
-        # action_is_pad: True where padded (ignored by loss)
-        action_is_pad = torch.from_numpy(pad_mask_np.astype(np.bool_))
+        # Always set action_is_pad = False (no padding is ignored)
+        action_is_pad = torch.zeros((len(self.window.act_indices),), dtype=torch.bool)
 
         return {
             "observation.image": obs_img_t,
