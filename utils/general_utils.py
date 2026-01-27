@@ -5,6 +5,8 @@ import numpy as np
 import cv2
 import math
 import random
+import json
+from pathlib import Path
 
 
 def load_image_rgb(path: str) -> np.ndarray:
@@ -285,3 +287,6 @@ def quat_xyzw_to_rotmat_np(q_xyzw: np.ndarray) -> np.ndarray:
             dtype=np.float64,
         )
 
+def read_json(path: Path) -> dict:
+    with open(path, "r") as f:
+        return json.load(f)

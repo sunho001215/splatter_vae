@@ -1,0 +1,69 @@
+dataset:
+  hdf5_path: "../../data/robosuite/stack.hdf5"
+  num_views: 6
+  sequence_length: 3
+  max_episodes: null
+  max_frames_per_demo: 3000
+  temporal_stride: 3
+  num_workers: 8
+  pin_memory: true
+  batch_size: 4
+  train_ratio: 0.9
+
+model:
+  netdepth: 8
+  netwidth: 256
+  netdepth_fine: 8
+  netwidth_fine: 256
+  N_rand: 8192
+  N_samples: 64
+  N_importance: 64
+  multires: 10
+  multires_views: 4
+  i_embed: 0
+  use_viewdirs: true
+  raw_noise_std: 0.0
+  white_bkgd: true
+  perturb: 1.0
+  lindisp: false
+
+  patch_size: 16
+  embed_dim: 384
+  vit_depth: 8
+  vit_num_heads: 6
+  vit_mlp_dim: 1024
+  decoder_depth: 2
+  decoder_num_heads: 2
+  decoder_mlp_dim: 1024
+  decoder_output_dim: 64
+
+  time_interval: 3
+  mask_ratio: 0.75
+  num_views: 6
+
+  near: 0.0
+  far: 1.0
+  chunk: 32768
+
+train:
+  num_epochs: 50
+  max_global_steps: 250000
+  lrate: 0.0005
+  lrate_decay: 250
+  device: "cuda:1"
+  rec_weight: 1.0
+  contrastive_weight: 0.1
+  eval_every: 50
+  save_every: 5000
+  ckpt_dir: "./checkpoints/SinCro/stack/"
+  resume_from_last: false
+  seed: 42
+
+wandb:
+  project: "SinCro-Robosuite"
+  entity: null
+  run_name: "sincro_robosuite_stack"
+
+experiment:
+  basedir: "./logs/SinCro/robosuite/"
+  expname: "sincro_robosuite"

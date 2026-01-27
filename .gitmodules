@@ -10,12 +10,15 @@
 [submodule "baselines/SNeRL/snerl_official"]
 	path = baselines/SNeRL/snerl_official
 	url = https://github.com/jayLEE0301/snerl_official.git
-[submodule "baselines/SinCro/sincro"]
-	path = baselines/SinCro/sincro
-	url = https://github.com/syeon-yoo/sincro.git
 [submodule "baselines/MV-MWM/MV-MWM"]
 	path = baselines/MV-MWM/MV-MWM
 	url = https://github.com/younggyoseo/MV-MWM.git
 [submodule "baselines/ReViWo/ReViWo"]
 	path = baselines/ReViWo/ReViWo
 	url = https://github.com/lafmdp/ReViWo.git
+[submodule "policies/lerobot"]
+	path = policies/lerobot
+	url = https://github.com/sunho001215/lerobot.git
+[submodule "baselines/SinCro/sincro"]
+	path = baselines/SinCro/sincro
+	url = https://github.com/sunho001215/sincro.git

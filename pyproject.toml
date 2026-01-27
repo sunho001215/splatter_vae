@@ -1,11 +1,14 @@
 [project]
 name = "splatter-vae"
 version = "0.1.0"
-description = "Add your description here"
+description = ""
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "cython<3",
+    "gsplat",
+    "lerobot",
+    "fused-ssim",
+    "cython>=0.29.37",
     "opencv-python>=4.11.0.86",
     "pyyaml>=6.0.3",
     "robosuite>=1.5.2",
@@ -16,19 +19,16 @@ dependencies = [
     "robosuite-models>=1.0.0",
     "pyspacemouse>=1.1.5",
     "matplotlib>=3.10.8",
-    "gsplat",
     "timm>=1.0.24",
     "vector-quantize-pytorch>=1.27.15",
     "setuptools>=80.9.0",
     "einops>=0.8.1",
-    "numpy>=1.26.4",
-    "torch>=2.9.1",
-    "torchvision>=0.24.1",
-    "wandb>=0.23.1",
+    "numpy<2.0.0",
+    "torch>=2.7.1",
+    "torchvision>=0.22.1",
+    "wandb>=0.24.0",
     "transformers>=4.57.3",
-    "gymnasium>=0.29.1",
-    "lerobot>=0.3.2",
-    "fused-ssim"
+    "tensorboard>=2.20.0",
 ]
 
 [tool.uv.extra-build-dependencies]
@@ -38,3 +38,4 @@ fused-ssim = ["torch", "torchvision"]
 [tool.uv.sources]
 gsplat = { git = "https://github.com/nerfstudio-project/gsplat.git" }
 fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim" }
+lerobot = { path = "policies/lerobot/", editable = true }

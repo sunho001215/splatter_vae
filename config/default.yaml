@@ -1,8 +1,8 @@
 # config.yaml
 
 dataset:
-  hdf5_path: ../../data/mimicgen/multiview/coffee_d1_multiview.hdf5
-  batch_size: 128
+  hdf5_path: ../../data/robosuite/stack.hdf5
+  batch_size: 64
   num_workers: 8
   pin_memory: true
   train_ratio: 0.90
@@ -10,23 +10,25 @@ dataset:
   num_episodes: 120
 
 train:
-  num_epochs: 38
+  max_global_steps: 250000
+  num_epochs: 100
   lr: 3.0e-5
-  device: cuda:3
+  device: cuda:2
   eval_every: 50
   save_every: 5000
-  ckpt_dir: ./checkpoints/default/
+  ckpt_dir: ./checkpoints/robosuite-stack/
   resume_from_last: false
 
   # loss weights
   rec_weight: 1.0
+  ssim_weight: 0.2
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   dep_contrastive_weight: 0.1
   temperature: 0.07
 
   # camera prediction
-  predict_camera_params: true
+  predict_camera_params: false
   pose_cycle_weight: 0.001
   crossview_start_step: 1500
 
@@ -52,18 +54,27 @@ splatter:
     scale_scale: 0.02
     scale_bias: -4.0
 
-transformer:
-  # STTransConfig fields; block_size & n_tokens_per_frame
-  # will be overwritten based on image size
-  block_size: 64
-  vocab_size: 0
-  n_tokens_per_frame: 64
-  n_layer: 8
-  n_head: 8
-  n_embed: 256
-  dropout: 0.1
-  bias: false
-  mask_rate: null
+swin:
+  # Swin-Tiny architecture
+  embed_dim: 96          # C
+  depths: [2, 2, 6, 2]   # layers per stage
+  num_heads: [3, 6, 12, 24]
+
+  # Image & patching
+  patch_size: 4 
+  window_size: 7
+
+  # Standard Swin defaults
+  mlp_ratio: 4.0
+  qkv_bias: true
+  drop_rate: 0.0
+  attn_drop_rate: 0.0
+  drop_path_rate: 0.1
+
+  ape: false
+  patch_norm: true
+  use_checkpoint: false
+  pretrained_window_sizes: [0, 0, 0, 0]
 
 codebook:
   invariant:
@@ -82,10 +93,6 @@ model:
   use_invariant_vq: true
   is_invariant_ae: false
 
-  # grid of tokens (e.g., 8x8 = 64 tokens)
-  grid_tokens_h: 8
-  grid_tokens_w: 8
-
 wandb:
-  project: MimicGen-SplatterVAE
+  project: robosuite-SplatterVAE
   entity: null

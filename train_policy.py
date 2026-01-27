@@ -8,14 +8,16 @@ from typing import Any, Dict, Tuple
 import torch
 from torch.utils.data import DataLoader
 
-from policy_utils.config_loader import load_diffusion_config_json
-from policy_utils.dataset_hdf5 import RobosuiteHDF5DiffusionDataset, WindowSpec
-from policy_utils.stats10 import (
+from policies.utils.config_loader import load_diffusion_config_json
+from policies.utils.dataset_hdf5 import RobosuiteHDF5DiffusionDataset, WindowSpec
+from policies.utils.stats10 import (
     estimate_pose10_stats,
     estimate_pose10_action_stats_from_actions,
     build_dataset_stats_for_lerobot
 )
-from utils.general_utils import set_random_seed
+from policies.encoders.splatter_encoder import make_splatter_custom_backbone
+
+from utils.general_utils import set_random_seed, read_json
 
 from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
 
@@ -138,6 +140,7 @@ def main() -> None:
     cfg, cfg_raw = load_diffusion_config_json(
         args.config_json
     )
+    cfg_raw_dict = read_json(Path(args.config_json))
 
     # Window (obs/action temporal indexing) derived from cfg
     window = _make_window_from_cfg(cfg)
@@ -172,7 +175,29 @@ def main() -> None:
         print(f"[stats] saved stats to: {stats_cache_path}")
 
     # -------------------- Policy --------------------
-    policy = DiffusionPolicy(cfg, dataset_stats=dataset_stats).to(device)
+    cfg_raw_dict = read_json(Path(args.config_json))
+
+    # Custom vision backbone
+    vision_backbone_name = cfg_raw_dict.get("vision_backbone", "").lower()
+    if vision_backbone_name.startswith("resnet"):
+        custom_backbone = None
+        print(f"[info] using standard resnet backbone: {vision_backbone_name}")
+    elif vision_backbone_name == "splatter_vae":
+        custom_backbone = make_splatter_custom_backbone(
+            dp_config=cfg,                          # DiffusionConfig object
+            cfg_raw=cfg_raw_dict,                   # raw dict from config.json
+            base_dir=Path(args.config_json).parent, # resolve YAML/CKPT relative to config.json dir
+            device=device,
+        )
+        print(f"[info] using SplatterVAE custom backbone")
+    
+    # Instantiate policy
+    policy = DiffusionPolicy(
+        cfg,
+        custom_vision_backbone=custom_backbone,
+        dataset_stats=dataset_stats,
+    ).to(device)
+    # Train mode
     policy.train()
 
     # -------------------- Optimizer/Scheduler --------------------

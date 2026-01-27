@@ -805,8 +805,6 @@ def train_splatter_vae(
                     "vae_state_dict": vae.state_dict(),
                     "splatter_to_gaussians_state_dict": splatter_to_gaussians.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
-                    "splatter_cfg": splatter_cfg,
-                    "train_cfg": cfg_train,
                 }
                 if camera_predictor is not None:
                     ckpt["camera_predictor_state_dict"] = camera_predictor.state_dict()

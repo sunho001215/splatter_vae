@@ -1,0 +1,114 @@
+dataset:
+  # Path to your RoboSuite multi-view HDF5 file
+  hdf5_path: "../../data/robosuite/stack.hdf5"
+
+  # DataLoader settings
+  batch_size: 64
+  num_workers: 8
+  pin_memory: true
+
+  # Episode split / sampling
+  train_ratio: 0.9
+  seed: 42
+  num_episodes: null     # use all episodes
+  max_frames_per_demo: null
+  min_time_gap: 25       # temporal gap for image_i_t1
+
+reviwo:
+  # Image & patch settings
+  img_size: 224         
+  patch_size: 16      
+  fusion_style: "plus"   
+
+  # VQ usage switches
+  use_latent_vq: true
+  is_latent_ae: false
+  use_view_vq: true
+  is_view_ae: false
+
+  # Transformer encoder / decoder configs
+  view_encoder:
+    block_size: 256
+    vocab_size: 512
+    n_tokens_per_frame: 256
+    n_layer: 8
+    n_head: 8
+    n_embed: 128
+    dropout: 0.1
+    bias: false
+    mask_rate: 0
+
+  latent_encoder:
+    block_size: 256
+    vocab_size: 512
+    n_tokens_per_frame: 256
+    n_layer: 8
+    n_head: 8
+    n_embed: 128
+    dropout: 0.1
+    bias: false
+    mask_rate: 0
+
+  decoder:
+    block_size: 256
+    vocab_size: 512
+    n_tokens_per_frame: 256
+    n_layer: 8
+    n_head: 8
+    n_embed: 128
+    dropout: 0.1
+    bias: false
+    mask_rate: 0
+
+  # Codebook configs
+  view_codebook:
+    embed_dim: 16
+    n_embed: 64
+    beta: 0.25
+
+  latent_codebook:
+    embed_dim: 16
+    n_embed: 512
+    beta: 0.25
+
+train:
+  # Training length
+  num_epochs: 1000          # from original num_epoch
+  max_global_steps: 250000  # optional override; keep null to use num_epochs
+
+  # Optimizer
+  lr: 0.0003              # from original optimizer.lr
+  device: "cuda:0"
+
+  # Loss form (from original config)
+  loss_form: "Weighted_MSE"
+
+  # Coefficients (copied from original config)
+  vq_coef: 0.25
+  shuffled_v_coef: 2.0
+  shuffled_l_coef: 2.0
+  shuffled_vl_coef: 2.0
+  latent_consistency_coef: 0.5
+  view_consistency_coef: 0.1
+  latent_contrastive_coef: 0.5
+  view_contrastive_coef: 0.1
+
+  # Contrastive settings
+  temperature: 0.25       # from original config
+  lower_bound: 0.9        # from original MultiViewViTTrainer.get_loss
+
+  # Logging / eval / checkpoint frequency
+  eval_every: 50          # corresponds to original eval_step
+  save_every: 5000        # corresponds to original save_step
+  log_every: 50           # corresponds to original log_step
+
+  # Checkpoint directory + resume flag
+  ckpt_dir: "./checkpoints/ReViWo/stack/"
+  resume_from_last: false
+
+  # Number of views per sample in this trainer
+  camera_num: 6           # (image_i_t, image_j_t)
+
+wandb:
+  project: "ReViWo-RoboSuite"
+  entity: null            # set to your wandb username/org if needed
