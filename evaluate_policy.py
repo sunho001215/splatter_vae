@@ -27,14 +27,16 @@ from dataset.robosuite_demo_collect.demo_collector.camera_config import (
     _look_at_quat_wxyz,
 )
 from dataset.robosuite_demo_collect.demo_collector.render import render_rgb
-from policy_utils.pose10 import pose10_from_obs
-from policy_utils.dataset_hdf5 import pick_obs_keys, reduce_gripper
+from policies.utils.pose10 import pose10_from_obs
+from policies.utils.dataset_hdf5 import pick_obs_keys, reduce_gripper
+from policies.utils.config_loader import load_diffusion_config_json
 from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
 
 from utils.general_utils import (
     quat_xyzw_to_rotmat_np,
     mat_to_axisangle_np,
     rot6d_to_rotmat_np,
+    read_json
 )
 
 # ----------------------------- camera setup -----------------------------
@@ -191,6 +193,110 @@ def abs_pose10_to_env_action_delta(
 
     return act.astype(np.float32)
 
+# ----------------------------- policy loading with custom encoder support -----------------------------
+
+def _load_policy_with_optional_custom_encoder(
+    *,
+    ckpt_dir: Path,
+    dataset_stats: Dict[str, Any],
+    device: torch.device,
+    vision_encoder_choice: str,   # "auto" | "standard" | "splatter_vae"
+    config_json: str,             # "" -> default to <ckpt_dir>/config.json
+) -> DiffusionPolicy:
+    """
+    Supports evaluating:
+      - standard/original vision encoder (resnet...)
+      - custom vision encoder (splatter_vae)
+
+    vision_encoder_choice:
+      - "auto": follow config.json's "vision_backbone"
+      - "standard": force no custom backbone
+      - "splatter_vae": force splatter custom backbone
+    """
+    ckpt_dir = Path(ckpt_dir)
+
+    # Resolve config.json path (needed to build custom backbone)
+    cfg_path = Path(config_json) if config_json else (ckpt_dir / "config.json")
+    if not cfg_path.exists():
+        if vision_encoder_choice in ("splatter_vae", "auto"):
+            raise FileNotFoundError(
+                f"Missing config.json needed for '{vision_encoder_choice}' at: {cfg_path}"
+            )
+        # standard-only can load without config.json
+        return DiffusionPolicy.from_pretrained(str(ckpt_dir), dataset_stats=dataset_stats).to(device)
+
+    # Load cfg + raw dict (same pattern as training)
+    cfg, _ = load_diffusion_config_json(str(cfg_path))
+    cfg_raw = read_json(cfg_path)
+
+    # Decide which encoder to use
+    vb = str(cfg_raw.get("vision_backbone", "")).lower()
+    if vision_encoder_choice == "auto":
+        vision_encoder_choice = "splatter_vae" if vb == "splatter_vae" else "standard"
+
+    custom_backbone = None
+    if vision_encoder_choice == "splatter_vae":
+        from policies.encoders.splatter_encoder import make_splatter_custom_backbone
+
+        custom_backbone = make_splatter_custom_backbone(
+            dp_config=cfg,
+            cfg_raw=cfg_raw,
+            base_dir=cfg_path.parent,
+            device=device,
+        )
+        print("[info] eval: using SplatterVAE custom backbone")
+    else:
+        print("[info] eval: using standard/original vision backbone")
+
+    # Preferred: from_pretrained that accepts custom backbone (if supported by your LeRobot version)
+    try:
+        policy = DiffusionPolicy.from_pretrained(
+            str(ckpt_dir),
+            dataset_stats=dataset_stats,
+            custom_vision_backbone=custom_backbone,
+        ).to(device)
+        return policy
+    except TypeError:
+        # Fallback: instantiate from cfg, then load weights manually
+        pass
+
+    policy = DiffusionPolicy(
+        cfg,
+        custom_vision_backbone=custom_backbone,
+        dataset_stats=dataset_stats,
+    ).to(device)
+
+    # Manual weight load (common HF-style filenames)
+    weight_candidates = [
+        ckpt_dir / "model.safetensors",
+        ckpt_dir / "pytorch_model.bin",
+        ckpt_dir / "model.pt",
+        ckpt_dir / "pytorch_model.pt",
+    ]
+    weight_path = next((p for p in weight_candidates if p.exists()), None)
+    if weight_path is None:
+        raise FileNotFoundError(
+            f"Could not find model weights in {ckpt_dir}. "
+            f"Tried: {[p.name for p in weight_candidates]}"
+        )
+
+    if weight_path.suffix == ".safetensors":
+        from safetensors.torch import load_file as safetensors_load
+
+        state_dict = safetensors_load(str(weight_path))
+    else:
+        state_dict = torch.load(weight_path, map_location="cpu")
+        if isinstance(state_dict, dict) and "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
+
+    missing, unexpected = policy.load_state_dict(state_dict, strict=False)
+    if missing:
+        print(f"[warn] missing keys while loading (showing up to 20): {missing[:20]}")
+    if unexpected:
+        print(f"[warn] unexpected keys while loading (showing up to 20): {unexpected[:20]}")
+
+    return policy
+
 
 # ----------------------------- main eval loop -----------------------------
 
@@ -228,6 +334,22 @@ def main() -> None:
     ap.add_argument("--dpos_scale", type=float, default=0.024)
     ap.add_argument("--drot_scale", type=float, default=0.212)
 
+    # add in main() argparse section (near policy checkpoint args)
+    ap.add_argument(
+        "--vision_encoder",
+        type=str,
+        default="auto",
+        choices=["auto", "standard", "splatter_vae"],
+        help="Choose vision encoder for eval. auto=follow config.json vision_backbone.",
+    )
+    ap.add_argument(
+        "--policy_config_json",
+        type=str,
+        default="",
+        help="Path to DiffusionPolicy config.json (default: <ckpt_dir>/config.json). "
+            "Required for splatter_vae/auto if ckpt_dir lacks config.json.",
+    )
+
     args = ap.parse_args()
 
     np.random.seed(args.seed)
@@ -242,12 +364,19 @@ def main() -> None:
         raise FileNotFoundError(f"Missing dataset_stats.pt at: {stats_path}")
     dataset_stats = torch.load(stats_path, map_location="cpu")
 
-    # Load policy
-    policy = DiffusionPolicy.from_pretrained(str(ckpt_dir), dataset_stats=dataset_stats).to(device)
+    # Load policy (standard vs custom vision encoder)
+    policy = _load_policy_with_optional_custom_encoder(
+        ckpt_dir=ckpt_dir,
+        dataset_stats=dataset_stats,
+        device=device,
+        vision_encoder_choice=args.vision_encoder,
+        config_json=args.policy_config_json,
+    )
     policy.eval()
 
     # Make evaluation deterministic if the encoder does random crop
-    policy.config.crop_is_random = False
+    if hasattr(policy, "config") and hasattr(policy.config, "crop_is_random"):
+        policy.config.crop_is_random = False
 
     # Read planning params from config
     n_obs_steps = int(_get_cfg_value(policy, "n_obs_steps", 2))
