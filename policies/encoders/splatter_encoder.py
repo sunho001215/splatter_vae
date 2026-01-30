@@ -146,44 +146,147 @@ def make_splatter_custom_backbone(
         raise KeyError(f"{vae_ckpt_path} has no 'vae_state_dict'")
     vae.load_state_dict(ckpt["vae_state_dict"], strict=True)
 
-    # 7) Backbone: output is flattened invariant encoder output (B, N_tokens * D_inv)
+    # 7) Backbone: frozen token encoder + learnable cross-attention pooling -> global condition vector
     class SplatterBackbone(nn.Module):
         """
-        Input : (B,3,H,W) float in [0,1] (cropping already handled upstream by DiffusionRgbEncoder)
-        Output: (B, N_tokens * D_inv) where D_inv is invariant embedding dim after output_proj/VQ (if used)
+        Input:
+            x: (B, 3, H, W) float in [0, 1]
+
+        Frozen part:
+            - SplatterVAE invariant branch produces token sequence:
+                tokens: (B, N_tokens, D_token)
+
+        Learnable part:
+            - LayerNorm on frozen tokens
+            - Learnable query tokens attend over frozen tokens (cross-attention pooling)
+            - Post-attn LayerNorm (over attn_dim)
+            - Output projection: LN + Linear (per-query), then flatten to a single vector
+                global_cond: (B, num_queries * final_proj_dim)
         """
-        def __init__(self, vae_module: nn.Module, img_h: int, img_w: int):
+
+        def __init__(
+            self,
+            vae_module: nn.Module,
+            img_h: int,
+            img_w: int,
+            *,
+            num_queries: int = 4,
+            final_proj_dim: int = 32,   # output dim per query
+            attn_dim: int = 128,
+            num_heads: int = 8,
+        ):
             super().__init__()
+
+            # -----------------------
+            # Frozen VAE
+            # -----------------------
             self.vae = vae_module
-            self.use_vq = hasattr(self.vae, "invariant_output_head") and (self.vae.invariant_output_head is not None)
+            self.vae.eval()
+            self.vae.requires_grad_(False)  # keep frozen
 
-            # Infer feature_dim with a dry run (depends on token count)
+            self.use_vq = hasattr(self.vae, "invariant_output_head") and (
+                self.vae.invariant_output_head is not None
+            )
+
+            # Infer token dimension by running a dummy input through the invariant encoder
             with torch.no_grad():
+                device = next(self.vae.parameters()).device
                 dummy = torch.zeros(1, 3, img_h, img_w, device=device)
-                emb = self._encode_invariant(dummy)  # (1, N, D)
-                self.feature_dim = int(emb.shape[1] * emb.shape[2])
+                tokens = self._encode_invariant_tokens(dummy)  # (1, N, D_token)
+                d_token = int(tokens.shape[-1])
 
-            # Freeze everything in this module (extra safety)
-            self.eval()
-            for p in self.parameters():
-                p.requires_grad = False
+            # -----------------------
+            # Learnable pooling + projection
+            # -----------------------
+            self.d_token = d_token
+            self.attn_dim = int(attn_dim) if attn_dim is not None else d_token
+            self.num_queries = int(num_queries)
+            self.final_proj_dim = int(final_proj_dim)
 
-        def _encode_invariant(self, x01: torch.Tensor) -> torch.Tensor:
-            # Convert [0,1] -> [-1,1]
+            # Normalize frozen tokens before attention (stability)
+            self.token_norm = nn.LayerNorm(d_token)
+
+            # Project tokens to attention dim if needed
+            self.kv_proj = (
+                nn.Identity()
+                if self.attn_dim == d_token
+                else nn.Linear(d_token, self.attn_dim, bias=False)
+            )
+
+            # Learnable queries for cross-attention pooling
+            # Shape: (Q, C) expanded to (B, Q, C)
+            self.query = nn.Parameter(torch.randn(self.num_queries, self.attn_dim) * 0.02)
+
+            # Cross-attention: learned queries attend to frozen tokens
+            self.attn = nn.MultiheadAttention(
+                embed_dim=self.attn_dim,
+                num_heads=int(num_heads),
+                dropout=0.0,
+                batch_first=True,  # inputs are (B, L, C)
+            )
+
+            # Keep pooled as (B, Q, C) and normalize over C (=attn_dim)
+            self.post_attn_norm = nn.LayerNorm(self.attn_dim)
+
+            # Per-query projection: (B, Q, attn_dim) -> (B, Q, final_proj_dim)
+            self.out_proj = nn.Linear(self.attn_dim, self.final_proj_dim, bias=True)
+
+            # Output will be flattened: (B, Q * final_proj_dim)
+            self.feature_dim = self.final_proj_dim * self.num_queries
+
+        def _encode_invariant_tokens(self, x01: torch.Tensor) -> torch.Tensor:
+            """
+            Frozen token extraction from VAE.
+            Returns tokens: (B, N, D_token).
+            """
+            # Convert [0,1] -> [-1,1] (as in original code)
             x_vae = x01 * 2.0 - 1.0
-            tokens = self.vae.invariant_encoder(x_vae)                 # (B, N, *)
-            emb = self.vae.invariant_encoder_output_proj(tokens)       # (B, N, D)
+
+            tokens = self.vae.invariant_encoder(x_vae)              # (B, N, *)
+            emb = self.vae.invariant_encoder_output_proj(tokens)    # (B, N, D_token)
+
+            # Optional VQ/output head
             if self.use_vq:
                 vq_out = self.vae.invariant_output_head(emb)
                 emb = vq_out[0] if isinstance(vq_out, (tuple, list)) else vq_out
+
             return emb
 
-        @torch.no_grad()
         def forward(self, x: torch.Tensor) -> torch.Tensor:
-            # Fully frozen: no graph, no gradients, output detached
+            """
+            Args:
+                x: (B,3,H,W) in [0,1]
+            Returns:
+                global_cond: (B, num_queries * final_proj_dim)
+            """
+            # 1) Frozen tokens (no grads into VAE)
             with torch.no_grad():
-                emb = self._encode_invariant(x)            # (B, N, D)
-                feat = emb.reshape(emb.shape[0], -1)       # (B, N*D)
-            return feat
+                tokens = self._encode_invariant_tokens(x)  # (B, N, D_token)
+
+            # Extra safety: ensure VAE stays frozen even if no_grad is removed upstream
+            tokens = tokens.detach()
+
+            # 2) Normalize + project tokens for attention
+            tokens = self.token_norm(tokens)  # (B, N, D_token)
+            kv = self.kv_proj(tokens)         # (B, N, attn_dim)
+
+            # 3) Build learned query batch
+            B = kv.shape[0]
+            q = self.query.unsqueeze(0).expand(B, -1, -1)  # (B, Q, attn_dim)
+
+            # 4) Cross-attention pooling
+            pooled, _ = self.attn(query=q, key=kv, value=kv, need_weights=False)  # (B, Q, attn_dim)
+
+            # 5) Normalize pooled tokens in token shape (B, Q, C) so LN matches attn_dim
+            pooled = self.post_attn_norm(pooled)  # (B, Q, attn_dim)
+
+            # 6) Output projection (LN + Linear): already LN above, now Linear per query
+            pooled = self.out_proj(pooled)  # (B, Q, final_proj_dim)
+
+            # 7) Flatten queries into a single global conditioning vector
+            global_cond = pooled.reshape(B, self.num_queries * self.final_proj_dim)  # (B, Q*final_proj_dim)
+
+            return global_cond
+
 
     return SplatterBackbone(vae, img_h, img_w).to(device)

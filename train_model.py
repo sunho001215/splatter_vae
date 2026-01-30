@@ -1003,10 +1003,12 @@ def main():
     wandb_cfg = cfg.get("wandb", {})
     wandb_project = wandb_cfg.get("project", "MimicGen-SplatterVAE")
     wandb_entity = wandb_cfg.get("entity", None)
+    wamdb_run_name = wandb_cfg.get("run_name", None)
 
     wandb.init(
         project=wandb_project,
         entity=wandb_entity,
+        name=wamdb_run_name,
         config={
             # Log the most important hyperparams
             "dataset_path": dataset_path,

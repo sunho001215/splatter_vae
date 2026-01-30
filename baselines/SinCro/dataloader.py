@@ -162,10 +162,7 @@ class RobosuiteSinCroSequenceDataset(Dataset):
 
             cam_indices = [name_to_idx[n] for n in cam_names]
             Ks = intrinsics_all[cam_indices]  # [V,3,3]
-            wTc = extrinsics_wTc_all[cam_indices]  # [V,4,4]
-
-            # Convert world_T_cam to cam_T_world inverse -> camera-to-world
-            c2w = np.linalg.inv(wTc)  # [V,4,4]
+            c2w = extrinsics_wTc_all[cam_indices]  # [V,4,4]
 
             # ------------------------------------------------------------------
             # Load RGB frames for requested time window and cameras

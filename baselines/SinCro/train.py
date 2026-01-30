@@ -342,22 +342,85 @@ def forward_sincro_batch(
     latent_seq = latent.view(B, T, -1)   # [B, T, D_eff]
 
     # ------------------------------------------------------------------
-    # 3) Contrastive loss (anchor = first frame, positive = last frame)
+    # 3) Contrastive loss (original SinCro-style triplet loss)
     # ------------------------------------------------------------------
-    def l2_normalize(x, dim=-1, eps=1e-6):
-        return x / (x.norm(dim=dim, keepdim=True) + eps)
+    # Tokens for NeRF latent (keep as before)
+    latent_seq = latent.view(B, T, -1)   # [B, T, D_eff]
+    scene_latent = latent_seq[:, -1]     # [B, D_eff] used to condition NeRF
 
-    anchor_flat = l2_normalize(latent_seq[:, 0], dim=-1)   # [B, D]
-    pos_flat = l2_normalize(latent_seq[:, -1], dim=-1)     # [B, D]
+    # Anchor / positive are provided by the ViT encoder/decoder
+    # via internal attributes, like in the original SinCro code.
+    anchor_latent = latent_embed.input_feature    # [B, D_feat]
+    positive_latent = latent_embed.ref_feature    # [B, D_feat]
 
-    temperature = 0.1
-    logits_pos = (anchor_flat * pos_flat).sum(dim=-1, keepdim=True)  # [B, 1]
-    logits_neg = anchor_flat @ pos_flat.t()                          # [B, B]
-    logits = torch.cat([logits_pos, logits_neg], dim=1) / temperature
-    labels = torch.zeros(B, dtype=torch.long, device=device)
-    contrastive_loss = F.cross_entropy(logits, labels)
+    # Build negatives by shuffling the batch (approximation of original
+    # behavior where negatives come from different trajectories).
+    with torch.no_grad():
+        if B > 1:
+            # shift along batch dimension so each sample sees a different one
+            neg_primary = primary_images.roll(shifts=1, dims=0)  # [B, T, H, W, 3]
+            neg_ref = ref_images.roll(shifts=1, dims=0)          # [B, T, H, num_ref_view*W, 3]
+        else:
+            # if batch size is 1, fall back to self-negative (loss ~ 0)
+            neg_primary = primary_images
+            neg_ref = ref_images
 
-    scene_latent = latent_seq[:, -1]  # [B, D]  # used to condition NeRF
+        # Negative image encoding
+        negative_latent_img, negative_mask, negative_ids_restore = (
+            latent_embed.SinCro_image_encoder(
+                neg_primary,
+                mask_ratio=mask_ratio,
+                T=T,
+                is_ref=False,
+            )
+        )
+
+        # Negative reference encoding
+        neg_ref_views = torch.split(neg_ref, W, dim=3)   # list len=num_ref_view
+        negative_ref_for_encoder = torch.cat(neg_ref_views, dim=0)  # [num_ref_view*B, T, H, W, 3]
+
+        negative_ref_latent, _, _ = latent_embed.SinCro_image_encoder(
+            negative_ref_for_encoder,
+            mask_ratio=0.0,
+            T=T,
+            is_ref=True,
+        )
+
+        negative_ref_latent = rearrange(
+            negative_ref_latent[:, 1:, :],   # drop CLS
+            "b (t hw) d -> b t hw d",
+            t=T,
+        )[:, -1]  # [num_ref_view*B, H'*W', D]
+
+        negative_ref_latent = rearrange(
+            negative_ref_latent,
+            "(v b) hw d -> b (v hw) d",
+            b=B,
+        )  # [B, num_ref_view * H'*W', D]
+
+        # Negative state encoder pass; this will update latent_embed.input_feature
+        negative_latent_dec, _, _ = latent_embed.SinCro_state_encoder(
+            negative_latent_img,
+            negative_ref_latent,
+            negative_mask,
+            negative_ids_restore,
+        )
+        negative_latent = latent_embed.input_feature  # [B, D_feat]
+
+    # Squared L2 distance (as in original SinCro)
+    def distance(x1, x2):
+        diff = torch.abs(x1 - x2)
+        return torch.pow(diff, 2).sum(dim=1)  # [B]
+
+    margin = getattr(args, "enc_contrastive_margin", 2.0)
+    d_positive = distance(anchor_latent, positive_latent)
+    d_negative = distance(anchor_latent, negative_latent)
+
+    contrastive_loss_raw = torch.clamp(margin + d_positive - d_negative, min=0.0).mean()
+
+    # Weighting like original SinCro (0.0004) unless you override via args
+    contrastive_weight = getattr(args, "contrastive_weight", 4e-4)
+    contrastive_loss = contrastive_loss_raw * contrastive_weight
 
     # ------------------------------------------------------------------
     # 4) Reconstruction via NeRF (random target view)
