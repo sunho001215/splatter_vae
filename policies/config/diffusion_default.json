@@ -48,7 +48,7 @@
     "crop_is_random": true,
     "pretrained_backbone_weights": null,
     "use_group_norm": true,
-    "spatial_softmax_num_keypoints": 32,
+    "spatial_softmax_num_keypoints": 64,
     "use_separate_rgb_encoder_per_camera": false,
     "down_dims": [
         512,

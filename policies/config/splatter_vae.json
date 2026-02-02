@@ -2,7 +2,7 @@
     "type": "diffusion",
     "n_obs_steps": 2,
     "normalization_mapping": {
-        "VISUAL": "MEAN_STD",
+        "VISUAL": "IDENTITY",
         "STATE": "MIN_MAX",
         "ACTION": "MIN_MAX"
     },
@@ -41,7 +41,7 @@
     "n_action_steps": 8,
     "drop_n_last_frames": 7,
     "vision_backbone": "splatter_vae",
-    "splatter_vae_train_yaml": "/home/ws/ws/splatter_vae/config/default.yaml",
+    "splatter_vae_train_yaml": "/home/ws/ws/splatter_vae/config/default_old.yaml",
     "splatter_vae_filename": "/home/ws/ws/splatter_vae/checkpoints/robosuite-stack/step_00245000.pth",
     "crop_shape": null,
     "crop_is_random": true,
