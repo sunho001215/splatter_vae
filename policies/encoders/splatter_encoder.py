@@ -156,13 +156,79 @@ def make_splatter_custom_backbone(
             - SplatterVAE invariant branch produces token sequence:
                 tokens: (B, N_tokens, D_token)
 
-        Learnable part:
+        Learnable part (OTTER-style pooling):
             - LayerNorm on frozen tokens
-            - Learnable query tokens attend over frozen tokens (cross-attention pooling)
-            - Post-attn LayerNorm (over attn_dim)
-            - Output projection: LN + Linear (per-query), then flatten to a single vector
+            - Learnable query tokens attend over frozen tokens (cross-attn)
+            - Residual + FFN (Transformer-style) repeated num_layers times
+            - Output projection: LN + Linear (per-query), then flatten
                 global_cond: (B, num_queries * final_proj_dim)
         """
+
+        class CrossAttentionBlock(nn.Module):
+            """
+            A Perceiver/Q-Former style cross-attention block:
+            q = q + Attn(LN(q), LN(kv))
+            q = q + FFN(LN(q))
+            """
+            def __init__(
+                self,
+                *,
+                q_dim: int,
+                kv_dim: int,
+                num_heads: int,
+                mlp_ratio: float = 2.0,
+                dropout: float = 0.0,
+            ):
+                super().__init__()
+                self.q_ln = nn.LayerNorm(q_dim)
+                self.kv_ln = nn.LayerNorm(kv_dim)
+
+                # Query dim = q_dim; KV dim can differ (kv_dim).
+                self.attn = nn.MultiheadAttention(
+                    embed_dim=q_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    batch_first=True,
+                    kdim=kv_dim,
+                    vdim=kv_dim,
+                )
+
+                self.attn_drop = nn.Dropout(dropout)
+
+                self.ffn_ln = nn.LayerNorm(q_dim)
+                hidden = int(q_dim * mlp_ratio)
+                self.ffn = nn.Sequential(
+                    nn.Linear(q_dim, hidden),
+                    nn.GELU(),
+                    nn.Linear(hidden, q_dim),
+                )
+                self.ffn_drop = nn.Dropout(dropout)
+
+            def forward(
+                self,
+                q: torch.Tensor,                 # (B, Q, q_dim)
+                kv: torch.Tensor,                # (B, N, kv_dim)
+                key_padding_mask: Optional[torch.Tensor] = None,  # (B, N), True means "ignore"
+            ) -> torch.Tensor:
+                # Pre-norm
+                q_norm = self.q_ln(q)
+                kv_norm = self.kv_ln(kv)
+
+                # Cross-attention (queries attend to kv tokens)
+                attn_out, _ = self.attn(
+                    query=q_norm,
+                    key=kv_norm,
+                    value=kv_norm,
+                    key_padding_mask=key_padding_mask,
+                    need_weights=False,
+                )
+                q = q + self.attn_drop(attn_out)  # residual
+
+                # FFN (Transformer-style)
+                ffn_out = self.ffn(self.ffn_ln(q))
+                q = q + self.ffn_drop(ffn_out)    # residual
+
+                return q
 
         def __init__(
             self,
@@ -171,9 +237,12 @@ def make_splatter_custom_backbone(
             img_w: int,
             *,
             num_queries: int = 4,
-            final_proj_dim: int = 32,   # output dim per query
-            attn_dim: int = 128,
+            final_proj_dim: int = 32,    # output dim per query
+            attn_dim: int = 128,         # query token dim
             num_heads: int = 8,
+            num_layers: int = 2,         # OTTER-style: multiple cross-attn blocks
+            mlp_ratio: float = 2.0,
+            dropout: float = 0.0,
         ):
             super().__init__()
 
@@ -182,7 +251,7 @@ def make_splatter_custom_backbone(
             # -----------------------
             self.vae = vae_module
             self.vae.eval()
-            self.vae.requires_grad_(False)  # keep frozen
+            self.vae.requires_grad_(False)
 
             self.use_vq = hasattr(self.vae, "invariant_output_head") and (
                 self.vae.invariant_output_head is not None
@@ -199,94 +268,88 @@ def make_splatter_custom_backbone(
             # Learnable pooling + projection
             # -----------------------
             self.d_token = d_token
-            self.attn_dim = int(attn_dim) if attn_dim is not None else d_token
+            self.attn_dim = int(attn_dim)
             self.num_queries = int(num_queries)
             self.final_proj_dim = int(final_proj_dim)
 
-            # Normalize frozen tokens before attention (stability)
-            self.token_norm = nn.LayerNorm(d_token)
+            # Normalize frozen tokens before feeding into pooling (helps stability)
+            self.token_norm = nn.LayerNorm(self.d_token)
 
-            # Project tokens to attention dim if needed
-            self.kv_proj = (
-                nn.Identity()
-                if self.attn_dim == d_token
-                else nn.Linear(d_token, self.attn_dim, bias=False)
-            )
+            # Learnable query tokens: (1, Q, attn_dim) expanded to (B, Q, attn_dim)
+            self.query = nn.Parameter(torch.randn(1, self.num_queries, self.attn_dim) * 0.02)
 
-            # Learnable queries for cross-attention pooling
-            # Shape: (Q, C) expanded to (B, Q, C)
-            self.query = nn.Parameter(torch.randn(self.num_queries, self.attn_dim) * 0.02)
+            # OTTER-style stacked cross-attn blocks
+            self.blocks = nn.ModuleList([
+                SplatterBackbone.CrossAttentionBlock(
+                    q_dim=self.attn_dim,
+                    kv_dim=self.d_token,
+                    num_heads=int(num_heads),
+                    mlp_ratio=float(mlp_ratio),
+                    dropout=float(dropout),
+                )
+                for _ in range(int(num_layers))
+            ])
 
-            # Cross-attention: learned queries attend to frozen tokens
-            self.attn = nn.MultiheadAttention(
-                embed_dim=self.attn_dim,
-                num_heads=int(num_heads),
-                dropout=0.0,
-                batch_first=True,  # inputs are (B, L, C)
-            )
-
-            # Keep pooled as (B, Q, C) and normalize over C (=attn_dim)
-            self.post_attn_norm = nn.LayerNorm(self.attn_dim)
-
-            # Per-query projection: (B, Q, attn_dim) -> (B, Q, final_proj_dim)
+            # Output projection: LN + Linear (per query), then flatten
+            self.out_ln = nn.LayerNorm(self.attn_dim)
             self.out_proj = nn.Linear(self.attn_dim, self.final_proj_dim, bias=True)
 
-            # Output will be flattened: (B, Q * final_proj_dim)
-            self.feature_dim = self.final_proj_dim * self.num_queries
+            # (B, Q * final_proj_dim)
+            self.feature_dim = self.num_queries * self.final_proj_dim
 
         def _encode_invariant_tokens(self, x01: torch.Tensor) -> torch.Tensor:
             """
             Frozen token extraction from VAE.
             Returns tokens: (B, N, D_token).
             """
-            # Convert [0,1] -> [-1,1] (as in original code)
+            # Convert [0,1] -> [-1,1] (matches your existing code)
             x_vae = x01 * 2.0 - 1.0
 
             tokens = self.vae.invariant_encoder(x_vae)              # (B, N, *)
             emb = self.vae.invariant_encoder_output_proj(tokens)    # (B, N, D_token)
 
-            # Optional VQ/output head
+            # Optional VQ/output head (if present)
             if self.use_vq:
                 vq_out = self.vae.invariant_output_head(emb)
                 emb = vq_out[0] if isinstance(vq_out, (tuple, list)) else vq_out
 
             return emb
 
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
+        def forward(
+            self,
+            x: torch.Tensor,
+            key_padding_mask: Optional[torch.Tensor] = None,
+        ) -> torch.Tensor:
             """
             Args:
                 x: (B,3,H,W) in [0,1]
+                key_padding_mask: optional (B, N_tokens), True means "ignore token".
+                                (Usually None for dense ViT-like grids.)
             Returns:
                 global_cond: (B, num_queries * final_proj_dim)
             """
-            # 1) Frozen tokens (no grads into VAE)
+            # 1) Frozen tokens (no grad into VAE)
             with torch.no_grad():
                 tokens = self._encode_invariant_tokens(x)  # (B, N, D_token)
-
-            # Extra safety: ensure VAE stays frozen even if no_grad is removed upstream
             tokens = tokens.detach()
 
-            # 2) Normalize + project tokens for attention
-            tokens = self.token_norm(tokens)  # (B, N, D_token)
-            kv = self.kv_proj(tokens)         # (B, N, attn_dim)
+            # 2) Normalize frozen tokens
+            kv = self.token_norm(tokens)  # (B, N, D_token)
 
-            # 3) Build learned query batch
+            # 3) Expand learned queries for batch
             B = kv.shape[0]
-            q = self.query.unsqueeze(0).expand(B, -1, -1)  # (B, Q, attn_dim)
+            q = self.query.expand(B, -1, -1)  # (B, Q, attn_dim)
 
-            # 4) Cross-attention pooling
-            pooled, _ = self.attn(query=q, key=kv, value=kv, need_weights=False)  # (B, Q, attn_dim)
+            # 4) Stacked OTTER-style cross-attn blocks
+            for blk in self.blocks:
+                q = blk(q, kv, key_padding_mask=key_padding_mask)
 
-            # 5) Normalize pooled tokens in token shape (B, Q, C) so LN matches attn_dim
-            pooled = self.post_attn_norm(pooled)  # (B, Q, attn_dim)
+            # 5) LN + Linear output projection (per query)
+            q = self.out_ln(q)          # (B, Q, attn_dim)
+            q = self.out_proj(q)        # (B, Q, final_proj_dim)
 
-            # 6) Output projection (LN + Linear): already LN above, now Linear per query
-            pooled = self.out_proj(pooled)  # (B, Q, final_proj_dim)
-
-            # 7) Flatten queries into a single global conditioning vector
-            global_cond = pooled.reshape(B, self.num_queries * self.final_proj_dim)  # (B, Q*final_proj_dim)
-
+            # 6) Flatten queries into a single conditioning vector
+            global_cond = q.reshape(B, self.num_queries * self.final_proj_dim)  # (B, Q*final_proj_dim)
             return global_cond
-
 
     return SplatterBackbone(vae, img_h, img_w).to(device)
