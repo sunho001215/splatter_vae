@@ -149,18 +149,81 @@ def make_splatter_custom_backbone(
     # 7) Backbone: frozen token encoder + learnable MLP projection
     class SplatterBackbone(nn.Module):
         """
-        Input:
-            x: (B, 3, H, W) float in [0, 1]
-
-        Frozen part:
-            - SplatterVAE invariant branch produces token sequence:
-                tokens: (B, N_tokens, D_token)
-
-        Learnable part (MLP projection, no attention):
-            - LayerNorm on tokens
-            - Flatten tokens -> (B, N_tokens * D_token)
-            - Projection MLP -> (B, feature_dim)
+        Frozen VAE tokens (B, N, D_token)
+            -> LayerNorm
+            -> + trainable positional embedding (nn.Embedding) on KV tokens
+            -> Attention pooling with learnable queries (B, Q, attn_dim)
+            -> flatten pooled queries (B, Q*attn_dim)
+            -> LN + Linear -> global_cond (B, final_proj_dim)
         """
+
+        # -----------------------------
+        # Cross-Attention Block
+        # -----------------------------
+        class CrossAttentionBlock(nn.Module):
+            """
+            Cross-attention block:
+
+                q = q + Attn(LN(q), LN(kv))
+                q = q + FFN(LN(q))
+            """
+            def __init__(
+                self,
+                *,
+                q_dim: int,
+                kv_dim: int,
+                num_heads: int,
+                mlp_ratio: float = 2.0,
+                dropout: float = 0.0,
+            ):
+                super().__init__()
+                self.q_ln = nn.LayerNorm(q_dim)
+                self.kv_ln = nn.LayerNorm(kv_dim)
+
+                # Allow q_dim != kv_dim via kdim/vdim.
+                self.attn = nn.MultiheadAttention(
+                    embed_dim=q_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    batch_first=True,
+                    kdim=kv_dim,
+                    vdim=kv_dim,
+                )
+                self.attn_drop = nn.Dropout(dropout)
+
+                self.ffn_ln = nn.LayerNorm(q_dim)
+                hidden = int(q_dim * mlp_ratio)
+                self.ffn = nn.Sequential(
+                    nn.Linear(q_dim, hidden),
+                    nn.GELU(),
+                    nn.Linear(hidden, q_dim),
+                )
+                self.ffn_drop = nn.Dropout(dropout)
+
+            def forward(
+                self,
+                q: torch.Tensor,  # (B, Q, q_dim)
+                kv: torch.Tensor,  # (B, N, kv_dim)
+                key_padding_mask: Optional[torch.Tensor] = None,  # (B, N), True => ignore token
+            ) -> torch.Tensor:
+                # Pre-norm
+                q_norm = self.q_ln(q)
+                kv_norm = self.kv_ln(kv)
+
+                # Cross-attention
+                attn_out, _ = self.attn(
+                    query=q_norm,
+                    key=kv_norm,
+                    value=kv_norm,
+                    key_padding_mask=key_padding_mask,
+                    need_weights=False,
+                )
+                q = q + self.attn_drop(attn_out)  # residual
+
+                # FFN
+                ffn_out = self.ffn(self.ffn_ln(q))
+                q = q + self.ffn_drop(ffn_out)  # residual
+                return q
 
         def __init__(
             self,
@@ -168,125 +231,157 @@ def make_splatter_custom_backbone(
             img_h: int,
             img_w: int,
             *,
-            mlp_out_dim: int = 256,          # <-- set this to what DP expects (a.k.a. feature_dim)
-            mlp_hidden_dim: int = 1024,
-            mlp_layers: int = 2,             # 2 => Linear->GELU->Linear (common)
+            num_queries: int = 4,
+            attn_dim: int = 128,         # query token dim (internal pooled representation)
+            final_proj_dim: int = 128,   # FINAL output dim to the diffusion policy
+            num_heads: int = 8,
+            num_layers: int = 2,
+            mlp_ratio: float = 2.0,
             dropout: float = 0.0,
-            use_vq: Optional[bool] = None,   # override auto-detect if needed
         ):
             super().__init__()
 
             # -----------------------
-            # Frozen VAE
+            # Frozen VAE (no grads)
             # -----------------------
             self.vae = vae_module
             self.vae.eval()
             self.vae.requires_grad_(False)
 
-            # Whether to route through invariant_output_head (VQ or not)
-            auto_use_vq = hasattr(self.vae, "invariant_output_head") and (self.vae.invariant_output_head is not None)
-            self.use_vq = auto_use_vq if use_vq is None else bool(use_vq)
+            self.use_vq = hasattr(self.vae, "invariant_output_head") and (
+                self.vae.invariant_output_head is not None
+            )
 
-            # Infer token shape (N_tokens, D_token) with a dummy forward
+            # Infer token shape using a dummy input so we can size the positional embedding table.
             with torch.no_grad():
                 device = next(self.vae.parameters()).device
                 dummy = torch.zeros(1, 3, img_h, img_w, device=device)
-                tokens = self._encode_invariant_tokens(dummy)  # (1, N, D_token)
-                self.n_tokens = int(tokens.shape[1])
-                self.d_token = int(tokens.shape[2])
-
-            self.flat_dim = self.n_tokens * self.d_token
+                tok = self._encode_invariant_tokens(dummy)  # (1, N, D_token)
+                self.num_tokens = int(tok.shape[1])
+                self.d_token = int(tok.shape[2])
 
             # -----------------------
-            # Learnable projection (MLP)
+            # Pooling configuration
             # -----------------------
-            # Normalize each token feature before flattening (helps stability)
+            self.num_queries = int(num_queries)
+            self.attn_dim = int(attn_dim)
+            self.final_proj_dim = int(final_proj_dim)
+
+            # Normalize frozen tokens before adding positional embedding.
             self.token_norm = nn.LayerNorm(self.d_token)
 
-            # Build an MLP that maps flat_dim -> mlp_out_dim
-            self.feature_dim = int(mlp_out_dim)  # Exposed to consumers
+            # -----------------------
+            # Positional embedding (nn.Embedding)
+            # -----------------------
+            # This is trainable and adds an explicit "token order / location" signal to KV tokens.
+            self.kv_pos_embed = nn.Embedding(self.num_tokens, self.d_token)
+            nn.init.normal_(self.kv_pos_embed.weight, mean=0.0, std=0.02)
 
-            self.proj = self._make_mlp(
-                in_dim=self.flat_dim,
-                hidden_dim=int(mlp_hidden_dim),
-                out_dim=self.feature_dim,
-                num_layers=int(mlp_layers),
-                dropout=float(dropout),
+            # Precompute position indices [0..N-1] as a buffer.
+            # We slice this in forward in case N is smaller (should normally match exactly).
+            self.register_buffer(
+                "pos_ids",
+                torch.arange(self.num_tokens, dtype=torch.long).unsqueeze(0),  # (1, N)
+                persistent=False,
             )
 
-        def _make_mlp(
-            self,
-            *,
-            in_dim: int,
-            hidden_dim: int,
-            out_dim: int,
-            num_layers: int,
-            dropout: float,
-        ) -> nn.Module:
-            """
-            num_layers:
-                1 -> Linear(in_dim, out_dim)
-                2 -> Linear(in_dim, hidden_dim) + GELU + (Dropout) + Linear(hidden_dim, out_dim)
-                3+ -> (Linear+GELU+Dropout) repeated, ending with Linear(..., out_dim)
-            """
-            if num_layers <= 1:
-                return nn.Linear(in_dim, out_dim)
+            self.kv_pos_drop = nn.Dropout(dropout)
 
-            layers = []
-            d = in_dim
-            for i in range(num_layers - 1):
-                layers.append(nn.Linear(d, hidden_dim))
-                layers.append(nn.GELU())
-                if dropout > 0:
-                    layers.append(nn.Dropout(dropout))
-                d = hidden_dim
-            layers.append(nn.Linear(d, out_dim))
-            return nn.Sequential(*layers)
+            # -----------------------
+            # Learnable query tokens
+            # -----------------------
+            # (1, Q, attn_dim) -> expanded to (B, Q, attn_dim) in forward.
+            self.query = nn.Parameter(torch.randn(1, self.num_queries, self.attn_dim) * 0.02)
+
+            # Stacked cross-attention blocks
+            self.blocks = nn.ModuleList([
+                SplatterBackbone.CrossAttentionBlock(
+                    q_dim=self.attn_dim,
+                    kv_dim=self.d_token,
+                    num_heads=int(num_heads),
+                    mlp_ratio=float(mlp_ratio),
+                    dropout=float(dropout),
+                )
+                for _ in range(int(num_layers))
+            ])
+
+            # -----------------------
+            # Final output head: (B, Q*attn_dim) -> (B, final_proj_dim)
+            # -----------------------
+            self.out_ln = nn.LayerNorm(self.num_queries * self.attn_dim)
+            self.out_proj = nn.Linear(self.num_queries * self.attn_dim, self.final_proj_dim, bias=True)
+
+            # Expose final conditioning dimension
+            self.feature_dim = self.final_proj_dim
 
         def _encode_invariant_tokens(self, x01: torch.Tensor) -> torch.Tensor:
             """
             Frozen token extraction from VAE.
-            Returns:
-                tokens: (B, N_tokens, D_token)
+            Returns: (B, N, D_token)
             """
-            # Convert [0,1] -> [-1,1] (matches your current VAE usage)
+            # Match your existing preprocessing: [0,1] -> [-1,1]
             x_vae = x01 * 2.0 - 1.0
 
-            tokens = self.vae.invariant_encoder(x_vae)            # (B, N, *)
-            emb = self.vae.invariant_encoder_output_proj(tokens)  # (B, N, D_token)
+            tokens = self.vae.invariant_encoder(x_vae)              # (B, N, *)
+            emb = self.vae.invariant_encoder_output_proj(tokens)    # (B, N, D_token)
 
+            # Optional VQ/output head
             if self.use_vq:
                 vq_out = self.vae.invariant_output_head(emb)
                 emb = vq_out[0] if isinstance(vq_out, (tuple, list)) else vq_out
 
             return emb
 
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
+        def forward(
+            self,
+            x: torch.Tensor,
+            key_padding_mask: Optional[torch.Tensor] = None,
+        ) -> torch.Tensor:
             """
             Args:
-                x: (B, 3, H, W) in [0,1]
+                x: (B,3,H,W) in [0,1]
+                key_padding_mask: optional (B, N_tokens), True => ignore token in attention.
+                                Usually None for dense vision tokens.
+
             Returns:
-                feat: (B, feature_dim)
+                global_cond: (B, final_proj_dim)
             """
-            # 1) Frozen tokens from VAE
+            # 1) Get frozen tokens from VAE (no grads)
             with torch.no_grad():
-                tokens = self._encode_invariant_tokens(x)  # (B, N, D_token)
-            tokens = tokens.detach()
+                kv = self._encode_invariant_tokens(x)  # (B, N, D_token)
+            kv = kv.detach()
 
-            # 2) Normalize tokens, then flatten
-            tokens = self.token_norm(tokens)               # (B, N, D_token)
-            flat = tokens.reshape(tokens.shape[0], -1)     # (B, N*D_token)
+            B, N, D = kv.shape
 
-            # Safety: if token count changes due to resolution mismatch, fail loudly
-            if flat.shape[1] != self.flat_dim:
-                raise RuntimeError(
-                    f"Unexpected flattened dim: got {flat.shape[1]}, expected {self.flat_dim}. "
-                    f"(N_tokens={tokens.shape[1]}, D_token={tokens.shape[2]}). "
-                    "Check crop_shape / image resolution vs VAE config."
+            # Sanity: positional embedding table was built for a fixed N (based on img_h/img_w).
+            # If N changes, you must rebuild or use a different PE strategy.
+            if N > self.num_tokens:
+                raise ValueError(
+                    f"Got N_tokens={N}, but positional embedding was built for num_tokens={self.num_tokens}. "
+                    f"Token count must be consistent."
                 )
 
-            # 3) MLP projection
-            feat = self.proj(flat)                         # (B, feature_dim)
-            return feat
+            # 2) Normalize KV tokens
+            kv = self.token_norm(kv)  # (B, N, D_token)
+
+            # 3) Add trainable positional embedding to KV tokens
+            #    pos_ids: (1, N) -> pe: (1, N, D_token) -> broadcast to (B, N, D_token)
+            pos_ids = self.pos_ids[:, :N].to(kv.device)          # (1, N)
+            pe = self.kv_pos_embed(pos_ids).to(kv.dtype)         # (1, N, D_token)
+            kv = self.kv_pos_drop(kv + pe)                       # (B, N, D_token)
+
+            # 4) Initialize learnable query tokens for the batch
+            q = self.query.expand(B, -1, -1)  # (B, Q, attn_dim)
+
+            # 5) Stacked cross-attention pooling
+            for blk in self.blocks:
+                q = blk(q, kv, key_padding_mask=key_padding_mask)  # (B, Q, attn_dim)
+
+            # 6) Flatten pooled queries and project to final global conditioning vector
+            q_flat = q.reshape(B, self.num_queries * self.attn_dim)  # (B, Q*attn_dim)
+            q_flat = self.out_ln(q_flat)
+            global_cond = self.out_proj(q_flat)                      # (B, final_proj_dim)
+
+            return global_cond
 
     return SplatterBackbone(vae, img_h, img_w).to(device)
