@@ -75,13 +75,9 @@ def reduce_gripper(grip_raw: np.ndarray) -> np.ndarray:
 @dataclass(frozen=True)
 class WindowSpec:
     """
-    Defines which timesteps are used for:
-      - observation frames / states (e.g., [-1, 0] for two consecutive frames)
-      - action targets (e.g., [-1..14] for 16 steps)
+    Current observation only, and a fixed future horizon.
     """
-    obs_indices: List[int]
-    act_indices: List[int]
-
+    horizon: int
 
 class RobosuiteHDF5DiffusionDataset(Dataset):
     """
@@ -137,26 +133,26 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
             if len(self.camera_names) != 6:
                 raise RuntimeError(f"Expected 6 cameras, got {len(self.camera_names)}: {self.camera_names}")
 
-            # Determine which center_t indices are valid.
-            min_obs, max_obs = min(self.window.obs_indices), max(self.window.obs_indices)
-            min_act, max_act = min(self.window.act_indices), max(self.window.act_indices)
-
-            # A center_t is valid if all requested indices are within [0, T-1].
+            # Build the index
+            horizon = int(self.window.horizon)
             for dn in demo_names:
                 demo = data_grp[dn]
                 if "obs" not in demo:
                     continue
                 obs_grp = demo["obs"]
 
-                # Use the first camera stream to read T,H,W.
                 cam0 = self.camera_names[0]
                 key0 = self._resolve_cam_rgb_key(obs_grp, cam0)
                 if key0 is None:
                     continue
                 T = int(obs_grp[key0].shape[0])
 
-                t_min = -min_obs
-                t_max = T - 1 - max_obs
+                # center_t must allow:
+                #   - obs at center_t (always valid)
+                #   - actions at center_t..center_t+horizon-1
+                t_min = 0
+                t_max = T - horizon  # inclusive start max is T-horizon
+
                 if t_max < t_min:
                     continue
 
@@ -311,16 +307,6 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
     # ------------------------- main access -------------------------
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        """
-        Returns a dict that LeRobot DiffusionPolicy can consume directly.
-
-        Required keys for DiffusionModel.compute_loss include:
-        - "observation.state"
-        - "action"
-        - "action_is_pad"   (padding mask; False where action is real)
-        LeRobot asserts these keys exist. Since we only sample valid full windows,
-        we set action_is_pad = all False.
-        """
         self._ensure_open_and_rng()
         assert self._h5 is not None and self._rng is not None
 
@@ -330,53 +316,49 @@ class RobosuiteHDF5DiffusionDataset(Dataset):
         env_obs_grp = demo["obs_env"]
         actions_ds = demo["actions"]
 
-        # ---- Randomly pick one camera among the 6 ----
+        T = int(actions_ds.shape[0])
+        horizon = int(self.window.horizon)
+
+        # ---- Choose cameras ----
         cam = self.camera_names[int(self._rng.integers(0, len(self.camera_names)))]
+
+        # ---- Load current images at center_t for each selected camera ----
+        imgs = []
         rgb_key = self._resolve_cam_rgb_key(obs_grp, cam)
         if rgb_key is None:
             raise KeyError(f"Could not find RGB dataset for camera '{cam}' in demo '{demo_name}'")
-
         rgb_ds = obs_grp[rgb_key]  # (T,H,W,3) uint8
-        T, H, W = int(rgb_ds.shape[0]), int(rgb_ds.shape[1]), int(rgb_ds.shape[2])
 
-        # Observations: e.g. [-1,0]
-        obs_t = [center_t + di for di in self.window.obs_indices]
-        obs_imgs = np.asarray(rgb_ds[obs_t], dtype=np.uint8)  # (n_obs,H,W,3)
-
-        # (2,3,ch,cw) float in [0,1]
-        obs_img_t = torch.from_numpy(obs_imgs).permute(0, 3, 1, 2).contiguous().float() / 255.0
+        # (V,3,H,W) float in [0,1]
+        obs_img = np.asarray(rgb_ds[center_t], dtype=np.uint8)  # (H,W,3)
+        obs_img_t = torch.from_numpy(obs_img).permute(2, 0, 1).contiguous().float() / 255.0  # (3,H,W)
 
         # ---- obs_env keys ----
         pos_k, quat_k, grip_k = pick_obs_keys(env_obs_grp)
 
-        # observation.state: (n_obs, 10)
-        # Use gripper *state* from obs_env (not action command)
+        # observation.state: (10,) using gripper *state*
         obs_state = self._load_pose10_seq_abs_with_grip_state(
-            env_obs_grp, pos_k, quat_k, grip_k, obs_t
+            env_obs_grp, pos_k, quat_k, grip_k, [center_t]
         )
-        obs_state_t = torch.from_numpy(obs_state).float()
+        obs_state_t = torch.from_numpy(obs_state).float().squeeze(0)  # (10,)
 
-        # Action targets timesteps (length == horizon)
-        act_t_raw = [center_t + di for di in self.window.act_indices]
+        # ---- Action targets: center_t .. center_t+horizon-1 (no clamping) ----
+        act_t = list(range(center_t, center_t + horizon))
+        # safety assert (index already guarantees this)
+        assert act_t[-1] < T
 
-        # Replicate last timestep (T-1) for out-of-range action indices
-        act_t = self._clamp_indices_to_last(act_t_raw, T)
-
-        # Gripper command for these timesteps (safe read even if act_t has duplicates)
-        act_grip_cmd = self._h5_take(actions_ds, act_t, col=-1).astype(np.float64)
+        act_grip_cmd = self._h5_take(actions_ds, act_t, col=-1).astype(np.float64)  # (H,)
 
         act_vec = self._load_pose10_seq_abs_with_grip_cmd(
             env_obs_grp, pos_k, quat_k, act_grip_cmd, act_t
         )
-        act_torch = torch.from_numpy(act_vec).float()
+        act_torch = torch.from_numpy(act_vec).float()  # (H,10)
 
-        # Always set action_is_pad = False (no padding is ignored)
-        action_is_pad = torch.zeros((len(self.window.act_indices),), dtype=torch.bool)
+        action_is_pad = torch.zeros((horizon,), dtype=torch.bool)
 
         return {
-            "observation.image": obs_img_t,
-            "observation.state": obs_state_t,
-            "action": act_torch,
+            "observation.image": obs_img_t,    # (3,H,W)
+            "observation.state": obs_state_t,  # (10,)
+            "action": act_torch,              # (H,10)
             "action_is_pad": action_is_pad,
         }
-

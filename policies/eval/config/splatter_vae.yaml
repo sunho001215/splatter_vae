@@ -1,0 +1,49 @@
+device: cuda
+seed: 0
+
+training:
+  yaml_path: ./policies/config/splatter_vae.yaml
+
+checkpoint:
+  path: ./checkpoints/splatter_vae_aloha_unleashed/stack/policy_step_00090000.pt
+
+# Optional overrides applied on top of training yaml
+model_overrides: {}
+
+env:
+  name: Stack
+  robot: Panda
+  control_freq: 10.0
+  max_steps: 300
+  trials: 1000
+  render: true
+  show_window: true
+
+camera:
+  name: eval_cam
+  img_h: 224
+  img_w: 224
+  spherical:
+    r: 0.7
+    theta: 45.0
+    phi: 0.0
+    lookat: [0.0, 0.0, 0.8]
+    up: [0.0, 0.0, 1.0]
+    degrees: true
+    fovy: 45.0
+
+execution:
+  pred_horizon: 16
+  exec_horizon: 8
+  action_dim: 10
+  proprio_dim: 10
+
+  # scaling factors for action components
+  dpos_scale: 0.024
+  drot_scale: 0.212
+
+inference:
+  ode_steps: 10
+  method: euler
+  use_flow_matching_solver: true 
+  noise_std: 1.0

@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "gsplat",
-    "lerobot",
     "fused-ssim",
     "cython>=0.29.37",
     "opencv-python>=4.11.0.86",
@@ -29,6 +28,7 @@ dependencies = [
     "wandb>=0.24.0",
     "transformers>=4.57.3",
     "tensorboard>=2.20.0",
+    "flow-matching>=1.0.10",
 ]
 
 [tool.uv.extra-build-dependencies]
@@ -38,4 +38,3 @@ fused-ssim = ["torch", "torchvision"]
 [tool.uv.sources]
 gsplat = { git = "https://github.com/nerfstudio-project/gsplat.git" }
 fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim" }
-lerobot = { path = "policies/lerobot/", editable = true }

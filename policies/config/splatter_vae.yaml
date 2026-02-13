@@ -1,0 +1,98 @@
+seed: 0
+device: cuda:1
+
+data:
+  hdf5_path: ../../data/robosuite/stack.hdf5
+  batch_size: 256
+  num_workers: 8
+  pin_memory: true
+  pred_horizon: 16
+
+vision:
+  # switch here: "splatter_vae" or "resnet50"
+  name: splatter_vae
+
+  # common image shape (must match how SplatterVAE was trained)
+  img_height: 224
+  img_width: 224
+
+  # SplatterVAE-specific config
+  splatter_vae:
+    checkpoint_path: "./checkpoints/robosuite-stack/step_00245000.pth"
+
+    # Swin backbone hyperparameters
+    swin:
+      # Swin-Tiny architecture
+      embed_dim: 96          # C
+      depths: [2, 2, 6, 2]   # layers per stage
+      num_heads: [3, 6, 12, 24]
+      # Image & patching
+      patch_size: 4 
+      window_size: 7
+      # Standard Swin defaults
+      mlp_ratio: 4.0
+      qkv_bias: true
+      drop_rate: 0.0
+      attn_drop_rate: 0.0
+      drop_path_rate: 0.1
+      # Other options
+      ape: false
+      patch_norm: true
+      use_checkpoint: false
+      pretrained_window_sizes: [0, 0, 0, 0]
+    
+    # Codebook hyperparameters
+    codebook:
+      invariant:
+        n_embed: 512
+        embed_dim: 64
+        beta: 0.25
+      dependent:
+        n_embed: 512
+        embed_dim: 64
+        beta: 0.25
+    
+    # Overall model hyperparameters
+    model:
+      fusion_style: plus 
+      use_dependent_vq: true
+      is_dependent_ae: false
+      use_invariant_vq: true
+      is_invariant_ae: false
+
+policy:
+  proprio_dim: 10
+  action_dim: 10
+  pred_horizon: 16   # IMPORTANT
+
+  d_model: 512
+  dropout: 0.1
+
+  enc_layers: 12
+  enc_heads: 8
+  enc_ff_mult: 4
+
+  dec_layers: 8
+  dec_heads: 8
+  dec_ff_mult: 4
+
+  t_embed_dim: 128
+  proprio_token: true
+
+optim:
+  lr: 1.0e-4
+  weight_decay: 1.0e-3
+  warmup_steps: 5000
+  max_steps: 400000
+  grad_clip_norm: 1.0
+
+logging:
+  log_every: 50
+  ckpt_every: 10000
+  out_dir: ./checkpoints/splatter_vae_aloha_unleashed/stack/
+
+wandb:
+  enabled: true
+  project: aloha-unleashed-policy
+  entity: null
+  run_name: robosuite-stack-splatter-vae

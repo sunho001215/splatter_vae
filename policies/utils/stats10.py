@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from .pose10 import pose10_from_obs
-from .dataset_hdf5 import reduce_gripper
+from .dataloader import reduce_gripper
 
 
 def _pick_env_keys(env_obs_grp) -> tuple[str, str, str] | None:

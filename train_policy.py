@@ -1,263 +1,240 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from policies.utils.config_loader import load_diffusion_config_json
-from policies.utils.dataset_hdf5 import RobosuiteHDF5DiffusionDataset, WindowSpec
-from policies.utils.stats10 import (
-    estimate_pose10_stats,
-    estimate_pose10_action_stats_from_actions,
-    build_dataset_stats_for_lerobot
-)
-from policies.encoders.splatter_encoder import make_splatter_custom_backbone
+import wandb
+import yaml
 
-from utils.general_utils import set_random_seed, read_json
+# Custom imports
+from policies.models.policy import PolicyConfig, AlohaUnleashedFlowPolicy
+from policies.models.vision import build_vision_encoder
+from policies.utils.dataloader import RobosuiteHDF5DiffusionDataset, WindowSpec
 
-from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
+# flow_matching imports
+from flow_matching.path import CondOTProbPath
+
+def load_yaml(path: str) -> Dict[str, Any]:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
 
-def _make_window_from_cfg(cfg: Any) -> WindowSpec:
+def make_dataloader(cfg: Dict[str, Any]) -> DataLoader:
     """
-    Build dataset temporal indices from the diffusion config.
-
-    Typical diffusion policy defaults:
-      n_obs_steps = 2  -> obs_indices = [-1, 0]
-      horizon     = 16 -> act_indices = [-1, 0, ..., 14] (len=16)
-
-    This keeps your dataset aligned with what the policy expects.
+    Build dataloader that matches the horizon-based window spec:
+      WindowSpec(horizon=cfg.policy.pred_horizon)
     """
-    n_obs_steps = int(getattr(cfg, "n_obs_steps", 2))
-    horizon = int(getattr(cfg, "horizon", 16))
+    data_cfg = cfg["data"]
+    horizon = int(cfg["policy"]["pred_horizon"])
 
-    # [-n_obs_steps+1, ..., 0]
-    obs_indices = list(range(-n_obs_steps + 1, 1))
-    # [-1, 0, ..., horizon-2]  length=horizon
-    act_indices = list(range(-1, horizon - 1))
-
-    return WindowSpec(obs_indices=obs_indices, act_indices=act_indices)
-
-
-def _build_optimizer_from_cfg(cfg: Any, policy: torch.nn.Module) -> torch.optim.Optimizer:
-    """
-    Your config.json includes optimizer hyperparams; use them if present.
-
-    Note: LeRobot's own "example 3" constructs the optimizer in code. 
-    Some LeRobot training pipelines (e.g. scripts/train.py) may consume these fields,
-    but for a standalone script it's normal to instantiate the optimizer yourself.
-    """
-    lr = float(getattr(cfg, "optimizer_lr", 1e-4))
-    betas = getattr(cfg, "optimizer_betas", (0.95, 0.999))
-    eps = float(getattr(cfg, "optimizer_eps", 1e-8))
-    wd = float(getattr(cfg, "optimizer_weight_decay", 0.0))
-
-    # Ensure betas is a tuple of floats
-    betas = (float(betas[0]), float(betas[1]))
-
-    return torch.optim.Adam(policy.parameters(), lr=lr, betas=betas, eps=eps, weight_decay=wd)
-
-
-def _build_scheduler_from_cfg(
-    cfg: Any,
-    optimizer: torch.optim.Optimizer,
-    total_steps: int,
-):
-    """
-    Minimal scheduler support to match common LeRobot configs:
-      - scheduler_name: "cosine"
-      - scheduler_warmup_steps: int
-
-    If transformers is available, we use its warmup+cosine scheduler.
-    Otherwise, we fall back to a simple cosine schedule without warmup.
-    """
-    name = str(getattr(cfg, "scheduler_name", "none")).lower()
-    warmup = int(getattr(cfg, "scheduler_warmup_steps", 0))
-
-    if name in ("none", "null", ""):
-        return None
-
-    if name == "cosine":
-        try:
-            from transformers import get_cosine_schedule_with_warmup
-
-            return get_cosine_schedule_with_warmup(
-                optimizer=optimizer,
-                num_warmup_steps=warmup,
-                num_training_steps=total_steps,
-            )
-        except Exception:
-            # Fallback: cosine without warmup
-            return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, total_steps))
-
-    # Unknown scheduler -> no scheduler
-    return None
-
-def _extract_loss(policy_out: Any) -> torch.Tensor:
-    if isinstance(policy_out, tuple) and len(policy_out) >= 1:
-        return policy_out[0]
-    if isinstance(policy_out, dict) and "loss" in policy_out:
-        return policy_out["loss"]
-    raise RuntimeError(f"Unsupported policy output type: {type(policy_out)}")
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--hdf5", type=str, required=True)
-    ap.add_argument("--config_json", type=str, required=True, help="Path to DiffusionPolicy config.json")
-    ap.add_argument("--out_dir", type=str, default="checkpoints/diffusion_policy/run1")
-    ap.add_argument("--seed", type=int, default=42)
-
-    # Epoch-based training
-    ap.add_argument("--train_epochs", type=int, default=3000)
-    ap.add_argument("--batch_size", type=int, default=64)
-    ap.add_argument("--num_workers", type=int, default=4)
-    ap.add_argument("--log_every", type=int, default=50)
-    ap.add_argument("--save_every_epoch", type=int, default=100)
-
-    # Device select (single-GPU selection)
-    ap.add_argument("--device", type=str, default="cuda:0", help="e.g. cuda:0, cuda:1, or cpu")
-
-    # Stats cache
-    ap.add_argument("--max_stat_frames", type=int, default=200_000)
-    ap.add_argument("--stats_cache", type=str, default="")
-
-    args = ap.parse_args()
-    set_random_seed(args.seed)
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    device = torch.device(args.device if torch.cuda.is_available() or "cpu" in args.device else "cpu")
-    print(f"[info] device={device}")
-
-    # -------------------- Load DiffusionConfig from JSON --------------------
-    # Override config device/use_amp here if you want CLI to win.
-    cfg, cfg_raw = load_diffusion_config_json(
-        args.config_json
-    )
-    cfg_raw_dict = read_json(Path(args.config_json))
-
-    # Window (obs/action temporal indexing) derived from cfg
-    window = _make_window_from_cfg(cfg)
-
-    # -------------------- Dataset + DataLoader (NO CROPS HERE) --------------------
-    dataset = RobosuiteHDF5DiffusionDataset(
-        hdf5_path=args.hdf5,
-        window=window,
-        seed=args.seed,
+    ds = RobosuiteHDF5DiffusionDataset(
+        hdf5_path=data_cfg["hdf5_path"],
+        window=WindowSpec(horizon=horizon),
+        camera_names=data_cfg.get("camera_names", None),
+        seed=int(cfg.get("seed", 0)),
     )
 
-    dataloader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
+    dl = DataLoader(
+        ds,
+        batch_size=int(data_cfg["batch_size"]),
         shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=(device.type == "cuda"),
+        num_workers=int(data_cfg.get("num_workers", 4)),
+        pin_memory=bool(data_cfg.get("pin_memory", True)),
         drop_last=True,
     )
+    return dl
 
-    # -------------------- Dataset stats for normalization --------------------
-    stats_cache_path = Path(args.stats_cache) if args.stats_cache else (out_dir / "dataset_stats.pt")
-    if stats_cache_path.exists():
-        print(f"[stats] loading cached stats from: {stats_cache_path}")
-        dataset_stats = torch.load(stats_cache_path, map_location="cpu")
+
+def build_policy(cfg: Dict[str, Any], device: torch.device) -> AlohaUnleashedFlowPolicy:
+    """
+    Build vision encoder + transformer policy.
+    Vision encoder is selected inside build_vision_encoder(cfg).
+    """
+    vision = build_vision_encoder(cfg).to(device)
+
+    pcfg = PolicyConfig(**cfg["policy"])
+    policy = AlohaUnleashedFlowPolicy(cfg=pcfg, vision=vision).to(device)
+    return policy
+
+
+def apply_lr_warmup(optimizer: torch.optim.Optimizer, base_lr: float, step: int, warmup_steps: int) -> float:
+    """
+    Linear warmup to base_lr for warmup_steps.
+    Returns the LR used.
+    """
+    if warmup_steps <= 0:
+        lr = base_lr
+    elif step < warmup_steps:
+        lr = base_lr * float(step + 1) / float(warmup_steps)
     else:
-        print(f"[stats] computing 10D stats (max_frames={args.max_stat_frames}) ...")
-        state_stats = estimate_pose10_stats(args.hdf5, max_frames=args.max_stat_frames)
-        action_stats = estimate_pose10_action_stats_from_actions(args.hdf5, max_frames=args.max_stat_frames)
-        dataset_stats = build_dataset_stats_for_lerobot(state_stats, action_stats)
-        torch.save(dataset_stats, stats_cache_path)
-        print(f"[stats] saved stats to: {stats_cache_path}")
+        lr = base_lr
 
-    # -------------------- Policy --------------------
-    cfg_raw_dict = read_json(Path(args.config_json))
+    for pg in optimizer.param_groups:
+        pg["lr"] = lr
+    return lr
 
-    # Custom vision backbone
-    vision_backbone_name = cfg_raw_dict.get("vision_backbone", "").lower()
-    if vision_backbone_name.startswith("resnet"):
-        custom_backbone = None
-        print(f"[info] using standard resnet backbone: {vision_backbone_name}")
-    elif vision_backbone_name == "splatter_vae":
-        custom_backbone = make_splatter_custom_backbone(
-            dp_config=cfg,                          # DiffusionConfig object
-            cfg_raw=cfg_raw_dict,                   # raw dict from config.json
-            base_dir=Path(args.config_json).parent, # resolve YAML/CKPT relative to config.json dir
-            device=device,
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to YAML config.")
+    args = parser.parse_args()
+
+    cfg = load_yaml(args.config)
+
+    # Device
+    device = torch.device(cfg.get("device", "cpu"))
+
+    # wandb
+    wb_cfg = cfg.get("wandb", {})
+    use_wandb = bool(wb_cfg.get("enabled", True))
+    if use_wandb:
+        wandb.init(
+            project=str(wb_cfg.get("project", "aloha-unleashed-rectified-flow")),
+            entity=wb_cfg.get("entity", None),
+            name=wb_cfg.get("run_name", None),
+            config=cfg,
         )
-        print(f"[info] using SplatterVAE custom backbone")
-    
-    # Instantiate policy
-    policy = DiffusionPolicy(
-        cfg,
-        custom_vision_backbone=custom_backbone,
-        dataset_stats=dataset_stats,
-    ).to(device)
-    # Train mode
+
+    # Data / model
+    dl = make_dataloader(cfg)
+    policy = build_policy(cfg, device)
+
+    # Rectified Flow probability path (straight-line / CondOT)
+    prob_path = CondOTProbPath()
+
+    # Optimizer
+    optim_cfg = cfg["optim"]
+    base_lr = float(optim_cfg["lr"])
+    weight_decay = float(optim_cfg.get("weight_decay", 0.0))
+    warmup_steps = int(optim_cfg.get("warmup_steps", 0))
+    grad_clip = float(optim_cfg.get("grad_clip_norm", 1.0))
+    max_steps = int(optim_cfg.get("max_steps", 200_000))
+
+    optimizer = torch.optim.AdamW(
+        [p for p in policy.parameters() if p.requires_grad],
+        lr=base_lr,
+        weight_decay=weight_decay,
+    )
+
+    # Logging / checkpointing
+    log_cfg = cfg.get("logging", {})
+    log_every = int(log_cfg.get("log_every", 50))
+    ckpt_every = int(log_cfg.get("ckpt_every", 5000))
+    out_dir = str(log_cfg.get("out_dir", "./runs/rectified_flow"))
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Training loop
     policy.train()
+    step = 0
+    start_time = time.time()
 
-    # -------------------- Optimizer/Scheduler --------------------
-    # LeRobot’s standalone example constructs optimizer in code. 
-    optimizer = _build_optimizer_from_cfg(cfg, policy)
+    while step < max_steps:
+        for batch in dl:
+            if step >= max_steps:
+                break
 
-    total_steps = len(dataloader) * int(args.train_epochs)
-    scheduler = _build_scheduler_from_cfg(cfg, optimizer, total_steps)
+            # -----------------------------
+            # Load batch (matches dataloader)
+            # -----------------------------
+            obs_img = batch["observation.image"].to(device)     # (B,V,3,H,W)
+            obs_state = batch["observation.state"].to(device)   # (B,P)
+            x1 = batch["action"].to(device)                     # (B,Horizon,A)
 
-    # AMP setting usually exists in config.json ("use_amp"), but we guard it.
-    use_amp = (device.type == "cuda") and bool(getattr(cfg, "use_amp", False))
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+            # Encode observation once
+            obs_memory = policy.encode_obs(obs_img, obs_state)
 
-    # -------------------- Training loop --------------------
-    global_step = 0
-    for epoch in range(1, args.train_epochs + 1):
-        running_loss = 0.0
-        n_batches = 0
+            # -----------------------------
+            # Rectified Flow training sample
+            # -----------------------------
+            # Source distribution sample (Gaussian noise)
+            x0 = torch.randn_like(x1)
 
-        for batch in dataloader:
-            batch = {
-                k: (v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v)
-                for k, v in batch.items()
-            }
+            # Sample times t ~ Uniform(0,1) per batch element
+            B = x1.shape[0]
+            t = torch.rand((B,), device=device)
 
+            # CondOTProbPath gives x_t and target velocity dx_t/dt
+            # PathSample docs: x_t and dx_t are provided. (Rectified Flow target) 
+            ps = prob_path.sample(x_0=x0, x_1=x1, t=t)
+            x_t = ps.x_t.to(device)
+            v_target = ps.dx_t.to(device)
+
+            # Predict velocity field from policy
+            v_pred = policy.predict_velocity(x_t=x_t, t=t, obs_memory=obs_memory)
+
+            # MSE loss on velocities
+            loss = F.mse_loss(v_pred, v_target)
+
+            # -----------------------------
+            # Optimize
+            # -----------------------------
             optimizer.zero_grad(set_to_none=True)
+            loss.backward()
 
-            with torch.amp.autocast("cuda", enabled=use_amp):
-                out = policy.forward(batch)
-                loss = _extract_loss(out)
+            if grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(policy.parameters(), grad_clip)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            lr = apply_lr_warmup(optimizer, base_lr, step, warmup_steps)
+            optimizer.step()
 
-            if scheduler is not None:
-                scheduler.step()
+            # -----------------------------
+            # Logging
+            # -----------------------------
+            if (step % log_every) == 0:
+                elapsed = max(time.time() - start_time, 1e-9)
+                steps_per_sec = float(step + 1) / elapsed
 
-            running_loss += float(loss.item())
-            n_batches += 1
+                logs = {
+                    "train/loss_rectified_mse": float(loss.item()),
+                    "train/lr": float(lr),
+                    "train/steps_per_sec": steps_per_sec,
+                    "train/step": step,
+                }
 
-            if global_step % args.log_every == 0:
-                print(f"[train] epoch={epoch:04d} step={global_step:08d} loss={loss.item():.4f}")
+                if use_wandb:
+                    wandb.log(logs, step=step)
+                else:
+                    print(logs)
 
-            global_step += 1
+            # -----------------------------
+            # Checkpoint
+            # -----------------------------
+            if (step % ckpt_every) == 0 and step > 0:
+                ckpt_path = os.path.join(out_dir, f"policy_step_{step:08d}.pt")
+                torch.save(
+                    {
+                        "policy_state_dict": policy.state_dict(),
+                        "step": step,
+                        "config": cfg,
+                    },
+                    ckpt_path,
+                )
+                if use_wandb:
+                    wandb.log({"train/ckpt_saved": 1}, step=step)
 
-        avg_loss = running_loss / max(1, n_batches)
-        print(f"[epoch] epoch={epoch:04d} avg_loss={avg_loss:.4f} batches={n_batches}")
+            step += 1
 
-        do_save = (args.save_every_epoch > 0 and epoch % args.save_every_epoch == 0) or (epoch == args.train_epochs)
-        if do_save:
-            ckpt_dir = out_dir / f"epoch_{epoch:04d}"
-            ckpt_dir.mkdir(parents=True, exist_ok=True)
+    # Final save
+    final_path = os.path.join(out_dir, "policy_final.pt")
+    torch.save(
+        {
+            "policy_state_dict": policy.state_dict(),
+            "step": step,
+            "config": cfg,
+        },
+        final_path,
+    )
 
-            policy.save_pretrained(ckpt_dir)
-            torch.save(dataset_stats, ckpt_dir / "dataset_stats.pt")
-
-            print(f"[save] saved checkpoint to: {ckpt_dir}")
-
-    print(f"[DONE] training finished. outputs at: {out_dir}")
+    if use_wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":

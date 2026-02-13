@@ -1,0 +1,59 @@
+seed: 0
+device: cuda:1
+
+data:
+  hdf5_path: ../../data/robosuite/stack.hdf5
+  batch_size: 256
+  num_workers: 8
+  pin_memory: true
+  pred_horizon: 16
+
+vision:
+  name: resnet50
+
+  # common image shape (must match how SplatterVAE was trained)
+  img_height: 200
+  img_width: 200
+
+  # SplatterVAE-specific config
+  resnet50:
+    pretrained: true
+    stage4_tokens: true
+    freeze: false
+
+policy:
+  proprio_dim: 10
+  action_dim: 10
+  pred_horizon: 16
+
+  d_model: 512
+  dropout: 0.1
+
+  enc_layers: 12
+  enc_heads: 8
+  enc_ff_mult: 4
+
+  dec_layers: 8
+  dec_heads: 8
+  dec_ff_mult: 4
+
+  t_embed_dim: 128
+  proprio_token: true
+
+optim:
+  lr: 1.0e-4
+  weight_decay: 1.0e-3
+  warmup_steps: 5000
+  max_steps: 400000
+  grad_clip_norm: 1.0
+
+logging:
+  log_every: 50
+  ckpt_every: 10000
+  out_dir: ./checkpoints/cnn_w_crop_aloha_unleashed/stack/
+
+wandb:
+  enabled: true
+  project: aloha-unleashed-policy
+  entity: null
+  run_name: robosuite-stack-cnn-w-crop
