@@ -2,10 +2,10 @@ device: cuda
 seed: 0
 
 training:
-  yaml_path: ./policies/config/splatter_vae.yaml
+  yaml_path: ./policies/config/cnn_w_crop.yaml
 
 checkpoint:
-  path: ./checkpoints/splatter_vae_aloha_unleashed/stack/policy_step_00200000.pt
+  path: ./checkpoints/cnn_w_crop_aloha_unleashed/stack/policy_step_00100000.pt
 
 # Optional overrides applied on top of training yaml
 model_overrides: {}

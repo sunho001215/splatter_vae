@@ -296,6 +296,8 @@ def main():
         trial_success = False
 
         for step in range(max_steps):
+            
+
             frame = render_rgb(env.sim, cam_name, H, W)
             grip = reduce_gripper(obs[grip_k])
             state10 = pose10_from_obs(np.asarray(obs[pos_k]), np.asarray(obs[quat_k]), float(grip))
@@ -325,14 +327,16 @@ def main():
             obs, reward, done, info = env.step(act)
 
             trial_max_reward = max(trial_max_reward, float(reward))
-            if hasattr(env, "_check_success") and env._check_success():
-                trial_success = True
 
             if show_window:
                 cv2.imshow("eval_cam", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
                 cv2.waitKey(1)
+            
+            if env._check_success():
+                trial_success = True
+                break
 
-            if done:
+            if done or env._check_success():
                 break
 
         successes += int(trial_success)
