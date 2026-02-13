@@ -283,9 +283,11 @@ def main():
     trials = int(env_cfg.get("trials", 50))
     max_steps = int(env_cfg.get("max_steps", 300))
     show_window = bool(env_cfg.get("show_window", False))
+    control_freq = float(env_cfg.get("control_freq", 10.0))
 
     successes = 0
     max_rewards = []
+    success_time = []
 
     for trial in range(1, trials + 1):
         obs = env.reset()
@@ -293,10 +295,10 @@ def main():
 
         pos_k, quat_k, grip_k = pick_obs_keys(obs)
         trial_max_reward = -float("inf")
+        trial_success_time = None
         trial_success = False
 
         for step in range(max_steps):
-            
 
             frame = render_rgb(env.sim, cam_name, H, W)
             grip = reduce_gripper(obs[grip_k])
@@ -333,6 +335,7 @@ def main():
                 cv2.waitKey(1)
             
             if env._check_success():
+                trial_success_time = step + 1
                 trial_success = True
                 break
 
@@ -341,12 +344,27 @@ def main():
 
         successes += int(trial_success)
         max_rewards.append(trial_max_reward)
-        print(f"[trial {trial:03d}/{trials}] success={trial_success} max_reward={trial_max_reward:.3f}")
+        if trial_success:
+            success_time.append(trial_success_time)
+        print(
+            f"[trial {trial:03d}/{trials}] success={trial_success} "
+            f"max_reward={trial_max_reward:.3f} "
+            f"success_time={trial_success_time / control_freq if trial_success_time is not None else 'N/A'} sec"
+        )
 
     success_rate = float(successes) / float(max(1, trials))
     avg_max_reward = float(np.mean(max_rewards)) if max_rewards else float("nan")
+    avg_success_time = (
+        float(np.mean(success_time)) / control_freq
+        if success_time
+        else float("nan")
+    )
     print("=======================================================")
-    print(f"[result] success_rate={success_rate:.3f}  avg_max_reward={avg_max_reward:.3f}")
+    print(
+        f"[result] success_rate={success_rate:.3f}  "
+        f"avg_max_reward={avg_max_reward:.3f}  "
+        f"avg_success_time={avg_success_time:.3f}"
+    )
     print("=======================================================")
 
 

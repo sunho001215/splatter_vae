@@ -14,7 +14,7 @@ env:
   name: Stack
   robot: Panda
   control_freq: 10.0
-  max_steps: 300
+  max_steps: 200
   trials: 1000
   render: true
   show_window: true
