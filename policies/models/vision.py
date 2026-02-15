@@ -110,6 +110,9 @@ class SplatterVAEInvariantCodebookTokens(nn.Module):
         super().__init__()
 
         sv_cfg = cfg["splatter_vae"]
+        
+        # Feature source
+        self.feature_source = str(sv_cfg.get("feature_source", "codebook"))
 
         # -----------------------------
         # 1) Instantiate model skeleton
@@ -166,8 +169,11 @@ class SplatterVAEInvariantCodebookTokens(nn.Module):
         for p in self.vae.parameters():
             p.requires_grad = False
 
-        # For downstream modules: token dim is the codebook embedding dim (invariant).
-        self.out_channels = inv_cb.embed_dim
+        # Output dim
+        if self.feature_source == "swin":
+            self.out_channels = self.vae.invariant_encoder.num_features
+        else: # feature_source in ["pre_vq", "codebook"]
+            self.out_channels = inv_cb.embed_dim
 
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -187,12 +193,18 @@ class SplatterVAEInvariantCodebookTokens(nn.Module):
 
         # Get invariant encoder features
         h_inv = self.vae.invariant_encoder(x)
-        h_inv = self.vae.invariant_encoder_output_proj(h_inv)
 
-        # Use invariant_output_head to get codebook outputs
-        z_inv, inv_indices, inv_aux_loss = self.vae.invariant_output_head(h_inv)
+        if self.feature_source == "swin":
+            tokens = h_inv
+        else:
+            h_proj =  self.vae.invariant_encoder_output_proj(h_inv)
+            if self.feature_source == "pre_vq":
+                tokens = h_proj
+            else:
+                z_inv, inv_indices, inv_aux_loss = self.vae.invariant_output_head(h_proj)
+                tokens = z_inv
 
-        return z_inv.contiguous()
+        return tokens.contiguous()
 
 
 # ----------------------------

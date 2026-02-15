@@ -1,5 +1,5 @@
 seed: 0
-device: cuda:1
+device: cuda:2
 
 data:
   hdf5_path: ../../data/robosuite/stack.hdf5
@@ -19,6 +19,10 @@ vision:
   # SplatterVAE-specific config
   splatter_vae:
     checkpoint_path: "./checkpoints/robosuite-stack/step_00245000.pth"
+    #   - "codebook": quantized embeddings (post-VQ) 
+    #   - "pre_vq"  : continuous embeddings AFTER linear proj to codebook dim, BEFORE quantization
+    #   - "swin"    : raw Swin bottleneck tokens (highest-dim; before proj + before VQ)
+    feature_source: swin
 
     # Swin backbone hyperparameters
     swin:
@@ -83,16 +87,16 @@ optim:
   lr: 1.0e-4
   weight_decay: 1.0e-3
   warmup_steps: 5000
-  max_steps: 400000
+  max_steps: 150000
   grad_clip_norm: 1.0
 
 logging:
   log_every: 50
   ckpt_every: 10000
-  out_dir: ./checkpoints/splatter_vae_aloha_unleashed/stack/
+  out_dir: ./checkpoints/splatter_vae_aloha_unleashed_pre_codebook/stack/
 
 wandb:
   enabled: true
   project: aloha-unleashed-policy
   entity: null
-  run_name: robosuite-stack-splatter-vae
+  run_name: robosuite-stack-splatter-vae-pre-codebook
