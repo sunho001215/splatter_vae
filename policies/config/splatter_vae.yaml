@@ -93,10 +93,10 @@ optim:
 logging:
   log_every: 50
   ckpt_every: 10000
-  out_dir: ./checkpoints/splatter_vae_aloha_unleashed_pre_codebook/stack/
+  out_dir: ./checkpoints/splatter_vae_aloha_unleashed_pre_codebook_v2/stack/
 
 wandb:
   enabled: true
   project: aloha-unleashed-policy
   entity: null
-  run_name: robosuite-stack-splatter-vae-pre-codebook
+  run_name: robosuite-stack-splatter-vae-pre-codebook-v2

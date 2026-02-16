@@ -175,6 +175,13 @@ class SplatterVAEInvariantCodebookTokens(nn.Module):
         else: # feature_source in ["pre_vq", "codebook"]
             self.out_channels = inv_cb.embed_dim
 
+    def train(self, mode: bool = True):
+        # Even if train() is called on this module,
+        # we want to keep the VAE frozen and in eval mode.
+        super().train(mode)
+        self.vae.eval()
+        return self
+
     @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
