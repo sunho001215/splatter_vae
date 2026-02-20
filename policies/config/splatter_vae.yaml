@@ -1,5 +1,5 @@
 seed: 0
-device: cuda:2
+device: cuda:0
 
 data:
   hdf5_path: ../../data/robosuite/stack.hdf5
@@ -23,6 +23,13 @@ vision:
     #   - "pre_vq"  : continuous embeddings AFTER linear proj to codebook dim, BEFORE quantization
     #   - "swin"    : raw Swin bottleneck tokens (highest-dim; before proj + before VQ)
     feature_source: swin
+
+    # Lossless adaptation hyperparameters
+    lossless_adaptation:
+      enabled: true
+      bottleneck_ratio: 16   # bottleneck dim = D // 16
+      dropout: 0.0
+      use_layernorm: false
 
     # Swin backbone hyperparameters
     swin:
@@ -93,10 +100,10 @@ optim:
 logging:
   log_every: 50
   ckpt_every: 10000
-  out_dir: ./checkpoints/splatter_vae_aloha_unleashed_pre_codebook_v2/stack/
+  out_dir: ./checkpoints/splatter_vae_aloha_unleashed_lossless_adaptation/stack/
 
 wandb:
   enabled: true
   project: aloha-unleashed-policy
   entity: null
-  run_name: robosuite-stack-splatter-vae-pre-codebook-v2
+  run_name: robosuite-stack-splatter-vae-lossless-adaptation
