@@ -29,6 +29,8 @@ dependencies = [
     "transformers>=4.57.3",
     "tensorboard>=2.20.0",
     "flow-matching>=1.0.10",
+    "gymnasium[mujoco]>=1.2.3",
+    "metaworld>=3.0.0",
 ]
 
 [tool.uv.extra-build-dependencies]
