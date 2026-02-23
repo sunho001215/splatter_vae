@@ -24,7 +24,7 @@ class MujocoMultiCameraRenderer:
     """
     Uses mujoco.Renderer for RGB and segmentation.
     Segmentation mode: enable_segmentation_rendering() -> render() returns (H,W,2)
-      channel 0: object IDs, channel 1: object types  (per example).  :contentReference[oaicite:10]{index=10}
+      channel 0: object IDs, channel 1: object types  (per example).
     """
 
     def __init__(

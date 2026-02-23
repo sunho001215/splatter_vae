@@ -27,7 +27,6 @@ class HDF5DemoWriter:
       /data/demoX/obs/{cam}_rgb, {cam}_seg
       /data/demoX/obs_env/{...}
       /data/demoX/camera_params/{intrinsics,extrinsics_world_T_cam}
-    :contentReference[oaicite:11]{index=11} :contentReference[oaicite:12]{index=12}
     """
 
     def __init__(self, path: str, mode: str, compression: Optional[str]) -> None:

@@ -1,5 +1,5 @@
 output:
-  path: /home/ws/data/metaworld/.hdf5
+  path: /media/sunho/data/coffee_push.hdf5
   mode: overwrite 
   compression: null
 
@@ -7,43 +7,43 @@ metaworld:
   benchmark_id: "Meta-World/MT1"
   env_name: "coffee-push-v3"
   seed: 0
-  max_steps: 250
+  max_steps: 150
   terminate_on_success: true
 
 render:
   height: 224
   width: 224
-  lookat: null             # if null -> try env.model.stat.center else [0,0,0]
+  lookat: [0.0, 0.6, 0.0]
   up: [0.0, 0.0, 1.0]
   cameras:
     - name: cam0
-      r: 0.7
-      theta: 30.0          # elevation from XY plane (deg)
-      phi: -30.0             # azimuth around +Z (deg)
+      r: 0.8
+      theta: -30.0
+      phi: -30.0
       fovy: 45.0
     - name: cam1
-      r: 0.7
-      theta: 30.0         
+      r: 0.8
+      theta: -30.0         
       phi: 0.0             
       fovy: 45.0
     - name: cam2
-      r: 0.7
-      theta: 30.0       
+      r: 0.8
+      theta: -30.0       
       phi: 30.0          
       fovy: 45.0
     - name: cam3
-      r: 0.7
-      theta: 45.0        
+      r: 0.8
+      theta: -45.0        
       phi: -30.0          
       fovy: 45.0
     - name: cam4
-      r: 0.7
-      theta: 45.0         
+      r: 0.8
+      theta: -45.0         
       phi: 0.0            
       fovy: 45.0
     - name: cam5
-      r: 0.7
-      theta: 45.0     
+      r: 0.8
+      theta: -45.0     
       phi: 30.0            
       fovy: 45.0
 
@@ -55,10 +55,21 @@ policies:
   scripted:
     enabled: true
     num_demos: 120
-    policy_class: null     # optional override (e.g., "SawyerReachV3Policy")
+    policy_class: null     # optional override
   random:
     enabled: true
-    num_demos: 30
+    num_demos: 5
+
+visualize:
+  enabled: false         # show live window if possible
+  show_window: false
+  every_n_steps: 1       # show every step 
+  ncols: 3               # tiling columns
+  pad: 4                 # padding pixels between tiles
+  window_name: "metaworld demos (top=RGB, bottom=SEG)"
+  stop_key: "q"          # press q to stop collection early
+  save_video_dir: null  
+  video_fps: 10.0
 
 dino:
   enabled: true

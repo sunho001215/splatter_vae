@@ -1,6 +1,9 @@
+# collect_metaworld_demos.py
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
@@ -16,6 +19,7 @@ from demo_collector.camera_math import (
 from demo_collector.render_mujoco import MujocoMultiCameraRenderer
 from demo_collector.policy_factory import RandomPolicy, make_scripted_policy
 from demo_collector.hdf5_writier import HDF5DemoWriter, DemoMeta
+from demo_collector.viz import MultiCamVisualizer
 from dino_postprocess import add_dino_features_inplace
 
 
@@ -32,6 +36,7 @@ def _unwrap_mujoco(env):
 
 
 def _get_state(env) -> np.ndarray:
+    """Concatenate qpos and qvel for storage (best-effort across wrappers)."""
     e = env.unwrapped
     if hasattr(e, "data"):
         qpos = np.asarray(e.data.qpos).ravel()
@@ -45,6 +50,7 @@ def _get_state(env) -> np.ndarray:
 
 
 def _step_env(env, action):
+    """Support Gymnasium and old Gym signatures."""
     out = env.step(action)
     # Gymnasium: (obs, reward, terminated, truncated, info)
     if len(out) == 5:
@@ -63,14 +69,12 @@ def main():
 
     cfg = load_config(args.config)
 
-    # Create Meta-World env via Gym API (per Meta-World docs). :contentReference[oaicite:15]{index=15}
+    # Create Meta-World env via Gym API
     env = gym.make(cfg.metaworld.benchmark_id, env_name=cfg.metaworld.env_name, seed=cfg.metaworld.seed)
-
     model, data = _unwrap_mujoco(env)
 
-    # Lookat default: try model.stat.center (similar to your robosuite code)
+    # Choose look-at center (default: model.stat.center if present)
     if cfg.render.lookat is None:
-        lookat = None
         try:
             lookat = np.array(model.stat.center, dtype=np.float64)
         except Exception:
@@ -80,21 +84,27 @@ def main():
 
     up = np.array(cfg.render.up, dtype=np.float64)
 
-    # Build camera poses
+    # Build camera poses + intr/extr
     cam_poses = []
     cam_intr = {}
     cam_extr = {}
     for c in cfg.render.cameras:
         pose = spherical_camera_pose(
-            name=c.name, r=c.r, theta_deg=c.theta, phi_deg=c.phi,
-            lookat=lookat, up=up, fovy_deg=c.fovy
+            name=c.name,
+            r=c.r,
+            theta_deg=c.theta,
+            phi_deg=c.phi,
+            lookat=lookat,
+            up=up,
+            fovy_deg=c.fovy,
         )
         cam_poses.append(pose)
         cam_intr[c.name] = intrinsics_from_fovy(c.fovy, cfg.render.height, cfg.render.width)
         cam_extr[c.name] = extrinsics_world_T_cam(pose.pos, pose.quat_wxyz)
 
     renderer = MujocoMultiCameraRenderer(
-        model, data,
+        model,
+        data,
         cameras=cam_poses,
         height=cfg.render.height,
         width=cfg.render.width,
@@ -104,15 +114,48 @@ def main():
 
     writer = HDF5DemoWriter(cfg.output.path, cfg.output.mode, cfg.output.compression)
 
+    # Global stop flag (e.g. user presses 'q')
+    stop_requested = False
+
+    def _make_demo_visualizer(demo_name: str) -> MultiCamVisualizer | None:
+        """Create a per-demo visualizer (so we can optionally save per-demo mp4)."""
+        if not cfg.visualize.enabled:
+            return None
+
+        save_path = None
+        if cfg.visualize.save_video_dir:
+            out_dir = Path(cfg.visualize.save_video_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            save_path = str(out_dir / f"{demo_name}.mp4")
+
+        return MultiCamVisualizer(
+            camera_names=[p.name for p in cam_poses],
+            H=cfg.render.height,
+            W=cfg.render.width,
+            window_name=cfg.visualize.window_name,
+            ncols=int(cfg.visualize.ncols),
+            pad=int(cfg.visualize.pad),
+            show_window=bool(cfg.visualize.show_window),
+            save_video_path=save_path,
+            video_fps=float(cfg.visualize.video_fps),
+        )
+
     def run_policy_block(policy_type: str, num: int, policy_obj, policy_name: str):
-        nonlocal lookat
-        for k in tqdm(range(num), desc=f"{policy_type} demos"):
+        nonlocal lookat, stop_requested
+
+        for _ in tqdm(range(num), desc=f"{policy_type} demos"):
+            if stop_requested:
+                break
+
             demo_idx = writer.next_demo_index()
             demo_name = f"demo{demo_idx}"
             seed = cfg.metaworld.seed + demo_idx
 
             obs, info = env.reset(seed=seed)
             obs = np.asarray(obs).ravel().astype(np.float32)
+
+            # Create per-demo visualizer (optional)
+            viz = _make_demo_visualizer(demo_name)
 
             meta = DemoMeta(
                 env_id=cfg.metaworld.benchmark_id,
@@ -124,26 +167,56 @@ def main():
                 model_file="unknown",
             )
             writer.begin_demo(
-                demo_name, meta,
-                H=cfg.render.height, W=cfg.render.width,
+                demo_name,
+                meta,
+                H=cfg.render.height,
+                W=cfg.render.width,
                 camera_intrinsics=cam_intr,
                 camera_extrinsics=cam_extr,
                 extra_attrs={"max_steps": cfg.metaworld.max_steps},
             )
 
             for t in range(cfg.metaworld.max_steps):
+                # Policy action
                 action = policy_obj.get_action(obs)
                 action = np.asarray(action).ravel().astype(np.float32)
 
+                # Step
                 next_obs, reward, done, info = _step_env(env, action)
                 next_obs = np.asarray(next_obs).ravel().astype(np.float32)
 
-                # Render AFTER stepping, so images align with next_obs.
+                # Render AFTER stepping so images align with next_obs (same as your current script)
                 rend = renderer.render_all(lookat=lookat)
 
-                state = _get_state(env)
+                # Ensure seg dict exists for downstream (writer + viz)
+                if rend.seg_id_by_cam is None:
+                    seg_for_step = {p.name: np.zeros((cfg.render.height, cfg.render.width), np.int32) for p in cam_poses}
+                else:
+                    seg_for_step = rend.seg_id_by_cam
+
+                # Success heuristic from Meta-World info
                 success = bool(info.get("success", False) or info.get("is_success", False))
 
+                # -------- live visualization (optional) --------
+                if viz is not None and (t % max(int(cfg.visualize.every_n_steps), 1) == 0):
+                    key = viz.update(
+                        rend.rgb_by_cam,
+                        seg_for_step,
+                        step_i=t,
+                        overlay_lines=[
+                            f"{demo_name} | {policy_type}:{policy_name}",
+                            f"reward={reward:.3f} success={int(success)} done={int(done)}",
+                            f"MUJOCO_GL={os.environ.get('MUJOCO_GL', '')}",
+                        ],
+                    )
+
+                    # Press stop_key (default 'q') to stop collection early
+                    if key != -1 and chr(key).lower() == str(cfg.visualize.stop_key).lower():
+                        stop_requested = True
+                        break
+
+                # -------- write step to dataset --------
+                state = _get_state(env)
                 writer.append_step(
                     state=state,
                     action=action,
@@ -152,12 +225,13 @@ def main():
                     success=success,
                     obs_vec=next_obs,
                     rgb_by_cam=rend.rgb_by_cam,
-                    seg_id_by_cam=rend.seg_id_by_cam if rend.seg_id_by_cam is not None else {p.name: np.zeros((cfg.render.height, cfg.render.width), np.int32) for p in cam_poses},
+                    seg_id_by_cam=seg_for_step,
                     seg_type_by_cam=rend.seg_type_by_cam,
                 )
 
                 obs = next_obs
 
+                # Task-based termination
                 if cfg.metaworld.terminate_on_success and success:
                     print(f"Demo {demo_name} succeeded at step {t}, terminating episode.")
                     break
@@ -167,13 +241,16 @@ def main():
 
             writer.end_demo()
 
-    # Scripted
+            if viz is not None:
+                viz.close()
+
+    # ---- Collect scripted demos ----
     if cfg.policies.scripted.enabled and cfg.policies.scripted.num_demos > 0:
         pol, polinfo = make_scripted_policy(cfg.metaworld.env_name, cfg.policies.scripted.policy_class)
         run_policy_block("scripted", cfg.policies.scripted.num_demos, pol, polinfo.policy_name)
 
-    # Random
-    if cfg.policies.random.enabled and cfg.policies.random.num_demos > 0:
+    # ---- Collect random demos ----
+    if (not stop_requested) and cfg.policies.random.enabled and cfg.policies.random.num_demos > 0:
         pol = RandomPolicy(env.action_space)
         run_policy_block("random", cfg.policies.random.num_demos, pol, "RandomPolicy")
 

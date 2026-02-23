@@ -6,6 +6,20 @@ import yaml
 
 
 @dataclass
+class VisualizeCfg:
+    enabled: bool = False
+    show_window: bool = True
+    every_n_steps: int = 1
+    ncols: int = 3
+    pad: int = 4
+    window_name: str = "metaworld demos (top=RGB, bottom=SEG)"
+    stop_key: str = "q"
+
+    save_video_dir: Optional[str] = None
+    video_fps: float = 10.0
+
+
+@dataclass
 class CameraCfg:
     name: str
     r: float
@@ -76,6 +90,7 @@ class Config:
     segmentation: SegCfg
     policies: PoliciesCfg
     dino: DinoCfg
+    visualize: VisualizeCfg
 
 
 def load_config(path: str) -> Config:
@@ -103,6 +118,8 @@ def load_config(path: str) -> Config:
 
     dino = DinoCfg(**raw.get("dino", {"enabled": False}))
 
+    viz = VisualizeCfg(**raw.get("visualize", {"enabled": False}))
+
     return Config(
         output=out,
         metaworld=mw,
@@ -110,4 +127,5 @@ def load_config(path: str) -> Config:
         segmentation=seg,
         policies=policies,
         dino=dino,
+        visualize=viz,
     )
