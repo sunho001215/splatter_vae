@@ -1,5 +1,5 @@
 output:
-  path: /media/sunho/data/coffee_push.hdf5
+  path: /home/ws/data/metaworld/coffee_push.hdf5
   mode: overwrite 
   compression: null
 

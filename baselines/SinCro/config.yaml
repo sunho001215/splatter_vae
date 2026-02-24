@@ -1,5 +1,5 @@
 dataset:
-  hdf5_path: "../../data/robosuite/stack.hdf5"
+  hdf5_path: "../../data/metaworld/coffee_push.hdf5"
   num_views: 6
   sequence_length: 3
   max_episodes: null
@@ -7,7 +7,7 @@ dataset:
   temporal_stride: 3
   num_workers: 8
   pin_memory: true
-  batch_size: 24
+  batch_size: 12
   train_ratio: 0.9
 
 model:
@@ -15,7 +15,7 @@ model:
   netwidth: 256
   netdepth_fine: 8
   netwidth_fine: 256
-  N_rand: 2048
+  N_rand: 4096
   N_samples: 64
   N_importance: 64
   multires: 10
@@ -55,15 +55,15 @@ train:
   contrastive_weight: 0.1
   eval_every: 50
   save_every: 5000
-  ckpt_dir: "./checkpoints/SinCro/stack/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/coffee_push/"
   resume_from_last: false
   seed: 42
 
 wandb:
-  project: "SinCro-Robosuite"
+  project: "SinCro-MetaWorld"
   entity: null
-  run_name: "sincro_robosuite_stack"
+  run_name: "sincro_metaworld_coffee_push"
 
 experiment:
-  basedir: "./logs/SinCro/robosuite/"
-  expname: "sincro_robosuite"
+  basedir: "./logs/SinCro/metaworld/"
+  expname: "sincro_metaworld"

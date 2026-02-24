@@ -1,6 +1,6 @@
 dataset:
   # Path to your RoboSuite multi-view HDF5 file
-  hdf5_path: "../../data/robosuite/stack.hdf5"
+  hdf5_path: "../../data/metaworld/coffee_push.hdf5"
 
   # DataLoader settings
   batch_size: 64
@@ -74,11 +74,11 @@ reviwo:
 train:
   # Training length
   num_epochs: 1000          # from original num_epoch
-  max_global_steps: 250000  # optional override; keep null to use num_epochs
+  max_global_steps: 20000  # optional override; keep null to use num_epochs
 
   # Optimizer
   lr: 0.0003              # from original optimizer.lr
-  device: "cuda:0"
+  device: "cuda:2"
 
   # Loss form (from original config)
   loss_form: "Weighted_MSE"
@@ -103,12 +103,12 @@ train:
   log_every: 50           # corresponds to original log_step
 
   # Checkpoint directory + resume flag
-  ckpt_dir: "./checkpoints/ReViWo/stack/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/coffee_push/"
   resume_from_last: false
 
   # Number of views per sample in this trainer
   camera_num: 6           # (image_i_t, image_j_t)
 
 wandb:
-  project: "ReViWo-RoboSuite"
+  project: "ReViWo-MetaWorld"
   entity: null            # set to your wandb username/org if needed

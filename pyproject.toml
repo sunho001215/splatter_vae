@@ -5,6 +5,8 @@ description = ""
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "torch",
+    "torchvision",
     "gsplat",
     "fused-ssim",
     "cython>=0.29.37",
@@ -23,8 +25,6 @@ dependencies = [
     "setuptools>=80.9.0",
     "einops>=0.8.1",
     "numpy<2.0.0",
-    "torch>=2.7.1",
-    "torchvision>=0.22.1",
     "wandb>=0.24.0",
     "transformers>=4.57.3",
     "tensorboard>=2.20.0",
@@ -39,5 +39,12 @@ gsplat = ["torch"]
 fused-ssim = ["torch", "torchvision"]
 
 [tool.uv.sources]
+torch = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
 gsplat = { git = "https://github.com/nerfstudio-project/gsplat.git" }
 fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim" }
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true

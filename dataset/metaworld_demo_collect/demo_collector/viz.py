@@ -10,7 +10,7 @@ import numpy as np
 try:
     import cv2
 except ImportError as e:
-    raise ImportError("OpenCV is required for visualization: pip install opencv-python") from e
+    raise ImportError("OpenCV is required for visualization") from e
 
 
 def _rgb_to_bgr(rgb: np.ndarray) -> np.ndarray:

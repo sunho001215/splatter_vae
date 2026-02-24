@@ -1,8 +1,10 @@
-# collect_metaworld_demos.py
 from __future__ import annotations
 
-import argparse
 import os
+os.environ['MUJOCO_GL'] = 'egl'
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
+
+import argparse
 from pathlib import Path
 import numpy as np
 from tqdm import tqdm
