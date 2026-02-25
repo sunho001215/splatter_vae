@@ -1,0 +1,455 @@
+from __future__ import annotations
+
+"""
+Compact Meta-World training script for DrM.
+"""
+
+import argparse
+import os
+import random
+import sys
+from collections import deque
+from pathlib import Path
+from typing import Any, Deque, Dict, Tuple
+
+import numpy as np
+import torch
+import yaml
+
+# Headless MuJoCo rendering.
+os.environ.setdefault("MUJOCO_GL", "egl")
+
+# Allow running this file directly: `uv run agents/drm/train_drm_metaworld.py ...`
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import gymnasium as gym
+import metaworld
+import mujoco
+
+from agents.drm.drm_metaworld import DrMMetaWorldAgent
+from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
+
+try:
+    import wandb
+except Exception:  # pragma: no cover - keeps the script importable without wandb
+    wandb = None
+
+
+# -----------------------------------------------------------------------------
+# Small helpers
+# -----------------------------------------------------------------------------
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+class ReplayBuffer:
+    """Minimal replay buffer for off-policy visual RL."""
+
+    def __init__(self, obs_shape: Tuple[int, ...], action_shape: Tuple[int, ...], capacity: int) -> None:
+        self.capacity = int(capacity)
+        self.idx = 0
+        self.full = False
+
+        self.obs = np.zeros((capacity, *obs_shape), dtype=np.uint8)
+        self.next_obs = np.zeros((capacity, *obs_shape), dtype=np.uint8)
+        self.actions = np.zeros((capacity, *action_shape), dtype=np.float32)
+        self.rewards = np.zeros((capacity, 1), dtype=np.float32)
+        self.discounts = np.zeros((capacity, 1), dtype=np.float32)
+
+    def __len__(self) -> int:
+        return self.capacity if self.full else self.idx
+
+    def add(self, obs: np.ndarray, action: np.ndarray, reward: float, discount: float, next_obs: np.ndarray) -> None:
+        self.obs[self.idx] = obs
+        self.actions[self.idx] = action
+        self.rewards[self.idx] = reward
+        self.discounts[self.idx] = discount
+        self.next_obs[self.idx] = next_obs
+
+        self.idx = (self.idx + 1) % self.capacity
+        self.full = self.full or self.idx == 0
+
+    def sample(self, batch_size: int, device: torch.device) -> tuple[torch.Tensor, ...]:
+        max_idx = len(self)
+        ids = np.random.randint(0, max_idx, size=batch_size)
+        batch = (
+            torch.as_tensor(self.obs[ids], device=device),
+            torch.as_tensor(self.actions[ids], device=device),
+            torch.as_tensor(self.rewards[ids], device=device),
+            torch.as_tensor(self.discounts[ids], device=device),
+            torch.as_tensor(self.next_obs[ids], device=device),
+        )
+        return batch
+
+
+# -----------------------------------------------------------------------------
+# Meta-World environment wrapper with a single configurable camera
+# -----------------------------------------------------------------------------
+
+class MetaWorldSingleCameraEnv:
+    """
+    Single-task Meta-World environment that returns pixel observations only.
+
+    Camera configuration follows the same spherical style used in the provided
+    Meta-World demo collection utilities, but we keep only one camera.
+    """
+
+    def __init__(self, cfg: Dict[str, Any], seed: int) -> None:
+        env_cfg = cfg["env"]
+        self.env_name = str(env_cfg["env_name"])
+        self.image_height = int(env_cfg["image_height"])
+        self.image_width = int(env_cfg["image_width"])
+        self.frame_stack = int(env_cfg.get("frame_stack", 3))
+        self.action_repeat = int(env_cfg.get("action_repeat", 1))
+        self.max_episode_steps = int(env_cfg.get("max_episode_steps", 250))
+        self.camera_cfg = dict(env_cfg["camera"])
+
+        # Match the demo collector more closely:
+        # - if lookat is omitted / null, use model.stat.center
+        # - keep "up" as a world-space vector
+        raw_lookat = env_cfg.get("lookat", None)
+        self.up = np.asarray(env_cfg.get("up", [0.0, 0.0, 1.0]), dtype=np.float64)
+
+        # Meta-World v3 via Gymnasium API
+        self.benchmark_id = str(env_cfg.get("benchmark_id", "Meta-World/MT1"))
+        gym_env_name = self.env_name if self.env_name.endswith("-v3") else f"{self.env_name}-v3"
+
+        self._env = gym.make(self.benchmark_id, env_name=gym_env_name, seed=seed)
+        self._model, self._data = self._unwrap_mujoco(self._env)
+
+        # Default lookat follows the collector script
+        if raw_lookat is None:
+            try:
+                self.lookat = np.array(self._model.stat.center, dtype=np.float64)
+            except Exception:
+                self.lookat = np.zeros(3, dtype=np.float64)
+        else:
+            self.lookat = np.asarray(raw_lookat, dtype=np.float64)
+
+        # Direct MuJoCo renderer
+        self._renderer = mujoco.Renderer(
+            self._model,
+            height=self.image_height,
+            width=self.image_width,
+        )
+
+        self._base_seed = int(seed)
+        self._reset_count = 0
+
+        base_env = self._env.unwrapped
+        if hasattr(base_env, "_freeze_rand_vec"):
+            base_env._freeze_rand_vec = False
+
+        self.action_space = self._env.action_space
+        self.frames: Deque[np.ndarray] = deque(maxlen=self.frame_stack)
+        self.episode_step = 0
+
+    @property
+    def obs_shape(self) -> Tuple[int, int, int]:
+        return (3 * self.frame_stack, self.image_height, self.image_width)
+
+    @property
+    def action_shape(self) -> Tuple[int, ...]:
+        return tuple(self.action_space.shape)
+
+    def _unwrap_mujoco(self, env):
+        e = env.unwrapped
+        # Gymnasium mujoco-style
+        if hasattr(e, "model") and hasattr(e, "data"):
+            return e.model, e.data
+        # Older mujoco-py style fallback
+        if hasattr(e, "sim"):
+            return e.sim.model, e.sim.data
+        raise RuntimeError("Could not find MuJoCo model/data on env.unwrapped")
+
+    def _make_free_camera(self) -> "mujoco.MjvCamera":
+        """
+        Build the same kind of free/orbit camera used in the data collection code:
+        spherical camera placement -> MjvCamera(lookat, distance, azimuth, elevation).
+        """
+        pose = spherical_camera_pose(
+            name=str(self.camera_cfg["name"]),
+            r=float(self.camera_cfg["r"]),
+            theta_deg=float(self.camera_cfg["theta"]),
+            phi_deg=float(self.camera_cfg["phi"]),
+            lookat=self.lookat,
+            up=self.up,
+            fovy_deg=float(self.camera_cfg["fovy"]),
+        )
+
+        cam = mujoco.MjvCamera()
+        cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        cam.lookat[:] = self.lookat.astype(np.float64)
+
+        rel = pose.pos.astype(np.float64) - self.lookat.astype(np.float64)
+        cam.distance = float(np.linalg.norm(rel))
+
+        # azimuth: angle in XY plane from +X
+        cam.azimuth = float(np.degrees(np.arctan2(rel[1], rel[0])))
+
+        # elevation: angle above XY plane
+        xy = np.sqrt(rel[0] ** 2 + rel[1] ** 2)
+        cam.elevation = float(np.degrees(np.arctan2(rel[2], xy)))
+
+        return cam
+
+    def _render(self) -> np.ndarray:
+        """
+        Render through mujoco.Renderer directly, matching the demo collector.
+        This avoids Gymnasium wrapper render-mode issues and does not require
+        a named camera to exist in the XML.
+        """
+        cam = self._make_free_camera()
+
+        self._renderer.update_scene(self._data, camera=cam)
+        img = self._renderer.render()
+
+        if img is None:
+            raise RuntimeError("MuJoCo renderer returned None.")
+
+        img = np.asarray(img, dtype=np.uint8)
+        if img.ndim != 3 or img.shape[-1] != 3:
+            raise RuntimeError(f"Unexpected rendered image shape: {img.shape}")
+
+        # Convert HWC -> CHW for the agent
+        return np.transpose(img, (2, 0, 1)).copy()
+
+    def _stacked_obs(self) -> np.ndarray:
+        return np.concatenate(list(self.frames), axis=0)
+
+    def reset(self) -> np.ndarray:
+        reset_seed = self._base_seed + self._reset_count
+        self._reset_count += 1
+
+        try:
+            self._env.reset(seed=reset_seed)
+        except TypeError:
+            self._env.reset()
+
+        self.episode_step = 0
+        frame = self._render()
+        self.frames.clear()
+        for _ in range(self.frame_stack):
+            self.frames.append(frame)
+        return self._stacked_obs()
+
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, Dict[str, Any]]:
+        total_reward = 0.0
+        success = 0.0
+        terminated = False
+        truncated = False
+
+        for _ in range(self.action_repeat):
+            step_out = self._env.step(action)
+            if len(step_out) == 5:
+                _, reward, terminated, truncated, info = step_out
+            else:
+                _, reward, terminated, info = step_out
+                truncated = False
+
+            total_reward += float(reward)
+            success = max(success, float(info.get("success", 0.0)))
+            self.episode_step += 1
+
+            if terminated or truncated or self.episode_step >= self.max_episode_steps:
+                break
+
+        done = bool(terminated or truncated or self.episode_step >= self.max_episode_steps)
+        frame = self._render()
+        self.frames.append(frame)
+        return self._stacked_obs(), total_reward, done, {"success": success}
+
+
+# -----------------------------------------------------------------------------
+# Evaluation
+# -----------------------------------------------------------------------------
+
+def evaluate(env: MetaWorldSingleCameraEnv, agent: DrMMetaWorldAgent, num_episodes: int, step: int) -> Dict[str, float]:
+    returns = []
+    successes = []
+
+    for _ in range(num_episodes):
+        obs = env.reset()
+        done = False
+        episode_return = 0.0
+        episode_success = 0.0
+
+        while not done:
+            action = agent.act(obs, step=step, eval_mode=True)
+            obs, reward, done, info = env.step(action)
+            episode_return += float(reward)
+            episode_success = max(episode_success, float(info["success"]))
+
+        returns.append(episode_return)
+        successes.append(episode_success)
+
+    return {
+        "eval/success_rate": float(np.mean(successes)),
+        "eval/cumulative_reward": float(np.mean(returns)),
+    }
+
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to the single YAML config.")
+    args = parser.parse_args()
+
+    with open(args.config, "r") as f:
+        cfg: Dict[str, Any] = yaml.safe_load(f)
+
+    # Fill image sizes into the vision config so `build_vision_encoder(...)`
+    # can be reused without touching the existing codebase.
+    vision_cfg = cfg.setdefault("vision", {})
+    vision_cfg.setdefault("img_height", int(cfg["env"]["image_height"]))
+    vision_cfg.setdefault("img_width", int(cfg["env"]["image_width"]))
+    if vision_cfg.get("encoder_type", vision_cfg.get("name", "resnet50")) == "resnet50":
+        res_cfg = vision_cfg.setdefault("resnet50", {})
+        res_cfg.setdefault("img_height", int(cfg["env"]["image_height"]))
+        res_cfg.setdefault("img_width", int(cfg["env"]["image_width"]))
+
+    seed = int(cfg.get("seed", 0))
+    set_seed(seed)
+
+    device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
+
+    train_env = MetaWorldSingleCameraEnv(cfg, seed=seed)
+    eval_env = MetaWorldSingleCameraEnv(cfg, seed=seed + 1)
+
+    agent = DrMMetaWorldAgent(
+        cfg=cfg,
+        obs_shape=train_env.obs_shape,
+        action_shape=train_env.action_shape,
+        device=device,
+    )
+
+    tcfg = cfg["train"]
+    buffer = ReplayBuffer(
+        obs_shape=train_env.obs_shape,
+        action_shape=train_env.action_shape,
+        capacity=int(tcfg.get("replay_size", 500_000)),
+    )
+
+    use_wandb = bool(cfg.get("wandb", {}).get("enabled", False)) and wandb is not None
+    if use_wandb:
+        wandb.init(
+            project=str(cfg["wandb"].get("project", "drm-metaworld")),
+            name=str(cfg["wandb"].get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'resnet50')}")),
+            config=cfg,
+        )
+
+    num_train_steps = int(tcfg.get("num_train_steps", 1_000_000))
+    seed_steps = int(tcfg.get("seed_steps", 4_000))
+    batch_size = int(tcfg.get("batch_size", 256))
+    update_every_steps = int(tcfg.get("update_every_steps", 2))
+    gradient_steps = int(tcfg.get("gradient_steps", 1))
+    eval_every_steps = int(tcfg.get("eval_every_steps", 10_000))
+    log_every_steps = int(tcfg.get("log_every_steps", 1_000))
+    num_eval_episodes = int(tcfg.get("num_eval_episodes", 10))
+    discount = float(tcfg.get("discount", 0.99))
+
+    ckpt_every = int(tcfg.get("checkpoint_every_steps", 0))
+    ckpt_dir = Path(tcfg.get("checkpoint_dir", "checkpoints"))
+    if ckpt_every > 0:
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    rolling_success: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
+    rolling_return: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
+
+    obs = train_env.reset()
+    episode_return = 0.0
+    episode_success = 0.0
+    update_metrics: Dict[str, float] = {}
+
+    for step in range(1, num_train_steps + 1):
+        if step <= seed_steps:
+            action = train_env.action_space.sample().astype(np.float32)
+        else:
+            action = agent.act(obs, step=step, eval_mode=False).astype(np.float32)
+
+        next_obs, reward, done, info = train_env.step(action)
+        transition_discount = 0.0 if done else discount
+        buffer.add(obs, action, reward, transition_discount, next_obs)
+
+        obs = next_obs
+        episode_return += float(reward)
+        episode_success = max(episode_success, float(info["success"]))
+
+        # Standard off-policy updates.
+        if step > seed_steps and len(buffer) >= batch_size and step % update_every_steps == 0:
+            for _ in range(gradient_steps):
+                batch = buffer.sample(batch_size=batch_size, device=device)
+                update_metrics = agent.update(batch, step)
+
+        # Per-step logging (includes dormant ratio).
+        if step % log_every_steps == 0:
+            log_data = {"step": step}
+            if update_metrics:
+                log_data.update({f"train/{k}": v for k, v in update_metrics.items()})
+            if rolling_success:
+                log_data["train/rolling_success_rate"] = float(np.mean(rolling_success))
+                log_data["train/rolling_cumulative_reward"] = float(np.mean(rolling_return))
+
+            if use_wandb:
+                wandb.log(log_data, step=step)
+            else:
+                print(log_data)
+
+        # Periodic evaluation.
+        if step % eval_every_steps == 0:
+            eval_metrics = evaluate(eval_env, agent, num_eval_episodes=num_eval_episodes, step=step)
+            eval_metrics["step"] = step
+            if use_wandb:
+                wandb.log(eval_metrics, step=step)
+            else:
+                print(eval_metrics)
+
+        # Optional checkpointing.
+        if ckpt_every > 0 and step % ckpt_every == 0:
+            ckpt_path = ckpt_dir / f"step_{step:08d}.pt"
+            torch.save(
+                {
+                    "step": step,
+                    "cfg": cfg,
+                    "agent": agent.state_dict(),
+                },
+                ckpt_path,
+            )
+
+        # Episode boundary.
+        if done:
+            rolling_success.append(episode_success)
+            rolling_return.append(episode_return)
+            episode_log = {
+                "step": step,
+                "train/episode_success_rate": float(episode_success),
+                "train/cumulative_reward": float(episode_return),
+                "train/rolling_success_rate": float(np.mean(rolling_success)),
+                "train/rolling_cumulative_reward": float(np.mean(rolling_return)),
+                "train/dormant_ratio": float(update_metrics.get("dormant_ratio", agent.dormant_ratio)),
+            }
+
+            if use_wandb:
+                wandb.log(episode_log, step=step)
+            else:
+                print(episode_log)
+
+            obs = train_env.reset()
+            episode_return = 0.0
+            episode_success = 0.0
+
+    if use_wandb:
+        wandb.finish()
+
+
+if __name__ == "__main__":
+    main()

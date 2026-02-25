@@ -1,0 +1,130 @@
+seed: 0
+device: cuda:3
+
+wandb:
+  enabled: true
+  project: metaworld-coffee-push-DrM
+  name: CNN_randomcrop_seed0
+
+env:
+  benchmark_id: Meta-World/MT1
+  env_name: coffee-push
+  image_height: 224
+  image_width: 224
+  frame_stack: 1
+  action_repeat: 1
+  max_episode_steps: 200
+
+  camera:
+    name: eval_cam
+    r: 0.8
+    theta: -30.0
+    phi: 0.0
+    fovy: 45.0
+
+  lookat: [0.0, 0.6, 0.0]
+  up: [0.0, 0.0, 1.0]
+
+vision:
+  # Options currently supported by `build_vision_encoder(...)` in your codebase:
+  #   - resnet50
+  #   - splatter_vae
+  encoder_type: resnet50
+
+  # ------------------------------------------------------------
+  # Baseline: end-to-end ResNet50 + random crop (enabled inside
+  # `policies/models/vision.py` when the module is in train mode).
+  # ------------------------------------------------------------
+  resnet50:
+    pretrained: false
+    out_dim: 512
+    crop_height: 200
+    crop_width: 200
+
+  # ------------------------------------------------------------
+  # Frozen view-invariant representations from a pre-trained SplatterVAE.
+  # ------------------------------------------------------------
+  splatter_vae:
+    checkpoint_path: /absolute/path/to/your/pretrained_splatter_vae.ckpt
+    feature_source: codebook           # codebook | pre_vq | swin
+    splatter_channels: 96
+    image_height: 224
+    image_width: 224
+
+    model:
+      fusion_style: plus 
+      use_dependent_vq: true
+      is_dependent_ae: false
+      use_invariant_vq: true
+      is_invariant_ae: false
+
+    # Swin backbone hyperparameters
+    swin:
+      # Swin-Tiny architecture
+      embed_dim: 96          # C
+      depths: [2, 2, 6, 2]   # layers per stage
+      num_heads: [3, 6, 12, 24]
+      # Image & patching
+      patch_size: 4 
+      window_size: 7
+      # Standard Swin defaults
+      mlp_ratio: 4.0
+      qkv_bias: true
+      drop_rate: 0.0
+      attn_drop_rate: 0.0
+      drop_path_rate: 0.1
+      # Other options
+      ape: false
+      patch_norm: true
+      use_checkpoint: false
+      pretrained_window_sizes: [0, 0, 0, 0]
+
+    # Codebook hyperparameters
+    codebook:
+      invariant:
+        n_embed: 512
+        embed_dim: 16
+        beta: 0.25
+      dependent:
+        n_embed: 64
+        embed_dim: 16
+        beta: 0.25
+
+agent:
+  lr: 1.0e-4
+  feature_dim: 512
+  hidden_dim: 256
+  critic_target_tau: 0.01
+
+  # DrM-specific knobs
+  dormant_threshold: 0.025
+  target_dormant_ratio: 0.10
+  dormant_temp: 10.0
+  target_lambda: 0.70
+  lambda_temp: 10.0
+  dormant_perturb_interval: 2000
+  min_perturb_factor: 0.20
+  max_perturb_factor: 0.95
+  perturb_rate: 0.80
+
+  stddev_type: awake
+  stddev_schedule: linear(1.0,0.1,100000)
+  stddev_clip: 0.3
+  expectile: 0.7
+
+train:
+  num_train_steps: 1000000
+  seed_steps: 4000
+  batch_size: 256
+  replay_size: 500000
+  update_every_steps: 2
+  gradient_steps: 1
+  discount: 0.99
+
+  log_every_steps: 1000
+  eval_every_steps: 10000
+  num_eval_episodes: 100
+  rolling_window: 10
+
+  checkpoint_every_steps: 50000
+  checkpoint_dir: checkpoints
