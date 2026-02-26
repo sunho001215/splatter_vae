@@ -139,14 +139,14 @@ def compute_contrastive_losses(
         positive_keys=b_s,
         negative_keys=torch.stack([c_s, d_s], dim=1),
         temperature=temperature,
-        negative_mode="paired",
+        negative_mode="mixed",
     )
     inv_loss_row1 = infonce_loss(
         query=c_s,
         positive_keys=d_s,
         negative_keys=torch.stack([a_s, b_s], dim=1),
         temperature=temperature,
-        negative_mode="paired",
+        negative_mode="mixed",
     )
     inv_contrastive_loss = 0.5 * (inv_loss_row0 + inv_loss_row1)
 
