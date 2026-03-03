@@ -17,9 +17,8 @@ import torch
 import yaml
 
 # Headless MuJoCo rendering.
-os.environ.setdefault("MUJOCO_GL", "egl")
+# os.environ.setdefault("MUJOCO_GL", "egl")
 
-# Allow running this file directly: `uv run agents/drm/train_drm_metaworld.py ...`
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -27,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import gymnasium as gym
 import metaworld
 import mujoco
+import cv2
 
 from agents.drm.drm_metaworld import DrMMetaWorldAgent
 from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
@@ -150,6 +150,19 @@ class MetaWorldSingleCameraEnv:
         self.frames: Deque[np.ndarray] = deque(maxlen=self.frame_stack)
         self.episode_step = 0
 
+        # Optional OpenCV visualization
+        vis_cfg = dict(cfg.get("visualization", {}))
+        self.enable_cv2_vis = bool(vis_cfg.get("enabled", False))
+        self.vis_window_name = str(vis_cfg.get("window_name", f"MetaWorld-{self.env_name}"))
+        self.vis_wait_key = int(vis_cfg.get("wait_key", 1))
+        self.vis_scale = float(vis_cfg.get("scale", 1.0))
+        self._vis_window_initialized = False
+
+        if self.enable_cv2_vis and cv2 is None:
+            raise ImportError(
+                "visualization.enabled=True, but OpenCV (`cv2`) is not available."
+            )
+
     @property
     def obs_shape(self) -> Tuple[int, int, int]:
         return (3 * self.frame_stack, self.image_height, self.image_width)
@@ -199,6 +212,35 @@ class MetaWorldSingleCameraEnv:
 
         return cam
 
+    def _show_frame_cv2(self, frame_chw: np.ndarray) -> None:
+        """
+        Show the current RGB frame with OpenCV.
+
+        frame_chw: (3, H, W), uint8, RGB
+        """
+        if not self.enable_cv2_vis:
+            return
+
+        # Convert CHW RGB -> HWC RGB
+        img = np.transpose(frame_chw, (1, 2, 0))
+
+        # Optional resize for easier viewing
+        if self.vis_scale != 1.0:
+            new_w = max(1, int(img.shape[1] * self.vis_scale))
+            new_h = max(1, int(img.shape[0] * self.vis_scale))
+            interp = cv2.INTER_NEAREST if self.vis_scale >= 1.0 else cv2.INTER_AREA
+            img = cv2.resize(img, (new_w, new_h), interpolation=interp)
+
+        # OpenCV expects BGR
+        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+        if not self._vis_window_initialized:
+            cv2.namedWindow(self.vis_window_name, cv2.WINDOW_NORMAL)
+            self._vis_window_initialized = True
+
+        cv2.imshow(self.vis_window_name, img_bgr)
+        cv2.waitKey(max(1, self.vis_wait_key))
+
     def _render(self) -> np.ndarray:
         """
         Render through mujoco.Renderer directly, matching the demo collector.
@@ -218,7 +260,12 @@ class MetaWorldSingleCameraEnv:
             raise RuntimeError(f"Unexpected rendered image shape: {img.shape}")
 
         # Convert HWC -> CHW for the agent
-        return np.transpose(img, (2, 0, 1)).copy()
+        frame_chw = np.transpose(img, (2, 0, 1)).copy()
+
+        # OpenCV visualization
+        self._show_frame_cv2(frame_chw)
+
+        return frame_chw
 
     def _stacked_obs(self) -> np.ndarray:
         return np.concatenate(list(self.frames), axis=0)
@@ -264,6 +311,21 @@ class MetaWorldSingleCameraEnv:
         frame = self._render()
         self.frames.append(frame)
         return self._stacked_obs(), total_reward, done, {"success": success}
+
+    def close(self) -> None:
+        # Close the OpenCV window if it was created.
+        if self.enable_cv2_vis and cv2 is not None and self._vis_window_initialized:
+            try:
+                cv2.destroyWindow(self.vis_window_name)
+            except Exception:
+                pass
+            self._vis_window_initialized = False
+
+        # Close the Gym env.
+        try:
+            self._env.close()
+        except Exception:
+            pass
 
 
 # -----------------------------------------------------------------------------
@@ -406,7 +468,7 @@ def main() -> None:
 
         # Periodic evaluation.
         if step % eval_every_steps == 0:
-            eval_metrics = evaluate(eval_env, agent, num_eval_episodes=num_eval_episodes, step=step)
+            eval_metrics = evaluate(eval_env, agent, num_episodes=num_eval_episodes, step=step)
             eval_metrics["step"] = step
             if use_wandb:
                 wandb.log(eval_metrics, step=step)
@@ -447,6 +509,9 @@ def main() -> None:
             episode_return = 0.0
             episode_success = 0.0
 
+    train_env.close()
+    eval_env.close()
+    
     if use_wandb:
         wandb.finish()
 
