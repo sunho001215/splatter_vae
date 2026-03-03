@@ -9,7 +9,6 @@ import torchvision
 import torchvision.transforms.functional as TF
 
 from models.vae import InvariantDependentSplatterVAE, CodebookConfig
-from .lossless_adaptation import inject_swin_middle_adapters
 
 # ----------------------------
 # ResNet50
@@ -175,18 +174,6 @@ class SplatterVAEInvariantCodebookTokens(nn.Module):
             self.out_channels = self.vae.invariant_encoder.num_features
         else: # feature_source in ["pre_vq", "codebook"]
             self.out_channels = inv_cb.embed_dim
-        
-        # -----------------------
-        # 4) Lossless adaptation 
-        # -----------------------
-        self.lossless_adapt_cfg: Dict[str, Any] = dict(sv_cfg.get("lossless_adaptation", {}))
-        self.use_lossless_adaptation: bool = bool(self.lossless_adapt_cfg.get("enabled", False))
-        # Inject adapters if enabled.
-        if self.use_lossless_adaptation:
-            inject_swin_middle_adapters(
-                swin_encoder=self.vae.invariant_encoder,
-                adapter_cfg=self.lossless_adapt_cfg,
-            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

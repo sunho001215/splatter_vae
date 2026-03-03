@@ -32,6 +32,7 @@ dependencies = [
     "gymnasium[mujoco]>=1.2.3",
     "metaworld>=3.0.0",
     "opencv-contrib-python>=4.11.0.86",
+    "opencv-python-headless>=4.11.0.86",
 ]
 
 [tool.uv.extra-build-dependencies]

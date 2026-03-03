@@ -23,7 +23,6 @@ from models.splatter import (
 from models.losses import infonce_loss, compute_reconstruction_loss
 from models.transformer import STTransConfig
 from models.vae import CodebookConfig
-from models.camera_predictor import CameraParamPredictor
 from dataset.dataloader import build_train_valid_loaders_robosuite
 from utils.general_utils import compute_intrinsics_errors, compute_rotation_translation_errors, set_random_seed
 
@@ -54,258 +53,359 @@ class TrainConfig:
     # Where to save checkpoints
     ckpt_dir: str = "./checkpoints"
     resume_from_last: bool = False
-    # Camera parameter prediction
-    predict_camera_params: bool = True
-    # Weight on T_ij * T_ji ≈ I pose cycle-consistency loss
-    pose_cycle_weight: float = 1e-3
-    # Step at which we start using cross-view & pose-related terms
-    crossview_start_step: int = 10000
 
 # -------------------------------------------------------------------------
 # Shared helper functions
 # -------------------------------------------------------------------------
 
-def encode_triplet(
+def encode_quartet(
     vae: InvariantDependentSplatterVAE,
-    image_i_t: torch.Tensor,
-    image_j_t: torch.Tensor,
-    image_i_t1: torch.Tensor,
+    image_a: torch.Tensor,  # A = (s0, view i)
+    image_b: torch.Tensor,  # B = (s0, view j)
+    image_c: torch.Tensor,  # C = (s1, view i)
+    image_d: torch.Tensor,  # D = (s1, view j)
 ):
     """
-    Encode three images into invariant + dependent latents.
+    Encode the full 2x2 grid.
 
-    Returns:
-        z_inv_i_t, z_inv_j_t, z_inv_i_t1
-        z_dep_i_t, z_dep_j_t, z_dep_i_t1
-        inv_vq_loss, dep_vq_loss
+    Returns invariant / dependent latents for:
+        A = (s0, i), B = (s0, j), C = (s1, i), D = (s1, j)
+
+    This gives us exactly the four corners needed for:
+        - self      : A <- (z_s[A], z_v[A])
+        - swap_view : B <- (z_s[A], z_v[B])
+        - swap_state: C <- (z_s[C], z_v[A])
+        - swap_both : D <- (z_s[C], z_v[B])
     """
-    z_inv_i_t, inv_loss_i,  z_dep_i_t,  dep_loss_i,  _ = vae.encode(image_i_t)
-    z_inv_j_t, inv_loss_j,  z_dep_j_t,  dep_loss_j,  _ = vae.encode(image_j_t)
-    z_inv_i_t1, inv_loss_i1, z_dep_i_t1, dep_loss_i1, _ = vae.encode(image_i_t1)
+    z_inv_a, inv_loss_a, z_dep_a, dep_loss_a, _ = vae.encode(image_a)
+    z_inv_b, inv_loss_b, z_dep_b, dep_loss_b, _ = vae.encode(image_b)
+    z_inv_c, inv_loss_c, z_dep_c, dep_loss_c, _ = vae.encode(image_c)
+    z_inv_d, inv_loss_d, z_dep_d, dep_loss_d, _ = vae.encode(image_d)
 
-    # Average VQ loss across the three encodings
-    inv_vq_loss = (inv_loss_i + inv_loss_j + inv_loss_i1) / 3.0
-    dep_vq_loss = (dep_loss_i + dep_loss_j + dep_loss_i1) / 3.0
+    # Average VQ losses across all four encodings
+    inv_vq_loss = 0.25 * (inv_loss_a + inv_loss_b + inv_loss_c + inv_loss_d)
+    dep_vq_loss = 0.25 * (dep_loss_a + dep_loss_b + dep_loss_c + dep_loss_d)
 
     return (
-        z_inv_i_t, z_inv_j_t, z_inv_i_t1,
-        z_dep_i_t, z_dep_j_t, z_dep_i_t1,
+        z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+        z_dep_a, z_dep_b, z_dep_c, z_dep_d,
         inv_vq_loss, dep_vq_loss,
     )
 
 
 def compute_contrastive_losses(
-    z_inv_i_t: torch.Tensor,
-    z_inv_j_t: torch.Tensor,
-    z_inv_i_t1: torch.Tensor,
-    z_dep_i_t: torch.Tensor,
-    z_dep_j_t: torch.Tensor,
-    z_dep_i_t1: torch.Tensor,
+    z_inv_a: torch.Tensor,
+    z_inv_b: torch.Tensor,
+    z_inv_c: torch.Tensor,
+    z_inv_d: torch.Tensor,
+    z_dep_a: torch.Tensor,
+    z_dep_b: torch.Tensor,
+    z_dep_c: torch.Tensor,
+    z_dep_d: torch.Tensor,
     temperature: float,
 ):
     """
-    Compute invariant and dependent contrastive InfoNCE losses.
+    Contrastive layout on the 2x2 grid:
 
-    Follows the same setup in both training and validation.
+        A = (s0, i)   B = (s0, j)
+        C = (s1, i)   D = (s1, j)
+
+    Invariant branch:
+        - positives are same-state / different-view  (A<->B, C<->D)
+        - negatives are different-state
+
+    Dependent branch:
+        - positives are same-view / different-state  (A<->C, B<->D)
+        - negatives are different-view
     """
-    B = z_inv_i_t.shape[0]
+    Bsz = z_inv_a.shape[0]
 
-    # Invariant branch: negatives mix temporal & cross-view features
-    inv_neg_keys = torch.cat(
-        [
-            z_inv_i_t1.reshape(B, -1).unsqueeze(1),
-            z_dep_i_t.reshape(B, -1).unsqueeze(1),
-            z_dep_j_t.reshape(B, -1).unsqueeze(1),
-        ],
-        dim=1,
-    )
-    inv_contrastive_loss = infonce_loss(
-        query=z_inv_i_t.reshape(B, -1),
-        positive_keys=z_inv_j_t.reshape(B, -1),
-        negative_keys=inv_neg_keys,
+    # Flatten once for InfoNCE
+    a_s = z_inv_a.reshape(Bsz, -1)
+    b_s = z_inv_b.reshape(Bsz, -1)
+    c_s = z_inv_c.reshape(Bsz, -1)
+    d_s = z_inv_d.reshape(Bsz, -1)
+
+    a_v = z_dep_a.reshape(Bsz, -1)
+    b_v = z_dep_b.reshape(Bsz, -1)
+    c_v = z_dep_c.reshape(Bsz, -1)
+    d_v = z_dep_d.reshape(Bsz, -1)
+
+    # ---------------------------
+    # Invariant: same row positives
+    # ---------------------------
+    inv_loss_row0 = infonce_loss(
+        query=a_s,
+        positive_keys=b_s,
+        negative_keys=torch.stack([c_s, d_s], dim=1),
         temperature=temperature,
         negative_mode="mixed",
     )
+    inv_loss_row1 = infonce_loss(
+        query=c_s,
+        positive_keys=d_s,
+        negative_keys=torch.stack([a_s, b_s], dim=1),
+        temperature=temperature,
+        negative_mode="mixed",
+    )
+    inv_contrastive_loss = 0.5 * (inv_loss_row0 + inv_loss_row1)
 
-    # Dependent branch: positives are same-camera next-time-step, negatives are other-view
-    dep_contrastive_loss = infonce_loss(
-        query=z_dep_i_t.reshape(B, -1),
-        positive_keys=z_dep_i_t1.reshape(B, -1),
-        negative_keys=z_dep_j_t.reshape(B, -1).unsqueeze(1),
+    # ---------------------------
+    # Dependent: same column positives
+    # ---------------------------
+    dep_loss_col0 = infonce_loss(
+        query=a_v,
+        positive_keys=c_v,
+        negative_keys=torch.stack([b_v, d_v], dim=1),
         temperature=temperature,
         negative_mode="paired",
     )
+    dep_loss_col1 = infonce_loss(
+        query=b_v,
+        positive_keys=d_v,
+        negative_keys=torch.stack([a_v, c_v], dim=1),
+        temperature=temperature,
+        negative_mode="paired",
+    )
+    dep_contrastive_loss = 0.5 * (dep_loss_col0 + dep_loss_col1)
 
     return inv_contrastive_loss, dep_contrastive_loss
+
+
+def _render_two_views_from_latents(
+    vae: InvariantDependentSplatterVAE,
+    splatter_to_gaussians: VAESplatterToGaussians,
+    splatter_cfg: SplatterConfig,
+    z_inv: torch.Tensor,
+    z_dep: torch.Tensor,
+    K_src: torch.Tensor,
+    K_tgt: torch.Tensor,
+    T_src_to_tgt: torch.Tensor,   # (B,4,4): source camera -> target camera
+    bg: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Decode a splatter from (z_inv, z_dep), where z_dep defines the *source/native*
+    camera frame, then render it in:
+        - source/native view
+        - target/other view using the known relative transform T_src_to_tgt
+    """
+    device = z_inv.device
+    dtype = K_src.dtype
+    B = z_inv.shape[0]
+
+    # ---------------------------------------------------------
+    # 1) Decode splatter in the native/source frame implied by z_dep
+    # ---------------------------------------------------------
+    splatter = vae.decode(z_inv, z_dep)
+
+    # ---------------------------------------------------------
+    # 2) Treat the native/source frame as the local "world" for Gaussian creation
+    # ---------------------------------------------------------
+    eye_4 = torch.eye(4, device=device, dtype=dtype).view(1, 4, 4).repeat(B, 1, 1)
+    eye_q = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 4).repeat(B, 1)
+
+    gaussian_pc = splatter_to_gaussians(
+        splatter,
+        source_cameras_view_to_world=eye_4,
+        source_cv2wT_quat=eye_q,
+        intrinsics=K_src,
+        activate_output=True,
+    )
+
+    # ---------------------------------------------------------
+    # 3) Render the same Gaussian scene in two views:
+    #    view 0 = source/native
+    #    view 1 = target/other camera
+    # ---------------------------------------------------------
+    world_views = torch.stack([eye_4, T_src_to_tgt], dim=1)   # (B,2,4,4)
+    Ks = torch.stack([K_src, K_tgt], dim=1)                   # (B,2,3,3)
+
+    out = render_predicted(
+        pc=gaussian_pc,
+        world_view_transform=world_views,
+        intrinsics=Ks,
+        bg_color=bg,
+        cfg=splatter_cfg,
+    )
+
+    renders = out["render"]  # (B,2,3,H,W)
+    rendered_src = renders[:, 0]   # source/native view
+    rendered_tgt = renders[:, 1]   # target/other view
+
+    return rendered_src, rendered_tgt
 
 
 def compute_reconstruction_and_renders(
     vae: InvariantDependentSplatterVAE,
     splatter_to_gaussians: VAESplatterToGaussians,
     splatter_cfg: SplatterConfig,
-    image_i_t: torch.Tensor,
-    image_j_t: torch.Tensor,
-    gt_i_t_01: torch.Tensor,
-    gt_j_t_01: torch.Tensor,
-    z_inv_i_t: torch.Tensor,
-    z_dep_i_t: torch.Tensor,
-    z_dep_j_t: torch.Tensor,
-    T_ij: torch.Tensor,
+    gt_a_01: torch.Tensor,  # A = (s0, i)
+    gt_b_01: torch.Tensor,  # B = (s0, j)
+    gt_c_01: torch.Tensor,  # C = (s1, i)
+    gt_d_01: torch.Tensor,  # D = (s1, j)
+    z_inv_a: torch.Tensor,
+    z_inv_c: torch.Tensor,
+    z_dep_a: torch.Tensor,
+    z_dep_b: torch.Tensor,
     K_i: torch.Tensor,
     K_j: torch.Tensor,
+    T_ij: torch.Tensor,     # NEW: known relative camera transform (i -> j)
     bg: torch.Tensor,
     return_renders: bool = False,
     ssim_weight: float = 0.2,
 ) -> Dict[str, Any]:
     """
-    Common reconstruction + rendering code used by both training and validation.
+    2x2 reconstruction targets with *both* native-view and cross-view rendering.
 
-    Args:
-        z_inv_i_t, z_dep_i_t, z_dep_j_t: latents
-        T_ij, K_i, K_j: camera transforms/intrinsics (may be GT or predicted)
-        gt_i_t_01, gt_j_t_01: ground truth images in [0,1]
+        A = (s0, i)
+        B = (s0, j)
+        C = (s1, i)
+        D = (s1, j)
 
-    Returns:
-        dict with:
-            rec_loss, rec_loss_cross, rec_loss_self_i,
-            rec_loss_shuffle, rec_loss_shuffle_j, rec_loss_shuffle_i_from_j,
-            optionally renders for visualization.
+    Latent pairings:
+        self       = (z_s[A], z_v[A])  -> native i (A), cross j (B)
+        swap_view  = (z_s[A], z_v[B])  -> native j (B), cross i (A)
+        swap_state = (z_s[C], z_v[A])  -> native i (C), cross j (D)
+        swap_both  = (z_s[C], z_v[B])  -> native j (D), cross i (C)
+
+    This adds explicit 3D consistency across viewpoints using T_ij / T_ji.
     """
-    device = image_i_t.device
-    B, _, H, W = image_i_t.shape
+    # Invert once: j -> i
+    T_ji = torch.linalg.inv(T_ij)
 
     # ---------------------------------------------------------
-    # 1) Decode image_i_t latents into Splatter Image (world == cam_i)
+    # 1) self = (state s0, view i)
+    #    Native should match A, cross-view should match B
     # ---------------------------------------------------------
-    splatter_i_t = vae.decode(z_inv_i_t, z_dep_i_t)  # (B, C_s, H, W)
-
-    # Camera-to-world for cam_i is identity (we treat cam_i as world)
-    source_cameras_view_to_world = torch.eye(4, device=device).view(1, 4, 4).repeat(B, 1, 1)
-    source_cv2wT_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device).view(1, 4).repeat(B, 1)
-
-    gaussian_pc = splatter_to_gaussians(
-        splatter_i_t,
-        source_cameras_view_to_world=source_cameras_view_to_world,
-        source_cv2wT_quat=source_cv2wT_quat,
-        intrinsics=K_i,
-        activate_output=True,
+    rendered_self_i, rendered_self_j_from_i = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_a,
+        z_dep=z_dep_a,
+        K_src=K_i,
+        K_tgt=K_j,
+        T_src_to_tgt=T_ij,   # i -> j
+        bg=bg,
     )
 
     # ---------------------------------------------------------
-    # 2) Cross-view + self reconstruction in one batched call
+    # 2) swap_view = (state s0, view j)
+    #    Native should match B, cross-view should match A
     # ---------------------------------------------------------
-    eye_4 = torch.eye(4, device=device).view(1, 1, 4, 4).repeat(B, 1, 1, 1)  # (B,1,4,4)
-    T_ij_views = T_ij.view(B, 1, 4, 4)                                       # (B,1,4,4)
-
-    world_view_ij = torch.cat([eye_4, T_ij_views], dim=1)   # (B,2,4,4)
-    Ks_ij = torch.stack([K_i, K_j], dim=1)                  # (B,2,3,3)
-
-    out_ij = render_predicted(
-        pc=gaussian_pc,
-        world_view_transform=world_view_ij,
-        intrinsics=Ks_ij,
-        bg_color=bg,
-        cfg=splatter_cfg,
+    rendered_swap_view_j, rendered_swap_view_i_from_j = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_a,
+        z_dep=z_dep_b,
+        K_src=K_j,
+        K_tgt=K_i,
+        T_src_to_tgt=T_ji,   # j -> i
+        bg=bg,
     )
-    renders_ij = out_ij["render"]                           # (B,2,3,H,W)
-
-    rendered_self_i = renders_ij[:, 0]                      # (B,3,H,W)
-    rendered_from_j = renders_ij[:, 1]                      # (B,3,H,W)
-
-    # Reconstruction losses vs GT
-    rec_loss_self_i = compute_reconstruction_loss(rendered_self_i, gt_i_t_01, ssim_weight=ssim_weight)
-    rec_loss_cross  = compute_reconstruction_loss(rendered_from_j, gt_j_t_01, ssim_weight=ssim_weight)
 
     # ---------------------------------------------------------
-    # 3) Shuffle loss: world == cam_j
+    # 3) swap_state = (state s1, view i)
+    #    Native should match C, cross-view should match D
     # ---------------------------------------------------------
-    splatter_shuffle_j = vae.decode(z_inv_i_t, z_dep_j_t)   # (B,C_s,H,W)
-
-    source_cameras_view_to_world_j = torch.eye(4, device=device).view(1, 4, 4).repeat(B, 1, 1)
-    source_cv2wT_quat_j = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device).view(1, 4).repeat(B, 1)
-
-    gaussian_pc_shuffle_j = splatter_to_gaussians(
-        splatter_shuffle_j,
-        source_cameras_view_to_world=source_cameras_view_to_world_j,
-        source_cv2wT_quat=source_cv2wT_quat_j,
-        intrinsics=K_j,
-        activate_output=True,
+    rendered_swap_state_i, rendered_swap_state_j_from_i = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_c,
+        z_dep=z_dep_a,
+        K_src=K_i,
+        K_tgt=K_j,
+        T_src_to_tgt=T_ij,   # i -> j
+        bg=bg,
     )
 
-    # T_ji: invert T_ij (cam_j -> cam_i); view 0 = j, view 1 = i_from_j
-    T_ji = torch.linalg.inv(T_ij)                           # (B,4,4)
-
-    eye_4_j = torch.eye(4, device=device).view(1, 1, 4, 4).repeat(B, 1, 1, 1)
-    T_ji_views = T_ji.view(B, 1, 4, 4)
-
-    world_view_shuffle = torch.cat([eye_4_j, T_ji_views], dim=1)  # (B,2,4,4)
-    Ks_shuffle = torch.stack([K_j, K_i], dim=1)                   # (B,2,3,3)
-
-    out_shuffle = render_predicted(
-        pc=gaussian_pc_shuffle_j,
-        world_view_transform=world_view_shuffle,
-        intrinsics=Ks_shuffle,
-        bg_color=bg,
-        cfg=splatter_cfg,
+    # ---------------------------------------------------------
+    # 4) swap_both = (state s1, view j)
+    #    Native should match D, cross-view should match C
+    # ---------------------------------------------------------
+    rendered_swap_both_j, rendered_swap_both_i_from_j = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_c,
+        z_dep=z_dep_b,
+        K_src=K_j,
+        K_tgt=K_i,
+        T_src_to_tgt=T_ji,   # j -> i
+        bg=bg,
     )
-    renders_shuffle = out_shuffle["render"]                 # (B,2,3,H,W)
 
-    rendered_shuffle_j        = renders_shuffle[:, 0]       # (B,3,H,W)
-    rendered_shuffle_i_from_j = renders_shuffle[:, 1]       # (B,3,H,W)
+    # ---------------------------------------------------------
+    # 5) Native-view reconstruction losses
+    # ---------------------------------------------------------
+    rec_self = compute_reconstruction_loss(rendered_self_i, gt_a_01, ssim_weight=ssim_weight)
+    rec_swap_view = compute_reconstruction_loss(rendered_swap_view_j, gt_b_01, ssim_weight=ssim_weight)
+    rec_swap_state = compute_reconstruction_loss(rendered_swap_state_i, gt_c_01, ssim_weight=ssim_weight)
+    rec_swap_both = compute_reconstruction_loss(rendered_swap_both_j, gt_d_01, ssim_weight=ssim_weight)
 
-    rec_loss_shuffle_j = compute_reconstruction_loss(rendered_shuffle_j, gt_j_t_01, ssim_weight=ssim_weight)
-    rec_loss_shuffle_i_from_j = compute_reconstruction_loss(rendered_shuffle_i_from_j, gt_i_t_01, ssim_weight=ssim_weight)
-
-    rec_loss_shuffle = 0.5 * (rec_loss_shuffle_j + rec_loss_shuffle_i_from_j)
-
-    # Combine all reconstruction terms
-    rec_loss = (rec_loss_cross + rec_loss_self_i + rec_loss_shuffle) / 3.0
-
-    out_dict: Dict[str, Any] = dict(
-        rec_loss=rec_loss,
-        rec_loss_cross=rec_loss_cross,
-        rec_loss_self_i=rec_loss_self_i,
-        rec_loss_shuffle=rec_loss_shuffle,
-        rec_loss_shuffle_j=rec_loss_shuffle_j,
-        rec_loss_shuffle_i_from_j=rec_loss_shuffle_i_from_j,
+    rec_native_loss = 0.25 * (
+        rec_self + rec_swap_view + rec_swap_state + rec_swap_both
     )
+
+    # ---------------------------------------------------------
+    # 6) Cross-view reconstruction losses
+    #    (same decoded 3D Gaussian scene, rendered into the other camera)
+    # ---------------------------------------------------------
+    rec_self_cross = compute_reconstruction_loss(rendered_self_j_from_i, gt_b_01, ssim_weight=ssim_weight)
+    rec_swap_view_cross = compute_reconstruction_loss(rendered_swap_view_i_from_j, gt_a_01, ssim_weight=ssim_weight)
+    rec_swap_state_cross = compute_reconstruction_loss(rendered_swap_state_j_from_i, gt_d_01, ssim_weight=ssim_weight)
+    rec_swap_both_cross = compute_reconstruction_loss(rendered_swap_both_i_from_j, gt_c_01, ssim_weight=ssim_weight)
+
+    rec_cross_loss = 0.25 * (
+        rec_self_cross + rec_swap_view_cross + rec_swap_state_cross + rec_swap_both_cross
+    )
+
+    # ---------------------------------------------------------
+    # 7) Final reconstruction loss:
+    #    equal weight on native-view and cross-view supervision
+    # ---------------------------------------------------------
+    rec_loss = 0.5 * (rec_native_loss + rec_cross_loss)
+
+    out_dict: Dict[str, Any] = {
+        "rec_loss": rec_loss,
+
+        # grouped losses
+        "rec_native_loss": rec_native_loss,
+        "rec_cross_loss": rec_cross_loss,
+
+        # native-view terms
+        "rec_self": rec_self,
+        "rec_swap_view": rec_swap_view,
+        "rec_swap_state": rec_swap_state,
+        "rec_swap_both": rec_swap_both,
+
+        # cross-view terms
+        "rec_self_cross": rec_self_cross,
+        "rec_swap_view_cross": rec_swap_view_cross,
+        "rec_swap_state_cross": rec_swap_state_cross,
+        "rec_swap_both_cross": rec_swap_both_cross,
+    }
 
     if return_renders:
         out_dict.update(
-            dict(
-                rendered_self_i=rendered_self_i,
-                rendered_from_j=rendered_from_j,
-                rendered_shuffle_j=rendered_shuffle_j,
-                rendered_shuffle_i_from_j=rendered_shuffle_i_from_j,
-            )
+            {
+                # native renders
+                "rendered_self_i": rendered_self_i,
+                "rendered_swap_view_j": rendered_swap_view_j,
+                "rendered_swap_state_i": rendered_swap_state_i,
+                "rendered_swap_both_j": rendered_swap_both_j,
+
+                # cross-view renders
+                "rendered_self_j_from_i": rendered_self_j_from_i,
+                "rendered_swap_view_i_from_j": rendered_swap_view_i_from_j,
+                "rendered_swap_state_j_from_i": rendered_swap_state_j_from_i,
+                "rendered_swap_both_i_from_j": rendered_swap_both_i_from_j,
+            }
         )
 
     return out_dict
-
-
-def predict_cameras_from_latents(
-    camera_predictor: Optional[CameraParamPredictor],
-    z_dep_i_t: torch.Tensor,
-    z_dep_j_t: torch.Tensor,
-):
-    """
-    Predict T_ij, T_ji, K_i, K_j from dependent latents, or return Nones
-    if no camera_predictor is provided.
-
-    Here we assume the predictor takes flattened view-dependent latents.
-    """
-    if camera_predictor is None:
-        return None, None, None, None
-
-    B = z_dep_i_t.shape[0]
-    z_dep_i_flat = z_dep_i_t.reshape(B, -1)
-    z_dep_j_flat = z_dep_j_t.reshape(B, -1)
-
-    T_ij_pred, T_ji_pred, K_i_pred, K_j_pred = camera_predictor(
-        z_dep_i_flat, z_dep_j_flat
-    )
-    return T_ij_pred, T_ji_pred, K_i_pred, K_j_pred
-
 
 # -------------------------------------------------------------------------
 # Helper: render validation samples, camera errors, and log to wandb
@@ -320,186 +420,191 @@ def log_validation_images(
     device: torch.device,
     bg: torch.Tensor,
     cfg_train: TrainConfig,
-    camera_predictor: Optional[CameraParamPredictor],
     global_step: int,
     max_vis: int = 4,
 ):
     """
-    Take one batch from valid_dataloader and:
-
-      - Encode images into invariant & dependent latents
-      - Render:
-          1) rendered_i_from_i    : image_i_t → i-view (self-view)
-          2) rendered_j_from_i    : image_i_t → j-view (cross-view)
-          3) rendered_i_from_shuf : shuffled latents, rendered to i-view
-          4) rendered_j_from_shuf : shuffled latents, rendered to j-view
-          5) gt_i_t, gt_j_t       : ground truth images
-
-      - Compute contrastive losses on the full batch
-      - If camera_predictor is provided:
-          - compute rotation & translation errors between T_ij_pred and T_ij_gt
-          - compute intrinsics errors between K_pred and K_gt for i and j
-
-    All images and scalars are logged to wandb.
+    Validation for the 2x2 setup.
+    No camera predictor, no pose metrics.
     """
-    # Put models in eval mode (no dropout, no grad)
+    # ---------------------------------------------------------
+    # 1. Set models to evaluation mode
+    # ---------------------------------------------------------
     vae.eval()
     splatter_to_gaussians.eval()
-    if camera_predictor is not None:
-        camera_predictor.eval()
 
-    # Get a single validation batch
+    # ---------------------------------------------------------
+    # 2. Load a single validation batch
+    # ---------------------------------------------------------
     try:
         batch = next(iter(valid_dataloader))
     except StopIteration:
         return
 
-    # -------------------- Move batch to device --------------------
-    image_i_t  = batch["image_i_t"].to(device)   # (B,3,H,W) in [-1,1]
-    image_j_t  = batch["image_j_t"].to(device)   # (B,3,H,W)
-    image_i_t1 = batch["image_i_t1"].to(device)  # (B,3,H,W)
+    # ---------------------------------------------------------
+    # 3. Extract and move batch data to device
+    # A=(s0,i), B=(s0,j), C=(s1,i), D=(s1,j)
+    # ---------------------------------------------------------
+    image_a = batch["image_i_t"].to(device)
+    image_b = batch["image_j_t"].to(device)
+    image_c = batch["image_i_t1"].to(device)
+    image_d = batch["image_j_t1"].to(device)
 
-    # Ground-truth camera parameters (used for metrics, and as fallback if no predictor)
-    T_ij_gt = batch["T_ij"].to(device)           # (B,4,4) cam_i -> cam_j
-    K_i_gt  = batch["K_i"].to(device)            # (B,3,3)
-    K_j_gt  = batch["K_j"].to(device)            # (B,3,3)
+    T_ij = batch["T_ij"].to(device)
+    K_i = batch["K_i"].to(device)
+    K_j = batch["K_j"].to(device)
 
-    B, _, H, W = image_i_t.shape
-    n_vis = min(max_vis, B)
+    # ---------------------------------------------------------
+    # 4. Convert ground-truth images from [-1,1] to [0,1]
+    # ---------------------------------------------------------
+    gt_a_01 = (image_a + 1.0) * 0.5
+    gt_b_01 = (image_b + 1.0) * 0.5
+    gt_c_01 = (image_c + 1.0) * 0.5
+    gt_d_01 = (image_d + 1.0) * 0.5
 
-    # Convert original images from [-1,1] to [0,1]
-    gt_i_t_01 = (image_i_t + 1.0) * 0.5   # (B,3,H,W)
-    gt_j_t_01 = (image_j_t + 1.0) * 0.5   # (B,3,H,W)
-
-    # -------------------- Encode triplet into latents --------------------
+    # ---------------------------------------------------------
+    # 5. Encode all four images into invariant and dependent latents
+    # ---------------------------------------------------------
     (
-        z_inv_i_t, z_inv_j_t, z_inv_i_t1,
-        z_dep_i_t, z_dep_j_t, z_dep_i_t1,
-        inv_vq_loss, dep_vq_loss,
-    ) = encode_triplet(
-        vae, image_i_t, image_j_t, image_i_t1
-    )
+        z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+        z_dep_a, z_dep_b, z_dep_c, z_dep_d,
+        _, _,
+    ) = encode_quartet(vae, image_a, image_b, image_c, image_d)
 
-    # -------------------- Contrastive losses on full batch --------------------
+    # ---------------------------------------------------------
+    # 6. Compute contrastive losses for validation monitoring
+    # ---------------------------------------------------------
     inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-        z_inv_i_t, z_inv_j_t, z_inv_i_t1,
-        z_dep_i_t, z_dep_j_t, z_dep_i_t1,
+        z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+        z_dep_a, z_dep_b, z_dep_c, z_dep_d,
         temperature=cfg_train.temperature,
     )
 
-    # Metrics (initialized as None; filled only if predictor is available)
-    angle_err_deg = None
-    pos_err = None
-    fx_i_err = fy_i_err = cx_i_err = cy_i_err = None
-    fx_j_err = fy_j_err = cx_j_err = cy_j_err = None
-
-    if camera_predictor is not None:
-        # Predict cameras from view-dependent latents
-        T_ij_pred, T_ji_pred, K_i_pred, K_j_pred = predict_cameras_from_latents(
-            camera_predictor=camera_predictor,
-            z_dep_i_t=z_dep_i_t,
-            z_dep_j_t=z_dep_j_t,
-        )
-
-        # Compute camera pose errors (pred vs GT)
-        angle_err_deg, pos_err = compute_rotation_translation_errors(
-            T_pred=T_ij_pred,
-            T_gt=T_ij_gt,
-        )
-
-        # Compute intrinsics errors (per view)
-        fx_i_err, fy_i_err, cx_i_err, cy_i_err = compute_intrinsics_errors(
-            K_pred=K_i_pred,
-            K_gt=K_i_gt,
-        )
-        fx_j_err, fy_j_err, cx_j_err, cy_j_err = compute_intrinsics_errors(
-            K_pred=K_j_pred,
-            K_gt=K_j_gt,
-        )
-
-    # ----------------------------------------------------------------------
-    # Reconstruction & rendering using *chosen* cameras (predicted or GT)
-    # ----------------------------------------------------------------------
+    # ---------------------------------------------------------
+    # 7. Compute reconstructions and rendered outputs
+    # ---------------------------------------------------------
     rec_out = compute_reconstruction_and_renders(
         vae=vae,
         splatter_to_gaussians=splatter_to_gaussians,
         splatter_cfg=splatter_cfg,
-        image_i_t=image_i_t,
-        image_j_t=image_j_t,
-        gt_i_t_01=gt_i_t_01,
-        gt_j_t_01=gt_j_t_01,
-        z_inv_i_t=z_inv_i_t,
-        z_dep_i_t=z_dep_i_t,
-        z_dep_j_t=z_dep_j_t,
-        T_ij=T_ij_gt,
-        K_i=K_i_gt,
-        K_j=K_j_gt,
+        gt_a_01=gt_a_01,
+        gt_b_01=gt_b_01,
+        gt_c_01=gt_c_01,
+        gt_d_01=gt_d_01,
+        z_inv_a=z_inv_a,
+        z_inv_c=z_inv_c,
+        z_dep_a=z_dep_a,
+        z_dep_b=z_dep_b,
+        K_i=K_i,
+        K_j=K_j,
+        T_ij=T_ij,   # NEW
         bg=bg,
         return_renders=True,
         ssim_weight=cfg_train.ssim_weight,
     )
 
-    # -------------------- Grab reconstruction losses --------------------
-    rec_loss                  = rec_out["rec_loss"]
-    rec_loss_cross            = rec_out["rec_loss_cross"]
-    rec_loss_self_i           = rec_out["rec_loss_self_i"]
-    rec_loss_shuffle          = rec_out["rec_loss_shuffle"]
-    rec_loss_shuffle_j        = rec_out["rec_loss_shuffle_j"]
-    rec_loss_shuffle_i_from_j = rec_out["rec_loss_shuffle_i_from_j"]
+    # ---------------------------------------------------------
+    # 8. Limit number of samples to visualize
+    # ---------------------------------------------------------
+    n_vis = min(max_vis, image_a.shape[0])
 
-    # Grab the rendered images for visualization (first n_vis only)
-    renders_i_from_i    = rec_out["rendered_self_i"][:n_vis]           # i -> i
-    renders_j_from_i    = rec_out["rendered_from_j"][:n_vis]           # i -> j
-    renders_j_from_shuf = rec_out["rendered_shuffle_j"][:n_vis]        # shuffled, j-view
-    renders_i_from_shuf = rec_out["rendered_shuffle_i_from_j"][:n_vis] # shuffled, i-view
-    gt_i_vis            = gt_i_t_01[:n_vis].detach()
-    gt_j_vis            = gt_j_t_01[:n_vis].detach()
+    # ---------------------------------------------------------
+    # 9. Create grid visualizations for rendered outputs
+    # ---------------------------------------------------------
+    # Native-view renders
+    grid_self_i = make_grid(
+        rec_out["rendered_self_i"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
+    grid_swap_view_j = make_grid(
+        rec_out["rendered_swap_view_j"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
+    grid_swap_state_i = make_grid(
+        rec_out["rendered_swap_state_i"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
+    grid_swap_both_j = make_grid(
+        rec_out["rendered_swap_both_j"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
 
-    # -------------------- Make image grids for wandb --------------------
-    grid_i_from_i    = make_grid(renders_i_from_i.cpu(),    nrow=n_vis, normalize=True, value_range=(0, 1))
-    grid_j_from_i    = make_grid(renders_j_from_i.cpu(),    nrow=n_vis, normalize=True, value_range=(0, 1))
-    grid_i_from_shuf = make_grid(renders_i_from_shuf.cpu(), nrow=n_vis, normalize=True, value_range=(0, 1))
-    grid_j_from_shuf = make_grid(renders_j_from_shuf.cpu(), nrow=n_vis, normalize=True, value_range=(0, 1))
-    grid_gt_i        = make_grid(gt_i_vis.cpu(),            nrow=n_vis, normalize=True, value_range=(0, 1))
-    grid_gt_j        = make_grid(gt_j_vis.cpu(),            nrow=n_vis, normalize=True, value_range=(0, 1))
+    # Cross-view renders
+    grid_self_j_from_i = make_grid(
+        rec_out["rendered_self_j_from_i"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
+    grid_swap_view_i_from_j = make_grid(
+        rec_out["rendered_swap_view_i_from_j"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
+    grid_swap_state_j_from_i = make_grid(
+        rec_out["rendered_swap_state_j_from_i"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
+    grid_swap_both_i_from_j = make_grid(
+        rec_out["rendered_swap_both_i_from_j"][:n_vis].cpu(),
+        nrow=n_vis, normalize=True, value_range=(0, 1)
+    )
 
-    # -------------------- Prepare wandb log dict --------------------
-    log_dict: Dict[str, Any] = {
-        "val/render_i_from_i":    wandb.Image(grid_i_from_i),
-        "val/render_j_from_i":    wandb.Image(grid_j_from_i),
-        "val/render_i_from_shuf": wandb.Image(grid_i_from_shuf),
-        "val/render_j_from_shuf": wandb.Image(grid_j_from_shuf),
-        "val/gt_i_t":             wandb.Image(grid_gt_i),
-        "val/gt_j_t":             wandb.Image(grid_gt_j),
-        "val/inv_contrastive_loss": inv_contrastive_loss.item(),
-        "val/dep_contrastive_loss": dep_contrastive_loss.item(),
-        "val/rec_loss":              rec_loss.item(),
-        "val/rec_loss_cross":        rec_loss_cross.item(),
-        "val/rec_loss_self_i":       rec_loss_self_i.item(),
-        "val/rec_loss_shuffle":      rec_loss_shuffle.item(),
-        "val/rec_loss_shuffle_j":    rec_loss_shuffle_j.item(),
-        "val/rec_loss_shuffle_i_from_j": rec_loss_shuffle_i_from_j.item(),
-    }
+    # ---------------------------------------------------------
+    # 10. Create grid visualizations for ground-truth images
+    # ---------------------------------------------------------
+    grid_gt_a = make_grid(gt_a_01[:n_vis].cpu(), nrow=n_vis, normalize=True, value_range=(0, 1))
+    grid_gt_b = make_grid(gt_b_01[:n_vis].cpu(), nrow=n_vis, normalize=True, value_range=(0, 1))
+    grid_gt_c = make_grid(gt_c_01[:n_vis].cpu(), nrow=n_vis, normalize=True, value_range=(0, 1))
+    grid_gt_d = make_grid(gt_d_01[:n_vis].cpu(), nrow=n_vis, normalize=True, value_range=(0, 1))
 
-    # Add camera error metrics only if predictor is present
-    if camera_predictor is not None:
-        log_dict.update(
-            {
-                "val/camera_angle_error_deg": angle_err_deg.item(),
-                "val/camera_pos_error": pos_err.item(),
-                "val/intrin_focus_error": 0.5 * (
-                    fx_i_err.item() + fy_i_err.item()
-                    + fx_j_err.item() + fy_j_err.item()
-                ),
-                "val/intrin_center_error": 0.5 * (
-                    cx_i_err.item() + cy_i_err.item()
-                    + cx_j_err.item() + cy_j_err.item()
-                ),
-            }
-        )
+    # ---------------------------------------------------------
+    # 11. Log validation metrics and visualizations to wandb
+    # ---------------------------------------------------------
+    wandb.log(
+        {
+            # -----------------------------------------------------
+            # Native-view renders
+            # -----------------------------------------------------
+            "val/render_self_i": wandb.Image(grid_self_i),                 # should match A
+            "val/render_swap_view_j": wandb.Image(grid_swap_view_j),       # should match B
+            "val/render_swap_state_i": wandb.Image(grid_swap_state_i),     # should match C
+            "val/render_swap_both_j": wandb.Image(grid_swap_both_j),       # should match D
 
-    # -------------------- Log to wandb --------------------
-    wandb.log(log_dict, step=global_step)
+            # -----------------------------------------------------
+            # Cross-view renders
+            # -----------------------------------------------------
+            "val/render_self_j_from_i": wandb.Image(grid_self_j_from_i),               # A rendered into j -> should match B
+            "val/render_swap_view_i_from_j": wandb.Image(grid_swap_view_i_from_j),     # B rendered into i -> should match A
+            "val/render_swap_state_j_from_i": wandb.Image(grid_swap_state_j_from_i),   # C rendered into j -> should match D
+            "val/render_swap_both_i_from_j": wandb.Image(grid_swap_both_i_from_j),     # D rendered into i -> should match C
+
+            # Ground truth targets
+            "val/gt_a_s0_view_i": wandb.Image(grid_gt_a),
+            "val/gt_b_s0_view_j": wandb.Image(grid_gt_b),
+            "val/gt_c_s1_view_i": wandb.Image(grid_gt_c),
+            "val/gt_d_s1_view_j": wandb.Image(grid_gt_d),
+
+            # Grouped losses
+            "val/rec_loss": rec_out["rec_loss"].item(),
+            "val/rec_native_loss": rec_out["rec_native_loss"].item(),
+            "val/rec_cross_loss": rec_out["rec_cross_loss"].item(),
+
+            # Native-view losses
+            "val/rec_self": rec_out["rec_self"].item(),
+            "val/rec_swap_view": rec_out["rec_swap_view"].item(),
+            "val/rec_swap_state": rec_out["rec_swap_state"].item(),
+            "val/rec_swap_both": rec_out["rec_swap_both"].item(),
+
+            # Cross-view losses
+            "val/rec_self_cross": rec_out["rec_self_cross"].item(),
+            "val/rec_swap_view_cross": rec_out["rec_swap_view_cross"].item(),
+            "val/rec_swap_state_cross": rec_out["rec_swap_state_cross"].item(),
+            "val/rec_swap_both_cross": rec_out["rec_swap_both_cross"].item(),
+
+            # Contrastive monitoring
+            "val/inv_contrastive_loss": inv_contrastive_loss.item(),
+            "val/dep_contrastive_loss": dep_contrastive_loss.item(),
+        },
+        step=global_step,
+    )
 
 # -------------------------------------------------------------------------
 # Main training loop (now with wandb + validation renders + checkpoints)
@@ -511,7 +616,6 @@ def train_splatter_vae(
     train_dataloader: DataLoader,
     valid_dataloader: DataLoader,
     cfg_train: TrainConfig,
-    camera_predictor: Optional[CameraParamPredictor] = None,
     resume_ckpt: Optional[str] = None,
 ):
     """
@@ -535,14 +639,8 @@ def train_splatter_vae(
     splatter_data_cfg = splatter_cfg.data
     splatter_to_gaussians = VAESplatterToGaussians(splatter_cfg).to(device)
 
-    # Move camera predictor if provided
-    if camera_predictor is not None:
-        camera_predictor.to(device)
-
-    # Optimizer: VAE + splatter_to_gaussians (+ camera_predictor if present)
+    # Optimizer: VAE + splatter_to_gaussians 
     params = list(vae.parameters()) + list(splatter_to_gaussians.parameters())
-    if camera_predictor is not None:
-        params += list(camera_predictor.parameters())
     optimizer = torch.optim.Adam(params, lr=cfg_train.lr)
 
     # Resume from checkpoint
@@ -550,15 +648,11 @@ def train_splatter_vae(
     global_step = 0
     if resume_ckpt is not None and os.path.isfile(resume_ckpt):
         print(f"[Resume] Loading checkpoint from: {resume_ckpt}")
-        ckpt = torch.load(resume_ckpt, map_location=device, weight_only=False)
+        ckpt = torch.load(resume_ckpt, map_location='cpu')
 
         vae.load_state_dict(ckpt["vae_state_dict"])
         splatter_to_gaussians.load_state_dict(ckpt["splatter_to_gaussians_state_dict"])
         optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-
-        # Camera predictor state is optional (for older checkpoints)
-        if camera_predictor is not None and "camera_predictor_state_dict" in ckpt:
-            camera_predictor.load_state_dict(ckpt["camera_predictor_state_dict"])
 
         start_epoch = ckpt.get("epoch", 0)
         global_step = ckpt.get("global_step", 0)
@@ -590,136 +684,98 @@ def train_splatter_vae(
             # ---------------------------------------------------------
             vae.train()
             splatter_to_gaussians.train()
-            if camera_predictor is not None:
-                camera_predictor.train()
 
             # ---------------------------------------------------------
             # 1. Move batch to device
             # ---------------------------------------------------------
-            image_i_t  = batch["image_i_t"].to(device)   # (B,3,H,W)
-            image_j_t  = batch["image_j_t"].to(device)   # (B,3,H,W)
-            image_i_t1 = batch["image_i_t1"].to(device)  # (B,3,H,W)
+            image_a = batch["image_i_t"].to(device)    # A = (s0, i)
+            image_b = batch["image_j_t"].to(device)    # B = (s0, j)
+            image_c = batch["image_i_t1"].to(device)   # C = (s1, i)
+            image_d = batch["image_j_t1"].to(device)   # D = (s1, j)
 
             # Ground-truth camera params (only used for validation/metrics, not for training)
-            T_ij_gt = batch["T_ij"].to(device)           # (B,4,4)
-            K_i_gt  = batch["K_i"].to(device)            # (B,3,3)
-            K_j_gt  = batch["K_j"].to(device)            # (B,3,3)
-
-            B, _, H, W = image_i_t.shape
+            T_ij = batch["T_ij"].to(device)
+            K_i = batch["K_i"].to(device)
+            K_j = batch["K_j"].to(device)
 
             # Images are in [-1,1]; convert to [0,1]
-            gt_i_t_01 = (image_i_t + 1.0) * 0.5   # (B,3,H,W)
-            gt_j_t_01 = (image_j_t + 1.0) * 0.5
+            gt_a_01 = (image_a + 1.0) * 0.5
+            gt_b_01 = (image_b + 1.0) * 0.5
+            gt_c_01 = (image_c + 1.0) * 0.5
+            gt_d_01 = (image_d + 1.0) * 0.5
 
             # ---------------------------------------------------------
             # 2. Encode three images into invariant + view-dependent latents
             # ---------------------------------------------------------
             (
-                z_inv_i_t, z_inv_j_t, z_inv_i_t1,
-                z_dep_i_t, z_dep_j_t, z_dep_i_t1,
+                z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+                z_dep_a, z_dep_b, z_dep_c, z_dep_d,
                 inv_vq_loss, dep_vq_loss,
-            ) = encode_triplet(
-                vae, image_i_t, image_j_t, image_i_t1
-            )
+            ) = encode_quartet(vae, image_a, image_b, image_c, image_d)
 
             # ---------------------------------------------------------
-            # 3. Predict camera parameters (if enabled)
-            # ---------------------------------------------------------
-            if camera_predictor is not None:
-                T_ij_pred, T_ji_pred, K_i_pred, K_j_pred = predict_cameras_from_latents(
-                    camera_predictor=camera_predictor,
-                    z_dep_i_t=z_dep_i_t,
-                    z_dep_j_t=z_dep_j_t,
-                )
-                if global_step < cfg_train.crossview_start_step:
-                    T_ij_train = T_ij_pred.detach()
-                    K_i_train  = K_i_pred.detach()
-                    K_j_train  = K_j_pred.detach()
-                else:
-                    T_ij_train = T_ij_pred
-                    K_i_train  = K_i_pred
-                    K_j_train  = K_j_pred
-            else:
-                T_ij_train = T_ij_gt
-                K_i_train  = K_i_gt
-                K_j_train  = K_j_gt
-                T_ji_pred  = None
-                T_ij_pred  = None
-
-            # ---------------------------------------------------------
-            # 4. Reconstruction / rendering (shared helper)
+            # 3. Reconstruction / rendering
             # ---------------------------------------------------------
             rec_out = compute_reconstruction_and_renders(
                 vae=vae,
                 splatter_to_gaussians=splatter_to_gaussians,
                 splatter_cfg=splatter_cfg,
-                image_i_t=image_i_t,
-                image_j_t=image_j_t,
-                gt_i_t_01=gt_i_t_01,
-                gt_j_t_01=gt_j_t_01,
-                z_inv_i_t=z_inv_i_t,
-                z_dep_i_t=z_dep_i_t,
-                z_dep_j_t=z_dep_j_t,
-                T_ij=T_ij_train,
-                K_i=K_i_train,
-                K_j=K_j_train,
+                gt_a_01=gt_a_01,
+                gt_b_01=gt_b_01,
+                gt_c_01=gt_c_01,
+                gt_d_01=gt_d_01,
+                z_inv_a=z_inv_a,
+                z_inv_c=z_inv_c,
+                z_dep_a=z_dep_a,
+                z_dep_b=z_dep_b,
+                K_i=K_i,
+                K_j=K_j,
+                T_ij=T_ij,   # NEW: enables explicit cross-view rendering supervision
                 bg=bg,
                 return_renders=False,
                 ssim_weight=cfg_train.ssim_weight,
             )
 
-            rec_loss                  = rec_out["rec_loss"]
-            rec_loss_cross            = rec_out["rec_loss_cross"]
-            rec_loss_self_i           = rec_out["rec_loss_self_i"]
-            rec_loss_shuffle          = rec_out["rec_loss_shuffle"]
-            rec_loss_shuffle_j        = rec_out["rec_loss_shuffle_j"]
-            rec_loss_shuffle_i_from_j = rec_out["rec_loss_shuffle_i_from_j"]
+            rec_loss = rec_out["rec_loss"]
+
+            # Grouped losses
+            rec_native_loss = rec_out["rec_native_loss"]
+            rec_cross_loss = rec_out["rec_cross_loss"]
+
+            # Native-view losses
+            rec_self = rec_out["rec_self"]
+            rec_swap_view = rec_out["rec_swap_view"]
+            rec_swap_state = rec_out["rec_swap_state"]
+            rec_swap_both = rec_out["rec_swap_both"]
+
+            # Cross-view losses
+            rec_self_cross = rec_out["rec_self_cross"]
+            rec_swap_view_cross = rec_out["rec_swap_view_cross"]
+            rec_swap_state_cross = rec_out["rec_swap_state_cross"]
+            rec_swap_both_cross = rec_out["rec_swap_both_cross"]
 
             # ---------------------------------------------------------
-            # 5. Contrastive losses
+            # 4. Contrastive losses
             # ---------------------------------------------------------
             inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-                z_inv_i_t, z_inv_j_t, z_inv_i_t1,
-                z_dep_i_t, z_dep_j_t, z_dep_i_t1,
+                z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+                z_dep_a, z_dep_b, z_dep_c, z_dep_d,
                 temperature=cfg_train.temperature,
             )
 
             # ---------------------------------------------------------
-            # 6. VQ loss
+            # 5. VQ loss
             # ---------------------------------------------------------
             vq_loss = inv_vq_loss + dep_vq_loss
 
             # ---------------------------------------------------------
-            # 7. Pose cycle-consistency loss
+            # 6. Total loss with weights
             # ---------------------------------------------------------
-            if camera_predictor is not None and T_ij_pred is not None and T_ji_pred is not None:
-                comp_ij = torch.matmul(T_ij_pred, T_ji_pred)  # (B,4,4)
-                I = torch.eye(4, device=device, dtype=comp_ij.dtype).unsqueeze(0)
-                pose_cycle_loss = ((comp_ij - I) ** 2).mean()
-            else:
-                pose_cycle_loss = torch.tensor(0.0, device=device)
-
-            # ---------------------------------------------------------
-            # 8. Curriculum on loss terms
-            # ---------------------------------------------------------
-            if camera_predictor is not None and global_step < cfg_train.crossview_start_step:
-                rec_loss_active = 0.5 * (rec_loss_self_i + rec_loss_shuffle_j)
-                pose_cycle_weight = 0.0
-            else:
-                rec_loss_active = (
-                    rec_loss_self_i
-                    + rec_loss_shuffle_j
-                    + rec_loss_cross
-                    + rec_loss_shuffle_i_from_j
-                ) / 4.0
-                pose_cycle_weight = cfg_train.pose_cycle_weight
-
             total_loss = (
-                cfg_train.rec_weight * rec_loss_active
+                cfg_train.rec_weight * rec_loss
                 + cfg_train.vq_weight * vq_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
-                + pose_cycle_weight * pose_cycle_loss
             )
 
             optimizer.zero_grad(set_to_none=True)
@@ -727,24 +783,34 @@ def train_splatter_vae(
             optimizer.step()
 
             # ---------------------------------------------------------
-            # 9. wandb logging
+            # 7. wandb logging
             # ---------------------------------------------------------
             wandb.log(
                 {
                     "train/total_loss": total_loss.item(),
-                    "train/rec_loss_active": rec_loss_active.item(),
-                    "train/rec_loss_all": rec_loss.item(),
-                    "train/rec_cross": rec_loss_cross.item(),
-                    "train/rec_self_i": rec_loss_self_i.item(),
-                    "train/rec_shuffle": rec_loss_shuffle.item(),
-                    "train/rec_shuffle_j": rec_loss_shuffle_j.item(),
-                    "train/rec_shuffle_i_from_j": rec_loss_shuffle_i_from_j.item(),
+                    "train/rec_loss": rec_loss.item(),
+
+                    # Grouped reconstruction losses
+                    "train/rec_native_loss": rec_native_loss.item(),
+                    "train/rec_cross_loss": rec_cross_loss.item(),
+
+                    # Native-view losses
+                    "train/rec_self": rec_self.item(),
+                    "train/rec_swap_view": rec_swap_view.item(),
+                    "train/rec_swap_state": rec_swap_state.item(),
+                    "train/rec_swap_both": rec_swap_both.item(),
+
+                    # Cross-view losses
+                    "train/rec_self_cross": rec_self_cross.item(),
+                    "train/rec_swap_view_cross": rec_swap_view_cross.item(),
+                    "train/rec_swap_state_cross": rec_swap_state_cross.item(),
+                    "train/rec_swap_both_cross": rec_swap_both_cross.item(),
+
                     "train/vq_loss": vq_loss.item(),
                     "train/inv_vq_loss": inv_vq_loss.item(),
                     "train/dep_vq_loss": dep_vq_loss.item(),
                     "train/inv_contrastive_loss": inv_contrastive_loss.item(),
                     "train/dep_contrastive_loss": dep_contrastive_loss.item(),
-                    "train/pose_cycle_loss": pose_cycle_loss.item(),
                     "train/epoch": epoch,
                     "train/step_in_epoch": step,
                     "train/global_step": global_step,
@@ -757,17 +823,23 @@ def train_splatter_vae(
                     f"[Epoch {epoch+1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} "
                     f"(rec={rec_loss.item():.4f}, "
+                    f"native={rec_native_loss.item():.4f}, "
+                    f"cross={rec_cross_loss.item():.4f}, "
+                    f"self={rec_self.item():.4f}, "
+                    f"swap_view={rec_swap_view.item():.4f}, "
+                    f"swap_state={rec_swap_state.item():.4f}, "
+                    f"swap_both={rec_swap_both.item():.4f}, "
+                    f"self_cross={rec_self_cross.item():.4f}, "
+                    f"swap_view_cross={rec_swap_view_cross.item():.4f}, "
+                    f"swap_state_cross={rec_swap_state_cross.item():.4f}, "
+                    f"swap_both_cross={rec_swap_both_cross.item():.4f}, "
                     f"vq={vq_loss.item():.4f}, "
                     f"inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"dep_con={dep_contrastive_loss.item():.4f}, "
-                    f"rec_cross={rec_loss_cross.item():.4f}, "
-                    f"rec_self_i={rec_loss_self_i.item():.4f}, "
-                    f"rec_shuffle_j={rec_loss_shuffle_j.item():.4f}, "
-                    f"rec_shuffle_i_from_j={rec_loss_shuffle_i_from_j.item():.4f})"
+                    f"dep_con={dep_contrastive_loss.item():.4f})"
                 )
 
             # ---------------------------------------------------------
-            # 10. Periodic validation
+            # 8. Periodic validation
             # ---------------------------------------------------------
             if (
                 cfg_train.eval_every > 0
@@ -782,12 +854,11 @@ def train_splatter_vae(
                     device=device,
                     bg=bg,
                     cfg_train=cfg_train,
-                    camera_predictor=camera_predictor,
                     global_step=global_step,
                 )
 
             # ---------------------------------------------------------
-            # 11. Periodic checkpoint saving
+            # 9. Periodic checkpoint saving
             # ---------------------------------------------------------
             if (
                 cfg_train.save_every > 0
@@ -806,8 +877,6 @@ def train_splatter_vae(
                     "splatter_to_gaussians_state_dict": splatter_to_gaussians.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 }
-                if camera_predictor is not None:
-                    ckpt["camera_predictor_state_dict"] = camera_predictor.state_dict()
 
                 torch.save(ckpt, ckpt_path)
                 print(f"[Checkpoint] Saved checkpoint to {ckpt_path}")
@@ -837,8 +906,7 @@ def main():
     - Reads all hyperparameters and paths from a single YAML config.
     - Builds train/valid dataloaders from manifests + cameras.json
     - Configures Splatter (camera / Gaussian) parameters
-    - Instantiates a ReViWo-style InvariantDependentSplatterVAE
-      whose decoder outputs a Splatter Image instead of RGB
+    - Instantiates a InvariantDependentSplatterVAE whose decoder outputs a Splatter Image instead of RGB
     - Optionally instantiates a camera predictor to learn T_ij & intrinsics
     - Runs training with wandb logging and periodic checkpoints
     """
@@ -985,18 +1053,6 @@ def main():
     train_cfg_dict = cfg.get("train", {})
     cfg_train = TrainConfig(**train_cfg_dict)
 
-    # Instantiate camera predictor if enabled in config
-    camera_predictor: Optional[CameraParamPredictor] = None
-    if cfg_train.predict_camera_params:
-        # dependent latent is flattened: (T * D_dep)
-        dep_latent_dim = dep_cb_cfg.embed_dim * vae.n_tokens_per_frame
-        camera_predictor = CameraParamPredictor(
-            dep_latent_dim=dep_latent_dim,
-            img_height=H,
-            img_width=W,
-        )
-        print(f"[Info] Using CameraParamPredictor with dep_latent_dim={dep_latent_dim}")
-
     # -------------------------------------------------
     # 5) wandb init from YAML
     # -------------------------------------------------
@@ -1025,10 +1081,6 @@ def main():
 
             "img_height": H,
             "img_width": W,
-
-            "predict_camera_params": cfg_train.predict_camera_params,
-            "pose_cycle_weight": cfg_train.pose_cycle_weight,
-            "crossview_start_step": cfg_train.crossview_start_step,
 
             "splatter_data": spl_data_cfg_dict,
             "splatter_model": spl_model_cfg_dict,
@@ -1060,7 +1112,6 @@ def main():
         train_dataloader=train_loader,
         valid_dataloader=valid_loader,
         cfg_train=cfg_train,
-        camera_predictor=camera_predictor,
         resume_ckpt=resume_ckpt,
     )
 

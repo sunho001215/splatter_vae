@@ -285,6 +285,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
           image_i_t   : (3,H,W) float32 in [-1, 1]
           image_j_t   : (3,H,W) float32 in [-1, 1]
           image_i_t1  : (3,H,W) float32 in [-1, 1]
+          image_j_t1  : (3,H,W) float32 in [-1, 1]
           T_ij        : (4,4) float32 (cam_i -> cam_j)
           K_i         : (3,3) float32
           K_j         : (3,3) float32
@@ -307,11 +308,13 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         img_i_t_np = np.array(obs_grp[f"{view_i}_rgb"][t], dtype=np.uint8)
         img_j_t_np = np.array(obs_grp[f"{view_j}_rgb"][t], dtype=np.uint8)
         img_i_t1_np = np.array(obs_grp[f"{view_i}_rgb"][t1], dtype=np.uint8)
+        img_j_t1_np = np.array(obs_grp[f"{view_j}_rgb"][t1], dtype=np.uint8)
 
         # Convert to torch tensors in [-1,1], shape (3,H,W)
         image_i_t = image_to_tensor(img_i_t_np)
         image_j_t = image_to_tensor(img_j_t_np)
         image_i_t1 = image_to_tensor(img_i_t1_np)
+        image_j_t1 = image_to_tensor(img_j_t1_np)
 
         # Camera matrices
         cam_i = self.cam_cache[demo_key][view_i]
@@ -331,6 +334,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
             "image_i_t": image_i_t,
             "image_j_t": image_j_t,
             "image_i_t1": image_i_t1,
+            "image_j_t1": image_j_t1,
             "T_ij": T_ij,
             "K_i": K_i,
             "K_j": K_j,

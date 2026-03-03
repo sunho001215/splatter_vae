@@ -1,12 +1,12 @@
 seed: 0
-device: cuda:0
+device: cuda:6
 
 data:
   hdf5_path: ../../data/robosuite/stack.hdf5
   batch_size: 256
   num_workers: 8
   pin_memory: true
-  pred_horizon: 16
+  pred_horizon: 10
 
 vision:
   # switch here: "splatter_vae" or "resnet50"
@@ -18,18 +18,12 @@ vision:
 
   # SplatterVAE-specific config
   splatter_vae:
-    checkpoint_path: "./checkpoints/robosuite-stack/step_00245000.pth"
+    checkpoint_path: "../../data/checkpoints/robosuite/encoders/SplatterVAE/stack/step_00040000.pth"
     #   - "codebook": quantized embeddings (post-VQ) 
     #   - "pre_vq"  : continuous embeddings AFTER linear proj to codebook dim, BEFORE quantization
     #   - "swin"    : raw Swin bottleneck tokens (highest-dim; before proj + before VQ)
     feature_source: swin
 
-    # Lossless adaptation hyperparameters
-    lossless_adaptation:
-      enabled: true
-      bottleneck_ratio: 16   # bottleneck dim = D // 16
-      dropout: 0.0
-      use_layernorm: false
 
     # Swin backbone hyperparameters
     swin:
@@ -56,11 +50,11 @@ vision:
     codebook:
       invariant:
         n_embed: 512
-        embed_dim: 64
+        embed_dim: 16
         beta: 0.25
       dependent:
-        n_embed: 512
-        embed_dim: 64
+        n_embed: 32
+        embed_dim: 16
         beta: 0.25
     
     # Overall model hyperparameters
@@ -74,7 +68,7 @@ vision:
 policy:
   proprio_dim: 10
   action_dim: 10
-  pred_horizon: 16   # IMPORTANT
+  pred_horizon: 10
 
   d_model: 512
   dropout: 0.1
@@ -100,10 +94,10 @@ optim:
 logging:
   log_every: 50
   ckpt_every: 10000
-  out_dir: ./checkpoints/splatter_vae_aloha_unleashed_lossless_adaptation/stack/
+  out_dir: ./checkpoints/robosuite/policies/diffusion_policy/SplatterVAE/stack/40k/
 
 wandb:
   enabled: true
-  project: aloha-unleashed-policy
+  project: diffusion-policy
   entity: null
-  run_name: robosuite-stack-splatter-vae-lossless-adaptation
+  run_name: robosuite-stack-splatter_vae-40k
