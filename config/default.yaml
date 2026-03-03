@@ -1,7 +1,7 @@
 # config.yaml
 
 dataset:
-  hdf5_path: ../../data/metaworld/coffee_push.hdf5
+  hdf5_path: ../../data/robosuite/stack.hdf5
   batch_size: 44
   num_workers: 8
   pin_memory: true
@@ -13,11 +13,11 @@ train:
   max_global_steps: 400000
   num_epochs: 100
   lr: 3.0e-5
-  device: cuda:5
+  device: cuda:2
   eval_every: 50
   save_every: 5000
-  ckpt_dir: ../../data/checkpoints/metaworld/encoders/SplatterVAE/coffee_push/
-  resume_from_last: true
+  ckpt_dir: ../../data/checkpoints/robosuite/encoders/SplatterVAE/stack/
+  resume_from_last: false
 
   # loss weights
   rec_weight: 1.0
@@ -77,7 +77,7 @@ codebook:
     embed_dim: 16
     beta: 0.25
   dependent:
-    n_embed: 32
+    n_embed: 8
     embed_dim: 16
     beta: 0.25
 
@@ -87,8 +87,10 @@ model:
   is_dependent_ae: false
   use_invariant_vq: true
   is_invariant_ae: false
+  dep_input_mask_ratio: 0.95
+  dep_mask_eval: true
 
 wandb:
-  project: metaworld-SplatterVAE
+  project: robosuite-SplatterVAE
   entity: null
-  run_name: metaworld-coffee_push
+  run_name: robosuite-stack

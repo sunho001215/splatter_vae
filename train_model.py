@@ -1031,6 +1031,10 @@ def main():
             swin_cfg_dict["patch_size"] = [ps, ps]
         else:
             assert len(ps) == 2, "swin.patch_size must be an int or length-2 list/tuple."
+    
+    # Dependent encoder input masking config
+    dep_input_mask_ratio = float(model_cfg.get("dep_input_mask_ratio", 0.0))
+    dep_mask_eval = bool(model_cfg.get("dep_mask_eval", True))
 
     # Instantiate the Swin-based multi-view VAE
     vae = InvariantDependentSplatterVAE(
@@ -1045,6 +1049,8 @@ def main():
         is_dependent_ae=is_dependent_ae,
         use_invariant_vq=use_invariant_vq,
         is_invariant_ae=is_invariant_ae,
+        dep_input_mask_ratio=dep_input_mask_ratio,
+        dep_mask_eval=dep_mask_eval,
     )
 
     # -------------------------------------------------

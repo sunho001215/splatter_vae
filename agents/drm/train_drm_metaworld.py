@@ -17,7 +17,7 @@ import torch
 import yaml
 
 # Headless MuJoCo rendering.
-# os.environ.setdefault("MUJOCO_GL", "egl")
+os.environ.setdefault("MUJOCO_GL", "egl")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -27,15 +27,11 @@ import gymnasium as gym
 import metaworld
 import mujoco
 import cv2
+import wandb
 
 from agents.drm.drm_metaworld import DrMMetaWorldAgent
 from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
-
-try:
-    import wandb
-except Exception:  # pragma: no cover - keeps the script importable without wandb
-    wandb = None
-
+from agents.drm.replay_buffer import make_replay_loader, ReplayBufferStorage
 
 # -----------------------------------------------------------------------------
 # Small helpers
@@ -46,47 +42,6 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-
-class ReplayBuffer:
-    """Minimal replay buffer for off-policy visual RL."""
-
-    def __init__(self, obs_shape: Tuple[int, ...], action_shape: Tuple[int, ...], capacity: int) -> None:
-        self.capacity = int(capacity)
-        self.idx = 0
-        self.full = False
-
-        self.obs = np.zeros((capacity, *obs_shape), dtype=np.uint8)
-        self.next_obs = np.zeros((capacity, *obs_shape), dtype=np.uint8)
-        self.actions = np.zeros((capacity, *action_shape), dtype=np.float32)
-        self.rewards = np.zeros((capacity, 1), dtype=np.float32)
-        self.discounts = np.zeros((capacity, 1), dtype=np.float32)
-
-    def __len__(self) -> int:
-        return self.capacity if self.full else self.idx
-
-    def add(self, obs: np.ndarray, action: np.ndarray, reward: float, discount: float, next_obs: np.ndarray) -> None:
-        self.obs[self.idx] = obs
-        self.actions[self.idx] = action
-        self.rewards[self.idx] = reward
-        self.discounts[self.idx] = discount
-        self.next_obs[self.idx] = next_obs
-
-        self.idx = (self.idx + 1) % self.capacity
-        self.full = self.full or self.idx == 0
-
-    def sample(self, batch_size: int, device: torch.device) -> tuple[torch.Tensor, ...]:
-        max_idx = len(self)
-        ids = np.random.randint(0, max_idx, size=batch_size)
-        batch = (
-            torch.as_tensor(self.obs[ids], device=device),
-            torch.as_tensor(self.actions[ids], device=device),
-            torch.as_tensor(self.rewards[ids], device=device),
-            torch.as_tensor(self.discounts[ids], device=device),
-            torch.as_tensor(self.next_obs[ids], device=device),
-        )
-        return batch
-
 
 # -----------------------------------------------------------------------------
 # Meta-World environment wrapper with a single configurable camera
@@ -395,11 +350,23 @@ def main() -> None:
     )
 
     tcfg = cfg["train"]
-    buffer = ReplayBuffer(
-        obs_shape=train_env.obs_shape,
+    replay_dir = Path(tcfg.get("replay_dir", "buffer"))
+    replay_storage = ReplayBufferStorage(
+        replay_dir=replay_dir,
         action_shape=train_env.action_shape,
-        capacity=int(tcfg.get("replay_size", 500_000)),
     )
+
+    replay_loader, replay_buffer = make_replay_loader(
+        replay_dir=replay_dir,
+        max_size=int(tcfg.get("replay_size", 500_000)),
+        batch_size=int(tcfg.get("batch_size", 256)),
+        num_workers=int(tcfg.get("replay_num_workers", 2)),
+        save_snapshot=bool(tcfg.get("save_replay_snapshot", False)),
+        nstep=int(tcfg.get("nstep", 3)),
+        discount=float(tcfg.get("discount", 0.99)),
+        fetch_every=int(tcfg.get("replay_fetch_every", 1000)),
+    )
+    replay_iter = None
 
     use_wandb = bool(cfg.get("wandb", {}).get("enabled", False)) and wandb is not None
     if use_wandb:
@@ -428,6 +395,7 @@ def main() -> None:
     rolling_return: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
 
     obs = train_env.reset()
+    replay_storage.add_initial(obs)
     episode_return = 0.0
     episode_success = 0.0
     update_metrics: Dict[str, float] = {}
@@ -440,17 +408,28 @@ def main() -> None:
 
         next_obs, reward, done, info = train_env.step(action)
         transition_discount = 0.0 if done else discount
-        buffer.add(obs, action, reward, transition_discount, next_obs)
+
+        replay_storage.add(
+            action=action,
+            reward=reward,
+            discount=transition_discount,
+            next_obs=next_obs,
+            done=done,
+        )
 
         obs = next_obs
         episode_return += float(reward)
         episode_success = max(episode_success, float(info["success"]))
 
-        # Standard off-policy updates.
-        if step > seed_steps and len(buffer) >= batch_size and step % update_every_steps == 0:
+        # Standard off-policy updates
+        if step > seed_steps and len(replay_storage) >= batch_size and step % update_every_steps == 0:
+            # Lazily create the replay iterator only after enough data exists.
+            # This matches the intended DrM usage much better.
+            if replay_iter is None:
+                replay_iter = iter(replay_loader)
+
             for _ in range(gradient_steps):
-                batch = buffer.sample(batch_size=batch_size, device=device)
-                update_metrics = agent.update(batch, step)
+                update_metrics = agent.update(replay_iter, step)
 
         # Per-step logging (includes dormant ratio).
         if step % log_every_steps == 0:
@@ -506,6 +485,9 @@ def main() -> None:
                 print(episode_log)
 
             obs = train_env.reset()
+
+            replay_storage.add_initial(obs)
+
             episode_return = 0.0
             episode_success = 0.0
 

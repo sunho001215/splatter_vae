@@ -1,10 +1,10 @@
-seed: 0
-device: cuda:3
+seed: 98
+device: cuda:1
 
 wandb:
   enabled: true
   project: metaworld-coffee-push-DrM
-  name: CNN_randomcrop_seed0
+  name: CNN_randomcrop_seed98
 
 env:
   benchmark_id: Meta-World/MT1
@@ -116,10 +116,16 @@ train:
   num_train_steps: 1000000
   seed_steps: 4000
   batch_size: 256
-  replay_size: 500000
+  replay_size: 1000000
   update_every_steps: 2
   gradient_steps: 3
   discount: 0.99
+
+  replay_dir: ./buffer/metaworld/coffee_push/cnn_w_crop/seed98/
+  replay_num_workers: 4
+  replay_fetch_every: 1000
+  save_replay_snapshot: false
+  nstep: 3
 
   log_every_steps: 1000
   eval_every_steps: 10000
@@ -127,4 +133,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/coffee_push/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/coffee_push/seed98/
+
+visualization:
+  enabled: false
+  window_name: metaworld_coffee_push_drm
+  wait_key: 1
+  scale: 1.0
+

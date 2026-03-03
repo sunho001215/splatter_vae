@@ -552,11 +552,29 @@ class DrMMetaWorldAgent:
     # ------------------------------------------------------------------
     # Public update
     # ------------------------------------------------------------------
-    def update(self, batch: tuple[torch.Tensor, ...], step: int) -> Dict[str, float]:
+    def update(self, replay_iter, step: int) -> Dict[str, float]:
+        """
+        Main DrM update function, called once per gradient step with a replay iterator.
+        """
         if step > 0 and step % self.dormant_perturb_interval == 0:
             self._maybe_perturb()
 
+        # Fetch one batch from the replay loader.
+        batch = next(replay_iter)
         obs, action, reward, discount, next_obs = batch
+
+        # DataLoader may return CPU tensors; move them here.
+        def _to_device(x):
+            if torch.is_tensor(x):
+                return x.to(self.device, non_blocking=True)
+            return torch.as_tensor(x, device=self.device)
+
+        obs = _to_device(obs)
+        action = _to_device(action)
+        reward = _to_device(reward)
+        discount = _to_device(discount)
+        next_obs = _to_device(next_obs)
+
         obs_repr, next_repr = self._encode_batch(obs, next_obs)
 
         # Dormant ratio is measured on the actor MLP, as in the official code.

@@ -26,26 +26,6 @@ class CodebookConfig:
 # -----------------------------------------------------------------------------
 # Invariant/Dependent VAE that outputs Splatter Image instead of RGB
 # -----------------------------------------------------------------------------
-
-class InvariantDependentSplatterVAE(nn.Module):
-    """
-    ReViWo-style multi-view VAE, but:
-
-      - encoders are named invariant_encoder and dependent_encoder
-      - works with non-square images (img_height, img_width)
-      - decoder outputs a Splatter Image (per-pixel Gaussian parameters),
-        not an RGB image.
-
-    Structure (same as original, just renamed):
-
-      invariant_encoder: SwinTransformerV2 for view-invariant representation
-      dependent_encoder: SwinTransformerV2 for view-dependent representation
-      decoder          : SwinTransformerV2Decoder over fused tokens
-
-      invariant_output_head: VQ or Gaussian head for invariant branch
-      dependent_output_head: VQ or Gaussian head for dependent branch
-    """
-
 class InvariantDependentSplatterVAE(nn.Module):
     """
     ReViWo-style multi-view VAE, now using Swin Transformers for the
@@ -69,6 +49,8 @@ class InvariantDependentSplatterVAE(nn.Module):
         is_dependent_ae: bool = True,
         use_invariant_vq: bool = True,
         is_invariant_ae: bool = True,
+        dep_input_mask_ratio: float = 0.95,
+        dep_mask_eval: bool = True
     ):
         super().__init__()
 
@@ -271,6 +253,45 @@ class InvariantDependentSplatterVAE(nn.Module):
         self.use_invariant_vq = use_invariant_vq
         self.is_invariant_ae = is_invariant_ae
 
+        # Learnable mask token for dependent encoder input
+        self.dep_input_mask_ratio = dep_input_mask_ratio
+        self.dep_mask_eval = dep_mask_eval
+        self.dep_mask_token = nn.Parameter(torch.zeros(1, 1, 1, 3, self.patch_h, self.patch_w))
+        nn.init.normal_(self.dep_mask_token, mean=0.0, std=0.02)
+
+    def _mask_dependent_input_patches(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Patch-aligned masking for the dependent branch input.
+        """
+        if self.dep_input_mask_ratio <= 0.0:
+            return x
+        if (not self.training) and (not self.dep_mask_eval):
+            return x
+
+        B, C, H, W = x.shape
+        gh = H // self.patch_h
+        gw = W // self.patch_w
+
+        # (B, C, H, W) -> (B, gh, gw, C, patch_h, patch_w)
+        x_patches = x.view(B, C, gh, self.patch_h, gw, self.patch_w)
+        x_patches = x_patches.permute(0, 2, 4, 1, 3, 5).contiguous()
+
+        # keep=1 means visible patch, keep=0 means masked patch
+        keep = (
+            torch.rand(B, gh, gw, 1, 1, 1, device=x.device) >= self.dep_input_mask_ratio
+        ).to(dtype=x.dtype)
+
+        # Broadcast the learnable mask token to all masked locations in the batch
+        mask_token = self.dep_mask_token.to(dtype=x.dtype).expand(B, gh, gw, -1, -1, -1)
+
+        # Visible patches keep original pixels; masked patches use the learnable token
+        x_patches = x_patches * keep + mask_token * (1.0 - keep)
+
+        # (B, gh, gw, C, patch_h, patch_w) -> (B, C, H, W)
+        x_masked = x_patches.permute(0, 3, 1, 4, 2, 5).contiguous()
+        x_masked = x_masked.view(B, C, H, W)
+        return x_masked
+
     # ------------------------------------------------------------------
     # Encoding: produce invariant & dependent embeddings (with VQ or Gaussian)
     # ------------------------------------------------------------------
@@ -299,9 +320,11 @@ class InvariantDependentSplatterVAE(nn.Module):
         # ---------------------------------------------------------
         # Swin encoders: image -> bottleneck token sequences
         # ---------------------------------------------------------
-        # (B, T_latent, latent_dim), T_latent = n_tokens_per_frame
+        # Invariant branch gets original image
         h_inv_tokens = self.invariant_encoder(x)
-        h_dep_tokens = self.dependent_encoder(x)
+        # Dependent branch gets masked image
+        x_dep_masked = self._mask_dependent_input_patches(x)
+        h_dep_tokens = self.dependent_encoder(x_dep_masked)
 
         _, T_latent, _ = h_inv_tokens.shape
         assert T_latent == self.n_tokens_per_frame, (
