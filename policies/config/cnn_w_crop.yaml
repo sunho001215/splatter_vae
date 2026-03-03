@@ -1,12 +1,12 @@
 seed: 0
-device: cuda:1
+device: cuda:6
 
 data:
   hdf5_path: ../../data/robosuite/stack.hdf5
   batch_size: 256
   num_workers: 8
   pin_memory: true
-  pred_horizon: 16
+  pred_horizon: 10
 
 vision:
   name: resnet50
@@ -24,7 +24,7 @@ vision:
 policy:
   proprio_dim: 10
   action_dim: 10
-  pred_horizon: 16
+  pred_horizon: 10
 
   d_model: 512
   dropout: 0.1
@@ -50,10 +50,10 @@ optim:
 logging:
   log_every: 50
   ckpt_every: 10000
-  out_dir: ./checkpoints/cnn_w_crop_aloha_unleashed/stack/
+  out_dir: ./checkpoints/robosuite/policies/diffusion_policy/cnn_w_crop/stack/
 
 wandb:
   enabled: true
-  project: aloha-unleashed-policy
+  project: diffusion-policy
   entity: null
   run_name: robosuite-stack-cnn-w-crop

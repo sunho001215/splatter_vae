@@ -648,7 +648,7 @@ def train_splatter_vae(
     global_step = 0
     if resume_ckpt is not None and os.path.isfile(resume_ckpt):
         print(f"[Resume] Loading checkpoint from: {resume_ckpt}")
-        ckpt = torch.load(resume_ckpt, map_location=device, weight_only=False)
+        ckpt = torch.load(resume_ckpt, map_location='cpu')
 
         vae.load_state_dict(ckpt["vae_state_dict"])
         splatter_to_gaussians.load_state_dict(ckpt["splatter_to_gaussians_state_dict"])
