@@ -14,7 +14,7 @@ env:
   name: Stack
   robot: Panda
   control_freq: 10.0
-  max_steps: 300
+  max_steps: 200
   trials: 1000
   render: true
   show_window: true
@@ -33,8 +33,8 @@ camera:
     fovy: 45.0
 
 execution:
-  pred_horizon: 16
-  exec_horizon: 16
+  pred_horizon: 10
+  exec_horizon: 10
   action_dim: 10
   proprio_dim: 10
 

@@ -1,19 +1,19 @@
-seed: 98
-device: cuda:1
+seed: 42
+device: cuda
 
 wandb:
   enabled: true
   project: metaworld-coffee-push-DrM
-  name: CNN_randomcrop_seed98
+  name: CNN_randomcrop_seed42
 
 env:
   benchmark_id: Meta-World/MT1
   env_name: coffee-push
   image_height: 224
   image_width: 224
-  frame_stack: 1
+  frame_stack: 3
   action_repeat: 2
-  max_episode_steps: 200
+  max_episode_steps: 150
 
   camera:
     name: eval_cam
@@ -27,17 +27,17 @@ env:
 
 vision:
   # Options currently supported by `build_vision_encoder(...)` in your codebase:
-  #   - resnet50
+  #   - resnet
   #   - splatter_vae
-  encoder_type: resnet50
+  encoder_type: resnet
 
   # ------------------------------------------------------------
-  # Baseline: end-to-end ResNet50 + random crop (enabled inside
+  # Baseline: end-to-end ResNet34 + random crop (enabled inside
   # `policies/models/vision.py` when the module is in train mode).
   # ------------------------------------------------------------
-  resnet50:
+  resnet:
     pretrained: false
-    out_dim: 1024
+    out_dim: 256
     crop_height: 200
     crop_width: 200
 
@@ -86,13 +86,13 @@ vision:
         embed_dim: 16
         beta: 0.25
       dependent:
-        n_embed: 64
+        n_embed: 8
         embed_dim: 16
         beta: 0.25
 
 agent:
   lr: 1.0e-4
-  feature_dim: 1024
+  feature_dim: 50
   hidden_dim: 1024
   critic_target_tau: 0.01
 
@@ -113,7 +113,7 @@ agent:
   expectile: 0.9
 
 train:
-  num_train_steps: 1000000
+  num_train_steps: 3000000
   seed_steps: 4000
   batch_size: 256
   replay_size: 1000000
@@ -121,19 +121,19 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/coffee_push/cnn_w_crop/seed98/
+  replay_dir: ./buffer/metaworld/coffee_push/cnn_w_crop/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
   nstep: 3
 
   log_every_steps: 1000
-  eval_every_steps: 10000
+  eval_every_steps: 5000
   num_eval_episodes: 100
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/coffee_push/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/coffee_push/seed42/
 
 visualization:
   enabled: false

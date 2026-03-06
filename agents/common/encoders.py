@@ -11,26 +11,23 @@ import torchvision.transforms.functional as TF
 from models.vae import InvariantDependentSplatterVAE, CodebookConfig
 
 # ----------------------------
-# ResNet50
+# ResNet34 encoder
 # ----------------------------
-# ----------------------------
-# ResNet50
-# ----------------------------
-class ResNet50Tokens(nn.Module):
+class ResNet34(nn.Module):
     """
-    ResNet50 encoder that uses the *full* ResNet50 model, including
+    ResNet34 encoder that uses the *full* ResNet34 model, including
     global average pooling + final fully connected layer.
 
     The final output dimension is user-controlled via:
-        vision.resnet50.out_dim
+        vision.resnet34.out_dim
 
     To keep the downstream interface simple/compatible, the output is returned
     as a single token:
         (B, 1, out_dim)
 
     Cropping uses:
-        vision.resnet50.crop_height
-        vision.resnet50.crop_width
+        vision.resnet34.crop_height
+        vision.resnet34.crop_width
     """
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
@@ -52,10 +49,10 @@ class ResNet50Tokens(nn.Module):
             persistent=False,
         )
 
-        # Full torchvision ResNet50
-        backbone = torchvision.models.resnet50(
+        # Full torchvision ResNet34
+        backbone = torchvision.models.resnet34(
             weights=(
-                torchvision.models.ResNet50_Weights.IMAGENET1K_V1
+                torchvision.models.ResNet34_Weights.IMAGENET1K_V1
                 if pretrained else None
             )
         )
@@ -88,7 +85,7 @@ class ResNet50Tokens(nn.Module):
             # Center crop during evaluation
             x = TF.center_crop(x, (self.crop_height, self.crop_width))
 
-        # Full ResNet50 forward:
+        # Full ResNet34 forward:
         # conv -> residual blocks -> avgpool -> fc
         feat = self.backbone(x)  # (B, out_dim)
 
@@ -215,8 +212,8 @@ class SplatterVAEInvariantCodebookTokens(nn.Module):
 # ----------------------------
 def build_vision_encoder(cfg: Dict[str, Any]) -> nn.Module:
     enc_type = cfg["vision"].get("encoder_type", cfg["vision"].get("name"))
-    if enc_type == "resnet50":
-        return ResNet50Tokens(cfg["vision"]["resnet50"])
+    if enc_type == "resnet":
+        return ResNet34(cfg["vision"]["resnet"])
     elif enc_type == "splatter_vae":
         return SplatterVAEInvariantCodebookTokens(cfg["vision"])
     else:

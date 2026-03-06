@@ -1,5 +1,5 @@
 seed: 0
-device: cuda:6
+device: cuda
 
 data:
   hdf5_path: ../../data/robosuite/stack.hdf5

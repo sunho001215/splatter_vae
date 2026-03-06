@@ -5,7 +5,7 @@ training:
   yaml_path: ./policies/config/cnn_w_crop.yaml
 
 checkpoint:
-  path: ./checkpoints/cnn_w_crop_aloha_unleashed/stack/policy_step_00100000.pt
+  path: ./checkpoints/robosuite/policies/diffusion_policy/cnn_w_crop/stack/policy_step_00100000.pt
 
 # Optional overrides applied on top of training yaml
 model_overrides: {}
@@ -17,7 +17,7 @@ env:
   max_steps: 200
   trials: 1000
   render: true
-  show_window: true
+  show_window: false
 
 camera:
   name: eval_cam
@@ -33,8 +33,8 @@ camera:
     fovy: 45.0
 
 execution:
-  pred_horizon: 16
-  exec_horizon: 16
+  pred_horizon: 10
+  exec_horizon: 10
   action_dim: 10
   proprio_dim: 10
 
