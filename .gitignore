@@ -4,7 +4,7 @@ __pycache__/
 *.pyd
 all_python_sources.txt
 data/
-logs/
+log*/
 checkpoints/
 outputs/
 runs/

@@ -141,25 +141,23 @@ def calc_dormant_ratio(model: nn.Module, *inputs: torch.Tensor, percentage: floa
 @torch.no_grad()
 def perturb(module: nn.Module, optimizer: torch.optim.Optimizer, factor: float) -> None:
     """
-    DrM-style periodic perturbation for linear layers.
-
-    We keep it on the policy/value heads only. This keeps the frozen SplatterVAE
-    untouched and avoids destabilizing a large visual backbone.
+    DrM-style periodic perturbation.
     """
-    linear_keys = [name for name, mod in module.named_modules() if isinstance(mod, nn.Linear)]
-    if not linear_keys:
+    target_types = (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)
+    keys = [name for name, mod in module.named_modules() if isinstance(mod, target_types)]
+    if not keys:
         return
 
     noise_model = deepcopy(module)
     noise_model.apply(weight_init)
 
     for name, param in module.named_parameters():
-        if any(key in name for key in linear_keys):
+        if any(k in name for k in keys):
             noise = noise_model.state_dict()[name] * (1.0 - factor)
             param.data = param.data * factor + noise
 
+    # reset optimizer state (same pattern as before)
     optimizer.state = defaultdict(dict)
-
 
 # -----------------------------------------------------------------------------
 # Vision adapter
@@ -167,25 +165,36 @@ def perturb(module: nn.Module, optimizer: torch.optim.Optimizer, factor: float) 
 
 class VisionEncoderAdapter(nn.Module):
     """
-    Wraps the configurable vision encoder from `policies.models.vision`.
+    Wrap the selected visual encoder and convert frame-stacked RGB observations
+    into one flat state vector for DrM.
 
-    Observations are frame-stacked RGB images with shape (B, 3 * frame_stack, H, W).
-    We run the selected encoder on each RGB frame independently and concatenate all
-    token outputs into one flat state vector.
+    Observation format:
+        obs: (B, 3 * frame_stack, H, W)
 
-    This directly satisfies the requested SplatterVAE behavior:
-    use the *concatenated VQ output* of the view-invariant encoder as the state.
+    Important special case:
+      - For SinCro, the full frame stack is treated as ONE temporal history and
+        is passed through the frozen full scene encoder Ωθ once.
+      - For other encoders, each RGB frame is encoded independently and the
+        per-frame features are concatenated.
     """
 
     def __init__(self, full_cfg: Dict[str, Any]):
         super().__init__()
         self.full_cfg = full_cfg
-        self.vision_name = str(full_cfg["vision"].get("encoder_type", full_cfg["vision"].get("name", "resnet50")))
+        self.vision_name = str(
+            full_cfg["vision"].get("encoder_type", full_cfg["vision"].get("name", "convnet"))
+        ).lower()
         self.frame_stack = int(full_cfg["env"].get("frame_stack", 1))
+
         self.backbone = build_vision_encoder(full_cfg)
 
-        # ResNet50 baseline is trainable end-to-end. SplatterVAE stays frozen.
-        self.is_trainable = self.vision_name == "resnet50"
+        self.is_trainable = bool(
+            getattr(self.backbone, "is_trainable", self.vision_name == "convnet")
+        )
+        self.is_perturbable = bool(
+            getattr(self.backbone, "is_perturbable", self.is_trainable)
+        )
+
         if not self.is_trainable:
             self.backbone.eval()
             for p in self.backbone.parameters():
@@ -193,29 +202,47 @@ class VisionEncoderAdapter(nn.Module):
 
         height = int(full_cfg["env"]["image_height"])
         width = int(full_cfg["env"]["image_width"])
-        dummy = torch.zeros(1, 3, height, width)
+
+        try:
+            backbone_device = next(self.backbone.parameters()).device
+        except StopIteration:
+            backbone_device = torch.device("cpu")
+
         prev_mode = self.backbone.training
         self.backbone.eval()
+
         with torch.no_grad():
-            flat_dim = int(self.backbone(dummy).flatten(1).shape[-1])
+            if self.vision_name == "sincro":
+                # SinCro consumes the WHOLE temporal stack at once.
+                dummy = torch.zeros(
+                    1, self.frame_stack, 3, height, width,
+                    device=backbone_device,
+                )
+                flat_dim = int(self.backbone(dummy).shape[-1])
+                self.single_frame_dim = flat_dim
+                self.repr_dim = flat_dim
+            else:
+                # Other encoders consume one RGB frame at a time.
+                dummy = torch.zeros(1, 3, height, width, device=backbone_device)
+                flat_dim = int(self.backbone(dummy).flatten(1).shape[-1])
+                self.single_frame_dim = flat_dim
+                self.repr_dim = self.single_frame_dim * self.frame_stack
+
         self.backbone.train(prev_mode)
-        self.single_frame_dim = flat_dim
-        self.repr_dim = self.single_frame_dim * self.frame_stack
 
     def set_update_mode(self) -> None:
-        """Enable augmentation only where requested."""
         if self.is_trainable:
-            # In `ResNet50Tokens`, train() triggers random crop.
             self.backbone.train(True)
         else:
-            # Frozen SplatterVAE must stay deterministic.
             self.backbone.eval()
 
     def set_act_mode(self) -> None:
-        """Action selection should be deterministic (no crop noise)."""
         self.backbone.eval()
 
     def _to_unit_float(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dtype == torch.uint8:
+            return x.float() / 255.0
+
         x = x.float()
         if x.max() > 1.0:
             x = x / 255.0
@@ -227,17 +254,32 @@ class VisionEncoderAdapter(nn.Module):
 
         obs = self._to_unit_float(obs)
         batch_size, channels, height, width = obs.shape
+
         expected = 3 * self.frame_stack
         if channels != expected:
-            raise ValueError(f"Expected {expected} channels (= 3 * frame_stack), got {channels}.")
+            raise ValueError(
+                f"Expected {expected} channels (= 3 * frame_stack), got {channels}."
+            )
 
+        # --------------------------------------------------------------
+        # SinCro: treat the stacked frames as one temporal history
+        # --------------------------------------------------------------
+        if self.vision_name == "sincro":
+            # (B, 3*T, H, W) -> (B, T, 3, H, W)
+            seq = obs.view(batch_size, self.frame_stack, 3, height, width)
+            return self.backbone(seq)
+
+        # --------------------------------------------------------------
+        # Other encoders: encode each frame independently
+        # --------------------------------------------------------------
         frames = obs.view(batch_size, self.frame_stack, 3, height, width)
+
         pieces = []
         for frame_idx in range(self.frame_stack):
-            tokens = self.backbone(frames[:, frame_idx])
-            pieces.append(tokens.flatten(1))
-        return torch.cat(pieces, dim=-1)
+            feat = self.backbone(frames[:, frame_idx])
+            pieces.append(feat.flatten(1))
 
+        return torch.cat(pieces, dim=-1).contiguous()
 
 # -----------------------------------------------------------------------------
 # DrM heads 
@@ -544,10 +586,16 @@ class DrMMetaWorldAgent:
 
     def _maybe_perturb(self) -> None:
         factor = self.perturb_factor()
+
+        # Peturb heads
         perturb(self.actor, self.actor_opt, factor)
         perturb(self.critic, self.critic_opt, factor)
         perturb(self.critic_target, self.critic_opt, factor)
         perturb(self.value_predictor, self.value_opt, factor)
+
+        # Perturb encoder if 
+        if self.encoder_opt is not None and getattr(self.encoder, "is_perturbable", False):
+            perturb(self.encoder, self.encoder_opt, factor)
 
     # ------------------------------------------------------------------
     # Public update

@@ -1,0 +1,122 @@
+seed: 66
+device: cuda
+
+wandb:
+  enabled: true
+  project: metaworld-coffee-push-DrM
+  name: SinCro_seed66
+
+env:
+  benchmark_id: Meta-World/MT1
+  env_name: coffee-push
+  image_height: 224
+  image_width: 224
+  frame_stack: 3
+  action_repeat: 2
+  max_episode_steps: 150
+
+  camera:
+    name: eval_cam
+    r: 0.8
+    theta: -30.0
+    phi: 0.0
+    fovy: 45.0
+
+  lookat: [0.0, 0.6, 0.0]
+  up: [0.0, 0.0, 1.0]
+
+vision:
+  encoder_type: sincro
+  img_height: 224
+  img_width: 224
+
+  sincro:
+    checkpoint_path: ../../data/checkpoints/metaworld/encoders/SinCro/coffee_push/step_00100000.pth
+
+    netdepth: 8
+    netwidth: 256
+    netdepth_fine: 8
+    netwidth_fine: 256
+    N_rand: 4096
+    N_samples: 64
+    N_importance: 64
+    multires: 10
+    multires_views: 4
+    i_embed: 0
+    use_viewdirs: true
+    raw_noise_std: 0.0
+    white_bkgd: false
+    perturb: 1.0
+    lindisp: false
+
+    patch_size: 16
+    embed_dim: 384
+    vit_depth: 8
+    vit_num_heads: 6
+    vit_mlp_dim: 1024
+    decoder_depth: 2
+    decoder_num_heads: 2
+    decoder_mlp_dim: 1024
+    decoder_output_dim: 64
+
+    time_interval: 3
+    mask_ratio: 0.75
+    num_views: 6
+
+    near: 0.1
+    far: 2.5
+    chunk: 32768
+
+    pool: flatten
+
+agent:
+  lr: 1.0e-4
+  feature_dim: 50
+  hidden_dim: 1024
+  critic_target_tau: 0.01
+
+  # DrM-specific knobs
+  dormant_threshold: 0.025
+  target_dormant_ratio: 0.20
+  dormant_temp: 10.0
+  target_lambda: 0.70
+  lambda_temp: 50.0
+  dormant_perturb_interval: 100000
+  min_perturb_factor: 0.20
+  max_perturb_factor: 0.95
+  perturb_rate: 2.0
+
+  stddev_type: awake
+  stddev_schedule: linear(1.0,0.1,100000)
+  stddev_clip: 0.3
+  expectile: 0.9
+
+train:
+  num_train_steps: 3000000
+  seed_steps: 4000
+  batch_size: 256
+  replay_size: 1000000
+  update_every_steps: 2
+  gradient_steps: 3
+  discount: 0.99
+
+  replay_dir: ./buffer/metaworld/coffee_push/sincro/seed66/
+  replay_num_workers: 4
+  replay_fetch_every: 1000
+  save_replay_snapshot: false
+  nstep: 3
+
+  log_every_steps: 1000
+  eval_every_steps: 5000
+  num_eval_episodes: 100
+  rolling_window: 10
+
+  checkpoint_every_steps: 50000
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/sincro/coffee_push/seed66/
+
+visualization:
+  enabled: false
+  window_name: metaworld_coffee_push_drm
+  wait_key: 1
+  scale: 1.0
+

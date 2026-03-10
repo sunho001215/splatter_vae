@@ -329,10 +329,6 @@ def main() -> None:
     vision_cfg = cfg.setdefault("vision", {})
     vision_cfg.setdefault("img_height", int(cfg["env"]["image_height"]))
     vision_cfg.setdefault("img_width", int(cfg["env"]["image_width"]))
-    if vision_cfg.get("encoder_type", vision_cfg.get("name", "resnet50")) == "resnet50":
-        res_cfg = vision_cfg.setdefault("resnet50", {})
-        res_cfg.setdefault("img_height", int(cfg["env"]["image_height"]))
-        res_cfg.setdefault("img_width", int(cfg["env"]["image_width"]))
 
     seed = int(cfg.get("seed", 0))
     set_seed(seed)
@@ -372,7 +368,7 @@ def main() -> None:
     if use_wandb:
         wandb.init(
             project=str(cfg["wandb"].get("project", "drm-metaworld")),
-            name=str(cfg["wandb"].get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'resnet50')}")),
+            name=str(cfg["wandb"].get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'convnet')}")),
             config=cfg,
         )
 

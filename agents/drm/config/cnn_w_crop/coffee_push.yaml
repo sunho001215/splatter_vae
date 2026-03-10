@@ -26,69 +26,15 @@ env:
   up: [0.0, 0.0, 1.0]
 
 vision:
-  # Options currently supported by `build_vision_encoder(...)` in your codebase:
-  #   - resnet
-  #   - splatter_vae
-  encoder_type: resnet
+  encoder_type: convnet
 
   # ------------------------------------------------------------
-  # Baseline: end-to-end ResNet34 + random crop (enabled inside
+  # Baseline: end-to-end ConvNet + random crop (enabled inside
   # `policies/models/vision.py` when the module is in train mode).
   # ------------------------------------------------------------
-  resnet:
-    pretrained: false
-    out_dim: 256
+  convnet:
     crop_height: 200
     crop_width: 200
-
-  # ------------------------------------------------------------
-  # Frozen view-invariant representations from a pre-trained SplatterVAE.
-  # ------------------------------------------------------------
-  splatter_vae:
-    checkpoint_path: /absolute/path/to/your/pretrained_splatter_vae.ckpt
-    feature_source: codebook           # codebook | pre_vq | swin
-    splatter_channels: 96
-    image_height: 224
-    image_width: 224
-
-    model:
-      fusion_style: plus 
-      use_dependent_vq: true
-      is_dependent_ae: false
-      use_invariant_vq: true
-      is_invariant_ae: false
-
-    # Swin backbone hyperparameters
-    swin:
-      # Swin-Tiny architecture
-      embed_dim: 96          # C
-      depths: [2, 2, 6, 2]   # layers per stage
-      num_heads: [3, 6, 12, 24]
-      # Image & patching
-      patch_size: 4 
-      window_size: 7
-      # Standard Swin defaults
-      mlp_ratio: 4.0
-      qkv_bias: true
-      drop_rate: 0.0
-      attn_drop_rate: 0.0
-      drop_path_rate: 0.1
-      # Other options
-      ape: false
-      patch_norm: true
-      use_checkpoint: false
-      pretrained_window_sizes: [0, 0, 0, 0]
-
-    # Codebook hyperparameters
-    codebook:
-      invariant:
-        n_embed: 512
-        embed_dim: 16
-        beta: 0.25
-      dependent:
-        n_embed: 8
-        embed_dim: 16
-        beta: 0.25
 
 agent:
   lr: 1.0e-4
