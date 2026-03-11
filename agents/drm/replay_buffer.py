@@ -320,9 +320,11 @@ def make_replay_loader(
         replay_loader, replay_buffer = make_replay_loader(...)
         replay_iter = iter(replay_loader)
     """
+    max_size_per_worker = int(max_size) // max(1, int(num_workers))
+
     dataset = ReplayBuffer(
         replay_dir=replay_dir,
-        max_size=max_size,
+        max_size=max_size_per_worker,
         num_workers=num_workers,
         nstep=nstep,
         discount=discount,
