@@ -1,16 +1,16 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-sweep-into-DrM
-  name: CNN_randomcrop_seed42
+  project: metaworld-hammer-DrM
+  name: CNN_randomcrop_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: sweep-into
-  image_height: 224
-  image_width: 224
+  env_name: hammer
+  image_height: 128
+  image_width: 128
   frame_stack: 3
   action_repeat: 2
   max_episode_steps: 150
@@ -33,8 +33,8 @@ vision:
   # `policies/models/vision.py` when the module is in train mode).
   # ------------------------------------------------------------
   convnet:
-    crop_height: 200
-    crop_width: 200
+    crop_height: 100
+    crop_width: 100
 
 agent:
   lr: 1.0e-4
@@ -67,7 +67,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/sweep_into/cnn_w_crop/seed42/
+  replay_dir: ./buffer/metaworld/hammer/cnn_w_crop/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -79,11 +79,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/sweep_into/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/hammer/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_sweep_into_drm
+  window_name: metaworld_hammer_drm
   wait_key: 1
   scale: 1.0
 

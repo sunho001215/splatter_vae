@@ -308,6 +308,7 @@ def build_train_valid_loaders_robosuite(
         pin_memory=pin_memory,
         drop_last=drop_last_train,
         worker_init_fn=_worker_init_fn,
+        persistent_workers=(num_workers > 0),
     )
     valid_loader = DataLoader(
         valid_dataset,
@@ -317,6 +318,7 @@ def build_train_valid_loaders_robosuite(
         pin_memory=pin_memory,
         drop_last=True,
         worker_init_fn=_worker_init_fn,
+        persistent_workers=(num_workers > 0),
     )
 
     return train_loader, valid_loader

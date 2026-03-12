@@ -81,16 +81,11 @@ class ConvNet(nn.Module):
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
 
-        self.crop_height = int(cfg.get("crop_height", 200))
-        self.crop_width = int(cfg.get("crop_width", 200))
+        self.crop_height = int(cfg.get("crop_height", 100))
+        self.crop_width = int(cfg.get("crop_width", 100))
 
         self.convnet = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
 
             nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),

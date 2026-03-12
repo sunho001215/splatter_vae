@@ -1,9 +1,9 @@
 dataset:
   # Path to your RoboSuite multi-view HDF5 file
-  hdf5_path: "../../data/metaworld/coffee_push.hdf5"
+  hdf5_path: "../../data/metaworld/window_open.hdf5"
 
   # DataLoader settings
-  batch_size: 64
+  batch_size: 32
   num_workers: 8
   pin_memory: true
 
@@ -16,7 +16,7 @@ dataset:
 
 reviwo:
   # Image & patch settings
-  img_size: 224         
+  img_size: 128         
   patch_size: 16      
   fusion_style: "plus"   
 
@@ -62,23 +62,23 @@ reviwo:
 
   # Codebook configs
   view_codebook:
-    embed_dim: 16
+    embed_dim: 32
     n_embed: 64
     beta: 0.25
 
   latent_codebook:
-    embed_dim: 16
+    embed_dim: 32
     n_embed: 512
     beta: 0.25
 
 train:
   # Training length
   num_epochs: 1000          # from original num_epoch
-  max_global_steps: 20000  # optional override; keep null to use num_epochs
+  max_global_steps: 100000  # optional override; keep null to use num_epochs
 
   # Optimizer
   lr: 0.0003              # from original optimizer.lr
-  device: "cuda:2"
+  device: cuda:0
 
   # Loss form (from original config)
   loss_form: "Weighted_MSE"
@@ -103,7 +103,7 @@ train:
   log_every: 50           # corresponds to original log_step
 
   # Checkpoint directory + resume flag
-  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/coffee_push/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/window_open/"
   resume_from_last: false
 
   # Number of views per sample in this trainer

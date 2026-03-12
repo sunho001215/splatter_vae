@@ -1,18 +1,18 @@
 output:
-  path: /home/ws/data/metaworld/coffee_push.hdf5
+  path: /home/ws/data/metaworld/stick_push.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "coffee-push-v3"
+  env_name: "stick-push-v3"
   seed: 0
   max_steps: 150
   terminate_on_success: true
 
 render:
-  height: 224
-  width: 224
+  height: 128
+  width: 128
   lookat: [0.0, 0.6, 0.0]
   up: [0.0, 0.0, 1.0]
   cameras:

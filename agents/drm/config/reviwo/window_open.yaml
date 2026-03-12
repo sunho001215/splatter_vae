@@ -3,14 +3,14 @@ device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-coffee-push-DrM
+  project: metaworld-window-open-DrM
   name: ReViWo_seed42
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: coffee-push
-  image_height: 224
-  image_width: 224
+  env_name: window-open
+  image_height: 128
+  image_width: 128
   frame_stack: 3
   action_repeat: 2
   max_episode_steps: 150
@@ -29,9 +29,11 @@ vision:
   encoder_type: reviwo
 
   reviwo:
-    checkpoint_path: ../../data/checkpoints/metaworld/encoders/ReViWo/coffee_push/step_00015000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/ReViWo/window_open/step_00095000.pth
 
-    img_size: 224         
+
+    # Image & patch settings
+    img_size: 128         
     patch_size: 16      
     fusion_style: "plus"   
 
@@ -77,12 +79,12 @@ vision:
 
     # Codebook configs
     view_codebook:
-      embed_dim: 16
+      embed_dim: 32
       n_embed: 64
       beta: 0.25
 
     latent_codebook:
-      embed_dim: 16
+      embed_dim: 32
       n_embed: 512
       beta: 0.25
 
@@ -117,7 +119,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/coffee_push/reviwo/seed42/
+  replay_dir: ./buffer/metaworld/window_open/reviwo/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -129,11 +131,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/reviwo/coffee_push/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/reviwo/window_open/seed42/
 
 visualization:
   enabled: false
-  window_name: metaworld_coffee_push_drm
+  window_name: metaworld_window_open_drm
   wait_key: 1
   scale: 1.0
 

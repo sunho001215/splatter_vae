@@ -1,16 +1,16 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-soccer-DrM
-  name: CNN_randomcrop_seed42
+  project: metaworld-window-open-DrM
+  name: CNN_randomcrop_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: soccer
-  image_height: 224
-  image_width: 224
+  env_name: window-open
+  image_height: 128
+  image_width: 128
   frame_stack: 3
   action_repeat: 2
   max_episode_steps: 150
@@ -33,8 +33,8 @@ vision:
   # `policies/models/vision.py` when the module is in train mode).
   # ------------------------------------------------------------
   convnet:
-    crop_height: 200
-    crop_width: 200
+    crop_height: 100
+    crop_width: 100
 
 agent:
   lr: 1.0e-4
@@ -67,7 +67,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/soccer/cnn_w_crop/seed42/
+  replay_dir: ./buffer/metaworld/window_open/cnn_w_crop/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -79,11 +79,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/soccer/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/window_open/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_soccer_drm
+  window_name: metaworld_window_open_drm
   wait_key: 1
   scale: 1.0
 

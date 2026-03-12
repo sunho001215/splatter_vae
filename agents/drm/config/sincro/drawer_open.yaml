@@ -1,14 +1,14 @@
-seed: 66
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-coffee-push-DrM
-  name: SinCro_seed66
+  project: metaworld-drawer-open-DrM
+  name: SinCro_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: coffee-push
+  env_name: drawer-open
   image_height: 224
   image_width: 224
   frame_stack: 3
@@ -31,15 +31,15 @@ vision:
   img_width: 224
 
   sincro:
-    checkpoint_path: ../../data/checkpoints/metaworld/encoders/SinCro/coffee_push/step_00100000.pth
+    checkpoint_path: ../../data/checkpoints/metaworld/encoders/SinCro/drawer_open/step_00100000.pth
 
     netdepth: 8
     netwidth: 256
     netdepth_fine: 8
     netwidth_fine: 256
-    N_rand: 4096
+    N_rand: 2048
     N_samples: 64
-    N_importance: 64
+    N_importance: 128
     multires: 10
     multires_views: 4
     i_embed: 0
@@ -50,14 +50,14 @@ vision:
     lindisp: false
 
     patch_size: 16
-    embed_dim: 384
-    vit_depth: 8
-    vit_num_heads: 6
+    embed_dim: 256
+    vit_depth: 4
+    vit_num_heads: 4
     vit_mlp_dim: 1024
     decoder_depth: 2
     decoder_num_heads: 2
     decoder_mlp_dim: 1024
-    decoder_output_dim: 64
+    decoder_output_dim: 256
 
     time_interval: 3
     mask_ratio: 0.75
@@ -100,7 +100,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/coffee_push/sincro/seed66/
+  replay_dir: ./buffer/metaworld/drawer_open/sincro/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -112,11 +112,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/sincro/coffee_push/seed66/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/sincro/drawer_open/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_coffee_push_drm
+  window_name: metaworld_drawer_open_drm
   wait_key: 1
   scale: 1.0
 

@@ -1,0 +1,135 @@
+# -----------------------------------------------------------------------------
+# Dataset / dataloader
+# -----------------------------------------------------------------------------
+dataset:
+  hdf5_path: ../../data/metaworld/window_open.hdf5
+  batch_size: 32
+  num_workers: 8
+  pin_memory: true
+  train_ratio: 0.96
+  seed: 42
+  num_episodes: null
+  max_frames_per_demo: null
+
+# -----------------------------------------------------------------------------
+# Model wrapper settings
+# -----------------------------------------------------------------------------
+model:
+  fusion_style: "plus"          # ["cat", "plus"]
+  use_dependent_vq: true
+  is_dependent_ae: false
+  use_invariant_vq: true
+  is_invariant_ae: false
+  dep_input_mask_ratio: 0.95
+  dep_mask_eval: true
+
+# -----------------------------------------------------------------------------
+# Invariant / dependent codebooks
+# -----------------------------------------------------------------------------
+codebook:
+  invariant:
+    n_embed: 512
+    embed_dim: 16
+    beta: 0.25
+  dependent:
+    n_embed: 64
+    embed_dim: 16
+    beta: 0.25
+
+# -----------------------------------------------------------------------------
+# ViT encoders + token transformer + DPT decoder
+# -----------------------------------------------------------------------------
+vit:
+  # Encoder ViT hyperparameters
+  patch_size: 16
+  in_chans: 3
+  embed_dim: 192
+  depth: 8
+  num_heads: 8
+  mlp_ratio: 4.0
+  qkv_bias: true
+  dropout: 0.0
+  attn_dropout: 0.0
+  drop_path_rate: 0.1
+  layerscale_init: 1.0e-5
+
+  # Four tap points required by the DPT-style decoder.
+  selected_layers: [2, 5, 8, 11]
+
+  # Decoder-side token transformer before the DPT dense head.
+  decoder_depth: 12
+  decoder_num_heads: 6
+  decoder_mlp_ratio: 4.0
+  decoder_drop_path_rate: 0.1
+  decoder_selected_layers: [2, 5, 8, 11]
+
+  # DPT dense decoder width.
+  dpt_features: 128
+
+# -----------------------------------------------------------------------------
+# Splatter / Gaussian parameterization
+# -----------------------------------------------------------------------------
+splatter:
+  data:
+    img_height: 128
+    img_width: 128
+    znear: 0.1
+    zfar: 2.5
+    white_background: false
+    inverted_x: false
+    inverted_y: false
+    category: "generic"
+
+  model:
+    # Parent Gaussian layout (vanilla Splatter Image)
+    max_sh_degree: 1
+    isotropic: false
+    depth_scale: 1.0
+    depth_bias: 0.0
+    xyz_scale: 0.1
+    xyz_bias: 0.0
+    opacity_scale: 1.0
+    opacity_bias: -2.0
+    scale_scale: 0.02
+    scale_bias: -4.0
+
+    # Hierarchical child Gaussians
+    num_child_gaussians: 3
+    child_warmup_steps: 10000
+
+    # 2D CNN child predictor hyperparameters
+    child_cnn_hidden_dim: 64
+    child_cnn_num_blocks: 1
+    child_cnn_kernel_size: 7
+    child_cnn_use_depthwise_separable: true
+
+# -----------------------------------------------------------------------------
+# Training
+# -----------------------------------------------------------------------------
+train:
+  num_epochs: 100
+  max_global_steps: 250000
+  lr: 3.0e-5
+  device: cuda
+
+  # Original loss weights kept from the previous patch / current training logic.
+  rec_weight: 1.0
+  ssim_weight: 0.2
+  vq_weight: 0.25
+  inv_contrastive_weight: 1.0
+  dep_contrastive_weight: 0.1
+  temperature: 0.1
+
+  eval_every: 100
+  save_every: 5000
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/window_open/
+  resume_from_last: false
+
+# -----------------------------------------------------------------------------
+# Optional logging
+# -----------------------------------------------------------------------------
+wandb:
+  enabled: true
+  project: metaworld-SplatterVAE
+  entity: null
+  run_name: metaworld-window_open-hierarchical

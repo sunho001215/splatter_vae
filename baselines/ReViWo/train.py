@@ -86,34 +86,19 @@ class ReViWoTrainConfig:
 # Loss computation for ReViWo on RoboSuite multi-view batch
 # ===========================================================================
 
+# ===== train.py =====
+
 def compute_reviwo_loss(
     model: MultiViewBetaVAE,
     batch: Dict[str, torch.Tensor],
     cfg_train: ReViWoTrainConfig,
     device: torch.device,
 ) -> Dict[str, torch.Tensor]:
-    """
-    ReViWo loss adapted from MultiViewViTTrainer.get_loss, but using a
-    RoboSuite batch that contains ALL camera views:
-
-        batch["images"]: (B, A, 3, H, W), in [-1, 1]
-            B = batch size
-            A = number of cameras / views per timestep (e.g. 6)
-
-    We apply:
-      - reconstruction loss
-      - shuffled latent/view reconstruction
-      - view & latent consistency losses
-      - view & latent contrastive losses
-      - VQ loss
-    """
     model_device = next(model.parameters()).device
     assert model_device == device, "Model and device must match."
 
-    # ----------------------------------------------------------------------
-    # 1) Prepare multi-view batch: (B, A, C, H, W) -> (B*A, C, H, W)
-    # ----------------------------------------------------------------------
-    images = batch["images"].to(device).float()  # (B, A, 3, H, W) in [-1, 1]
+    # non_blocking=True because DataLoader already uses pin_memory=True
+    images = batch["images"].to(device, non_blocking=True).float()  # (B, A, 3, H, W)
 
     B, A, C, H, W = images.shape
     assert H == W, "ReViWo code assumes square images."
@@ -124,19 +109,11 @@ def compute_reviwo_loss(
         "Set camera_num from the dataset in main()."
     )
 
-    # Flatten across camera dimension → (B * A, C, H, W)
     x = images.view(B * camera_num, C, H, W).contiguous()
 
-    # ----------------------------------------------------------------------
-    # 2) Encode & decode
-    # ----------------------------------------------------------------------
     z_v, view_embed_loss, z_l, latent_embed_loss, encoding_indices = model.encode(x)
-    y = model.decode(z_v, z_l)  # reconstruction for each (sample, view)
+    y = model.decode(z_v, z_l)
 
-    # ----------------------------------------------------------------------
-    # 3) Shuffle latents across cameras / batch (same as original trainer)
-    # ----------------------------------------------------------------------
-    # Shuffle latent z_l along camera dimension (swap view-specific content)
     shuffle_cam_idx = torch.randperm(camera_num, device=device)
     shuffled_z_l = (
         z_l.reshape(B, camera_num, -1)[:, shuffle_cam_idx, :]
@@ -144,104 +121,72 @@ def compute_reviwo_loss(
     )
     y_shuffle_l = model.decode(z_v, shuffled_z_l)
 
-    # Shuffle view-latent z_v across batch dimension (swap environment/content)
     shuffle_batch_idx = torch.randperm(B, device=device)
     shuffled_z_v = (
         z_v.reshape(B, camera_num, -1)[shuffle_batch_idx, :, :]
         .reshape(B * camera_num, -1, z_v.shape[-1])
     )
     y_shuffle_v = model.decode(shuffled_z_v, z_l)
-
-    # Shuffle both view & latent
     y_shuffle_vl = model.decode(shuffled_z_v, shuffled_z_l)
 
-    # ----------------------------------------------------------------------
-    # 4) Normalize latents and compute contrastive + consistency losses
-    # ----------------------------------------------------------------------
     normalized_z_l = normalize_tensor(z_l).reshape(B, camera_num, -1)
     normalized_z_v = normalize_tensor(z_v).reshape(B, camera_num, -1)
 
-    latent_contrastive_loss = 0.0
-    view_contrastive_loss = 0.0
     temperature = cfg_train.temperature
     lower_bound = cfg_train.lower_bound
+    eps = 1e-12
 
-    # ---- View Consistency (across batch, same camera index) --------------
-    for j in range(camera_num):
-        for i in range(B):
-            # positive: same camera j, different samples i_ != i
-            positive = sum(
-                [
-                    (
-                        compute_similarity(
-                            normalized_z_v[i, j],
-                            normalized_z_v[i_, j],
-                            dim=-1,
-                            way="cosine-similarity",
-                            lower_bound=lower_bound,
-                        )
-                        / temperature
-                    ).exp()
-                    for i_ in range(B)
-                    if i_ != i
-                ]
-            )
+    # ----------------------------------------------------------------------
+    # Vectorized contrastive losses
+    # ----------------------------------------------------------------------
+    same_batch = torch.eye(B, device=device, dtype=torch.bool)
+    same_cam = torch.eye(camera_num, device=device, dtype=torch.bool)
 
-            # negative: all other cameras for all samples
-            negative_state_idxs = [idx for idx in range(camera_num) if idx != j]
-            negative = (
-                compute_similarity(
-                    normalized_z_v[i : i + 1, j : j + 1].repeat(B, camera_num - 1, 1),
-                    normalized_z_v[:, negative_state_idxs],
-                    dim=-1,
-                    way="cosine-similarity",
-                    lower_bound=lower_bound,
-                )
-                / temperature
-            ).exp().sum()
+    # ---- View contrastive: positives = same camera, different sample
+    #                       negatives = all other cameras, all samples
+    view_sim = compute_similarity(
+        normalized_z_v[:, :, None, None, :],   # (B, A, 1, 1, D)
+        normalized_z_v[None, None, :, :, :],   # (1, 1, B, A, D)
+        dim=-1,
+        way="cosine-similarity",
+        lower_bound=lower_bound,
+    )  # -> (B, A, B, A)
 
-            view_contrastive_loss -= (positive / (positive + negative)).log()
+    view_exp = (view_sim / temperature).exp()
 
-    # ---- Latent Consistency (across cameras, same sample) -----------------
-    for i in range(B):
-        for j in range(camera_num):
-            # positive: same sample i, other cameras j_ != j
-            positive = sum(
-                [
-                    (
-                        compute_similarity(
-                            normalized_z_l[i, j],
-                            normalized_z_l[i, j_],
-                            dim=-1,
-                            way="cosine-similarity",
-                            lower_bound=lower_bound,
-                        )
-                        / temperature
-                    ).exp()
-                    for j_ in range(camera_num)
-                    if j_ != j
-                ]
-            )
+    view_pos_mask = (~same_batch)[:, None, :, None] & same_cam[None, :, None, :]
+    view_neg_mask = (~same_cam)[None, :, None, :]
 
-            # negative: all cameras of all OTHER samples
-            negative_state_idxs = [idx for idx in range(B) if idx != i]
-            negative = (
-                compute_similarity(
-                    normalized_z_l[i : i + 1, j : j + 1].repeat(B - 1, camera_num, 1),
-                    normalized_z_l[negative_state_idxs],
-                    dim=-1,
-                    way="cosine-similarity",
-                    lower_bound=lower_bound,
-                )
-                / temperature
-            ).exp().sum()
+    view_pos = view_exp.masked_fill(~view_pos_mask, 0.0).sum(dim=(2, 3))
+    view_neg = view_exp.masked_fill(~view_neg_mask, 0.0).sum(dim=(2, 3))
 
-            latent_contrastive_loss -= (positive / (positive + negative)).log()
+    view_contrastive_loss = -torch.log(
+        view_pos.clamp_min(eps) / (view_pos + view_neg).clamp_min(eps)
+    ).mean()
 
-    view_contrastive_loss = view_contrastive_loss / (B * camera_num)
-    latent_contrastive_loss = latent_contrastive_loss / (B * camera_num)
+    # ---- Latent contrastive: positives = same sample, different camera
+    #                         negatives = all cameras from other samples
+    latent_sim = compute_similarity(
+        normalized_z_l[:, :, None, None, :],   # (B, A, 1, 1, D)
+        normalized_z_l[None, None, :, :, :],   # (1, 1, B, A, D)
+        dim=-1,
+        way="cosine-similarity",
+        lower_bound=lower_bound,
+    )  # -> (B, A, B, A)
 
-    # Consistency L1 losses (same as original)
+    latent_exp = (latent_sim / temperature).exp()
+
+    latent_pos_mask = same_batch[:, None, :, None] & (~same_cam)[None, :, None, :]
+    latent_neg_mask = (~same_batch)[:, None, :, None]
+
+    latent_pos = latent_exp.masked_fill(~latent_pos_mask, 0.0).sum(dim=(2, 3))
+    latent_neg = latent_exp.masked_fill(~latent_neg_mask, 0.0).sum(dim=(2, 3))
+
+    latent_contrastive_loss = -torch.log(
+        latent_pos.clamp_min(eps) / (latent_pos + latent_neg).clamp_min(eps)
+    ).mean()
+
+    # Consistency losses
     latent_consistency_loss = torch.mean(
         (torch.mean(normalized_z_l, dim=1, keepdim=True) - normalized_z_l).abs()
     )
@@ -249,9 +194,7 @@ def compute_reviwo_loss(
         (torch.mean(normalized_z_v, dim=0, keepdim=True) - normalized_z_v).abs()
     )
 
-    # ----------------------------------------------------------------------
-    # 5) Reconstruction + shuffled reconstruction losses
-    # ----------------------------------------------------------------------
+    # Reconstruction losses
     if cfg_train.loss_form == "MAE":
         rec_loss = torch.abs(x - y).mean()
         shuffled_l_rec_loss = torch.abs(x - y_shuffle_l).mean()
@@ -272,12 +215,8 @@ def compute_reviwo_loss(
     else:
         raise NotImplementedError(f"Unknown loss_form: {cfg_train.loss_form}")
 
-    # VQ loss (view + latent)
     vq_loss = latent_embed_loss.mean() + view_embed_loss.mean()
 
-    # ----------------------------------------------------------------------
-    # 6) Total loss with coefficients
-    # ----------------------------------------------------------------------
     loss = (
         rec_loss
         + cfg_train.shuffled_l_coef * shuffled_l_rec_loss
@@ -302,7 +241,6 @@ def compute_reviwo_loss(
         "view_contrastive_loss": view_contrastive_loss,
         "latent_contrastive_loss": latent_contrastive_loss,
     }
-
 
 # ===========================================================================
 # Validation logging (images + scalars) to wandb
@@ -329,7 +267,7 @@ def log_validation_images_reviwo(
 
     # Build multi-view batch for visualization:
     #   images: (B, A, 3, H, W)
-    images = batch["images"].to(device)
+    images = batch["images"].to(device, non_blocking=True)
     B, A, C, H, W = images.shape
     n_vis = min(max_vis, B)
 

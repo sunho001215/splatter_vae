@@ -1,5 +1,5 @@
 dataset:
-  hdf5_path: "../../data/metaworld/coffee_push.hdf5"
+  hdf5_path: "../../data/metaworld/window_open.hdf5"
   num_views: 6
   sequence_length: 3
   max_episodes: null
@@ -7,17 +7,18 @@ dataset:
   temporal_stride: 3
   num_workers: 8
   pin_memory: true
-  batch_size: 12
-  train_ratio: 0.9
+  batch_size: 4
+  train_ratio: 0.96
 
 model:
+  img_size: 128
   netdepth: 8
   netwidth: 256
   netdepth_fine: 8
   netwidth_fine: 256
-  N_rand: 4096
+  N_rand: 1024
   N_samples: 64
-  N_importance: 64
+  N_importance: 128
   multires: 10
   multires_views: 4
   i_embed: 0
@@ -28,14 +29,14 @@ model:
   lindisp: false
 
   patch_size: 16
-  embed_dim: 384
-  vit_depth: 8
-  vit_num_heads: 6
+  embed_dim: 256
+  vit_depth: 4
+  vit_num_heads: 4
   vit_mlp_dim: 1024
   decoder_depth: 2
   decoder_num_heads: 2
   decoder_mlp_dim: 1024
-  decoder_output_dim: 64
+  decoder_output_dim: 256
 
   time_interval: 3
   mask_ratio: 0.75
@@ -47,22 +48,22 @@ model:
 
 train:
   num_epochs: 50
-  max_global_steps: 250000
+  max_global_steps: 300001
   lrate: 0.0005
   lrate_decay: 250
-  device: "cuda:1"
+  device: cuda
   rec_weight: 1.0
   contrastive_weight: 0.1
   eval_every: 50
   save_every: 5000
-  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/coffee_push/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/window_open/"
   resume_from_last: false
   seed: 42
 
 wandb:
   project: "SinCro-MetaWorld"
   entity: null
-  run_name: "sincro_metaworld_coffee_push"
+  run_name: "sincro_metaworld_window_open"
 
 experiment:
   basedir: "./logs/SinCro/metaworld/"
