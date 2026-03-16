@@ -1,14 +1,14 @@
-seed: 98
+seed: 42
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-drawer-open-DrM
-  name: CNN_randomcrop_seed98
+  project: metaworld-pick-place-wall-DrM
+  name: CNN_randomcrop_seed42
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: drawer-open
+  env_name: pick-place-wall
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -92,7 +92,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer_open/cnn_w_crop/seed98/
+  replay_dir: ./buffer/metaworld/pick_place_wall/cnn_w_crop/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -104,11 +104,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/drawer_open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/pick_place_wall/seed42/
 
 visualization:
   enabled: false
-  window_name: metaworld_drawer_open_drm
+  window_name: metaworld_pick_place_wall_drm
   wait_key: 1
   scale: 1.0
 

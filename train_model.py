@@ -157,13 +157,14 @@ def compute_contrastive_losses(
 # ============================================================================
 
 def camera_center_from_world_view(world_view: torch.Tensor) -> torch.Tensor:
-    """Extract camera center in world coordinate system from view matrix.
-    
-    Uses row-vector homogeneous coordinates convention.
-    Camera center is extracted from the inverse transform's last row.
+    """
+    world_view is a standard world->camera homogeneous transform:
+        [ R  t ]
+        [ 0  1 ]
+    Camera center in world coordinates is inv(world_view)[:3, 3].
     """
     cam_to_world = torch.linalg.inv(world_view)
-    return cam_to_world[:, 3, :3].contiguous()
+    return cam_to_world[:, :3, 3].contiguous()
 
 
 # ============================================================================

@@ -9,6 +9,7 @@ dependencies = [
     "torchvision",
     "gsplat",
     "fused-ssim",
+    "offlinerlkit",
     "cython>=0.29.37",
     "opencv-python>=4.11.0.86",
     "pyyaml>=6.0.3",
@@ -38,12 +39,14 @@ dependencies = [
 [tool.uv.extra-build-dependencies]
 gsplat = ["torch"]
 fused-ssim = ["torch", "torchvision"]
+offlinerlkit = ["torch"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
 gsplat = { git = "https://github.com/nerfstudio-project/gsplat.git" }
 fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim" }
+offlinerlkit = { git = "https://github.com/yihaosun1124/OfflineRL-Kit.git" }
 
 [[tool.uv.index]]
 name = "pytorch-cu129"

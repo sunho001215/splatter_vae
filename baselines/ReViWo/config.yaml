@@ -1,6 +1,6 @@
 dataset:
   # Path to your RoboSuite multi-view HDF5 file
-  hdf5_path: "../../data/metaworld/window_open.hdf5"
+  hdf5_path: "../../data/metaworld/door_open.hdf5"
 
   # DataLoader settings
   batch_size: 32
@@ -62,12 +62,12 @@ reviwo:
 
   # Codebook configs
   view_codebook:
-    embed_dim: 32
+    embed_dim: 16
     n_embed: 64
     beta: 0.25
 
   latent_codebook:
-    embed_dim: 32
+    embed_dim: 16
     n_embed: 512
     beta: 0.25
 
@@ -103,7 +103,7 @@ train:
   log_every: 50           # corresponds to original log_step
 
   # Checkpoint directory + resume flag
-  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/window_open/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/door_open/"
   resume_from_last: false
 
   # Number of views per sample in this trainer

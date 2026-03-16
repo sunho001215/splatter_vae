@@ -1,11 +1,11 @@
 output:
-  path: /home/ws/data/metaworld/stick_push.hdf5
+  path: /home/ws/data/metaworld/door_open.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "stick-push-v3"
+  env_name: "door-open-v3"
   seed: 0
   max_steps: 150
   terminate_on_success: true
@@ -75,6 +75,6 @@ dino:
   enabled: true
   model: "dinov2_vitb14"   # torch.hub model name
   image_size: 224
-  batch_size: 16
+  batch_size: 256
   device: "cuda"           # cuda | cpu
   dtype: "float16"         # float16 | float32

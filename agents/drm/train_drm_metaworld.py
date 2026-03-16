@@ -10,7 +10,7 @@ import random
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, Tuple
+from typing import Any, Deque, Dict, Tuple, Optional, List
 
 import numpy as np
 import torch
@@ -63,12 +63,30 @@ class MetaWorldSingleCameraEnv:
         self.frame_stack = int(env_cfg.get("frame_stack", 3))
         self.action_repeat = int(env_cfg.get("action_repeat", 1))
         self.max_episode_steps = int(env_cfg.get("max_episode_steps", 250))
-        self.camera_cfg = dict(env_cfg["camera"])
+
+        # Camera configuration
+        raw_cameras = env_cfg.get("cameras", None)
+        if raw_cameras is None:
+            # Backward compatibility with the original single-camera setup.
+            self.camera_cfgs: List[Dict[str, Any]] = [dict(env_cfg["camera"])]
+        else:
+            if not isinstance(raw_cameras, list) or len(raw_cameras) == 0:
+                raise ValueError("env.cameras must be a non-empty list of camera configs.")
+            self.camera_cfgs = [dict(cam_cfg) for cam_cfg in raw_cameras]
+
+        self.num_cameras = len(self.camera_cfgs)
+
+        # Episode-level selected camera.
+        self.current_camera_index: int = 0
+        self.current_camera_cfg: Dict[str, Any] = dict(self.camera_cfgs[0])
+
+        # Separate RNG so camera sampling is reproducible but independent.
+        self._camera_rng = random.Random(int(seed) + 12345)
 
         # Match the demo collector more closely:
         # - if lookat is omitted / null, use model.stat.center
         # - keep "up" as a world-space vector
-        raw_lookat = env_cfg.get("lookat", None)
+        raw_lookat = env_cfg.get("lookat", [0.0, 0.6, 0.0])
         self.up = np.asarray(env_cfg.get("up", [0.0, 0.0, 1.0]), dtype=np.float64)
 
         # Meta-World v3 via Gymnasium API
@@ -136,19 +154,57 @@ class MetaWorldSingleCameraEnv:
             return e.sim.model, e.sim.data
         raise RuntimeError("Could not find MuJoCo model/data on env.unwrapped")
 
+    def _set_episode_camera(self, camera_index: Optional[int] = None) -> None:
+        """Choose the camera for the next episode.
+
+        Args:
+            camera_index:
+                - None: randomly sample one camera
+                - int:  force a specific camera
+        """
+        if camera_index is None:
+            self.current_camera_index = int(self._camera_rng.randrange(self.num_cameras))
+        else:
+            camera_index = int(camera_index)
+            if camera_index < 0 or camera_index >= self.num_cameras:
+                raise ValueError(
+                    f"camera_index out of range: {camera_index} (num_cameras={self.num_cameras})"
+                )
+            self.current_camera_index = camera_index
+
+        self.current_camera_cfg = dict(self.camera_cfgs[self.current_camera_index])
+
+    def get_camera_name(self, camera_index: int) -> str:
+        camera_index = int(camera_index)
+        if camera_index < 0 or camera_index >= self.num_cameras:
+            raise ValueError(
+                f"camera_index out of range: {camera_index} (num_cameras={self.num_cameras})"
+            )
+        return str(self.camera_cfgs[camera_index].get("name", f"camera_{camera_index}"))
+
+    def get_current_camera_name(self) -> str:
+        return str(self.current_camera_cfg.get("name", f"camera_{self.current_camera_index}"))
+    
+    def get_last_frame(self) -> np.ndarray:
+        """Return the most recent rendered RGB frame as CHW uint8."""
+        if len(self.frames) == 0:
+            raise RuntimeError("No rendered frames are available yet.")
+        return self.frames[-1].copy()
+    
     def _make_free_camera(self) -> "mujoco.MjvCamera":
         """
-        Build the same kind of free/orbit camera used in the data collection code:
-        spherical camera placement -> MjvCamera(lookat, distance, azimuth, elevation).
+        Build the same kind of free/orbit camera used in the data collection code.
         """
+        cam_cfg = self.current_camera_cfg
+        
         pose = spherical_camera_pose(
-            name=str(self.camera_cfg["name"]),
-            r=float(self.camera_cfg["r"]),
-            theta_deg=float(self.camera_cfg["theta"]),
-            phi_deg=float(self.camera_cfg["phi"]),
+            name=str(cam_cfg["name"]),
+            r=float(cam_cfg["r"]),
+            theta_deg=float(cam_cfg["theta"]),
+            phi_deg=float(cam_cfg["phi"]),
             lookat=self.lookat,
             up=self.up,
-            fovy_deg=float(self.camera_cfg["fovy"]),
+            fovy_deg=float(cam_cfg["fovy"]),
         )
 
         cam = mujoco.MjvCamera()
@@ -225,7 +281,9 @@ class MetaWorldSingleCameraEnv:
     def _stacked_obs(self) -> np.ndarray:
         return np.concatenate(list(self.frames), axis=0)
 
-    def reset(self) -> np.ndarray:
+    def reset(self, camera_index: Optional[int] = None) -> np.ndarray:
+        """Reset env and choose one camera for the whole episode. """
+        
         reset_seed = self._base_seed + self._reset_count
         self._reset_count += 1
 
@@ -233,6 +291,9 @@ class MetaWorldSingleCameraEnv:
             self._env.reset(seed=reset_seed)
         except TypeError:
             self._env.reset()
+
+        # Camera is selected once here and then kept fixed for the whole episode.
+        self._set_episode_camera(camera_index=camera_index)
 
         self.episode_step = 0
         frame = self._render()
@@ -265,7 +326,11 @@ class MetaWorldSingleCameraEnv:
         done = bool(terminated or truncated or self.episode_step >= self.max_episode_steps)
         frame = self._render()
         self.frames.append(frame)
-        return self._stacked_obs(), total_reward, done, {"success": success}
+        return self._stacked_obs(), total_reward, done, {
+            "success": success,
+            "camera_index": int(self.current_camera_index),
+            "camera_name": self.get_current_camera_name(),
+        }
 
     def close(self) -> None:
         # Close the OpenCV window if it was created.
@@ -287,29 +352,99 @@ class MetaWorldSingleCameraEnv:
 # Evaluation
 # -----------------------------------------------------------------------------
 
-def evaluate(env: MetaWorldSingleCameraEnv, agent: DrMMetaWorldAgent, num_episodes: int, step: int) -> Dict[str, float]:
-    returns = []
-    successes = []
+def evaluate(
+    env: MetaWorldSingleCameraEnv,
+    agent: DrMMetaWorldAgent,
+    num_episodes: int,
+    step: int,
+    *,
+    log_videos: bool = False,
+    video_fps: int = 15,
+) -> Dict[str, Any]:
+    """Balanced evaluation across all configured viewpoints.
 
-    for _ in range(num_episodes):
-        obs = env.reset()
-        done = False
-        episode_return = 0.0
-        episode_success = 0.0
+    Fixes:
+      1) cameras with zero assigned episodes are excluded from the final mean
+      2) optionally logs the FIRST evaluation episode video for each camera
+    """
+    num_cameras = int(env.num_cameras)
+    if num_cameras <= 0:
+        raise RuntimeError("Environment has no configured cameras.")
 
-        while not done:
-            action = agent.act(obs, step=step, eval_mode=True)
-            obs, reward, done, info = env.step(action)
-            episode_return += float(reward)
-            episode_success = max(episode_success, float(info["success"]))
+    base = num_episodes // num_cameras
+    rem = num_episodes % num_cameras
+    per_camera_counts = [base + (1 if i < rem else 0) for i in range(num_cameras)]
 
-        returns.append(episode_return)
-        successes.append(episode_success)
+    per_camera_return_means: List[float] = []
+    per_camera_success_means: List[float] = []
 
-    return {
-        "eval/success_rate": float(np.mean(successes)),
-        "eval/cumulative_reward": float(np.mean(returns)),
-    }
+    metrics: Dict[str, Any] = {}
+
+    for cam_idx in range(num_cameras):
+        cam_name = env.get_camera_name(cam_idx)
+        cam_eval_count = int(per_camera_counts[cam_idx])
+
+        # ------------------------------------------------------------------
+        # BUG FIX:
+        # If num_eval_episodes < num_cameras, some cameras receive 0 episodes.
+        # Those should NOT contribute artificial 0.0 values to the global mean.
+        # ------------------------------------------------------------------
+        if cam_eval_count <= 0:
+            continue
+
+        cam_returns = []
+        cam_successes = []
+
+        for ep_idx in range(cam_eval_count):
+            obs = env.reset(camera_index=cam_idx)
+            done = False
+            episode_return = 0.0
+            episode_success = 0.0
+
+            # Collect only the FIRST video for each camera viewpoint.
+            video_frames = []
+            if log_videos and ep_idx == 0:
+                video_frames.append(env.get_last_frame())
+
+            while not done:
+                action = agent.act(obs, step=step, eval_mode=True)
+                obs, reward, done, info = env.step(action)
+                episode_return += float(reward)
+                episode_success = max(episode_success, float(info["success"]))
+
+                if log_videos and ep_idx == 0:
+                    video_frames.append(env.get_last_frame())
+
+            cam_returns.append(episode_return)
+            cam_successes.append(episode_success)
+
+            # Log only the first evaluation video for this camera.
+            if log_videos and ep_idx == 0 and len(video_frames) > 0:
+                video_np = np.stack(video_frames, axis=0)  # [T, C, H, W], uint8
+                metrics[f"eval/view_{cam_idx}_video"] = wandb.Video(
+                    video_np,
+                    fps=video_fps,
+                    format="mp4",
+                )
+
+        cam_return_mean = float(np.mean(cam_returns))
+        cam_success_mean = float(np.mean(cam_successes))
+
+        per_camera_return_means.append(cam_return_mean)
+        per_camera_success_means.append(cam_success_mean)
+
+        metrics[f"eval/view_{cam_idx}_cumulative_reward"] = cam_return_mean
+        metrics[f"eval/view_{cam_idx}_success_rate"] = cam_success_mean
+
+    if len(per_camera_return_means) == 0:
+        raise RuntimeError(
+            f"No evaluation episodes were assigned. num_episodes={num_episodes}, num_cameras={num_cameras}"
+        )
+
+    # Final result = average over only the actually evaluated cameras.
+    metrics["eval/cumulative_reward"] = float(np.mean(per_camera_return_means))
+    metrics["eval/success_rate"] = float(np.mean(per_camera_success_means))
+    return metrics
 
 
 # -----------------------------------------------------------------------------
@@ -443,12 +578,21 @@ def main() -> None:
 
         # Periodic evaluation.
         if step % eval_every_steps == 0:
-            eval_metrics = evaluate(eval_env, agent, num_episodes=num_eval_episodes, step=step)
+            eval_metrics = evaluate(
+                eval_env,
+                agent,
+                num_episodes=num_eval_episodes,
+                step=step,
+                log_videos=use_wandb,
+                video_fps=int(cfg.get("eval_video_fps", 30)),
+            )
             eval_metrics["step"] = step
             if use_wandb:
                 wandb.log(eval_metrics, step=step)
             else:
-                print(eval_metrics)
+                # Avoid printing the raw wandb.Video objects if wandb logging is off.
+                printable = {k: v for k, v in eval_metrics.items() if not k.endswith("_video")}
+                print(printable)
 
         # Optional checkpointing.
         if ckpt_every > 0 and step % ckpt_every == 0:

@@ -1,14 +1,14 @@
-seed: 98
+seed: 66
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-drawer-open-DrM
-  name: CNN_randomcrop_seed98
+  project: metaworld-disassemble-DrM
+  name: CNN_randomcrop_seed66
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: drawer-open
+  env_name: disassemble
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -92,7 +92,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer_open/cnn_w_crop/seed98/
+  replay_dir: ./buffer/metaworld/disassemble/cnn_w_crop/seed66/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -104,11 +104,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/drawer_open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/disassemble/seed66/
 
 visualization:
   enabled: false
-  window_name: metaworld_drawer_open_drm
+  window_name: metaworld_disassemble_drm
   wait_key: 1
   scale: 1.0
 

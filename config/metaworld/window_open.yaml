@@ -20,7 +20,7 @@ model:
   is_dependent_ae: false
   use_invariant_vq: true
   is_invariant_ae: false
-  dep_input_mask_ratio: 0.95
+  dep_input_mask_ratio: 0.75
   dep_mask_eval: true
 
 # -----------------------------------------------------------------------------
@@ -29,11 +29,11 @@ model:
 codebook:
   invariant:
     n_embed: 512
-    embed_dim: 16
+    embed_dim: 8
     beta: 0.25
   dependent:
     n_embed: 64
-    embed_dim: 16
+    embed_dim: 8
     beta: 0.25
 
 # -----------------------------------------------------------------------------
@@ -95,7 +95,7 @@ splatter:
 
     # Hierarchical child Gaussians
     num_child_gaussians: 3
-    child_warmup_steps: 10000
+    child_warmup_steps: 25000
 
     # 2D CNN child predictor hyperparameters
     child_cnn_hidden_dim: 64
@@ -108,7 +108,7 @@ splatter:
 # -----------------------------------------------------------------------------
 train:
   num_epochs: 100
-  max_global_steps: 250000
+  max_global_steps: 400000
   lr: 3.0e-5
   device: cuda
 
@@ -132,4 +132,4 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-window_open-hierarchical
+  run_name: metaworld-window_open

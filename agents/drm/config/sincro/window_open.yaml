@@ -1,14 +1,14 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-drawer-open-DrM
-  name: SinCro_seed42
+  project: metaworld-window-open-DrM
+  name: SinCro_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: drawer-open
+  env_name: window-open
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -31,7 +31,7 @@ vision:
   img_width: 128
 
   sincro:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/drawer_open/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/window_open/step_00300000.pth
 
     img_size: 128
     netdepth: 8
@@ -101,7 +101,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer_open/sincro/seed42/
+  replay_dir: ./buffer/metaworld/window_open/sincro/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -113,11 +113,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/sincro/drawer_open/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/sincro/window_open/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_drawer_open_drm
+  window_name: metaworld_window_open_drm
   wait_key: 1
   scale: 1.0
 

@@ -282,7 +282,7 @@ class ParentSplatterToGaussians(nn.Module):
             ],
             dim=-1,
         )
-        pos_world_h = pos_h @ source_cameras_view_to_world
+        pos_world_h = pos_h @ source_cameras_view_to_world.transpose(-1, -2)
         pos_world = pos_world_h[..., :3] / (pos_world_h[..., 3:].clamp_min(1e-8))
 
         # 2) Parent covariance / opacity / appearance.
@@ -518,7 +518,7 @@ class ChildGaussianPredictor(nn.Module):
         child_rotation_raw = cov[..., 3:]
 
         child_scaling_pre = child_scaling_raw * self.cfg.model.scale_scale + self.cfg.model.scale_bias
-        child_opacity_pre = opacity * self.cfg.model.opacity_scale + self.cfg.model.opacity_bias - 4.0 # Add extra bias to encourage initial child opacity to be near zero
+        child_opacity_pre = opacity * self.cfg.model.opacity_scale + self.cfg.model.opacity_bias
 
         child_scaling = self.scaling_activation(child_scaling_pre)
         child_rotation = self.rotation_activation(child_rotation_raw, dim=-1)

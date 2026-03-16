@@ -1,10 +1,10 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-stick-push-DrM
-  name: ReViWo_seed42
+  name: ReViWo_seed98
 
 env:
   benchmark_id: Meta-World/MT1
@@ -79,12 +79,12 @@ vision:
 
     # Codebook configs
     view_codebook:
-      embed_dim: 32
+      embed_dim: 16
       n_embed: 64
       beta: 0.25
 
     latent_codebook:
-      embed_dim: 32
+      embed_dim: 16
       n_embed: 512
       beta: 0.25
 
@@ -119,7 +119,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/stick_push/reviwo/seed42/
+  replay_dir: ./buffer/metaworld/stick_push/reviwo/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -131,7 +131,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/reviwo/stick_push/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/reviwo/stick_push/seed98/
 
 visualization:
   enabled: false
