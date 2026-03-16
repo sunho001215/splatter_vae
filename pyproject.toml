@@ -26,7 +26,7 @@ dependencies = [
     "setuptools>=80.9.0",
     "einops>=0.8.1",
     "numpy<2.0.0",
-    "wandb>=0.24.0",
+    "wandb[media]>=0.24.0",
     "transformers>=4.57.3",
     "tensorboard>=2.20.0",
     "flow-matching>=1.0.10",
