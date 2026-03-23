@@ -2,8 +2,8 @@
 # Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  hdf5_path: ../../data/metaworld/window_open.hdf5
-  batch_size: 32
+  hdf5_path: ../../data/metaworld/near_expert/window_open.hdf5
+  batch_size: 64
   num_workers: 8
   pin_memory: true
   train_ratio: 0.96
@@ -84,31 +84,22 @@ splatter:
     # Parent Gaussian layout (vanilla Splatter Image)
     max_sh_degree: 1
     isotropic: false
-    depth_scale: 1.0
-    depth_bias: 0.0
+    depth_scale: 0.1
+    depth_bias: -0.7
     xyz_scale: 0.1
     xyz_bias: 0.0
     opacity_scale: 1.0
     opacity_bias: -2.0
     scale_scale: 0.02
     scale_bias: -4.0
-
-    # Hierarchical child Gaussians
-    num_child_gaussians: 3
-    child_warmup_steps: 25000
-
-    # 2D CNN child predictor hyperparameters
-    child_cnn_hidden_dim: 64
-    child_cnn_num_blocks: 1
-    child_cnn_kernel_size: 7
-    child_cnn_use_depthwise_separable: true
+    num_gaussians_per_pixel: 4
 
 # -----------------------------------------------------------------------------
 # Training
 # -----------------------------------------------------------------------------
 train:
   num_epochs: 100
-  max_global_steps: 400000
+  max_global_steps: 400001
   lr: 3.0e-5
   device: cuda
 
@@ -118,6 +109,7 @@ train:
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   dep_contrastive_weight: 0.1
+  frustum_weight: 0.01
   temperature: 0.1
 
   eval_every: 100

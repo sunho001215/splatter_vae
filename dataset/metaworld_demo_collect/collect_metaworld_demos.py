@@ -182,6 +182,11 @@ def main():
                 # Policy action
                 action = policy_obj.get_action(obs)
                 action = np.asarray(action).ravel().astype(np.float32)
+                
+                # Add gaussian noise to action
+                noise = np.random.normal(0, 0.3, size=action.shape).astype(np.float32)
+                noisy_action = action + noise
+                action = np.clip(noisy_action, env.action_space.low, env.action_space.high)
 
                 # Step
                 next_obs, reward, done, info = _step_env(env, action)

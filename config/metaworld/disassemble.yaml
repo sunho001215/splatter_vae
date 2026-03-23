@@ -2,7 +2,7 @@
 # Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  hdf5_path: ../../data/metaworld/near_expert/hammer.hdf5
+  hdf5_path: ../../data/metaworld/near_expert/disassemble.hdf5
   batch_size: 64
   num_workers: 8
   pin_memory: true
@@ -114,7 +114,7 @@ train:
 
   eval_every: 100
   save_every: 5000
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/hammer/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/disassemble/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -124,4 +124,4 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-hammer
+  run_name: metaworld-disassemble

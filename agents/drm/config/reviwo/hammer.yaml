@@ -1,10 +1,10 @@
-seed: 98
+seed: 42
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-hammer-DrM
-  name: ReViWo_seed98
+  name: ReViWo_seed42
 
 env:
   benchmark_id: Meta-World/MT1
@@ -15,12 +15,37 @@ env:
   action_repeat: 2
   max_episode_steps: 150
 
-  camera:
-    name: eval_cam
-    r: 0.8
-    theta: -30.0
-    phi: 0.0
-    fovy: 45.0
+  cameras:
+    - name: cam0
+      r: 0.8
+      theta: -30.0
+      phi: -30.0
+      fovy: 45.0
+    - name: cam1
+      r: 0.8
+      theta: -30.0         
+      phi: 0.0             
+      fovy: 45.0
+    - name: cam2
+      r: 0.8
+      theta: -30.0       
+      phi: 30.0          
+      fovy: 45.0
+    - name: cam3
+      r: 0.8
+      theta: -45.0        
+      phi: -30.0          
+      fovy: 45.0
+    - name: cam4
+      r: 0.8
+      theta: -45.0         
+      phi: 0.0            
+      fovy: 45.0
+    - name: cam5
+      r: 0.8
+      theta: -45.0     
+      phi: 30.0            
+      fovy: 45.0
 
   lookat: [0.0, 0.6, 0.0]
   up: [0.0, 0.0, 1.0]
@@ -29,7 +54,7 @@ vision:
   encoder_type: reviwo
 
   reviwo:
-    checkpoint_path: ./checkpoints/metaworld/encoders/ReViWo/hammer/step_00095000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/ReViWo/hammer/step_00100000.pth
 
 
     # Image & patch settings
@@ -119,7 +144,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/hammer/reviwo/seed98/
+  replay_dir: ./buffer/metaworld/hammer/reviwo/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -131,7 +156,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/reviwo/hammer/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/reviwo/hammer/seed42/
 
 visualization:
   enabled: false

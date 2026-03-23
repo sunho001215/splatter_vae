@@ -5,12 +5,13 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
 import wandb
 
-from models.hierarchical_splatter import HierarchicalSplatterToGaussians, SplatterConfig, render_predicted
+from models.splatter import VAESplatterToGaussians, default_splatter_channels, render_predicted
 from models.vae import SplatterVAE
 from models.losses import compute_reconstruction_loss, infonce_loss
 
@@ -33,6 +34,7 @@ class TrainConfig:
     vq_weight: float = 0.25
     inv_contrastive_weight: float = 1.0
     dep_contrastive_weight: float = 0.1
+    frustum_weight: float = 0.001
     temperature: float = 0.1
 
     eval_every: int = 1000
@@ -171,82 +173,106 @@ def camera_center_from_world_view(world_view: torch.Tensor) -> torch.Tensor:
 # Rendering Functions
 # ============================================================================
 
-def _render_scene_for_single_view(
-    pc: Dict[str, torch.Tensor],
-    world_view: torch.Tensor,
-    intrinsics: torch.Tensor,
-    bg: torch.Tensor,
-    splatter_cfg: SplatterConfig,
-) -> torch.Tensor:
-    """Render a single view from the point cloud.
-    
-    Args:
-        pc: Point cloud dictionary with Gaussian parameters.
-        world_view: View transformation matrix.
-        intrinsics: Camera intrinsic matrix.
-        bg: Background color.
-        splatter_cfg: Rendering configuration.
-    
-    Returns:
-        Rendered image tensor.
+def _compute_soft_image_region_penalty(
+    xyz_world: torch.Tensor,           # (B, N, 3)
+    world_view_transform: torch.Tensor,  # (B, V, 4, 4), world -> camera
+    intrinsics: torch.Tensor,            # (B, V, 3, 3)
+    img_h: int,
+    img_w: int,
+    eps: float = 1e-6,
+) -> Dict[str, torch.Tensor]:
     """
-    out = render_predicted(
-        pc=pc,
-        world_view_transform=world_view[:, None],
-        intrinsics=intrinsics[:, None],
-        bg_color=bg,
-        cfg=splatter_cfg,
-    )
-    return out["render"][:, 0]
+    Softly penalize Gaussian centers whose projected pixels fall outside
+    [0, W-1] x [0, H-1].
+    """
+    B, N, _ = xyz_world.shape
+    V = world_view_transform.shape[1]
+    device = xyz_world.device
+    dtype = xyz_world.dtype
+
+    # World xyz -> homogeneous coordinates.
+    ones = torch.ones((B, N, 1), device=device, dtype=dtype)
+    xyz_world_h = torch.cat([xyz_world, ones], dim=-1)  # (B, N, 4)
+
+    # Project world points into each camera frame.
+    # Result: (B, V, N, 4)
+    xyz_cam_h = torch.einsum("bvij,bnj->bvni", world_view_transform, xyz_world_h)
+    xyz_cam = xyz_cam_h[..., :3]  # (B, V, N, 3)
+
+    x = xyz_cam[..., 0]
+    y = xyz_cam[..., 1]
+    z = xyz_cam[..., 2]
+
+    # Numerical safeguard only. This is not a z-regularizer.
+    z_safe = z.clamp_min(eps)
+
+    fx = intrinsics[..., 0, 0].unsqueeze(-1)  # (B, V, 1)
+    fy = intrinsics[..., 1, 1].unsqueeze(-1)
+    cx = intrinsics[..., 0, 2].unsqueeze(-1)
+    cy = intrinsics[..., 1, 2].unsqueeze(-1)
+
+    # Perspective projection.
+    u = fx * (x / z_safe) + cx  # (B, V, N)
+    v = fy * (y / z_safe) + cy  # (B, V, N)
+
+    max_u = float(max(img_w - 1, 1))
+    max_v = float(max(img_h - 1, 1))
+
+    # Soft amount by which the projected center is outside the image box.
+    # Zero if inside; positive if outside.
+    u_over = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
+    v_over = F.relu(-v) / max_v + F.relu(v - max_v) / max_v
+    per_view_penalty = u_over + v_over  # (B, V, N)
+
+    # Boolean inactivity mask: outside image region in that camera frame.
+    outside_mask = (u < 0.0) | (u > max_u) | (v < 0.0) | (v > max_v)
+
+    stats: Dict[str, torch.Tensor] = {
+        # Average penalty over batch, views, and gaussians.
+        "frustum_loss": per_view_penalty.mean(),
+
+        # Mean inactive ratio over both views.
+        "inactive_ratio_mean": outside_mask.float().mean(),
+    }
+
+    # Log source / target separately when V == 2 (the usual case here).
+    if V >= 1:
+        stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
+    if V >= 2:
+        stats["inactive_ratio_tgt"] = outside_mask[:, 1].float().mean()
+
+    return stats
 
 
-def _render_two_views_from_latents_hierarchical(
+def _render_two_views_from_latents(
     vae: SplatterVAE,
-    splatter_to_gaussians: HierarchicalSplatterToGaussians,
+    splatter_to_gaussians: VAESplatterToGaussians,
     splatter_cfg: SplatterConfig,
     z_inv: torch.Tensor,
     z_dep: torch.Tensor,
     k_src: torch.Tensor,
     k_tgt: torch.Tensor,
-    t_src_to_tgt: torch.Tensor,
+    t_src_to_tgt: torch.Tensor,   # (B,4,4)
     bg: torch.Tensor,
-    global_step: int,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Decode latents and render source and target views with hierarchical Gaussians.
-    
-    Key differences from non-hierarchical rendering:
-    - Shared parent Gaussian structure across views
-    - Child Gaussians regenerated for each target view camera
-    - Child Gaussians conditioned on target view perspective
-    
-    Args:
-        vae: VAE model for decoding latents.
-        splatter_to_gaussians: Module for converting splatter to Gaussians.
-        splatter_cfg: Rendering configuration.
-        z_inv: Invariant (state) latent code.
-        z_dep: Depth-dependent (view) latent code.
-        k_src: Source camera intrinsics.
-        k_tgt: Target camera intrinsics.
-        t_src_to_tgt: Transformation from source to target camera.
-        bg: Background color.
-        global_step: Current training step for conditional rendering.
-    
-    Returns:
-        Tuple of (rendered_source, rendered_target) images.
+) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
+    """
+    Direct rendering path:
+      decode one splatter image,
+      convert it to a K-depth-ordered Gaussian scene,
+      render the same scene from source and target cameras.
     """
     device = z_inv.device
     dtype = k_src.dtype
     b = z_inv.shape[0]
 
-    # Decode latents to splatter representation
+    # 1) Decode one direct splatter image from (z_inv, z_dep)
     splatter = vae.decode(z_inv, z_dep)
 
-    # Setup identity transforms for source camera
+    # 2) Use the native/source frame as the local world frame
     eye_4 = torch.eye(4, device=device, dtype=dtype).view(1, 4, 4).repeat(b, 1, 1)
     eye_q = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 4).repeat(b, 1)
 
-    # Generate shared parent Gaussians
-    parent_pc = splatter_to_gaussians.forward_parent(
+    gaussian_pc = splatter_to_gaussians(
         splatter=splatter,
         source_cameras_view_to_world=eye_4,
         source_cv2wT_quat=eye_q,
@@ -254,49 +280,37 @@ def _render_two_views_from_latents_hierarchical(
         activate_output=True,
     )
 
-    # Conditionally include child Gaussians after warmup
-    include_children = global_step >= splatter_cfg.model.child_warmup_steps
+    # 3) Render the same Gaussian scene in source and target views
+    world_views = torch.stack([eye_4, t_src_to_tgt], dim=1)  # (B,2,4,4)
+    intrinsics = torch.stack([k_src, k_tgt], dim=1)          # (B,2,3,3)
 
-    # Render source/native view (identity camera)
-    source_center = torch.zeros(b, 3, device=device, dtype=dtype)
-    source_scene = splatter_to_gaussians.build_hierarchical_scene(
-        parent_pc=parent_pc,
-        target_camera_centers_world=source_center,
-        include_children=include_children,
-    )
-    rendered_src = _render_scene_for_single_view(
-        pc=source_scene,
-        world_view=eye_4,
-        intrinsics=k_src,
-        bg=bg,
-        splatter_cfg=splatter_cfg,
+    out = render_predicted(
+        pc=gaussian_pc,
+        world_view_transform=world_views,
+        intrinsics=intrinsics,
+        bg_color=bg,
+        cfg=splatter_cfg,
     )
 
-    # Render target/cross-view (transformed camera)
-    target_center = camera_center_from_world_view(t_src_to_tgt)
-    target_scene = splatter_to_gaussians.build_hierarchical_scene(
-        parent_pc=parent_pc,
-        target_camera_centers_world=target_center,
-        include_children=include_children,
-    )
-    rendered_tgt = _render_scene_for_single_view(
-        pc=target_scene,
-        world_view=t_src_to_tgt,
-        intrinsics=k_tgt,
-        bg=bg,
-        splatter_cfg=splatter_cfg,
+    # 4) Soft image-plane frustum penalty for both source and target frames
+    frustum_stats = _compute_soft_image_region_penalty(
+        xyz_world=gaussian_pc["xyz"],
+        world_view_transform=world_views,
+        intrinsics=intrinsics,
+        img_h=splatter_cfg.data.img_height,
+        img_w=splatter_cfg.data.img_width,
     )
 
-    return rendered_src, rendered_tgt
+    return out["render"][:, 0], out["render"][:, 1], frustum_stats
 
 
 # ============================================================================
 # Loss Computation Functions
 # ============================================================================
 
-def compute_reconstruction_and_renders_hierarchical(
+def compute_reconstruction_and_renders(
     vae: SplatterVAE,
-    splatter_to_gaussians: HierarchicalSplatterToGaussians,
+    splatter_to_gaussians: VAESplatterToGaussians,
     splatter_cfg: SplatterConfig,
     gt_a_01: torch.Tensor,
     gt_b_01: torch.Tensor,
@@ -310,33 +324,15 @@ def compute_reconstruction_and_renders_hierarchical(
     k_j: torch.Tensor,
     t_ij: torch.Tensor,
     bg: torch.Tensor,
-    global_step: int,
     return_renders: bool = False,
     ssim_weight: float = 0.2,
 ) -> Dict[str, Any]:
-    """Compute reconstruction losses for all 8 supervision pairs.
-    
-    Uses quartet supervision with 2x2 grid: (state x view) combinations.
-    - a: (state_i, view_i), b: (state_i, view_j)
-    - c: (state_j, view_i), d: (state_j, view_j)
-    
-    For each of 4 scene configurations, renders native and cross-view,
-    comparing against ground truth images.
-    
-    Args:
-        gt_a_01 to gt_d_01: Ground truth images in [0,1] range.
-        z_inv_a, z_inv_c: Invariant latent codes for two states.
-        z_dep_a, z_dep_b: Depth latent codes for two views.
-        return_renders: If True, include rendered images in output.
-    
-    Returns:
-        Dictionary with loss values and optionally rendered images.
     """
-    # Compute inverse transformation
+    Same quartet supervision as before, but using direct K-Gaussian splatter rendering.
+    """
     t_ji = torch.linalg.inv(t_ij)
 
-    # Render 4 scene configurations: (state_i, state_i, state_j, state_j) x (view_i/j, view_j/i, ...)
-    rendered_self_i, rendered_self_j_from_i = _render_two_views_from_latents_hierarchical(
+    rendered_self_i, rendered_self_j_from_i, frustum_self = _render_two_views_from_latents(
         vae=vae,
         splatter_to_gaussians=splatter_to_gaussians,
         splatter_cfg=splatter_cfg,
@@ -346,63 +342,93 @@ def compute_reconstruction_and_renders_hierarchical(
         k_tgt=k_j,
         t_src_to_tgt=t_ij,
         bg=bg,
-        global_step=global_step,
-    )
-    rendered_swap_view_j, rendered_swap_view_i_from_j = _render_two_views_from_latents_hierarchical(
-        vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
-        splatter_cfg=splatter_cfg,
-        z_inv=z_inv_a,
-        z_dep=z_dep_b,
-        k_src=k_j,
-        k_tgt=k_i,
-        t_src_to_tgt=t_ji,
-        bg=bg,
-        global_step=global_step,
-    )
-    rendered_swap_state_i, rendered_swap_state_j_from_i = _render_two_views_from_latents_hierarchical(
-        vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
-        splatter_cfg=splatter_cfg,
-        z_inv=z_inv_c,
-        z_dep=z_dep_a,
-        k_src=k_i,
-        k_tgt=k_j,
-        t_src_to_tgt=t_ij,
-        bg=bg,
-        global_step=global_step,
-    )
-    rendered_swap_both_j, rendered_swap_both_i_from_j = _render_two_views_from_latents_hierarchical(
-        vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
-        splatter_cfg=splatter_cfg,
-        z_inv=z_inv_c,
-        z_dep=z_dep_b,
-        k_src=k_j,
-        k_tgt=k_i,
-        t_src_to_tgt=t_ji,
-        bg=bg,
-        global_step=global_step,
     )
 
-    # Native view reconstruction losses
+    rendered_swap_view_j, rendered_swap_view_i_from_j, frustum_swap_view = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_a,
+        z_dep=z_dep_b,
+        k_src=k_j,
+        k_tgt=k_i,
+        t_src_to_tgt=t_ji,
+        bg=bg,
+    )
+
+    rendered_swap_state_i, rendered_swap_state_j_from_i, frustum_swap_state = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_c,
+        z_dep=z_dep_a,
+        k_src=k_i,
+        k_tgt=k_j,
+        t_src_to_tgt=t_ij,
+        bg=bg,
+    )
+
+    rendered_swap_both_j, rendered_swap_both_i_from_j, frustum_swap_both = _render_two_views_from_latents(
+        vae=vae,
+        splatter_to_gaussians=splatter_to_gaussians,
+        splatter_cfg=splatter_cfg,
+        z_inv=z_inv_c,
+        z_dep=z_dep_b,
+        k_src=k_j,
+        k_tgt=k_i,
+        t_src_to_tgt=t_ji,
+        bg=bg,
+    )
+
+    # Native-view losses
     rec_self = compute_reconstruction_loss(rendered_self_i, gt_a_01, ssim_weight=ssim_weight)
     rec_swap_view = compute_reconstruction_loss(rendered_swap_view_j, gt_b_01, ssim_weight=ssim_weight)
     rec_swap_state = compute_reconstruction_loss(rendered_swap_state_i, gt_c_01, ssim_weight=ssim_weight)
     rec_swap_both = compute_reconstruction_loss(rendered_swap_both_j, gt_d_01, ssim_weight=ssim_weight)
+
     rec_native_loss = 0.25 * (rec_self + rec_swap_view + rec_swap_state + rec_swap_both)
 
-    # Cross-view reconstruction losses
+    # Cross-view losses
     rec_self_cross = compute_reconstruction_loss(rendered_self_j_from_i, gt_b_01, ssim_weight=ssim_weight)
     rec_swap_view_cross = compute_reconstruction_loss(rendered_swap_view_i_from_j, gt_a_01, ssim_weight=ssim_weight)
     rec_swap_state_cross = compute_reconstruction_loss(rendered_swap_state_j_from_i, gt_d_01, ssim_weight=ssim_weight)
     rec_swap_both_cross = compute_reconstruction_loss(rendered_swap_both_i_from_j, gt_c_01, ssim_weight=ssim_weight)
+
     rec_cross_loss = 0.25 * (
         rec_self_cross + rec_swap_view_cross + rec_swap_state_cross + rec_swap_both_cross
     )
 
-    # Final reconstruction loss combines native and cross-view
     rec_loss = 0.5 * (rec_native_loss + rec_cross_loss)
+
+    # Average the soft image-frustum penalty over the 4 decoded scenes.
+    frustum_loss = 0.25 * (
+        frustum_self["frustum_loss"]
+        + frustum_swap_view["frustum_loss"]
+        + frustum_swap_state["frustum_loss"]
+        + frustum_swap_both["frustum_loss"]
+    )
+
+    inactive_ratio_mean = 0.25 * (
+        frustum_self["inactive_ratio_mean"]
+        + frustum_swap_view["inactive_ratio_mean"]
+        + frustum_swap_state["inactive_ratio_mean"]
+        + frustum_swap_both["inactive_ratio_mean"]
+    )
+
+    inactive_ratio_src = 0.25 * (
+        frustum_self["inactive_ratio_src"]
+        + frustum_swap_view["inactive_ratio_src"]
+        + frustum_swap_state["inactive_ratio_src"]
+        + frustum_swap_both["inactive_ratio_src"]
+    )
+
+    inactive_ratio_tgt = 0.25 * (
+        frustum_self["inactive_ratio_tgt"]
+        + frustum_swap_view["inactive_ratio_tgt"]
+        + frustum_swap_state["inactive_ratio_tgt"]
+        + frustum_swap_both["inactive_ratio_tgt"]
+    )
+
     out_dict: Dict[str, Any] = {
         "rec_loss": rec_loss,
         "rec_native_loss": rec_native_loss,
@@ -415,7 +441,14 @@ def compute_reconstruction_and_renders_hierarchical(
         "rec_swap_view_cross": rec_swap_view_cross,
         "rec_swap_state_cross": rec_swap_state_cross,
         "rec_swap_both_cross": rec_swap_both_cross,
+
+        # New frustum-related outputs
+        "frustum_loss": frustum_loss,
+        "inactive_ratio_mean": inactive_ratio_mean,
+        "inactive_ratio_src": inactive_ratio_src,
+        "inactive_ratio_tgt": inactive_ratio_tgt,
     }
+
     if return_renders:
         out_dict.update(
             {
@@ -429,6 +462,7 @@ def compute_reconstruction_and_renders_hierarchical(
                 "rendered_swap_both_i_from_j": rendered_swap_both_i_from_j,
             }
         )
+
     return out_dict
 
 
@@ -456,7 +490,7 @@ def _make_wandb_image_grid(images_01: torch.Tensor, max_vis: int = 4) -> wandb.I
 def validate_and_log_wandb(
     vae: SplatterVAE,
     splatter_cfg: SplatterConfig,
-    splatter_to_gaussians: HierarchicalSplatterToGaussians,
+    splatter_to_gaussians: VAESplatterToGaussians,
     valid_dataloader: Optional[DataLoader],
     device: torch.device,
     bg: torch.Tensor,
@@ -491,6 +525,10 @@ def validate_and_log_wandb(
         "val/rec_swap_both_cross": 0.0,
         "val/inv_contrastive_loss": 0.0,
         "val/dep_contrastive_loss": 0.0,
+        "val/frustum_loss": 0.0,
+        "val/inactive_pct_mean": 0.0,
+        "val/inactive_pct_src": 0.0,
+        "val/inactive_pct_tgt": 0.0,
     }
 
     num_eval_batches = 0
@@ -538,7 +576,7 @@ def validate_and_log_wandb(
         #    Only the first validation batch stores rendered images;
         #    later batches only contribute to scalar averages.
         # ------------------------------------------------------------
-        rec_out = compute_reconstruction_and_renders_hierarchical(
+        rec_out = compute_reconstruction_and_renders(
             vae=vae,
             splatter_to_gaussians=splatter_to_gaussians,
             splatter_cfg=splatter_cfg,
@@ -554,7 +592,6 @@ def validate_and_log_wandb(
             k_j=k_j,
             t_ij=t_ij,
             bg=bg,
-            global_step=global_step,
             return_renders=(num_eval_batches == 0),
             ssim_weight=cfg_train.ssim_weight,
         )
@@ -578,6 +615,11 @@ def validate_and_log_wandb(
 
         scalar_sums["val/inv_contrastive_loss"] += float(inv_contrastive_loss.item())
         scalar_sums["val/dep_contrastive_loss"] += float(dep_contrastive_loss.item())
+
+        scalar_sums["val/frustum_loss"] += float(rec_out["frustum_loss"].item())
+        scalar_sums["val/inactive_pct_mean"] += float(100.0 * rec_out["inactive_ratio_mean"].item())
+        scalar_sums["val/inactive_pct_src"] += float(100.0 * rec_out["inactive_ratio_src"].item())
+        scalar_sums["val/inactive_pct_tgt"] += float(100.0 * rec_out["inactive_ratio_tgt"].item())
 
         # ------------------------------------------------------------
         # 5) Save image grids from the first validation batch only
@@ -663,7 +705,7 @@ def train_splatter_vae(
     valid_dataloader: Optional[DataLoader] = None,
     resume_ckpt: Optional[str] = None,
 ):
-    """Training loop for hierarchical splatter VAE.
+    """Training loop for splatter VAE.
     
     Combines VAE reconstruction, VQ loss, and contrastive learning objectives.
     
@@ -676,11 +718,17 @@ def train_splatter_vae(
     device = torch.device(cfg_train.device)
     vae.to(device)
 
-    splatter_to_gaussians = HierarchicalSplatterToGaussians(splatter_cfg).to(device)
-    params = list(vae.parameters()) + list(splatter_to_gaussians.parameters())
-    optimizer = torch.optim.Adam(params, lr=cfg_train.lr)
+    # Splatter-to-Gaussian converter
+    splatter_to_gaussians = VAESplatterToGaussians(splatter_cfg).to(device)
 
-    bg = torch.ones(3, device=device) if splatter_cfg.data.white_background else torch.zeros(3, device=device)
+    # Direct converter has no trainable child predictor, so only optimize the VAE
+    optimizer = torch.optim.Adam(list(vae.parameters()), lr=cfg_train.lr)
+
+    bg = (
+        torch.ones(3, device=device)
+        if splatter_cfg.data.white_background
+        else torch.zeros(3, device=device)
+    )
 
     start_epoch = 0
     global_step = 0
@@ -741,7 +789,7 @@ def train_splatter_vae(
             # ================================================================
             # Forward Pass: Reconstruction
             # ================================================================
-            rec_out = compute_reconstruction_and_renders_hierarchical(
+            rec_out = compute_reconstruction_and_renders(
                 vae=vae,
                 splatter_to_gaussians=splatter_to_gaussians,
                 splatter_cfg=splatter_cfg,
@@ -757,11 +805,11 @@ def train_splatter_vae(
                 k_j=k_j,
                 t_ij=t_ij,
                 bg=bg,
-                global_step=global_step,
                 return_renders=False,
                 ssim_weight=cfg_train.ssim_weight,
             )
             rec_loss = rec_out["rec_loss"]
+            frustum_loss = rec_out["frustum_loss"]
 
             # ================================================================
             # Forward Pass: Contrastive Learning
@@ -781,6 +829,7 @@ def train_splatter_vae(
                 + cfg_train.vq_weight * vq_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
+                + cfg_train.frustum_weight * frustum_loss
             )
 
             # ================================================================
@@ -813,6 +862,12 @@ def train_splatter_vae(
                         "train/dep_vq_loss": dep_vq_loss.item(),
                         "train/inv_contrastive_loss": inv_contrastive_loss.item(),
                         "train/dep_contrastive_loss": dep_contrastive_loss.item(),
+                        "train/frustum_loss": frustum_loss.item(),
+                        "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
+                        "train/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"].item(),
+                        "train/inactive_pct_src": 100.0 * rec_out["inactive_ratio_src"].item(),
+                        "train/inactive_pct_tgt": 100.0 * rec_out["inactive_ratio_tgt"].item(),
+                        "train/frustum_weight": float(cfg_train.frustum_weight),
                         "train/global_step": global_step,
                     },
                     step=global_step,
@@ -881,7 +936,7 @@ def main():
     from dataset.dataloader import build_train_valid_loaders_robosuite
     from utils.general_utils import set_random_seed
 
-    from models.hierarchical_splatter import (
+    from models.splatter import (
         SplatterConfig,
         SplatterDataConfig,
         SplatterModelConfig,
@@ -977,13 +1032,21 @@ def main():
     vit_cfg = dict(cfg.get("vit", {}))
     model_cfg = dict(cfg.get("model", {}))
 
-    # Parent splatter output channel count:
-    # depth(1) + offset(3) + opacity(1) + scaling(3) + rotation(4) + dc(3) + sh_rest(9 for SH degree 1)
-    max_sh_degree = int(splatter_cfg.model.max_sh_degree)
-    if max_sh_degree == 0:
-        splatter_channels = 1 + 3 + 1 + 3 + 4 + 3
-    else:
-        splatter_channels = 1 + 3 + 1 + 3 + 4 + 3 + 9
+    # Derive splatter_channels from max_sh_degree and num_gaussians_per_pixel.
+    max_sh_degree = int(cfg.get("splatter", {}).get("model", {}).get("max_sh_degree", 1))
+    num_gaussians_per_pixel = int(
+        cfg.get("splatter", {}).get("model", {}).get("num_gaussians_per_pixel", 5)
+    )
+
+    splatter_channels = int(
+        cfg.get("splatter", {}).get(
+            "splatter_channels",
+            default_splatter_channels(
+                max_sh_degree=max_sh_degree,
+                num_gaussians_per_pixel=num_gaussians_per_pixel,
+            ),
+        )
+    )
 
     vae = SplatterVAE(
         vit_cfg=vit_cfg,
@@ -1010,12 +1073,12 @@ def main():
 
     if wandb_enabled:
         wandb.init(
-            project=wandb_cfg.get("project", "hierarchical_splattervae"),
+            project=wandb_cfg.get("project", "splattervae"),
             entity=wandb_cfg.get("entity", None),
             name=wandb_cfg.get("run_name", None),
             config=cfg,
         )
-        print(f"[wandb] Logging to project: {wandb_cfg.get('project', 'hierarchical_splattervae')}")
+        print(f"[wandb] Logging to project: {wandb_cfg.get('project', 'splattervae')}")
 
     # ---------------------------------------------------------------------
     # 9) Optional resume-from-last

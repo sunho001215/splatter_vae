@@ -9,8 +9,6 @@ import torch.nn as nn
 from vector_quantize_pytorch import VectorQuantize
 
 from .vision_transformer import DPTHead, TokenTransformer, ViTBackbone, ViTSmallConfig
-from .hierarchical_splatter import ParentSplatterToGaussians
-
 
 @dataclass
 class CodebookConfig:
@@ -332,13 +330,3 @@ class SplatterVAE(nn.Module):
         for head in [self.invariant_output_head, self.dependent_output_head]:
             if isinstance(head, VectorQuantize) and hasattr(head, "kmeans_init"):
                 head.kmeans_init = False
-
-
-# -----------------------------------------------------------------------------
-# Small helper: parent splatter channel count
-# -----------------------------------------------------------------------------
-
-
-def default_parent_splatter_channels(max_sh_degree: int = 1) -> int:
-    """Return the vanilla Splatter Image channel count for one parent Gaussian/pixel."""
-    return ParentSplatterToGaussians.num_parent_channels(max_sh_degree=max_sh_degree)

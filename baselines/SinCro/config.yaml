@@ -1,5 +1,5 @@
 dataset:
-  hdf5_path: "../../data/metaworld/window_open.hdf5"
+  hdf5_path: "../../data/metaworld/near_expert/window_open.hdf5"
   num_views: 6
   sequence_length: 3
   max_episodes: null

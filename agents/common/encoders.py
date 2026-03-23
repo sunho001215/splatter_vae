@@ -17,7 +17,7 @@ from einops import rearrange
 # -----------------------------------------------------------------------------
 
 def _weight_init(m: nn.Module) -> None:
-    """Orthogonal init like your current DrM / DrQ-style code."""
+    """Orthogonal init like current DrM / DrQ-style code."""
     if isinstance(m, nn.Linear):
         nn.init.orthogonal_(m.weight.data)
         if m.bias is not None:
@@ -107,7 +107,10 @@ class ConvNet(nn.Module):
         self.is_trainable = True
         self.is_perturbable = True
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _preprocess_4d(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Preprocess a normal image batch: (B, 3, H, W).
+        """
         if self.training:
             i, j, h, w = torchvision.transforms.RandomCrop.get_params(
                 x, output_size=(self.crop_height, self.crop_width)
@@ -116,9 +119,59 @@ class ConvNet(nn.Module):
         else:
             x = TF.center_crop(x, (self.crop_height, self.crop_width))
 
+        return x - 0.5
+
+    def preprocess_batched_frames(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Preprocess a frame stack in one call.
+
+        Args:
+            x: (B, T, 3, H, W)
+
+        Returns:
+            x_flat: (B*T, 3, crop_h, crop_w)
+
+        Notes:
+          - During training, we use ONE random crop per sample and apply the
+            same crop to all T frames of that sample.
+          - This preserves temporal alignment across stacked frames.
+        """
+        if x.ndim != 5:
+            raise ValueError(f"Expected (B,T,3,H,W), got {tuple(x.shape)}")
+
+        B, T, C, _, _ = x.shape
+
+        if self.training:
+            cropped = []
+            for b in range(B):
+                # Same crop for all T frames of sample b
+                i, j, h, w = torchvision.transforms.RandomCrop.get_params(
+                    x[b, 0], output_size=(self.crop_height, self.crop_width)
+                )
+                cropped.append(TF.crop(x[b], i, j, h, w))  # (T,3,crop_h,crop_w)
+            x = torch.stack(cropped, dim=0)  # (B,T,3,crop_h,crop_w)
+        else:
+            x = TF.center_crop(x, (self.crop_height, self.crop_width))
+
         x = x - 0.5
+        return x.reshape(B * T, C, self.crop_height, self.crop_width).contiguous()
+
+    def encode_preprocessed(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Encode already-preprocessed images.
+
+        Args:
+            x: (B, 3, crop_h, crop_w)
+
+        Returns:
+            feat: (B, D)
+        """
         h = self.convnet(x)
         return h.view(h.shape[0], -1).contiguous()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._preprocess_4d(x)
+        return self.encode_preprocessed(x)
 
 
 # -----------------------------------------------------------------------------

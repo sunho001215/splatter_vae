@@ -15,12 +15,38 @@ env:
   action_repeat: 2
   max_episode_steps: 150
 
-  camera:
-    name: eval_cam
-    r: 0.8
-    theta: -30.0
-    phi: 0.0
-    fovy: 45.0
+  cameras:
+    - name: cam0
+      r: 0.8
+      theta: -30.0
+      phi: -30.0
+      fovy: 45.0
+    - name: cam1
+      r: 0.8
+      theta: -30.0         
+      phi: 0.0             
+      fovy: 45.0
+    - name: cam2
+      r: 0.8
+      theta: -30.0       
+      phi: 30.0          
+      fovy: 45.0
+    - name: cam3
+      r: 0.8
+      theta: -45.0        
+      phi: -30.0          
+      fovy: 45.0
+    - name: cam4
+      r: 0.8
+      theta: -45.0         
+      phi: 0.0            
+      fovy: 45.0
+    - name: cam5
+      r: 0.8
+      theta: -45.0     
+      phi: 30.0            
+      fovy: 45.0
+
 
   lookat: [0.0, 0.6, 0.0]
   up: [0.0, 0.0, 1.0]

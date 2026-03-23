@@ -165,17 +165,15 @@ def perturb(module: nn.Module, optimizer: torch.optim.Optimizer, factor: float) 
 
 class VisionEncoderAdapter(nn.Module):
     """
-    Wrap the selected visual encoder and convert frame-stacked RGB observations
-    into one flat state vector for DrM.
+    Frame-stack -> representation adapter for DrM.
 
-    Observation format:
-        obs: (B, 3 * frame_stack, H, W)
-
-    Important special case:
-      - For SinCro, the full frame stack is treated as ONE temporal history and
-        is passed through the frozen full scene encoder Ωθ once.
-      - For other encoders, each RGB frame is encoded independently and the
-        per-frame features are concatenated.
+    Rules:
+      - backbone is built from build_vision_encoder(...)
+      - backbone is never perturbed here
+      - if backbone is frozen:
+          * non-SinCro -> add small fusion/projection head
+          * SinCro     -> add small post-backbone MLP head
+      - only the small heads are considered perturbable
     """
 
     def __init__(self, full_cfg: Dict[str, Any]):
@@ -186,100 +184,214 @@ class VisionEncoderAdapter(nn.Module):
         ).lower()
         self.frame_stack = int(full_cfg["env"].get("frame_stack", 1))
 
+        # ------------------------------------------------------------------
+        # 1) Build backbone and freeze if pretrained
+        # ------------------------------------------------------------------
         self.backbone = build_vision_encoder(full_cfg)
-
-        self.is_trainable = bool(
+        self.backbone_trainable = bool(
             getattr(self.backbone, "is_trainable", self.vision_name == "convnet")
         )
-        self.is_perturbable = bool(
-            getattr(self.backbone, "is_perturbable", self.is_trainable)
-        )
 
-        if not self.is_trainable:
+        if not self.backbone_trainable:
             self.backbone.eval()
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        height = int(full_cfg["env"]["image_height"])
-        width = int(full_cfg["env"]["image_width"])
+        # ------------------------------------------------------------------
+        # 2) Infer backbone output dim once
+        # ------------------------------------------------------------------
+        self.single_frame_dim = self._infer_backbone_dim(full_cfg)
+
+        # ------------------------------------------------------------------
+        # 3) Small heads
+        #    - frozen non-SinCro: fusion head
+        #    - frozen SinCro:     post-backbone MLP
+        # ------------------------------------------------------------------
+        self.fusion_head = None
+        self.post_backbone_head = None
+
+        if (not self.backbone_trainable) and (self.vision_name != "sincro"):
+            from agents.common.head import TemporalGRUHead
+
+            self.fusion_head = TemporalGRUHead(
+                in_dim=self.single_frame_dim,
+            )
+            self.repr_dim = self.fusion_head.out_dim
+
+        elif (not self.backbone_trainable) and (self.vision_name == "sincro"):
+            from agents.common.head import SmallPostEncoderMLPHead
+
+            self.post_backbone_head = SmallPostEncoderMLPHead(
+                in_dim=self.single_frame_dim,
+            )
+            self.repr_dim = self.post_backbone_head.out_dim
+
+        else:
+            # Original repr size if no extra head is added
+            self.repr_dim = (
+                self.single_frame_dim
+                if self.vision_name == "sincro"
+                else self.single_frame_dim * self.frame_stack
+            )
+
+        # ------------------------------------------------------------------
+        # 4) DrM-facing flags
+        # ------------------------------------------------------------------
+        # train / perturb policy for DrM
+        self.has_proj_head = (self.fusion_head is not None) or (self.post_backbone_head is not None)
+
+        # trainable:
+        #   - full ConvNet backbone
+        #   - or frozen backbone + small learnable head
+        self.is_trainable = self.backbone_trainable or self.has_proj_head
+
+        # perturbable:
+        #   - ConvNet: perturb whole encoder
+        #   - frozen pretrained encoder: perturb only projection head(s)
+        self.is_perturbable = self.backbone_trainable or self.has_proj_head
+
+    def _infer_backbone_dim(self, full_cfg: Dict[str, Any]) -> int:
+        """Run one dummy forward pass to get backbone output dim."""
+        h = int(full_cfg["env"]["image_height"])
+        w = int(full_cfg["env"]["image_width"])
 
         try:
-            backbone_device = next(self.backbone.parameters()).device
+            device = next(self.backbone.parameters()).device
         except StopIteration:
-            backbone_device = torch.device("cpu")
+            device = torch.device("cpu")
 
         prev_mode = self.backbone.training
         self.backbone.eval()
 
         with torch.no_grad():
             if self.vision_name == "sincro":
-                # SinCro consumes the WHOLE temporal stack at once.
-                dummy = torch.zeros(
-                    1, self.frame_stack, 3, height, width,
-                    device=backbone_device,
-                )
-                flat_dim = int(self.backbone(dummy).shape[-1])
-                self.single_frame_dim = flat_dim
-                self.repr_dim = flat_dim
+                dummy = torch.zeros(1, self.frame_stack, 3, h, w, device=device)
+                dim = int(self.backbone(dummy).flatten(1).shape[-1])
             else:
-                # Other encoders consume one RGB frame at a time.
-                dummy = torch.zeros(1, 3, height, width, device=backbone_device)
-                flat_dim = int(self.backbone(dummy).flatten(1).shape[-1])
-                self.single_frame_dim = flat_dim
-                self.repr_dim = self.single_frame_dim * self.frame_stack
+                dummy = torch.zeros(1, 3, h, w, device=device)
+                dim = int(self.backbone(dummy).flatten(1).shape[-1])
 
         self.backbone.train(prev_mode)
+        return dim
 
     def set_update_mode(self) -> None:
-        if self.is_trainable:
-            self.backbone.train(True)
-        else:
+        """Training mode: heads train, frozen backbone stays eval."""
+        super().train(True)
+        if not self.backbone_trainable:
             self.backbone.eval()
 
     def set_act_mode(self) -> None:
+        """Act/eval mode: everything eval."""
+        super().train(False)
         self.backbone.eval()
 
     def _to_unit_float(self, x: torch.Tensor) -> torch.Tensor:
+        """Convert uint8 / [0,255] input to float [0,1]."""
         if x.dtype == torch.uint8:
             return x.float() / 255.0
-
         x = x.float()
-        if x.max() > 1.0:
-            x = x / 255.0
-        return x
+        return x / 255.0 if x.max() > 1.0 else x
+
+    def _encode_single(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode one RGB frame: (B,3,H,W) -> (B,D)."""
+        if self.backbone_trainable:
+            feat = self.backbone(x)
+        else:
+            with torch.no_grad():
+                feat = self.backbone(x)
+        return feat.flatten(1).contiguous()
+
+    def _encode_sincro(self, x_seq: torch.Tensor) -> torch.Tensor:
+        """Encode SinCro temporal input: (B,T,3,H,W) -> (B,D)."""
+        if self.backbone_trainable:
+            feat = self.backbone(x_seq)
+        else:
+            with torch.no_grad():
+                feat = self.backbone(x_seq)
+        return feat.flatten(1).contiguous()
+
+    @torch.no_grad()
+    def perturb_self(self, optimizer: torch.optim.Optimizer, factor: float) -> None:
+        """DrM perturbation rule for the visual encoder."""
+        if self.backbone_trainable:
+            # Original ConvNet behavior
+            perturb(self, optimizer, factor)
+            return
+
+        # Frozen backbone: perturb only the small trainable head(s)
+        if self.fusion_head is not None:
+            perturb(self.fusion_head, optimizer, factor)
+
+        if self.post_backbone_head is not None:
+            perturb(self.post_backbone_head, optimizer, factor)
+
+    def _encode_frames_batched(self, frames: torch.Tensor) -> torch.Tensor:
+        """
+        Vectorized per-frame encoding for all non-SinCro encoders.
+
+        Args:
+            frames: (B, T, 3, H, W)
+
+        Returns:
+            frame_feats: (B, T, D)
+        """
+        B, T, C, H, W = frames.shape
+
+        # Special handling for ConvNet so we preserve "same crop across time"
+        # while still doing one vectorized conv forward over (B*T) frames.
+        if self.vision_name == "convnet":
+            x = self.backbone.preprocess_batched_frames(frames)   # (B*T,3,h,w)
+            feat = self.backbone.encode_preprocessed(x)           # (B*T,D)
+            return feat.reshape(B, T, -1).contiguous()
+
+        # Generic non-SinCro case:
+        # flatten time into batch, run backbone once, then reshape back.
+        x = frames.reshape(B * T, C, H, W).contiguous()
+
+        if self.backbone_trainable:
+            feat = self.backbone(x)
+        else:
+            with torch.no_grad():
+                feat = self.backbone(x)
+
+        feat = feat.flatten(1)  # (B*T, D)
+        return feat.reshape(B, T, -1).contiguous()
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            obs: (B, 3*T, H, W) or (3*T, H, W)
+
+        Returns:
+            repr: (B, repr_dim)
+        """
         if obs.ndim == 3:
             obs = obs.unsqueeze(0)
 
         obs = self._to_unit_float(obs)
-        batch_size, channels, height, width = obs.shape
-
-        expected = 3 * self.frame_stack
-        if channels != expected:
-            raise ValueError(
-                f"Expected {expected} channels (= 3 * frame_stack), got {channels}."
-            )
+        B, C, H, W = obs.shape
+        exp_c = 3 * self.frame_stack
+        if C != exp_c:
+            raise ValueError(f"Expected {exp_c} channels (= 3 * frame_stack), got {C}.")
 
         # --------------------------------------------------------------
-        # SinCro: treat the stacked frames as one temporal history
+        # SinCro: full temporal stack goes into backbone once
         # --------------------------------------------------------------
         if self.vision_name == "sincro":
-            # (B, 3*T, H, W) -> (B, T, 3, H, W)
-            seq = obs.view(batch_size, self.frame_stack, 3, height, width)
-            return self.backbone(seq)
+            seq = obs.view(B, self.frame_stack, 3, H, W)
+            feat = self._encode_sincro(seq)
+            return self.post_backbone_head(feat) if self.post_backbone_head is not None else feat
 
         # --------------------------------------------------------------
-        # Other encoders: encode each frame independently
+        # Others: encode all frames in one batched backbone forward
         # --------------------------------------------------------------
-        frames = obs.view(batch_size, self.frame_stack, 3, height, width)
+        frames = obs.view(B, self.frame_stack, 3, H, W)
+        frame_feats = self._encode_frames_batched(frames)  # (B, T, D)
 
-        pieces = []
-        for frame_idx in range(self.frame_stack):
-            feat = self.backbone(frames[:, frame_idx])
-            pieces.append(feat.flatten(1))
+        if self.fusion_head is not None:
+            return self.fusion_head(frame_feats)
 
-        return torch.cat(pieces, dim=-1).contiguous()
+        return frame_feats.flatten(1).contiguous()
 
 # -----------------------------------------------------------------------------
 # DrM heads 
@@ -587,15 +699,15 @@ class DrMMetaWorldAgent:
     def _maybe_perturb(self) -> None:
         factor = self.perturb_factor()
 
-        # Peturb heads
         perturb(self.actor, self.actor_opt, factor)
         perturb(self.critic, self.critic_opt, factor)
         perturb(self.critic_target, self.critic_opt, factor)
         perturb(self.value_predictor, self.value_opt, factor)
 
-        # Perturb encoder if 
-        if self.encoder_opt is not None and getattr(self.encoder, "is_perturbable", False):
-            perturb(self.encoder, self.encoder_opt, factor)
+        # ConvNet -> perturb whole encoder
+        # Frozen pretrained encoder -> perturb only projection head(s)
+        if self.encoder_opt is not None and self.encoder.is_perturbable:
+            self.encoder.perturb_self(self.encoder_opt, factor)
 
     # ------------------------------------------------------------------
     # Public update

@@ -1,13 +1,13 @@
 output:
-  path: /home/ws/data/metaworld/door_open.hdf5
+  path: /home/ws/data/metaworld/near_expert/window_open.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "door-open-v3"
+  env_name: "window-open-v3"
   seed: 0
-  max_steps: 150
+  max_steps: 200
   terminate_on_success: true
 
 render:
@@ -54,11 +54,11 @@ segmentation:
 policies:
   scripted:
     enabled: true
-    num_demos: 120
+    num_demos: 125
     policy_class: null     # optional override
   random:
-    enabled: true
-    num_demos: 5
+    enabled: false
+    num_demos: 0
 
 visualize:
   enabled: false         # show live window if possible

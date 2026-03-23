@@ -1,6 +1,6 @@
 dataset:
   # Path to your RoboSuite multi-view HDF5 file
-  hdf5_path: "../../data/metaworld/door_open.hdf5"
+  hdf5_path: "../../data/metaworld/near_expert/window_open.hdf5"
 
   # DataLoader settings
   batch_size: 32
@@ -74,7 +74,7 @@ reviwo:
 train:
   # Training length
   num_epochs: 1000          # from original num_epoch
-  max_global_steps: 100000  # optional override; keep null to use num_epochs
+  max_global_steps: 100001  # optional override; keep null to use num_epochs
 
   # Optimizer
   lr: 0.0003              # from original optimizer.lr
@@ -103,7 +103,7 @@ train:
   log_every: 50           # corresponds to original log_step
 
   # Checkpoint directory + resume flag
-  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/door_open/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/window_open/"
   resume_from_last: false
 
   # Number of views per sample in this trainer
