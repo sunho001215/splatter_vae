@@ -1,10 +1,10 @@
-seed: 98
+seed: 42
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-window-open-DrM
-  name: CNN_randomcrop_seed98
+  name: CNN_randomcrop_seed42
 
 env:
   benchmark_id: Meta-World/MT1
@@ -92,7 +92,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/window_open/cnn_w_crop/seed98/
+  replay_dir: ./buffer/metaworld/window_open/cnn_w_crop/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -104,7 +104,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/window_open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drm/cnn_w_crop/window_open/seed42/
 
 visualization:
   enabled: false
