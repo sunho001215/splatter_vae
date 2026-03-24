@@ -69,46 +69,28 @@ class ReplayBufferStorage:
     def __len__(self) -> int:
         return self._num_transitions
 
-    def add_initial(self, obs: np.ndarray) -> None:
-        """
-        Add the dummy first transition.
-
-        This keeps the layout identical to the original DrM replay format:
-        - observation[0] is the reset observation
-        - action[0], reward[0], discount[0] are dummy values
-        """
+    def add_initial(self, obs: np.ndarray, backbone_feature: np.ndarray | None = None) -> None:
+        """Add the initial reset observation as the first transition of a new episode."""
         self._current_episode["observation"].append(np.asarray(obs, dtype=np.uint8))
         self._current_episode["action"].append(np.zeros(self._action_shape, dtype=np.float32))
         self._current_episode["reward"].append(np.zeros((1,), dtype=np.float32))
         self._current_episode["discount"].append(np.ones((1,), dtype=np.float32))
+        if backbone_feature is not None:
+            self._current_episode["backbone_feature"].append(np.asarray(backbone_feature, dtype=np.float16))
 
-    def add(
-        self,
-        action: np.ndarray,
-        reward: float,
-        discount: float,
-        next_obs: np.ndarray,
-        done: bool,
-    ) -> None:
-        """
-        Add one real environment transition.
 
-        We append:
-        - next observation
-        - action that produced it
-        - reward
-        - discount
-        """
+    def add(self, action, reward, discount, next_obs, done, next_backbone_feature=None):
+        """Add one transition to the current episode, and save to disk if done=True."""
         self._current_episode["observation"].append(np.asarray(next_obs, dtype=np.uint8))
         self._current_episode["action"].append(np.asarray(action, dtype=np.float32))
         self._current_episode["reward"].append(np.asarray([reward], dtype=np.float32))
         self._current_episode["discount"].append(np.asarray([discount], dtype=np.float32))
-
+        if next_backbone_feature is not None:
+            self._current_episode["backbone_feature"].append(
+                np.asarray(next_backbone_feature, dtype=np.float16)
+            )
         if done:
-            episode = {
-                k: np.asarray(v)
-                for k, v in self._current_episode.items()
-            }
+            episode = {k: np.asarray(v) for k, v in self._current_episode.items()}
             self._current_episode = defaultdict(list)
             self._store_episode(episode)
 
@@ -288,6 +270,12 @@ class ReplayBuffer(IterableDataset):
         for i in range(self._nstep):
             reward += discount * episode["reward"][idx + i]
             discount *= episode["discount"][idx + i] * self._discount
+
+        obs_feat = next_obs_feat = None
+        if "backbone_feature" in episode:
+            obs_feat = episode["backbone_feature"][idx - 1]
+            next_obs_feat = episode["backbone_feature"][idx + self._nstep - 1]
+            return obs, action, reward, discount, next_obs, obs_feat, next_obs_feat
 
         return obs, action, reward, discount, next_obs
 

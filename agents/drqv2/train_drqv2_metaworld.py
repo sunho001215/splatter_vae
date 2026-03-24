@@ -31,7 +31,7 @@ import wandb
 
 from agents.drqv2.drqv2_metaworld import DrQv2MetaWorldAgent
 from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
-from agents.drm.replay_buffer import make_replay_loader, ReplayBufferStorage
+from agents.drqv2.replay_buffer import make_replay_loader, ReplayBufferStorage
 
 # -----------------------------------------------------------------------------
 # Small helpers
@@ -347,6 +347,17 @@ class MetaWorldSingleCameraEnv:
         except Exception:
             pass
 
+# -----------------------------------------------------------------------------
+# Caching of backbone features for DrQv2
+# -----------------------------------------------------------------------------
+
+@torch.inference_mode()
+def maybe_cache_obs(agent, obs):
+    if not getattr(agent.encoder, "can_cache_backbone", False):
+        return None
+    obs_t = torch.as_tensor(obs, device=agent.device).unsqueeze(0)
+    feat = agent.encoder.extract_cacheable_backbone_feature(obs_t)
+    return feat.squeeze(0).cpu().numpy()
 
 # -----------------------------------------------------------------------------
 # Evaluation
@@ -526,7 +537,8 @@ def main() -> None:
     rolling_return: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
 
     obs = train_env.reset()
-    replay_storage.add_initial(obs)
+    obs_cache = maybe_cache_obs(agent, obs)
+    replay_storage.add_initial(obs, backbone_feature=obs_cache)
     episode_return = 0.0
     episode_success = 0.0
     update_metrics: Dict[str, float] = {}
@@ -540,12 +552,14 @@ def main() -> None:
         next_obs, reward, done, info = train_env.step(action)
         transition_discount = 0.0 if done else discount
 
+        next_obs_cache = maybe_cache_obs(agent, next_obs)
         replay_storage.add(
-            action=action,
-            reward=reward,
-            discount=transition_discount,
-            next_obs=next_obs,
-            done=done,
+            action,
+            reward,
+            transition_discount,   # use terminal-aware discount
+            next_obs,
+            done,
+            next_backbone_feature=next_obs_cache,
         )
 
         obs = next_obs
@@ -624,8 +638,8 @@ def main() -> None:
                 print(episode_log)
 
             obs = train_env.reset()
-
-            replay_storage.add_initial(obs)
+            obs_cache = maybe_cache_obs(agent, obs)
+            replay_storage.add_initial(obs, backbone_feature=obs_cache)
 
             episode_return = 0.0
             episode_success = 0.0

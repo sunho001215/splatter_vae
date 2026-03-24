@@ -174,6 +174,7 @@ class VisionEncoderAdapter(nn.Module):
         #   - full ConvNet backbone
         #   - or frozen backbone + small learnable head
         self.is_trainable = self.backbone_trainable or self.has_proj_head
+        self.can_cache_backbone = not self.backbone_trainable
         
 
     def _infer_backbone_dim(self, full_cfg: Dict[str, Any]) -> int:
@@ -235,6 +236,38 @@ class VisionEncoderAdapter(nn.Module):
             with torch.no_grad():
                 feat = self.backbone(x_seq)
         return feat.flatten(1).contiguous()
+    
+    @torch.inference_mode()
+    def extract_cacheable_backbone_feature(self, obs: torch.Tensor) -> torch.Tensor:
+        if self.backbone_trainable:
+            raise RuntimeError("Cache only frozen backbones.")
+
+        if obs.ndim == 3:
+            obs = obs.unsqueeze(0)
+
+        obs = self._to_unit_float(obs)
+        B, C, H, W = obs.shape
+
+        if self.vision_name == "sincro":
+            seq = obs.view(B, self.frame_stack, 3, H, W)
+            feat = self._encode_sincro(seq)              # (B, D_backbone)
+            return feat.to(torch.float16).contiguous()
+
+        frames = obs.view(B, self.frame_stack, 3, H, W)
+        frame_feats = self._encode_frames_batched(frames)  # (B, T, D_backbone)
+        return frame_feats.to(torch.float16).contiguous()
+
+
+    def forward_from_cached_backbone(self, cached_feat: torch.Tensor) -> torch.Tensor:
+        cached_feat = cached_feat.float()
+
+        if self.vision_name == "sincro":
+            return self.post_backbone_head(cached_feat) if self.post_backbone_head is not None else cached_feat
+
+        if cached_feat.ndim != 3:
+            raise ValueError(f"Expected cached non-SinCro feature as (B,T,D), got {tuple(cached_feat.shape)}")
+
+        return self.fusion_head(cached_feat) if self.fusion_head is not None else cached_feat.flatten(1).contiguous()
 
     def _encode_frames_batched(self, frames: torch.Tensor) -> torch.Tensor:
         """
@@ -361,28 +394,6 @@ class Critic(nn.Module):
         h = torch.cat([h, action], dim=-1)
         return self.q1(h), self.q2(h)
 
-
-class ValueNet(nn.Module):
-    def __init__(self, repr_dim: int, feature_dim: int, hidden_dim: int):
-        super().__init__()
-        self.trunk = nn.Sequential(
-            nn.Linear(repr_dim, feature_dim),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
-        )
-        self.v = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, 1),
-        )
-        self.apply(weight_init)
-
-    def forward(self, obs_repr: torch.Tensor) -> torch.Tensor:
-        return self.v(self.trunk(obs_repr))
-
-
 # -----------------------------------------------------------------------------
 # Main agent
 # -----------------------------------------------------------------------------
@@ -495,8 +506,37 @@ class DrQv2MetaWorldAgent:
     # ------------------------------------------------------------------
     # Internal update pieces
     # ------------------------------------------------------------------
-    def _encode_batch(self, obs: torch.Tensor, next_obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _encode_batch(self, obs=None, next_obs=None, obs_feat=None, next_obs_feat=None):
+        """
+        Encode a training batch.
+
+        Two modes:
+        1) image mode: use obs / next_obs
+        2) cached mode: use precomputed frozen-backbone features
+        """
         self.encoder.set_update_mode()
+
+        if obs_feat is not None and next_obs_feat is not None:
+            # Cached-feature path for frozen encoders
+            if not torch.is_tensor(obs_feat):
+                obs_feat = torch.as_tensor(obs_feat, device=self.device)
+            else:
+                obs_feat = obs_feat.to(self.device, non_blocking=True)
+
+            if not torch.is_tensor(next_obs_feat):
+                next_obs_feat = torch.as_tensor(next_obs_feat, device=self.device)
+            else:
+                next_obs_feat = next_obs_feat.to(self.device, non_blocking=True)
+
+            obs_repr = self.encoder.forward_from_cached_backbone(obs_feat)
+            with torch.no_grad():
+                next_repr = self.encoder.forward_from_cached_backbone(next_obs_feat)
+            return obs_repr, next_repr
+
+        # Fallback: image path
+        if obs is None or next_obs is None:
+            raise ValueError("Need either (obs, next_obs) or (obs_feat, next_obs_feat).")
+
         obs_repr = self.encoder(obs)
         with torch.no_grad():
             next_repr = self.encoder(next_obs)
@@ -577,23 +617,41 @@ class DrQv2MetaWorldAgent:
             return metrics
 
         batch = next(replay_iter)
-        obs, action, reward, discount, next_obs = batch
+        if len(batch) == 5:
+            obs, action, reward, discount, next_obs = batch
+            obs_feat = next_obs_feat = None
+        elif len(batch) == 7:
+            obs, action, reward, discount, next_obs, obs_feat, next_obs_feat = batch
+        else:
+            raise ValueError(f"Unexpected replay batch length: {len(batch)}")
 
         def _to_device(x):
             if torch.is_tensor(x):
                 return x.to(self.device, non_blocking=True)
             return torch.as_tensor(x, device=self.device)
 
-        obs = _to_device(obs)
+        # Always move action/reward/discount
         action = _to_device(action)
         reward = _to_device(reward)
         discount = _to_device(discount)
-        next_obs = _to_device(next_obs)
+
+        # Only move images if we are NOT using cached features
+        if obs_feat is None or next_obs_feat is None:
+            obs = _to_device(obs)
+            next_obs = _to_device(next_obs)
+        else:
+            obs = None
+            next_obs = None
 
         # No external augmentation here:
         # - ConvNet still augments internally by random crop in train mode
-        # - frozen encoders stay unaugmented
-        obs_repr, next_repr = self._encode_batch(obs, next_obs)
+        # - frozen encoders use cached backbone features if available
+        obs_repr, next_repr = self._encode_batch(
+            obs=obs,
+            next_obs=next_obs,
+            obs_feat=obs_feat,
+            next_obs_feat=next_obs_feat,
+        )
 
         metrics["batch_reward"] = float(reward.mean().item())
         metrics["stddev"] = float(self.stddev(step))
