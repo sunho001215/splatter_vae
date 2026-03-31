@@ -222,7 +222,7 @@ class PatchEmbed(nn.Module):
 
 
 class ViTBackbone(nn.Module):
-    """Image ViT backbone that returns final tokens and chosen intermediate blocks."""
+    """Image ViT backbone with a CLS token."""
 
     def __init__(self, cfg: ViTSmallConfig):
         super().__init__()
@@ -236,7 +236,10 @@ class ViTBackbone(nn.Module):
         )
         self.num_patches = self.patch_embed.num_patches
         self.grid_size = (self.patch_embed.grid_h, self.patch_embed.grid_w)
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, cfg.embed_dim))
+
+        # Original ViT/DPT-style CLS token + positional embedding for (CLS + patches)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, cfg.embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, 1 + self.num_patches, cfg.embed_dim))
         self.pos_drop = nn.Dropout(cfg.dropout)
 
         dpr = torch.linspace(0, cfg.drop_path_rate, cfg.depth).tolist()
@@ -258,6 +261,7 @@ class ViTBackbone(nn.Module):
         self.norm = RMSNorm(cfg.embed_dim)
         self.selected_layers = tuple(cfg.selected_layers)
 
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
     @property
@@ -265,37 +269,57 @@ class ViTBackbone(nn.Module):
         return self.cfg.embed_dim
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor], Tuple[int, int]]:
-        tokens, grid_size = self.patch_embed(x)
+        patch_tokens, grid_size = self.patch_embed(x)  # (B, N, D)
+        b = patch_tokens.shape[0]
+
+        # Prepend CLS token
+        cls_tokens = self.cls_token.expand(b, -1, -1)  # (B, 1, D)
+        tokens = torch.cat([cls_tokens, patch_tokens], dim=1)  # (B, 1+N, D)
         tokens = self.pos_drop(tokens + self.pos_embed)
 
         hidden_states: List[torch.Tensor] = []
         for idx, blk in enumerate(self.blocks):
             tokens = blk(tokens)
             if idx in self.selected_layers:
+                # IMPORTANT: keep CLS token for DPT readout/reassemble
                 hidden_states.append(tokens)
 
+        # Final norm only for returned backbone output.
         tokens = self.norm(tokens)
-        # Also normalize the DPT skip states to match decoder inputs.
-        hidden_states = [self.norm(h) for h in hidden_states]
-        return tokens, hidden_states, grid_size
+
+        # Return patch tokens, hidden states, and grid size.
+        return tokens[:, 1:, :], hidden_states, grid_size
 
 
 class TokenTransformer(nn.Module):
-    """Transformer that operates directly on a token grid instead of an image.
-
-    This is used as the fused latent backbone before the DPT-style dense decoder.
-    It keeps the grid resolution fixed, just like the original ViT / DPT backbone.
+    """
+    Transformer over a fixed token grid, now with a CLS token so that the
+    decoder-side DPT neck can use original readout handling.
     """
 
-    def __init__(self, num_tokens: int, embed_dim: int, depth: int, num_heads: int, mlp_ratio: float,
-                 qkv_bias: bool = True, dropout: float = 0.0, attn_dropout: float = 0.0,
-                 drop_path_rate: float = 0.0, layerscale_init: float = 1e-5,
-                 selected_layers: Sequence[int] = (2, 5, 8, 11)):
+    def __init__(
+        self,
+        num_tokens: int,
+        embed_dim: int,
+        depth: int,
+        num_heads: int,
+        mlp_ratio: float,
+        qkv_bias: bool = True,
+        dropout: float = 0.0,
+        attn_dropout: float = 0.0,
+        drop_path_rate: float = 0.0,
+        layerscale_init: float = 1e-5,
+        selected_layers: Sequence[int] = (2, 5, 8, 11),
+    ):
         super().__init__()
         self.num_tokens = int(num_tokens)
         self.embed_dim = int(embed_dim)
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_tokens, embed_dim))
+
+        # NEW: original ViT/DPT-style CLS token + positional embedding
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, 1 + num_tokens, embed_dim))
         self.pos_drop = nn.Dropout(dropout)
+
         dpr = torch.linspace(0, drop_path_rate, depth).tolist()
         self.blocks = nn.ModuleList(
             [
@@ -314,29 +338,40 @@ class TokenTransformer(nn.Module):
         )
         self.norm = RMSNorm(embed_dim)
         self.selected_layers = tuple(selected_layers)
+
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
     def forward(self, tokens: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         if tokens.shape[1] != self.num_tokens:
             raise ValueError(f"TokenTransformer expected {self.num_tokens} tokens, got {tokens.shape[1]}")
-        x = self.pos_drop(tokens + self.pos_embed)
+
+        b = tokens.shape[0]
+
+        # NEW: prepend CLS token
+        cls_tokens = self.cls_token.expand(b, -1, -1)  # (B, 1, D)
+        x = torch.cat([cls_tokens, tokens], dim=1)     # (B, 1+N, D)
+        x = self.pos_drop(x + self.pos_embed)
+
         hidden_states: List[torch.Tensor] = []
         for idx, blk in enumerate(self.blocks):
             x = blk(x)
             if idx in self.selected_layers:
+                # IMPORTANT: keep CLS token for DPT readout/reassemble
                 hidden_states.append(x)
+
         x = self.norm(x)
-        hidden_states = [self.norm(h) for h in hidden_states]
-        return x, hidden_states
+
+        # Return patch tokens only to keep your outer decode() contract unchanged.
+        return x[:, 1:, :], hidden_states
 
 
 # -----------------------------------------------------------------------------
 # DPT-style dense decoder
 # -----------------------------------------------------------------------------
 
-
 class ResidualConvUnit(nn.Module):
-    """DPT / MiDaS style local refinement block."""
+    """Pre-activation residual unit used by the DPT fusion blocks."""
 
     def __init__(self, features: int):
         super().__init__()
@@ -354,79 +389,157 @@ class ResidualConvUnit(nn.Module):
 
 
 class FeatureFusionBlock(nn.Module):
-    """Feature fusion block matching the spirit of the DPT."""
+    """
+    Original DPT-style feature fusion: residual refine -> refine -> upsample -> 1x1 projection
+    """
 
-    def __init__(self, features: int):
+    def __init__(self, features: int, align_corners: bool = True):
         super().__init__()
+        self.align_corners = align_corners
         self.res_unit1 = ResidualConvUnit(features)
         self.res_unit2 = ResidualConvUnit(features)
+        self.proj = nn.Conv2d(features, features, kernel_size=1, stride=1, padding=0, bias=True)
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor | None = None) -> torch.Tensor:
         if skip is not None:
+            # Match original DPT behavior: resize the residual path if shapes differ.
+            if x.shape[-2:] != skip.shape[-2:]:
+                skip = F.interpolate(
+                    skip,
+                    size=x.shape[-2:],
+                    mode="bilinear",
+                    align_corners=False,
+                )
             x = x + self.res_unit1(skip)
+
         x = self.res_unit2(x)
-        x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=True)
+        x = F.interpolate(x, scale_factor=2.0, mode="bilinear", align_corners=self.align_corners)
+        x = self.proj(x)
         return x
 
 
 class TokenReassembleBlock(nn.Module):
-    """Reassemble token sequences into image-like feature maps at four DPT scales.
+    """
+    Original DPT-style token reassembly.
 
-    DPT takes fixed-resolution ViT tokens and converts them into a pyramid by
-    reshaping the token grid and then using scale-specific projections / resampling.
+    Steps:
+      1) handle CLS/readout token
+      2) project channels with 1x1 conv
+      3) resize spatially
     """
 
-    def __init__(self, in_dim: int, out_dim: int, scale_factor: float):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        scale_factor: float,
+        readout_type: str = "project",
+    ):
         super().__init__()
+        self.readout_type = str(readout_type).lower()
+        if self.readout_type not in {"ignore", "add", "project"}:
+            raise ValueError(f"Unsupported readout_type={readout_type}")
+
+        # Original DPT readout projection for CLS token
+        if self.readout_type == "project":
+            self.readout_proj = nn.Sequential(
+                nn.Linear(2 * in_dim, in_dim),
+                nn.GELU(),
+            )
+        else:
+            self.readout_proj = None
+
+        # Original DPT reassemble layer: project -> resize
         self.proj = nn.Conv2d(in_dim, out_dim, kernel_size=1)
-        self.refine = nn.Conv2d(out_dim, out_dim, kernel_size=3, stride=1, padding=1)
-        self.scale_factor = float(scale_factor)
 
         if scale_factor > 1.0:
-            # For 4x and 2x maps we use transposed conv upsampling.
-            kernel = int(2 * scale_factor)
-            stride = int(scale_factor)
-            padding = int(scale_factor // 2)
-            self.resample = nn.ConvTranspose2d(out_dim, out_dim, kernel_size=kernel, stride=stride, padding=padding)
+            # Original DPT uses kernel_size == stride == factor, padding=0
+            factor = int(scale_factor)
+            self.resample = nn.ConvTranspose2d(
+                out_dim,
+                out_dim,
+                kernel_size=factor,
+                stride=factor,
+                padding=0,
+            )
         elif scale_factor == 1.0:
             self.resample = nn.Identity()
-        elif scale_factor == 0.5:
-            self.resample = nn.Conv2d(out_dim, out_dim, kernel_size=3, stride=2, padding=1)
+        elif scale_factor < 1.0:
+            self.resample = nn.Conv2d(
+                out_dim,
+                out_dim,
+                kernel_size=3,
+                stride=int(1.0 / scale_factor),
+                padding=1,
+            )
         else:
-            raise ValueError("Supported DPT reassembly scales are {4, 2, 1, 0.5}.")
+            raise ValueError("Invalid scale_factor")
 
     def forward(self, tokens: torch.Tensor, grid_size: Tuple[int, int]) -> torch.Tensor:
+        """
+        Args:
+            tokens: (B, 1 + N, D)  -- must include CLS token
+            grid_size: (Gh, Gw)
+
+        Returns:
+            x: (B, out_dim, H', W')
+        """
         b, n, c = tokens.shape
         gh, gw = grid_size
-        if n != gh * gw:
-            raise ValueError(f"Expected {gh * gw} tokens from grid {grid_size}, got {n}")
-        x = tokens.transpose(1, 2).reshape(b, c, gh, gw).contiguous()
+        expected_n = 1 + gh * gw
+        if n != expected_n:
+            raise ValueError(
+                f"Expected {expected_n} tokens (= 1 CLS + {gh*gw} patch tokens), got {n}"
+            )
+
+        cls_token = tokens[:, 0]       # (B, D)
+        patch_tokens = tokens[:, 1:]   # (B, N, D)
+
+        # Original DPT readout handling
+        if self.readout_type == "project":
+            readout = cls_token.unsqueeze(1).expand(-1, patch_tokens.shape[1], -1)
+            patch_tokens = self.readout_proj(torch.cat([patch_tokens, readout], dim=-1))
+        elif self.readout_type == "add":
+            patch_tokens = patch_tokens + cls_token.unsqueeze(1)
+        elif self.readout_type == "ignore":
+            pass
+
+        x = patch_tokens.transpose(1, 2).reshape(b, c, gh, gw).contiguous()
         x = self.proj(x)
         x = self.resample(x)
-        x = self.refine(x)
         return x
 
 
 class DPTHead(nn.Module):
-    """DPT-style dense prediction head.
+    """
+    DPT neck + your task-specific output head.
 
-    Inputs are the four hidden states selected from the fused latent transformer.
-    They are reassembled into a spatial pyramid and progressively fused to produce
-    a full-resolution splatter image.
+    Notes:
+      - hidden_states must INCLUDE CLS token
+      - we keep your final output conv stack unchanged because your task is
+        splatter prediction, not depth/segmentation logits
     """
 
-    def __init__(self, in_dim: int, features: int, out_channels: int):
+    def __init__(
+        self,
+        in_dim: int,
+        features: int,
+        out_channels: int,
+        readout_type: str = "project",
+    ):
         super().__init__()
-        self.reassemble_1 = TokenReassembleBlock(in_dim, features, scale_factor=4.0)
-        self.reassemble_2 = TokenReassembleBlock(in_dim, features, scale_factor=2.0)
-        self.reassemble_3 = TokenReassembleBlock(in_dim, features, scale_factor=1.0)
-        self.reassemble_4 = TokenReassembleBlock(in_dim, features, scale_factor=0.5)
+
+        self.reassemble_1 = TokenReassembleBlock(in_dim, features, scale_factor=4.0, readout_type=readout_type)
+        self.reassemble_2 = TokenReassembleBlock(in_dim, features, scale_factor=2.0, readout_type=readout_type)
+        self.reassemble_3 = TokenReassembleBlock(in_dim, features, scale_factor=1.0, readout_type=readout_type)
+        self.reassemble_4 = TokenReassembleBlock(in_dim, features, scale_factor=0.5, readout_type=readout_type)
 
         self.refinenet4 = FeatureFusionBlock(features)
         self.refinenet3 = FeatureFusionBlock(features)
         self.refinenet2 = FeatureFusionBlock(features)
         self.refinenet1 = FeatureFusionBlock(features)
 
+        # Keep your task head unchanged.
         self.output_conv = nn.Sequential(
             nn.Conv2d(features, 128, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
@@ -435,16 +548,22 @@ class DPTHead(nn.Module):
             nn.Conv2d(64, out_channels, kernel_size=1, stride=1, padding=0),
         )
 
-    def forward(self, hidden_states: Sequence[torch.Tensor], grid_size: Tuple[int, int],
-                output_size: Tuple[int, int]) -> torch.Tensor:
+    def forward(
+        self,
+        hidden_states: Sequence[torch.Tensor],
+        grid_size: Tuple[int, int],
+        output_size: Tuple[int, int],
+    ) -> torch.Tensor:
         if len(hidden_states) != 4:
             raise ValueError(f"DPTHead expects 4 hidden states, got {len(hidden_states)}")
 
+        # Each hidden state is (B, 1+N, D), including CLS token
         layer_1 = self.reassemble_1(hidden_states[0], grid_size)
         layer_2 = self.reassemble_2(hidden_states[1], grid_size)
         layer_3 = self.reassemble_3(hidden_states[2], grid_size)
         layer_4 = self.reassemble_4(hidden_states[3], grid_size)
 
+        # Coarse-to-fine fusion, same order as DPT
         path_4 = self.refinenet4(layer_4)
         path_3 = self.refinenet3(path_4, layer_3)
         path_2 = self.refinenet2(path_3, layer_2)

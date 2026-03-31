@@ -125,6 +125,7 @@ class SplatterVAE(nn.Module):
             in_dim=latent_dim,
             features=int(vit_cfg.get("dpt_features", dpt_features)),
             out_channels=int(splatter_channels),
+            readout_type=str(vit_cfg.get("dpt_readout_type", "project")),
         )
 
         # -------------------------------------------------------------

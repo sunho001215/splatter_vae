@@ -398,7 +398,7 @@ def compute_reconstruction_and_renders(
         rec_self_cross + rec_swap_view_cross + rec_swap_state_cross + rec_swap_both_cross
     )
 
-    rec_loss = 0.5 * (rec_native_loss + rec_cross_loss)
+    rec_loss = 0.1 * rec_native_loss + 0.9 * rec_cross_loss
 
     # Average the soft image-frustum penalty over the 4 decoded scenes.
     frustum_loss = 0.25 * (
@@ -486,7 +486,7 @@ def _make_wandb_image_grid(images_01: torch.Tensor, max_vis: int = 4) -> wandb.I
     return wandb.Image(grid)
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def validate_and_log_wandb(
     vae: SplatterVAE,
     splatter_cfg: SplatterConfig,
@@ -542,13 +542,13 @@ def validate_and_log_wandb(
         # ------------------------------------------------------------
         # 1) Move batch to device
         # ------------------------------------------------------------
-        image_a = batch["image_i_t"].to(device)
-        image_b = batch["image_j_t"].to(device)
-        image_c = batch["image_i_t1"].to(device)
-        image_d = batch["image_j_t1"].to(device)
-        t_ij = batch["T_ij"].to(device)
-        k_i = batch["K_i"].to(device)
-        k_j = batch["K_j"].to(device)
+        image_a = batch["image_i_t"].to(device, non_blocking=True)
+        image_b = batch["image_j_t"].to(device, non_blocking=True)
+        image_c = batch["image_i_t1"].to(device, non_blocking=True)
+        image_d = batch["image_j_t1"].to(device, non_blocking=True)
+        t_ij = batch["T_ij"].to(device, non_blocking=True)
+        k_i = batch["K_i"].to(device, non_blocking=True)
+        k_j = batch["K_j"].to(device, non_blocking=True)
 
         # Convert ground truth from [-1, 1] to [0, 1].
         gt_a_01 = (image_a + 1.0) * 0.5
@@ -1071,12 +1071,18 @@ def main():
     wandb_cfg = cfg.get("wandb", {})
     wandb_enabled = bool(wandb_cfg.get("enabled", True))
 
+    wandb_tags = wandb_cfg.get("tags", [])
+    if isinstance(wandb_tags, str):
+        wandb_tags = [wandb_tags]
+    wandb_tags = [str(tag) for tag in wandb_tags if str(tag).strip()]
+
     if wandb_enabled:
         wandb.init(
             project=wandb_cfg.get("project", "splattervae"),
             entity=wandb_cfg.get("entity", None),
             name=wandb_cfg.get("run_name", None),
             config=cfg,
+            tags=wandb_tags,
         )
         print(f"[wandb] Logging to project: {wandb_cfg.get('project', 'splattervae')}")
 
