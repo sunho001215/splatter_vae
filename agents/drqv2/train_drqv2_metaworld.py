@@ -510,12 +510,18 @@ def main() -> None:
     )
     replay_iter = None
 
-    use_wandb = bool(cfg.get("wandb", {}).get("enabled", False)) and wandb is not None
+    wandb_cfg = cfg.get("wandb", {})
+    use_wandb = bool(wandb_cfg.get("enabled", True))
+    wandb_tags = wandb_cfg.get("tags", [])
+    if isinstance(wandb_tags, str):
+        wandb_tags = [wandb_tags]
+    wandb_tags = [str(tag) for tag in wandb_tags if str(tag).strip()]
     if use_wandb:
         wandb.init(
             project=str(cfg["wandb"].get("project", "drm-metaworld")),
             name=str(cfg["wandb"].get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'convnet')}")),
             config=cfg,
+            tags=wandb_tags,
         )
 
     num_train_steps = int(tcfg.get("num_train_steps", 1_000_000))

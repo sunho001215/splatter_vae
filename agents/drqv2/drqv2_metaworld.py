@@ -186,7 +186,21 @@ class VisionEncoderAdapter(nn.Module):
         #   - or frozen backbone + separate actor/critic adapters
         self.is_trainable = self.backbone_trainable or self.has_separate_adapters
         self.can_cache_backbone = not self.backbone_trainable
-        
+
+    def actor_adapter_parameters(self):
+        return [] if self.actor_adapter is None else self.actor_adapter.parameters()
+
+    def critic_adapter_parameters(self):
+        return [] if self.critic_adapter is None else self.critic_adapter.parameters()
+
+    def _select_adapter(self, branch):
+        if not self.has_separate_adapters:
+            return None
+        if branch == "actor":
+            return self.actor_adapter
+        if branch == "critic":
+            return self.critic_adapter
+        raise ValueError(...) 
 
     def _infer_backbone_dim(self, full_cfg: Dict[str, Any]) -> int:
         """Run one dummy forward pass to get backbone output dim."""
@@ -479,24 +493,6 @@ class DrQv2MetaWorldAgent:
 
         self.train(True)
         self.critic_target.train(True)
-
-    # ------------------------------------------------------------------
-    # Adapter parameter helpers for optimizers
-    # ------------------------------------------------------------------
-    def actor_adapter_parameters(self):
-        return [] if self.actor_adapter is None else self.actor_adapter.parameters()
-
-    def critic_adapter_parameters(self):
-        return [] if self.critic_adapter is None else self.critic_adapter.parameters()
-
-    def _select_adapter(self, branch):
-        if not self.has_separate_adapters:
-            return None
-        if branch == "actor":
-            return self.actor_adapter
-        if branch == "critic":
-            return self.critic_adapter
-        raise ValueError(...)
 
     # ------------------------------------------------------------------
     # DrQ-v2 Scheduler
