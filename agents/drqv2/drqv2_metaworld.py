@@ -66,6 +66,65 @@ def schedule(schedule_str: str | float | int, step: int) -> float:
 
     raise NotImplementedError(f"Unsupported schedule: {schedule_str}")
 
+def random_shift_stacked_obs(
+    obs: torch.Tensor,
+    frame_stack: int,
+    pad: int = 4,
+) -> torch.Tensor:
+    """
+    DrQ-style random shift for stacked RGB observations.
+
+    Important:
+      - output size is unchanged
+      - ONE random shift per sample
+      - the SAME shift is applied to all T frames of that sample
+        so temporal alignment is preserved
+
+    Args:
+        obs: (B, 3*T, H, W) or (3*T, H, W)
+        frame_stack: number of stacked RGB frames
+        pad: replication padding size on each side
+
+    Returns:
+        shifted obs with the same shape as input, float in [0,1]
+    """
+    if pad <= 0:
+        return obs
+
+    squeeze_back = False
+    if obs.ndim == 3:
+        obs = obs.unsqueeze(0)
+        squeeze_back = True
+
+    # Convert to float [0,1] before padding/cropping
+    if obs.dtype == torch.uint8:
+        obs = obs.float() / 255.0
+    else:
+        obs = obs.float()
+        if obs.max() > 1.0:
+            obs = obs / 255.0
+
+    B, C, H, W = obs.shape
+    exp_c = 3 * frame_stack
+    if C != exp_c:
+        raise ValueError(f"Expected {exp_c} channels (= 3 * frame_stack), got {C}")
+
+    frames = obs.view(B, frame_stack, 3, H, W)
+    padded = F.pad(
+        frames.reshape(B * frame_stack, 3, H, W),
+        (pad, pad, pad, pad),
+        mode="replicate",
+    )
+    padded = padded.view(B, frame_stack, 3, H + 2 * pad, W + 2 * pad)
+
+    shifted = []
+    for b in range(B):
+        top = torch.randint(0, 2 * pad + 1, (1,), device=obs.device).item()
+        left = torch.randint(0, 2 * pad + 1, (1,), device=obs.device).item()
+        shifted.append(padded[b, :, :, top:top + H, left:left + W])
+
+    out = torch.stack(shifted, dim=0).reshape(B, C, H, W).contiguous()
+    return out.squeeze(0) if squeeze_back else out
 
 class TruncatedNormal(pyd.Normal):
     """Simple clipped Gaussian used by the official DrQ actor."""
@@ -133,38 +192,37 @@ class VisionEncoderAdapter(nn.Module):
         self.single_frame_dim = self._infer_backbone_dim(full_cfg)
 
         # ------------------------------------------------------------------
-        # 3) Adapter heads
+        # 3) Shared adapter heads
+        #
+        # Frozen pretrained encoders:
+        #   - non-SinCro: one shared MLP-stack fusion head
+        #   - SinCro:     one shared post-backbone MLP
+        #
+        # ConvNet:
+        #   - no extra adapter here
         # ------------------------------------------------------------------
-        self.actor_adapter = None
-        self.critic_adapter = None
+        self.fusion_head = None
+        self.post_backbone_head = None
 
         if (not self.backbone_trainable) and (self.vision_name != "sincro"):
             from agents.common.head import FrameMLPStackHead
 
-            self.actor_adapter = FrameMLPStackHead(
+            self.fusion_head = FrameMLPStackHead(
                 in_dim=self.single_frame_dim,
                 frame_stack=self.frame_stack,
             )
-            self.critic_adapter = FrameMLPStackHead(
-                in_dim=self.single_frame_dim,
-                frame_stack=self.frame_stack,
-            )
-            self.repr_dim = self.actor_adapter.out_dim
+            self.repr_dim = self.fusion_head.out_dim
 
         elif (not self.backbone_trainable) and (self.vision_name == "sincro"):
             from agents.common.head import SmallPostEncoderMLPHead
 
-            self.actor_adapter = SmallPostEncoderMLPHead(
+            self.post_backbone_head = SmallPostEncoderMLPHead(
                 in_dim=self.single_frame_dim,
             )
-            self.critic_adapter = SmallPostEncoderMLPHead(
-                in_dim=self.single_frame_dim,
-            )
-            self.repr_dim = self.actor_adapter.out_dim
+            self.repr_dim = self.post_backbone_head.out_dim
 
         else:
-            # No extra adapter:
-            # - ConvNet still behaves like the original shared encoder path
+            # ConvNet / trainable path
             self.repr_dim = (
                 self.single_frame_dim
                 if self.vision_name == "sincro"
@@ -174,33 +232,13 @@ class VisionEncoderAdapter(nn.Module):
         # ------------------------------------------------------------------
         # 4) DrQ-facing flags
         # ------------------------------------------------------------------
-        self.has_separate_adapters = (
-            self.actor_adapter is not None and self.critic_adapter is not None
-        )
+        self.has_proj_head = (self.fusion_head is not None) or (self.post_backbone_head is not None)
+        self.is_trainable = self.backbone_trainable or self.has_proj_head
 
-        # Keep this flag name for compatibility with the rest of the code.
-        self.has_proj_head = self.has_separate_adapters
-
-        # trainable:
-        #   - full ConvNet backbone
-        #   - or frozen backbone + separate actor/critic adapters
-        self.is_trainable = self.backbone_trainable or self.has_separate_adapters
-        self.can_cache_backbone = not self.backbone_trainable
-
-    def actor_adapter_parameters(self):
-        return [] if self.actor_adapter is None else self.actor_adapter.parameters()
-
-    def critic_adapter_parameters(self):
-        return [] if self.critic_adapter is None else self.critic_adapter.parameters()
-
-    def _select_adapter(self, branch):
-        if not self.has_separate_adapters:
-            return None
-        if branch == "actor":
-            return self.actor_adapter
-        if branch == "critic":
-            return self.critic_adapter
-        raise ValueError(...) 
+        # IMPORTANT:
+        # To apply random shift augmentation on raw images for frozen encoders,
+        # disable cached backbone features.
+        self.can_cache_backbone = False
 
     def _infer_backbone_dim(self, full_cfg: Dict[str, Any]) -> int:
         """Run one dummy forward pass to get backbone output dim."""
@@ -261,51 +299,6 @@ class VisionEncoderAdapter(nn.Module):
             with torch.no_grad():
                 feat = self.backbone(x_seq)
         return feat.flatten(1).contiguous()
-    
-    @torch.inference_mode()
-    def extract_cacheable_backbone_feature(self, obs: torch.Tensor) -> torch.Tensor:
-        if self.backbone_trainable:
-            raise RuntimeError("Cache only frozen backbones.")
-
-        if obs.ndim == 3:
-            obs = obs.unsqueeze(0)
-
-        obs = self._to_unit_float(obs)
-        B, C, H, W = obs.shape
-
-        if self.vision_name == "sincro":
-            seq = obs.view(B, self.frame_stack, 3, H, W)
-            feat = self._encode_sincro(seq)              # (B, D_backbone)
-            return feat.to(torch.float16).contiguous()
-
-        frames = obs.view(B, self.frame_stack, 3, H, W)
-        frame_feats = self._encode_frames_batched(frames)  # (B, T, D_backbone)
-        return frame_feats.to(torch.float16).contiguous()
-
-    def forward_from_cached_backbone(
-        self,
-        cached_feat: torch.Tensor,
-        branch: str | None = None,
-    ) -> torch.Tensor:
-        """
-        Convert cached frozen-backbone features into the final RL representation.
-
-        For frozen pretrained encoders:
-          - actor branch uses actor_adapter
-          - critic branch uses critic_adapter
-        """
-        cached_feat = cached_feat.float()
-        adapter = self._select_adapter(branch)
-
-        if self.vision_name == "sincro":
-            return adapter(cached_feat) if adapter is not None else cached_feat
-
-        if cached_feat.ndim != 3:
-            raise ValueError(
-                f"Expected cached non-SinCro feature as (B,T,D), got {tuple(cached_feat.shape)}"
-            )
-
-        return adapter(cached_feat) if adapter is not None else cached_feat.flatten(1).contiguous()
 
     def _encode_frames_batched(self, frames: torch.Tensor) -> torch.Tensor:
         """
@@ -339,13 +332,10 @@ class VisionEncoderAdapter(nn.Module):
         feat = feat.flatten(1)  # (B*T, D)
         return feat.reshape(B, T, -1).contiguous()
 
-    def forward(self, obs: torch.Tensor, branch: str | None = None) -> torch.Tensor:
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
         """
         Args:
             obs: (B, 3*T, H, W) or (3*T, H, W)
-            branch:
-              - "actor" / "critic" for frozen pretrained encoders
-              - None for shared ConvNet path
 
         Returns:
             repr: (B, repr_dim)
@@ -359,15 +349,13 @@ class VisionEncoderAdapter(nn.Module):
         if C != exp_c:
             raise ValueError(f"Expected {exp_c} channels (= 3 * frame_stack), got {C}.")
 
-        adapter = self._select_adapter(branch)
-
         # --------------------------------------------------------------
         # SinCro: full temporal stack goes into backbone once
         # --------------------------------------------------------------
         if self.vision_name == "sincro":
             seq = obs.view(B, self.frame_stack, 3, H, W)
             feat = self._encode_sincro(seq)
-            return adapter(feat) if adapter is not None else feat
+            return self.post_backbone_head(feat) if self.post_backbone_head is not None else feat
 
         # --------------------------------------------------------------
         # Others: encode all frames in one batched backbone forward
@@ -375,10 +363,9 @@ class VisionEncoderAdapter(nn.Module):
         frames = obs.view(B, self.frame_stack, 3, H, W)
         frame_feats = self._encode_frames_batched(frames)  # (B, T, D)
 
-        if adapter is not None:
-            return adapter(frame_feats)
+        if self.fusion_head is not None:
+            return self.fusion_head(frame_feats)
 
-        # Shared path (e.g. ConvNet)
         return frame_feats.flatten(1).contiguous()
 
 # -----------------------------------------------------------------------------
@@ -462,6 +449,7 @@ class DrQv2MetaWorldAgent:
         self.feature_dim = int(acfg.get("feature_dim", 256))
         self.hidden_dim = int(acfg.get("hidden_dim", 256))
         self.lr = float(acfg.get("lr", 1e-4))
+        self.random_shift_pad = int(acfg.get("random_shift_pad", 4))
 
         # Visual encoder
         self.encoder = VisionEncoderAdapter(cfg).to(device)
@@ -474,20 +462,7 @@ class DrQv2MetaWorldAgent:
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         # Optimizers
-        self.encoder_opt = None
-        self.actor_adapter_opt = None
-        self.critic_adapter_opt = None
-
-        if self.encoder.backbone_trainable:
-            self.encoder_opt = torch.optim.Adam(self.encoder.backbone.parameters(), lr=self.lr)
-        elif self.encoder.has_separate_adapters:
-            self.actor_adapter_opt = torch.optim.Adam(
-                self.encoder.actor_adapter_parameters(), lr=self.lr
-            )
-            self.critic_adapter_opt = torch.optim.Adam(
-                self.encoder.critic_adapter_parameters(), lr=self.lr
-            )
-
+        self.encoder_opt = torch.optim.Adam(self.encoder.parameters(), lr=self.lr) if self.encoder.is_trainable else None
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
         self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
 
@@ -525,8 +500,7 @@ class DrQv2MetaWorldAgent:
         self.train(False)
 
         obs_t = torch.as_tensor(obs, device=self.device)
-        branch = "actor" if self.encoder.has_separate_adapters else None  # Frozen pretrained encoders use the actor-side adapter.
-        obs_repr = self.encoder(obs_t, branch=branch)
+        obs_repr = self.encoder(obs_t)
         dist = self.actor(obs_repr, self.stddev(step))
         if eval_mode:
             action = dist.mean
@@ -549,10 +523,6 @@ class DrQv2MetaWorldAgent:
         }
         if self.encoder_opt is not None:
             payload["encoder_opt"] = self.encoder_opt.state_dict()
-        if self.actor_adapter_opt is not None:
-            payload["actor_adapter_opt"] = self.actor_adapter_opt.state_dict()
-        if self.critic_adapter_opt is not None:
-            payload["critic_adapter_opt"] = self.critic_adapter_opt.state_dict()
         return payload
 
     def load_state_dict(self, payload: Dict[str, Any]) -> None:
@@ -564,87 +534,66 @@ class DrQv2MetaWorldAgent:
         self.critic_opt.load_state_dict(payload["critic_opt"])
         if self.encoder_opt is not None and "encoder_opt" in payload:
             self.encoder_opt.load_state_dict(payload["encoder_opt"])
-        if self.actor_adapter_opt is not None and "actor_adapter_opt" in payload:
-            self.actor_adapter_opt.load_state_dict(payload["actor_adapter_opt"])
-        if self.critic_adapter_opt is not None and "critic_adapter_opt" in payload:
-            self.critic_adapter_opt.load_state_dict(payload["critic_adapter_opt"])
 
     # ------------------------------------------------------------------
     # Internal update pieces
     # ------------------------------------------------------------------
-    def _encode_single_input(
-        self,
-        obs=None,
-        obs_feat=None,
-        branch: str | None = None,
-    ) -> torch.Tensor:
+    def _encode_batch(self, obs=None, next_obs=None, obs_feat=None, next_obs_feat=None):
         """
-        Encode one batch of observations.
+        Encode a training batch.
 
-        Modes:
-          1) image mode: use obs
-          2) cached mode: use obs_feat
+        Two modes:
+        1) image mode: use obs / next_obs
+        2) cached mode: use precomputed frozen-backbone features
+
+        Important:
+          For frozen pretrained encoders we now apply random shift augmentation
+          in image space, so the cached-feature path is effectively disabled
+          by self.encoder.can_cache_backbone = False.
         """
         self.encoder.set_update_mode()
 
-        if obs_feat is not None:
+        if obs_feat is not None and next_obs_feat is not None:
+            # Compatibility fallback only
             if not torch.is_tensor(obs_feat):
                 obs_feat = torch.as_tensor(obs_feat, device=self.device)
             else:
                 obs_feat = obs_feat.to(self.device, non_blocking=True)
 
-            return self.encoder.forward_from_cached_backbone(obs_feat, branch=branch)
+            if not torch.is_tensor(next_obs_feat):
+                next_obs_feat = torch.as_tensor(next_obs_feat, device=self.device)
+            else:
+                next_obs_feat = next_obs_feat.to(self.device, non_blocking=True)
 
-        if obs is None:
-            raise ValueError("Need either obs or obs_feat.")
+            obs_repr = self.encoder.forward_from_cached_backbone(obs_feat)
+            with torch.no_grad():
+                next_repr = self.encoder.forward_from_cached_backbone(next_obs_feat)
+            return obs_repr, next_repr
 
-        return self.encoder(obs, branch=branch)
+        if obs is None or next_obs is None:
+            raise ValueError("Need either (obs, next_obs) or (obs_feat, next_obs_feat).")
 
-    def _encode_batch_for_critic(
-        self,
-        obs=None,
-        next_obs=None,
-        obs_feat=None,
-        next_obs_feat=None,
-    ):
-        """
-        Build the representations needed by the critic update.
-
-        Shared ConvNet:
-          - one shared representation path
-
-        Frozen pretrained encoder:
-          - critic representation for critic / target critic
-          - actor representation for next-state policy sampling
-            (important because target action should come from actor-side adapter)
-        """
-        if self.encoder.has_separate_adapters:
-            obs_repr_critic = self._encode_single_input(
-                obs=obs,
-                obs_feat=obs_feat,
-                branch="critic",
+        # --------------------------------------------------------------
+        # Apply random shift only for frozen pretrained encoders.
+        # ConvNet keeps its original internal crop augmentation.
+        # --------------------------------------------------------------
+        if (not self.encoder.backbone_trainable) and self.random_shift_pad > 0:
+            obs = random_shift_stacked_obs(
+                obs,
+                frame_stack=self.encoder.frame_stack,
+                pad=self.random_shift_pad,
+            )
+            next_obs = random_shift_stacked_obs(
+                next_obs,
+                frame_stack=self.encoder.frame_stack,
+                pad=self.random_shift_pad,
             )
 
-            with torch.no_grad():
-                next_repr_critic = self._encode_single_input(
-                    obs=next_obs,
-                    obs_feat=next_obs_feat,
-                    branch="critic",
-                )
-                next_repr_actor = self._encode_single_input(
-                    obs=next_obs,
-                    obs_feat=next_obs_feat,
-                    branch="actor",
-                )
-
-            return obs_repr_critic, next_repr_critic, next_repr_actor
-
-        # Shared path (ConvNet or any no-adapter case)
-        obs_repr = self._encode_single_input(obs=obs, obs_feat=obs_feat, branch=None)
+        obs_repr = self.encoder(obs)
         with torch.no_grad():
-            next_repr = self._encode_single_input(obs=next_obs, obs_feat=next_obs_feat, branch=None)
+            next_repr = self.encoder(next_obs)
 
-        return obs_repr, next_repr, next_repr
+        return obs_repr, next_repr
 
     def _update_critic(
         self,
@@ -652,21 +601,17 @@ class DrQv2MetaWorldAgent:
         action: torch.Tensor,
         reward: torch.Tensor,
         discount: torch.Tensor,
-        next_repr_critic: torch.Tensor,
-        next_repr_actor: torch.Tensor,
+        next_repr: torch.Tensor,
         step: int,
     ) -> Dict[str, float]:
         """
-        Critic update.
-
-        Important when using separate adapters:
-          - next action is sampled from the ACTOR adapter output
-          - target Q is evaluated from the CRITIC adapter output
+        DrQ-v2 critic update:
+        target_Q = r + gamma * min(Q1', Q2')
         """
         with torch.no_grad():
-            next_dist = self.actor(next_repr_actor, self.stddev(step))
+            next_dist = self.actor(next_repr, self.stddev(step))
             next_action = next_dist.sample(clip=self.stddev_clip)
-            target_q1, target_q2 = self.critic_target(next_repr_critic, next_action)
+            target_q1, target_q2 = self.critic_target(next_repr, next_action)
             target_v = torch.min(target_q1, target_q2)
             target_q = reward + discount * target_v
 
@@ -675,15 +620,11 @@ class DrQv2MetaWorldAgent:
 
         if self.encoder_opt is not None:
             self.encoder_opt.zero_grad(set_to_none=True)
-        if self.critic_adapter_opt is not None:
-            self.critic_adapter_opt.zero_grad(set_to_none=True)
         self.critic_opt.zero_grad(set_to_none=True)
 
         critic_loss.backward()
 
         self.critic_opt.step()
-        if self.critic_adapter_opt is not None:
-            self.critic_adapter_opt.step()
         if self.encoder_opt is not None:
             self.encoder_opt.step()
 
@@ -694,89 +635,20 @@ class DrQv2MetaWorldAgent:
             "target_q": float(target_q.mean().item()),
         }
 
-    def _update_actor(
-        self,
-        step: int,
-        obs=None,
-        obs_feat=None,
-        obs_repr_detached: torch.Tensor | None = None,
-    ) -> Dict[str, float]:
+    def _update_actor(self, obs_repr_detached: torch.Tensor, step: int) -> Dict[str, float]:
         """
-        Actor update.
-
-        Shared ConvNet path:
-        - use the detached shared representation (standard DrQ-v2 style)
-
-        Frozen pretrained path with separate adapters:
-        - actor uses the ACTOR adapter representation
-        - critic value is evaluated on the CRITIC adapter representation
-        - critic / critic-adapter are frozen during this update so only
-            actor (+ actor adapter) receive gradients
+        Standard DrQ-v2 actor update with a shared representation.
         """
-        # --------------------------------------------------------------
-        # 1) Build actor-side and critic-side representations
-        # --------------------------------------------------------------
-        if self.encoder.has_separate_adapters:
-            # Actor branch: should receive gradients from actor loss
-            obs_repr_actor = self._encode_single_input(
-                obs=obs,
-                obs_feat=obs_feat,
-                branch="actor",
-            )
-
-            # Critic branch: used only as critic input context, so do not let
-            # actor loss update the critic adapter
-            with torch.no_grad():
-                obs_repr_critic = self._encode_single_input(
-                    obs=obs,
-                    obs_feat=obs_feat,
-                    branch="critic",
-                )
-        else:
-            if obs_repr_detached is None:
-                raise ValueError("obs_repr_detached is required for the shared-encoder path.")
-
-            # Shared DrQ-v2 path: actor uses detached encoder features
-            obs_repr_actor = obs_repr_detached
-            obs_repr_critic = obs_repr_detached
-
-        # --------------------------------------------------------------
-        # 2) Sample action from the current actor
-        # --------------------------------------------------------------
-        dist = self.actor(obs_repr_actor, self.stddev(step))
+        dist = self.actor(obs_repr_detached, self.stddev(step))
         action = dist.sample(clip=self.stddev_clip)
 
-        # --------------------------------------------------------------
-        # 3) Evaluate Q while freezing critic params
-        #
-        # Important:
-        # - gradient must flow from Q -> action -> actor
-        # - but should NOT update critic weights
-        # --------------------------------------------------------------
-        critic_requires_grad = [p.requires_grad for p in self.critic.parameters()]
-        for p in self.critic.parameters():
-            p.requires_grad_(False)
-
-        q1, q2 = self.critic(obs_repr_critic, action)
+        q1, q2 = self.critic(obs_repr_detached, action)
         q = torch.min(q1, q2)
         actor_loss = -q.mean()
 
-        # Restore critic grad flags
-        for p, req in zip(self.critic.parameters(), critic_requires_grad):
-            p.requires_grad_(req)
-
-        # --------------------------------------------------------------
-        # 4) Optimize actor (+ actor adapter, if present)
-        # --------------------------------------------------------------
-        if self.actor_adapter_opt is not None:
-            self.actor_adapter_opt.zero_grad(set_to_none=True)
         self.actor_opt.zero_grad(set_to_none=True)
-
         actor_loss.backward()
-
         self.actor_opt.step()
-        if self.actor_adapter_opt is not None:
-            self.actor_adapter_opt.step()
 
         return {
             "actor_loss": float(actor_loss.item()),
@@ -823,7 +695,7 @@ class DrQv2MetaWorldAgent:
             next_obs = None
 
         # Encode the batch and update critic and actor.
-        obs_repr, next_repr_critic, next_repr_actor = self._encode_batch_for_critic(
+        obs_repr, next_repr = self._encode_batch(
             obs=obs,
             next_obs=next_obs,
             obs_feat=obs_feat,
@@ -833,33 +705,8 @@ class DrQv2MetaWorldAgent:
         metrics["batch_reward"] = float(reward.mean().item())
         metrics["stddev"] = float(self.stddev(step))
 
-        metrics.update(
-            self._update_critic(
-                obs_repr,
-                action,
-                reward,
-                discount,
-                next_repr_critic,
-                next_repr_actor,
-                step,
-            )
-        )
-
-        if self.encoder.has_separate_adapters:
-            metrics.update(
-                self._update_actor(
-                    step=step,
-                    obs=obs,
-                    obs_feat=obs_feat,
-                )
-            )
-        else:
-            metrics.update(
-                self._update_actor(
-                    step=step,
-                    obs_repr_detached=obs_repr.detach(),
-                )
-            )
+        metrics.update(self._update_critic(obs_repr, action, reward, discount, next_repr, step))
+        metrics.update(self._update_actor(obs_repr.detach(), step))
 
         soft_update_params(self.critic, self.critic_target, self.critic_target_tau)
         return metrics
