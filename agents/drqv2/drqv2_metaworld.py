@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-"""
-Compact DrQ-v2 agent for pixel-based Meta-World.
-"""
-
-import math
 import re
-from collections import defaultdict
-from copy import deepcopy
 from typing import Any, Dict, Tuple
 
 import numpy as np
@@ -17,14 +10,11 @@ import torch.nn.functional as F
 from torch import distributions as pyd
 
 from agents.common.encoders import build_vision_encoder
+from agents.common.head import FrameMLPStackHead, SmallPostEncoderMLPHead
 
-
-# -----------------------------------------------------------------------------
-# Small utility helpers 
-# -----------------------------------------------------------------------------
 
 def weight_init(module: nn.Module) -> None:
-    """Orthogonal init used by DrQ style implementations."""
+    """Initialize weights for linear and convolutional layers."""
     if isinstance(module, nn.Linear):
         nn.init.orthogonal_(module.weight.data)
         if module.bias is not None:
@@ -37,13 +27,13 @@ def weight_init(module: nn.Module) -> None:
 
 
 def soft_update_params(net: nn.Module, target_net: nn.Module, tau: float) -> None:
-    """Polyak averaging for the target critic."""
+    """Soft update target network parameters."""
     for param, target_param in zip(net.parameters(), target_net.parameters()):
         target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
 
 
 def schedule(schedule_str: str | float | int, step: int) -> float:
-    """Small schedule parser matching the official code style."""
+    """Parse and compute schedule value based on step."""
     try:
         return float(schedule_str)
     except (TypeError, ValueError):
@@ -66,70 +56,44 @@ def schedule(schedule_str: str | float | int, step: int) -> float:
 
     raise NotImplementedError(f"Unsupported schedule: {schedule_str}")
 
-def random_shift_stacked_obs(
-    obs: torch.Tensor,
-    frame_stack: int,
-    pad: int = 4,
-) -> torch.Tensor:
-    """
-    DrQ-style random shift for stacked RGB observations.
 
-    Important:
-      - output size is unchanged
-      - ONE random shift per sample
-      - the SAME shift is applied to all T frames of that sample
-        so temporal alignment is preserved
+class RandomShiftsAug(nn.Module):
+    """Random shifts augmentation for images."""
 
-    Args:
-        obs: (B, 3*T, H, W) or (3*T, H, W)
-        frame_stack: number of stacked RGB frames
-        pad: replication padding size on each side
+    def __init__(self, pad: int):
+        super().__init__()
+        self.pad = int(pad)
 
-    Returns:
-        shifted obs with the same shape as input, float in [0,1]
-    """
-    if pad <= 0:
-        return obs
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n, c, h, w = x.size()
+        if h != w:
+            raise ValueError(f"RandomShiftsAug expects square images, got H={h}, W={w}")
 
-    squeeze_back = False
-    if obs.ndim == 3:
-        obs = obs.unsqueeze(0)
-        squeeze_back = True
+        x = x.float()
+        x = F.pad(x, (self.pad, self.pad, self.pad, self.pad), "replicate")
 
-    # Convert to float [0,1] before padding/cropping
-    if obs.dtype == torch.uint8:
-        obs = obs.float() / 255.0
-    else:
-        obs = obs.float()
-        if obs.max() > 1.0:
-            obs = obs / 255.0
+        eps = 1.0 / (h + 2 * self.pad)
+        arange = torch.linspace(
+            -1.0 + eps, 1.0 - eps, h + 2 * self.pad, device=x.device, dtype=x.dtype
+        )[:h]
+        arange = arange.unsqueeze(0).repeat(h, 1).unsqueeze(2)
+        base_grid = torch.cat([arange, arange.transpose(1, 0)], dim=2)
+        base_grid = base_grid.unsqueeze(0).repeat(n, 1, 1, 1)
 
-    B, C, H, W = obs.shape
-    exp_c = 3 * frame_stack
-    if C != exp_c:
-        raise ValueError(f"Expected {exp_c} channels (= 3 * frame_stack), got {C}")
+        shift = torch.randint(
+            0, 2 * self.pad + 1, size=(n, 1, 1, 2), device=x.device
+        ).to(x.dtype)
+        shift *= 2.0 / (h + 2 * self.pad)
+        grid = base_grid + shift
+        return F.grid_sample(x, grid, padding_mode="zeros", align_corners=False)
 
-    frames = obs.view(B, frame_stack, 3, H, W)
-    padded = F.pad(
-        frames.reshape(B * frame_stack, 3, H, W),
-        (pad, pad, pad, pad),
-        mode="replicate",
-    )
-    padded = padded.view(B, frame_stack, 3, H + 2 * pad, W + 2 * pad)
-
-    shifted = []
-    for b in range(B):
-        top = torch.randint(0, 2 * pad + 1, (1,), device=obs.device).item()
-        left = torch.randint(0, 2 * pad + 1, (1,), device=obs.device).item()
-        shifted.append(padded[b, :, :, top:top + H, left:left + W])
-
-    out = torch.stack(shifted, dim=0).reshape(B, C, H, W).contiguous()
-    return out.squeeze(0) if squeeze_back else out
 
 class TruncatedNormal(pyd.Normal):
-    """Simple clipped Gaussian used by the official DrQ actor."""
+    """Truncated normal distribution."""
 
-    def __init__(self, loc: torch.Tensor, scale: torch.Tensor, low: float = -1.0, high: float = 1.0, eps: float = 1e-6):
+    def __init__(
+        self, loc: torch.Tensor, scale: torch.Tensor, low: float = -1.0, high: float = 1.0, eps: float = 1e-6
+    ):
         super().__init__(loc, scale, validate_args=False)
         self.low = low
         self.high = high
@@ -148,22 +112,9 @@ class TruncatedNormal(pyd.Normal):
         x = self.loc + eps
         return self._clamp(x)
 
-# -----------------------------------------------------------------------------
-# Vision adapter
-# -----------------------------------------------------------------------------
 
 class VisionEncoderAdapter(nn.Module):
-    """
-    Frame-stack -> representation adapter for DrQ.
-
-    Rules:
-      - backbone is built from build_vision_encoder(...)
-      - backbone is never perturbed here
-      - if backbone is frozen:
-          * non-SinCro -> add small fusion/projection head
-          * SinCro     -> add small post-backbone MLP head
-      - only the small heads are considered perturbable
-    """
+    """Adapter for vision encoders with projection heads."""
 
     def __init__(self, full_cfg: Dict[str, Any]):
         super().__init__()
@@ -173,78 +124,58 @@ class VisionEncoderAdapter(nn.Module):
         ).lower()
         self.frame_stack = int(full_cfg["env"].get("frame_stack", 1))
 
-        # ------------------------------------------------------------------
-        # 1) Build backbone and freeze if pretrained
-        # ------------------------------------------------------------------
         self.backbone = build_vision_encoder(full_cfg)
         self.backbone_trainable = bool(
             getattr(self.backbone, "is_trainable", self.vision_name == "convnet")
         )
-
         if not self.backbone_trainable:
             self.backbone.eval()
             for p in self.backbone.parameters():
                 p.requires_grad = False
 
-        # ------------------------------------------------------------------
-        # 2) Infer backbone output dim once
-        # ------------------------------------------------------------------
-        self.single_frame_dim = self._infer_backbone_dim(full_cfg)
+        self.backbone_out_shape, self.single_frame_dim = self._infer_backbone_feature_shape(full_cfg)
 
-        # ------------------------------------------------------------------
-        # 3) Shared adapter heads
-        #
-        # Frozen pretrained encoders:
-        #   - non-SinCro: one shared MLP-stack fusion head
-        #   - SinCro:     one shared post-backbone MLP
-        #
-        # ConvNet:
-        #   - no extra adapter here
-        # ------------------------------------------------------------------
-        self.fusion_head = None
-        self.post_backbone_head = None
+        self.proj_head = None
+        if not self.backbone_trainable:
+            proj_dim = int(full_cfg["agent"].get("feature_dim", 256))
+            if self.vision_name == "sincro":
+                self.proj_head = SmallPostEncoderMLPHead(
+                    in_dim=self.single_frame_dim, hidden_dim=proj_dim, out_dim=proj_dim
+                )
+            else:
+                self.proj_head = FrameMLPStackHead(
+                    in_dim=self.single_frame_dim,
+                    frame_stack=self.frame_stack,
+                    per_frame_hidden_dim=proj_dim,
+                    per_frame_out_dim=min(proj_dim, 256),
+                    stacked_hidden_dim=proj_dim,
+                    out_dim=proj_dim,
+                )
 
-        if (not self.backbone_trainable) and (self.vision_name != "sincro"):
-            from agents.common.head import FrameMLPStackHead
-
-            self.fusion_head = FrameMLPStackHead(
-                in_dim=self.single_frame_dim,
-                frame_stack=self.frame_stack,
+        if self.backbone_trainable:
+            self.repr_dim = int(self.backbone.repr_dim)
+            self.replay_obs_shape = (
+                3 * self.frame_stack,
+                int(full_cfg["env"]["image_height"]),
+                int(full_cfg["env"]["image_width"])
             )
-            self.repr_dim = self.fusion_head.out_dim
-
-        elif (not self.backbone_trainable) and (self.vision_name == "sincro"):
-            from agents.common.head import SmallPostEncoderMLPHead
-
-            self.post_backbone_head = SmallPostEncoderMLPHead(
-                in_dim=self.single_frame_dim,
-            )
-            self.repr_dim = self.post_backbone_head.out_dim
-
+            self.replay_obs_dtype = np.uint8
         else:
-            # ConvNet / trainable path
-            self.repr_dim = (
-                self.single_frame_dim
-                if self.vision_name == "sincro"
-                else self.single_frame_dim * self.frame_stack
-            )
+            self.repr_dim = int(self.proj_head.out_dim)
+            self.replay_obs_shape = tuple(self.backbone_out_shape)
+            self.replay_obs_dtype = np.float16
 
-        # ------------------------------------------------------------------
-        # 4) DrQ-facing flags
-        # ------------------------------------------------------------------
-        self.has_proj_head = (self.fusion_head is not None) or (self.post_backbone_head is not None)
-        self.is_trainable = self.backbone_trainable or self.has_proj_head
+    def _to_unit_float(self, x: torch.Tensor) -> torch.Tensor:
+        """Convert tensor to unit float [0, 1]."""
+        if x.dtype == torch.uint8:
+            return x.float() / 255.0
+        x = x.float()
+        return x / 255.0 if x.max() > 1.0 else x
 
-        # IMPORTANT:
-        # To apply random shift augmentation on raw images for frozen encoders,
-        # disable cached backbone features.
-        self.can_cache_backbone = False
-
-    def _infer_backbone_dim(self, full_cfg: Dict[str, Any]) -> int:
-        """Run one dummy forward pass to get backbone output dim."""
+    def _infer_backbone_feature_shape(self, full_cfg: Dict[str, Any]) -> tuple[tuple[int, ...], int]:
+        """Infer the output shape and dimension of the backbone."""
         h = int(full_cfg["env"]["image_height"])
         w = int(full_cfg["env"]["image_width"])
-
         try:
             device = next(self.backbone.parameters()).device
         except StopIteration:
@@ -252,195 +183,137 @@ class VisionEncoderAdapter(nn.Module):
 
         prev_mode = self.backbone.training
         self.backbone.eval()
-
         with torch.no_grad():
-            if self.vision_name == "sincro":
+            if self.vision_name == "convnet":
+                dummy = torch.zeros(1, 3 * self.frame_stack, h, w, device=device, dtype=torch.uint8)
+                feat = self.backbone(dummy)
+                shape = tuple(feat.shape[1:]); dim = int(feat.shape[-1])
+            elif self.vision_name == "sincro":
                 dummy = torch.zeros(1, self.frame_stack, 3, h, w, device=device)
-                dim = int(self.backbone(dummy).flatten(1).shape[-1])
+                feat = self.backbone(dummy)
+                shape = tuple(feat.shape[1:]); dim = int(feat.flatten(1).shape[-1])
             else:
                 dummy = torch.zeros(1, 3, h, w, device=device)
-                dim = int(self.backbone(dummy).flatten(1).shape[-1])
-
+                feat = self.backbone(dummy)
+                dim = int(feat.flatten(1).shape[-1])
+                shape = (self.frame_stack, dim)
         self.backbone.train(prev_mode)
-        return dim
+        return shape, dim
 
     def set_update_mode(self) -> None:
-        """Training mode: heads train, frozen backbone stays eval."""
+        """Set to update mode (train backbone if trainable)."""
         super().train(True)
         if not self.backbone_trainable:
             self.backbone.eval()
 
     def set_act_mode(self) -> None:
-        """Act/eval mode: everything eval."""
+        """Set to act mode (eval backbone)."""
         super().train(False)
         self.backbone.eval()
 
-    def _to_unit_float(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert uint8 / [0,255] input to float [0,1]."""
-        if x.dtype == torch.uint8:
-            return x.float() / 255.0
-        x = x.float()
-        return x / 255.0 if x.max() > 1.0 else x
-
-    def _encode_single(self, x: torch.Tensor) -> torch.Tensor:
-        """Encode one RGB frame: (B,3,H,W) -> (B,D)."""
+    @torch.inference_mode()
+    def extract_cacheable_feature(self, obs: torch.Tensor) -> torch.Tensor:
+        """Extract cacheable features for frozen encoders."""
         if self.backbone_trainable:
-            feat = self.backbone(x)
-        else:
-            with torch.no_grad():
-                feat = self.backbone(x)
-        return feat.flatten(1).contiguous()
-
-    def _encode_sincro(self, x_seq: torch.Tensor) -> torch.Tensor:
-        """Encode SinCro temporal input: (B,T,3,H,W) -> (B,D)."""
-        if self.backbone_trainable:
-            feat = self.backbone(x_seq)
-        else:
-            with torch.no_grad():
-                feat = self.backbone(x_seq)
-        return feat.flatten(1).contiguous()
-
-    def _encode_frames_batched(self, frames: torch.Tensor) -> torch.Tensor:
-        """
-        Vectorized per-frame encoding for all non-SinCro encoders.
-
-        Args:
-            frames: (B, T, 3, H, W)
-
-        Returns:
-            frame_feats: (B, T, D)
-        """
-        B, T, C, H, W = frames.shape
-
-        # Special handling for ConvNet so we preserve "same crop across time"
-        # while still doing one vectorized conv forward over (B*T) frames.
-        if self.vision_name == "convnet":
-            x = self.backbone.preprocess_batched_frames(frames)   # (B*T,3,h,w)
-            feat = self.backbone.encode_preprocessed(x)           # (B*T,D)
-            return feat.reshape(B, T, -1).contiguous()
-
-        # Generic non-SinCro case:
-        # flatten time into batch, run backbone once, then reshape back.
-        x = frames.reshape(B * T, C, H, W).contiguous()
-
-        if self.backbone_trainable:
-            feat = self.backbone(x)
-        else:
-            with torch.no_grad():
-                feat = self.backbone(x)
-
-        feat = feat.flatten(1)  # (B*T, D)
-        return feat.reshape(B, T, -1).contiguous()
-
-    def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            obs: (B, 3*T, H, W) or (3*T, H, W)
-
-        Returns:
-            repr: (B, repr_dim)
-        """
+            raise RuntimeError("extract_cacheable_feature is only for frozen encoders.")
         if obs.ndim == 3:
             obs = obs.unsqueeze(0)
-
         obs = self._to_unit_float(obs)
-        B, C, H, W = obs.shape
-        exp_c = 3 * self.frame_stack
-        if C != exp_c:
-            raise ValueError(f"Expected {exp_c} channels (= 3 * frame_stack), got {C}.")
 
-        # --------------------------------------------------------------
-        # SinCro: full temporal stack goes into backbone once
-        # --------------------------------------------------------------
         if self.vision_name == "sincro":
-            seq = obs.view(B, self.frame_stack, 3, H, W)
-            feat = self._encode_sincro(seq)
-            return self.post_backbone_head(feat) if self.post_backbone_head is not None else feat
+            b, c, h, w = obs.shape
+            feat = self.backbone(obs.view(b, self.frame_stack, 3, h, w))
+            return feat.to(torch.float16).contiguous()
 
-        # --------------------------------------------------------------
-        # Others: encode all frames in one batched backbone forward
-        # --------------------------------------------------------------
-        frames = obs.view(B, self.frame_stack, 3, H, W)
-        frame_feats = self._encode_frames_batched(frames)  # (B, T, D)
+        b, c, h, w = obs.shape
+        frames = obs.view(b, self.frame_stack, 3, h, w)
+        feat = self.backbone(frames.reshape(b * self.frame_stack, 3, h, w).contiguous()).flatten(1)
+        return feat.view(b, self.frame_stack, -1).to(torch.float16).contiguous()
 
-        if self.fusion_head is not None:
-            return self.fusion_head(frame_feats)
+    def forward_pixels(self, obs: torch.Tensor) -> torch.Tensor:
+        """Forward pass for pixel observations."""
+        if obs.ndim == 3:
+            obs = obs.unsqueeze(0)
+        if self.backbone_trainable:
+            return self.backbone(obs)
+        return self.forward_features(self.extract_cacheable_feature(obs).float())
 
-        return frame_feats.flatten(1).contiguous()
+    def forward_features(self, feat: torch.Tensor) -> torch.Tensor:
+        """Forward pass for cached features."""
+        if self.backbone_trainable:
+            raise RuntimeError("forward_features is only for frozen encoders.")
+        feat = feat.float()
+        if self.vision_name == "sincro":
+            return self.proj_head(feat)
+        if feat.ndim != 3:
+            raise ValueError(f"Expected non-SinCro cached feature as (B,T,D), got {tuple(feat.shape)}")
+        return self.proj_head(feat)
 
-# -----------------------------------------------------------------------------
-# DrQ heads 
-# -----------------------------------------------------------------------------
+    def forward(self, obs: torch.Tensor, *, is_feature: bool = False) -> torch.Tensor:
+        """Unified forward pass."""
+        return self.forward_features(obs) if is_feature else self.forward_pixels(obs)
+
 
 class Actor(nn.Module):
-    def __init__(self, repr_dim: int, action_shape: Tuple[int, ...], feature_dim: int, hidden_dim: int):
+    """Actor network for policy."""
+
+    def __init__(
+        self, repr_dim: int, proprio_dim: int, action_shape: Tuple[int, ...], feature_dim: int, hidden_dim: int
+    ):
         super().__init__()
         self.trunk = nn.Sequential(
-            nn.Linear(repr_dim, feature_dim),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
+            nn.Linear(repr_dim + proprio_dim, feature_dim), nn.LayerNorm(feature_dim), nn.Tanh()
         )
         self.policy = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(inplace=True),
+            nn.Linear(feature_dim, hidden_dim), nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, action_shape[0]),
         )
         self.apply(weight_init)
 
-    def forward(self, obs_repr: torch.Tensor, std: float) -> TruncatedNormal:
-        h = self.trunk(obs_repr)
+    def forward(self, obs_repr: torch.Tensor, proprio: torch.Tensor, std: float) -> TruncatedNormal:
+        h = self.trunk(torch.cat([obs_repr, proprio], dim=-1))
         mu = torch.tanh(self.policy(h))
-        std_t = torch.ones_like(mu) * std
-        return TruncatedNormal(mu, std_t)
+        return TruncatedNormal(mu, torch.ones_like(mu) * std)
 
 
 class Critic(nn.Module):
-    def __init__(self, repr_dim: int, action_shape: Tuple[int, ...], feature_dim: int, hidden_dim: int):
+    """Critic network for Q-value estimation."""
+
+    def __init__(
+        self, repr_dim: int, proprio_dim: int, action_shape: Tuple[int, ...], feature_dim: int, hidden_dim: int
+    ):
         super().__init__()
         self.trunk = nn.Sequential(
-            nn.Linear(repr_dim, feature_dim),
-            nn.LayerNorm(feature_dim),
-            nn.Tanh(),
+            nn.Linear(repr_dim + proprio_dim, feature_dim), nn.LayerNorm(feature_dim), nn.Tanh()
         )
         self.q1 = nn.Sequential(
-            nn.Linear(feature_dim + action_shape[0], hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, 1),
+            nn.Linear(feature_dim + action_shape[0], hidden_dim), nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True), nn.Linear(hidden_dim, 1)
         )
         self.q2 = nn.Sequential(
-            nn.Linear(feature_dim + action_shape[0], hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, 1),
+            nn.Linear(feature_dim + action_shape[0], hidden_dim), nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True), nn.Linear(hidden_dim, 1)
         )
         self.apply(weight_init)
 
-    def forward(self, obs_repr: torch.Tensor, action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        h = self.trunk(obs_repr)
+    def forward(self, obs_repr: torch.Tensor, proprio: torch.Tensor, action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        h = self.trunk(torch.cat([obs_repr, proprio], dim=-1))
         h = torch.cat([h, action], dim=-1)
         return self.q1(h), self.q2(h)
 
-# -----------------------------------------------------------------------------
-# Main agent
-# -----------------------------------------------------------------------------
 
 class DrQv2MetaWorldAgent:
-    """DrQ-v2 agent with a pluggable visual backbone for Meta-World."""
+    """DrQ-v2 agent for MetaWorld environments."""
 
-    def __init__(self, cfg: Dict[str, Any], obs_shape: Tuple[int, ...], action_shape: Tuple[int, ...], device: torch.device):
-        del obs_shape  # repr dim is inferred directly from the selected visual encoder.
+    def __init__(
+        self, cfg: Dict[str, Any], obs_shape: Tuple[int, ...], action_shape: Tuple[int, ...],
+        proprio_shape: Tuple[int, ...], device: torch.device
+    ):
+        del obs_shape
         self.cfg = cfg
         self.device = device
         acfg = cfg["agent"]
-
-        # ------------------------------------------------------------------
-        # Hyperparameters (DrQ-v2 style)
-        # ------------------------------------------------------------------
         self.critic_target_tau = float(acfg.get("critic_target_tau", 0.01))
         self.update_every_steps = int(acfg.get("update_every_steps", 2))
         self.num_expl_steps = int(cfg["train"].get("seed_steps", 4000))
@@ -449,83 +322,71 @@ class DrQv2MetaWorldAgent:
         self.feature_dim = int(acfg.get("feature_dim", 256))
         self.hidden_dim = int(acfg.get("hidden_dim", 256))
         self.lr = float(acfg.get("lr", 1e-4))
-        self.random_shift_pad = int(acfg.get("random_shift_pad", 4))
+        self.use_pixels = str(cfg["vision"].get("encoder_type", "convnet")).lower() == "convnet"
 
-        # Visual encoder
         self.encoder = VisionEncoderAdapter(cfg).to(device)
-
-        # DrQ-v2-style heads: actor + twin critic + target critic
+        proprio_dim = int(np.prod(proprio_shape))
         repr_dim = self.encoder.repr_dim
-        self.actor = Actor(repr_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
-        self.critic = Critic(repr_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
-        self.critic_target = Critic(repr_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
+        self.actor = Actor(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
+        self.critic = Critic(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
+        self.critic_target = Critic(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
-        # Optimizers
-        self.encoder_opt = torch.optim.Adam(self.encoder.parameters(), lr=self.lr) if self.encoder.is_trainable else None
+        self.encoder_opt = torch.optim.Adam(
+            self.encoder.parameters(), lr=self.lr
+        ) if self.encoder.backbone_trainable or self.encoder.proj_head is not None else None
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
         self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
+        self.aug = RandomShiftsAug(pad=int(acfg.get("random_shift_pad", 4)))
 
         self.train(True)
         self.critic_target.train(True)
 
-    # ------------------------------------------------------------------
-    # DrQ-v2 Scheduler
-    # ------------------------------------------------------------------
     def stddev(self, step: int) -> float:
-        # DrQ-v2 uses only the exploration-noise schedule.
+        """Get standard deviation for exploration."""
         return float(schedule(self.stddev_schedule, step))
 
-    # ------------------------------------------------------------------
-    # API helpers
-    # ------------------------------------------------------------------
     def train(self, mode: bool = True) -> None:
+        """Set training mode."""
         self.training = mode
         self.actor.train(mode)
         self.critic.train(mode)
         self.critic_target.train(mode)
-
-        if hasattr(self.encoder, "set_update_mode"):
-            if mode:
-                self.encoder.set_update_mode()
-            else:
-                self.encoder.set_act_mode()
-        else:
-            self.encoder.train(mode)
+        self.encoder.set_update_mode() if mode else self.encoder.set_act_mode()
 
     @torch.no_grad()
-    def act(self, obs: np.ndarray | torch.Tensor, step: int, eval_mode: bool) -> np.ndarray:
-        # Action selection is deterministic with respect to preprocessing.
+    def act(
+        self, obs: np.ndarray | torch.Tensor, proprio: np.ndarray | torch.Tensor, step: int, eval_mode: bool
+    ) -> np.ndarray:
+        """Sample action from policy."""
         prev_mode = self.training
         self.train(False)
-
         obs_t = torch.as_tensor(obs, device=self.device)
-        obs_repr = self.encoder(obs_t)
-        dist = self.actor(obs_repr, self.stddev(step))
-        if eval_mode:
-            action = dist.mean
-        else:
-            action = dist.sample(clip=None)
-            if step < self.num_expl_steps:
-                action.uniform_(-1.0, 1.0)
-
+        proprio_t = torch.as_tensor(proprio, device=self.device, dtype=torch.float32).view(1, -1)
+        obs_repr = self.encoder(obs_t, is_feature=not self.use_pixels)
+        dist = self.actor(obs_repr, proprio_t, self.stddev(step))
+        action = dist.mean if eval_mode else dist.sample(clip=None)
+        if (not eval_mode) and step < self.num_expl_steps:
+            action.uniform_(-1.0, 1.0)
         self.train(prev_mode)
         return action.cpu().numpy()[0]
 
     def state_dict(self) -> Dict[str, Any]:
+        """Get state dict for saving."""
         payload = {
             "encoder": self.encoder.state_dict(),
             "actor": self.actor.state_dict(),
             "critic": self.critic.state_dict(),
             "critic_target": self.critic_target.state_dict(),
             "actor_opt": self.actor_opt.state_dict(),
-            "critic_opt": self.critic_opt.state_dict(),
+            "critic_opt": self.critic_opt.state_dict()
         }
         if self.encoder_opt is not None:
             payload["encoder_opt"] = self.encoder_opt.state_dict()
         return payload
 
     def load_state_dict(self, payload: Dict[str, Any]) -> None:
+        """Load state dict."""
         self.encoder.load_state_dict(payload["encoder"])
         self.actor.load_state_dict(payload["actor"])
         self.critic.load_state_dict(payload["critic"])
@@ -535,95 +396,35 @@ class DrQv2MetaWorldAgent:
         if self.encoder_opt is not None and "encoder_opt" in payload:
             self.encoder_opt.load_state_dict(payload["encoder_opt"])
 
-    # ------------------------------------------------------------------
-    # Internal update pieces
-    # ------------------------------------------------------------------
-    def _encode_batch(self, obs=None, next_obs=None, obs_feat=None, next_obs_feat=None):
-        """
-        Encode a training batch.
-
-        Two modes:
-        1) image mode: use obs / next_obs
-        2) cached mode: use precomputed frozen-backbone features
-
-        Important:
-          For frozen pretrained encoders we now apply random shift augmentation
-          in image space, so the cached-feature path is effectively disabled
-          by self.encoder.can_cache_backbone = False.
-        """
+    def _encode_batch(self, obs: torch.Tensor, proprio: torch.Tensor, next_obs: torch.Tensor, next_proprio: torch.Tensor):
+        """Encode batch of observations."""
         self.encoder.set_update_mode()
-
-        if obs_feat is not None and next_obs_feat is not None:
-            # Compatibility fallback only
-            if not torch.is_tensor(obs_feat):
-                obs_feat = torch.as_tensor(obs_feat, device=self.device)
-            else:
-                obs_feat = obs_feat.to(self.device, non_blocking=True)
-
-            if not torch.is_tensor(next_obs_feat):
-                next_obs_feat = torch.as_tensor(next_obs_feat, device=self.device)
-            else:
-                next_obs_feat = next_obs_feat.to(self.device, non_blocking=True)
-
-            obs_repr = self.encoder.forward_from_cached_backbone(obs_feat)
+        if self.use_pixels:
+            obs_repr = self.encoder(self.aug(obs.float()), is_feature=False)
             with torch.no_grad():
-                next_repr = self.encoder.forward_from_cached_backbone(next_obs_feat)
-            return obs_repr, next_repr
-
-        if obs is None or next_obs is None:
-            raise ValueError("Need either (obs, next_obs) or (obs_feat, next_obs_feat).")
-
-        # --------------------------------------------------------------
-        # Apply random shift only for frozen pretrained encoders.
-        # ConvNet keeps its original internal crop augmentation.
-        # --------------------------------------------------------------
-        if (not self.encoder.backbone_trainable) and self.random_shift_pad > 0:
-            obs = random_shift_stacked_obs(
-                obs,
-                frame_stack=self.encoder.frame_stack,
-                pad=self.random_shift_pad,
-            )
-            next_obs = random_shift_stacked_obs(
-                next_obs,
-                frame_stack=self.encoder.frame_stack,
-                pad=self.random_shift_pad,
-            )
-
-        obs_repr = self.encoder(obs)
-        with torch.no_grad():
-            next_repr = self.encoder(next_obs)
-
-        return obs_repr, next_repr
+                next_repr = self.encoder(self.aug(next_obs.float()), is_feature=False)
+        else:
+            obs_repr = self.encoder(obs, is_feature=True)
+            with torch.no_grad():
+                next_repr = self.encoder(next_obs, is_feature=True)
+        return obs_repr, proprio, next_repr, next_proprio
 
     def _update_critic(
-        self,
-        obs_repr: torch.Tensor,
-        action: torch.Tensor,
-        reward: torch.Tensor,
-        discount: torch.Tensor,
-        next_repr: torch.Tensor,
-        step: int,
+        self, obs_repr, proprio, action, reward, discount, next_repr, next_proprio, step: int
     ) -> Dict[str, float]:
-        """
-        DrQ-v2 critic update:
-        target_Q = r + gamma * min(Q1', Q2')
-        """
+        """Update critic network."""
         with torch.no_grad():
-            next_dist = self.actor(next_repr, self.stddev(step))
-            next_action = next_dist.sample(clip=self.stddev_clip)
-            target_q1, target_q2 = self.critic_target(next_repr, next_action)
-            target_v = torch.min(target_q1, target_q2)
-            target_q = reward + discount * target_v
+            next_action = self.actor(next_repr, next_proprio, self.stddev(step)).sample(clip=self.stddev_clip)
+            target_q1, target_q2 = self.critic_target(next_repr, next_proprio, next_action)
+            target_q = reward + discount * torch.min(target_q1, target_q2)
 
-        q1, q2 = self.critic(obs_repr, action)
+        q1, q2 = self.critic(obs_repr, proprio, action)
         critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
 
         if self.encoder_opt is not None:
             self.encoder_opt.zero_grad(set_to_none=True)
         self.critic_opt.zero_grad(set_to_none=True)
-
         critic_loss.backward()
-
         self.critic_opt.step()
         if self.encoder_opt is not None:
             self.encoder_opt.step()
@@ -632,81 +433,50 @@ class DrQv2MetaWorldAgent:
             "critic_loss": float(critic_loss.item()),
             "critic_q1": float(q1.mean().item()),
             "critic_q2": float(q2.mean().item()),
-            "target_q": float(target_q.mean().item()),
+            "target_q": float(target_q.mean().item())
         }
 
-    def _update_actor(self, obs_repr_detached: torch.Tensor, step: int) -> Dict[str, float]:
-        """
-        Standard DrQ-v2 actor update with a shared representation.
-        """
-        dist = self.actor(obs_repr_detached, self.stddev(step))
+    def _update_actor(self, obs_repr_detached: torch.Tensor, proprio: torch.Tensor, step: int) -> Dict[str, float]:
+        """Update actor network."""
+        dist = self.actor(obs_repr_detached, proprio, self.stddev(step))
         action = dist.sample(clip=self.stddev_clip)
-
-        q1, q2 = self.critic(obs_repr_detached, action)
-        q = torch.min(q1, q2)
-        actor_loss = -q.mean()
+        q1, q2 = self.critic(obs_repr_detached, proprio, action)
+        actor_loss = -torch.min(q1, q2).mean()
 
         self.actor_opt.zero_grad(set_to_none=True)
         actor_loss.backward()
         self.actor_opt.step()
-
         return {
             "actor_loss": float(actor_loss.item()),
-            "actor_entropy": float(dist.entropy().sum(dim=-1).mean().item()),
+            "actor_entropy": float(dist.entropy().sum(dim=-1).mean().item())
         }
-    
-    # ------------------------------------------------------------------
-    # Public update
-    # ------------------------------------------------------------------
-    def update(self, replay_iter, step: int) -> Dict[str, float]:
-        """
-        DrQ-v2 public update.
-        """
-        metrics: Dict[str, float] = {}
 
+    def update(self, replay_iter, step: int) -> Dict[str, float]:
+        """Perform update step."""
+        metrics: Dict[str, float] = {}
         if step % self.update_every_steps != 0:
             return metrics
 
-        batch = next(replay_iter)
-        if len(batch) == 5:
-            obs, action, reward, discount, next_obs = batch
-            obs_feat = next_obs_feat = None
-        elif len(batch) == 7:
-            obs, action, reward, discount, next_obs, obs_feat, next_obs_feat = batch
-        else:
-            raise ValueError(f"Unexpected replay batch length: {len(batch)}")
-
-        def _to_device(x):
-            if torch.is_tensor(x):
-                return x.to(self.device, non_blocking=True)
-            return torch.as_tensor(x, device=self.device)
-
-        # Always move action/reward/discount
-        action = _to_device(action)
-        reward = _to_device(reward)
-        discount = _to_device(discount)
-
-        # Only move images if we are NOT using cached features
-        if obs_feat is None or next_obs_feat is None:
-            obs = _to_device(obs)
-            next_obs = _to_device(next_obs)
-        else:
-            obs = None
-            next_obs = None
-
-        # Encode the batch and update critic and actor.
-        obs_repr, next_repr = self._encode_batch(
-            obs=obs,
-            next_obs=next_obs,
-            obs_feat=obs_feat,
-            next_obs_feat=next_obs_feat,
+        obs, proprio, action, reward, discount, next_obs, next_proprio = next(replay_iter)
+        tdtype = torch.float32
+        todev = lambda x, dtype=None: (
+            (x.to(self.device, non_blocking=True) if torch.is_tensor(x) else torch.as_tensor(x, device=self.device))
+            .to(dtype=dtype) if dtype is not None else (
+                x.to(self.device, non_blocking=True) if torch.is_tensor(x) else torch.as_tensor(x, device=self.device)
+            )
         )
+        obs = todev(obs, tdtype if not self.use_pixels else None)
+        next_obs = todev(next_obs, tdtype if not self.use_pixels else None)
+        proprio = todev(proprio, tdtype).view(obs.shape[0], -1)
+        next_proprio = todev(next_proprio, tdtype).view(next_obs.shape[0], -1)
+        action = todev(action, tdtype)
+        reward = todev(reward, tdtype)
+        discount = todev(discount, tdtype)
 
+        obs_repr, proprio, next_repr, next_proprio = self._encode_batch(obs, proprio, next_obs, next_proprio)
         metrics["batch_reward"] = float(reward.mean().item())
         metrics["stddev"] = float(self.stddev(step))
-
-        metrics.update(self._update_critic(obs_repr, action, reward, discount, next_repr, step))
-        metrics.update(self._update_actor(obs_repr.detach(), step))
-
+        metrics.update(self._update_critic(obs_repr, proprio, action, reward, discount, next_repr, next_proprio, step))
+        metrics.update(self._update_actor(obs_repr.detach(), proprio, step))
         soft_update_params(self.critic, self.critic_target, self.critic_target_tau)
         return metrics

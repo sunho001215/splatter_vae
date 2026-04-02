@@ -8,18 +8,7 @@ from .encoders import _weight_init
 
 class FrameMLPStackHead(nn.Module):
     """
-    Temporal adapter for frozen non-SinCro encoders.
-
-    Structure:
-      1) apply the SAME small MLP independently to each frame feature
-      2) stack / flatten all processed frame features
-      3) apply another MLP over the stacked vector
-
-    Input:
-        frame_feats: (B, T, D_in)
-
-    Output:
-        fused: (B, D_out)
+    Shared temporal adapter for frozen non-SinCro encoders.
     """
 
     def __init__(
@@ -34,7 +23,6 @@ class FrameMLPStackHead(nn.Module):
         use_tanh: bool = True,
     ):
         super().__init__()
-
         if frame_stack < 1:
             raise ValueError(f"frame_stack must be >= 1, got {frame_stack}")
         if stacked_num_layers < 1:
@@ -44,10 +32,6 @@ class FrameMLPStackHead(nn.Module):
         self.per_frame_out_dim = int(per_frame_out_dim)
         self.out_dim = int(out_dim)
 
-        # --------------------------------------------------------------
-        # 1) Shared per-frame MLP
-        #    Applied to every frame feature independently.
-        # --------------------------------------------------------------
         self.per_frame_mlp = nn.Sequential(
             nn.Linear(in_dim, per_frame_hidden_dim),
             nn.LayerNorm(per_frame_hidden_dim),
@@ -57,12 +41,8 @@ class FrameMLPStackHead(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # --------------------------------------------------------------
-        # 2) MLP over the stacked frame-wise features
-        # --------------------------------------------------------------
         layers = []
         prev_dim = self.frame_stack * self.per_frame_out_dim
-
         for _ in range(stacked_num_layers - 1):
             layers += [
                 nn.Linear(prev_dim, stacked_hidden_dim),
@@ -71,15 +51,11 @@ class FrameMLPStackHead(nn.Module):
             ]
             prev_dim = stacked_hidden_dim
 
-        layers += [
-            nn.Linear(prev_dim, out_dim),
-            nn.LayerNorm(out_dim),
-        ]
+        layers += [nn.Linear(prev_dim, out_dim), nn.LayerNorm(out_dim)]
         if use_tanh:
             layers.append(nn.Tanh())
 
         self.stack_mlp = nn.Sequential(*layers)
-
         self.apply(_weight_init)
 
     def forward(self, frame_feats: torch.Tensor) -> torch.Tensor:
@@ -88,29 +64,16 @@ class FrameMLPStackHead(nn.Module):
 
         B, T, D = frame_feats.shape
         if T != self.frame_stack:
-            raise ValueError(
-                f"Expected T == frame_stack == {self.frame_stack}, got T={T}"
-            )
+            raise ValueError(f"Expected T == frame_stack == {self.frame_stack}, got T={T}")
 
-        # Apply the same MLP to each frame independently
         x = frame_feats.reshape(B * T, D)
-        x = self.per_frame_mlp(x)  # (B*T, per_frame_out_dim)
-
-        # Stack all processed frame features into one vector per sample
+        x = self.per_frame_mlp(x)
         x = x.reshape(B, T * self.per_frame_out_dim)
-
-        # Final fusion / projection
         return self.stack_mlp(x).contiguous()
 
 
 class SmallPostEncoderMLPHead(nn.Module):
-    """
-    Tiny post-backbone MLP head.
-
-    Use case:
-      - backbone already outputs one fused vector (e.g. SinCro)
-      - we still want a small learnable encoder-side adapter before RL heads
-    """
+    """Shared post-backbone adapter for fused-vector frozen encoders."""
 
     def __init__(
         self,
@@ -121,15 +84,13 @@ class SmallPostEncoderMLPHead(nn.Module):
         use_tanh: bool = True,
     ):
         super().__init__()
-
         if num_layers < 1:
             raise ValueError(f"num_layers must be >= 1, got {num_layers}")
+
         self.out_dim = int(out_dim)
 
         layers = []
         prev_dim = in_dim
-
-        # Hidden layers
         for _ in range(num_layers - 1):
             layers += [
                 nn.Linear(prev_dim, hidden_dim),
@@ -138,11 +99,7 @@ class SmallPostEncoderMLPHead(nn.Module):
             ]
             prev_dim = hidden_dim
 
-        # Final projection
-        layers += [
-            nn.Linear(prev_dim, out_dim),
-            nn.LayerNorm(out_dim),
-        ]
+        layers += [nn.Linear(prev_dim, out_dim), nn.LayerNorm(out_dim)]
         if use_tanh:
             layers.append(nn.Tanh())
 

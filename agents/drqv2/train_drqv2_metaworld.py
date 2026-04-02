@@ -1,58 +1,53 @@
 from __future__ import annotations
 
-"""
-Compact Meta-World training script for DrM.
-"""
-
 import argparse
 import os
 import random
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, Tuple, Optional, List
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
+import cv2
+import gymnasium as gym
+import metaworld
+import mujoco
 import numpy as np
 import torch
+import wandb
 import yaml
 
-# Headless MuJoCo rendering.
+# Set default MuJoCo rendering backend to EGL for headless environments
 os.environ.setdefault("MUJOCO_GL", "egl")
 
+# Add project root to sys.path for imports
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import gymnasium as gym
-import metaworld
-import mujoco
-import cv2
-import wandb
-
 from agents.drqv2.drqv2_metaworld import DrQv2MetaWorldAgent
+from agents.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
 from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
-from agents.drqv2.replay_buffer import make_replay_loader, ReplayBufferStorage
 
-# -----------------------------------------------------------------------------
-# Small helpers
-# -----------------------------------------------------------------------------
 
 def set_seed(seed: int) -> None:
+    """Set random seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-# -----------------------------------------------------------------------------
-# Meta-World environment wrapper with a single configurable camera
-# -----------------------------------------------------------------------------
 
 class MetaWorldSingleCameraEnv:
     """
-    Single-task Meta-World environment that returns pixel observations only.
+    A wrapper for MetaWorld environments with single-camera rendering and frame stacking.
 
-    Camera configuration follows the same spherical style used in the provided
-    Meta-World demo collection utilities, but we keep only one camera.
+    Returns:
+        obs_pixels: (3*T, H, W) uint8
+        proprio:    (P,) float32
+
+    Default proprio_indices=[0,1,2,3] which usually correspond to tcp xyz + gripper opening.
+    Adjust in YAML if needed.
     """
 
     def __init__(self, cfg: Dict[str, Any], seed: int) -> None:
@@ -63,58 +58,26 @@ class MetaWorldSingleCameraEnv:
         self.frame_stack = int(env_cfg.get("frame_stack", 3))
         self.action_repeat = int(env_cfg.get("action_repeat", 1))
         self.max_episode_steps = int(env_cfg.get("max_episode_steps", 250))
+        self.proprio_indices = list(env_cfg.get("proprio_indices", [0, 1, 2, 3]))
 
-        # Camera configuration
         raw_cameras = env_cfg.get("cameras", None)
-        if raw_cameras is None:
-            # Backward compatibility with the original single-camera setup.
-            self.camera_cfgs: List[Dict[str, Any]] = [dict(env_cfg["camera"])]
-        else:
-            if not isinstance(raw_cameras, list) or len(raw_cameras) == 0:
-                raise ValueError("env.cameras must be a non-empty list of camera configs.")
-            self.camera_cfgs = [dict(cam_cfg) for cam_cfg in raw_cameras]
-
+        self.camera_cfgs = [dict(env_cfg["camera"])] if raw_cameras is None else [dict(cam) for cam in raw_cameras]
         self.num_cameras = len(self.camera_cfgs)
-
-        # Episode-level selected camera.
-        self.current_camera_index: int = 0
-        self.current_camera_cfg: Dict[str, Any] = dict(self.camera_cfgs[0])
-
-        # Separate RNG so camera sampling is reproducible but independent.
+        self.current_camera_index = 0
+        self.current_camera_cfg = dict(self.camera_cfgs[0])
         self._camera_rng = random.Random(int(seed) + 12345)
 
-        # Match the demo collector more closely:
-        # - if lookat is omitted / null, use model.stat.center
-        # - keep "up" as a world-space vector
         raw_lookat = env_cfg.get("lookat", [0.0, 0.6, 0.0])
         self.up = np.asarray(env_cfg.get("up", [0.0, 0.0, 1.0]), dtype=np.float64)
-
-        # Meta-World v3 via Gymnasium API
         self.benchmark_id = str(env_cfg.get("benchmark_id", "Meta-World/MT1"))
         gym_env_name = self.env_name if self.env_name.endswith("-v3") else f"{self.env_name}-v3"
-
         self._env = gym.make(self.benchmark_id, env_name=gym_env_name, seed=seed)
         self._model, self._data = self._unwrap_mujoco(self._env)
+        self.lookat = np.asarray(raw_lookat, dtype=np.float64) if raw_lookat is not None else np.array(self._model.stat.center, dtype=np.float64)
 
-        # Default lookat follows the collector script
-        if raw_lookat is None:
-            try:
-                self.lookat = np.array(self._model.stat.center, dtype=np.float64)
-            except Exception:
-                self.lookat = np.zeros(3, dtype=np.float64)
-        else:
-            self.lookat = np.asarray(raw_lookat, dtype=np.float64)
-
-        # Direct MuJoCo renderer
-        self._renderer = mujoco.Renderer(
-            self._model,
-            height=self.image_height,
-            width=self.image_width,
-        )
-
+        self._renderer = mujoco.Renderer(self._model, height=self.image_height, width=self.image_width)
         self._base_seed = int(seed)
         self._reset_count = 0
-
         base_env = self._env.unwrapped
         if hasattr(base_env, "_freeze_rand_vec"):
             base_env._freeze_rand_vec = False
@@ -122,8 +85,8 @@ class MetaWorldSingleCameraEnv:
         self.action_space = self._env.action_space
         self.frames: Deque[np.ndarray] = deque(maxlen=self.frame_stack)
         self.episode_step = 0
+        self._last_proprio = np.zeros((len(self.proprio_indices),), dtype=np.float32)
 
-        # Optional OpenCV visualization
         vis_cfg = dict(cfg.get("visualization", {}))
         self.enable_cv2_vis = bool(vis_cfg.get("enabled", False))
         self.vis_window_name = str(vis_cfg.get("window_name", f"MetaWorld-{self.env_name}"))
@@ -131,72 +94,59 @@ class MetaWorldSingleCameraEnv:
         self.vis_scale = float(vis_cfg.get("scale", 1.0))
         self._vis_window_initialized = False
 
-        if self.enable_cv2_vis and cv2 is None:
-            raise ImportError(
-                "visualization.enabled=True, but OpenCV (`cv2`) is not available."
-            )
-
     @property
     def obs_shape(self) -> Tuple[int, int, int]:
+        """Shape of the observation (pixels)."""
         return (3 * self.frame_stack, self.image_height, self.image_width)
 
     @property
+    def proprio_shape(self) -> Tuple[int, ...]:
+        """Shape of the proprioceptive observation."""
+        return (len(self.proprio_indices),)
+
+    @property
     def action_shape(self) -> Tuple[int, ...]:
+        """Shape of the action space."""
         return tuple(self.action_space.shape)
 
     def _unwrap_mujoco(self, env):
+        """Unwrap the environment to access MuJoCo model and data."""
         e = env.unwrapped
-        # Gymnasium mujoco-style
         if hasattr(e, "model") and hasattr(e, "data"):
             return e.model, e.data
-        # Older mujoco-py style fallback
         if hasattr(e, "sim"):
             return e.sim.model, e.sim.data
         raise RuntimeError("Could not find MuJoCo model/data on env.unwrapped")
 
+    def _extract_proprio_from_state_obs(self, state_obs: np.ndarray) -> np.ndarray:
+        """Extract proprioceptive features from state observation."""
+        state_obs = np.asarray(state_obs, dtype=np.float32).reshape(-1)
+        if max(self.proprio_indices) >= len(state_obs):
+            raise ValueError(f"proprio_indices={self.proprio_indices} out of range for state obs shape {state_obs.shape}")
+        return state_obs[self.proprio_indices].astype(np.float32).copy()
+
     def _set_episode_camera(self, camera_index: Optional[int] = None) -> None:
-        """Choose the camera for the next episode.
-
-        Args:
-            camera_index:
-                - None: randomly sample one camera
-                - int:  force a specific camera
-        """
-        if camera_index is None:
-            self.current_camera_index = int(self._camera_rng.randrange(self.num_cameras))
-        else:
-            camera_index = int(camera_index)
-            if camera_index < 0 or camera_index >= self.num_cameras:
-                raise ValueError(
-                    f"camera_index out of range: {camera_index} (num_cameras={self.num_cameras})"
-                )
-            self.current_camera_index = camera_index
-
+        """Set the camera for the current episode."""
+        self.current_camera_index = int(self._camera_rng.randrange(self.num_cameras)) if camera_index is None else int(camera_index)
+        if self.current_camera_index < 0 or self.current_camera_index >= self.num_cameras:
+            raise ValueError(f"camera_index out of range: {self.current_camera_index}")
         self.current_camera_cfg = dict(self.camera_cfgs[self.current_camera_index])
 
     def get_camera_name(self, camera_index: int) -> str:
-        camera_index = int(camera_index)
-        if camera_index < 0 or camera_index >= self.num_cameras:
-            raise ValueError(
-                f"camera_index out of range: {camera_index} (num_cameras={self.num_cameras})"
-            )
-        return str(self.camera_cfgs[camera_index].get("name", f"camera_{camera_index}"))
+        """Get the name of a camera by index."""
+        return str(self.camera_cfgs[int(camera_index)].get("name", f"camera_{camera_index}"))
 
     def get_current_camera_name(self) -> str:
+        """Get the name of the current camera."""
         return str(self.current_camera_cfg.get("name", f"camera_{self.current_camera_index}"))
-    
+
     def get_last_frame(self) -> np.ndarray:
-        """Return the most recent rendered RGB frame as CHW uint8."""
-        if len(self.frames) == 0:
-            raise RuntimeError("No rendered frames are available yet.")
+        """Get the last rendered frame."""
         return self.frames[-1].copy()
-    
+
     def _make_free_camera(self) -> "mujoco.MjvCamera":
-        """
-        Build the same kind of free/orbit camera used in the data collection code.
-        """
+        """Create a free camera based on current configuration."""
         cam_cfg = self.current_camera_cfg
-        
         pose = spherical_camera_pose(
             name=str(cam_cfg["name"]),
             r=float(cam_cfg["r"]),
@@ -204,324 +154,198 @@ class MetaWorldSingleCameraEnv:
             phi_deg=float(cam_cfg["phi"]),
             lookat=self.lookat,
             up=self.up,
-            fovy_deg=float(cam_cfg["fovy"]),
+            fovy_deg=float(cam_cfg["fovy"])
         )
-
         cam = mujoco.MjvCamera()
         cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         cam.lookat[:] = self.lookat.astype(np.float64)
-
         rel = pose.pos.astype(np.float64) - self.lookat.astype(np.float64)
         cam.distance = float(np.linalg.norm(rel))
-
-        # azimuth: angle in XY plane from +X
         cam.azimuth = float(np.degrees(np.arctan2(rel[1], rel[0])))
-
-        # elevation: angle above XY plane
-        xy = np.sqrt(rel[0] ** 2 + rel[1] ** 2)
-        cam.elevation = float(np.degrees(np.arctan2(rel[2], xy)))
-
+        cam.elevation = float(np.degrees(np.arctan2(rel[2], np.sqrt(rel[0] ** 2 + rel[1] ** 2))))
         return cam
 
     def _show_frame_cv2(self, frame_chw: np.ndarray) -> None:
-        """
-        Show the current RGB frame with OpenCV.
-
-        frame_chw: (3, H, W), uint8, RGB
-        """
+        """Display the frame using OpenCV if visualization is enabled."""
         if not self.enable_cv2_vis:
             return
-
-        # Convert CHW RGB -> HWC RGB
         img = np.transpose(frame_chw, (1, 2, 0))
-
-        # Optional resize for easier viewing
         if self.vis_scale != 1.0:
             new_w = max(1, int(img.shape[1] * self.vis_scale))
             new_h = max(1, int(img.shape[0] * self.vis_scale))
-            interp = cv2.INTER_NEAREST if self.vis_scale >= 1.0 else cv2.INTER_AREA
-            img = cv2.resize(img, (new_w, new_h), interpolation=interp)
-
-        # OpenCV expects BGR
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_NEAREST if self.vis_scale >= 1.0 else cv2.INTER_AREA)
         img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
         if not self._vis_window_initialized:
             cv2.namedWindow(self.vis_window_name, cv2.WINDOW_NORMAL)
             self._vis_window_initialized = True
-
         cv2.imshow(self.vis_window_name, img_bgr)
         cv2.waitKey(max(1, self.vis_wait_key))
 
     def _render(self) -> np.ndarray:
-        """
-        Render through mujoco.Renderer directly, matching the demo collector.
-        This avoids Gymnasium wrapper render-mode issues and does not require
-        a named camera to exist in the XML.
-        """
-        cam = self._make_free_camera()
-
-        self._renderer.update_scene(self._data, camera=cam)
-        img = self._renderer.render()
-
-        if img is None:
-            raise RuntimeError("MuJoCo renderer returned None.")
-
-        img = np.asarray(img, dtype=np.uint8)
-        if img.ndim != 3 or img.shape[-1] != 3:
-            raise RuntimeError(f"Unexpected rendered image shape: {img.shape}")
-
-        # Convert HWC -> CHW for the agent
+        """Render the current frame."""
+        self._renderer.update_scene(self._data, camera=self._make_free_camera())
+        img = np.asarray(self._renderer.render(), dtype=np.uint8)
         frame_chw = np.transpose(img, (2, 0, 1)).copy()
-
-        # OpenCV visualization
         self._show_frame_cv2(frame_chw)
-
         return frame_chw
 
     def _stacked_obs(self) -> np.ndarray:
+        """Stack the frames for observation."""
         return np.concatenate(list(self.frames), axis=0)
 
-    def reset(self, camera_index: Optional[int] = None) -> np.ndarray:
-        """Reset env and choose one camera for the whole episode. """
-        
+    def reset(self, camera_index: Optional[int] = None) -> tuple[np.ndarray, np.ndarray]:
+        """Reset the environment and return initial observation."""
         reset_seed = self._base_seed + self._reset_count
         self._reset_count += 1
-
-        try:
-            self._env.reset(seed=reset_seed)
-        except TypeError:
-            self._env.reset()
-
-        # Camera is selected once here and then kept fixed for the whole episode.
-        self._set_episode_camera(camera_index=camera_index)
-
+        state_obs, _info = self._env.reset(seed=reset_seed)
+        self._set_episode_camera(camera_index)
+        self._last_proprio = self._extract_proprio_from_state_obs(state_obs)
         self.episode_step = 0
         frame = self._render()
         self.frames.clear()
         for _ in range(self.frame_stack):
             self.frames.append(frame)
-        return self._stacked_obs()
+        return self._stacked_obs(), self._last_proprio.copy()
 
-    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, np.ndarray, float, bool, Dict[str, Any]]:
+        """Step the environment with the given action."""
         total_reward = 0.0
         success = 0.0
         terminated = False
         truncated = False
-
+        last_state_obs = None
         for _ in range(self.action_repeat):
-            step_out = self._env.step(action)
-            if len(step_out) == 5:
-                _, reward, terminated, truncated, info = step_out
-            else:
-                _, reward, terminated, info = step_out
-                truncated = False
-
+            last_state_obs, reward, terminated, truncated, info = self._env.step(action)
             total_reward += float(reward)
             success = max(success, float(info.get("success", 0.0)))
             self.episode_step += 1
-
             if terminated or truncated or self.episode_step >= self.max_episode_steps:
                 break
-
-        done = bool(terminated or truncated or self.episode_step >= self.max_episode_steps)
+        self._last_proprio = self._extract_proprio_from_state_obs(last_state_obs)
         frame = self._render()
         self.frames.append(frame)
-        return self._stacked_obs(), total_reward, done, {
+        done = bool(terminated or truncated or self.episode_step >= self.max_episode_steps)
+        return self._stacked_obs(), self._last_proprio.copy(), total_reward, done, {
             "success": success,
             "camera_index": int(self.current_camera_index),
-            "camera_name": self.get_current_camera_name(),
+            "camera_name": self.get_current_camera_name()
         }
 
     def close(self) -> None:
-        # Close the OpenCV window if it was created.
-        if self.enable_cv2_vis and cv2 is not None and self._vis_window_initialized:
+        """Close the environment and visualization windows."""
+        if self.enable_cv2_vis and self._vis_window_initialized:
             try:
                 cv2.destroyWindow(self.vis_window_name)
             except Exception:
                 pass
-            self._vis_window_initialized = False
-
-        # Close the Gym env.
         try:
             self._env.close()
         except Exception:
             pass
 
-# -----------------------------------------------------------------------------
-# Caching of backbone features for DrQv2
-# -----------------------------------------------------------------------------
 
 @torch.inference_mode()
-def maybe_cache_obs(agent, obs):
-    if not getattr(agent.encoder, "can_cache_backbone", False):
-        return None
-    obs_t = torch.as_tensor(obs, device=agent.device).unsqueeze(0)
-    feat = agent.encoder.extract_cacheable_backbone_feature(obs_t)
+def obs_to_replay(agent: DrQv2MetaWorldAgent, obs_pixels: np.ndarray) -> np.ndarray:
+    """Convert observation pixels to replay format."""
+    if agent.use_pixels:
+        return np.asarray(obs_pixels, dtype=np.uint8)
+    feat = agent.encoder.extract_cacheable_feature(torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0))
     return feat.squeeze(0).cpu().numpy()
 
-# -----------------------------------------------------------------------------
-# Evaluation
-# -----------------------------------------------------------------------------
 
-def evaluate(
-    env: MetaWorldSingleCameraEnv,
-    agent: DrQv2MetaWorldAgent,
-    num_episodes: int,
-    step: int,
-    *,
-    log_videos: bool = False,
-    video_fps: int = 15,
-) -> Dict[str, Any]:
-    """Balanced evaluation across all configured viewpoints.
-
-    Fixes:
-      1) cameras with zero assigned episodes are excluded from the final mean
-      2) optionally logs the FIRST evaluation episode video for each camera
-    """
+def evaluate(env: MetaWorldSingleCameraEnv, agent: DrQv2MetaWorldAgent, num_episodes: int, step: int, *, log_videos: bool = False, video_fps: int = 15) -> Dict[str, Any]:
+    """Evaluate the agent on the environment."""
     num_cameras = int(env.num_cameras)
-    if num_cameras <= 0:
-        raise RuntimeError("Environment has no configured cameras.")
-
     base = num_episodes // num_cameras
     rem = num_episodes % num_cameras
     per_camera_counts = [base + (1 if i < rem else 0) for i in range(num_cameras)]
-
-    per_camera_return_means: List[float] = []
-    per_camera_success_means: List[float] = []
-
     metrics: Dict[str, Any] = {}
-
+    rets = []
+    succs = []
     for cam_idx in range(num_cameras):
-        cam_name = env.get_camera_name(cam_idx)
-        cam_eval_count = int(per_camera_counts[cam_idx])
-
-        # ------------------------------------------------------------------
-        # BUG FIX:
-        # If num_eval_episodes < num_cameras, some cameras receive 0 episodes.
-        # Those should NOT contribute artificial 0.0 values to the global mean.
-        # ------------------------------------------------------------------
-        if cam_eval_count <= 0:
+        n = int(per_camera_counts[cam_idx])
+        if n <= 0:
             continue
-
         cam_returns = []
         cam_successes = []
-
-        for ep_idx in range(cam_eval_count):
-            obs = env.reset(camera_index=cam_idx)
+        for ep_idx in range(n):
+            obs_pixels, proprio = env.reset(camera_index=cam_idx)
+            obs_for_policy = obs_pixels if agent.use_pixels else obs_to_replay(agent, obs_pixels)
             done = False
-            episode_return = 0.0
-            episode_success = 0.0
-
-            # Collect only the FIRST video for each camera viewpoint.
-            video_frames = []
-            if log_videos and ep_idx == 0:
-                video_frames.append(env.get_last_frame())
-
+            ep_ret = 0.0
+            ep_succ = 0.0
+            frames = [env.get_last_frame()] if log_videos and ep_idx == 0 else []
             while not done:
-                action = agent.act(obs, step=step, eval_mode=True)
-                obs, reward, done, info = env.step(action)
-                episode_return += float(reward)
-                episode_success = max(episode_success, float(info["success"]))
-
+                action = agent.act(obs_for_policy, proprio, step=step, eval_mode=True)
+                next_pixels, next_proprio, reward, done, info = env.step(action)
+                obs_for_policy = next_pixels if agent.use_pixels else obs_to_replay(agent, next_pixels)
+                proprio = next_proprio
+                ep_ret += float(reward)
+                ep_succ = max(ep_succ, float(info["success"]))
                 if log_videos and ep_idx == 0:
-                    video_frames.append(env.get_last_frame())
-
-            cam_returns.append(episode_return)
-            cam_successes.append(episode_success)
-
-            # Log only the first evaluation video for this camera.
-            if log_videos and ep_idx == 0 and len(video_frames) > 0:
-                video_np = np.stack(video_frames, axis=0)  # [T, C, H, W], uint8
-                metrics[f"eval/view_{cam_idx}_video"] = wandb.Video(
-                    video_np,
-                    fps=video_fps,
-                    format="mp4",
-                )
-
-        cam_return_mean = float(np.mean(cam_returns))
-        cam_success_mean = float(np.mean(cam_successes))
-
-        per_camera_return_means.append(cam_return_mean)
-        per_camera_success_means.append(cam_success_mean)
-
-        metrics[f"eval/view_{cam_idx}_cumulative_reward"] = cam_return_mean
-        metrics[f"eval/view_{cam_idx}_success_rate"] = cam_success_mean
-
-    if len(per_camera_return_means) == 0:
-        raise RuntimeError(
-            f"No evaluation episodes were assigned. num_episodes={num_episodes}, num_cameras={num_cameras}"
-        )
-
-    # Final result = average over only the actually evaluated cameras.
-    metrics["eval/cumulative_reward"] = float(np.mean(per_camera_return_means))
-    metrics["eval/success_rate"] = float(np.mean(per_camera_success_means))
+                    frames.append(env.get_last_frame())
+            cam_returns.append(ep_ret)
+            cam_successes.append(ep_succ)
+            if log_videos and ep_idx == 0 and len(frames) > 0:
+                metrics[f"eval/view_{cam_idx}_video"] = wandb.Video(np.stack(frames, axis=0), fps=video_fps, format="mp4")
+        ret = float(np.mean(cam_returns))
+        succ = float(np.mean(cam_successes))
+        rets.append(ret)
+        succs.append(succ)
+        metrics[f"eval/view_{cam_idx}_cumulative_reward"] = ret
+        metrics[f"eval/view_{cam_idx}_success_rate"] = succ
+    metrics["eval/cumulative_reward"] = float(np.mean(rets))
+    metrics["eval/success_rate"] = float(np.mean(succs))
     return metrics
 
 
-# -----------------------------------------------------------------------------
-# Main
-# -----------------------------------------------------------------------------
-
 def main() -> None:
+    """Main training loop."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True, help="Path to the single YAML config.")
+    parser.add_argument("--config", type=str, required=True)
     args = parser.parse_args()
-
     with open(args.config, "r") as f:
         cfg: Dict[str, Any] = yaml.safe_load(f)
-
-    # Fill image sizes into the vision config so `build_vision_encoder(...)`
-    # can be reused without touching the existing codebase.
-    vision_cfg = cfg.setdefault("vision", {})
-    vision_cfg.setdefault("img_height", int(cfg["env"]["image_height"]))
-    vision_cfg.setdefault("img_width", int(cfg["env"]["image_width"]))
-
+    cfg.setdefault("vision", {}).setdefault("img_height", int(cfg["env"]["image_height"]))
+    cfg["vision"].setdefault("img_width", int(cfg["env"]["image_width"]))
     seed = int(cfg.get("seed", 0))
     set_seed(seed)
-
     device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
+    cfg["device"] = str(device)
 
     train_env = MetaWorldSingleCameraEnv(cfg, seed=seed)
     eval_env = MetaWorldSingleCameraEnv(cfg, seed=seed + 1)
-
-    agent = DrQv2MetaWorldAgent(
-        cfg=cfg,
-        obs_shape=train_env.obs_shape,
-        action_shape=train_env.action_shape,
-        device=device,
-    )
+    agent = DrQv2MetaWorldAgent(cfg, train_env.obs_shape, train_env.action_shape, train_env.proprio_shape, device)
 
     tcfg = cfg["train"]
     replay_dir = Path(tcfg.get("replay_dir", "buffer"))
     replay_storage = ReplayBufferStorage(
-        replay_dir=replay_dir,
-        action_shape=train_env.action_shape,
+        replay_dir,
+        agent.encoder.replay_obs_shape,
+        agent.encoder.replay_obs_dtype,
+        train_env.proprio_shape,
+        train_env.action_shape
     )
-
     replay_loader, replay_buffer = make_replay_loader(
-        replay_dir=replay_dir,
-        max_size=int(tcfg.get("replay_size", 500_000)),
-        batch_size=int(tcfg.get("batch_size", 256)),
-        num_workers=int(tcfg.get("replay_num_workers", 2)),
-        save_snapshot=bool(tcfg.get("save_replay_snapshot", False)),
-        nstep=int(tcfg.get("nstep", 3)),
-        discount=float(tcfg.get("discount", 0.99)),
-        fetch_every=int(tcfg.get("replay_fetch_every", 1000)),
+        replay_dir,
+        int(tcfg.get("replay_size", 500_000)),
+        int(tcfg.get("batch_size", 256)),
+        int(tcfg.get("replay_num_workers", 2)),
+        bool(tcfg.get("save_replay_snapshot", False)),
+        int(tcfg.get("nstep", 3)),
+        float(tcfg.get("discount", 0.99)),
+        int(tcfg.get("replay_fetch_every", 1000))
     )
     replay_iter = None
 
     wandb_cfg = cfg.get("wandb", {})
     use_wandb = bool(wandb_cfg.get("enabled", True))
-    wandb_tags = wandb_cfg.get("tags", [])
-    if isinstance(wandb_tags, str):
-        wandb_tags = [wandb_tags]
-    wandb_tags = [str(tag) for tag in wandb_tags if str(tag).strip()]
     if use_wandb:
         wandb.init(
-            project=str(cfg["wandb"].get("project", "drm-metaworld")),
-            name=str(cfg["wandb"].get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'convnet')}")),
+            project=str(wandb_cfg.get("project", "drqv2-metaworld")),
+            name=str(wandb_cfg.get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'convnet')}")),
             config=cfg,
-            tags=wandb_tags,
+            tags=[str(t) for t in wandb_cfg.get("tags", [])]
         )
 
     num_train_steps = int(tcfg.get("num_train_steps", 1_000_000))
@@ -533,7 +357,6 @@ def main() -> None:
     log_every_steps = int(tcfg.get("log_every_steps", 1_000))
     num_eval_episodes = int(tcfg.get("num_eval_episodes", 10))
     discount = float(tcfg.get("discount", 0.99))
-
     ckpt_every = int(tcfg.get("checkpoint_every_steps", 0))
     ckpt_dir = Path(tcfg.get("checkpoint_dir", "checkpoints"))
     if ckpt_every > 0:
@@ -541,48 +364,33 @@ def main() -> None:
 
     rolling_success: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
     rolling_return: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
-
-    obs = train_env.reset()
-    obs_cache = maybe_cache_obs(agent, obs)
-    replay_storage.add_initial(obs, backbone_feature=obs_cache)
+    obs_pixels, proprio = train_env.reset()
+    obs_store = obs_to_replay(agent, obs_pixels)
+    replay_storage.add_initial(obs_store, proprio)
     episode_return = 0.0
     episode_success = 0.0
     update_metrics: Dict[str, float] = {}
 
     for step in range(1, num_train_steps + 1):
-        if step <= seed_steps:
-            action = train_env.action_space.sample().astype(np.float32)
-        else:
-            action = agent.act(obs, step=step, eval_mode=False).astype(np.float32)
-
-        next_obs, reward, done, info = train_env.step(action)
-        transition_discount = 0.0 if done else discount
-
-        next_obs_cache = maybe_cache_obs(agent, next_obs)
-        replay_storage.add(
-            action,
-            reward,
-            transition_discount,   # use terminal-aware discount
-            next_obs,
-            done,
-            next_backbone_feature=next_obs_cache,
+        obs_for_policy = obs_pixels if agent.use_pixels else obs_store
+        action = (
+            train_env.action_space.sample().astype(np.float32)
+            if step <= seed_steps
+            else agent.act(obs_for_policy, proprio, step=step, eval_mode=False).astype(np.float32)
         )
-
-        obs = next_obs
+        next_pixels, next_proprio, reward, done, info = train_env.step(action)
+        next_store = obs_to_replay(agent, next_pixels)
+        replay_storage.add(action, reward, 0.0 if done else discount, next_store, next_proprio, done)
+        obs_pixels, obs_store, proprio = next_pixels, next_store, next_proprio
         episode_return += float(reward)
         episode_success = max(episode_success, float(info["success"]))
 
-        # Standard off-policy updates
         if step > seed_steps and len(replay_storage) >= batch_size and step % update_every_steps == 0:
-            # Lazily create the replay iterator only after enough data exists.
-            # This matches the intended DrM usage much better.
             if replay_iter is None:
                 replay_iter = iter(replay_loader)
-
             for _ in range(gradient_steps):
                 update_metrics = agent.update(replay_iter, step)
 
-        # Per-step logging.
         if step % log_every_steps == 0:
             log_data = {"step": step}
             if update_metrics:
@@ -590,13 +398,11 @@ def main() -> None:
             if rolling_success:
                 log_data["train/rolling_success_rate"] = float(np.mean(rolling_success))
                 log_data["train/rolling_cumulative_reward"] = float(np.mean(rolling_return))
-
             if use_wandb:
                 wandb.log(log_data, step=step)
             else:
                 print(log_data)
 
-        # Periodic evaluation.
         if step % eval_every_steps == 0:
             eval_metrics = evaluate(
                 eval_env,
@@ -604,29 +410,20 @@ def main() -> None:
                 num_episodes=num_eval_episodes,
                 step=step,
                 log_videos=use_wandb,
-                video_fps=int(cfg.get("eval_video_fps", 30)),
+                video_fps=int(cfg.get("eval_video_fps", 30))
             )
             eval_metrics["step"] = step
             if use_wandb:
                 wandb.log(eval_metrics, step=step)
             else:
-                # Avoid printing the raw wandb.Video objects if wandb logging is off.
-                printable = {k: v for k, v in eval_metrics.items() if not k.endswith("_video")}
-                print(printable)
+                print({k: v for k, v in eval_metrics.items() if not k.endswith("_video")})
 
-        # Optional checkpointing.
         if ckpt_every > 0 and step % ckpt_every == 0:
-            ckpt_path = ckpt_dir / f"step_{step:08d}.pt"
             torch.save(
-                {
-                    "step": step,
-                    "cfg": cfg,
-                    "agent": agent.state_dict(),
-                },
-                ckpt_path,
+                {"step": step, "cfg": cfg, "agent": agent.state_dict()},
+                ckpt_dir / f"step_{step:08d}.pt"
             )
 
-        # Episode boundary.
         if done:
             rolling_success.append(episode_success)
             rolling_return.append(episode_return)
@@ -635,24 +432,20 @@ def main() -> None:
                 "train/episode_success_rate": float(episode_success),
                 "train/cumulative_reward": float(episode_return),
                 "train/rolling_success_rate": float(np.mean(rolling_success)),
-                "train/rolling_cumulative_reward": float(np.mean(rolling_return)),
+                "train/rolling_cumulative_reward": float(np.mean(rolling_return))
             }
-
             if use_wandb:
                 wandb.log(episode_log, step=step)
             else:
                 print(episode_log)
-
-            obs = train_env.reset()
-            obs_cache = maybe_cache_obs(agent, obs)
-            replay_storage.add_initial(obs, backbone_feature=obs_cache)
-
+            obs_pixels, proprio = train_env.reset()
+            obs_store = obs_to_replay(agent, obs_pixels)
+            replay_storage.add_initial(obs_store, proprio)
             episode_return = 0.0
             episode_success = 0.0
 
     train_env.close()
     eval_env.close()
-    
     if use_wandb:
         wandb.finish()
 
