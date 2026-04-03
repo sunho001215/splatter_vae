@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+
+# Set default MuJoCo rendering backend to EGL for headless environments
+os.environ.setdefault("MUJOCO_GL", "egl")
+
 import random
 import sys
 from collections import deque
@@ -16,9 +20,6 @@ import numpy as np
 import torch
 import wandb
 import yaml
-
-# Set default MuJoCo rendering backend to EGL for headless environments
-os.environ.setdefault("MUJOCO_GL", "egl")
 
 # Add project root to sys.path for imports
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

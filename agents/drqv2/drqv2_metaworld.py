@@ -362,6 +362,9 @@ class DrQv2MetaWorldAgent:
         prev_mode = self.training
         self.train(False)
         obs_t = torch.as_tensor(obs, device=self.device)
+        if not self.use_pixels:
+            if obs_t.ndim == len(self.encoder.replay_obs_shape):
+                obs_t = obs_t.unsqueeze(0)
         proprio_t = torch.as_tensor(proprio, device=self.device, dtype=torch.float32).view(1, -1)
         obs_repr = self.encoder(obs_t, is_feature=not self.use_pixels)
         dist = self.actor(obs_repr, proprio_t, self.stddev(step))
