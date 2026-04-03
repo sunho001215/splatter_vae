@@ -94,12 +94,20 @@ class ReplayBufferStorage:
             self._current_episode = defaultdict(list)
             self._store_episode(episode)
 
-    def _store_episode(self, episode: Dict[str, np.ndarray]) -> None:
-        """Store an episode to disk with a timestamped filename."""
+    def _store_episode(self, episode):
+        """Store episode, injecting multi-copy metadata for the sampler."""
         eps_idx = self._num_episodes
         eps_len = episode_len(episode)
         self._num_episodes += 1
         self._num_transitions += eps_len
+    
+        # Detect multi-copy from obs shape.
+        # If obs_shape was set with K prepended, obs.shape = (T+1, K, *feat_shape).
+        # We record K so the sampler knows to do random copy selection.
+        obs = episode["obs"]
+        if hasattr(self, "_num_aug_copies") and self._num_aug_copies > 1:
+            episode["obs_num_copies"] = np.array(self._num_aug_copies, dtype=np.int32)
+    
         ts = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
         save_episode(episode, self._replay_dir / f"{ts}_{eps_idx}_{eps_len}.npz")
 
@@ -115,7 +123,8 @@ class ReplayBuffer(IterableDataset):
         nstep: int,
         discount: float,
         fetch_every: int,
-        save_snapshot: bool
+        save_snapshot: bool,
+        num_aug_copies: int = 7
     ) -> None:
         super().__init__()
         self._replay_dir = Path(replay_dir)
@@ -129,6 +138,7 @@ class ReplayBuffer(IterableDataset):
         self._fetch_every = int(fetch_every)
         self._samples_since_last_fetch = self._fetch_every
         self._save_snapshot = bool(save_snapshot)
+        self._num_aug_copies = int(num_aug_copies)
 
     def __len__(self) -> int:
         """Return the current number of transitions in the buffer."""
@@ -192,13 +202,13 @@ class ReplayBuffer(IterableDataset):
         return self._episodes[random.choice(valid_fns)]
 
     def _sample(self):
-        """Sample a single transition with n-step return."""
+        """Sample a single transition, randomly selecting 1 of K cached copies."""
         try:
             self._try_fetch()
         except Exception:
             traceback.print_exc()
         self._samples_since_last_fetch += 1
-
+    
         while True:
             if self._episode_fns:
                 try:
@@ -209,19 +219,31 @@ class ReplayBuffer(IterableDataset):
             time.sleep(0.05)
             self._samples_since_last_fetch = self._fetch_every
             self._try_fetch()
-
+    
         idx = np.random.randint(0, episode_len(episode) - self._nstep + 1) + 1
-        obs = episode["obs"][idx - 1]
+    
+        obs_raw = episode["obs"][idx - 1]
+        next_obs_raw = episode["obs"][idx + self._nstep - 1]
+    
+        # Multi-copy select
+        if "obs_num_copies" in episode:
+            K = int(episode["obs_num_copies"])
+            if K > 1:
+                k_obs = np.random.randint(0, K)
+                k_next = np.random.randint(0, K)
+                obs_raw = obs_raw[k_obs]
+                next_obs_raw = next_obs_raw[k_next]
+    
         proprio = episode["proprio"][idx - 1]
         action = episode["action"][idx]
-        next_obs = episode["obs"][idx + self._nstep - 1]
         next_proprio = episode["proprio"][idx + self._nstep - 1]
         reward = np.zeros((1,), dtype=np.float32)
         discount = np.ones((1,), dtype=np.float32)
         for i in range(self._nstep):
             reward += discount * episode["reward"][idx + i]
             discount *= episode["discount"][idx + i] * self._discount
-        return obs, proprio, action, reward, discount, next_obs, next_proprio
+        return obs_raw, proprio, action, reward, discount, next_obs_raw, next_proprio
+ 
 
     def __iter__(self):
         """Iterator for the dataset, yielding samples indefinitely."""

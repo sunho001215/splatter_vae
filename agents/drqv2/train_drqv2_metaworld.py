@@ -246,12 +246,29 @@ class MetaWorldSingleCameraEnv:
 
 
 @torch.inference_mode()
-def obs_to_replay(agent: DrQv2MetaWorldAgent, obs_pixels: np.ndarray) -> np.ndarray:
+def obs_to_replay(agent: "DrQv2MetaWorldAgent", obs_pixels: np.ndarray) -> np.ndarray:
     """Convert observation pixels to replay format."""
     if agent.use_pixels:
+        # ConvNet end-to-end: store raw pixels as before
         return np.asarray(obs_pixels, dtype=np.uint8)
-    feat = agent.encoder.extract_cacheable_feature(torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0))
-    return feat.squeeze(0).cpu().numpy()
+ 
+    K = getattr(agent, "num_aug_copies", 7)
+ 
+    if K > 1:
+        # ---- SEER multi-copy path ----
+        # Apply K different random shift augmentations, encode each copy.
+        obs_t = torch.as_tensor(obs_pixels, device=agent.device)
+        multi_feat = agent.encoder.extract_multi_aug_features(
+            obs_t, aug_fn=agent.aug, num_copies=K
+        )
+        # multi_feat shape: (K, *single_feat_shape), dtype float16
+        return multi_feat.cpu().numpy()
+    else:
+        # ---- Original single-copy path (backward compatible) ----
+        feat = agent.encoder.extract_cacheable_feature(
+            torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0)
+        )
+        return feat.squeeze(0).cpu().numpy()
 
 
 def evaluate(env: MetaWorldSingleCameraEnv, agent: DrQv2MetaWorldAgent, num_episodes: int, step: int, *, log_videos: bool = False, video_fps: int = 15) -> Dict[str, Any]:

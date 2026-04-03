@@ -162,8 +162,18 @@ class VisionEncoderAdapter(nn.Module):
             self.replay_obs_dtype = np.uint8
         else:
             self.repr_dim = int(self.proj_head.out_dim)
-            self.replay_obs_shape = tuple(self.backbone_out_shape)
+            # Store the single-copy feature shape before potentially expanding for multi-copy
+            self._single_copy_obs_shape = tuple(self.backbone_out_shape)
             self.replay_obs_dtype = np.float16
+        
+            # Read num_aug_copies from config
+            self.num_aug_copies = int(full_cfg.get("seer", {}).get("num_aug_copies", 7))
+        
+            if self.num_aug_copies > 1:
+                # Prepend K dimension: replay buffer stores (K, *feature_shape) per timestep
+                self.replay_obs_shape = (self.num_aug_copies, *self._single_copy_obs_shape)
+            else:
+                self.replay_obs_shape = tuple(self.backbone_out_shape)
 
     def _to_unit_float(self, x: torch.Tensor) -> torch.Tensor:
         """Convert tensor to unit float [0, 1]."""
@@ -229,6 +239,45 @@ class VisionEncoderAdapter(nn.Module):
         frames = obs.view(b, self.frame_stack, 3, h, w)
         feat = self.backbone(frames.reshape(b * self.frame_stack, 3, h, w).contiguous()).flatten(1)
         return feat.view(b, self.frame_stack, -1).to(torch.float16).contiguous()
+    
+    @torch.inference_mode()
+    def extract_multi_aug_features(
+        self,
+        obs_pixels: torch.Tensor,
+        aug_fn: "RandomShiftsAug",
+        num_copies: int = 2,
+    ) -> torch.Tensor:
+        """Extract K augmented copies of frozen encoder features."""
+        if self.backbone_trainable:
+            raise RuntimeError("extract_multi_aug_features is only for frozen encoders.")
+ 
+        if obs_pixels.ndim == 3:
+            obs_pixels = obs_pixels.unsqueeze(0)  # (1, C, H, W)
+ 
+        # Convert to float [0, 1] for the augmentation pipeline
+        obs_float = self._to_unit_float(obs_pixels)  # (1, C, H, W)
+ 
+        copies = []
+        for _ in range(num_copies):
+            # Apply random shift augmentation to the raw pixels.
+            aug_obs = aug_fn(obs_float * 255.0) / 255.0  # shift operates on [0,255] scale
+ 
+            # Encode through the frozen backbone (same logic as extract_cacheable_feature)
+            if self.vision_name == "sincro":
+                b, c, h, w = aug_obs.shape
+                feat = self.backbone(aug_obs.view(b, self.frame_stack, 3, h, w))
+            else:
+                b, c, h, w = aug_obs.shape
+                frames = aug_obs.view(b, self.frame_stack, 3, h, w)
+                feat = self.backbone(
+                    frames.reshape(b * self.frame_stack, 3, h, w).contiguous()
+                ).flatten(1)
+                feat = feat.view(b, self.frame_stack, -1)
+ 
+            copies.append(feat.squeeze(0).to(torch.float16))  # remove batch dim
+ 
+        # Stack along a new leading dimension: (K, ...)
+        return torch.stack(copies, dim=0).contiguous()
 
     def forward_pixels(self, obs: torch.Tensor) -> torch.Tensor:
         """Forward pass for pixel observations."""
@@ -338,7 +387,7 @@ class DrQv2MetaWorldAgent:
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
         self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
         self.aug = RandomShiftsAug(pad=int(acfg.get("random_shift_pad", 4)))
-
+        self.num_aug_copies = int(cfg.get("seer", {}).get("num_aug_copies", 7))
         self.train(True)
         self.critic_target.train(True)
 
@@ -363,7 +412,10 @@ class DrQv2MetaWorldAgent:
         self.train(False)
         obs_t = torch.as_tensor(obs, device=self.device)
         if not self.use_pixels:
-            if obs_t.ndim == len(self.encoder.replay_obs_shape):
+            if getattr(self.encoder, "num_aug_copies", 1) > 1:
+                # Multi-aug: stored as (K, *single_feat_shape); pick first copy for inference
+                obs_t = obs_t[0]
+            if obs_t.ndim == len(self.encoder._single_copy_obs_shape):
                 obs_t = obs_t.unsqueeze(0)
         proprio_t = torch.as_tensor(proprio, device=self.device, dtype=torch.float32).view(1, -1)
         obs_repr = self.encoder(obs_t, is_feature=not self.use_pixels)
@@ -407,6 +459,13 @@ class DrQv2MetaWorldAgent:
             with torch.no_grad():
                 next_repr = self.encoder(self.aug(next_obs.float()), is_feature=False)
         else:
+            K = getattr(self.encoder, "num_aug_copies", 1)
+            if K > 1:
+                # obs/next_obs: (B, K, *single_feat_shape) — randomly pick one copy
+                k_obs = torch.randint(K, (1,)).item()
+                k_next = torch.randint(K, (1,)).item()
+                obs = obs[:, k_obs]
+                next_obs = next_obs[:, k_next]
             obs_repr = self.encoder(obs, is_feature=True)
             with torch.no_grad():
                 next_repr = self.encoder(next_obs, is_feature=True)
