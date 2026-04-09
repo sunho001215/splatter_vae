@@ -521,11 +521,13 @@ def main():
     # ---------------- wandb init -------------------------------------------
     wandb_cfg = cfg.get("wandb", {})
     wandb_project = wandb_cfg.get("project", "ReViWo-RoboSuite")
+    wandb_run_name = wandb_cfg.get("run_name", None)
     wandb_entity = wandb_cfg.get("entity", None)
 
     wandb.init(
         project=wandb_project,
         entity=wandb_entity,
+        name=wandb_run_name,
         config={
             "dataset_path": dataset_path,
             "batch_size": batch_size,

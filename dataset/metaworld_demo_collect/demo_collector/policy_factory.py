@@ -13,15 +13,7 @@ import numpy as np
 class PolicyInfo:
     policy_type: str   # "scripted" | "random"
     policy_name: str
-
-
-class RandomPolicy:
-    def __init__(self, action_space) -> None:
-        self.action_space = action_space
-
-    def get_action(self, obs: np.ndarray) -> np.ndarray:
-        return self.action_space.sample()
-
+    
 
 def _try_import_policy_module(env_name: str):
     # env_name like "reach-v3" -> "sawyer_reach_v3_policy"

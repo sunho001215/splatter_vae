@@ -1,13 +1,13 @@
 output:
-  path: /home/ws/data/metaworld/near_expert/window_open.hdf5
+  path: /home/ws/data/metaworld/soccer.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "window-open-v3"
+  env_name: "soccer-v3"
   seed: 0
-  max_steps: 200
+  max_steps: 250
   terminate_on_success: true
 
 render:
@@ -56,9 +56,6 @@ policies:
     enabled: true
     num_demos: 125
     policy_class: null     # optional override
-  random:
-    enabled: false
-    num_demos: 0
 
 visualize:
   enabled: false         # show live window if possible

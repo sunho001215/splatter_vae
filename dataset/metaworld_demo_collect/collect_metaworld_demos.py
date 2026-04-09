@@ -19,7 +19,7 @@ from demo_collector.camera_math import (
     extrinsics_world_T_cam,
 )
 from demo_collector.render_mujoco import MujocoMultiCameraRenderer
-from demo_collector.policy_factory import RandomPolicy, make_scripted_policy
+from demo_collector.policy_factory import make_scripted_policy
 from demo_collector.hdf5_writier import HDF5DemoWriter, DemoMeta
 from demo_collector.viz import MultiCamVisualizer
 from dino_postprocess import add_dino_features_inplace
@@ -179,14 +179,15 @@ def main():
             )
 
             for t in range(cfg.metaworld.max_steps):
-                # Policy action
-                action = policy_obj.get_action(obs)
-                action = np.asarray(action).ravel().astype(np.float32)
-                
-                # Add gaussian noise to action
-                noise = np.random.normal(0, 0.3, size=action.shape).astype(np.float32)
-                noisy_action = action + noise
-                action = np.clip(noisy_action, env.action_space.low, env.action_space.high)
+                # Linearly anneal from nearly expert to random as demo_idx increases
+                prob_expert = 1.0 - (demo_idx / max(num - 1, 1))
+                if np.random.rand() < prob_expert:
+                    action = policy_obj.get_action(obs)
+                    action = np.asarray(action).ravel().astype(np.float32)
+                    noise = np.random.normal(scale=0.1, size=action.shape).astype(np.float32)
+                    action = np.clip(action + noise, env.action_space.low, env.action_space.high)
+                else:
+                    action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
 
                 # Step
                 next_obs, reward, done, info = _step_env(env, action)
@@ -255,11 +256,6 @@ def main():
     if cfg.policies.scripted.enabled and cfg.policies.scripted.num_demos > 0:
         pol, polinfo = make_scripted_policy(cfg.metaworld.env_name, cfg.policies.scripted.policy_class)
         run_policy_block("scripted", cfg.policies.scripted.num_demos, pol, polinfo.policy_name)
-
-    # ---- Collect random demos ----
-    if (not stop_requested) and cfg.policies.random.enabled and cfg.policies.random.num_demos > 0:
-        pol = RandomPolicy(env.action_space)
-        run_policy_block("random", cfg.policies.random.num_demos, pol, "RandomPolicy")
 
     writer.close()
     env.close()

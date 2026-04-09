@@ -69,7 +69,6 @@ class PolicyBlockCfg:
 @dataclass
 class PoliciesCfg:
     scripted: PolicyBlockCfg
-    random: PolicyBlockCfg
 
 
 @dataclass
@@ -113,7 +112,6 @@ def load_config(path: str) -> Config:
     pol_raw = raw["policies"]
     policies = PoliciesCfg(
         scripted=PolicyBlockCfg(**pol_raw.get("scripted", {})),
-        random=PolicyBlockCfg(**pol_raw.get("random", {})),
     )
 
     dino = DinoCfg(**raw.get("dino", {"enabled": False}))

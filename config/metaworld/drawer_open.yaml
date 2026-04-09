@@ -2,7 +2,7 @@
 # Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  hdf5_path: ../../data/metaworld/near_expert/drawer_open.hdf5
+  hdf5_path: ../../data/metaworld/drawer_open.hdf5
   batch_size: 64
   num_workers: 8
   pin_memory: true
@@ -99,8 +99,8 @@ splatter:
 # -----------------------------------------------------------------------------
 train:
   num_epochs: 100
-  max_global_steps: 400001
-  lr: 3.0e-5
+  max_global_steps: 700001
+  lr: 3.0e-4
   device: cuda
 
   # Original loss weights kept from the previous patch / current training logic.
@@ -114,8 +114,8 @@ train:
 
   eval_every: 100
   save_every: 5000
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/drawer_open_v2/
-  resume_from_last: false
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/drawer_open/
+  resume_from_last: true
 
 # -----------------------------------------------------------------------------
 # Optional logging
@@ -124,7 +124,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-drawer_open-v2
+  run_name: metaworld-drawer_open
   tags:
     - dep-masking-0.75
     - self-rec-weight-0.1
@@ -132,3 +132,5 @@ wandb:
     - depth-4
     - num-heads-4
     - DPT-fix
+    - lr-3e-4
+    - diverse-demo-collection

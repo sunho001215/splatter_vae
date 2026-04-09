@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 # Set default MuJoCo rendering backend to EGL for headless environments
 os.environ.setdefault("MUJOCO_GL", "egl")
 
+# Add project root to sys.path for imports
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import mujoco_mig_setup
+
 import random
-import sys
 from collections import deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
@@ -20,11 +27,6 @@ import numpy as np
 import torch
 import wandb
 import yaml
-
-# Add project root to sys.path for imports
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.drqv2.drqv2_metaworld import DrQv2MetaWorldAgent
 from agents.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
@@ -246,29 +248,12 @@ class MetaWorldSingleCameraEnv:
 
 
 @torch.inference_mode()
-def obs_to_replay(agent: "DrQv2MetaWorldAgent", obs_pixels: np.ndarray) -> np.ndarray:
+def obs_to_replay(agent: DrQv2MetaWorldAgent, obs_pixels: np.ndarray) -> np.ndarray:
     """Convert observation pixels to replay format."""
     if agent.use_pixels:
-        # ConvNet end-to-end: store raw pixels as before
         return np.asarray(obs_pixels, dtype=np.uint8)
- 
-    K = getattr(agent, "num_aug_copies", 7)
- 
-    if K > 1:
-        # ---- SEER multi-copy path ----
-        # Apply K different random shift augmentations, encode each copy.
-        obs_t = torch.as_tensor(obs_pixels, device=agent.device)
-        multi_feat = agent.encoder.extract_multi_aug_features(
-            obs_t, aug_fn=agent.aug, num_copies=K
-        )
-        # multi_feat shape: (K, *single_feat_shape), dtype float16
-        return multi_feat.cpu().numpy()
-    else:
-        # ---- Original single-copy path (backward compatible) ----
-        feat = agent.encoder.extract_cacheable_feature(
-            torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0)
-        )
-        return feat.squeeze(0).cpu().numpy()
+    feat = agent.encoder.extract_cacheable_feature(torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0))
+    return feat.squeeze(0).cpu().numpy()
 
 
 def evaluate(env: MetaWorldSingleCameraEnv, agent: DrQv2MetaWorldAgent, num_episodes: int, step: int, *, log_videos: bool = False, video_fps: int = 15) -> Dict[str, Any]:
