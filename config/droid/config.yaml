@@ -1,0 +1,136 @@
+# -----------------------------------------------------------------------------
+# Dataset / dataloader  (DROID-specific)
+# -----------------------------------------------------------------------------
+dataset:
+  # Path to the pre-processed DROID frame directory
+  # (output of: python droid_dataloader.py preprocess ...)
+  droid_dir: ../../data/droid/droid_frames/
+  batch_size: 256
+  num_workers: 8
+  pin_memory: true
+  train_ratio: 0.96
+  seed: 42
+  img_size: 128                  # same as meta-world (128x128)
+  min_time_gap: 25
+  max_frames_per_episode: null
+  max_episodes: null             # set to e.g. 1000 for quick debugging
+
+# -----------------------------------------------------------------------------
+# Model wrapper settings  (same as meta-world)
+# -----------------------------------------------------------------------------
+model:
+  fusion_style: "plus"
+  use_dependent_vq: true
+  is_dependent_ae: false
+  use_invariant_vq: true
+  is_invariant_ae: false
+  dep_input_mask_ratio: 0.75
+  dep_mask_eval: true
+
+# -----------------------------------------------------------------------------
+# Invariant / dependent codebooks  (same as meta-world)
+# -----------------------------------------------------------------------------
+codebook:
+  invariant:
+    n_embed: 512
+    embed_dim: 8
+    beta: 0.25
+  dependent:
+    n_embed: 64
+    embed_dim: 8
+    beta: 0.25
+
+# -----------------------------------------------------------------------------
+# ViT encoders + token transformer + DPT decoder  (same as meta-world)
+# -----------------------------------------------------------------------------
+vit:
+  patch_size: 16
+  in_chans: 3
+  embed_dim: 256
+  depth: 4
+  num_heads: 4
+  mlp_ratio: 4.0
+  qkv_bias: true
+  dropout: 0.0
+  attn_dropout: 0.0
+  drop_path_rate: 0.1
+  layerscale_init: 1.0e-5
+
+  selected_layers: [2, 5, 8, 11]
+
+  decoder_depth: 12
+  decoder_num_heads: 8
+  decoder_mlp_ratio: 4.0
+  decoder_drop_path_rate: 0.1
+  decoder_selected_layers: [2, 5, 8, 11]
+
+  dpt_features: 128
+
+# -----------------------------------------------------------------------------
+# Splatter / Gaussian parameterization  (same as meta-world)
+# -----------------------------------------------------------------------------
+splatter:
+  data:
+    img_height: 128
+    img_width: 128
+    znear: 0.1
+    zfar: 3.0
+    white_background: false
+    inverted_x: false
+    inverted_y: false
+    category: "generic"
+
+  model:
+    max_sh_degree: 1
+    isotropic: false
+    depth_scale: 0.1
+    depth_bias: -0.7
+    xyz_scale: 0.1
+    xyz_bias: 0.0
+    opacity_scale: 1.0
+    opacity_bias: -2.0
+    scale_scale: 0.02
+    scale_bias: -4.0
+    num_gaussians_per_pixel: 4
+
+# -----------------------------------------------------------------------------
+# Training  (same as meta-world)
+# -----------------------------------------------------------------------------
+train:
+  num_epochs: 100
+  max_global_steps: 1000001
+  lr: 3.0e-4
+  device: cuda
+
+  rec_weight: 1.0
+  ssim_weight: 0.2
+  vq_weight: 0.25
+  inv_contrastive_weight: 1.0
+  dep_contrastive_weight: 0.1
+  frustum_weight: 0.001
+  temperature: 0.1
+
+  eval_every: 1000
+  save_every: 5000
+  ckpt_dir: ./checkpoints/droid
+  resume_from_last: false
+
+  val_num_batches: 10
+  val_max_vis: 8
+
+# -----------------------------------------------------------------------------
+# Weights & Biases
+# -----------------------------------------------------------------------------
+wandb:
+  enabled: true
+  project: DROID-SplatterVAE
+  entity: null
+  run_name: droid-run
+  tags:
+    - dep-masking-0.75
+    - self-rec-weight-0.1
+    - embed-dim-256
+    - depth-4
+    - num-heads-4
+    - DPT-fix
+    - lr-3e-4

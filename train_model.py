@@ -934,6 +934,7 @@ def main():
     import yaml
 
     from dataset.dataloader import build_train_valid_loaders_robosuite
+    from dataset.droid_dataloader import build_train_valid_loaders_droid
     from utils.general_utils import set_random_seed
 
     from models.splatter import (
@@ -964,30 +965,60 @@ def main():
     # ---------------------------------------------------------------------
     # 3) Dataset / dataloaders
     # ---------------------------------------------------------------------
+    # ds_cfg = cfg.get("dataset", {})
+    # dataset_path = ds_cfg.get("hdf5_path", None)
+    # if dataset_path is None:
+    #     raise ValueError('Config field "dataset.hdf5_path" is required.')
+
+    # batch_size = int(ds_cfg.get("batch_size", 32))
+    # num_workers = int(ds_cfg.get("num_workers", 8))
+    # pin_memory = bool(ds_cfg.get("pin_memory", True))
+    # train_ratio = float(ds_cfg.get("train_ratio", 0.90))
+    # seed = int(ds_cfg.get("seed", 42))
+    # num_episodes = ds_cfg.get("num_episodes", None)
+    # max_frames_per_demo = ds_cfg.get("max_frames_per_demo", None)
+
+    # set_random_seed(seed)
+
+    # train_loader, valid_loader = build_train_valid_loaders_robosuite(
+    #     dataset_path=dataset_path,
+    #     batch_size=batch_size,
+    #     num_workers=num_workers,
+    #     pin_memory=pin_memory,
+    #     train_ratio=train_ratio,
+    #     seed=seed,
+    #     num_episodes=num_episodes,
+    #     max_frames_per_demo=max_frames_per_demo,
+    # )
+
     ds_cfg = cfg.get("dataset", {})
-    dataset_path = ds_cfg.get("hdf5_path", None)
-    if dataset_path is None:
-        raise ValueError('Config field "dataset.hdf5_path" is required.')
+    dataset_dir = ds_cfg.get("droid_dir", None)
+    if dataset_dir is None:
+        raise ValueError('Config field "dataset.droid_dir" is required.')
 
     batch_size = int(ds_cfg.get("batch_size", 32))
     num_workers = int(ds_cfg.get("num_workers", 8))
     pin_memory = bool(ds_cfg.get("pin_memory", True))
     train_ratio = float(ds_cfg.get("train_ratio", 0.90))
     seed = int(ds_cfg.get("seed", 42))
-    num_episodes = ds_cfg.get("num_episodes", None)
-    max_frames_per_demo = ds_cfg.get("max_frames_per_demo", None)
+    img_size = int(ds_cfg.get("img_size", 128))
+    min_time_gap = int(ds_cfg.get("min_time_gap", 25))
+    max_frames_per_episode = ds_cfg.get("max_frames_per_episode", None)
+    max_episodes = ds_cfg.get("max_episodes", None)
 
     set_random_seed(seed)
 
-    train_loader, valid_loader = build_train_valid_loaders_robosuite(
-        dataset_path=dataset_path,
+    train_loader, valid_loader = build_train_valid_loaders_droid(
+        dataset_dir=dataset_dir,
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
         train_ratio=train_ratio,
         seed=seed,
-        num_episodes=num_episodes,
-        max_frames_per_demo=max_frames_per_demo,
+        img_size=img_size,
+        min_time_gap=min_time_gap,
+        max_frames_per_episode=max_frames_per_episode,
+        max_episodes=max_episodes,
     )
 
     # Infer image resolution from one training batch.
