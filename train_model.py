@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -8,6 +9,10 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
+
+torch.backends.cudnn.benchmark = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 import wandb
 
@@ -27,6 +32,7 @@ class TrainConfig:
     max_global_steps: Optional[int] = None
     lr: float = 1e-4
     device: str = "cuda"
+    use_amp: bool = True
 
     # Keep the original loss weights.
     rec_weight: float = 1.0
@@ -42,8 +48,33 @@ class TrainConfig:
     ckpt_dir: str = "./checkpoints"
     resume_from_last: bool = False
 
-    val_num_batches: int = -1
+    val_num_batches: int = 2
     val_max_vis: int = 8
+
+
+def _make_grad_scaler(device: torch.device, enabled: bool):
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        try:
+            return torch.amp.GradScaler(device.type, enabled=enabled)
+        except TypeError:
+            return torch.amp.GradScaler(enabled=enabled)
+    return torch.cuda.amp.GradScaler(enabled=enabled)
+
+
+def _autocast_context(device: torch.device, enabled: bool):
+    if not enabled:
+        return nullcontext()
+    if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
+        return torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=True)
+    return torch.cuda.amp.autocast(dtype=torch.float16, enabled=True)
+
+
+def _autocast_disabled_context(device: torch.device):
+    if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
+        return torch.amp.autocast(device_type=device.type, enabled=False)
+    if device.type == "cuda":
+        return torch.cuda.amp.autocast(enabled=False)
+    return nullcontext()
 
 
 # ============================================================================
@@ -65,13 +96,10 @@ def encode_quartet(
         Tuple containing latent codes (z_inv_a, z_inv_b, z_inv_c, z_inv_d,
         z_dep_a, z_dep_b, z_dep_c, z_dep_d) and VQ losses.
     """
-    z_inv_a, inv_loss_a, z_dep_a, dep_loss_a, _ = vae.encode(image_a)
-    z_inv_b, inv_loss_b, z_dep_b, dep_loss_b, _ = vae.encode(image_b)
-    z_inv_c, inv_loss_c, z_dep_c, dep_loss_c, _ = vae.encode(image_c)
-    z_inv_d, inv_loss_d, z_dep_d, dep_loss_d, _ = vae.encode(image_d)
-
-    inv_vq_loss = 0.25 * (inv_loss_a + inv_loss_b + inv_loss_c + inv_loss_d)
-    dep_vq_loss = 0.25 * (dep_loss_a + dep_loss_b + dep_loss_c + dep_loss_d)
+    images = torch.cat([image_a, image_b, image_c, image_d], dim=0)
+    z_inv, inv_vq_loss, z_dep, dep_vq_loss, _ = vae.encode(images)
+    z_inv_a, z_inv_b, z_inv_c, z_inv_d = z_inv.chunk(4, dim=0)
+    z_dep_a, z_dep_b, z_dep_c, z_dep_d = z_dep.chunk(4, dim=0)
 
     return (
         z_inv_a, z_inv_b, z_inv_c, z_inv_d,
@@ -179,67 +207,106 @@ def _compute_soft_image_region_penalty(
     intrinsics: torch.Tensor,            # (B, V, 3, 3)
     img_h: int,
     img_w: int,
-    eps: float = 1e-6,
+    min_depth: float = 1e-3,
+    penalty_cap: float = 100.0,
 ) -> Dict[str, torch.Tensor]:
     """
     Softly penalize Gaussian centers whose projected pixels fall outside
     [0, W-1] x [0, H-1].
     """
-    B, N, _ = xyz_world.shape
-    V = world_view_transform.shape[1]
     device = xyz_world.device
-    dtype = xyz_world.dtype
 
-    # World xyz -> homogeneous coordinates.
-    ones = torch.ones((B, N, 1), device=device, dtype=dtype)
-    xyz_world_h = torch.cat([xyz_world, ones], dim=-1)  # (B, N, 4)
+    # This loss can explode under AMP: points behind or almost on the camera
+    # plane produce huge x/z, y/z values. Keep this projection in fp32 and
+    # handle invalid depth with a bounded penalty instead of dividing by eps.
+    with _autocast_disabled_context(device):
+        xyz_world_f = xyz_world.float()
+        world_view_f = world_view_transform.float()
+        intrinsics_f = intrinsics.float()
 
-    # Project world points into each camera frame.
-    # Result: (B, V, N, 4)
-    xyz_cam_h = torch.einsum("bvij,bnj->bvni", world_view_transform, xyz_world_h)
-    xyz_cam = xyz_cam_h[..., :3]  # (B, V, N, 3)
+        B, N, _ = xyz_world_f.shape
+        V = world_view_f.shape[1]
 
-    x = xyz_cam[..., 0]
-    y = xyz_cam[..., 1]
-    z = xyz_cam[..., 2]
+        # World xyz -> homogeneous coordinates.
+        ones = torch.ones((B, N, 1), device=device, dtype=xyz_world_f.dtype)
+        xyz_world_h = torch.cat([xyz_world_f, ones], dim=-1)  # (B, N, 4)
 
-    # Numerical safeguard only. This is not a z-regularizer.
-    z_safe = z.clamp_min(eps)
+        # Project world points into each camera frame.
+        # Result: (B, V, N, 4)
+        xyz_cam_h = torch.einsum("bvij,bnj->bvni", world_view_f, xyz_world_h)
+        xyz_cam = xyz_cam_h[..., :3]  # (B, V, N, 3)
 
-    fx = intrinsics[..., 0, 0].unsqueeze(-1)  # (B, V, 1)
-    fy = intrinsics[..., 1, 1].unsqueeze(-1)
-    cx = intrinsics[..., 0, 2].unsqueeze(-1)
-    cy = intrinsics[..., 1, 2].unsqueeze(-1)
+        x = xyz_cam[..., 0]
+        y = xyz_cam[..., 1]
+        z = xyz_cam[..., 2]
 
-    # Perspective projection.
-    u = fx * (x / z_safe) + cx  # (B, V, N)
-    v = fy * (y / z_safe) + cy  # (B, V, N)
+        min_z = max(float(min_depth), 1e-3)
+        valid_depth = torch.isfinite(z) & (z > min_z)
+        z_for_projection = torch.where(valid_depth, z, torch.ones_like(z))
 
-    max_u = float(max(img_w - 1, 1))
-    max_v = float(max(img_h - 1, 1))
+        fx = intrinsics_f[..., 0, 0].unsqueeze(-1)  # (B, V, 1)
+        fy = intrinsics_f[..., 1, 1].unsqueeze(-1)
+        cx = intrinsics_f[..., 0, 2].unsqueeze(-1)
+        cy = intrinsics_f[..., 1, 2].unsqueeze(-1)
 
-    # Soft amount by which the projected center is outside the image box.
-    # Zero if inside; positive if outside.
-    u_over = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
-    v_over = F.relu(-v) / max_v + F.relu(v - max_v) / max_v
-    per_view_penalty = u_over + v_over  # (B, V, N)
+        # Perspective projection. Invalid-depth points use z=1 only so the
+        # arithmetic stays finite; they are penalized by depth_penalty below.
+        u = fx * (x / z_for_projection) + cx  # (B, V, N)
+        v = fy * (y / z_for_projection) + cy  # (B, V, N)
 
-    # Boolean inactivity mask: outside image region in that camera frame.
-    outside_mask = (u < 0.0) | (u > max_u) | (v < 0.0) | (v > max_v)
+        finite_projection = torch.isfinite(u) & torch.isfinite(v)
+        u = torch.nan_to_num(u, nan=0.0, posinf=0.0, neginf=0.0)
+        v = torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
 
-    stats: Dict[str, torch.Tensor] = {
-        # Average penalty over batch, views, and gaussians.
-        "frustum_loss": per_view_penalty.mean(),
+        max_u = float(max(img_w - 1, 1))
+        max_v = float(max(img_h - 1, 1))
 
-        # Mean inactive ratio over both views.
-        "inactive_ratio_mean": outside_mask.float().mean(),
-    }
+        # Soft amount by which the projected center is outside the image box.
+        # Zero if inside; positive if outside.
+        u_over = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
+        v_over = F.relu(-v) / max_v + F.relu(v - max_v) / max_v
+        image_penalty = u_over + v_over  # (B, V, N)
+        image_penalty = torch.where(
+            valid_depth & finite_projection,
+            image_penalty,
+            torch.zeros_like(image_penalty),
+        )
 
-    # Log source / target separately when V == 2 (the usual case here).
-    if V >= 1:
-        stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
-    if V >= 2:
-        stats["inactive_ratio_tgt"] = outside_mask[:, 1].float().mean()
+        z_clean = torch.nan_to_num(z, nan=-min_z, posinf=min_z, neginf=-min_z)
+        depth_penalty = F.relu(min_z - z_clean) / min_z
+        depth_penalty = torch.where(
+            torch.isfinite(z),
+            depth_penalty,
+            torch.full_like(depth_penalty, float(penalty_cap)),
+        )
+
+        per_view_penalty = (image_penalty + depth_penalty).clamp(max=float(penalty_cap))
+
+        # Boolean inactivity mask: outside image region or outside valid depth.
+        outside_mask = (
+            (~valid_depth)
+            | (~finite_projection)
+            | (u < 0.0)
+            | (u > max_u)
+            | (v < 0.0)
+            | (v > max_v)
+        )
+
+        stats: Dict[str, torch.Tensor] = {
+            # Average penalty over batch, views, and gaussians.
+            "frustum_loss": per_view_penalty.mean(),
+
+            # Mean inactive ratio over both views.
+            "inactive_ratio_mean": outside_mask.float().mean(),
+            "invalid_depth_ratio_mean": (~valid_depth).float().mean(),
+            "nonfinite_projection_ratio_mean": (~finite_projection).float().mean(),
+        }
+
+        # Log source / target separately when V == 2 (the usual case here).
+        if V >= 1:
+            stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
+        if V >= 2:
+            stats["inactive_ratio_tgt"] = outside_mask[:, 1].float().mean()
 
     return stats
 
@@ -299,6 +366,7 @@ def _render_two_views_from_latents(
         intrinsics=intrinsics,
         img_h=splatter_cfg.data.img_height,
         img_w=splatter_cfg.data.img_width,
+        min_depth=splatter_cfg.data.znear,
     )
 
     return out["render"][:, 0], out["render"][:, 1], frustum_stats
@@ -328,57 +396,41 @@ def compute_reconstruction_and_renders(
     ssim_weight: float = 0.2,
 ) -> Dict[str, Any]:
     """
-    Same quartet supervision as before, but using direct K-Gaussian splatter rendering.
+    Same quartet supervision as before, but batched across the four shuffled
+    latent pairings for decode, Gaussian conversion, and rendering.
     """
     t_ji = torch.linalg.inv(t_ij)
 
-    rendered_self_i, rendered_self_j_from_i, frustum_self = _render_two_views_from_latents(
+    z_inv_all = torch.cat([z_inv_a, z_inv_a, z_inv_c, z_inv_c], dim=0)
+    z_dep_all = torch.cat([z_dep_a, z_dep_b, z_dep_a, z_dep_b], dim=0)
+    k_src_all = torch.cat([k_i, k_j, k_i, k_j], dim=0)
+    k_tgt_all = torch.cat([k_j, k_i, k_j, k_i], dim=0)
+    t_src_to_tgt_all = torch.cat([t_ij, t_ji, t_ij, t_ji], dim=0)
+
+    rendered_src_all, rendered_tgt_all, frustum_all = _render_two_views_from_latents(
         vae=vae,
         splatter_to_gaussians=splatter_to_gaussians,
         splatter_cfg=splatter_cfg,
-        z_inv=z_inv_a,
-        z_dep=z_dep_a,
-        k_src=k_i,
-        k_tgt=k_j,
-        t_src_to_tgt=t_ij,
+        z_inv=z_inv_all,
+        z_dep=z_dep_all,
+        k_src=k_src_all,
+        k_tgt=k_tgt_all,
+        t_src_to_tgt=t_src_to_tgt_all,
         bg=bg,
     )
 
-    rendered_swap_view_j, rendered_swap_view_i_from_j, frustum_swap_view = _render_two_views_from_latents(
-        vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
-        splatter_cfg=splatter_cfg,
-        z_inv=z_inv_a,
-        z_dep=z_dep_b,
-        k_src=k_j,
-        k_tgt=k_i,
-        t_src_to_tgt=t_ji,
-        bg=bg,
-    )
-
-    rendered_swap_state_i, rendered_swap_state_j_from_i, frustum_swap_state = _render_two_views_from_latents(
-        vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
-        splatter_cfg=splatter_cfg,
-        z_inv=z_inv_c,
-        z_dep=z_dep_a,
-        k_src=k_i,
-        k_tgt=k_j,
-        t_src_to_tgt=t_ij,
-        bg=bg,
-    )
-
-    rendered_swap_both_j, rendered_swap_both_i_from_j, frustum_swap_both = _render_two_views_from_latents(
-        vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
-        splatter_cfg=splatter_cfg,
-        z_inv=z_inv_c,
-        z_dep=z_dep_b,
-        k_src=k_j,
-        k_tgt=k_i,
-        t_src_to_tgt=t_ji,
-        bg=bg,
-    )
+    (
+        rendered_self_i,
+        rendered_swap_view_j,
+        rendered_swap_state_i,
+        rendered_swap_both_j,
+    ) = rendered_src_all.chunk(4, dim=0)
+    (
+        rendered_self_j_from_i,
+        rendered_swap_view_i_from_j,
+        rendered_swap_state_j_from_i,
+        rendered_swap_both_i_from_j,
+    ) = rendered_tgt_all.chunk(4, dim=0)
 
     # Native-view losses
     rec_self = compute_reconstruction_loss(rendered_self_i, gt_a_01, ssim_weight=ssim_weight)
@@ -400,34 +452,12 @@ def compute_reconstruction_and_renders(
 
     rec_loss = 0.1 * rec_native_loss + 0.9 * rec_cross_loss
 
-    # Average the soft image-frustum penalty over the 4 decoded scenes.
-    frustum_loss = 0.25 * (
-        frustum_self["frustum_loss"]
-        + frustum_swap_view["frustum_loss"]
-        + frustum_swap_state["frustum_loss"]
-        + frustum_swap_both["frustum_loss"]
-    )
-
-    inactive_ratio_mean = 0.25 * (
-        frustum_self["inactive_ratio_mean"]
-        + frustum_swap_view["inactive_ratio_mean"]
-        + frustum_swap_state["inactive_ratio_mean"]
-        + frustum_swap_both["inactive_ratio_mean"]
-    )
-
-    inactive_ratio_src = 0.25 * (
-        frustum_self["inactive_ratio_src"]
-        + frustum_swap_view["inactive_ratio_src"]
-        + frustum_swap_state["inactive_ratio_src"]
-        + frustum_swap_both["inactive_ratio_src"]
-    )
-
-    inactive_ratio_tgt = 0.25 * (
-        frustum_self["inactive_ratio_tgt"]
-        + frustum_swap_view["inactive_ratio_tgt"]
-        + frustum_swap_state["inactive_ratio_tgt"]
-        + frustum_swap_both["inactive_ratio_tgt"]
-    )
+    frustum_loss = frustum_all["frustum_loss"]
+    inactive_ratio_mean = frustum_all["inactive_ratio_mean"]
+    inactive_ratio_src = frustum_all["inactive_ratio_src"]
+    inactive_ratio_tgt = frustum_all["inactive_ratio_tgt"]
+    invalid_depth_ratio_mean = frustum_all["invalid_depth_ratio_mean"]
+    nonfinite_projection_ratio_mean = frustum_all["nonfinite_projection_ratio_mean"]
 
     out_dict: Dict[str, Any] = {
         "rec_loss": rec_loss,
@@ -447,6 +477,8 @@ def compute_reconstruction_and_renders(
         "inactive_ratio_mean": inactive_ratio_mean,
         "inactive_ratio_src": inactive_ratio_src,
         "inactive_ratio_tgt": inactive_ratio_tgt,
+        "invalid_depth_ratio_mean": invalid_depth_ratio_mean,
+        "nonfinite_projection_ratio_mean": nonfinite_projection_ratio_mean,
     }
 
     if return_renders:
@@ -529,6 +561,8 @@ def validate_and_log_wandb(
         "val/inactive_pct_mean": 0.0,
         "val/inactive_pct_src": 0.0,
         "val/inactive_pct_tgt": 0.0,
+        "val/invalid_depth_pct_mean": 0.0,
+        "val/nonfinite_projection_pct_mean": 0.0,
     }
 
     num_eval_batches = 0
@@ -620,6 +654,10 @@ def validate_and_log_wandb(
         scalar_sums["val/inactive_pct_mean"] += float(100.0 * rec_out["inactive_ratio_mean"].item())
         scalar_sums["val/inactive_pct_src"] += float(100.0 * rec_out["inactive_ratio_src"].item())
         scalar_sums["val/inactive_pct_tgt"] += float(100.0 * rec_out["inactive_ratio_tgt"].item())
+        scalar_sums["val/invalid_depth_pct_mean"] += float(100.0 * rec_out["invalid_depth_ratio_mean"].item())
+        scalar_sums["val/nonfinite_projection_pct_mean"] += float(
+            100.0 * rec_out["nonfinite_projection_ratio_mean"].item()
+        )
 
         # ------------------------------------------------------------
         # 5) Save image grids from the first validation batch only
@@ -723,6 +761,8 @@ def train_splatter_vae(
 
     # Direct converter has no trainable child predictor, so only optimize the VAE
     optimizer = torch.optim.Adam(list(vae.parameters()), lr=cfg_train.lr)
+    amp_enabled = bool(cfg_train.use_amp and device.type == "cuda")
+    scaler = _make_grad_scaler(device, enabled=amp_enabled)
 
     bg = (
         torch.ones(3, device=device)
@@ -741,6 +781,8 @@ def train_splatter_vae(
         vae.load_state_dict(ckpt["vae_state_dict"])
         splatter_to_gaussians.load_state_dict(ckpt["splatter_to_gaussians_state_dict"])
         optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        if "scaler_state_dict" in ckpt:
+            scaler.load_state_dict(ckpt["scaler_state_dict"])
         start_epoch = int(ckpt["epoch"])
         global_step = int(ckpt["global_step"])
 
@@ -763,117 +805,89 @@ def train_splatter_vae(
             # ================================================================
             # Data Loading and Preprocessing
             # ================================================================
-            image_a = batch["image_i_t"].to(device)
-            image_b = batch["image_j_t"].to(device)
-            image_c = batch["image_i_t1"].to(device)
-            image_d = batch["image_j_t1"].to(device)
-            t_ij = batch["T_ij"].to(device)
-            k_i = batch["K_i"].to(device)
-            k_j = batch["K_j"].to(device)
+            image_a = batch["image_i_t"].to(device, non_blocking=True)
+            image_b = batch["image_j_t"].to(device, non_blocking=True)
+            image_c = batch["image_i_t1"].to(device, non_blocking=True)
+            image_d = batch["image_j_t1"].to(device, non_blocking=True)
+            t_ij = batch["T_ij"].to(device, non_blocking=True)
+            k_i = batch["K_i"].to(device, non_blocking=True)
+            k_j = batch["K_j"].to(device, non_blocking=True)
 
-            # Convert images from [-1, 1] to [0, 1] range
-            gt_a_01 = (image_a + 1.0) * 0.5
-            gt_b_01 = (image_b + 1.0) * 0.5
-            gt_c_01 = (image_c + 1.0) * 0.5
-            gt_d_01 = (image_d + 1.0) * 0.5
+            optimizer.zero_grad(set_to_none=True)
 
-            # ================================================================
-            # Forward Pass: Encoding
-            # ================================================================
-            (
-                z_inv_a, z_inv_b, z_inv_c, z_inv_d,
-                z_dep_a, z_dep_b, z_dep_c, z_dep_d,
-                inv_vq_loss, dep_vq_loss,
-            ) = encode_quartet(vae, image_a, image_b, image_c, image_d)
+            with _autocast_context(device, enabled=amp_enabled):
+                # Convert images from [-1, 1] to [0, 1] range
+                gt_a_01 = (image_a + 1.0) * 0.5
+                gt_b_01 = (image_b + 1.0) * 0.5
+                gt_c_01 = (image_c + 1.0) * 0.5
+                gt_d_01 = (image_d + 1.0) * 0.5
 
-            # ================================================================
-            # Forward Pass: Reconstruction
-            # ================================================================
-            rec_out = compute_reconstruction_and_renders(
-                vae=vae,
-                splatter_to_gaussians=splatter_to_gaussians,
-                splatter_cfg=splatter_cfg,
-                gt_a_01=gt_a_01,
-                gt_b_01=gt_b_01,
-                gt_c_01=gt_c_01,
-                gt_d_01=gt_d_01,
-                z_inv_a=z_inv_a,
-                z_inv_c=z_inv_c,
-                z_dep_a=z_dep_a,
-                z_dep_b=z_dep_b,
-                k_i=k_i,
-                k_j=k_j,
-                t_ij=t_ij,
-                bg=bg,
-                return_renders=False,
-                ssim_weight=cfg_train.ssim_weight,
-            )
-            rec_loss = rec_out["rec_loss"]
-            frustum_loss = rec_out["frustum_loss"]
+                # ============================================================
+                # Forward Pass: Encoding
+                # ============================================================
+                (
+                    z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+                    z_dep_a, z_dep_b, z_dep_c, z_dep_d,
+                    inv_vq_loss, dep_vq_loss,
+                ) = encode_quartet(vae, image_a, image_b, image_c, image_d)
 
-            # ================================================================
-            # Forward Pass: Contrastive Learning
-            # ================================================================
-            inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-                z_inv_a, z_inv_b, z_inv_c, z_inv_d,
-                z_dep_a, z_dep_b, z_dep_c, z_dep_d,
-                temperature=cfg_train.temperature,
-            )
-            
-            # ================================================================
-            # Loss Aggregation
-            # ================================================================
-            vq_loss = inv_vq_loss + dep_vq_loss
-            total_loss = (
-                cfg_train.rec_weight * rec_loss
-                + cfg_train.vq_weight * vq_loss
-                + cfg_train.inv_contrastive_weight * inv_contrastive_loss
-                + cfg_train.dep_contrastive_weight * dep_contrastive_loss
-                + cfg_train.frustum_weight * frustum_loss
-            )
+                # ============================================================
+                # Forward Pass: Reconstruction
+                # ============================================================
+                rec_out = compute_reconstruction_and_renders(
+                    vae=vae,
+                    splatter_to_gaussians=splatter_to_gaussians,
+                    splatter_cfg=splatter_cfg,
+                    gt_a_01=gt_a_01,
+                    gt_b_01=gt_b_01,
+                    gt_c_01=gt_c_01,
+                    gt_d_01=gt_d_01,
+                    z_inv_a=z_inv_a,
+                    z_inv_c=z_inv_c,
+                    z_dep_a=z_dep_a,
+                    z_dep_b=z_dep_b,
+                    k_i=k_i,
+                    k_j=k_j,
+                    t_ij=t_ij,
+                    bg=bg,
+                    return_renders=False,
+                    ssim_weight=cfg_train.ssim_weight,
+                )
+                rec_loss = rec_out["rec_loss"]
+                frustum_loss = rec_out["frustum_loss"]
+
+                # ============================================================
+                # Forward Pass: Contrastive Learning
+                # ============================================================
+                inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
+                    z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+                    z_dep_a, z_dep_b, z_dep_c, z_dep_d,
+                    temperature=cfg_train.temperature,
+                )
+
+                # ============================================================
+                # Loss Aggregation
+                # ============================================================
+                vq_loss = inv_vq_loss + dep_vq_loss
+                total_loss = (
+                    cfg_train.rec_weight * rec_loss
+                    + cfg_train.vq_weight * vq_loss
+                    + cfg_train.inv_contrastive_weight * inv_contrastive_loss
+                    + cfg_train.dep_contrastive_weight * dep_contrastive_loss
+                    + cfg_train.frustum_weight * frustum_loss
+                )
 
             # ================================================================
             # Backward Pass and Optimization
             # ================================================================
-            optimizer.zero_grad(set_to_none=True)
-            total_loss.backward()
-            optimizer.step()
+            scaler.scale(total_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             # ================================================================
             # Logging
             # ================================================================
-            if wandb.run is not None:
-                wandb.log(
-                    {
-                        "train/total_loss": total_loss.item(),
-                        "train/rec_loss": rec_loss.item(),
-                        "train/rec_native_loss": rec_out["rec_native_loss"].item(),
-                        "train/rec_cross_loss": rec_out["rec_cross_loss"].item(),
-                        "train/rec_self": rec_out["rec_self"].item(),
-                        "train/rec_swap_view": rec_out["rec_swap_view"].item(),
-                        "train/rec_swap_state": rec_out["rec_swap_state"].item(),
-                        "train/rec_swap_both": rec_out["rec_swap_both"].item(),
-                        "train/rec_self_cross": rec_out["rec_self_cross"].item(),
-                        "train/rec_swap_view_cross": rec_out["rec_swap_view_cross"].item(),
-                        "train/rec_swap_state_cross": rec_out["rec_swap_state_cross"].item(),
-                        "train/rec_swap_both_cross": rec_out["rec_swap_both_cross"].item(),
-                        "train/vq_loss": vq_loss.item(),
-                        "train/inv_vq_loss": inv_vq_loss.item(),
-                        "train/dep_vq_loss": dep_vq_loss.item(),
-                        "train/inv_contrastive_loss": inv_contrastive_loss.item(),
-                        "train/dep_contrastive_loss": dep_contrastive_loss.item(),
-                        "train/frustum_loss": frustum_loss.item(),
-                        "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
-                        "train/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"].item(),
-                        "train/inactive_pct_src": 100.0 * rec_out["inactive_ratio_src"].item(),
-                        "train/inactive_pct_tgt": 100.0 * rec_out["inactive_ratio_tgt"].item(),
-                        "train/frustum_weight": float(cfg_train.frustum_weight),
-                        "train/global_step": global_step,
-                    },
-                    step=global_step,
-                )
-
-            if step % 50 == 0:
+            if step % 250 == 0:
                 print(
                     f"[Epoch {epoch+1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} "
@@ -882,9 +896,44 @@ def train_splatter_vae(
                     f"cross={rec_out['rec_cross_loss'].item():.4f}, "
                     f"vq={vq_loss.item():.4f}, "
                     f"inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"dep_con={dep_contrastive_loss.item():.4f})"
+                    f"dep_con={dep_contrastive_loss.item():.4f}, "
+                    f"frustum={frustum_loss.item():.4f})"
                 )
-            
+                if wandb.run is not None:
+                    wandb.log(
+                        {
+                            "train/total_loss": total_loss.item(),
+                            "train/rec_loss": rec_loss.item(),
+                            "train/rec_native_loss": rec_out["rec_native_loss"].item(),
+                            "train/rec_cross_loss": rec_out["rec_cross_loss"].item(),
+                            "train/rec_self": rec_out["rec_self"].item(),
+                            "train/rec_swap_view": rec_out["rec_swap_view"].item(),
+                            "train/rec_swap_state": rec_out["rec_swap_state"].item(),
+                            "train/rec_swap_both": rec_out["rec_swap_both"].item(),
+                            "train/rec_self_cross": rec_out["rec_self_cross"].item(),
+                            "train/rec_swap_view_cross": rec_out["rec_swap_view_cross"].item(),
+                            "train/rec_swap_state_cross": rec_out["rec_swap_state_cross"].item(),
+                            "train/rec_swap_both_cross": rec_out["rec_swap_both_cross"].item(),
+                            "train/vq_loss": vq_loss.item(),
+                            "train/inv_vq_loss": inv_vq_loss.item(),
+                            "train/dep_vq_loss": dep_vq_loss.item(),
+                            "train/inv_contrastive_loss": inv_contrastive_loss.item(),
+                            "train/dep_contrastive_loss": dep_contrastive_loss.item(),
+                            "train/frustum_loss": frustum_loss.item(),
+                            "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
+                            "train/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"].item(),
+                            "train/inactive_pct_src": 100.0 * rec_out["inactive_ratio_src"].item(),
+                            "train/inactive_pct_tgt": 100.0 * rec_out["inactive_ratio_tgt"].item(),
+                            "train/invalid_depth_pct_mean": 100.0 * rec_out["invalid_depth_ratio_mean"].item(),
+                            "train/nonfinite_projection_pct_mean": (
+                                100.0 * rec_out["nonfinite_projection_ratio_mean"].item()
+                            ),
+                            "train/frustum_weight": float(cfg_train.frustum_weight),
+                            "train/global_step": global_step,
+                        },
+                        step=global_step,
+                    )
+
             # ================================================================
             # Periodic validation
             # ================================================================
@@ -916,6 +965,7 @@ def train_splatter_vae(
                     "vae_state_dict": vae.state_dict(),
                     "splatter_to_gaussians_state_dict": splatter_to_gaussians.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
+                    "scaler_state_dict": scaler.state_dict(),
                 }
                 torch.save(ckpt, ckpt_path)
                 print(f"[Checkpoint] Saved checkpoint to {ckpt_path}")
@@ -965,61 +1015,61 @@ def main():
     # ---------------------------------------------------------------------
     # 3) Dataset / dataloaders
     # ---------------------------------------------------------------------
-    # ds_cfg = cfg.get("dataset", {})
-    # dataset_path = ds_cfg.get("hdf5_path", None)
-    # if dataset_path is None:
-    #     raise ValueError('Config field "dataset.hdf5_path" is required.')
-
-    # batch_size = int(ds_cfg.get("batch_size", 32))
-    # num_workers = int(ds_cfg.get("num_workers", 8))
-    # pin_memory = bool(ds_cfg.get("pin_memory", True))
-    # train_ratio = float(ds_cfg.get("train_ratio", 0.90))
-    # seed = int(ds_cfg.get("seed", 42))
-    # num_episodes = ds_cfg.get("num_episodes", None)
-    # max_frames_per_demo = ds_cfg.get("max_frames_per_demo", None)
-
-    # set_random_seed(seed)
-
-    # train_loader, valid_loader = build_train_valid_loaders_robosuite(
-    #     dataset_path=dataset_path,
-    #     batch_size=batch_size,
-    #     num_workers=num_workers,
-    #     pin_memory=pin_memory,
-    #     train_ratio=train_ratio,
-    #     seed=seed,
-    #     num_episodes=num_episodes,
-    #     max_frames_per_demo=max_frames_per_demo,
-    # )
-
     ds_cfg = cfg.get("dataset", {})
-    dataset_dir = ds_cfg.get("droid_dir", None)
-    if dataset_dir is None:
-        raise ValueError('Config field "dataset.droid_dir" is required.')
+    dataset_path = ds_cfg.get("hdf5_path", None)
+    if dataset_path is None:
+        raise ValueError('Config field "dataset.hdf5_path" is required.')
 
     batch_size = int(ds_cfg.get("batch_size", 32))
     num_workers = int(ds_cfg.get("num_workers", 8))
     pin_memory = bool(ds_cfg.get("pin_memory", True))
     train_ratio = float(ds_cfg.get("train_ratio", 0.90))
     seed = int(ds_cfg.get("seed", 42))
-    img_size = int(ds_cfg.get("img_size", 128))
-    min_time_gap = int(ds_cfg.get("min_time_gap", 25))
-    max_frames_per_episode = ds_cfg.get("max_frames_per_episode", None)
-    max_episodes = ds_cfg.get("max_episodes", None)
+    num_episodes = ds_cfg.get("num_episodes", None)
+    max_frames_per_demo = ds_cfg.get("max_frames_per_demo", None)
 
     set_random_seed(seed)
 
-    train_loader, valid_loader = build_train_valid_loaders_droid(
-        dataset_dir=dataset_dir,
+    train_loader, valid_loader = build_train_valid_loaders_robosuite(
+        dataset_path=dataset_path,
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
         train_ratio=train_ratio,
         seed=seed,
-        img_size=img_size,
-        min_time_gap=min_time_gap,
-        max_frames_per_episode=max_frames_per_episode,
-        max_episodes=max_episodes,
+        num_episodes=num_episodes,
+        max_frames_per_demo=max_frames_per_demo,
     )
+
+    # ds_cfg = cfg.get("dataset", {})
+    # dataset_dir = ds_cfg.get("droid_dir", None)
+    # if dataset_dir is None:
+    #     raise ValueError('Config field "dataset.droid_dir" is required.')
+
+    # batch_size = int(ds_cfg.get("batch_size", 32))
+    # num_workers = int(ds_cfg.get("num_workers", 8))
+    # pin_memory = bool(ds_cfg.get("pin_memory", True))
+    # train_ratio = float(ds_cfg.get("train_ratio", 0.90))
+    # seed = int(ds_cfg.get("seed", 42))
+    # img_size = int(ds_cfg.get("img_size", 128))
+    # min_time_gap = int(ds_cfg.get("min_time_gap", 25))
+    # max_frames_per_episode = ds_cfg.get("max_frames_per_episode", None)
+    # max_episodes = ds_cfg.get("max_episodes", None)
+
+    # set_random_seed(seed)
+
+    # train_loader, valid_loader = build_train_valid_loaders_droid(
+    #     dataset_dir=dataset_dir,
+    #     batch_size=batch_size,
+    #     num_workers=num_workers,
+    #     pin_memory=pin_memory,
+    #     train_ratio=train_ratio,
+    #     seed=seed,
+    #     img_size=img_size,
+    #     min_time_gap=min_time_gap,
+    #     max_frames_per_episode=max_frames_per_episode,
+    #     max_episodes=max_episodes,
+    # )
 
     # Infer image resolution from one training batch.
     sample_batch = next(iter(train_loader))

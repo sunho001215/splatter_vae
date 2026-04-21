@@ -1,10 +1,10 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-stick-push-DrQv2
-  name: ReViWo_seed42
+  name: ReViWo_seed98
 
 env:
   benchmark_id: Meta-World/MT1
@@ -13,7 +13,7 @@ env:
   image_width: 128
   frame_stack: 3
   action_repeat: 2
-  max_episode_steps: 150
+  max_episode_steps: 250
 
   cameras:
     - name: cam0
@@ -131,19 +131,19 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/stick_push/reviwo/seed42/
+  replay_dir: ./buffer/metaworld/stick_push/reviwo/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
   nstep: 3
 
   log_every_steps: 1000
-  eval_every_steps: 5000
+  eval_every_steps: 10000
   num_eval_episodes: 100
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/reviwo/stick_push/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/reviwo/stick_push/seed98/
 
 visualization:
   enabled: false

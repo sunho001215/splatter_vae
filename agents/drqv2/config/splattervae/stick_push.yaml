@@ -3,17 +3,17 @@ device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-assembly-DrQv2
-  name: SinCro_seed98
+  project: metaworld-stick-push-DrQv2
+  name: SplatterVAE_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: assembly
+  env_name: stick-push
   image_height: 128
   image_width: 128
   frame_stack: 3
   action_repeat: 2
-  max_episode_steps: 150
+  max_episode_steps: 250
 
   cameras:
     - name: cam0
@@ -52,49 +52,55 @@ env:
   up: [0.0, 0.0, 1.0]
 
 vision:
-  encoder_type: sincro
+  encoder_type: splatter_vae
   img_height: 128
   img_width: 128
 
-  sincro:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/assembly/step_00300000.pth
-
-    img_size: 128
-    netdepth: 8
-    netwidth: 256
-    netdepth_fine: 8
-    netwidth_fine: 256
-    N_rand: 1024
-    N_samples: 64
-    N_importance: 128
-    multires: 10
-    multires_views: 4
-    i_embed: 0
-    use_viewdirs: true
-    raw_noise_std: 0.0
-    white_bkgd: false
-    perturb: 1.0
-    lindisp: false
-
+  vit:
     patch_size: 16
+    in_chans: 3
     embed_dim: 256
-    vit_depth: 4
-    vit_num_heads: 4
-    vit_mlp_dim: 1024
-    decoder_depth: 2
-    decoder_num_heads: 2
-    decoder_mlp_dim: 1024
-    decoder_output_dim: 256
+    depth: 4
+    num_heads: 4
+    mlp_ratio: 4.0
+    qkv_bias: true
+    dropout: 0.0
+    attn_dropout: 0.0
+    drop_path_rate: 0.1
+    layerscale_init: 1.0e-5
+    selected_layers: [2, 5, 8, 11]
+    decoder_depth: 8
+    decoder_num_heads: 4
+    decoder_mlp_ratio: 4.0
+    decoder_drop_path_rate: 0.1
+    decoder_selected_layers: [1, 3, 5, 7]
+    dpt_features: 128
 
-    time_interval: 3
-    mask_ratio: 0.75
-    num_views: 6
+  splatter_vae:
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/stick_push/step_00250000.pth
+    feature_source: codebook
+    max_sh_degree: 1
+    num_gaussians_per_pixel: 4
+    splatter_channels: 96
 
-    near: 0.1
-    far: 2.5
-    chunk: 32768
+    codebook:
+      invariant:
+        n_embed: 512
+        embed_dim: 8
+        beta: 0.25
+      dependent:
+        n_embed: 64
+        embed_dim: 8
+        beta: 0.25
 
-    pool: flatten
+    model:
+      fusion_style: plus
+      use_dependent_vq: true
+      is_dependent_ae: false
+      use_invariant_vq: true
+      is_invariant_ae: false
+      dep_input_mask_ratio: 0.75
+      dep_mask_eval: true
 
 agent:
   lr: 1.0e-4
@@ -127,23 +133,22 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/assembly/sincro/seed98/
+  replay_dir: ./buffer/metaworld/stick_push/splattervae/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
   nstep: 3
 
   log_every_steps: 1000
-  eval_every_steps: 5000
+  eval_every_steps: 10000
   num_eval_episodes: 100
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/assembly/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/stick_push/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_assembly_drqv2
+  window_name: metaworld_stick_push_drqv2
   wait_key: 1
   scale: 1.0
-

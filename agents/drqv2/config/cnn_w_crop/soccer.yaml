@@ -3,12 +3,12 @@ device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-drawer-open-DrQv2
+  project: metaworld-soccer-DrQv2
   name: CNN_randomcrop_seed66
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: drawer-open
+  env_name: soccer
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -92,7 +92,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer_open/cnn_w_crop/seed66/
+  replay_dir: ./buffer/metaworld/soccer/cnn_w_crop/seed66/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -104,11 +104,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/drawer_open/seed66/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/soccer/seed66/
 
 visualization:
   enabled: false
-  window_name: metaworld_drawer_open_drqv2
+  window_name: metaworld_soccer_drqv2
   wait_key: 1
   scale: 1.0
 

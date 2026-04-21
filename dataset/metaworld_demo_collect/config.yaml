@@ -1,13 +1,13 @@
 output:
-  path: /home/ws/data/metaworld/soccer.hdf5
+  path: /home/ws/data/metaworld/window_open.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "soccer-v3"
+  env_name: "window-open-v3"
   seed: 0
-  max_steps: 250
+  max_steps: 450
   terminate_on_success: true
 
 render:
@@ -54,7 +54,7 @@ segmentation:
 policies:
   scripted:
     enabled: true
-    num_demos: 125
+    num_demos: 400
     policy_class: null     # optional override
 
 visualize:
@@ -69,7 +69,7 @@ visualize:
   video_fps: 10.0
 
 dino:
-  enabled: true
+  enabled: false
   model: "dinov2_vitb14"   # torch.hub model name
   image_size: 224
   batch_size: 256

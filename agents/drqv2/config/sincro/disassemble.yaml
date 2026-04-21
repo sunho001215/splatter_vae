@@ -13,7 +13,7 @@ env:
   image_width: 128
   frame_stack: 3
   action_repeat: 2
-  max_episode_steps: 150
+  max_episode_steps: 250
 
   cameras:
     - name: cam0
@@ -57,7 +57,7 @@ vision:
   img_width: 128
 
   sincro:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/disassemble/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/disassemble/step_00300000_encoder.tar
 
     img_size: 128
     netdepth: 8
@@ -134,7 +134,7 @@ train:
   nstep: 3
 
   log_every_steps: 1000
-  eval_every_steps: 5000
+  eval_every_steps: 10000
   num_eval_episodes: 100
   rolling_window: 10
 

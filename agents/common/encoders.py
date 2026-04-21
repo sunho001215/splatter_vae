@@ -43,6 +43,16 @@ def _flatten_feature_output(x: torch.Tensor) -> torch.Tensor:
     return x.contiguous() if x.dim() == 2 else x.flatten(1).contiguous()
 
 
+def _default_splatter_channels(max_sh_degree: int = 1, num_gaussians_per_pixel: int = 5) -> int:
+    """Infer decoder channels without importing the gsplat-backed renderer."""
+    if max_sh_degree not in (0, 1):
+        raise ValueError("SplatterVAE encoder supports max_sh_degree in {0, 1}.")
+    k = int(num_gaussians_per_pixel)
+    sh_rest = 0 if int(max_sh_degree) == 0 else 3 * (((int(max_sh_degree) + 1) ** 2) - 1)
+    channels_per_gaussian = 1 + 3 + 1 + 3 + 4 + 3 + sh_rest
+    return int(k * channels_per_gaussian)
+
+
 class ConvNet(nn.Module):
     """
     Official DrQ-v2 style encoder: stacked frames are channels and there is no
@@ -87,7 +97,7 @@ class SplatterVAEInvariantEncoder(nn.Module):
 
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
-        from models.vae import SplatterVAE, CodebookConfig, default_parent_splatter_channels
+        from models.vae import SplatterVAE, CodebookConfig
 
         sv_cfg = dict(cfg["vision"]["splatter_vae"])
         vit_cfg = dict(cfg["vision"]["vit"])
@@ -101,7 +111,16 @@ class SplatterVAEInvariantEncoder(nn.Module):
         inv_cb = CodebookConfig(**cb_cfg["invariant"])
         dep_cb = CodebookConfig(**cb_cfg["dependent"])
         max_sh_degree = int(sv_cfg.get("max_sh_degree", 1))
-        splatter_channels = int(sv_cfg.get("splatter_channels", default_parent_splatter_channels(max_sh_degree=max_sh_degree)))
+        num_gaussians_per_pixel = int(sv_cfg.get("num_gaussians_per_pixel", 5))
+        splatter_channels = int(
+            sv_cfg.get(
+                "splatter_channels",
+                _default_splatter_channels(
+                    max_sh_degree=max_sh_degree,
+                    num_gaussians_per_pixel=num_gaussians_per_pixel,
+                ),
+            )
+        )
 
         self.vae = SplatterVAE(
             vit_cfg=vit_cfg,

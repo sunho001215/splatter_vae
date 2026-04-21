@@ -1,6 +1,6 @@
 dataset:
   # Path to your RoboSuite multi-view HDF5 file
-  hdf5_path: "../../data/metaworld/disassemble.hdf5"
+  hdf5_path: "../../data/metaworld/soccer.hdf5"
 
   # DataLoader settings
   batch_size: 32
@@ -103,7 +103,7 @@ train:
   log_every: 50           # corresponds to original log_step
 
   # Checkpoint directory + resume flag
-  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/disassemble/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/soccer/"
   resume_from_last: false
 
   # Number of views per sample in this trainer
@@ -111,5 +111,5 @@ train:
 
 wandb:
   project: "ReViWo-MetaWorld"
-  run_name: "disassemble"  # set to your desired run name
+  run_name: "soccer"  # set to your desired run name
   entity: null            # set to your wandb username/org if needed

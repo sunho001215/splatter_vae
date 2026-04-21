@@ -1,14 +1,14 @@
-seed: 66
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-drawer-open-DrQv2
-  name: CNN_randomcrop_seed66
+  project: metaworld-disassemble-DrQv2
+  name: SplatterVAE_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: drawer-open
+  env_name: disassemble
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -47,19 +47,60 @@ env:
       phi: 30.0            
       fovy: 45.0
 
+
   lookat: [0.0, 0.6, 0.0]
   up: [0.0, 0.0, 1.0]
 
 vision:
-  encoder_type: convnet
+  encoder_type: splatter_vae
+  img_height: 128
+  img_width: 128
 
-  # ------------------------------------------------------------
-  # Baseline: end-to-end ConvNet + random crop (enabled inside
-  # `policies/models/vision.py` when the module is in train mode).
-  # ------------------------------------------------------------
-  convnet:
-    crop_height: 100
-    crop_width: 100
+  vit:
+    patch_size: 16
+    in_chans: 3
+    embed_dim: 256
+    depth: 4
+    num_heads: 4
+    mlp_ratio: 4.0
+    qkv_bias: true
+    dropout: 0.0
+    attn_dropout: 0.0
+    drop_path_rate: 0.1
+    layerscale_init: 1.0e-5
+    selected_layers: [2, 5, 8, 11]
+    decoder_depth: 8
+    decoder_num_heads: 4
+    decoder_mlp_ratio: 4.0
+    decoder_drop_path_rate: 0.1
+    decoder_selected_layers: [1, 3, 5, 7]
+    dpt_features: 128
+
+  splatter_vae:
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/disassemble/step_00250000.pth
+    feature_source: codebook
+    max_sh_degree: 1
+    num_gaussians_per_pixel: 4
+    splatter_channels: 96
+
+    codebook:
+      invariant:
+        n_embed: 512
+        embed_dim: 8
+        beta: 0.25
+      dependent:
+        n_embed: 64
+        embed_dim: 8
+        beta: 0.25
+
+    model:
+      fusion_style: plus
+      use_dependent_vq: true
+      is_dependent_ae: false
+      use_invariant_vq: true
+      is_invariant_ae: false
+      dep_input_mask_ratio: 0.75
+      dep_mask_eval: true
 
 agent:
   lr: 1.0e-4
@@ -92,7 +133,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer_open/cnn_w_crop/seed66/
+  replay_dir: ./buffer/metaworld/disassemble/splattervae/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -100,15 +141,14 @@ train:
 
   log_every_steps: 1000
   eval_every_steps: 10000
-  num_eval_episodes: 120
+  num_eval_episodes: 100
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/drawer_open/seed66/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/disassemble/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_drawer_open_drqv2
+  window_name: metaworld_disassemble_drqv2
   wait_key: 1
   scale: 1.0
-

@@ -1,18 +1,18 @@
 """
-DROID Dataset Dataloader for SplatterVAE Training
-===================================================
+DROID Dataset Dataloader for SplatterVAE Training  (v4)
+========================================================
 
-Produces the same batch format as RoboSuiteMultiViewTemporalHDF5Dataset:
+Changes from v2:
+  - fx != fy is fine — the rendering pipeline already supports it.
+  - The real NaN cause: some DUSt3R-optimized rotation matrices are
+    not perfectly orthogonal (det != 1, R^T R != I). When these get
+    inverted and multiplied, numerical errors compound and produce
+    huge/infinite values in T_ij, which blow up the frustum loss.
+  - Fix: orthogonalize rotation matrices via SVD during preprocessing,
+    and skip episodes where poses are degenerate.
+
+Batch format (unchanged):
     image_i_t, image_j_t, image_i_t1, image_j_t1, T_ij, K_i, K_j
-
-Two-step pipeline:
-    1. Preprocess: RLDS episodes -> per-episode frame directories (one-time)
-    2. Train: PyTorch Dataset reads frame directories (fast random access)
-
-Data sources:
-    - DROID RLDS v1.0.1:  gs://gresearch/robotics/droid/1.0.1
-    - cam2cam_extrinsics.json from https://huggingface.co/KarlP/droid
-    - intrinsics.json from https://huggingface.co/KarlP/droid
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def image_to_tensor(img_rgb: np.ndarray) -> torch.Tensor:
 
 
 def invert_4x4(m: np.ndarray) -> np.ndarray:
-    """Invert a rigid-body 4x4 transform (bottom row = [0,0,0,1])."""
+    """Invert a rigid-body 4x4 transform."""
     R, t = m[:3, :3], m[:3, 3:4]
     out = np.eye(4, dtype=np.float32)
     out[:3, :3] = R.T
@@ -48,66 +48,104 @@ def invert_4x4(m: np.ndarray) -> np.ndarray:
 
 
 def resize_image(img: np.ndarray, size: int) -> np.ndarray:
-    """Resize (H,W,3) image to (size,size,3)."""
+    """Resize (H,W,3) to (size,size,3). fx != fy is handled by intrinsics."""
     return cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
 
 
 def scale_intrinsics(K: np.ndarray, oh: int, ow: int, nh: int, nw: int) -> np.ndarray:
-    """Scale 3x3 intrinsics matrix for a resized image."""
+    """Scale 3x3 intrinsics for a resized image."""
     K = K.copy()
     K[0, 0] *= nw / ow;  K[0, 2] *= nw / ow   # fx, cx
     K[1, 1] *= nh / oh;  K[1, 2] *= nh / oh   # fy, cy
     return K
 
 
+def orthogonalize_rotation(R: np.ndarray) -> np.ndarray:
+    """
+    Project a near-rotation 3x3 matrix onto SO(3) via SVD.
+    Fixes non-orthogonal rotations from DUSt3R optimization that
+    would otherwise cause numerical instability in inversion/composition.
+    """
+    U, _, Vt = np.linalg.svd(R)
+    # Ensure proper rotation (det = +1), not reflection
+    det = np.linalg.det(U @ Vt)
+    D = np.diag([1.0, 1.0, float(np.sign(det))])
+    return (U @ D @ Vt).astype(np.float32)
+
+
+def sanitize_pose(pose: np.ndarray) -> Optional[np.ndarray]:
+    """
+    Validate and fix a 4x4 camera pose matrix.
+    Returns None if the pose is degenerate (e.g. NaN, zero rotation).
+    """
+    if np.any(np.isnan(pose)) or np.any(np.isinf(pose)):
+        return None
+
+    R = pose[:3, :3]
+
+    # Check if rotation has reasonable magnitude (not all zeros)
+    if np.linalg.norm(R) < 0.1:
+        return None
+
+    # Orthogonalize rotation
+    R_clean = orthogonalize_rotation(R)
+
+    out = np.eye(4, dtype=np.float32)
+    out[:3, :3] = R_clean
+    out[:3, 3] = pose[:3, 3]
+    return out
+
+
 # ============================================================================
-# Parsing DROID calibration JSONs
+# Parsing cam2cam_extrinsics.json
 # ============================================================================
 
 def parse_cam2cam_entry(entry: dict) -> Optional[dict]:
     """
-    Parse one episode entry from cam2cam_extrinsics.json.
+    Parse one episode from cam2cam_extrinsics.json.
 
-    Actual format (from inspecting the file):
-        {
-            "relative_path": "Lab/status/date/timestamp",
-            "left_cam": {
-                "pose": [[4 floats], [4 floats], [4 floats], [4 floats]],  # 4x4 c2w matrix
-                "focal": float,
-                "principal_point": [cx, cy]
-            },
-            "right_cam": { ... same structure ... },
-            "metric_type": "num_matches",
-            "quality_metric": int
-        }
-
-    Returns dict with K_left, K_right, T_left_to_right, relative_path,
-    or None if parsing fails.
+    DUSt3R poses are camera-to-world in OpenCV convention — same as
+    SplatterVAE's rendering pipeline. No OpenGL flip needed.
+    Focal and principal_point are at SVO native resolution (1280x720).
     """
     if "left_cam" not in entry or "right_cam" not in entry:
         return None
 
     left, right = entry["left_cam"], entry["right_cam"]
 
-    # Parse 4x4 pose matrices (camera-to-world)
     try:
-        pose_left = np.array(left["pose"], dtype=np.float32)    # (4,4)
-        pose_right = np.array(right["pose"], dtype=np.float32)  # (4,4)
+        pose_left = np.array(left["pose"], dtype=np.float32)
+        pose_right = np.array(right["pose"], dtype=np.float32)
     except (ValueError, KeyError):
         return None
     if pose_left.shape != (4, 4) or pose_right.shape != (4, 4):
         return None
 
-    # Build 3x3 intrinsics from focal + principal_point
-    # Note: focal is a single scalar (fx == fy for ZED cameras)
-    # These are at SVO native resolution (1280x720)
+    # Sanitize: orthogonalize rotations, reject degenerate poses
+    pose_left = sanitize_pose(pose_left)
+    pose_right = sanitize_pose(pose_right)
+    if pose_left is None or pose_right is None:
+        return None
+
+    # Intrinsics at SVO resolution (1280x720)
     fl, pl = float(left["focal"]), left["principal_point"]
     fr, pr = float(right["focal"]), right["principal_point"]
+
+    # Reject obviously bad intrinsics
+    if fl <= 0 or fr <= 0 or any(np.isnan([fl, fr, pl[0], pl[1], pr[0], pr[1]])):
+        return None
+
     K_left  = np.array([[fl, 0, pl[0]], [0, fl, pl[1]], [0, 0, 1]], dtype=np.float32)
     K_right = np.array([[fr, 0, pr[0]], [0, fr, pr[1]], [0, 0, 1]], dtype=np.float32)
 
     # Relative transform: cam_left -> cam_right
     T_left_to_right = invert_4x4(pose_right) @ pose_left
+
+    # Sanity check: reject if relative transform has huge translation
+    # (would indicate a calibration failure)
+    baseline = np.linalg.norm(T_left_to_right[:3, 3])
+    if baseline > 5.0 or baseline < 1e-4 or np.isnan(baseline):
+        return None
 
     return {
         "K_left": K_left,  "K_right": K_right,
@@ -119,63 +157,45 @@ def parse_cam2cam_entry(entry: dict) -> Optional[dict]:
 
 
 # ============================================================================
-# Preprocessing: RLDS -> frame directories (run once)
+# Preprocessing
 # ============================================================================
 
 class DROIDPreprocessor:
     """
-    Convert DROID RLDS episodes into per-episode frame directories
-    for fast random-access during training.
-
-    Output layout:
-        <output_dir>/<episode_id>/
-            metadata.json
-            cam_left/00000.png, 00001.png, ...
-            cam_right/00000.png, 00001.png, ...
+    Convert DROID RLDS -> per-episode frame directories.
+    Uses distortion-resize (180x320 -> 128x128) with fx != fy intrinsics.
     """
 
     def __init__(self, rlds_dir: str, output_dir: str,
-                 cam2cam_json: str, intrinsics_json: str,
+                 cam2cam_json: str, intrinsics_json: str = "",
                  img_size: int = 128, min_quality: int = 0):
         self.rlds_dir = rlds_dir
         self.output_dir = output_dir
         self.img_size = img_size
-        self.min_quality = min_quality
 
-        print("[DROIDPreprocessor] Loading calibration JSONs...")
+        print("[DROIDPreprocessor] Loading cam2cam_extrinsics.json ...")
         with open(cam2cam_json) as f:
             cam2cam_raw = json.load(f)
-        # intrinsics.json is no longer needed — cam2cam has focal + principal_point
 
-        # Parse cam2cam and build relative_path -> (episode_id, calibration) lookup
         self.path_to_calib: Dict[str, Tuple[str, dict]] = {}
-        parsed_ok = 0
+        ok, rejected = 0, 0
         for ep_id, entry in cam2cam_raw.items():
             parsed = parse_cam2cam_entry(entry)
-            if parsed is None or parsed["quality_metric"] < self.min_quality:
+            if parsed is None:
+                rejected += 1
                 continue
-            rel_path = parsed["relative_path"]
-            if rel_path:
-                self.path_to_calib[rel_path] = (ep_id, parsed)
-                parsed_ok += 1
-
-        print(f"  cam2cam: {len(cam2cam_raw)} raw -> {parsed_ok} usable entries")
+            if parsed["quality_metric"] < min_quality:
+                rejected += 1
+                continue
+            rp = parsed["relative_path"]
+            if rp:
+                self.path_to_calib[rp] = (ep_id, parsed)
+                ok += 1
+        print(f"  {len(cam2cam_raw)} raw -> {ok} usable, {rejected} rejected (bad pose/intrinsics)")
 
     def _match_rlds_path(self, file_path: str) -> Optional[Tuple[str, dict]]:
-        """
-        Match an RLDS file_path to a cam2cam calibration entry.
-
-        RLDS path example:
-            gs://xembodiment_data/r2d2/r2d2-data-full/AUTOLab/success/.../trajectory.h5
-        relative_path in cam2cam example:
-            AUTOLab/success/2023-11-11/Sat_Nov_11_16:50:39_2023
-
-        Strategy: extract last 4 path components (Lab/status/date/timestamp).
-        """
         dir_path = file_path.rsplit("/", 1)[0] if "/" in file_path else file_path
         parts = dir_path.rstrip("/").split("/")
-
-        # Try last-4 components: Lab/status/date/timestamp
         if len(parts) >= 4:
             key = "/".join(parts[-4:])
             if key in self.path_to_calib:
@@ -183,7 +203,6 @@ class DROIDPreprocessor:
         return None
 
     def run(self, max_episodes: Optional[int] = None):
-        """Iterate RLDS episodes, decode frames, save to disk."""
         import tensorflow_datasets as tfds
 
         os.makedirs(self.output_dir, exist_ok=True)
@@ -193,14 +212,13 @@ class DROIDPreprocessor:
         processed, skipped = 0, 0
         skip_reasons = {"no_path_match": 0, "too_short": 0}
 
-        # SVO native resolution -> RLDS resolution -> target resolution
+        # Intrinsic scaling: SVO (1280x720) -> RLDS (320x180) -> target (128x128)
         svo_h, svo_w = 720, 1280
         rlds_h, rlds_w = 180, 320
 
         for episode in ds:
             file_path = episode["episode_metadata"]["file_path"].numpy().decode("utf-8")
 
-            # Match to calibration
             match = self._match_rlds_path(file_path)
             if match is None:
                 skip_reasons["no_path_match"] += 1
@@ -208,7 +226,7 @@ class DROIDPreprocessor:
                 continue
             ep_id, calib = match
 
-            # Skip if already processed (allows resuming)
+            # Resume support
             ep_dir = os.path.join(self.output_dir, ep_id)
             meta_path = os.path.join(ep_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -217,13 +235,15 @@ class DROIDPreprocessor:
                     break
                 continue
 
-            # Scale intrinsics: SVO(1280x720) -> RLDS(320x180) -> target(img_size x img_size)
+            # Scale intrinsics: SVO -> RLDS -> target
+            # This produces fx != fy when target is square but source is not.
+            # The rendering pipeline handles this correctly.
             K_left  = scale_intrinsics(calib["K_left"],  svo_h, svo_w, rlds_h, rlds_w)
             K_right = scale_intrinsics(calib["K_right"], svo_h, svo_w, rlds_h, rlds_w)
             K_left  = scale_intrinsics(K_left,  rlds_h, rlds_w, self.img_size, self.img_size)
             K_right = scale_intrinsics(K_right, rlds_h, rlds_w, self.img_size, self.img_size)
 
-            # Decode and save frames
+            # Save frames (distortion-resize: 180x320 -> 128x128)
             os.makedirs(os.path.join(ep_dir, "cam_left"), exist_ok=True)
             os.makedirs(os.path.join(ep_dir, "cam_right"), exist_ok=True)
 
@@ -243,7 +263,7 @@ class DROIDPreprocessor:
                 skipped += 1
                 continue
 
-            # Camera poses and relative transform
+            # Extrinsics: poses are already sanitized (orthogonalized) in parse_cam2cam_entry
             c2w_left, c2w_right = calib["pose_left"], calib["pose_right"]
             w2c_left, w2c_right = invert_4x4(c2w_left), invert_4x4(c2w_right)
 
@@ -274,12 +294,6 @@ class DROIDPreprocessor:
 # ============================================================================
 
 class DROIDMultiViewTemporalDataset(Dataset):
-    """
-    DROID dataset for SplatterVAE training.
-    Reads pre-processed frame directories and produces batches matching:
-        image_i_t, image_j_t, image_i_t1, image_j_t1, T_ij, K_i, K_j
-    """
-
     def __init__(self, dataset_dir: str, episode_ids: List[str],
                  img_size: int = 128, min_time_gap: int = 10,
                  max_frames_per_episode: Optional[int] = None, seed: int = 0):
@@ -293,6 +307,7 @@ class DROIDMultiViewTemporalDataset(Dataset):
         self.episode_lengths: Dict[str, int] = {}
         self.samples: List[Tuple[str, int]] = []
 
+        skipped_bad = 0
         for ep_id in episode_ids:
             meta_path = os.path.join(dataset_dir, ep_id, "metadata.json")
             if not os.path.isfile(meta_path):
@@ -306,24 +321,41 @@ class DROIDMultiViewTemporalDataset(Dataset):
                 continue
 
             cl, cr = meta["cameras"]["cam_left"], meta["cameras"]["cam_right"]
+            K_l  = np.array(cl["K"],   dtype=np.float32)
+            K_r  = np.array(cr["K"],   dtype=np.float32)
+            w2c_l = np.array(cl["w2c"], dtype=np.float32)
+            c2w_l = np.array(cl["c2w"], dtype=np.float32)
+            w2c_r = np.array(cr["w2c"], dtype=np.float32)
+            c2w_r = np.array(cr["c2w"], dtype=np.float32)
+
+            # --- Validate: skip episodes with degenerate camera data ---
+            all_mats = [K_l, K_r, w2c_l, c2w_l, w2c_r, c2w_r]
+            if any(np.any(np.isnan(m)) or np.any(np.isinf(m)) for m in all_mats):
+                skipped_bad += 1
+                continue
+
+            # T_ij baseline must be in a reasonable range
+            T_ij = w2c_r @ c2w_l
+            baseline = np.linalg.norm(T_ij[:3, 3])
+            if baseline < 1e-4 or baseline > 10.0 or np.isnan(baseline):
+                skipped_bad += 1
+                continue
+
             self.episode_meta[ep_id] = {
-                "K_left":    np.array(cl["K"],   dtype=np.float32),
-                "K_right":   np.array(cr["K"],   dtype=np.float32),
-                "w2c_left":  np.array(cl["w2c"], dtype=np.float32),
-                "c2w_left":  np.array(cl["c2w"], dtype=np.float32),
-                "w2c_right": np.array(cr["w2c"], dtype=np.float32),
-                "c2w_right": np.array(cr["c2w"], dtype=np.float32),
+                "K_left": K_l,  "K_right": K_r,
+                "w2c_left": w2c_l,  "c2w_left": c2w_l,
+                "w2c_right": w2c_r, "c2w_right": c2w_r,
             }
             self.episode_lengths[ep_id] = nf
             self.samples.extend((ep_id, t) for t in range(nf))
 
-        print(f"[DROIDDataset] {len(self.episode_meta)} episodes, {len(self.samples)} samples")
+        print(f"[DROIDDataset] {len(self.episode_meta)} episodes, {len(self.samples)} samples "
+              f"(skipped {skipped_bad} bad)")
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def _sample_t1(self, T: int, t: int) -> int:
-        """Sample t1 with |t1-t| >= min_time_gap when possible."""
         far = [i for i in range(T) if abs(i - t) >= self.min_time_gap]
         if far:
             return self.rng.choice(far)
@@ -343,7 +375,6 @@ class DROIDMultiViewTemporalDataset(Dataset):
         meta = self.episode_meta[ep_id]
         t1 = self._sample_t1(T, t)
 
-        # Randomly swap which camera is view_i vs view_j
         if self.rng.random() < 0.5:
             ci, cj = "cam_left", "cam_right"
             K_i, K_j = meta["K_left"], meta["K_right"]
@@ -353,7 +384,6 @@ class DROIDMultiViewTemporalDataset(Dataset):
             K_i, K_j = meta["K_right"], meta["K_left"]
             w2c_j, c2w_i = meta["w2c_left"], meta["c2w_right"]
 
-        # T_ij: cam_i -> cam_j (same as robosuite dataloader)
         T_ij = (w2c_j @ c2w_i).astype(np.float32)
 
         return {
@@ -370,7 +400,7 @@ class DROIDMultiViewTemporalDataset(Dataset):
 
 
 # ============================================================================
-# DataLoader builder (drop-in for build_train_valid_loaders_robosuite)
+# DataLoader builder
 # ============================================================================
 
 def _worker_init_fn(worker_id: int):
@@ -386,7 +416,6 @@ def build_train_valid_loaders_droid(
     max_frames_per_episode: Optional[int] = None,
     max_episodes: Optional[int] = None,
 ) -> Tuple[DataLoader, DataLoader]:
-    """Build train/valid loaders with same batch format as robosuite version."""
     all_ids = sorted(d for d in os.listdir(dataset_dir)
                      if os.path.isfile(os.path.join(dataset_dir, d, "metadata.json")))
     if max_episodes:
@@ -401,7 +430,6 @@ def build_train_valid_loaders_droid(
 
     mk = lambda ids, s: DROIDMultiViewTemporalDataset(
         dataset_dir, ids, img_size, min_time_gap, max_frames_per_episode, s)
-        
     train_loader = DataLoader(mk(train_ids, seed), batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=pin_memory,
                               drop_last=True, worker_init_fn=_worker_init_fn)
@@ -423,7 +451,7 @@ if __name__ == "__main__":
     p = sub.add_parser("preprocess")
     p.add_argument("--rlds_dir", required=True)
     p.add_argument("--output_dir", required=True)
-    p.add_argument("--cam2cam_json", required=True, help="cam2cam_extrinsics.json")
+    p.add_argument("--cam2cam_json", required=True)
     p.add_argument("--intrinsics_json", default=None, help="(unused, kept for compat)")
     p.add_argument("--id2path_json", default=None, help="(unused, kept for compat)")
     p.add_argument("--img_size", type=int, default=128)
@@ -434,9 +462,8 @@ if __name__ == "__main__":
     if args.command == "preprocess":
         DROIDPreprocessor(
             rlds_dir=args.rlds_dir, output_dir=args.output_dir,
-            cam2cam_json=args.cam2cam_json,
-            intrinsics_json=args.intrinsics_json or "",
-            img_size=args.img_size, min_quality=args.min_quality,
+            cam2cam_json=args.cam2cam_json, img_size=args.img_size,
+            min_quality=args.min_quality,
         ).run(max_episodes=args.max_episodes)
     else:
         parser.print_help()

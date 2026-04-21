@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-import os
-os.environ['MUJOCO_GL'] = 'egl'
-os.environ['PYOPENGL_PLATFORM'] = 'egl'
-
 import argparse
+import os
+import sys
 from pathlib import Path
+
+# Set default MuJoCo rendering backend to EGL for headless environments
+os.environ.setdefault("MUJOCO_GL", "egl")
+
+# Add project root to sys.path for imports
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import mujoco_mig_setup
+
 import numpy as np
 from tqdm import tqdm
 
@@ -179,13 +188,11 @@ def main():
             )
 
             for t in range(cfg.metaworld.max_steps):
-                # Linearly anneal from nearly expert to random as demo_idx increases
-                prob_expert = 1.0 - (demo_idx / max(num - 1, 1))
+                # Quadratically anneal from nearly expert to random as demo_idx increases until halfway.
+                prob_expert = max(0.0, 1.0 - (demo_idx / (num / 2)) ** 2)
                 if np.random.rand() < prob_expert:
                     action = policy_obj.get_action(obs)
                     action = np.asarray(action).ravel().astype(np.float32)
-                    noise = np.random.normal(scale=0.1, size=action.shape).astype(np.float32)
-                    action = np.clip(action + noise, env.action_space.low, env.action_space.high)
                 else:
                     action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
 

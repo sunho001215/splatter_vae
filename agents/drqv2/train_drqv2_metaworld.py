@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 # Set default MuJoCo rendering backend to EGL for headless environments
 os.environ.setdefault("MUJOCO_GL", "egl")
@@ -16,7 +17,6 @@ import mujoco_mig_setup
 
 import random
 from collections import deque
-from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import cv2
