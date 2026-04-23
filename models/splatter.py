@@ -191,7 +191,9 @@ class VAESplatterToGaussians(nn.Module):
                 depth_stack = depth_pre
             else:
                 base = depth_pre[:, :, :1]           # (B, N, 1)
-                inc = torch.exp(depth_pre[:, :, 1:]) # (B, N, K-1), positive increments
+                # Clamp before exp() to avoid inf gradients from rare large logits.
+                inc_pre = depth_pre[:, :, 1:].clamp(min=-10.0, max=10.0)
+                inc = torch.exp(inc_pre)             # (B, N, K-1), positive increments
                 depth_tail = base + torch.cumsum(inc, dim=2)
                 depth_stack = torch.cat([base, depth_tail], dim=2)
 
@@ -201,6 +203,7 @@ class VAESplatterToGaussians(nn.Module):
 
         # Camera-space offset
         offset = offset * mcfg.xyz_scale + mcfg.xyz_bias  # (B, N, K, 3)
+        offset = torch.nan_to_num(offset, nan=0.0, posinf=0.0, neginf=0.0).clamp(-3.0, 3.0)
 
         # Ray directions from intrinsics come back as (B, 3, H, W)
         ray_dirs = build_ray_dirs_from_intrinsics(
@@ -295,9 +298,13 @@ class VAESplatterToGaussians(nn.Module):
             opacity_pre = opacity_logits * mcfg.opacity_scale + mcfg.opacity_bias
             scaling_pre = scaling_raw * mcfg.scale_scale + mcfg.scale_bias
 
+            opacity_pre = torch.nan_to_num(opacity_pre, nan=0.0, posinf=20.0, neginf=-20.0).clamp(-20.0, 20.0)
+            scaling_pre = torch.nan_to_num(scaling_pre, nan=-10.0, posinf=4.0, neginf=-10.0).clamp(-10.0, 4.0)
+            rotation_raw = torch.nan_to_num(rotation_raw, nan=0.0, posinf=0.0, neginf=0.0)
+
             opacity = self.opacity_activation(opacity_pre)
             scaling = self.scaling_activation(scaling_pre)
-            rotation = self.rotation_activation(rotation_raw, dim=-1)
+            rotation = self.rotation_activation(rotation_raw, dim=-1, eps=1e-6)
         else:
             opacity = opacity_logits
             scaling = scaling_raw
@@ -313,6 +320,7 @@ class VAESplatterToGaussians(nn.Module):
             xyz_camera.unsqueeze(-2),
             rot_c2w.transpose(-1, -2),
         ).squeeze(-2) + trans_c2w
+        xyz_world = torch.nan_to_num(xyz_world, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Rotate Gaussian orientation into world frame
         q_world = source_cv2wT_quat[:, None, None, :].expand_as(rotation)
@@ -388,6 +396,10 @@ def render_predicted(
     scales = pc["scaling"] * scaling_modifier        # (B, N, 3)
     quats = pc["rotation"]                           # (B, N, 4)
     opacities = pc["opacity"].squeeze(-1)            # (B, N)
+    means = torch.nan_to_num(means, nan=0.0, posinf=0.0, neginf=0.0).clamp(-1e3, 1e3)
+    scales = torch.nan_to_num(scales, nan=1e-4, posinf=1e2, neginf=1e-4).clamp(1e-5, 1e2)
+    quats = F.normalize(torch.nan_to_num(quats, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
+    opacities = torch.nan_to_num(opacities, nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
 
     # ------------------------------------------------------------------
     # 2) Colors: SH (DC + rest) or override RGB

@@ -142,6 +142,10 @@ class VisionEncoderAdapter(nn.Module):
                 self.proj_head = SmallPostEncoderMLPHead(
                     in_dim=self.single_frame_dim, hidden_dim=proj_dim, out_dim=proj_dim
                 )
+            elif self.vision_name in {"splattervae", "reviwo"} and self.frame_stack == 1:
+                self.proj_head = SmallPostEncoderMLPHead(
+                    in_dim=self.single_frame_dim, hidden_dim=proj_dim, out_dim=proj_dim
+                )
             else:
                 self.proj_head = FrameMLPStackHead(
                     in_dim=self.single_frame_dim,

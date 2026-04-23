@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -32,7 +31,6 @@ class TrainConfig:
     max_global_steps: Optional[int] = None
     lr: float = 1e-4
     device: str = "cuda"
-    use_amp: bool = True
 
     # Keep the original loss weights.
     rec_weight: float = 1.0
@@ -50,32 +48,6 @@ class TrainConfig:
 
     val_num_batches: int = 2
     val_max_vis: int = 8
-
-
-def _make_grad_scaler(device: torch.device, enabled: bool):
-    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
-        try:
-            return torch.amp.GradScaler(device.type, enabled=enabled)
-        except TypeError:
-            return torch.amp.GradScaler(enabled=enabled)
-    return torch.cuda.amp.GradScaler(enabled=enabled)
-
-
-def _autocast_context(device: torch.device, enabled: bool):
-    if not enabled:
-        return nullcontext()
-    if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
-        return torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=True)
-    return torch.cuda.amp.autocast(dtype=torch.float16, enabled=True)
-
-
-def _autocast_disabled_context(device: torch.device):
-    if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
-        return torch.amp.autocast(device_type=device.type, enabled=False)
-    if device.type == "cuda":
-        return torch.cuda.amp.autocast(enabled=False)
-    return nullcontext()
-
 
 # ============================================================================
 # Encoding Functions
@@ -216,97 +188,95 @@ def _compute_soft_image_region_penalty(
     """
     device = xyz_world.device
 
-    # This loss can explode under AMP: points behind or almost on the camera
-    # plane produce huge x/z, y/z values. Keep this projection in fp32 and
-    # handle invalid depth with a bounded penalty instead of dividing by eps.
-    with _autocast_disabled_context(device):
-        xyz_world_f = xyz_world.float()
-        world_view_f = world_view_transform.float()
-        intrinsics_f = intrinsics.float()
+    # Keep this projection in fp32 for numeric stability: points behind or
+    # almost on the camera plane can produce huge x/z and y/z values.
+    xyz_world_f = xyz_world.float()
+    world_view_f = world_view_transform.float()
+    intrinsics_f = intrinsics.float()
 
-        B, N, _ = xyz_world_f.shape
-        V = world_view_f.shape[1]
+    B, N, _ = xyz_world_f.shape
+    V = world_view_f.shape[1]
 
-        # World xyz -> homogeneous coordinates.
-        ones = torch.ones((B, N, 1), device=device, dtype=xyz_world_f.dtype)
-        xyz_world_h = torch.cat([xyz_world_f, ones], dim=-1)  # (B, N, 4)
+    # World xyz -> homogeneous coordinates.
+    ones = torch.ones((B, N, 1), device=device, dtype=xyz_world_f.dtype)
+    xyz_world_h = torch.cat([xyz_world_f, ones], dim=-1)  # (B, N, 4)
 
-        # Project world points into each camera frame.
-        # Result: (B, V, N, 4)
-        xyz_cam_h = torch.einsum("bvij,bnj->bvni", world_view_f, xyz_world_h)
-        xyz_cam = xyz_cam_h[..., :3]  # (B, V, N, 3)
+    # Project world points into each camera frame.
+    # Result: (B, V, N, 4)
+    xyz_cam_h = torch.einsum("bvij,bnj->bvni", world_view_f, xyz_world_h)
+    xyz_cam = xyz_cam_h[..., :3]  # (B, V, N, 3)
 
-        x = xyz_cam[..., 0]
-        y = xyz_cam[..., 1]
-        z = xyz_cam[..., 2]
+    x = xyz_cam[..., 0]
+    y = xyz_cam[..., 1]
+    z = xyz_cam[..., 2]
 
-        min_z = max(float(min_depth), 1e-3)
-        valid_depth = torch.isfinite(z) & (z > min_z)
-        z_for_projection = torch.where(valid_depth, z, torch.ones_like(z))
+    min_z = max(float(min_depth), 1e-3)
+    valid_depth = torch.isfinite(z) & (z > min_z)
+    z_for_projection = torch.where(valid_depth, z, torch.ones_like(z))
 
-        fx = intrinsics_f[..., 0, 0].unsqueeze(-1)  # (B, V, 1)
-        fy = intrinsics_f[..., 1, 1].unsqueeze(-1)
-        cx = intrinsics_f[..., 0, 2].unsqueeze(-1)
-        cy = intrinsics_f[..., 1, 2].unsqueeze(-1)
+    fx = intrinsics_f[..., 0, 0].unsqueeze(-1)  # (B, V, 1)
+    fy = intrinsics_f[..., 1, 1].unsqueeze(-1)
+    cx = intrinsics_f[..., 0, 2].unsqueeze(-1)
+    cy = intrinsics_f[..., 1, 2].unsqueeze(-1)
 
-        # Perspective projection. Invalid-depth points use z=1 only so the
-        # arithmetic stays finite; they are penalized by depth_penalty below.
-        u = fx * (x / z_for_projection) + cx  # (B, V, N)
-        v = fy * (y / z_for_projection) + cy  # (B, V, N)
+    # Perspective projection. Invalid-depth points use z=1 only so the
+    # arithmetic stays finite; they are penalized by depth_penalty below.
+    u = fx * (x / z_for_projection) + cx  # (B, V, N)
+    v = fy * (y / z_for_projection) + cy  # (B, V, N)
 
-        finite_projection = torch.isfinite(u) & torch.isfinite(v)
-        u = torch.nan_to_num(u, nan=0.0, posinf=0.0, neginf=0.0)
-        v = torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
+    finite_projection = torch.isfinite(u) & torch.isfinite(v)
+    u = torch.nan_to_num(u, nan=0.0, posinf=0.0, neginf=0.0)
+    v = torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
 
-        max_u = float(max(img_w - 1, 1))
-        max_v = float(max(img_h - 1, 1))
+    max_u = float(max(img_w - 1, 1))
+    max_v = float(max(img_h - 1, 1))
 
-        # Soft amount by which the projected center is outside the image box.
-        # Zero if inside; positive if outside.
-        u_over = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
-        v_over = F.relu(-v) / max_v + F.relu(v - max_v) / max_v
-        image_penalty = u_over + v_over  # (B, V, N)
-        image_penalty = torch.where(
-            valid_depth & finite_projection,
-            image_penalty,
-            torch.zeros_like(image_penalty),
-        )
+    # Soft amount by which the projected center is outside the image box.
+    # Zero if inside; positive if outside.
+    u_over = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
+    v_over = F.relu(-v) / max_v + F.relu(v - max_v) / max_v
+    image_penalty = u_over + v_over  # (B, V, N)
+    image_penalty = torch.where(
+        valid_depth & finite_projection,
+        image_penalty,
+        torch.zeros_like(image_penalty),
+    )
 
-        z_clean = torch.nan_to_num(z, nan=-min_z, posinf=min_z, neginf=-min_z)
-        depth_penalty = F.relu(min_z - z_clean) / min_z
-        depth_penalty = torch.where(
-            torch.isfinite(z),
-            depth_penalty,
-            torch.full_like(depth_penalty, float(penalty_cap)),
-        )
+    z_clean = torch.nan_to_num(z, nan=-min_z, posinf=min_z, neginf=-min_z)
+    depth_penalty = F.relu(min_z - z_clean) / min_z
+    depth_penalty = torch.where(
+        torch.isfinite(z),
+        depth_penalty,
+        torch.full_like(depth_penalty, float(penalty_cap)),
+    )
 
-        per_view_penalty = (image_penalty + depth_penalty).clamp(max=float(penalty_cap))
+    per_view_penalty = (image_penalty + depth_penalty).clamp(max=float(penalty_cap))
 
-        # Boolean inactivity mask: outside image region or outside valid depth.
-        outside_mask = (
-            (~valid_depth)
-            | (~finite_projection)
-            | (u < 0.0)
-            | (u > max_u)
-            | (v < 0.0)
-            | (v > max_v)
-        )
+    # Boolean inactivity mask: outside image region or outside valid depth.
+    outside_mask = (
+        (~valid_depth)
+        | (~finite_projection)
+        | (u < 0.0)
+        | (u > max_u)
+        | (v < 0.0)
+        | (v > max_v)
+    )
 
-        stats: Dict[str, torch.Tensor] = {
-            # Average penalty over batch, views, and gaussians.
-            "frustum_loss": per_view_penalty.mean(),
+    stats: Dict[str, torch.Tensor] = {
+        # Average penalty over batch, views, and gaussians.
+        "frustum_loss": per_view_penalty.mean(),
 
-            # Mean inactive ratio over both views.
-            "inactive_ratio_mean": outside_mask.float().mean(),
-            "invalid_depth_ratio_mean": (~valid_depth).float().mean(),
-            "nonfinite_projection_ratio_mean": (~finite_projection).float().mean(),
-        }
+        # Mean inactive ratio over both views.
+        "inactive_ratio_mean": outside_mask.float().mean(),
+        "invalid_depth_ratio_mean": (~valid_depth).float().mean(),
+        "nonfinite_projection_ratio_mean": (~finite_projection).float().mean(),
+    }
 
-        # Log source / target separately when V == 2 (the usual case here).
-        if V >= 1:
-            stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
-        if V >= 2:
-            stats["inactive_ratio_tgt"] = outside_mask[:, 1].float().mean()
+    # Log source / target separately when V == 2 (the usual case here).
+    if V >= 1:
+        stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
+    if V >= 2:
+        stats["inactive_ratio_tgt"] = outside_mask[:, 1].float().mean()
 
     return stats
 
@@ -761,9 +731,6 @@ def train_splatter_vae(
 
     # Direct converter has no trainable child predictor, so only optimize the VAE
     optimizer = torch.optim.Adam(list(vae.parameters()), lr=cfg_train.lr)
-    amp_enabled = bool(cfg_train.use_amp and device.type == "cuda")
-    scaler = _make_grad_scaler(device, enabled=amp_enabled)
-
     bg = (
         torch.ones(3, device=device)
         if splatter_cfg.data.white_background
@@ -781,8 +748,6 @@ def train_splatter_vae(
         vae.load_state_dict(ckpt["vae_state_dict"])
         splatter_to_gaussians.load_state_dict(ckpt["splatter_to_gaussians_state_dict"])
         optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-        if "scaler_state_dict" in ckpt:
-            scaler.load_state_dict(ckpt["scaler_state_dict"])
         start_epoch = int(ckpt["epoch"])
         global_step = int(ckpt["global_step"])
 
@@ -815,74 +780,103 @@ def train_splatter_vae(
 
             optimizer.zero_grad(set_to_none=True)
 
-            with _autocast_context(device, enabled=amp_enabled):
-                # Convert images from [-1, 1] to [0, 1] range
-                gt_a_01 = (image_a + 1.0) * 0.5
-                gt_b_01 = (image_b + 1.0) * 0.5
-                gt_c_01 = (image_c + 1.0) * 0.5
-                gt_d_01 = (image_d + 1.0) * 0.5
+            # Convert images from [-1, 1] to [0, 1] range
+            gt_a_01 = (image_a + 1.0) * 0.5
+            gt_b_01 = (image_b + 1.0) * 0.5
+            gt_c_01 = (image_c + 1.0) * 0.5
+            gt_d_01 = (image_d + 1.0) * 0.5
 
-                # ============================================================
-                # Forward Pass: Encoding
-                # ============================================================
-                (
-                    z_inv_a, z_inv_b, z_inv_c, z_inv_d,
-                    z_dep_a, z_dep_b, z_dep_c, z_dep_d,
-                    inv_vq_loss, dep_vq_loss,
-                ) = encode_quartet(vae, image_a, image_b, image_c, image_d)
+            # ============================================================
+            # Forward Pass: Encoding
+            # ============================================================
+            (
+                z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+                z_dep_a, z_dep_b, z_dep_c, z_dep_d,
+                inv_vq_loss, dep_vq_loss,
+            ) = encode_quartet(vae, image_a, image_b, image_c, image_d)
 
-                # ============================================================
-                # Forward Pass: Reconstruction
-                # ============================================================
-                rec_out = compute_reconstruction_and_renders(
-                    vae=vae,
-                    splatter_to_gaussians=splatter_to_gaussians,
-                    splatter_cfg=splatter_cfg,
-                    gt_a_01=gt_a_01,
-                    gt_b_01=gt_b_01,
-                    gt_c_01=gt_c_01,
-                    gt_d_01=gt_d_01,
-                    z_inv_a=z_inv_a,
-                    z_inv_c=z_inv_c,
-                    z_dep_a=z_dep_a,
-                    z_dep_b=z_dep_b,
-                    k_i=k_i,
-                    k_j=k_j,
-                    t_ij=t_ij,
-                    bg=bg,
-                    return_renders=False,
-                    ssim_weight=cfg_train.ssim_weight,
+            # ============================================================
+            # Forward Pass: Reconstruction
+            # ============================================================
+            rec_out = compute_reconstruction_and_renders(
+                vae=vae,
+                splatter_to_gaussians=splatter_to_gaussians,
+                splatter_cfg=splatter_cfg,
+                gt_a_01=gt_a_01,
+                gt_b_01=gt_b_01,
+                gt_c_01=gt_c_01,
+                gt_d_01=gt_d_01,
+                z_inv_a=z_inv_a,
+                z_inv_c=z_inv_c,
+                z_dep_a=z_dep_a,
+                z_dep_b=z_dep_b,
+                k_i=k_i,
+                k_j=k_j,
+                t_ij=t_ij,
+                bg=bg,
+                return_renders=False,
+                ssim_weight=cfg_train.ssim_weight,
+            )
+            rec_loss = rec_out["rec_loss"]
+            frustum_loss = rec_out["frustum_loss"]
+
+            # ============================================================
+            # Forward Pass: Contrastive Learning
+            # ============================================================
+            inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
+                z_inv_a, z_inv_b, z_inv_c, z_inv_d,
+                z_dep_a, z_dep_b, z_dep_c, z_dep_d,
+                temperature=cfg_train.temperature,
+            )
+
+            # ============================================================
+            # Loss Aggregation
+            # ============================================================
+            vq_loss = inv_vq_loss + dep_vq_loss
+            total_loss = (
+                cfg_train.rec_weight * rec_loss
+                + cfg_train.vq_weight * vq_loss
+                + cfg_train.inv_contrastive_weight * inv_contrastive_loss
+                + cfg_train.dep_contrastive_weight * dep_contrastive_loss
+                + cfg_train.frustum_weight * frustum_loss
+            )
+
+            # Skip unstable batches before backward to avoid poisoning model weights.
+            finite_terms = {
+                "rec_loss": rec_loss,
+                "vq_loss": vq_loss,
+                "inv_contrastive_loss": inv_contrastive_loss,
+                "dep_contrastive_loss": dep_contrastive_loss,
+                "frustum_loss": frustum_loss,
+                "total_loss": total_loss,
+            }
+            bad_terms = [name for name, value in finite_terms.items() if not torch.isfinite(value).all()]
+            if bad_terms:
+                print(
+                    f"[Warn] Non-finite loss detected at global_step={global_step} "
+                    f"(bad={bad_terms}, "
+                    f"inactive_pct={100.0 * rec_out['inactive_ratio_mean'].item():.2f}, "
+                    f"invalid_depth_pct={100.0 * rec_out['invalid_depth_ratio_mean'].item():.2f}, "
+                    f"nonfinite_proj_pct={100.0 * rec_out['nonfinite_projection_ratio_mean'].item():.2f}). "
+                    "Skipping optimizer step."
                 )
-                rec_loss = rec_out["rec_loss"]
-                frustum_loss = rec_out["frustum_loss"]
-
-                # ============================================================
-                # Forward Pass: Contrastive Learning
-                # ============================================================
-                inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-                    z_inv_a, z_inv_b, z_inv_c, z_inv_d,
-                    z_dep_a, z_dep_b, z_dep_c, z_dep_d,
-                    temperature=cfg_train.temperature,
-                )
-
-                # ============================================================
-                # Loss Aggregation
-                # ============================================================
-                vq_loss = inv_vq_loss + dep_vq_loss
-                total_loss = (
-                    cfg_train.rec_weight * rec_loss
-                    + cfg_train.vq_weight * vq_loss
-                    + cfg_train.inv_contrastive_weight * inv_contrastive_loss
-                    + cfg_train.dep_contrastive_weight * dep_contrastive_loss
-                    + cfg_train.frustum_weight * frustum_loss
-                )
+                if wandb.run is not None:
+                    wandb.log(
+                        {
+                            "train/nonfinite_batch": 1.0,
+                            "train/global_step": global_step,
+                        },
+                        step=global_step,
+                    )
+                global_step += 1
+                continue
 
             # ================================================================
             # Backward Pass and Optimization
             # ================================================================
-            scaler.scale(total_loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(vae.parameters(), max_norm=5.0)
+            optimizer.step()
 
             # ================================================================
             # Logging
@@ -965,7 +959,6 @@ def train_splatter_vae(
                     "vae_state_dict": vae.state_dict(),
                     "splatter_to_gaussians_state_dict": splatter_to_gaussians.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
-                    "scaler_state_dict": scaler.state_dict(),
                 }
                 torch.save(ckpt, ckpt_path)
                 print(f"[Checkpoint] Saved checkpoint to {ckpt_path}")
@@ -1098,6 +1091,7 @@ def main():
     # 5) Build TrainConfig
     # ---------------------------------------------------------------------
     train_cfg_dict = cfg.get("train", {})
+    train_cfg_dict.pop("use_amp", None)
     cfg_train = TrainConfig(**train_cfg_dict)
 
     # ---------------------------------------------------------------------

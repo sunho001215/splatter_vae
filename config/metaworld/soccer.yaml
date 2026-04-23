@@ -15,7 +15,7 @@ dataset:
 # Model wrapper settings
 # -----------------------------------------------------------------------------
 model:
-  fusion_style: "plus"          # ["cat", "plus"]
+  fusion_style: "cat"          # ["cat", "plus"]
   use_dependent_vq: true
   is_dependent_ae: false
   use_invariant_vq: true
@@ -28,13 +28,14 @@ model:
 # -----------------------------------------------------------------------------
 codebook:
   invariant:
-    n_embed: 512
-    embed_dim: 8
-    beta: 0.25
+    quantizer: fsq
+    fsq_levels: [8, 5, 5, 5]
+    embed_dim: 4
+
   dependent:
-    n_embed: 64
-    embed_dim: 8
-    beta: 0.25
+    quantizer: fsq
+    fsq_levels: [8, 5, 5, 5]
+    embed_dim: 4
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -57,11 +58,11 @@ vit:
   selected_layers: [2, 5, 8, 11]
 
   # Decoder-side token transformer before the DPT dense head.
-  decoder_depth: 8
-  decoder_num_heads: 4
+  decoder_depth: 12
+  decoder_num_heads: 8
   decoder_mlp_ratio: 4.0
   decoder_drop_path_rate: 0.1
-  decoder_selected_layers: [1, 3, 5, 7]
+  decoder_selected_layers: [2, 5, 8, 11]
 
   # DPT dense decoder width.
   dpt_features: 128
@@ -82,17 +83,17 @@ splatter:
 
   model:
     # Parent Gaussian layout (vanilla Splatter Image)
-    max_sh_degree: 1
+    max_sh_degree: 0
     isotropic: false
-    depth_scale: 0.1
-    depth_bias: -0.7
+    depth_scale: 0.08
+    depth_bias: -0.35
     xyz_scale: 0.1
     xyz_bias: 0.0
     opacity_scale: 1.0
     opacity_bias: -2.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 4
+    num_gaussians_per_pixel: 2
 
 # -----------------------------------------------------------------------------
 # Training
@@ -105,8 +106,8 @@ train:
 
   # Original loss weights kept from the previous patch / current training logic.
   rec_weight: 1.0
-  ssim_weight: 0.2
-  vq_weight: 0.25
+  ssim_weight: 0.0
+  vq_weight: 0.0
   inv_contrastive_weight: 1.0
   dep_contrastive_weight: 0.1
   frustum_weight: 0.01
@@ -134,3 +135,6 @@ wandb:
     - DPT-fix
     - lr-3e-4
     - diverse-demo-collection
+    - ssim_weight-0.0
+    - max_sh_degree-0
+    - FSQ-codebook

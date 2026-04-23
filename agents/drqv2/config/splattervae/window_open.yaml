@@ -11,7 +11,7 @@ env:
   env_name: window-open
   image_height: 128
   image_width: 128
-  frame_stack: 3
+  frame_stack: 1
   action_repeat: 2
   max_episode_steps: 250
 
@@ -56,7 +56,7 @@ vision:
   img_height: 128
   img_width: 128
 
-  vit:
+  swin:
     patch_size: 16
     in_chans: 3
     embed_dim: 256
@@ -77,7 +77,7 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/window_open/step_00250000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/window_open/step_00100000.pth
     feature_source: codebook
     max_sh_degree: 1
     num_gaussians_per_pixel: 4

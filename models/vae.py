@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
 
-from vector_quantize_pytorch import VectorQuantize
+from vector_quantize_pytorch import FSQ, VectorQuantize
 
 from .vision_transformer import DPTHead, TokenTransformer, ViTBackbone, ViTSmallConfig
 
 @dataclass
 class CodebookConfig:
-    """Codebook hyper-parameters used by the invariant / dependent branches."""
+    """Codebook / quantizer hyper-parameters used by the invariant / dependent branches."""
 
+    # ----- VQ params -----
     n_embed: int = 512
     embed_dim: int = 64
     beta: float = 0.25
 
+    # ----- quantizer selection -----
+    quantizer: str = "vq"                     # "vq" or "fsq"
+    fsq_levels: Tuple[int, ...] = field(default_factory=tuple)
 
 class SplatterVAE(nn.Module):
     """ReViWo-style dual-encoder VAE with a ViT+DPT generator.
@@ -131,31 +135,17 @@ class SplatterVAE(nn.Module):
         # -------------------------------------------------------------
         # VQ or Gaussian latent heads
         # -------------------------------------------------------------
-        self.invariant_output_head = (
-            VectorQuantize(
-                dim=invariant_cb_config.embed_dim,
-                codebook_size=invariant_cb_config.n_embed,
-                commitment_weight=invariant_cb_config.beta,
-                use_cosine_sim=True,
-                kmeans_init=True,
-                kmeans_iters=10,
-                threshold_ema_dead_code=2,
-            )
-            if use_invariant_vq
-            else nn.Linear(invariant_cb_config.embed_dim, 2 * invariant_cb_config.embed_dim)
+        # Keep track of which discrete quantizer each branch uses
+        self.invariant_quantizer_type = str(invariant_cb_config.quantizer).lower()
+        self.dependent_quantizer_type = str(dependent_cb_config.quantizer).lower()
+        # Build the appropriate quantizer heads based on config:
+        self.invariant_output_head = self._build_token_quantizer(
+            invariant_cb_config,
+            use_discrete_quantizer=use_invariant_vq,
         )
-        self.dependent_output_head = (
-            VectorQuantize(
-                dim=dependent_cb_config.embed_dim,
-                codebook_size=dependent_cb_config.n_embed,
-                commitment_weight=dependent_cb_config.beta,
-                use_cosine_sim=True,
-                kmeans_init=True,
-                kmeans_iters=10,
-                threshold_ema_dead_code=2,
-            )
-            if use_dependent_vq
-            else nn.Linear(dependent_cb_config.embed_dim, 2 * dependent_cb_config.embed_dim)
+        self.dependent_output_head = self._build_token_quantizer(
+            dependent_cb_config,
+            use_discrete_quantizer=use_dependent_vq,
         )
         self.dependent_output_final_proj = nn.Identity()
 
@@ -173,6 +163,87 @@ class SplatterVAE(nn.Module):
         self.dep_mask_eval = bool(dep_mask_eval)
         self.dep_mask_token = nn.Parameter(torch.zeros(1, 1, 1, 3, self.patch_h, self.patch_w))
         nn.init.normal_(self.dep_mask_token, mean=0.0, std=0.02)
+
+    # ------------------------------------------------------------------
+    # Quantizer builders and runners
+    # ------------------------------------------------------------------
+
+    def _build_token_quantizer(self, cb_config: CodebookConfig, use_discrete_quantizer: bool) -> nn.Module:
+        """
+        Build either:
+        - VQ head
+        - FSQ head
+        - Gaussian head (if use_discrete_quantizer=False)
+
+        Safe FSQ path here follows lucidrains' README usage:
+        FSQ(levels=[...]) with input last-dim == len(levels)
+        """
+        if not use_discrete_quantizer:
+            # Original Gaussian / AE path
+            return nn.Linear(cb_config.embed_dim, 2 * cb_config.embed_dim)
+
+        quantizer = str(cb_config.quantizer).lower()
+
+        if quantizer == "vq":
+            return VectorQuantize(
+                dim=cb_config.embed_dim,
+                codebook_size=cb_config.n_embed,
+                commitment_weight=cb_config.beta,
+                use_cosine_sim=True,
+                kmeans_init=True,
+                kmeans_iters=10,
+                threshold_ema_dead_code=2,
+            )
+
+        if quantizer == "fsq":
+            if len(cb_config.fsq_levels) == 0:
+                raise ValueError("FSQ selected, but fsq_levels is empty.")
+
+            # Safe / explicit choice:
+            # for this patch, make embed_dim exactly equal to len(levels)
+            # e.g. L = [6, 5, 5]  ->  embed_dim = 3
+            if cb_config.embed_dim != len(cb_config.fsq_levels):
+                raise ValueError(
+                    f"FSQ requires embed_dim == len(fsq_levels) in this implementation. "
+                    f"Got embed_dim={cb_config.embed_dim}, len(fsq_levels)={len(cb_config.fsq_levels)}."
+                )
+
+            return FSQ(levels=list(cb_config.fsq_levels))
+
+        raise ValueError(f"Unknown quantizer type: {cb_config.quantizer}")
+
+
+    def _run_discrete_quantizer(
+        self,
+        quantizer_module: nn.Module,
+        x: torch.Tensor,
+        quantizer_type: str,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Normalize the interface across VQ and FSQ.
+
+        Returns:
+            z_q      : quantized tokens
+            indices  : token indices
+            aux_loss : scalar tensor
+
+        Notes:
+        - VQ returns (quantized, indices, aux_loss)
+        - FSQ returns (quantized, indices)
+        - For FSQ, aux_loss is zero by design in this wrapper
+        """
+        quantizer_type = str(quantizer_type).lower()
+
+        if quantizer_type == "vq":
+            z_q, indices, aux_loss = quantizer_module(x)
+            return z_q, indices, aux_loss.mean()
+
+        if quantizer_type == "fsq":
+            z_q, indices = quantizer_module(x)
+            aux_loss = x.new_zeros(())
+            return z_q, indices, aux_loss
+
+        raise ValueError(f"Unknown quantizer type: {quantizer_type}")
 
     # ------------------------------------------------------------------
     # Input masking for the dependent branch
@@ -234,44 +305,48 @@ class SplatterVAE(nn.Module):
 
         # Invariant branch.
         if self.use_invariant_vq:
-            z_inv, invariant_encoding_indices, inv_aux_loss = self.invariant_output_head(h_inv)
-            inv_embed_loss = inv_aux_loss.mean()
+            z_inv, invariant_encoding_indices, inv_embed_loss = self._run_discrete_quantizer(
+                self.invariant_output_head,
+                h_inv,
+                self.invariant_quantizer_type,
+            )
         else:
             z_inv_output = self.invariant_output_head(h_inv)
-            d_half = z_inv_output.shape[-1] // 2
-            z_inv_mu = torch.tanh(z_inv_output[..., :d_half])
-            if self.is_invariant_ae or deterministic_invariant:
-                z_inv = z_inv_mu
-                inv_embed_loss = torch.tensor(0.0, dtype=torch.float32, device=z_inv_mu.device)
-            else:
-                z_inv_sigma = torch.exp(z_inv_output[..., d_half:].clamp(-20, 2))
-                inv_embed_loss = -0.5 * torch.mean(
-                    1 + torch.log(z_inv_sigma ** 2) - z_inv_mu ** 2 - z_inv_sigma ** 2
-                )
-                dist = torch.distributions.Normal(z_inv_mu, z_inv_sigma)
-                z_inv = dist.rsample() if self.training else dist.sample()
-            invariant_encoding_indices = torch.zeros((6,), device=z_inv.device)
+            z_inv_mu = z_inv_output[:, :, : h_inv.shape[-1]]
+            z_inv_sigma = torch.exp(z_inv_output[:, :, h_inv.shape[-1] :].clamp(-20, 2))
+            inv_embed_loss = -0.5 * torch.mean(
+                1 + torch.log(z_inv_sigma ** 2) - z_inv_mu ** 2 - z_inv_sigma ** 2
+            )
+            dist = torch.distributions.Normal(z_inv_mu, z_inv_sigma)
+            z_inv = z_inv_mu if deterministic_invariant else (dist.rsample() if self.training else dist.sample())
+            invariant_encoding_indices = torch.zeros(
+                (z_inv.shape[0], z_inv.shape[1]),
+                device=z_inv.device,
+                dtype=torch.long,
+            )
 
         # Dependent branch.
         if self.use_dependent_vq:
-            z_dep, dependent_encoding_indices, dep_aux_loss = self.dependent_output_head(h_dep)
+            z_dep, dependent_encoding_indices, dep_embed_loss = self._run_discrete_quantizer(
+                self.dependent_output_head,
+                h_dep,
+                self.dependent_quantizer_type,
+            )
             z_dep = self.dependent_output_final_proj(z_dep)
-            dep_embed_loss = dep_aux_loss.mean()
         else:
             z_dep_output = self.dependent_output_head(h_dep)
-            d_half = z_dep_output.shape[-1] // 2
-            z_dep_mu = torch.tanh(z_dep_output[..., :d_half])
-            if self.is_dependent_ae or deterministic_dependent:
-                z_dep = z_dep_mu
-                dep_embed_loss = torch.tensor(0.0, dtype=torch.float32, device=z_dep_mu.device)
-            else:
-                z_dep_sigma = torch.exp(z_dep_output[..., d_half:].clamp(-20, 2))
-                dep_embed_loss = -0.5 * torch.mean(
-                    1 + torch.log(z_dep_sigma ** 2) - z_dep_mu ** 2 - z_dep_sigma ** 2
-                )
-                dist = torch.distributions.Normal(z_dep_mu, z_dep_sigma)
-                z_dep = dist.rsample() if self.training else dist.sample()
-            dependent_encoding_indices = torch.zeros((6,), device=z_dep.device)
+            z_dep_mu = z_dep_output[:, :, : h_dep.shape[-1]]
+            z_dep_sigma = torch.exp(z_dep_output[:, :, h_dep.shape[-1] :].clamp(-20, 2))
+            dep_embed_loss = -0.5 * torch.mean(
+                1 + torch.log(z_dep_sigma ** 2) - z_dep_mu ** 2 - z_dep_sigma ** 2
+            )
+            dist = torch.distributions.Normal(z_dep_mu, z_dep_sigma)
+            z_dep = z_dep_mu if deterministic_dependent else (dist.rsample() if self.training else dist.sample())
+            dependent_encoding_indices = torch.zeros(
+                (z_dep.shape[0], z_dep.shape[1]),
+                device=z_dep.device,
+                dtype=torch.long,
+            )
 
         return z_inv, inv_embed_loss, z_dep, dep_embed_loss, (
             dependent_encoding_indices,

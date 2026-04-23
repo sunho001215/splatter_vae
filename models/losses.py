@@ -20,6 +20,9 @@ def infonce_loss(query, positive_keys, negative_keys=None, temperature=0.1, nega
     Raises:
         ValueError on invalid input shapes.
     """
+    if temperature <= 0.0:
+        raise ValueError("temperature must be > 0.")
+
     # Validate input dimensions
     if query.dim() != 2 or positive_keys.dim() != 2:
         raise ValueError("query/positive must be 2D [B, D]")
@@ -29,11 +32,16 @@ def infonce_loss(query, positive_keys, negative_keys=None, temperature=0.1, nega
         if negative_mode in ('paired', 'mixed') and negative_keys.dim() != 3:
             raise ValueError("negative_keys must be (B, M, D) when negative_mode in ['paired','mixed']")
 
+    # Defensive sanitization keeps training alive when upstream tensors briefly explode.
+    query = torch.nan_to_num(query, nan=0.0, posinf=0.0, neginf=0.0)
+    positive_keys = torch.nan_to_num(positive_keys, nan=0.0, posinf=0.0, neginf=0.0)
+
     # L2 normalize the query and keys
-    q = F.normalize(query, dim=-1)
-    kpos = F.normalize(positive_keys, dim=-1)
+    q = F.normalize(query, dim=-1, eps=1e-6)
+    kpos = F.normalize(positive_keys, dim=-1, eps=1e-6)
     if negative_keys is not None:
-        knegs = F.normalize(negative_keys, dim=-1)
+        negative_keys = torch.nan_to_num(negative_keys, nan=0.0, posinf=0.0, neginf=0.0)
+        knegs = F.normalize(negative_keys, dim=-1, eps=1e-6)
     
     if negative_mode == 'mixed':
         # Logits for all pairs in the batch
@@ -84,6 +92,10 @@ def compute_reconstruction_loss(
     ssim_weight: weight for SSIM term in [0,1]
     """
     mse_loss = F.mse_loss(predicted, ground_truth)
+
+    if ssim_weight <= 0.0:
+        return mse_loss
+
     ssim_map = fused_ssim(predicted, ground_truth)  # (B,H,W)
     ssim_loss = 1.0 - ssim_map.mean()
 
