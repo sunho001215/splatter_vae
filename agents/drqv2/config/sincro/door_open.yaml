@@ -98,7 +98,7 @@ vision:
 
 agent:
   lr: 1.0e-4
-  feature_dim: 50
+  feature_dim: 100
   hidden_dim: 1024
   critic_target_tau: 0.01
 
@@ -135,7 +135,7 @@ train:
 
   log_every_steps: 1000
   eval_every_steps: 10000
-  num_eval_episodes: 100
+  num_eval_episodes: 120
   rolling_door: 10
 
   checkpoint_every_steps: 50000

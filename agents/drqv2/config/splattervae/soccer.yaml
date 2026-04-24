@@ -1,17 +1,17 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-soccer-DrQv2
-  name: SplatterVAE_seed42
+  name: SplatterVAE_seed98
 
 env:
   benchmark_id: Meta-World/MT1
   env_name: soccer
   image_height: 128
   image_width: 128
-  frame_stack: 1
+  frame_stack: 3
   action_repeat: 2
   max_episode_steps: 250
 
@@ -103,7 +103,7 @@ vision:
 
 agent:
   lr: 1.0e-4
-  feature_dim: 50
+  feature_dim: 100
   hidden_dim: 1024
   critic_target_tau: 0.01
 
@@ -132,7 +132,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/soccer/splattervae/seed42/
+  replay_dir: ./buffer/metaworld/soccer/splattervae/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -140,11 +140,11 @@ train:
 
   log_every_steps: 1000
   eval_every_steps: 10000
-  num_eval_episodes: 100
+  num_eval_episodes: 120
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/soccer/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/soccer/seed98/
 
 visualization:
   enabled: false
