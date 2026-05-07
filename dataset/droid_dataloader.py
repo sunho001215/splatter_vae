@@ -11,8 +11,8 @@ Changes from v2:
   - Fix: orthogonalize rotation matrices via SVD during preprocessing,
     and skip episodes where poses are degenerate.
 
-Batch format (unchanged):
-    image_i_t, image_j_t, image_i_t1, image_j_t1, T_ij, K_i, K_j
+Batch format:
+    image_i_t, image_j_t, image_i_tk, image_j_tk, T_ij, K_i, K_j
 """
 
 from __future__ import annotations
@@ -355,7 +355,7 @@ class DROIDMultiViewTemporalDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def _sample_t1(self, T: int, t: int) -> int:
+    def _sample_tk(self, T: int, t: int) -> int:
         far = [i for i in range(T) if abs(i - t) >= self.min_time_gap]
         if far:
             return self.rng.choice(far)
@@ -373,7 +373,7 @@ class DROIDMultiViewTemporalDataset(Dataset):
         ep_id, t = self.samples[idx]
         T = self.episode_lengths[ep_id]
         meta = self.episode_meta[ep_id]
-        t1 = self._sample_t1(T, t)
+        tk = self._sample_tk(T, t)
 
         if self.rng.random() < 0.5:
             ci, cj = "cam_left", "cam_right"
@@ -389,12 +389,12 @@ class DROIDMultiViewTemporalDataset(Dataset):
         return {
             "image_i_t":  image_to_tensor(self._load_image(ep_id, ci, t)),
             "image_j_t":  image_to_tensor(self._load_image(ep_id, cj, t)),
-            "image_i_t1": image_to_tensor(self._load_image(ep_id, ci, t1)),
-            "image_j_t1": image_to_tensor(self._load_image(ep_id, cj, t1)),
+            "image_i_tk": image_to_tensor(self._load_image(ep_id, ci, tk)),
+            "image_j_tk": image_to_tensor(self._load_image(ep_id, cj, tk)),
             "T_ij": torch.from_numpy(T_ij),
             "K_i":  torch.from_numpy(K_i.copy()),
             "K_j":  torch.from_numpy(K_j.copy()),
-            "episode_id": ep_id, "t": t, "t1": t1,
+            "episode_id": ep_id, "t": t, "tk": tk,
             "view_i": ci, "view_j": cj,
         }
 

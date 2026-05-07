@@ -189,19 +189,25 @@ def main():
 
             for t in range(cfg.metaworld.max_steps):
                 # Quadratically anneal from nearly expert to random as demo_idx increases until halfway.
-                prob_expert = max(0.0, 1.0 - (demo_idx / (num / 2)) ** 2)
-                if np.random.rand() < prob_expert:
-                    action = policy_obj.get_action(obs)
-                    action = np.asarray(action).ravel().astype(np.float32)
-                else:
-                    action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
+                # prob_expert = max(0.0, 1.0 - (demo_idx / (num / 2)) ** 2)
+                # if np.random.rand() < prob_expert:
+                action = policy_obj.get_action(obs)
+                action = np.asarray(action).ravel().astype(np.float32)
+                # else:
+                    # action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
 
-                # Step
+                # Store the current state/observation before applying action_t.
+                # This keeps each dataset row aligned as (obs_t, action_t,
+                # reward_t, done_t), instead of accidentally saving obs_{t+1}
+                # with action_t.
+                state = _get_state(env)
+                obs_to_store = obs.copy()
+                rend = renderer.render_all(lookat=lookat)
+
+                # Step after capturing obs_t; reward/done/success describe the
+                # transition caused by action_t.
                 next_obs, reward, done, info = _step_env(env, action)
                 next_obs = np.asarray(next_obs).ravel().astype(np.float32)
-
-                # Render AFTER stepping so images align with next_obs (same as your current script)
-                rend = renderer.render_all(lookat=lookat)
 
                 # Ensure seg dict exists for downstream (writer + viz)
                 if rend.seg_id_by_cam is None:
@@ -231,14 +237,13 @@ def main():
                         break
 
                 # -------- write step to dataset --------
-                state = _get_state(env)
                 writer.append_step(
                     state=state,
                     action=action,
                     reward=reward,
                     done=done,
                     success=success,
-                    obs_vec=next_obs,
+                    obs_vec=obs_to_store,
                     rgb_by_cam=rend.rgb_by_cam,
                     seg_id_by_cam=seg_for_step,
                     seg_type_by_cam=rend.seg_type_by_cam,

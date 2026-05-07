@@ -1,14 +1,14 @@
-seed: 98
+seed: 66
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-hammer-DrQv2
-  name: SplatterVAE_seed98
+  project: metaworld-window-open-DrQv2
+  name: CNN_randomcrop_seed66
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: hammer
+  env_name: window-open
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -51,58 +51,19 @@ env:
   up: [0.0, 0.0, 1.0]
 
 vision:
-  encoder_type: splatter_vae
-  img_height: 128
-  img_width: 128
+  encoder_type: convnet
 
-  vit:
-    patch_size: 16
-    in_chans: 3
-    embed_dim: 256
-    depth: 4
-    num_heads: 4
-    mlp_ratio: 4.0
-    qkv_bias: true
-    dropout: 0.0
-    attn_dropout: 0.0
-    drop_path_rate: 0.1
-    layerscale_init: 1.0e-5
-    selected_layers: [0, 1, 2, 3]
-    decoder_depth: 12
-    decoder_num_heads: 8
-    decoder_mlp_ratio: 4.0
-    decoder_drop_path_rate: 0.1
-    decoder_selected_layers: [2, 5, 8, 11]
-    dpt_features: 128
-
-  splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vit256-d4-h4/hammer/step_00100000.pth
-    feature_source: codebook
-    max_sh_degree: 0
-    num_gaussians_per_pixel: 2
-
-    codebook:
-      invariant:
-        quantizer: fsq
-        fsq_levels: [8, 5, 5, 5]
-        embed_dim: 4
-      dependent:
-        quantizer: fsq
-        fsq_levels: [8, 5, 5, 5]
-        embed_dim: 4
-
-    model:
-      fusion_style: cat
-      use_dependent_vq: true
-      is_dependent_ae: false
-      use_invariant_vq: true
-      is_invariant_ae: false
-      dep_input_mask_ratio: 0.75
-      dep_mask_eval: true
+  # ------------------------------------------------------------
+  # Baseline: end-to-end ConvNet + random crop (enabled inside
+  # `policies/models/vision.py` when the module is in train mode).
+  # ------------------------------------------------------------
+  convnet:
+    crop_height: 100
+    crop_width: 100
 
 agent:
   lr: 1.0e-4
-  feature_dim: 100
+  feature_dim: 50
   hidden_dim: 1024
   critic_target_tau: 0.01
 
@@ -131,7 +92,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/hammer/splattervae/seed98/
+  replay_dir: ./buffer/metaworld/window-open/cnn_w_crop/seed66/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -143,10 +104,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/hammer/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/window-open/seed66/
 
 visualization:
   enabled: false
-  window_name: metaworld_hammer_drqv2
+  window_name: metaworld_window-open_drqv2
   wait_key: 1
   scale: 1.0
+

@@ -2,7 +2,7 @@
 # Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  hdf5_path: ../../data/metaworld/pre-training/hammer.hdf5
+  hdf5_path: ../../data/metaworld/pre-training/drawer-open.hdf5
   batch_size: 32
   num_workers: 8
   pin_memory: true
@@ -121,7 +121,7 @@ train:
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/hammer/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/drawer-open/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -131,7 +131,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-hammer
+  run_name: metaworld-drawer-open
   tags:
     - dep-masking-0.75
     - self-rec-weight-0.1

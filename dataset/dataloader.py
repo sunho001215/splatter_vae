@@ -17,10 +17,11 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
     For each indexed (demo_key, t), it returns:
       - image_i_t   : view_i at timestep t
       - image_j_t   : view_j at timestep t (same demo, same t)  <-- positive for view-invariant contrastive
-      - image_i_t1  : view_i at timestep t1 (same demo, but far from t) <-- temporal negative
+      - image_i_tk  : view_i at timestep tk (same demo, but far from t) <-- temporal shuffle source
+      - image_j_tk  : view_j at timestep tk (same demo, but far from t) <-- temporal shuffle source
       - T_ij        : (4,4) transform from camera-i coords to camera-j coords
       - K_i, K_j    : intrinsics
-      - some metadata (demo_key, t, t1, view_i, view_j)
+      - some metadata (demo_key, t, tk, view_i, view_j)
 
     The HDF5 layout (per demo) is:
 
@@ -60,7 +61,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         self.demo_keys = list(demo_keys)
         self.max_frames_per_demo = max_frames_per_demo
 
-        # Minimum temporal gap for choosing t1 (|t1 - t| >= min_time_gap)
+        # Minimum temporal gap for choosing tk (|tk - t| >= min_time_gap)
         self.min_time_gap = int(min_time_gap)
 
         # RNG (overwritten per worker via _worker_init_fn)
@@ -237,9 +238,9 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         view_i, view_j = self.rng.sample(self.views, 2)
         return view_i, view_j
 
-    def _sample_t1_with_gap(self, T: int, t: int) -> int:
+    def _sample_tk_with_gap(self, T: int, t: int) -> int:
         """
-        Sample a timestep t1 such that |t1 - t| >= min_time_gap whenever possible.
+        Sample a timestep tk such that |tk - t| >= min_time_gap whenever possible.
 
         If not possible (episode too short), fall back to:
           - any timestep != t (if possible),
@@ -266,10 +267,10 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         # Fallback: episode too short to satisfy the gap.
         # Choose any index != t if possible.
         if T > 1:
-            t1 = self.rng.randrange(T - 1)
-            if t1 >= t:
-                t1 += 1
-            return t1
+            tk = self.rng.randrange(T - 1)
+            if tk >= t:
+                tk += 1
+            return tk
 
         return t
 
@@ -284,12 +285,12 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         Returns a dict:
           image_i_t   : (3,H,W) float32 in [-1, 1]
           image_j_t   : (3,H,W) float32 in [-1, 1]
-          image_i_t1  : (3,H,W) float32 in [-1, 1]
-          image_j_t1  : (3,H,W) float32 in [-1, 1]
+          image_i_tk  : (3,H,W) float32 in [-1, 1]
+          image_j_tk  : (3,H,W) float32 in [-1, 1]
           T_ij        : (4,4) float32 (cam_i -> cam_j)
           K_i         : (3,3) float32
           K_j         : (3,3) float32
-          demo_key, t, t1, view_i, view_j : metadata for debugging/logging
+          demo_key, t, tk, view_i, view_j : metadata for debugging/logging
         """
         demo_key, t = self.samples[idx]
         T = self.demo_lengths[demo_key]
@@ -297,8 +298,10 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         # Randomly sample view pair
         view_i, view_j = self._sample_view_pair()
 
-        # Sample t1 with minimum gap
-        t1 = self._sample_t1_with_gap(T=T, t=t)
+        # Sample a same-demo temporal index for shuffling view-dependent
+        # features. The camera viewpoints stay fixed while the environment
+        # state changes from t to tk.
+        tk = self._sample_tk_with_gap(T=T, t=t)
 
         # Load images from HDF5
         f = self._get_h5()
@@ -307,14 +310,14 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         # Each RGB is stored as uint8 (H,W,3) under "<cam>_rgb"
         img_i_t_np = np.array(obs_grp[f"{view_i}_rgb"][t], dtype=np.uint8)
         img_j_t_np = np.array(obs_grp[f"{view_j}_rgb"][t], dtype=np.uint8)
-        img_i_t1_np = np.array(obs_grp[f"{view_i}_rgb"][t1], dtype=np.uint8)
-        img_j_t1_np = np.array(obs_grp[f"{view_j}_rgb"][t1], dtype=np.uint8)
+        img_i_tk_np = np.array(obs_grp[f"{view_i}_rgb"][tk], dtype=np.uint8)
+        img_j_tk_np = np.array(obs_grp[f"{view_j}_rgb"][tk], dtype=np.uint8)
 
         # Convert to torch tensors in [-1,1], shape (3,H,W)
         image_i_t = image_to_tensor(img_i_t_np)
         image_j_t = image_to_tensor(img_j_t_np)
-        image_i_t1 = image_to_tensor(img_i_t1_np)
-        image_j_t1 = image_to_tensor(img_j_t1_np)
+        image_i_tk = image_to_tensor(img_i_tk_np)
+        image_j_tk = image_to_tensor(img_j_tk_np)
 
         # Camera matrices
         cam_i = self.cam_cache[demo_key][view_i]
@@ -333,14 +336,14 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         return {
             "image_i_t": image_i_t,
             "image_j_t": image_j_t,
-            "image_i_t1": image_i_t1,
-            "image_j_t1": image_j_t1,
+            "image_i_tk": image_i_tk,
+            "image_j_tk": image_j_tk,
             "T_ij": T_ij,
             "K_i": K_i,
             "K_j": K_j,
             "demo_key": demo_key,
             "t": int(t),
-            "t1": int(t1),
+            "tk": int(tk),
             "view_i": view_i,
             "view_j": view_j,
         }
@@ -417,7 +420,7 @@ def build_train_valid_loaders_robosuite(
         max_frames_per_demo: optional cap on frames per episode
         views: optional list of camera names to use (e.g. ["cam0", "cam1", ...]).
                If None, all cameras in the file are used.
-        min_time_gap: minimum |t1 - t| gap for temporal sample
+        min_time_gap: minimum |tk - t| gap for temporal sample
         drop_last_train: usually True for contrastive stability (fixed batch size)
         shuffle_train: usually True
         shuffle_valid: usually False for deterministic evaluation

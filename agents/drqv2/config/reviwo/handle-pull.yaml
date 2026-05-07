@@ -3,12 +3,12 @@ device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-hammer-DrQv2
+  project: metaworld-handle-pull-DrQv2
   name: ReViWo_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: hammer
+  env_name: handle-pull
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -54,7 +54,7 @@ vision:
   encoder_type: reviwo
 
   reviwo:
-    checkpoint_path: ./checkpoints/metaworld/encoders/ReViWo/hammer/step_00100000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/ReViWo/handle-pull/step_00100000.pth
 
 
     # Image & patch settings
@@ -131,7 +131,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/hammer/reviwo/seed98/
+  replay_dir: ./buffer/metaworld/handle-pull/reviwo/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -143,11 +143,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/reviwo/hammer/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/reviwo/handle-pull/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_hammer_drqv2
+  window_name: metaworld_handle-pull_drqv2
   wait_key: 1
   scale: 1.0
 

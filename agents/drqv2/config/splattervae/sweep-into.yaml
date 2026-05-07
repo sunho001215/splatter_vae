@@ -3,12 +3,12 @@ device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-hammer-DrQv2
+  project: metaworld-sweep-into-DrQv2
   name: SplatterVAE_seed98
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: hammer
+  env_name: sweep-into
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -76,7 +76,7 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vit256-d4-h4/hammer/step_00100000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vit256-d4-h4/sweep-into/step_00100000.pth
     feature_source: codebook
     max_sh_degree: 0
     num_gaussians_per_pixel: 2
@@ -131,7 +131,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/hammer/splattervae/seed98/
+  replay_dir: ./buffer/metaworld/sweep-into/splattervae/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -143,10 +143,10 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/hammer/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/sweep-into/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_hammer_drqv2
+  window_name: metaworld_sweep-into_drqv2
   wait_key: 1
   scale: 1.0

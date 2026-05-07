@@ -1,5 +1,5 @@
 dataset:
-  hdf5_path: "../../data/metaworld/window_open.hdf5"
+  hdf5_path: "../../data/metaworld/pre-training/window-open.hdf5"
   num_views: 6
   sequence_length: 3
   max_episodes: null
@@ -64,7 +64,7 @@ train:
   save_every: 30000
   i_print: 100
   i_img: 500
-  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/window_open/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/window-open/"
   resume_from_last: false
   seed: 42
 

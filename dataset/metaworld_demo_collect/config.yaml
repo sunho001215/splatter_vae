@@ -1,11 +1,11 @@
 output:
-  path: /home/ws/data/metaworld/window_open.hdf5
+  path: /home/ws/data/metaworld/pre-training/lever-pull.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "window-open-v3"
+  env_name: "lever-pull-v3"
   seed: 0
   max_steps: 450
   terminate_on_success: true
@@ -18,37 +18,37 @@ render:
   cameras:
     - name: cam0
       r: 0.8
-      theta: -30.0
-      phi: -30.0
+      theta: -45.0
+      phi: 0.0
       fovy: 45.0
     - name: cam1
       r: 0.8
-      theta: -30.0         
-      phi: 0.0             
+      theta: -45.0       
+      phi: 180.0          
       fovy: 45.0
     - name: cam2
       r: 0.8
-      theta: -30.0       
-      phi: 30.0          
+      theta: -60.0        
+      phi: -30.0             
       fovy: 45.0
     - name: cam3
       r: 0.8
-      theta: -45.0        
-      phi: -30.0          
+      theta: -60.0         
+      phi: 210.0           
       fovy: 45.0
     - name: cam4
       r: 0.8
-      theta: -45.0         
-      phi: 0.0            
+      theta: -30.0       
+      phi: 45.0          
       fovy: 45.0
     - name: cam5
       r: 0.8
-      theta: -45.0     
-      phi: 30.0            
+      theta: -30.0     
+      phi: 135.0            
       fovy: 45.0
 
 segmentation:
-  enabled: true
+  enabled: false
   save_objtype: false      # if true, also store {cam}_seg_type (channel 1)
 
 policies:

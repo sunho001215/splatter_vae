@@ -1,6 +1,6 @@
 dataset:
   # Path to your RoboSuite multi-view HDF5 file
-  hdf5_path: "../../data/metaworld/soccer.hdf5"
+  hdf5_path: "../../data/metaworld/pre-training/window-open.hdf5"
 
   # DataLoader settings
   batch_size: 32
@@ -12,7 +12,7 @@ dataset:
   seed: 42
   num_episodes: null     # use all episodes
   max_frames_per_demo: null
-  min_time_gap: 25       # temporal gap for image_i_t1
+  min_time_gap: 25       # temporal gap for image_i_tk
 
 reviwo:
   # Image & patch settings
@@ -103,7 +103,7 @@ train:
   log_every: 50           # corresponds to original log_step
 
   # Checkpoint directory + resume flag
-  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/soccer/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/ReViWo/window-open/"
   resume_from_last: false
 
   # Number of views per sample in this trainer
@@ -111,5 +111,5 @@ train:
 
 wandb:
   project: "ReViWo-MetaWorld"
-  run_name: "soccer"  # set to your desired run name
+  run_name: "window-open"      # set to your desired run name
   entity: null            # set to your wandb username/org if needed
