@@ -1,14 +1,14 @@
-seed: 98
+seed: 42
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-door-open-DrQv2
-  name: SinCro_seed98
+  project: metaworld-faucet-close-DrQv2
+  name: SplatterVAE_seed42
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: door-open
+  env_name: faucet-close
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -51,49 +51,54 @@ env:
   up: [0.0, 0.0, 1.0]
 
 vision:
-  encoder_type: sincro
+  encoder_type: splatter_vae
   img_height: 128
   img_width: 128
 
-  sincro:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/door-open/step_00300000_encoder.tar
-
-    img_size: 128
-    netdepth: 8
-    netwidth: 256
-    netdepth_fine: 8
-    netwidth_fine: 256
-    N_rand: 1024
-    N_samples: 64
-    N_importance: 128
-    multires: 10
-    multires_views: 4
-    i_embed: 0
-    use_viewdirs: true
-    raw_noise_std: 0.0
-    white_bkgd: false
-    perturb: 1.0
-    lindisp: false
-
+  vit:
     patch_size: 16
+    in_chans: 3
     embed_dim: 256
-    vit_depth: 4
-    vit_num_heads: 4
-    vit_mlp_dim: 1024
-    decoder_depth: 2
-    decoder_num_heads: 2
-    decoder_mlp_dim: 1024
-    decoder_output_dim: 256
+    depth: 4
+    num_heads: 4
+    mlp_ratio: 4.0
+    qkv_bias: true
+    dropout: 0.0
+    attn_dropout: 0.0
+    drop_path_rate: 0.1
+    layerscale_init: 1.0e-5
+    selected_layers: [0, 1, 2, 3]
+    decoder_depth: 12
+    decoder_num_heads: 8
+    decoder_mlp_ratio: 4.0
+    decoder_drop_path_rate: 0.1
+    decoder_selected_layers: [2, 5, 8, 11]
+    dpt_features: 128
 
-    time_interval: 3
-    mask_ratio: 0.75
-    num_views: 6
+  splatter_vae:
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vit256-d4-h4/faucet-close/step_00200000.pth
+    feature_source: codebook
+    max_sh_degree: 0
+    num_gaussians_per_pixel: 2
 
-    near: 0.1
-    far: 2.5
-    chunk: 32768
+    codebook:
+      invariant:
+        quantizer: fsq
+        fsq_levels: [8, 5, 5, 5]
+        embed_dim: 4
+      dependent:
+        quantizer: fsq
+        fsq_levels: [8, 5, 5, 5]
+        embed_dim: 4
 
-    pool: flatten
+    model:
+      fusion_style: cat
+      use_dependent_vq: true
+      is_dependent_ae: false
+      use_invariant_vq: true
+      is_invariant_ae: false
+      dep_input_mask_ratio: 0.75
+      dep_mask_eval: true
 
 agent:
   lr: 1.0e-4
@@ -126,7 +131,7 @@ train:
   gradient_steps: 3
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/door-open/sincro/seed98/
+  replay_dir: ./buffer/metaworld/faucet-close/splattervae/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -138,10 +143,10 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/door-open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/faucet-close/seed42/
 
 visualization:
   enabled: false
-  window_name: metaworld_door-open_drqv2
+  window_name: metaworld_faucet-close_drqv2
   wait_key: 1
   scale: 1.0
