@@ -20,7 +20,8 @@ class TrainConfig:
     shuffle_both_rec_weight: float = 1.0
     vq_weight: float = 0.25
     inv_contrastive_weight: float = 1.0
-    inv_contrastive_warmup_steps: int = 0   # Linearly ramp the effective invariant contrastive weight
+    inv_variance_weight: float = 0.0
+    inv_variance_gamma: float = 0.1
     dep_contrastive_weight: float = 0.1
     frustum_weight: float = 0.001
 

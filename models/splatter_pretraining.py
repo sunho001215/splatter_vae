@@ -66,15 +66,28 @@ def _flatten_latent_tokens(z: torch.Tensor) -> torch.Tensor:
     return z.reshape(z.shape[0], -1)
 
 
-def _linear_warmup_weight(final_weight: float, warmup_steps: int, global_step: int) -> float:
-    """Return a linearly warmed-up scalar weight for the current train step."""
-    final_weight = float(final_weight)
-    warmup_steps = int(warmup_steps)
-    if warmup_steps <= 0:
-        return final_weight
-
-    progress = min(max(float(global_step) / float(warmup_steps), 0.0), 1.0)
-    return final_weight * progress
+def compute_invariant_variance_loss(
+    z_inv_i_t: torch.Tensor,
+    z_inv_j_t: torch.Tensor,
+    z_inv_i_tk: torch.Tensor,
+    z_inv_j_tk: torch.Tensor,
+    gamma: float,
+    eps: float = 1e-4,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Penalize invariant features whose batch std is close to collapse."""
+    z = torch.cat(
+        (
+            _flatten_latent_tokens(z_inv_i_t),
+            _flatten_latent_tokens(z_inv_j_t),
+            _flatten_latent_tokens(z_inv_i_tk),
+            _flatten_latent_tokens(z_inv_j_tk),
+        ),
+        dim=0,
+    )
+    z = z - z.mean(dim=0, keepdim=True)
+    std = torch.sqrt(z.var(dim=0, unbiased=False) + eps)
+    loss = F.relu(float(gamma) - std).mean()
+    return loss, std.mean(), std.min()
 
 
 def compute_contrastive_losses(
@@ -522,6 +535,9 @@ def validate_and_log_wandb(
         "val/rec_swap_state_cross": 0.0,
         "val/rec_swap_both_cross": 0.0,
         "val/inv_contrastive_loss": 0.0,
+        "val/inv_variance_loss": 0.0,
+        "val/z_inv_std_mean": 0.0,
+        "val/z_inv_std_min": 0.0,
         "val/dep_contrastive_loss": 0.0,
         "val/frustum_loss": 0.0,
         "val/inactive_pct_mean": 0.0,
@@ -558,6 +574,13 @@ def validate_and_log_wandb(
             **latents,
             temperature=cfg_train.temperature,
         )
+        inv_variance_loss, z_inv_std_mean, z_inv_std_min = compute_invariant_variance_loss(
+            latents["z_inv_i_t"],
+            latents["z_inv_j_t"],
+            latents["z_inv_i_tk"],
+            latents["z_inv_j_tk"],
+            gamma=cfg_train.inv_variance_gamma,
+        )
 
         rec_out = compute_reconstruction_and_renders(
             vae=vae,
@@ -588,6 +611,9 @@ def validate_and_log_wandb(
         scalar_sums["val/rec_swap_state_cross"] += float(rec_out["rec_swap_state_cross"].item())
         scalar_sums["val/rec_swap_both_cross"] += float(rec_out["rec_swap_both_cross"].item())
         scalar_sums["val/inv_contrastive_loss"] += float(inv_contrastive_loss.item())
+        scalar_sums["val/inv_variance_loss"] += float(inv_variance_loss.item())
+        scalar_sums["val/z_inv_std_mean"] += float(z_inv_std_mean.item())
+        scalar_sums["val/z_inv_std_min"] += float(z_inv_std_min.item())
         scalar_sums["val/dep_contrastive_loss"] += float(dep_contrastive_loss.item())
         scalar_sums["val/frustum_loss"] += float(rec_out["frustum_loss"].item())
         scalar_sums["val/inactive_pct_mean"] += float(100.0 * rec_out["inactive_ratio_mean"].item())
@@ -631,7 +657,7 @@ def validate_and_log_wandb(
     }
     log_dict["global_step"] = global_step
     log_dict.update(image_payload)
-    wandb.log(log_dict)
+    wandb.log(log_dict, step=global_step)
 
     vae.train(prev_vae_mode)
     splatter_to_gaussians.train(prev_splatter_mode)
@@ -727,17 +753,20 @@ def train_splatter_vae(
                 **latents,
                 temperature=cfg_train.temperature,
             )
-            inv_contrastive_weight = _linear_warmup_weight(
-                final_weight=cfg_train.inv_contrastive_weight,
-                warmup_steps=cfg_train.inv_contrastive_warmup_steps,
-                global_step=global_step,
+            inv_variance_loss, z_inv_std_mean, z_inv_std_min = compute_invariant_variance_loss(
+                latents["z_inv_i_t"],
+                latents["z_inv_j_t"],
+                latents["z_inv_i_tk"],
+                latents["z_inv_j_tk"],
+                gamma=cfg_train.inv_variance_gamma,
             )
 
             vq_loss = inv_vq_loss + dep_vq_loss
             total_loss = (
                 cfg_train.rec_weight * rec_loss
                 + cfg_train.vq_weight * vq_loss
-                + inv_contrastive_weight * inv_contrastive_loss
+                + cfg_train.inv_contrastive_weight * inv_contrastive_loss
+                + cfg_train.inv_variance_weight * inv_variance_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
                 + cfg_train.frustum_weight * frustum_loss
             )
@@ -746,6 +775,7 @@ def train_splatter_vae(
                 "rec_loss": rec_loss,
                 "vq_loss": vq_loss,
                 "inv_contrastive_loss": inv_contrastive_loss,
+                "inv_variance_loss": inv_variance_loss,
                 "dep_contrastive_loss": dep_contrastive_loss,
                 "frustum_loss": frustum_loss,
                 "total_loss": total_loss,
@@ -763,6 +793,7 @@ def train_splatter_vae(
                 if wandb.run is not None:
                     wandb.log(
                         {"global_step": global_step, "train/nonfinite_batch": 1.0},
+                        step=global_step,
                     )
                 global_step += 1
                 continue
@@ -784,7 +815,8 @@ def train_splatter_vae(
                     f"swap_both={rec_out['rec_swap_both'].item():.4f}, "
                     f"vq={vq_loss.item():.4f}, "
                     f"inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"inv_w={inv_contrastive_weight:.4f}, "
+                    f"inv_var={inv_variance_loss.item():.4f}, "
+                    f"z_inv_std={z_inv_std_mean.item():.4f}, "
                     f"dep_con={dep_contrastive_loss.item():.4f}, "
                     f"frustum={frustum_loss.item():.4f})"
                 )
@@ -807,11 +839,12 @@ def train_splatter_vae(
                             "train/inv_vq_loss": inv_vq_loss.item(),
                             "train/dep_vq_loss": dep_vq_loss.item(),
                             "train/inv_contrastive_loss": inv_contrastive_loss.item(),
-                            "train/inv_contrastive_weight": inv_contrastive_weight,
-                            "train/inv_contrastive_weight_target": float(cfg_train.inv_contrastive_weight),
-                            "train/inv_contrastive_warmup_steps": float(
-                                cfg_train.inv_contrastive_warmup_steps
-                            ),
+                            "train/inv_contrastive_weight": float(cfg_train.inv_contrastive_weight),
+                            "train/inv_variance_loss": inv_variance_loss.item(),
+                            "train/inv_variance_weight": float(cfg_train.inv_variance_weight),
+                            "train/inv_variance_gamma": float(cfg_train.inv_variance_gamma),
+                            "train/z_inv_std_mean": z_inv_std_mean.item(),
+                            "train/z_inv_std_min": z_inv_std_min.item(),
                             "train/dep_contrastive_loss": dep_contrastive_loss.item(),
                             "train/frustum_loss": frustum_loss.item(),
                             "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
@@ -825,6 +858,7 @@ def train_splatter_vae(
                             "train/frustum_weight": float(cfg_train.frustum_weight),
                             "global_step": global_step,
                         },
+                        step=global_step,
                     )
 
             if (

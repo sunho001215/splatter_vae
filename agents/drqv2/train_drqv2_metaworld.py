@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -39,6 +40,83 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def _format_step_tag(step: int) -> str:
+    if step > 0 and step % 1000 == 0:
+        return f"{step // 1000}k"
+    return str(step)
+
+
+def _checkpoint_step_from_path(path: str) -> Optional[int]:
+    match = re.search(r"step[_-]?(\d+)", path, flags=re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _encoder_checkpoint_step(cfg: Dict[str, Any]) -> Optional[int]:
+    vision_cfg = cfg.get("vision", {})
+    if not isinstance(vision_cfg, dict):
+        return None
+
+    encoder_type = str(vision_cfg.get("encoder_type", vision_cfg.get("name", ""))).lower()
+    section_keys = [
+        encoder_type,
+        encoder_type.replace("_", ""),
+        "reviwo",
+        "sincro",
+        "splatter_vae",
+        "splattervae",
+    ]
+    for key in dict.fromkeys(section_keys):
+        section = vision_cfg.get(key)
+        if isinstance(section, dict) and section.get("checkpoint_path") is not None:
+            step = _checkpoint_step_from_path(str(section["checkpoint_path"]))
+            if step is not None:
+                return step
+
+    for section in vision_cfg.values():
+        if isinstance(section, dict) and section.get("checkpoint_path") is not None:
+            step = _checkpoint_step_from_path(str(section["checkpoint_path"]))
+            if step is not None:
+                return step
+    return None
+
+
+def _wandb_run_name(cfg: Dict[str, Any], wandb_cfg: Dict[str, Any]) -> str:
+    default_name = f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'convnet')}"
+    return re.sub(r"[_-]seed\d+$", "", str(wandb_cfg.get("name", default_name)), flags=re.IGNORECASE)
+
+
+def _wandb_tags(cfg: Dict[str, Any], wandb_cfg: Dict[str, Any]) -> List[str]:
+    tags: List[str] = []
+
+    def add_tag(tag: str) -> None:
+        if tag and tag not in tags:
+            tags.append(tag)
+
+    explicit_tags = wandb_cfg.get("tags") or []
+    if isinstance(explicit_tags, str):
+        explicit_tags = [explicit_tags]
+    for tag in explicit_tags:
+        add_tag(str(tag))
+
+    seed = cfg.get("seed")
+    if seed is not None:
+        add_tag(f"seed_{seed}")
+
+    feature_dim = cfg.get("agent", {}).get("feature_dim")
+    if feature_dim is not None:
+        add_tag(f"feature_dim_{feature_dim}")
+
+    frame_stack = cfg.get("env", {}).get("frame_stack")
+    if frame_stack is not None:
+        add_tag(f"frame_stack_{frame_stack}")
+
+    checkpoint_step = _encoder_checkpoint_step(cfg)
+    if checkpoint_step is not None:
+        add_tag(f"checkpoint_step_{_format_step_tag(checkpoint_step)}")
+
+    return tags
 
 
 class MetaWorldSingleCameraEnv:
@@ -346,9 +424,9 @@ def main() -> None:
     if use_wandb:
         wandb.init(
             project=str(wandb_cfg.get("project", "drqv2-metaworld")),
-            name=str(wandb_cfg.get("name", f"{cfg['env']['env_name']}-{cfg['vision'].get('encoder_type', 'convnet')}")),
+            name=_wandb_run_name(cfg, wandb_cfg),
             config=cfg,
-            tags=[str(t) for t in wandb_cfg.get("tags", [])]
+            tags=_wandb_tags(cfg, wandb_cfg)
         )
 
     num_train_steps = int(tcfg.get("num_train_steps", 1_000_000))

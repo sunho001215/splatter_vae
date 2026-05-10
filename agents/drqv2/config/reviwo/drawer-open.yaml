@@ -4,7 +4,7 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-drawer-open-DrQv2
-  name: ReViWo_seed98
+  name: ReViWo
 
 env:
   benchmark_id: Meta-World/MT1
@@ -115,7 +115,7 @@ vision:
 
 agent:
   lr: 1.0e-4
-  feature_dim: 100
+  feature_dim: 256
   hidden_dim: 1024
   critic_target_tau: 0.01
   stddev_schedule: linear(1.0,0.1,100000)
