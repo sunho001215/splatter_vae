@@ -1,10 +1,10 @@
-seed: 66
+seed: 42
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-hammer-DrQv2
-  name: CNN_randomcrop_seed66
+  name: CNN
 
 env:
   benchmark_id: Meta-World/MT1
@@ -92,7 +92,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/hammer/cnn_w_crop/seed66/
+  replay_dir: ./buffer/metaworld/hammer/cnn_w_crop/seed42/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -104,7 +104,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/hammer/seed66/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/hammer/seed42/
 
 visualization:
   enabled: false

@@ -1,4 +1,4 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
@@ -126,7 +126,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/window-open/sincro/seed42/
+  replay_dir: ./buffer/metaworld/window-open/sincro/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -138,7 +138,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/window-open/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/window-open/seed98/
 
 visualization:
   enabled: false
