@@ -87,9 +87,9 @@ train:
   num_train_steps: 1000000
   seed_steps: 4000
   batch_size: 256
-  replay_size: 100000
+  replay_size: 1000000
   update_every_steps: 2
-  gradient_steps: 3
+  gradient_steps: 1
   discount: 0.99
 
   replay_dir: ./buffer/metaworld/lever-pull/cnn_w_crop/seed66/

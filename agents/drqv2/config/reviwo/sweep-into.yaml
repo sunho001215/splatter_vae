@@ -118,7 +118,7 @@ agent:
   feature_dim: 256
   hidden_dim: 1024
   critic_target_tau: 0.01
-  stddev_schedule: linear(1.0,0.1,100000)
+  stddev_schedule: linear(1.0,0.1,500000)
   stddev_clip: 0.3
   expectile: 0.9
 
@@ -126,9 +126,9 @@ train:
   num_train_steps: 1000000
   seed_steps: 4000
   batch_size: 256
-  replay_size: 100000
+  replay_size: 1000000
   update_every_steps: 2
-  gradient_steps: 3
+  gradient_steps: 1
   discount: 0.99
 
   replay_dir: ./buffer/metaworld/sweep-into/reviwo/seed98/

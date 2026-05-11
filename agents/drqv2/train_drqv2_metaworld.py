@@ -437,7 +437,6 @@ def main() -> None:
     eval_every_steps = int(tcfg.get("eval_every_steps", 10_000))
     log_every_steps = int(tcfg.get("log_every_steps", 1_000))
     num_eval_episodes = int(tcfg.get("num_eval_episodes", 10))
-    discount = float(tcfg.get("discount", 0.99))
     ckpt_every = int(tcfg.get("checkpoint_every_steps", 0))
     ckpt_dir = Path(tcfg.get("checkpoint_dir", "checkpoints"))
     if ckpt_every > 0:
@@ -461,7 +460,9 @@ def main() -> None:
         )
         next_pixels, next_proprio, reward, done, info = train_env.step(action)
         next_store = obs_to_replay(agent, next_pixels)
-        replay_storage.add(action, reward, 0.0 if done else discount, next_store, next_proprio, done)
+        # Store the environment continuation flag here. ReplayBuffer applies the
+        # algorithmic discount when it builds n-step returns.
+        replay_storage.add(action, reward, 0.0 if done else 1.0, next_store, next_proprio, done)
         obs_pixels, obs_store, proprio = next_pixels, next_store, next_proprio
         episode_return += float(reward)
         episode_success = max(episode_success, float(info["success"]))
