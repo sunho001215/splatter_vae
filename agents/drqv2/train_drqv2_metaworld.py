@@ -30,7 +30,7 @@ import wandb
 import yaml
 
 from agents.drqv2.drqv2_metaworld import DrQv2MetaWorldAgent
-from agents.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
+from agents.drqv2.replay_buffer import MemmapReplayBufferStorage, make_memmap_replay_loader
 from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
 
 
@@ -326,12 +326,35 @@ class MetaWorldSingleCameraEnv:
 
 
 @torch.inference_mode()
-def obs_to_replay(agent: DrQv2MetaWorldAgent, obs_pixels: np.ndarray) -> np.ndarray:
-    """Convert observation pixels to replay format."""
+def obs_to_policy_input(agent: DrQv2MetaWorldAgent, obs_pixels: np.ndarray) -> np.ndarray:
+    """Convert stacked observation pixels to the agent's acting format."""
     if agent.use_pixels:
         return np.asarray(obs_pixels, dtype=np.uint8)
     feat = agent.encoder.extract_cacheable_feature(torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0))
     return feat.squeeze(0).cpu().numpy()
+
+
+@torch.inference_mode()
+def obs_to_replay_atom(
+    agent: DrQv2MetaWorldAgent,
+    obs_pixels: np.ndarray,
+    latest_frame: np.ndarray,
+    policy_obs: np.ndarray | None = None,
+) -> np.ndarray:
+    """Convert the latest RGB frame to the compact memmap replay atom."""
+    if agent.encoder.replay_atom_is_feature:
+        if policy_obs is not None:
+            if agent.encoder.replay_atom_is_stack_feature:
+                return np.asarray(policy_obs, dtype=agent.encoder.replay_atom_dtype)
+            return np.asarray(policy_obs[-1], dtype=agent.encoder.replay_atom_dtype)
+        if agent.encoder.replay_atom_is_stack_feature:
+            feat = agent.encoder.extract_cacheable_feature(torch.as_tensor(obs_pixels, device=agent.device).unsqueeze(0))
+        else:
+            feat = agent.encoder.extract_single_frame_feature(
+                torch.as_tensor(latest_frame, device=agent.device).unsqueeze(0)
+            )
+        return feat.squeeze(0).cpu().numpy()
+    return np.asarray(latest_frame, dtype=np.uint8)
 
 
 def evaluate(env: MetaWorldSingleCameraEnv, agent: DrQv2MetaWorldAgent, num_episodes: int, step: int, *, log_videos: bool = False, video_fps: int = 15) -> Dict[str, Any]:
@@ -351,7 +374,7 @@ def evaluate(env: MetaWorldSingleCameraEnv, agent: DrQv2MetaWorldAgent, num_epis
         cam_successes = []
         for ep_idx in range(n):
             obs_pixels, proprio = env.reset(camera_index=cam_idx)
-            obs_for_policy = obs_pixels if agent.use_pixels else obs_to_replay(agent, obs_pixels)
+            obs_for_policy = obs_to_policy_input(agent, obs_pixels)
             done = False
             ep_ret = 0.0
             ep_succ = 0.0
@@ -359,7 +382,7 @@ def evaluate(env: MetaWorldSingleCameraEnv, agent: DrQv2MetaWorldAgent, num_epis
             while not done:
                 action = agent.act(obs_for_policy, proprio, step=step, eval_mode=True)
                 next_pixels, next_proprio, reward, done, info = env.step(action)
-                obs_for_policy = next_pixels if agent.use_pixels else obs_to_replay(agent, next_pixels)
+                obs_for_policy = obs_to_policy_input(agent, next_pixels)
                 proprio = next_proprio
                 ep_ret += float(reward)
                 ep_succ = max(ep_succ, float(info["success"]))
@@ -400,22 +423,29 @@ def main() -> None:
 
     tcfg = cfg["train"]
     replay_dir = Path(tcfg.get("replay_dir", "buffer"))
-    replay_storage = ReplayBufferStorage(
+    nstep = int(tcfg.get("nstep", 3))
+    replay_storage = MemmapReplayBufferStorage(
         replay_dir,
-        agent.encoder.replay_obs_shape,
-        agent.encoder.replay_obs_dtype,
+        agent.encoder.replay_atom_shape,
+        agent.encoder.replay_atom_dtype,
         train_env.proprio_shape,
-        train_env.action_shape
+        train_env.action_shape,
+        int(tcfg.get("replay_size", 500_000)),
+        int(agent.encoder.replay_atom_frame_stack),
+        nstep,
     )
-    replay_loader, replay_buffer = make_replay_loader(
+    replay_loader, replay_buffer = make_memmap_replay_loader(
         replay_dir,
+        agent.encoder.replay_atom_shape,
+        agent.encoder.replay_atom_dtype,
+        train_env.proprio_shape,
+        train_env.action_shape,
         int(tcfg.get("replay_size", 500_000)),
         int(tcfg.get("batch_size", 256)),
         int(tcfg.get("replay_num_workers", 2)),
-        bool(tcfg.get("save_replay_snapshot", False)),
-        int(tcfg.get("nstep", 3)),
+        int(agent.encoder.replay_atom_frame_stack),
+        nstep,
         float(tcfg.get("discount", 0.99)),
-        int(tcfg.get("replay_fetch_every", 1000))
     )
     replay_iter = None
 
@@ -445,25 +475,26 @@ def main() -> None:
     rolling_success: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
     rolling_return: Deque[float] = deque(maxlen=int(tcfg.get("rolling_window", 20)))
     obs_pixels, proprio = train_env.reset()
-    obs_store = obs_to_replay(agent, obs_pixels)
-    replay_storage.add_initial(obs_store, proprio)
+    obs_for_policy = obs_to_policy_input(agent, obs_pixels)
+    obs_atom = obs_to_replay_atom(agent, obs_pixels, train_env.get_last_frame(), obs_for_policy)
+    replay_storage.add_initial(obs_atom, proprio)
     episode_return = 0.0
     episode_success = 0.0
     update_metrics: Dict[str, float] = {}
 
     for step in range(1, num_train_steps + 1):
-        obs_for_policy = obs_pixels if agent.use_pixels else obs_store
         action = (
             train_env.action_space.sample().astype(np.float32)
             if step <= seed_steps
             else agent.act(obs_for_policy, proprio, step=step, eval_mode=False).astype(np.float32)
         )
         next_pixels, next_proprio, reward, done, info = train_env.step(action)
-        next_store = obs_to_replay(agent, next_pixels)
+        next_for_policy = obs_to_policy_input(agent, next_pixels)
+        next_atom = obs_to_replay_atom(agent, next_pixels, train_env.get_last_frame(), next_for_policy)
         # Store the environment continuation flag here. ReplayBuffer applies the
         # algorithmic discount when it builds n-step returns.
-        replay_storage.add(action, reward, 0.0 if done else 1.0, next_store, next_proprio, done)
-        obs_pixels, obs_store, proprio = next_pixels, next_store, next_proprio
+        replay_storage.add(action, reward, 0.0 if done else 1.0, next_atom, next_proprio, done)
+        obs_pixels, obs_for_policy, proprio = next_pixels, next_for_policy, next_proprio
         episode_return += float(reward)
         episode_success = max(episode_success, float(info["success"]))
 
@@ -521,8 +552,9 @@ def main() -> None:
             else:
                 print(episode_log)
             obs_pixels, proprio = train_env.reset()
-            obs_store = obs_to_replay(agent, obs_pixels)
-            replay_storage.add_initial(obs_store, proprio)
+            obs_for_policy = obs_to_policy_input(agent, obs_pixels)
+            obs_atom = obs_to_replay_atom(agent, obs_pixels, train_env.get_last_frame(), obs_for_policy)
+            replay_storage.add_initial(obs_atom, proprio)
             episode_return = 0.0
             episode_success = 0.0
 

@@ -133,8 +133,6 @@ train:
 
   replay_dir: ./buffer/metaworld/window-open/reviwo/seed98/
   replay_num_workers: 4
-  replay_fetch_every: 1000
-  save_replay_snapshot: false
   nstep: 3
 
   log_every_steps: 1000

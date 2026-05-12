@@ -104,6 +104,7 @@ agent:
   lr: 1.0e-4
   feature_dim: 256
   hidden_dim: 1024
+  augment_pixels: false
   scene_state_head:
     token_hidden_dim: 256
     per_frame_dim: 256
@@ -139,8 +140,6 @@ train:
 
   replay_dir: ./buffer/metaworld/hammer/splattervae_encoder/seed98/
   replay_num_workers: 4
-  replay_fetch_every: 1000
-  save_replay_snapshot: false
   nstep: 3
 
   log_every_steps: 1000

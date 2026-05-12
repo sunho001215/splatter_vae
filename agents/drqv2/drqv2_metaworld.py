@@ -127,6 +127,8 @@ class VisionEncoderAdapter(nn.Module):
 
         self.backbone = build_vision_encoder(full_cfg)
         self.splatter_feature_source = str(getattr(self.backbone, "feature_source", "")).lower()
+        self.replay_atom_is_feature = False
+        self.replay_atom_is_stack_feature = False
         self.backbone_trainable = bool(
             getattr(self.backbone, "is_trainable", self.vision_name == "convnet")
         )
@@ -136,6 +138,20 @@ class VisionEncoderAdapter(nn.Module):
                 p.requires_grad = False
 
         self.backbone_out_shape, self.single_frame_dim = self._infer_backbone_feature_shape(full_cfg)
+        h = int(full_cfg["env"]["image_height"])
+        w = int(full_cfg["env"]["image_width"])
+        self.replay_atom_shape = (3, h, w)
+        self.replay_atom_dtype = np.dtype(np.uint8)
+        self.replay_atom_frame_stack = self.frame_stack
+        if not self.backbone_trainable:
+            self.replay_atom_is_feature = True
+            self.replay_atom_dtype = np.dtype(np.float16)
+            if self.vision_key == "sincro":
+                self.replay_atom_is_stack_feature = True
+                self.replay_atom_shape = tuple(self.backbone_out_shape)
+                self.replay_atom_frame_stack = 1
+            else:
+                self.replay_atom_shape = tuple(self.backbone_out_shape[1:])
 
         self.proj_head = None
         if not self.backbone_trainable:
@@ -233,7 +249,18 @@ class VisionEncoderAdapter(nn.Module):
         super().train(False)
         self.backbone.eval()
 
-    @torch.inference_mode()
+    @torch.no_grad()
+    def extract_single_frame_feature(self, obs: torch.Tensor) -> torch.Tensor:
+        """Extract one frame of cacheable features for compact replay storage."""
+        if not self.replay_atom_is_feature or self.replay_atom_is_stack_feature:
+            raise RuntimeError("extract_single_frame_feature is only enabled for feature replay atoms.")
+        if obs.ndim == 3:
+            obs = obs.unsqueeze(0)
+        obs = self._to_unit_float(obs)
+        feat = self.backbone(obs)
+        return feat.to(torch.float16).contiguous()
+
+    @torch.no_grad()
     def extract_cacheable_feature(self, obs: torch.Tensor) -> torch.Tensor:
         """Extract cacheable features for frozen encoders."""
         if self.backbone_trainable:
@@ -349,9 +376,10 @@ class DrQv2MetaWorldAgent:
         self.feature_dim = int(acfg.get("feature_dim", 256))
         self.hidden_dim = int(acfg.get("hidden_dim", 256))
         self.lr = float(acfg.get("lr", 1e-4))
-        self.use_pixels = str(cfg["vision"].get("encoder_type", "convnet")).lower() == "convnet"
 
         self.encoder = VisionEncoderAdapter(cfg).to(device)
+        self.use_pixels = self.encoder.replay_obs_dtype == np.dtype(np.uint8)
+        self.augment_pixels = bool(acfg.get("augment_pixels", self.encoder.backbone_trainable))
         proprio_dim = int(np.prod(proprio_shape))
         repr_dim = self.encoder.repr_dim
         self.actor = Actor(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
@@ -359,9 +387,8 @@ class DrQv2MetaWorldAgent:
         self.critic_target = Critic(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
-        self.encoder_opt = torch.optim.Adam(
-            self.encoder.parameters(), lr=self.lr
-        ) if self.encoder.backbone_trainable or self.encoder.proj_head is not None else None
+        encoder_params = [p for p in self.encoder.parameters() if p.requires_grad]
+        self.encoder_opt = torch.optim.Adam(encoder_params, lr=self.lr) if encoder_params else None
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
         self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
         self.aug = RandomShiftsAug(pad=int(acfg.get("random_shift_pad", 4)))
@@ -430,9 +457,11 @@ class DrQv2MetaWorldAgent:
         """Encode batch of observations."""
         self.encoder.set_update_mode()
         if self.use_pixels:
-            obs_repr = self.encoder(self.aug(obs.float()), is_feature=False)
+            obs_in = self.aug(obs.float()) if self.augment_pixels else obs
+            obs_repr = self.encoder(obs_in, is_feature=False)
             with torch.no_grad():
-                next_repr = self.encoder(self.aug(next_obs.float()), is_feature=False)
+                next_obs_in = self.aug(next_obs.float()) if self.augment_pixels else next_obs
+                next_repr = self.encoder(next_obs_in, is_feature=False)
         else:
             obs_repr = self.encoder(obs, is_feature=True)
             with torch.no_grad():
