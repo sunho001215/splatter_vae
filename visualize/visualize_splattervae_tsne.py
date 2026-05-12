@@ -9,8 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import argparse
 import json
-from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import h5py
 import matplotlib
@@ -21,8 +20,14 @@ import torch
 import yaml
 from sklearn.manifold import TSNE
 
-from models.splatter import SplatterConfig, SplatterDataConfig, SplatterModelConfig, VAESplatterToGaussians
-from models.vae import CodebookConfig, InvariantDependentSplatterVAE
+from models.vae import SplatterVAE
+from visualize.splattervae_common import (
+    build_splatter_config,
+    build_splattervae,
+    image_size_from_demo,
+    load_vae_state_dict,
+    splatter_channels_from_config,
+)
 
 
 # ---------- small helpers ----------
@@ -82,55 +87,16 @@ def load_cfg(cfg_path: str) -> dict:
 
 
 def build_vae(cfg: dict, dataset_path: str, demo_key: str, ckpt_path: str, device: torch.device):
-    with h5py.File(dataset_path, "r") as f:
-        first_cam = json.loads(f["data"][demo_key].attrs["camera_names"])[0]
-        h, w = f["data"][demo_key]["obs"][f"{first_cam}_rgb"].shape[1:3]
-
-    spl_data = SplatterDataConfig(**cfg.get("splatter", {}).get("data", {}))
-    spl_data.img_height = h
-    spl_data.img_width = w
-    spl_model = SplatterModelConfig(**cfg.get("splatter", {}).get("model", {}))
-    spl_cfg = SplatterConfig(data=spl_data, model=spl_model)
-
-    splatter_channels = VAESplatterToGaussians(spl_cfg).num_splatter_channels()
-
-    inv_cb = CodebookConfig(**cfg.get("codebook", {}).get("invariant", {}))
-    dep_cb = CodebookConfig(**cfg.get("codebook", {}).get("dependent", {}))
-    model_cfg = cfg.get("model", {})
-    swin_cfg = dict(cfg.get("swin", {}))
-
-    if "patch_size" not in swin_cfg:
-        gh = int(model_cfg.get("grid_tokens_h", 8))
-        gw = int(model_cfg.get("grid_tokens_w", 8))
-        swin_cfg["patch_size"] = [h // gh, w // gw]
-    elif isinstance(swin_cfg["patch_size"], int):
-        ps = int(swin_cfg["patch_size"])
-        swin_cfg["patch_size"] = [ps, ps]
-
-    vae = InvariantDependentSplatterVAE(
-        swin_cfg=swin_cfg,
-        invariant_cb_config=inv_cb,
-        dependent_cb_config=dep_cb,
-        img_height=h,
-        img_width=w,
-        splatter_channels=splatter_channels,
-        fusion_style=model_cfg.get("fusion_style", "cat"),
-        use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-        is_dependent_ae=bool(model_cfg.get("is_dependent_ae", False)),
-        use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-        is_invariant_ae=bool(model_cfg.get("is_invariant_ae", False)),
-    )
-
-    state = torch.load(ckpt_path, map_location="cpu")
-    state_dict = state.get("vae_state_dict", state)
-    if any(k.startswith("module.") for k in state_dict):
-        state_dict = {k.replace("module.", "", 1): v for k, v in state_dict.items()}
-    vae.load_state_dict(state_dict, strict=True)
+    h, w = image_size_from_demo(dataset_path, demo_key)
+    spl_cfg = build_splatter_config(cfg, h, w)
+    splatter_channels = splatter_channels_from_config(cfg, spl_cfg)
+    vae = build_splattervae(cfg, h, w, splatter_channels)
+    load_vae_state_dict(vae, ckpt_path)
     vae.to(device).eval()
     return vae, (h, w)
 
 
-def encode_image(vae: InvariantDependentSplatterVAE, img_u8: np.ndarray, device: torch.device, pool: str):
+def encode_image(vae: SplatterVAE, img_u8: np.ndarray, device: torch.device, pool: str):
     x = image_to_tensor(img_u8).unsqueeze(0).to(device)
     with torch.no_grad():
         z_inv, _, z_dep, _, _ = vae.encode(

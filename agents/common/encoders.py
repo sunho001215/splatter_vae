@@ -105,6 +105,7 @@ class SplatterVAEInvariantEncoder(nn.Module):
         cb_cfg = dict(sv_cfg["codebook"])
 
         self.feature_source = str(sv_cfg.get("feature_source", "codebook")).lower()
+        self.preserve_token_features = self.feature_source in {"encoder", "vit", "tokens"}
         img_h = int(cfg["vision"]["img_height"])
         img_w = int(cfg["vision"]["img_width"])
 
@@ -151,16 +152,16 @@ class SplatterVAEInvariantEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x * 2.0 - 1.0
         h_inv_tokens, _, _ = self.vae.invariant_encoder(x)
-        if self.feature_source in {"encoder", "vit", "tokens"}:
-            feat = h_inv_tokens
+        if self.preserve_token_features:
+            return h_inv_tokens.contiguous()
+
+        h_proj = self.vae.invariant_encoder_output_proj(h_inv_tokens)
+        if self.feature_source == "pre_vq":
+            feat = h_proj
+        elif self.feature_source == "codebook":
+            feat, *_ = self.vae.invariant_output_head(h_proj)
         else:
-            h_proj = self.vae.invariant_encoder_output_proj(h_inv_tokens)
-            if self.feature_source == "pre_vq":
-                feat = h_proj
-            elif self.feature_source == "codebook":
-                feat, *_ = self.vae.invariant_output_head(h_proj)
-            else:
-                raise ValueError(f"Unknown SplatterVAE feature_source={self.feature_source}")
+            raise ValueError(f"Unknown SplatterVAE feature_source={self.feature_source}")
         return _flatten_feature_output(feat)
 
 

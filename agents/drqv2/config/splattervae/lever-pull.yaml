@@ -4,7 +4,7 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-lever-pull-DrQv2
-  name: SplatterVAE
+  name: SplatterVAE-encoder
 
 env:
   benchmark_id: Meta-World/MT1
@@ -76,10 +76,10 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vit256-d4-h4/lever-pull/step_00100000.pth
-    feature_source: codebook
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/lever-pull/step_00300000.pth
+    feature_source: encoder
     max_sh_degree: 0
-    num_gaussians_per_pixel: 2
+    num_gaussians_per_pixel: 4
 
     codebook:
       invariant:
@@ -104,6 +104,12 @@ agent:
   lr: 1.0e-4
   feature_dim: 256
   hidden_dim: 1024
+  scene_state_head:
+    token_hidden_dim: 256
+    per_frame_dim: 256
+    stacked_hidden_dim: 256
+    stacked_num_layers: 2
+    use_tanh: true
   critic_target_tau: 0.01
 
   # DrM-specific knobs
@@ -131,7 +137,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/lever-pull/splattervae/seed98/
+  replay_dir: ./buffer/metaworld/lever-pull/splattervae_encoder/seed98/
   replay_num_workers: 4
   replay_fetch_every: 1000
   save_replay_snapshot: false
@@ -143,7 +149,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae/lever-pull/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_encoder/lever-pull/seed98/
 
 visualization:
   enabled: false

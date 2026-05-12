@@ -10,8 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import argparse
 import json
 import math
-from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import h5py
 import matplotlib
@@ -21,14 +20,8 @@ import numpy as np
 import torch
 import yaml
 
-from models.splatter import (
-    SplatterConfig,
-    SplatterDataConfig,
-    SplatterModelConfig,
-    VAESplatterToGaussians,
-    render_predicted,
-)
-from models.vae import CodebookConfig, InvariantDependentSplatterVAE
+from models.splatter import render_predicted
+from visualize.splattervae_common import build_visualization_models
 
 
 # ---------- small helpers ----------
@@ -93,55 +86,7 @@ def load_camera_mats(demo: h5py.Group, cam_names: List[str]) -> Dict[str, Dict[s
 
 
 def build_models(cfg: dict, dataset_path: str, reference_demo: str, ckpt_path: str, device: torch.device):
-    with h5py.File(dataset_path, "r") as f:
-        first_cam = json.loads(f["data"][reference_demo].attrs["camera_names"])[0]
-        h, w = f["data"][reference_demo]["obs"][f"{first_cam}_rgb"].shape[1:3]
-
-    spl_data = SplatterDataConfig(**cfg.get("splatter", {}).get("data", {}))
-    spl_data.img_height = h
-    spl_data.img_width = w
-    spl_model = SplatterModelConfig(**cfg.get("splatter", {}).get("model", {}))
-    spl_cfg = SplatterConfig(data=spl_data, model=spl_model)
-
-    converter = VAESplatterToGaussians(spl_cfg)
-    splatter_channels = converter.num_splatter_channels()
-
-    inv_cb = CodebookConfig(**cfg.get("codebook", {}).get("invariant", {}))
-    dep_cb = CodebookConfig(**cfg.get("codebook", {}).get("dependent", {}))
-    model_cfg = cfg.get("model", {})
-    swin_cfg = dict(cfg.get("swin", {}))
-
-    if "patch_size" not in swin_cfg:
-        gh = int(model_cfg.get("grid_tokens_h", 8))
-        gw = int(model_cfg.get("grid_tokens_w", 8))
-        swin_cfg["patch_size"] = [h // gh, w // gw]
-    elif isinstance(swin_cfg["patch_size"], int):
-        ps = int(swin_cfg["patch_size"])
-        swin_cfg["patch_size"] = [ps, ps]
-
-    vae = InvariantDependentSplatterVAE(
-        swin_cfg=swin_cfg,
-        invariant_cb_config=inv_cb,
-        dependent_cb_config=dep_cb,
-        img_height=h,
-        img_width=w,
-        splatter_channels=splatter_channels,
-        fusion_style=model_cfg.get("fusion_style", "cat"),
-        use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-        is_dependent_ae=bool(model_cfg.get("is_dependent_ae", False)),
-        use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-        is_invariant_ae=bool(model_cfg.get("is_invariant_ae", False)),
-    )
-
-    state = torch.load(ckpt_path, map_location="cpu")
-    state_dict = state.get("vae_state_dict", state)
-    if any(k.startswith("module.") for k in state_dict):
-        state_dict = {k.replace("module.", "", 1): v for k, v in state_dict.items()}
-    vae.load_state_dict(state_dict, strict=True)
-
-    vae.to(device).eval()
-    converter.to(device).eval()
-    return vae, converter, spl_cfg
+    return build_visualization_models(cfg, dataset_path, reference_demo, ckpt_path, device)
 
 
 def validate_source(demo: h5py.Group, cam: str, timestep: int, tag: str):
@@ -163,7 +108,7 @@ def choose_default_cam(cams: List[str], fallback: str | None = None) -> str:
     return cams[0]
 
 
-def save_summary(inv_img, dep_img, render_dep, save_path: Path,
+def save_summary(inv_img, dep_img, splatter_preview, render_dep, save_path: Path,
                  inv_desc: str, dep_desc: str, dep_view_desc: str):
     titles = [
         f"z_inv source\n{inv_desc}",
@@ -171,8 +116,8 @@ def save_summary(inv_img, dep_img, render_dep, save_path: Path,
         "decoded splatter preview",
         f"rendered at z_dep viewpoint\n{dep_view_desc}",
     ]
-    imgs = [inv_img, dep_img, render_dep]
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    imgs = [inv_img, dep_img, splatter_preview, render_dep]
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, title, img in zip(axes, titles, imgs):
         ax.imshow(np.clip(img, 0.0, 1.0))
         ax.set_title(title, fontsize=10)
@@ -327,6 +272,7 @@ def main():
 
     render_np = [to_01(r) for r in renders]
     dep_render = render_np[dep_cams.index(cam_dep)]
+    splatter_preview = normalize_preview(splatter[0])
 
     stem = (
         f"inv_{demo_inv_key}_t{args.timestep_inv:04d}_{cam_inv}"
@@ -338,6 +284,7 @@ def main():
     save_summary(
         inv_img=img_inv_u8.astype(np.float32) / 255.0,
         dep_img=img_dep_u8.astype(np.float32) / 255.0,
+        splatter_preview=splatter_preview,
         render_dep=dep_render,
         save_path=summary_path,
         inv_desc=f"{demo_inv_key}, t={args.timestep_inv}, {cam_inv}",
