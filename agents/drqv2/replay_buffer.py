@@ -30,6 +30,11 @@ def _open_memmap(path: Path, dtype: np.dtype, shape: Tuple[int, ...], mode: str)
     return np.memmap(path, dtype=np.dtype(dtype), mode=mode, shape=shape)
 
 
+def _writable_array(array: np.ndarray) -> np.ndarray:
+    array = np.asarray(array)
+    return array if array.flags.writeable else array.copy()
+
+
 class MemmapReplayBufferStorage:
     """
     Disk-backed ring replay storage.
@@ -341,11 +346,11 @@ class MemmapReplayBuffer(IterableDataset):
         state_id = self._sample_start_id()
         next_state_id = state_id + self._nstep
 
-        obs = self._stack_state(state_id)
-        proprio = np.asarray(self._proprio[self._slot(state_id)])
-        action = np.asarray(self._action[self._slot(state_id)])
-        next_obs = self._stack_state(next_state_id)
-        next_proprio = np.asarray(self._proprio[self._slot(next_state_id)])
+        obs = _writable_array(self._stack_state(state_id))
+        proprio = _writable_array(self._proprio[self._slot(state_id)])
+        action = _writable_array(self._action[self._slot(state_id)])
+        next_obs = _writable_array(self._stack_state(next_state_id))
+        next_proprio = _writable_array(self._proprio[self._slot(next_state_id)])
 
         reward = np.zeros((1,), dtype=np.float32)
         discount = np.ones((1,), dtype=np.float32)
@@ -353,7 +358,15 @@ class MemmapReplayBuffer(IterableDataset):
             slot = self._slot(state_id + offset)
             reward += discount * np.asarray(self._reward[slot])
             discount *= np.asarray(self._discount[slot]) * self._discount_gamma
-        return obs, proprio, action, reward, discount, next_obs, next_proprio
+        return (
+            obs,
+            proprio,
+            action,
+            _writable_array(reward),
+            _writable_array(discount),
+            next_obs,
+            next_proprio,
+        )
 
     def __iter__(self):
         while True:
