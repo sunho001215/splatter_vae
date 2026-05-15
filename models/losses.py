@@ -4,76 +4,6 @@ import torch.nn.functional as F
 from fused_ssim import fused_ssim
 
 
-def infonce_loss(query, positive_keys, negative_keys=None, temperature=0.1, negative_mode='unpaired'):
-    """
-    Compute InfoNCE loss between queries and positives, with optional negatives.
-
-    L2-normalizes inputs and uses dot-product similarities scaled by 1/temperature.
-    negative_mode: 'unpaired' ((M,D) negatives, uses batch-wise negatives),
-                   'paired' ((B,M,D) negatives per-query),
-                   'mixed' (both; average of batch and paired losses).
-
-    Args:
-        query (B,D), positive_keys (B,D), negative_keys: None or (M,D) or (B,M,D).
-    Returns:
-        Scalar loss tensor.
-    Raises:
-        ValueError on invalid input shapes.
-    """
-    if temperature <= 0.0:
-        raise ValueError("temperature must be > 0.")
-
-    # Validate input dimensions
-    if query.dim() != 2 or positive_keys.dim() != 2:
-        raise ValueError("query/positive must be 2D [B, D]")
-    if negative_keys is not None:
-        if negative_mode == 'unpaired' and negative_keys.dim() != 2:
-            raise ValueError("negative_keys must be (M, D) when negative_mode='unpaired'")
-        if negative_mode in ('paired', 'mixed') and negative_keys.dim() != 3:
-            raise ValueError("negative_keys must be (B, M, D) when negative_mode in ['paired','mixed']")
-
-    # Defensive sanitization keeps training alive when upstream tensors briefly explode.
-    query = torch.nan_to_num(query, nan=0.0, posinf=0.0, neginf=0.0)
-    positive_keys = torch.nan_to_num(positive_keys, nan=0.0, posinf=0.0, neginf=0.0)
-
-    # L2 normalize the query and keys
-    q = F.normalize(query, dim=-1, eps=1e-6)
-    kpos = F.normalize(positive_keys, dim=-1, eps=1e-6)
-    if negative_keys is not None:
-        negative_keys = torch.nan_to_num(negative_keys, nan=0.0, posinf=0.0, neginf=0.0)
-        knegs = F.normalize(negative_keys, dim=-1, eps=1e-6)
-    
-    if negative_mode == 'mixed':
-        # Logits for all pairs in the batch
-        logits_full = q @ kpos.t()
-        labels_full = torch.arange(q.size(0), device=q.device)
-        loss_full = F.cross_entropy(logits_full / temperature, labels_full, reduction='mean')
-
-        # Logits for explicitly paired negatives
-        pos_logit = (q * kpos).sum(dim=1, keepdim=True)      # (B, 1)
-        # q: (B, D), knegs: (B, M, D) -> (B, M)
-        neg_logits = torch.einsum('bd,bmd->bm', q, knegs)
-        logits_mix = torch.cat([pos_logit, neg_logits], dim=1)   # (B, 1+M)
-        labels_mix = torch.zeros(q.size(0), dtype=torch.long, device=q.device)
-        loss_mix = F.cross_entropy(logits_mix / temperature, labels_mix, reduction='mean')
-
-        return 0.5 * (loss_full + loss_mix)
-
-    elif negative_keys is not None and negative_mode == 'paired':
-        # Paired negatives
-        pos_logit = (q * kpos).sum(dim=1, keepdim=True)      # (B, 1)
-        neg_logits = torch.einsum('bd,bmd->bm', q, knegs)    # (B, M)
-        logits = torch.cat([pos_logit, neg_logits], dim=1)   # (B, 1+M)
-        labels = torch.zeros(q.size(0), dtype=torch.long, device=q.device)
-        return F.cross_entropy(logits / temperature, labels, reduction='mean')
-
-    else:
-        # Basic case with no negatives
-        logits = q @ kpos.t()                                # (B, B)
-        labels = torch.arange(q.size(0), device=q.device)
-        return F.cross_entropy(logits / temperature, labels, reduction='mean')
-
-
 def compute_reconstruction_loss(
     predicted: torch.Tensor,
     ground_truth: torch.Tensor,
@@ -95,3 +25,218 @@ def compute_reconstruction_loss(
 
     total_loss = (1 - ssim_weight) * mse_loss + ssim_weight * ssim_loss
     return total_loss
+
+
+def flatten_state(z: torch.Tensor) -> torch.Tensor:
+    """Flatten compact states or token grids to [B, D] for representation losses."""
+    z = torch.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
+    return z.reshape(z.shape[0], -1)
+
+
+def vicreg_variance_loss(
+    z: torch.Tensor,
+    gamma: float = 1.0,
+    eps: float = 1.0e-4,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """VICReg variance term: keep each feature dimension above the target std."""
+    z = flatten_state(z)
+    std = torch.sqrt(z.var(dim=0, unbiased=False) + float(eps))
+    loss = F.relu(float(gamma) - std).mean()
+    return loss, std.mean(), std.min()
+
+
+def vicreg_covariance_loss(z: torch.Tensor) -> torch.Tensor:
+    """VICReg covariance term: decorrelate dimensions within one representation."""
+    z = flatten_state(z)
+    if z.shape[0] <= 1 or z.shape[1] <= 1:
+        return z.new_zeros(())
+
+    z = z - z.mean(dim=0, keepdim=True)
+    cov = (z.T @ z) / float(z.shape[0] - 1)
+    off_diag = cov.flatten()[:-1].view(z.shape[1] - 1, z.shape[1] + 1)[:, 1:].flatten()
+    return off_diag.pow(2).sum() / float(z.shape[1])
+
+
+def cross_covariance_loss(z_a: torch.Tensor, z_b: torch.Tensor) -> torch.Tensor:
+    """Penalize second-order dependence between two deterministic branches."""
+    z_a = flatten_state(z_a)
+    z_b = flatten_state(z_b)
+    if z_a.shape[0] <= 1 or z_a.shape[1] == 0 or z_b.shape[1] == 0:
+        return z_a.new_zeros(())
+
+    z_a = z_a - z_a.mean(dim=0, keepdim=True)
+    z_b = z_b - z_b.mean(dim=0, keepdim=True)
+    cross_cov = (z_a.T @ z_b) / float(z_a.shape[0] - 1)
+    # Average over the full D_inv x D_dep matrix so the loss scale remains
+    # comparable when the dependent branch dimension is reduced.
+    return cross_cov.pow(2).mean()
+
+
+def vicreg_pair_loss(
+    z_a: torch.Tensor,
+    z_b: torch.Tensor,
+    sim_coeff: float = 25.0,
+    std_coeff: float = 25.0,
+    cov_coeff: float = 1.0,
+    std_gamma: float = 1.0,
+    eps: float = 1.0e-4,
+) -> dict[str, torch.Tensor]:
+    """Compute VICReg on a positive pair, with no projector inside the loss."""
+    z_a = flatten_state(z_a)
+    z_b = flatten_state(z_b)
+
+    invariance_loss = F.mse_loss(z_a, z_b)
+    var_a, std_a_mean, std_a_min = vicreg_variance_loss(z_a, gamma=std_gamma, eps=eps)
+    var_b, std_b_mean, std_b_min = vicreg_variance_loss(z_b, gamma=std_gamma, eps=eps)
+    variance_loss = 0.5 * (var_a + var_b)
+    covariance_loss = 0.5 * (vicreg_covariance_loss(z_a) + vicreg_covariance_loss(z_b))
+    loss = (
+        float(sim_coeff) * invariance_loss
+        + float(std_coeff) * variance_loss
+        + float(cov_coeff) * covariance_loss
+    )
+
+    return {
+        "loss": loss,
+        "invariance_loss": invariance_loss,
+        "variance_loss": variance_loss,
+        "covariance_loss": covariance_loss,
+        "std_mean": 0.5 * (std_a_mean + std_b_mean),
+        "std_min": torch.minimum(std_a_min, std_b_min),
+    }
+
+
+def paired_infonce_loss(
+    query: torch.Tensor,
+    positive: torch.Tensor,
+    negative: torch.Tensor,
+    temperature: float = 0.1,
+) -> torch.Tensor:
+    """InfoNCE with explicit per-query positives and negatives."""
+    if temperature <= 0.0:
+        raise ValueError("temperature must be positive.")
+
+    query = F.normalize(flatten_state(query), dim=-1, eps=1.0e-6)
+    positive = F.normalize(flatten_state(positive), dim=-1, eps=1.0e-6)
+    negative = torch.nan_to_num(negative, nan=0.0, posinf=0.0, neginf=0.0)
+    if negative.dim() == 2:
+        negative = negative.unsqueeze(1)
+    if negative.dim() != 3:
+        raise ValueError(f"negative must have shape [B,D] or [B,M,D], got {tuple(negative.shape)}")
+    negative = F.normalize(negative.reshape(negative.shape[0], negative.shape[1], -1), dim=-1, eps=1.0e-6)
+
+    pos_logit = (query * positive).sum(dim=-1, keepdim=True)
+    neg_logits = torch.einsum("bd,bmd->bm", query, negative)
+    logits = torch.cat((pos_logit, neg_logits), dim=1) / float(temperature)
+    labels = torch.zeros(query.shape[0], dtype=torch.long, device=query.device)
+    return F.cross_entropy(logits, labels)
+
+
+def dependent_view_infonce_loss(
+    z_dep_i_t: torch.Tensor,
+    z_dep_j_t: torch.Tensor,
+    z_dep_i_tk: torch.Tensor,
+    z_dep_j_tk: torch.Tensor,
+    temperature: float = 0.1,
+) -> torch.Tensor:
+    """Contrast dependent states by camera viewpoint.
+
+    Positives are same-camera states from the same demo at a different timestep.
+    Negatives are the paired different-camera states at the same timestep.
+    """
+    z_i_t = flatten_state(z_dep_i_t)
+    z_j_t = flatten_state(z_dep_j_t)
+    z_i_tk = flatten_state(z_dep_i_tk)
+    z_j_tk = flatten_state(z_dep_j_tk)
+
+    query = torch.cat((z_i_t, z_i_tk, z_j_t, z_j_tk), dim=0)
+    positive = torch.cat((z_i_tk, z_i_t, z_j_tk, z_j_t), dim=0)
+    negative = torch.cat((z_j_t, z_j_tk, z_i_t, z_i_tk), dim=0)
+    return paired_infonce_loss(query, positive, negative, temperature=temperature)
+
+
+def compute_splattervae_representation_losses(
+    latents: dict[str, torch.Tensor],
+    *,
+    vicreg_sim_coeff: float,
+    vicreg_std_coeff: float,
+    vicreg_cov_coeff: float,
+    vicreg_std_gamma: float,
+    vicreg_eps: float,
+    dep_infonce_temperature: float,
+) -> dict[str, torch.Tensor]:
+    """Compute SplatterVAE representation losses from deterministic latent means.
+
+    The invariant branch receives full VICReg on same-time cross-view pairs.
+    The dependent branch receives InfoNCE: same camera and different timestep is
+    positive, while different camera at the same timestep is negative. Cross-
+    covariance discourages shared second-order information between branches.
+    """
+    inv_t = vicreg_pair_loss(
+        latents["z_inv_mu_i_t"],
+        latents["z_inv_mu_j_t"],
+        sim_coeff=vicreg_sim_coeff,
+        std_coeff=vicreg_std_coeff,
+        cov_coeff=vicreg_cov_coeff,
+        std_gamma=vicreg_std_gamma,
+        eps=vicreg_eps,
+    )
+    inv_tk = vicreg_pair_loss(
+        latents["z_inv_mu_i_tk"],
+        latents["z_inv_mu_j_tk"],
+        sim_coeff=vicreg_sim_coeff,
+        std_coeff=vicreg_std_coeff,
+        cov_coeff=vicreg_cov_coeff,
+        std_gamma=vicreg_std_gamma,
+        eps=vicreg_eps,
+    )
+
+    dep_infonce_loss = dependent_view_infonce_loss(
+        latents["z_dep_mu_i_t"],
+        latents["z_dep_mu_j_t"],
+        latents["z_dep_mu_i_tk"],
+        latents["z_dep_mu_j_tk"],
+        temperature=dep_infonce_temperature,
+    )
+
+    z_inv_all = torch.cat(
+        (
+            flatten_state(latents["z_inv_mu_i_t"]),
+            flatten_state(latents["z_inv_mu_j_t"]),
+            flatten_state(latents["z_inv_mu_i_tk"]),
+            flatten_state(latents["z_inv_mu_j_tk"]),
+        ),
+        dim=0,
+    )
+    z_dep_all = torch.cat(
+        (
+            flatten_state(latents["z_dep_mu_i_t"]),
+            flatten_state(latents["z_dep_mu_j_t"]),
+            flatten_state(latents["z_dep_mu_i_tk"]),
+            flatten_state(latents["z_dep_mu_j_tk"]),
+        ),
+        dim=0,
+    )
+    _, z_inv_std_mean, z_inv_std_min = vicreg_variance_loss(
+        z_inv_all,
+        gamma=vicreg_std_gamma,
+        eps=vicreg_eps,
+    )
+
+    inv_vicreg_loss = 0.5 * (inv_t["loss"] + inv_tk["loss"])
+    return {
+        "inv_vicreg_loss": inv_vicreg_loss,
+        "inv_vicreg_invariance_loss": 0.5 * (
+            inv_t["invariance_loss"] + inv_tk["invariance_loss"]
+        ),
+        "inv_vicreg_variance_loss": 0.5 * (
+            inv_t["variance_loss"] + inv_tk["variance_loss"]
+        ),
+        "inv_vicreg_covariance_loss": 0.5 * (
+            inv_t["covariance_loss"] + inv_tk["covariance_loss"]
+        ),
+        "dep_infonce_loss": dep_infonce_loss,
+        "cross_cov_loss": cross_covariance_loss(z_inv_all, z_dep_all),
+        "z_inv_std_mean": z_inv_std_mean,
+        "z_inv_std_min": z_inv_std_min,
+    }

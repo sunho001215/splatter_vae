@@ -36,15 +36,6 @@ def image_to_tensor(img_rgb: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(img * 2.0 - 1.0).permute(2, 0, 1)
 
 
-def invert_4x4(m: np.ndarray) -> np.ndarray:
-    r = m[:3, :3]
-    t = m[:3, 3:4]
-    out = np.eye(4, dtype=np.float32)
-    out[:3, :3] = r.T
-    out[:3, 3:4] = -(r.T @ t)
-    return out
-
-
 def sort_demo_keys(keys: List[str]) -> List[str]:
     def key_fn(x: str) -> int:
         try:
@@ -52,16 +43,6 @@ def sort_demo_keys(keys: List[str]) -> List[str]:
         except Exception:
             return 10**9
     return sorted(keys, key=key_fn)
-
-
-def pooled_latent(z: torch.Tensor, mode: str = "mean") -> np.ndarray:
-    # z: (1, T_tokens, D)
-    z = z[0]
-    if mode == "flatten":
-        return z.reshape(-1).detach().cpu().numpy()
-    if mode == "mean":
-        return z.mean(dim=0).detach().cpu().numpy()
-    raise ValueError(f"Unknown pool mode: {mode}")
 
 
 def safe_perplexity(n: int, wanted: int) -> int:
@@ -96,15 +77,14 @@ def build_vae(cfg: dict, dataset_path: str, demo_key: str, ckpt_path: str, devic
     return vae, (h, w)
 
 
-def encode_image(vae: SplatterVAE, img_u8: np.ndarray, device: torch.device, pool: str):
+def encode_image_states(vae: SplatterVAE, img_u8: np.ndarray, device: torch.device):
     x = image_to_tensor(img_u8).unsqueeze(0).to(device)
     with torch.no_grad():
-        z_inv, _, z_dep, _, _ = vae.encode(
-            x,
-            deterministic_invariant=True,
-            deterministic_dependent=True,
-        )
-    return pooled_latent(z_inv, pool), pooled_latent(z_dep, pool)
+        # t-SNE should inspect the current compact state interface, not the old
+        # token/codebook path. The invariant feature matches DrQ-v2 input.
+        z_inv = vae.encode_invariant_pooled_state(x)
+        z_dep = vae.encode_dependent_pooled_state(x)
+    return z_inv[0].detach().cpu().numpy(), z_dep[0].detach().cpu().numpy()
 
 
 # ---------- plots ----------
@@ -116,7 +96,7 @@ def plot_dep_tsne(emb2d: np.ndarray, cam_labels: List[str], save_path: Path):
         idx = [k for k, c in enumerate(cam_labels) if c == cam]
         pts = emb2d[idx]
         plt.scatter(pts[:, 0], pts[:, 1], s=16, alpha=0.8, label=cam, color=cmap(i))
-    plt.title("t-SNE of view-dependent representations (all cameras, one trajectory)")
+    plt.title("t-SNE of view-dependent pooled states (all cameras, one trajectory)")
     plt.xlabel("t-SNE 1")
     plt.ylabel("t-SNE 2")
     plt.legend(markerscale=1.5)
@@ -158,7 +138,7 @@ def plot_inv_tsne(emb2d: np.ndarray, cam_labels: List[str], times: List[int], ca
     sm.set_array([])
     fig.colorbar(sm, ax=ax, label="trajectory timestep")
 
-    ax.set_title("t-SNE of view-invariant representations (two cameras, same trajectory)")
+    ax.set_title("t-SNE of view-invariant pooled states (two cameras, same trajectory)")
     ax.set_xlabel("t-SNE 1")
     ax.set_ylabel("t-SNE 2")
     ax.legend(markerscale=1.5)
@@ -170,7 +150,7 @@ def plot_inv_tsne(emb2d: np.ndarray, cam_labels: List[str], times: List[int], ca
 
 # ---------- main ----------
 def main():
-    ap = argparse.ArgumentParser(description="Visualize SplatterVAE latents with t-SNE.")
+    ap = argparse.ArgumentParser(description="Visualize compact SplatterVAE pooled states with t-SNE.")
     ap.add_argument("--config", required=True, help="Training YAML config.")
     ap.add_argument("--dataset", required=True, help="Training HDF5 dataset.")
     ap.add_argument("--ckpt", required=True, help="SplatterVAE checkpoint.")
@@ -179,7 +159,6 @@ def main():
     ap.add_argument("--cam_a", default=None, help="first camera for invariant plot")
     ap.add_argument("--cam_b", default=None, help="second camera for invariant plot")
     ap.add_argument("--max_steps", type=int, default=None, help="optional trajectory truncation")
-    ap.add_argument("--pool", choices=["mean", "flatten"], default="flatten", help="reduce token grid to one vector")
     ap.add_argument("--perplexity", type=int, default=30)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -188,6 +167,7 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device)
+    torch.manual_seed(int(args.seed))
     cfg = load_cfg(args.config)
 
     with h5py.File(args.dataset, "r") as f:
@@ -215,14 +195,14 @@ def main():
             # view-dependent: all cameras across the trajectory
             for cam in cam_names:
                 img = np.asarray(obs[f"{cam}_rgb"][t], dtype=np.uint8)
-                _, z_dep = encode_image(vae, img, device, args.pool)
+                _, z_dep = encode_image_states(vae, img, device)
                 dep_feats.append(z_dep)
                 dep_cams.append(cam)
 
             # view-invariant: two chosen cameras, same trajectory and same timesteps
             for cam in (cam_a, cam_b):
                 img = np.asarray(obs[f"{cam}_rgb"][t], dtype=np.uint8)
-                z_inv, _ = encode_image(vae, img, device, args.pool)
+                z_inv, _ = encode_image_states(vae, img, device)
                 inv_feats.append(z_inv)
                 inv_cams.append(cam)
                 inv_times.append(t)

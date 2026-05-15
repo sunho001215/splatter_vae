@@ -17,7 +17,7 @@ from models.splatter import (
     default_splatter_channels,
 )
 from models.splatter_pretraining import train_splatter_vae
-from models.vae import CodebookConfig, SplatterVAE
+from models.vae import SplatterVAE
 from models.splatter_train_config import TrainConfig
 from utils.general_utils import set_random_seed
 
@@ -54,10 +54,6 @@ def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> Splatte
 
 
 def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
-    cb_cfg = cfg.get("codebook", {})
-    inv_cb_cfg = CodebookConfig(**cb_cfg.get("invariant", {}))
-    dep_cb_cfg = CodebookConfig(**cb_cfg.get("dependent", {}))
-
     vit_cfg = dict(cfg.get("vit", {}))
     model_cfg = dict(cfg.get("model", {}))
     spl_model_cfg = cfg.get("splatter", {}).get("model", {})
@@ -76,16 +72,16 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
 
     return SplatterVAE(
         vit_cfg=vit_cfg,
-        invariant_cb_config=inv_cb_cfg,
-        dependent_cb_config=dep_cb_cfg,
         img_height=img_height,
         img_width=img_width,
         splatter_channels=splatter_channels,
         fusion_style=str(model_cfg.get("fusion_style", "cat")),
-        use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-        is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
-        use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-        is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
+        state_dim=int(model_cfg.get("state_dim", 256)),
+        dep_state_dim=int(model_cfg.get("dep_state_dim", model_cfg.get("state_dim", 256))),
+        state_token_dim=model_cfg.get("state_token_dim", None),
+        state_pool_heads=int(model_cfg.get("state_pool_heads", 4)),
+        state_pool_mlp_ratio=float(model_cfg.get("state_pool_mlp_ratio", 2.0)),
+        decoder_token_hidden_dim=model_cfg.get("decoder_token_hidden_dim", None),
         dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.95)),
         dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
         dpt_features=int(vit_cfg.get("dpt_features", 256)),

@@ -6,7 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-    
+
 import argparse
 import json
 import math
@@ -221,16 +221,8 @@ def main():
     x_dep = image_to_tensor(img_dep_u8).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        z_inv, _, _, _, _ = vae.encode(
-            x_inv,
-            deterministic_invariant=True,
-            deterministic_dependent=True,
-        )
-        _, _, z_dep, _, _ = vae.encode(
-            x_dep,
-            deterministic_invariant=True,
-            deterministic_dependent=True,
-        )
+        z_inv = vae.encode_invariant_state(x_inv, deterministic=True)
+        z_dep = vae.encode_dependent_state(x_dep, deterministic=True)
 
         # The output should keep the content/scene cues from z_inv and adopt the viewpoint cues from z_dep.
         splatter = vae.decode(z_inv, z_dep)

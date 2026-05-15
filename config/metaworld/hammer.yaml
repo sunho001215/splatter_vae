@@ -17,26 +17,14 @@ dataset:
 # -----------------------------------------------------------------------------
 model:
   fusion_style: "cat"          # ["cat", "plus"]
-  use_dependent_vq: true
-  is_dependent_ae: false
-  use_invariant_vq: true
-  is_invariant_ae: false
+  state_dim: 256
+  dep_state_dim: 32
+  state_token_dim: 256
+  state_pool_heads: 4
+  state_pool_mlp_ratio: 2.0
+  decoder_token_hidden_dim: 512
   dep_input_mask_ratio: 0.75
   dep_mask_eval: true
-
-# -----------------------------------------------------------------------------
-# Invariant / dependent codebooks
-# -----------------------------------------------------------------------------
-codebook:
-  invariant:
-    quantizer: fsq
-    fsq_levels: [8, 5, 5, 5]
-    embed_dim: 4
-
-  dependent:
-    quantizer: fsq
-    fsq_levels: [8, 5, 5, 5]
-    embed_dim: 4
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -105,25 +93,35 @@ train:
   lr: 3.0e-4
   device: cuda
 
-  # Original no-dynamics loss weights.
+  # Rendering / beta-VAE losses.
   rec_weight: 1.0
   ssim_weight: 0.0
   shuffle_inv_rec_weight: 1.0
   shuffle_dep_rec_weight: 1.0
   shuffle_both_rec_weight: 1.0
-  vq_weight: 0.0
-  inv_contrastive_weight: 1.0
-  inv_variance_weight: 1.0
-  inv_variance_gamma: 0.1
-  dep_contrastive_weight: 0.1
+  kl_weight: 1.0e-4
   frustum_weight: 0.01
 
-  temperature: 0.1
+  # Representation regularization.
+  # Full VICReg is applied directly to z_inv_mu; sampled z_inv is still used
+  # for decoding and rendering.
+  inv_vicreg_weight: 1.0
+  vicreg_sim_coeff: 25.0
+  vicreg_std_coeff: 25.0
+  vicreg_cov_coeff: 1.0
+  vicreg_std_gamma: 1.0
+  vicreg_eps: 1.0e-4
+
+  # z_dep_mu uses InfoNCE with same-camera/different-timestep positives and
+  # different-camera/same-timestep negatives; L_cross decorrelates branches.
+  dep_infonce_weight: 0.1
+  dep_infonce_temperature: 0.1
+  cross_cov_weight: 1.0
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/hammer/
-  resume_from_last: true
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterStateVAE/hammer/
+  resume_from_last: false
 
 # -----------------------------------------------------------------------------
 # Optional logging
@@ -144,4 +142,4 @@ wandb:
     - diverse-demo-collection
     - ssim_weight-0.0
     - max_sh_degree-0
-    - FSQ-codebook
+    - compact-state-beta-vae

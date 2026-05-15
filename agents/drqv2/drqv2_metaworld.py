@@ -156,7 +156,7 @@ class VisionEncoderAdapter(nn.Module):
         self.proj_head = None
         if not self.backbone_trainable:
             proj_dim = int(full_cfg["agent"].get("feature_dim", 256))
-            if self.vision_key == "splattervae" and self.splatter_feature_source in {"encoder", "vit", "tokens"}:
+            if self.vision_key == "splattervae" and bool(getattr(self.backbone, "returns_token_features", False)):
                 head_cfg = dict(full_cfg["agent"].get("scene_state_head", {}))
                 self.proj_head = SceneStateHead(
                     in_dim=self.single_frame_dim,

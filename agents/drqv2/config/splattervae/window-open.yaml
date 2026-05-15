@@ -4,7 +4,7 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-window-open-DrQv2
-  name: SplatterVAE-encoder
+  name: SplatterVAE-pool
 
 env:
   benchmark_id: Meta-World/MT1
@@ -76,27 +76,19 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/window-open/step_00300000.pth
-    feature_source: encoder
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterStateVAE/window-open/step_00300000.pth
+    feature_source: pool
     max_sh_degree: 0
     num_gaussians_per_pixel: 4
 
-    codebook:
-      invariant:
-        quantizer: fsq
-        fsq_levels: [8, 5, 5, 5]
-        embed_dim: 4
-      dependent:
-        quantizer: fsq
-        fsq_levels: [8, 5, 5, 5]
-        embed_dim: 4
-
     model:
       fusion_style: cat
-      use_dependent_vq: true
-      is_dependent_ae: false
-      use_invariant_vq: true
-      is_invariant_ae: false
+      state_dim: 256
+      dep_state_dim: 32
+      state_token_dim: 256
+      state_pool_heads: 4
+      state_pool_mlp_ratio: 2.0
+      decoder_token_hidden_dim: 512
       dep_input_mask_ratio: 0.75
       dep_mask_eval: true
 
@@ -105,12 +97,6 @@ agent:
   feature_dim: 256
   hidden_dim: 1024
   augment_pixels: false
-  scene_state_head:
-    token_hidden_dim: 256
-    per_frame_dim: 256
-    stacked_hidden_dim: 256
-    stacked_num_layers: 2
-    use_tanh: true
   critic_target_tau: 0.01
 
   # DrM-specific knobs
@@ -138,7 +124,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/window-open/splattervae_encoder/seed98/
+  replay_dir: ./buffer/metaworld/window-open/splatter_pool_vae/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -148,7 +134,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_encoder/window-open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splatter_pool_vae/window-open/seed98/
 
 visualization:
   enabled: false

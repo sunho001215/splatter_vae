@@ -6,13 +6,11 @@ from typing import Dict, Tuple
 import torch
 import torch.nn as nn
 
-from vector_quantize_pytorch import FSQ, VectorQuantize
-
 from .vision_transformer import DPTHead, TokenTransformer, ViTBackbone, ViTSmallConfig
 
 @dataclass
 class CodebookConfig:
-    """Codebook / quantizer hyper-parameters used by the invariant / dependent branches."""
+    """Legacy codebook config kept for ReViWo compatibility."""
 
     # ----- VQ params -----
     n_embed: int = 512
@@ -23,11 +21,46 @@ class CodebookConfig:
     quantizer: str = "vq"                     # "vq" or "fsq"
     fsq_levels: Tuple[int, ...] = field(default_factory=tuple)
 
+class AttentionStatePooler(nn.Module):
+    """Pool patch tokens into one compact state vector with a learned query."""
+
+    def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 2.0, dropout: float = 0.0):
+        super().__init__()
+        self.query = nn.Parameter(torch.zeros(1, 1, dim))
+        self.token_norm = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        hidden_dim = int(round(dim * float(mlp_ratio)))
+        self.out_norm = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+        )
+        nn.init.trunc_normal_(self.query, std=0.02)
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        bsz = tokens.shape[0]
+        tokens = self.token_norm(tokens)
+        query = self.query.expand(bsz, -1, -1)
+        pooled, _ = self.attn(query=query, key=tokens, value=tokens, need_weights=False)
+        pooled = pooled.squeeze(1)
+        return self.out_norm(pooled + self.mlp(pooled))
+
+
 class SplatterVAE(nn.Module):
-    """ReViWo-style dual-encoder VAE with a ViT+DPT generator.
+    """Dual-branch continuous beta-VAE with a compact-state decoder.
 
     Notes:
-        - The encode/decode interface mirrors the original implementation.
+        - Each branch pools ViT patch tokens into one Gaussian state vector.
+        - state_dim controls the invariant branch; dep_state_dim optionally
+          bottlenecks the dependent camera/view branch.
+        - The decoder uses one fused compact vector to generate patch tokens.
         - The decoder outputs a *parent* Splatter Image only.
         - The parent image is later converted to Gaussians and expanded with
           target-conditioned child Gaussians.
@@ -36,16 +69,16 @@ class SplatterVAE(nn.Module):
     def __init__(
         self,
         vit_cfg: Dict,
-        invariant_cb_config: CodebookConfig,
-        dependent_cb_config: CodebookConfig,
         img_height: int,
         img_width: int,
         splatter_channels: int,
         fusion_style: str = "cat",
-        use_dependent_vq: bool = True,
-        is_dependent_ae: bool = True,
-        use_invariant_vq: bool = True,
-        is_invariant_ae: bool = True,
+        state_dim: int = 256,
+        dep_state_dim: int | None = None,
+        state_token_dim: int | None = None,
+        state_pool_heads: int = 4,
+        state_pool_mlp_ratio: float = 2.0,
+        decoder_token_hidden_dim: int | None = None,
         dep_input_mask_ratio: float = 0.95,
         dep_mask_eval: bool = True,
         dpt_features: int = 256,
@@ -87,27 +120,83 @@ class SplatterVAE(nn.Module):
         self.dependent_encoder = ViTBackbone(enc_cfg)
         self.n_tokens_per_frame = self.invariant_encoder.num_patches
         latent_dim = enc_cfg.embed_dim
+        self.latent_dim = int(latent_dim)
+        self.inv_state_dim = int(state_dim)
+        self.dep_state_dim = int(dep_state_dim or state_dim)
+        # Keep state_dim as the invariant state size for existing RL/config code.
+        self.state_dim = self.inv_state_dim
+        state_token_dim = int(state_token_dim or state_dim)
+        if state_token_dim % int(state_pool_heads) != 0:
+            raise ValueError(
+                f"state_token_dim={state_token_dim} must be divisible by state_pool_heads={state_pool_heads}."
+            )
 
         # -------------------------------------------------------------
-        # Project encoder outputs into codebook spaces
+        # Project and pool encoder tokens into compact Gaussian states
         # -------------------------------------------------------------
-        self.invariant_encoder_output_proj = nn.Linear(latent_dim, invariant_cb_config.embed_dim, bias=True)
-        self.dependent_encoder_output_proj = nn.Linear(latent_dim, dependent_cb_config.embed_dim, bias=True)
+        self.invariant_encoder_output_proj = nn.Sequential(
+            nn.Linear(latent_dim, state_token_dim, bias=True),
+            nn.LayerNorm(state_token_dim),
+            nn.GELU(),
+            nn.Linear(state_token_dim, state_token_dim, bias=True),
+        )
+        self.dependent_encoder_output_proj = nn.Sequential(
+            nn.Linear(latent_dim, state_token_dim, bias=True),
+            nn.LayerNorm(state_token_dim),
+            nn.GELU(),
+            nn.Linear(state_token_dim, state_token_dim, bias=True),
+        )
+        self.invariant_state_pool = AttentionStatePooler(
+            dim=state_token_dim,
+            num_heads=int(state_pool_heads),
+            mlp_ratio=float(state_pool_mlp_ratio),
+            dropout=float(vit_cfg.get("dropout", 0.0)),
+        )
+        self.dependent_state_pool = AttentionStatePooler(
+            dim=state_token_dim,
+            num_heads=int(state_pool_heads),
+            mlp_ratio=float(state_pool_mlp_ratio),
+            dropout=float(vit_cfg.get("dropout", 0.0)),
+        )
+        self.invariant_mu = nn.Linear(state_token_dim, self.inv_state_dim)
+        self.invariant_logvar = nn.Linear(state_token_dim, self.inv_state_dim)
+        self.dependent_mu = nn.Linear(state_token_dim, self.dep_state_dim)
+        self.dependent_logvar = nn.Linear(state_token_dim, self.dep_state_dim)
 
         # -------------------------------------------------------------
-        # Fusion of invariant + dependent embeddings before the decoder
+        # Fusion of invariant + dependent compact states before the decoder
         # -------------------------------------------------------------
         self.fusion_style = fusion_style
         if fusion_style == "plus":
-            if invariant_cb_config.embed_dim != dependent_cb_config.embed_dim:
-                raise ValueError("fusion_style='plus' requires equal invariant/dependent dims.")
-            decoder_in_dim = invariant_cb_config.embed_dim
+            if self.inv_state_dim != self.dep_state_dim:
+                raise ValueError(
+                    "fusion_style='plus' requires state_dim and dep_state_dim to match. "
+                    "Use fusion_style='cat' when the dependent branch is smaller."
+                )
+            decoder_in_dim = self.inv_state_dim
         elif fusion_style == "cat":
-            decoder_in_dim = invariant_cb_config.embed_dim + dependent_cb_config.embed_dim
+            decoder_in_dim = self.inv_state_dim + self.dep_state_dim
         else:
             raise NotImplementedError(f"Unknown fusion_style={fusion_style}")
 
-        self.decoder_input_proj = nn.Linear(decoder_in_dim, latent_dim, bias=True)
+        self.decoder_state_mlp = nn.Sequential(
+            nn.Linear(decoder_in_dim, latent_dim, bias=True),
+            nn.LayerNorm(latent_dim),
+            nn.GELU(),
+            nn.Linear(latent_dim, latent_dim, bias=True),
+            nn.LayerNorm(latent_dim),
+        )
+        self.decoder_patch_query = nn.Parameter(torch.zeros(1, self.n_tokens_per_frame, latent_dim))
+        self.decoder_2d_pos = nn.Parameter(torch.zeros(1, self.n_tokens_per_frame, latent_dim))
+        decoder_token_hidden_dim = int(decoder_token_hidden_dim or (2 * latent_dim))
+        self.decoder_token_mlp = nn.Sequential(
+            nn.Linear(2 * latent_dim, decoder_token_hidden_dim, bias=True),
+            nn.GELU(),
+            nn.Linear(decoder_token_hidden_dim, latent_dim, bias=True),
+            nn.LayerNorm(latent_dim),
+        )
+        nn.init.trunc_normal_(self.decoder_patch_query, std=0.02)
+        nn.init.trunc_normal_(self.decoder_2d_pos, std=0.02)
 
         # -------------------------------------------------------------
         # Token transformer + DPT dense head
@@ -133,117 +222,15 @@ class SplatterVAE(nn.Module):
         )
 
         # -------------------------------------------------------------
-        # VQ or Gaussian latent heads
-        # -------------------------------------------------------------
-        # Keep track of which discrete quantizer each branch uses
-        self.invariant_quantizer_type = str(invariant_cb_config.quantizer).lower()
-        self.dependent_quantizer_type = str(dependent_cb_config.quantizer).lower()
-        # Build the appropriate quantizer heads based on config:
-        self.invariant_output_head = self._build_token_quantizer(
-            invariant_cb_config,
-            use_discrete_quantizer=use_invariant_vq,
-        )
-        self.dependent_output_head = self._build_token_quantizer(
-            dependent_cb_config,
-            use_discrete_quantizer=use_dependent_vq,
-        )
-        self.dependent_output_final_proj = nn.Identity()
-
-        # -------------------------------------------------------------
         # Misc flags / helper tokens
         # -------------------------------------------------------------
         self.splatter_channels = int(splatter_channels)
-        self.use_dependent_vq = bool(use_dependent_vq)
-        self.is_dependent_ae = bool(is_dependent_ae)
-        self.use_invariant_vq = bool(use_invariant_vq)
-        self.is_invariant_ae = bool(is_invariant_ae)
 
         # Patch-aligned random masking for the dependent branch input
         self.dep_input_mask_ratio = float(dep_input_mask_ratio)
         self.dep_mask_eval = bool(dep_mask_eval)
         self.dep_mask_token = nn.Parameter(torch.zeros(1, 1, 1, 3, self.patch_h, self.patch_w))
         nn.init.normal_(self.dep_mask_token, mean=0.0, std=0.02)
-
-    # ------------------------------------------------------------------
-    # Quantizer builders and runners
-    # ------------------------------------------------------------------
-
-    def _build_token_quantizer(self, cb_config: CodebookConfig, use_discrete_quantizer: bool) -> nn.Module:
-        """
-        Build either:
-        - VQ head
-        - FSQ head
-        - Gaussian head (if use_discrete_quantizer=False)
-
-        Safe FSQ path here follows lucidrains' README usage:
-        FSQ(levels=[...]) with input last-dim == len(levels)
-        """
-        if not use_discrete_quantizer:
-            # Original Gaussian / AE path
-            return nn.Linear(cb_config.embed_dim, 2 * cb_config.embed_dim)
-
-        quantizer = str(cb_config.quantizer).lower()
-
-        if quantizer == "vq":
-            return VectorQuantize(
-                dim=cb_config.embed_dim,
-                codebook_size=cb_config.n_embed,
-                commitment_weight=cb_config.beta,
-                use_cosine_sim=True,
-                kmeans_init=True,
-                kmeans_iters=10,
-                threshold_ema_dead_code=2,
-            )
-
-        if quantizer == "fsq":
-            if len(cb_config.fsq_levels) == 0:
-                raise ValueError("FSQ selected, but fsq_levels is empty.")
-
-            # Safe / explicit choice:
-            # for this patch, make embed_dim exactly equal to len(levels)
-            # e.g. L = [6, 5, 5]  ->  embed_dim = 3
-            if cb_config.embed_dim != len(cb_config.fsq_levels):
-                raise ValueError(
-                    f"FSQ requires embed_dim == len(fsq_levels) in this implementation. "
-                    f"Got embed_dim={cb_config.embed_dim}, len(fsq_levels)={len(cb_config.fsq_levels)}."
-                )
-
-            return FSQ(levels=list(cb_config.fsq_levels))
-
-        raise ValueError(f"Unknown quantizer type: {cb_config.quantizer}")
-
-
-    def _run_discrete_quantizer(
-        self,
-        quantizer_module: nn.Module,
-        x: torch.Tensor,
-        quantizer_type: str,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Normalize the interface across VQ and FSQ.
-
-        Returns:
-            z_q      : quantized tokens
-            indices  : token indices
-            aux_loss : scalar tensor
-
-        Notes:
-        - VQ returns (quantized, indices, aux_loss)
-        - FSQ returns (quantized, indices)
-        - For FSQ, aux_loss is zero by design in this wrapper
-        """
-        quantizer_type = str(quantizer_type).lower()
-
-        if quantizer_type == "vq":
-            z_q, indices, aux_loss = quantizer_module(x)
-            return z_q, indices, aux_loss.mean()
-
-        if quantizer_type == "fsq":
-            z_q, indices = quantizer_module(x)
-            aux_loss = x.new_zeros(())
-            return z_q, indices, aux_loss
-
-        raise ValueError(f"Unknown quantizer type: {quantizer_type}")
 
     # ------------------------------------------------------------------
     # Input masking for the dependent branch
@@ -277,18 +264,62 @@ class SplatterVAE(nn.Module):
     # ------------------------------------------------------------------
     # Encoding
     # ------------------------------------------------------------------
+    @staticmethod
+    def _kl_loss(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        logvar = logvar.clamp(-20.0, 6.0)
+        kl = -0.5 * (1.0 + logvar - mu.pow(2) - logvar.exp())
+        return kl.sum(dim=-1).mean()
+
+    @staticmethod
+    def _sample_state(mu: torch.Tensor, logvar: torch.Tensor, deterministic: bool, training: bool) -> torch.Tensor:
+        if deterministic or not training:
+            return mu
+        std = torch.exp(0.5 * logvar.clamp(-20.0, 6.0))
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def _check_input_size(self, x: torch.Tensor) -> None:
+        _b, _c, h, w = x.shape
+        if h != self.img_height or w != self.img_width:
+            raise ValueError(f"Expected input size {(self.img_height, self.img_width)}, got {(h, w)}")
+
+    def encode_invariant_pooled_state(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the invariant branch output immediately after attention pooling."""
+        self._check_input_size(x)
+        h_inv_tokens, _, _ = self.invariant_encoder(x)
+        h_inv = self.invariant_encoder_output_proj(h_inv_tokens)
+        return self.invariant_state_pool(h_inv).contiguous()
+
+    def encode_dependent_pooled_state(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the dependent branch output immediately after attention pooling."""
+        self._check_input_size(x)
+        x_dep_masked = self._mask_dependent_input_patches(x)
+        h_dep_tokens, _, _ = self.dependent_encoder(x_dep_masked)
+        h_dep = self.dependent_encoder_output_proj(h_dep_tokens)
+        return self.dependent_state_pool(h_dep).contiguous()
+
+    def encode_invariant_state(self, x: torch.Tensor, deterministic: bool = True) -> torch.Tensor:
+        """Encode only the invariant branch into the Gaussian state used by the decoder."""
+        pooled = self.encode_invariant_pooled_state(x)
+        mu = self.invariant_mu(pooled)
+        logvar = self.invariant_logvar(pooled)
+        return self._sample_state(mu, logvar, deterministic=deterministic, training=self.training).contiguous()
+
+    def encode_dependent_state(self, x: torch.Tensor, deterministic: bool = True) -> torch.Tensor:
+        """Encode only the dependent branch into the Gaussian state used by the decoder."""
+        pooled = self.encode_dependent_pooled_state(x)
+        mu = self.dependent_mu(pooled)
+        logvar = self.dependent_logvar(pooled)
+        return self._sample_state(mu, logvar, deterministic=deterministic, training=self.training).contiguous()
+
     def encode(
         self,
         x: torch.Tensor,
         deterministic_invariant: bool = False,
         deterministic_dependent: bool = False,
     ):
-        """Encode one RGB image into invariant + dependent token sequences."""
-        b, c, h, w = x.shape
-        if h != self.img_height or w != self.img_width:
-            raise ValueError(
-                f"Expected input size {(self.img_height, self.img_width)}, got {(h, w)}"
-            )
+        """Encode one RGB image into invariant + dependent compact Gaussian states."""
+        self._check_input_size(x)
 
         # Invariant branch sees the original image.
         h_inv_tokens, _, _ = self.invariant_encoder(x)
@@ -302,56 +333,36 @@ class SplatterVAE(nn.Module):
 
         h_inv = self.invariant_encoder_output_proj(h_inv_tokens)
         h_dep = self.dependent_encoder_output_proj(h_dep_tokens)
+        inv_pooled = self.invariant_state_pool(h_inv)
+        dep_pooled = self.dependent_state_pool(h_dep)
 
-        # Invariant branch.
-        if self.use_invariant_vq:
-            z_inv, invariant_encoding_indices, inv_embed_loss = self._run_discrete_quantizer(
-                self.invariant_output_head,
-                h_inv,
-                self.invariant_quantizer_type,
-            )
-        else:
-            z_inv_output = self.invariant_output_head(h_inv)
-            z_inv_mu = z_inv_output[:, :, : h_inv.shape[-1]]
-            z_inv_sigma = torch.exp(z_inv_output[:, :, h_inv.shape[-1] :].clamp(-20, 2))
-            inv_embed_loss = -0.5 * torch.mean(
-                1 + torch.log(z_inv_sigma ** 2) - z_inv_mu ** 2 - z_inv_sigma ** 2
-            )
-            dist = torch.distributions.Normal(z_inv_mu, z_inv_sigma)
-            z_inv = z_inv_mu if deterministic_invariant else (dist.rsample() if self.training else dist.sample())
-            invariant_encoding_indices = torch.zeros(
-                (z_inv.shape[0], z_inv.shape[1]),
-                device=z_inv.device,
-                dtype=torch.long,
-            )
+        z_inv_mu = self.invariant_mu(inv_pooled)
+        z_inv_logvar = self.invariant_logvar(inv_pooled)
+        z_dep_mu = self.dependent_mu(dep_pooled)
+        z_dep_logvar = self.dependent_logvar(dep_pooled)
 
-        # Dependent branch.
-        if self.use_dependent_vq:
-            z_dep, dependent_encoding_indices, dep_embed_loss = self._run_discrete_quantizer(
-                self.dependent_output_head,
-                h_dep,
-                self.dependent_quantizer_type,
-            )
-            z_dep = self.dependent_output_final_proj(z_dep)
-        else:
-            z_dep_output = self.dependent_output_head(h_dep)
-            z_dep_mu = z_dep_output[:, :, : h_dep.shape[-1]]
-            z_dep_sigma = torch.exp(z_dep_output[:, :, h_dep.shape[-1] :].clamp(-20, 2))
-            dep_embed_loss = -0.5 * torch.mean(
-                1 + torch.log(z_dep_sigma ** 2) - z_dep_mu ** 2 - z_dep_sigma ** 2
-            )
-            dist = torch.distributions.Normal(z_dep_mu, z_dep_sigma)
-            z_dep = z_dep_mu if deterministic_dependent else (dist.rsample() if self.training else dist.sample())
-            dependent_encoding_indices = torch.zeros(
-                (z_dep.shape[0], z_dep.shape[1]),
-                device=z_dep.device,
-                dtype=torch.long,
-            )
-
-        return z_inv, inv_embed_loss, z_dep, dep_embed_loss, (
-            dependent_encoding_indices,
-            invariant_encoding_indices,
+        z_inv = self._sample_state(
+            z_inv_mu,
+            z_inv_logvar,
+            deterministic=deterministic_invariant,
+            training=self.training,
         )
+        z_dep = self._sample_state(
+            z_dep_mu,
+            z_dep_logvar,
+            deterministic=deterministic_dependent,
+            training=self.training,
+        )
+
+        inv_kl_loss = self._kl_loss(z_inv_mu, z_inv_logvar)
+        dep_kl_loss = self._kl_loss(z_dep_mu, z_dep_logvar)
+        stats = {
+            "z_inv_mu": z_inv_mu,
+            "z_inv_logvar": z_inv_logvar,
+            "z_dep_mu": z_dep_mu,
+            "z_dep_logvar": z_dep_logvar,
+        }
+        return z_inv.contiguous(), inv_kl_loss, z_dep.contiguous(), dep_kl_loss, stats
 
     # ------------------------------------------------------------------
     # Fusion
@@ -367,9 +378,14 @@ class SplatterVAE(nn.Module):
     # Decoding
     # ------------------------------------------------------------------
     def decode(self, z_inv: torch.Tensor, z_dep: torch.Tensor) -> torch.Tensor:
-        """Decode latent tokens into the vanilla (parent-only) Splatter Image."""
-        quant = self.fusion(z_inv, z_dep)
-        dec_tokens = self.decoder_input_proj(quant)
+        """Decode one fused compact state into a parent-only Splatter Image."""
+        fused_state = self.fusion(z_inv, z_dep)
+        state_embed = self.decoder_state_mlp(fused_state)
+
+        bsz = state_embed.shape[0]
+        patch_seed = (self.decoder_patch_query + self.decoder_2d_pos).expand(bsz, -1, -1)
+        state_tokens = state_embed.unsqueeze(1).expand(-1, self.n_tokens_per_frame, -1)
+        dec_tokens = self.decoder_token_mlp(torch.cat((state_tokens, patch_seed), dim=-1))
         _, hidden_states = self.decoder_backbone(dec_tokens)
 
         grid_h = self.img_height // self.patch_h
@@ -385,14 +401,14 @@ class SplatterVAE(nn.Module):
     # Convenience forward
     # ------------------------------------------------------------------
     def forward(self, x: torch.Tensor):
-        z_inv, inv_embed_loss, z_dep, dep_embed_loss, _ = self.encode(
+        z_inv, inv_kl_loss, z_dep, dep_kl_loss, _ = self.encode(
             x,
             deterministic_invariant=False,
             deterministic_dependent=False,
         )
         splatter = self.decode(z_inv, z_dep)
-        total_embed_loss = inv_embed_loss + dep_embed_loss
-        return splatter, total_embed_loss
+        total_kl_loss = inv_kl_loss + dep_kl_loss
+        return splatter, total_kl_loss
 
     # ------------------------------------------------------------------
     # Checkpoint helpers
@@ -403,6 +419,3 @@ class SplatterVAE(nn.Module):
     def load_checkpoint(self, checkpoint_file: str):
         state = torch.load(checkpoint_file, map_location="cpu")
         self.load_state_dict(state)
-        for head in [self.invariant_output_head, self.dependent_output_head]:
-            if isinstance(head, VectorQuantize) and hasattr(head, "kmeans_init"):
-                head.kmeans_init = False

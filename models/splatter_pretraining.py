@@ -12,7 +12,7 @@ import wandb
 
 from models.losses import (
     compute_reconstruction_loss,
-    infonce_loss,
+    compute_splattervae_representation_losses,
 )
 from models.splatter import SplatterConfig, VAESplatterToGaussians, render_predicted
 from models.splatter_train_config import TrainConfig
@@ -36,18 +36,21 @@ def encode_temporal_pair_batch(
             temporal shuffling.
 
     Returns:
-        A dict of token tensors keyed by image name, plus invariant/dependent
-        VQ losses averaged over the four encoded images.
+        A dict of compact state vectors keyed by image name, plus
+        invariant/dependent beta-VAE KL losses averaged over the four images.
     """
     bsz, channels, height, width = image_i_t.shape
     images = torch.stack((image_i_t, image_j_t, image_i_tk, image_j_tk), dim=1)
     flat_images = images.reshape(bsz * 4, channels, height, width).contiguous()
 
-    z_inv, inv_vq_loss, z_dep, dep_vq_loss, _ = vae.encode(flat_images)
+    z_inv, inv_kl_loss, z_dep, dep_kl_loss, stats = vae.encode(flat_images)
 
     z_inv = z_inv.reshape(bsz, 4, *z_inv.shape[1:]).contiguous()
     z_dep = z_dep.reshape(bsz, 4, *z_dep.shape[1:]).contiguous()
+    z_inv_mu = stats["z_inv_mu"].reshape(bsz, 4, -1).contiguous()
+    z_dep_mu = stats["z_dep_mu"].reshape(bsz, 4, -1).contiguous()
     latents = {
+        # Stochastic VAE samples are kept for decoding/rendering.
         "z_inv_i_t": z_inv[:, 0],
         "z_inv_j_t": z_inv[:, 1],
         "z_inv_i_tk": z_inv[:, 2],
@@ -56,114 +59,47 @@ def encode_temporal_pair_batch(
         "z_dep_j_t": z_dep[:, 1],
         "z_dep_i_tk": z_dep[:, 2],
         "z_dep_j_tk": z_dep[:, 3],
+        # Deterministic means are used for representation regularization.
+        "z_inv_mu_i_t": z_inv_mu[:, 0],
+        "z_inv_mu_j_t": z_inv_mu[:, 1],
+        "z_inv_mu_i_tk": z_inv_mu[:, 2],
+        "z_inv_mu_j_tk": z_inv_mu[:, 3],
+        "z_dep_mu_i_t": z_dep_mu[:, 0],
+        "z_dep_mu_j_t": z_dep_mu[:, 1],
+        "z_dep_mu_i_tk": z_dep_mu[:, 2],
+        "z_dep_mu_j_tk": z_dep_mu[:, 3],
     }
-    return latents, inv_vq_loss, dep_vq_loss
+    return latents, inv_kl_loss, dep_kl_loss
 
 
-def _flatten_latent_tokens(z: torch.Tensor) -> torch.Tensor:
-    """Flatten one token tensor to the 2D shape required by infonce_loss."""
-    z = torch.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
-    return z.reshape(z.shape[0], -1)
+def _decode_latent_kwargs(latents: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """Select only sampled latents for rendering; *_mu tensors are loss-only."""
+    return {
+        "z_inv_i_t": latents["z_inv_i_t"],
+        "z_inv_j_t": latents["z_inv_j_t"],
+        "z_inv_i_tk": latents["z_inv_i_tk"],
+        "z_inv_j_tk": latents["z_inv_j_tk"],
+        "z_dep_i_t": latents["z_dep_i_t"],
+        "z_dep_j_t": latents["z_dep_j_t"],
+        "z_dep_i_tk": latents["z_dep_i_tk"],
+        "z_dep_j_tk": latents["z_dep_j_tk"],
+    }
 
 
-def compute_invariant_variance_loss(
-    z_inv_i_t: torch.Tensor,
-    z_inv_j_t: torch.Tensor,
-    z_inv_i_tk: torch.Tensor,
-    z_inv_j_tk: torch.Tensor,
-    gamma: float,
-    eps: float = 1e-4,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Penalize invariant features whose batch std is close to collapse."""
-    z = torch.cat(
-        (
-            _flatten_latent_tokens(z_inv_i_t),
-            _flatten_latent_tokens(z_inv_j_t),
-            _flatten_latent_tokens(z_inv_i_tk),
-            _flatten_latent_tokens(z_inv_j_tk),
-        ),
-        dim=0,
+def compute_representation_losses(
+    latents: Dict[str, torch.Tensor],
+    cfg_train: TrainConfig,
+) -> Dict[str, torch.Tensor]:
+    """Bind the shared SplatterVAE representation loss to TrainConfig fields."""
+    return compute_splattervae_representation_losses(
+        latents,
+        vicreg_sim_coeff=cfg_train.vicreg_sim_coeff,
+        vicreg_std_coeff=cfg_train.vicreg_std_coeff,
+        vicreg_cov_coeff=cfg_train.vicreg_cov_coeff,
+        vicreg_std_gamma=cfg_train.vicreg_std_gamma,
+        vicreg_eps=cfg_train.vicreg_eps,
+        dep_infonce_temperature=cfg_train.dep_infonce_temperature,
     )
-    z = z - z.mean(dim=0, keepdim=True)
-    std = torch.sqrt(z.var(dim=0, unbiased=False) + eps)
-    loss = F.relu(float(gamma) - std).mean()
-    return loss, std.mean(), std.min()
-
-
-def compute_contrastive_losses(
-    z_inv_i_t: torch.Tensor,
-    z_inv_j_t: torch.Tensor,
-    z_inv_i_tk: torch.Tensor,
-    z_inv_j_tk: torch.Tensor,
-    z_dep_i_t: torch.Tensor,
-    z_dep_j_t: torch.Tensor,
-    z_dep_i_tk: torch.Tensor,
-    z_dep_j_tk: torch.Tensor,
-    temperature: float,
-):
-    """Compute two-view temporal contrastive losses.
-
-    The loss is intentionally built from image_{i,j}_t and image_{i,j}_tk
-    within each sampled demo item, rather than shuffling across batch rows whose
-    camera IDs may differ.
-
-    - Invariant positives: same demo/timestep, different camera.
-    - Dependent positives: same camera, different timestep.
-    """
-    zi_t = _flatten_latent_tokens(z_inv_i_t)
-    zj_t = _flatten_latent_tokens(z_inv_j_t)
-    zi_tk = _flatten_latent_tokens(z_inv_i_tk)
-    zj_tk = _flatten_latent_tokens(z_inv_j_tk)
-
-    # For z_inv, the positive is the other camera at the same timestep. The
-    # paired negatives are both same-demo camera views at the other timestep.
-    inv_query = torch.cat((zi_t, zj_t, zi_tk, zj_tk), dim=0)
-    inv_positive = torch.cat((zj_t, zi_t, zj_tk, zi_tk), dim=0)
-    inv_negative = torch.cat(
-        (
-            torch.stack((zi_tk, zj_tk), dim=1),
-            torch.stack((zi_tk, zj_tk), dim=1),
-            torch.stack((zi_t, zj_t), dim=1),
-            torch.stack((zi_t, zj_t), dim=1),
-        ),
-        dim=0,
-    )
-    inv_contrastive_loss = infonce_loss(
-        query=inv_query,
-        positive_keys=inv_positive,
-        negative_keys=inv_negative,
-        temperature=temperature,
-        negative_mode="mixed",
-    )
-
-    zdi_t = _flatten_latent_tokens(z_dep_i_t)
-    zdj_t = _flatten_latent_tokens(z_dep_j_t)
-    zdi_tk = _flatten_latent_tokens(z_dep_i_tk)
-    zdj_tk = _flatten_latent_tokens(z_dep_j_tk)
-
-    # For z_dep, the positive is the same camera at tk/t. The paired negatives
-    # are both temporal states from the other sampled camera, avoiding
-    # cross-batch comparisons between inconsistent random camera pairs.
-    dep_query = torch.cat((zdi_t, zdi_tk, zdj_t, zdj_tk), dim=0)
-    dep_positive = torch.cat((zdi_tk, zdi_t, zdj_tk, zdj_t), dim=0)
-    dep_negative = torch.cat(
-        (
-            torch.stack((zdj_t, zdj_tk), dim=1),
-            torch.stack((zdj_t, zdj_tk), dim=1),
-            torch.stack((zdi_t, zdi_tk), dim=1),
-            torch.stack((zdi_t, zdi_tk), dim=1),
-        ),
-        dim=0,
-    )
-    dep_contrastive_loss = infonce_loss(
-        query=dep_query,
-        positive_keys=dep_positive,
-        negative_keys=dep_negative,
-        temperature=temperature,
-        negative_mode="paired",
-    )
-
-    return inv_contrastive_loss, dep_contrastive_loss
 
 
 def _compute_soft_image_region_penalty(
@@ -406,8 +342,6 @@ def compute_reconstruction_and_renders(
         image_j_tk_01,
         ssim_weight=cfg_train.ssim_weight,
     )
-    rec_native_loss = 0.25 * (rec_self + rec_swap_view + rec_swap_state + rec_swap_both)
-
     rec_self_cross = compute_reconstruction_loss(
         rendered_self_j_from_i,
         image_j_t_01,
@@ -428,12 +362,26 @@ def compute_reconstruction_and_renders(
         image_i_tk_01,
         ssim_weight=cfg_train.ssim_weight,
     )
-    rec_cross_loss = 0.25 * (
+
+    # Keep the original shuffle reconstruction supervision, but make the
+    # weighting explicit. z_inv carries state/time, z_dep carries view/camera;
+    # the three shuffle weights control state, view, and joint shuffles.
+    w_inv = float(cfg_train.shuffle_inv_rec_weight)
+    w_dep = float(cfg_train.shuffle_dep_rec_weight)
+    w_both = float(cfg_train.shuffle_both_rec_weight)
+    rec_norm = max(1.0 + w_inv + w_dep + w_both, 1.0e-6)
+    rec_native_loss = (
+        rec_self
+        + w_dep * rec_swap_view
+        + w_inv * rec_swap_state
+        + w_both * rec_swap_both
+    ) / rec_norm
+    rec_cross_loss = (
         rec_self_cross
-        + rec_swap_view_cross
-        + rec_swap_state_cross
-        + rec_swap_both_cross
-    )
+        + w_dep * rec_swap_view_cross
+        + w_inv * rec_swap_state_cross
+        + w_both * rec_swap_both_cross
+    ) / rec_norm
     rec_loss = 0.1 * rec_native_loss + 0.9 * rec_cross_loss
 
     out_dict: Dict[str, Any] = {
@@ -534,11 +482,17 @@ def validate_and_log_wandb(
         "val/rec_swap_view_cross": 0.0,
         "val/rec_swap_state_cross": 0.0,
         "val/rec_swap_both_cross": 0.0,
-        "val/inv_contrastive_loss": 0.0,
-        "val/inv_variance_loss": 0.0,
+        "val/kl_loss": 0.0,
+        "val/inv_kl_loss": 0.0,
+        "val/dep_kl_loss": 0.0,
+        "val/inv_vicreg_loss": 0.0,
+        "val/inv_vicreg_invariance_loss": 0.0,
+        "val/inv_vicreg_variance_loss": 0.0,
+        "val/inv_vicreg_covariance_loss": 0.0,
+        "val/dep_infonce_loss": 0.0,
+        "val/cross_cov_loss": 0.0,
         "val/z_inv_std_mean": 0.0,
         "val/z_inv_std_min": 0.0,
-        "val/dep_contrastive_loss": 0.0,
         "val/frustum_loss": 0.0,
         "val/inactive_pct_mean": 0.0,
         "val/inactive_pct_src": 0.0,
@@ -562,7 +516,7 @@ def validate_and_log_wandb(
         k_j = batch["K_j"].to(device, non_blocking=True)
         t_ij = batch["T_ij"].to(device, non_blocking=True)
 
-        latents, _inv_vq_loss, _dep_vq_loss = encode_temporal_pair_batch(
+        latents, inv_kl_loss, dep_kl_loss = encode_temporal_pair_batch(
             vae=vae,
             image_i_t=image_i_t,
             image_j_t=image_j_t,
@@ -570,17 +524,7 @@ def validate_and_log_wandb(
             image_j_tk=image_j_tk,
         )
 
-        inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-            **latents,
-            temperature=cfg_train.temperature,
-        )
-        inv_variance_loss, z_inv_std_mean, z_inv_std_min = compute_invariant_variance_loss(
-            latents["z_inv_i_t"],
-            latents["z_inv_j_t"],
-            latents["z_inv_i_tk"],
-            latents["z_inv_j_tk"],
-            gamma=cfg_train.inv_variance_gamma,
-        )
+        rep_losses = compute_representation_losses(latents=latents, cfg_train=cfg_train)
 
         rec_out = compute_reconstruction_and_renders(
             vae=vae,
@@ -590,7 +534,7 @@ def validate_and_log_wandb(
             image_j_t_01=(image_j_t + 1.0) * 0.5,
             image_i_tk_01=(image_i_tk + 1.0) * 0.5,
             image_j_tk_01=(image_j_tk + 1.0) * 0.5,
-            **latents,
+            **_decode_latent_kwargs(latents),
             k_i=k_i,
             k_j=k_j,
             t_ij=t_ij,
@@ -610,11 +554,23 @@ def validate_and_log_wandb(
         scalar_sums["val/rec_swap_view_cross"] += float(rec_out["rec_swap_view_cross"].item())
         scalar_sums["val/rec_swap_state_cross"] += float(rec_out["rec_swap_state_cross"].item())
         scalar_sums["val/rec_swap_both_cross"] += float(rec_out["rec_swap_both_cross"].item())
-        scalar_sums["val/inv_contrastive_loss"] += float(inv_contrastive_loss.item())
-        scalar_sums["val/inv_variance_loss"] += float(inv_variance_loss.item())
-        scalar_sums["val/z_inv_std_mean"] += float(z_inv_std_mean.item())
-        scalar_sums["val/z_inv_std_min"] += float(z_inv_std_min.item())
-        scalar_sums["val/dep_contrastive_loss"] += float(dep_contrastive_loss.item())
+        scalar_sums["val/kl_loss"] += float((inv_kl_loss + dep_kl_loss).item())
+        scalar_sums["val/inv_kl_loss"] += float(inv_kl_loss.item())
+        scalar_sums["val/dep_kl_loss"] += float(dep_kl_loss.item())
+        scalar_sums["val/inv_vicreg_loss"] += float(rep_losses["inv_vicreg_loss"].item())
+        scalar_sums["val/inv_vicreg_invariance_loss"] += float(
+            rep_losses["inv_vicreg_invariance_loss"].item()
+        )
+        scalar_sums["val/inv_vicreg_variance_loss"] += float(
+            rep_losses["inv_vicreg_variance_loss"].item()
+        )
+        scalar_sums["val/inv_vicreg_covariance_loss"] += float(
+            rep_losses["inv_vicreg_covariance_loss"].item()
+        )
+        scalar_sums["val/dep_infonce_loss"] += float(rep_losses["dep_infonce_loss"].item())
+        scalar_sums["val/cross_cov_loss"] += float(rep_losses["cross_cov_loss"].item())
+        scalar_sums["val/z_inv_std_mean"] += float(rep_losses["z_inv_std_mean"].item())
+        scalar_sums["val/z_inv_std_min"] += float(rep_losses["z_inv_std_min"].item())
         scalar_sums["val/frustum_loss"] += float(rec_out["frustum_loss"].item())
         scalar_sums["val/inactive_pct_mean"] += float(100.0 * rec_out["inactive_ratio_mean"].item())
         scalar_sums["val/inactive_pct_src"] += float(100.0 * rec_out["inactive_ratio_src"].item())
@@ -671,7 +627,7 @@ def train_splatter_vae(
     valid_dataloader: Optional[DataLoader] = None,
     resume_ckpt: Optional[str] = None,
 ):
-    """Train SplatterVAE with two-view temporal rendering, contrastive, VQ, and frustum losses."""
+    """Train SplatterVAE with rendering, beta-VAE, VICReg, cross-covariance, and frustum losses."""
     device = torch.device(cfg_train.device)
     vae.to(device)
 
@@ -722,7 +678,7 @@ def train_splatter_vae(
 
             optimizer.zero_grad(set_to_none=True)
 
-            latents, inv_vq_loss, dep_vq_loss = encode_temporal_pair_batch(
+            latents, inv_kl_loss, dep_kl_loss = encode_temporal_pair_batch(
                 vae=vae,
                 image_i_t=image_i_t,
                 image_j_t=image_j_t,
@@ -738,7 +694,7 @@ def train_splatter_vae(
                 image_j_t_01=(image_j_t + 1.0) * 0.5,
                 image_i_tk_01=(image_i_tk + 1.0) * 0.5,
                 image_j_tk_01=(image_j_tk + 1.0) * 0.5,
-                **latents,
+                **_decode_latent_kwargs(latents),
                 k_i=k_i,
                 k_j=k_j,
                 t_ij=t_ij,
@@ -749,34 +705,24 @@ def train_splatter_vae(
             rec_loss = rec_out["rec_loss"]
             frustum_loss = rec_out["frustum_loss"]
 
-            inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-                **latents,
-                temperature=cfg_train.temperature,
-            )
-            inv_variance_loss, z_inv_std_mean, z_inv_std_min = compute_invariant_variance_loss(
-                latents["z_inv_i_t"],
-                latents["z_inv_j_t"],
-                latents["z_inv_i_tk"],
-                latents["z_inv_j_tk"],
-                gamma=cfg_train.inv_variance_gamma,
-            )
+            rep_losses = compute_representation_losses(latents=latents, cfg_train=cfg_train)
 
-            vq_loss = inv_vq_loss + dep_vq_loss
+            kl_loss = inv_kl_loss + dep_kl_loss
             total_loss = (
                 cfg_train.rec_weight * rec_loss
-                + cfg_train.vq_weight * vq_loss
-                + cfg_train.inv_contrastive_weight * inv_contrastive_loss
-                + cfg_train.inv_variance_weight * inv_variance_loss
-                + cfg_train.dep_contrastive_weight * dep_contrastive_loss
+                + cfg_train.kl_weight * kl_loss
+                + cfg_train.inv_vicreg_weight * rep_losses["inv_vicreg_loss"]
+                + cfg_train.dep_infonce_weight * rep_losses["dep_infonce_loss"]
+                + cfg_train.cross_cov_weight * rep_losses["cross_cov_loss"]
                 + cfg_train.frustum_weight * frustum_loss
             )
 
             finite_terms = {
                 "rec_loss": rec_loss,
-                "vq_loss": vq_loss,
-                "inv_contrastive_loss": inv_contrastive_loss,
-                "inv_variance_loss": inv_variance_loss,
-                "dep_contrastive_loss": dep_contrastive_loss,
+                "kl_loss": kl_loss,
+                "inv_vicreg_loss": rep_losses["inv_vicreg_loss"],
+                "dep_infonce_loss": rep_losses["dep_infonce_loss"],
+                "cross_cov_loss": rep_losses["cross_cov_loss"],
                 "frustum_loss": frustum_loss,
                 "total_loss": total_loss,
             }
@@ -813,11 +759,14 @@ def train_splatter_vae(
                     f"swap_view={rec_out['rec_swap_view'].item():.4f}, "
                     f"swap_state={rec_out['rec_swap_state'].item():.4f}, "
                     f"swap_both={rec_out['rec_swap_both'].item():.4f}, "
-                    f"vq={vq_loss.item():.4f}, "
-                    f"inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"inv_var={inv_variance_loss.item():.4f}, "
-                    f"z_inv_std={z_inv_std_mean.item():.4f}, "
-                    f"dep_con={dep_contrastive_loss.item():.4f}, "
+                    f"kl={kl_loss.item():.4f}, "
+                    f"inv_vicreg={rep_losses['inv_vicreg_loss'].item():.4f}, "
+                    f"inv_sim={rep_losses['inv_vicreg_invariance_loss'].item():.4f}, "
+                    f"inv_std={rep_losses['inv_vicreg_variance_loss'].item():.4f}, "
+                    f"inv_cov={rep_losses['inv_vicreg_covariance_loss'].item():.4f}, "
+                    f"dep_nce={rep_losses['dep_infonce_loss'].item():.4f}, "
+                    f"cross_cov={rep_losses['cross_cov_loss'].item():.4f}, "
+                    f"z_inv_std={rep_losses['z_inv_std_mean'].item():.4f}, "
                     f"frustum={frustum_loss.item():.4f})"
                 )
                 if wandb.run is not None:
@@ -835,17 +784,37 @@ def train_splatter_vae(
                             "train/rec_swap_view_cross": rec_out["rec_swap_view_cross"].item(),
                             "train/rec_swap_state_cross": rec_out["rec_swap_state_cross"].item(),
                             "train/rec_swap_both_cross": rec_out["rec_swap_both_cross"].item(),
-                            "train/vq_loss": vq_loss.item(),
-                            "train/inv_vq_loss": inv_vq_loss.item(),
-                            "train/dep_vq_loss": dep_vq_loss.item(),
-                            "train/inv_contrastive_loss": inv_contrastive_loss.item(),
-                            "train/inv_contrastive_weight": float(cfg_train.inv_contrastive_weight),
-                            "train/inv_variance_loss": inv_variance_loss.item(),
-                            "train/inv_variance_weight": float(cfg_train.inv_variance_weight),
-                            "train/inv_variance_gamma": float(cfg_train.inv_variance_gamma),
-                            "train/z_inv_std_mean": z_inv_std_mean.item(),
-                            "train/z_inv_std_min": z_inv_std_min.item(),
-                            "train/dep_contrastive_loss": dep_contrastive_loss.item(),
+                            "train/shuffle_inv_rec_weight": float(cfg_train.shuffle_inv_rec_weight),
+                            "train/shuffle_dep_rec_weight": float(cfg_train.shuffle_dep_rec_weight),
+                            "train/shuffle_both_rec_weight": float(cfg_train.shuffle_both_rec_weight),
+                            "train/kl_loss": kl_loss.item(),
+                            "train/inv_kl_loss": inv_kl_loss.item(),
+                            "train/dep_kl_loss": dep_kl_loss.item(),
+                            "train/kl_weight": float(cfg_train.kl_weight),
+                            "train/inv_vicreg_loss": rep_losses["inv_vicreg_loss"].item(),
+                            "train/inv_vicreg_weight": float(cfg_train.inv_vicreg_weight),
+                            "train/inv_vicreg_invariance_loss": (
+                                rep_losses["inv_vicreg_invariance_loss"].item()
+                            ),
+                            "train/inv_vicreg_variance_loss": (
+                                rep_losses["inv_vicreg_variance_loss"].item()
+                            ),
+                            "train/inv_vicreg_covariance_loss": (
+                                rep_losses["inv_vicreg_covariance_loss"].item()
+                            ),
+                            "train/vicreg_sim_coeff": float(cfg_train.vicreg_sim_coeff),
+                            "train/vicreg_std_coeff": float(cfg_train.vicreg_std_coeff),
+                            "train/vicreg_cov_coeff": float(cfg_train.vicreg_cov_coeff),
+                            "train/vicreg_std_gamma": float(cfg_train.vicreg_std_gamma),
+                            "train/dep_infonce_loss": rep_losses["dep_infonce_loss"].item(),
+                            "train/dep_infonce_weight": float(cfg_train.dep_infonce_weight),
+                            "train/dep_infonce_temperature": float(
+                                cfg_train.dep_infonce_temperature
+                            ),
+                            "train/cross_cov_loss": rep_losses["cross_cov_loss"].item(),
+                            "train/cross_cov_weight": float(cfg_train.cross_cov_weight),
+                            "train/z_inv_std_mean": rep_losses["z_inv_std_mean"].item(),
+                            "train/z_inv_std_min": rep_losses["z_inv_std_min"].item(),
                             "train/frustum_loss": frustum_loss.item(),
                             "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
                             "train/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"].item(),

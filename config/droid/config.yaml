@@ -19,26 +19,15 @@ dataset:
 # Model wrapper settings  (same as meta-world)
 # -----------------------------------------------------------------------------
 model:
-  fusion_style: "plus"
-  use_dependent_vq: true
-  is_dependent_ae: false
-  use_invariant_vq: true
-  is_invariant_ae: false
+  fusion_style: "cat"
+  state_dim: 256
+  dep_state_dim: 32
+  state_token_dim: 256
+  state_pool_heads: 4
+  state_pool_mlp_ratio: 2.0
+  decoder_token_hidden_dim: 512
   dep_input_mask_ratio: 0.75
   dep_mask_eval: true
-
-# -----------------------------------------------------------------------------
-# Invariant / dependent codebooks  (same as meta-world)
-# -----------------------------------------------------------------------------
-codebook:
-  invariant:
-    n_embed: 512
-    embed_dim: 8
-    beta: 0.25
-  dependent:
-    n_embed: 64
-    embed_dim: 8
-    beta: 0.25
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder  (same as meta-world)
@@ -104,15 +93,30 @@ train:
 
   rec_weight: 1.0
   ssim_weight: 0.2
-  vq_weight: 0.25
-  inv_contrastive_weight: 1.0
-  dep_contrastive_weight: 0.1
+  shuffle_inv_rec_weight: 1.0
+  shuffle_dep_rec_weight: 1.0
+  shuffle_both_rec_weight: 1.0
+  kl_weight: 1.0e-4
   frustum_weight: 0.001
-  temperature: 0.1
+
+  # Full VICReg is applied directly to z_inv_mu; sampled z_inv is still used
+  # for decoding and rendering.
+  inv_vicreg_weight: 1.0
+  vicreg_sim_coeff: 25.0
+  vicreg_std_coeff: 25.0
+  vicreg_cov_coeff: 1.0
+  vicreg_std_gamma: 1.0
+  vicreg_eps: 1.0e-4
+
+  # z_dep_mu uses InfoNCE with same-camera/different-timestep positives and
+  # different-camera/same-timestep negatives; L_cross decorrelates branches.
+  dep_infonce_weight: 1.0
+  dep_infonce_temperature: 0.1
+  cross_cov_weight: 1.0
 
   eval_every: 1000
   save_every: 10000
-  ckpt_dir: ./checkpoints/droid
+  ckpt_dir: ./checkpoints/droid/splattervae
   resume_from_last: false
 
   val_num_batches: 10
