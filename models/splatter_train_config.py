@@ -32,6 +32,14 @@ class TrainConfig:
     vicreg_std_gamma: float = 1.0
     vicreg_eps: float = 1.0e-4
 
+    # VCReg is applied to invariant vision-encoder intermediate patch tokens.
+    inv_encoder_vcreg_weight: float = 0.1
+    inv_encoder_vcreg_std_coeff: float = 25.0
+    inv_encoder_vcreg_cov_coeff: float = 1.0
+    inv_encoder_vcreg_std_gamma: float = 1.0
+    inv_encoder_vcreg_eps: float = 1.0e-4
+    inv_encoder_vcreg_cov_smooth_l1_delta: float = 1.0
+
     # z_dep_mu uses InfoNCE to identify camera viewpoint: positives are
     # same-camera/different-timestep pairs from one demo, negatives are
     # different-camera/same-timestep pairs.

@@ -25,7 +25,7 @@ def encode_temporal_pair_batch(
     image_j_t: torch.Tensor,
     image_i_tk: torch.Tensor,
     image_j_tk: torch.Tensor,
-) -> tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
+) -> tuple[Dict[str, Any], torch.Tensor, torch.Tensor]:
     """Encode two random views at t and the same views at temporal index tk.
 
     Args:
@@ -49,7 +49,16 @@ def encode_temporal_pair_batch(
     z_dep = z_dep.reshape(bsz, 4, *z_dep.shape[1:]).contiguous()
     z_inv_mu = stats["z_inv_mu"].reshape(bsz, 4, -1).contiguous()
     z_dep_mu = stats["z_dep_mu"].reshape(bsz, 4, -1).contiguous()
-    latents = {
+
+    # Intermediate VCReg should not push same-state cross-view features apart.
+    # Use only the fixed camera-i sequence: h_i_t and h_i_tk.
+    z_inv_encoder_hidden_states = []
+    for hidden in stats["z_inv_encoder_hidden_states"]:
+        hidden = hidden.reshape(bsz, 4, *hidden.shape[1:]).contiguous()
+        hidden_i = hidden[:, [0, 2]].reshape(bsz * 2, *hidden.shape[2:]).contiguous()
+        z_inv_encoder_hidden_states.append(hidden_i)
+
+    latents: Dict[str, Any] = {
         # Stochastic VAE samples are kept for decoding/rendering.
         "z_inv_i_t": z_inv[:, 0],
         "z_inv_j_t": z_inv[:, 1],
@@ -68,6 +77,8 @@ def encode_temporal_pair_batch(
         "z_dep_mu_j_t": z_dep_mu[:, 1],
         "z_dep_mu_i_tk": z_dep_mu[:, 2],
         "z_dep_mu_j_tk": z_dep_mu[:, 3],
+        # VCReg is applied only to h_i_t and h_i_tk intermediate features.
+        "z_inv_encoder_hidden_states": z_inv_encoder_hidden_states,
     }
     return latents, inv_kl_loss, dep_kl_loss
 
@@ -87,7 +98,7 @@ def _decode_latent_kwargs(latents: Dict[str, torch.Tensor]) -> Dict[str, torch.T
 
 
 def compute_representation_losses(
-    latents: Dict[str, torch.Tensor],
+    latents: Dict[str, Any],
     cfg_train: TrainConfig,
 ) -> Dict[str, torch.Tensor]:
     """Bind the shared SplatterVAE representation loss to TrainConfig fields."""
@@ -99,6 +110,13 @@ def compute_representation_losses(
         vicreg_std_gamma=cfg_train.vicreg_std_gamma,
         vicreg_eps=cfg_train.vicreg_eps,
         dep_infonce_temperature=cfg_train.dep_infonce_temperature,
+        inv_encoder_vcreg_std_coeff=cfg_train.inv_encoder_vcreg_std_coeff,
+        inv_encoder_vcreg_cov_coeff=cfg_train.inv_encoder_vcreg_cov_coeff,
+        inv_encoder_vcreg_std_gamma=cfg_train.inv_encoder_vcreg_std_gamma,
+        inv_encoder_vcreg_eps=cfg_train.inv_encoder_vcreg_eps,
+        inv_encoder_vcreg_cov_smooth_l1_delta=(
+            cfg_train.inv_encoder_vcreg_cov_smooth_l1_delta
+        ),
     )
 
 
@@ -489,6 +507,11 @@ def validate_and_log_wandb(
         "val/inv_vicreg_invariance_loss": 0.0,
         "val/inv_vicreg_variance_loss": 0.0,
         "val/inv_vicreg_covariance_loss": 0.0,
+        "val/inv_encoder_vcreg_loss": 0.0,
+        "val/inv_encoder_vcreg_variance_loss": 0.0,
+        "val/inv_encoder_vcreg_covariance_loss": 0.0,
+        "val/inv_encoder_vcreg_std_mean": 0.0,
+        "val/inv_encoder_vcreg_std_min": 0.0,
         "val/dep_infonce_loss": 0.0,
         "val/cross_cov_loss": 0.0,
         "val/z_inv_std_mean": 0.0,
@@ -566,6 +589,21 @@ def validate_and_log_wandb(
         )
         scalar_sums["val/inv_vicreg_covariance_loss"] += float(
             rep_losses["inv_vicreg_covariance_loss"].item()
+        )
+        scalar_sums["val/inv_encoder_vcreg_loss"] += float(
+            rep_losses["inv_encoder_vcreg_loss"].item()
+        )
+        scalar_sums["val/inv_encoder_vcreg_variance_loss"] += float(
+            rep_losses["inv_encoder_vcreg_variance_loss"].item()
+        )
+        scalar_sums["val/inv_encoder_vcreg_covariance_loss"] += float(
+            rep_losses["inv_encoder_vcreg_covariance_loss"].item()
+        )
+        scalar_sums["val/inv_encoder_vcreg_std_mean"] += float(
+            rep_losses["inv_encoder_vcreg_std_mean"].item()
+        )
+        scalar_sums["val/inv_encoder_vcreg_std_min"] += float(
+            rep_losses["inv_encoder_vcreg_std_min"].item()
         )
         scalar_sums["val/dep_infonce_loss"] += float(rep_losses["dep_infonce_loss"].item())
         scalar_sums["val/cross_cov_loss"] += float(rep_losses["cross_cov_loss"].item())
@@ -712,6 +750,7 @@ def train_splatter_vae(
                 cfg_train.rec_weight * rec_loss
                 + cfg_train.kl_weight * kl_loss
                 + cfg_train.inv_vicreg_weight * rep_losses["inv_vicreg_loss"]
+                + cfg_train.inv_encoder_vcreg_weight * rep_losses["inv_encoder_vcreg_loss"]
                 + cfg_train.dep_infonce_weight * rep_losses["dep_infonce_loss"]
                 + cfg_train.cross_cov_weight * rep_losses["cross_cov_loss"]
                 + cfg_train.frustum_weight * frustum_loss
@@ -721,6 +760,7 @@ def train_splatter_vae(
                 "rec_loss": rec_loss,
                 "kl_loss": kl_loss,
                 "inv_vicreg_loss": rep_losses["inv_vicreg_loss"],
+                "inv_encoder_vcreg_loss": rep_losses["inv_encoder_vcreg_loss"],
                 "dep_infonce_loss": rep_losses["dep_infonce_loss"],
                 "cross_cov_loss": rep_losses["cross_cov_loss"],
                 "frustum_loss": frustum_loss,
@@ -764,6 +804,8 @@ def train_splatter_vae(
                     f"inv_sim={rep_losses['inv_vicreg_invariance_loss'].item():.4f}, "
                     f"inv_std={rep_losses['inv_vicreg_variance_loss'].item():.4f}, "
                     f"inv_cov={rep_losses['inv_vicreg_covariance_loss'].item():.4f}, "
+                    f"enc_vc={rep_losses['inv_encoder_vcreg_loss'].item():.4f}, "
+                    f"enc_std={rep_losses['inv_encoder_vcreg_std_mean'].item():.4f}, "
                     f"dep_nce={rep_losses['dep_infonce_loss'].item():.4f}, "
                     f"cross_cov={rep_losses['cross_cov_loss'].item():.4f}, "
                     f"z_inv_std={rep_losses['z_inv_std_mean'].item():.4f}, "
@@ -806,6 +848,36 @@ def train_splatter_vae(
                             "train/vicreg_std_coeff": float(cfg_train.vicreg_std_coeff),
                             "train/vicreg_cov_coeff": float(cfg_train.vicreg_cov_coeff),
                             "train/vicreg_std_gamma": float(cfg_train.vicreg_std_gamma),
+                            "train/inv_encoder_vcreg_loss": rep_losses[
+                                "inv_encoder_vcreg_loss"
+                            ].item(),
+                            "train/inv_encoder_vcreg_weight": float(
+                                cfg_train.inv_encoder_vcreg_weight
+                            ),
+                            "train/inv_encoder_vcreg_variance_loss": rep_losses[
+                                "inv_encoder_vcreg_variance_loss"
+                            ].item(),
+                            "train/inv_encoder_vcreg_covariance_loss": rep_losses[
+                                "inv_encoder_vcreg_covariance_loss"
+                            ].item(),
+                            "train/inv_encoder_vcreg_std_mean": rep_losses[
+                                "inv_encoder_vcreg_std_mean"
+                            ].item(),
+                            "train/inv_encoder_vcreg_std_min": rep_losses[
+                                "inv_encoder_vcreg_std_min"
+                            ].item(),
+                            "train/inv_encoder_vcreg_std_coeff": float(
+                                cfg_train.inv_encoder_vcreg_std_coeff
+                            ),
+                            "train/inv_encoder_vcreg_cov_coeff": float(
+                                cfg_train.inv_encoder_vcreg_cov_coeff
+                            ),
+                            "train/inv_encoder_vcreg_std_gamma": float(
+                                cfg_train.inv_encoder_vcreg_std_gamma
+                            ),
+                            "train/inv_encoder_vcreg_cov_smooth_l1_delta": float(
+                                cfg_train.inv_encoder_vcreg_cov_smooth_l1_delta
+                            ),
                             "train/dep_infonce_loss": rep_losses["dep_infonce_loss"].item(),
                             "train/dep_infonce_weight": float(cfg_train.dep_infonce_weight),
                             "train/dep_infonce_temperature": float(

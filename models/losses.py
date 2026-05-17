@@ -33,6 +33,29 @@ def flatten_state(z: torch.Tensor) -> torch.Tensor:
     return z.reshape(z.shape[0], -1)
 
 
+def flatten_intermediate_features(
+    z: torch.Tensor,
+    *,
+    drop_cls_token: bool = True,
+) -> torch.Tensor:
+    """Flatten intermediate encoder features for VCReg.
+
+    VCReg treats each spatial location as a sample for spatial feature maps.
+    For ViT hidden states this means each patch token is a sample; the CLS token
+    is excluded because it is not a spatial feature.
+    """
+    z = torch.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
+    if z.dim() == 4:
+        return z.permute(0, 2, 3, 1).reshape(-1, z.shape[1])
+    if z.dim() == 3:
+        if drop_cls_token and z.shape[1] > 1:
+            z = z[:, 1:, :]
+        return z.reshape(-1, z.shape[-1])
+    if z.dim() == 2:
+        return z
+    return z.reshape(z.shape[0], -1)
+
+
 def vicreg_variance_loss(
     z: torch.Tensor,
     gamma: float = 1.0,
@@ -70,6 +93,79 @@ def cross_covariance_loss(z_a: torch.Tensor, z_b: torch.Tensor) -> torch.Tensor:
     # Average over the full D_inv x D_dep matrix so the loss scale remains
     # comparable when the dependent branch dimension is reduced.
     return cross_cov.pow(2).mean()
+
+
+def vcreg_covariance_loss(
+    z: torch.Tensor,
+    *,
+    smooth_l1_delta: float = 1.0,
+) -> torch.Tensor:
+    """VCReg covariance term for intermediate features.
+
+    The VCReg paper recommends a Smooth L1 covariance penalty for spatial
+    intermediate representations to reduce outlier-driven instability.
+    """
+    z = flatten_intermediate_features(z)
+    if z.shape[0] <= 1 or z.shape[1] <= 1:
+        return z.new_zeros(())
+
+    z = z - z.mean(dim=0, keepdim=True)
+    cov = (z.T @ z) / float(z.shape[0] - 1)
+    off_diag = cov.flatten()[:-1].view(z.shape[1] - 1, z.shape[1] + 1)[:, 1:].flatten()
+
+    delta = float(smooth_l1_delta)
+    if delta <= 0.0:
+        penalty = off_diag.pow(2)
+    else:
+        abs_off_diag = off_diag.abs()
+        penalty = torch.where(
+            abs_off_diag <= delta,
+            off_diag.pow(2),
+            2.0 * delta * abs_off_diag - delta * delta,
+        )
+    return penalty.sum() / float(z.shape[1])
+
+
+def vcreg_intermediate_feature_loss(
+    features: list[torch.Tensor] | tuple[torch.Tensor, ...],
+    *,
+    std_coeff: float = 25.0,
+    cov_coeff: float = 1.0,
+    std_gamma: float = 1.0,
+    eps: float = 1.0e-4,
+    cov_smooth_l1_delta: float = 1.0,
+) -> dict[str, torch.Tensor]:
+    """Apply VCReg to a list of intermediate vision-encoder feature tensors."""
+    if len(features) == 0:
+        raise ValueError("features must contain at least one intermediate tensor.")
+
+    variance_terms = []
+    covariance_terms = []
+    std_means = []
+    std_mins = []
+    for feature in features:
+        z = flatten_intermediate_features(feature)
+        std = torch.sqrt(z.var(dim=0, unbiased=False) + float(eps))
+        variance_terms.append(F.relu(float(std_gamma) - std).mean())
+        covariance_terms.append(
+            vcreg_covariance_loss(
+                feature,
+                smooth_l1_delta=cov_smooth_l1_delta,
+            )
+        )
+        std_means.append(std.mean())
+        std_mins.append(std.min())
+
+    variance_loss = torch.stack(variance_terms).mean()
+    covariance_loss = torch.stack(covariance_terms).mean()
+    loss = float(std_coeff) * variance_loss + float(cov_coeff) * covariance_loss
+    return {
+        "loss": loss,
+        "variance_loss": variance_loss,
+        "covariance_loss": covariance_loss,
+        "std_mean": torch.stack(std_means).mean(),
+        "std_min": torch.stack(std_mins).amin(),
+    }
 
 
 def vicreg_pair_loss(
@@ -156,7 +252,7 @@ def dependent_view_infonce_loss(
 
 
 def compute_splattervae_representation_losses(
-    latents: dict[str, torch.Tensor],
+    latents: dict,
     *,
     vicreg_sim_coeff: float,
     vicreg_std_coeff: float,
@@ -164,6 +260,11 @@ def compute_splattervae_representation_losses(
     vicreg_std_gamma: float,
     vicreg_eps: float,
     dep_infonce_temperature: float,
+    inv_encoder_vcreg_std_coeff: float,
+    inv_encoder_vcreg_cov_coeff: float,
+    inv_encoder_vcreg_std_gamma: float,
+    inv_encoder_vcreg_eps: float,
+    inv_encoder_vcreg_cov_smooth_l1_delta: float,
 ) -> dict[str, torch.Tensor]:
     """Compute SplatterVAE representation losses from deterministic latent means.
 
@@ -197,6 +298,14 @@ def compute_splattervae_representation_losses(
         latents["z_dep_mu_i_tk"],
         latents["z_dep_mu_j_tk"],
         temperature=dep_infonce_temperature,
+    )
+    inv_encoder_vcreg = vcreg_intermediate_feature_loss(
+        latents["z_inv_encoder_hidden_states"],
+        std_coeff=inv_encoder_vcreg_std_coeff,
+        cov_coeff=inv_encoder_vcreg_cov_coeff,
+        std_gamma=inv_encoder_vcreg_std_gamma,
+        eps=inv_encoder_vcreg_eps,
+        cov_smooth_l1_delta=inv_encoder_vcreg_cov_smooth_l1_delta,
     )
 
     z_inv_all = torch.cat(
@@ -235,6 +344,11 @@ def compute_splattervae_representation_losses(
         "inv_vicreg_covariance_loss": 0.5 * (
             inv_t["covariance_loss"] + inv_tk["covariance_loss"]
         ),
+        "inv_encoder_vcreg_loss": inv_encoder_vcreg["loss"],
+        "inv_encoder_vcreg_variance_loss": inv_encoder_vcreg["variance_loss"],
+        "inv_encoder_vcreg_covariance_loss": inv_encoder_vcreg["covariance_loss"],
+        "inv_encoder_vcreg_std_mean": inv_encoder_vcreg["std_mean"],
+        "inv_encoder_vcreg_std_min": inv_encoder_vcreg["std_min"],
         "dep_infonce_loss": dep_infonce_loss,
         "cross_cov_loss": cross_covariance_loss(z_inv_all, z_dep_all),
         "z_inv_std_mean": z_inv_std_mean,

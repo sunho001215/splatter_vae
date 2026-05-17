@@ -102,11 +102,19 @@ train:
   # Full VICReg is applied directly to z_inv_mu; sampled z_inv is still used
   # for decoding and rendering.
   inv_vicreg_weight: 1.0
-  vicreg_sim_coeff: 25.0
-  vicreg_std_coeff: 25.0
-  vicreg_cov_coeff: 1.0
+  vicreg_sim_coeff: 0.25
+  vicreg_std_coeff: 0.25
+  vicreg_cov_coeff: 0.01
   vicreg_std_gamma: 1.0
   vicreg_eps: 1.0e-4
+
+  # VCReg on invariant vision-encoder intermediate patch tokens.
+  inv_encoder_vcreg_weight: 0.1
+  inv_encoder_vcreg_std_coeff: 0.25
+  inv_encoder_vcreg_cov_coeff: 0.01
+  inv_encoder_vcreg_std_gamma: 1.0
+  inv_encoder_vcreg_eps: 1.0e-4
+  inv_encoder_vcreg_cov_smooth_l1_delta: 1.0
 
   # z_dep_mu uses InfoNCE with same-camera/different-timestep positives and
   # different-camera/same-timestep negatives; L_cross decorrelates branches.

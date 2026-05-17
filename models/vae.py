@@ -322,7 +322,7 @@ class SplatterVAE(nn.Module):
         self._check_input_size(x)
 
         # Invariant branch sees the original image.
-        h_inv_tokens, _, _ = self.invariant_encoder(x)
+        h_inv_tokens, h_inv_hidden_states, _ = self.invariant_encoder(x)
 
         # Dependent branch sees the masked image.
         x_dep_masked = self._mask_dependent_input_patches(x)
@@ -361,6 +361,9 @@ class SplatterVAE(nn.Module):
             "z_inv_logvar": z_inv_logvar,
             "z_dep_mu": z_dep_mu,
             "z_dep_logvar": z_dep_logvar,
+            # Intermediate invariant-encoder features are regularized with
+            # VCReg. The hidden states retain the CLS token; the loss drops it.
+            "z_inv_encoder_hidden_states": h_inv_hidden_states,
         }
         return z_inv.contiguous(), inv_kl_loss, z_dep.contiguous(), dep_kl_loss, stats
 
