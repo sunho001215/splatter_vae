@@ -32,12 +32,14 @@ model:
 # -----------------------------------------------------------------------------
 codebook:
   invariant:
+    quantizer: vq
+    embed_dim: 64
     n_embed: 512
-    embed_dim: 8
     beta: 0.25
   dependent:
+    quantizer: vq
+    embed_dim: 64
     n_embed: 64
-    embed_dim: 8
     beta: 0.25
 
 # -----------------------------------------------------------------------------
@@ -112,7 +114,7 @@ train:
 
   eval_every: 1000
   save_every: 10000
-  ckpt_dir: ./checkpoints/droid
+  ckpt_dir: ./checkpoints/droid/codebook-embed-dim-64
   resume_from_last: false
 
   val_num_batches: 10
@@ -130,6 +132,7 @@ wandb:
     - dep-masking-0.75
     - self-rec-weight-0.1
     - embed-dim-256
+    - codebook-embed-dim-64
     - depth-4
     - num-heads-4
     - DPT-fix

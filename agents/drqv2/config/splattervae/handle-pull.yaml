@@ -83,13 +83,15 @@ vision:
 
     codebook:
       invariant:
-        quantizer: fsq
-        fsq_levels: [8, 5, 5, 5]
-        embed_dim: 4
+        quantizer: vq
+        embed_dim: 32
+        n_embed: 512
+        beta: 0.25
       dependent:
-        quantizer: fsq
-        fsq_levels: [8, 5, 5, 5]
-        embed_dim: 4
+        quantizer: vq
+        embed_dim: 32
+        n_embed: 64
+        beta: 0.25
 
     model:
       fusion_style: cat

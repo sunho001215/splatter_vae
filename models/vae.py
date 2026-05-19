@@ -23,6 +23,25 @@ class CodebookConfig:
     quantizer: str = "vq"                     # "vq" or "fsq"
     fsq_levels: Tuple[int, ...] = field(default_factory=tuple)
 
+    def __post_init__(self):
+        self.quantizer = str(self.quantizer).lower()
+        self.n_embed = int(self.n_embed)
+        self.embed_dim = int(self.embed_dim)
+        self.beta = float(self.beta)
+        self.fsq_levels = tuple(int(level) for level in self.fsq_levels)
+
+        if self.quantizer not in {"vq", "fsq"}:
+            raise ValueError(f"Unknown quantizer type: {self.quantizer}")
+        if self.embed_dim <= 0:
+            raise ValueError(f"embed_dim must be positive, got {self.embed_dim}")
+        if self.quantizer == "vq":
+            if self.n_embed <= 0:
+                raise ValueError(f"n_embed must be positive for VQ, got {self.n_embed}")
+            if self.beta < 0:
+                raise ValueError(f"beta must be non-negative for VQ, got {self.beta}")
+        elif len(self.fsq_levels) == 0:
+            raise ValueError("FSQ selected, but fsq_levels is empty.")
+
 class SplatterVAE(nn.Module):
     """ReViWo-style dual-encoder VAE with a ViT+DPT generator.
 
@@ -189,7 +208,6 @@ class SplatterVAE(nn.Module):
                 dim=cb_config.embed_dim,
                 codebook_size=cb_config.n_embed,
                 commitment_weight=cb_config.beta,
-                use_cosine_sim=True,
                 kmeans_init=True,
                 kmeans_iters=10,
                 threshold_ema_dead_code=2,

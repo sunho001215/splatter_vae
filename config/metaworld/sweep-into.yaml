@@ -16,7 +16,7 @@ dataset:
 # Model wrapper settings
 # -----------------------------------------------------------------------------
 model:
-  fusion_style: "cat"          # ["cat", "plus"]
+  fusion_style: "plus"         # ["cat", "plus"]
   use_dependent_vq: true
   is_dependent_ae: false
   use_invariant_vq: true
@@ -29,14 +29,16 @@ model:
 # -----------------------------------------------------------------------------
 codebook:
   invariant:
-    quantizer: fsq
-    fsq_levels: [8, 5, 5, 5]
-    embed_dim: 4
+    quantizer: vq
+    embed_dim: 64
+    n_embed: 512
+    beta: 0.25
 
   dependent:
-    quantizer: fsq
-    fsq_levels: [8, 5, 5, 5]
-    embed_dim: 4
+    quantizer: vq
+    embed_dim: 64
+    n_embed: 64
+    beta: 0.25
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -122,7 +124,7 @@ train:
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE/sweep-into/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-vq/sweep-into/codebook-embed-dim-64/
   resume_from_last: true
 
 # -----------------------------------------------------------------------------
@@ -137,6 +139,7 @@ wandb:
     - dep-masking-0.75
     - self-rec-weight-0.1
     - embed-dim-256
+    - codebook-embed-dim-64
     - depth-4
     - num-heads-4
     - DPT-fix
@@ -144,4 +147,4 @@ wandb:
     - diverse-demo-collection
     - ssim_weight-0.0
     - max_sh_degree-0
-    - FSQ-codebook
+    - VQ-codebook
