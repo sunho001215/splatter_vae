@@ -11,6 +11,10 @@ class TrainConfig:
     num_epochs: int = 50
     max_global_steps: Optional[int] = None
     lr: float = 1e-4
+    lr_schedule: str = "constant"
+    lr_warmup_steps: int = 0
+    min_lr: float = 0.0
+    lr_total_steps: Optional[int] = None
     device: str = "cuda"
 
     rec_weight: float = 1.0

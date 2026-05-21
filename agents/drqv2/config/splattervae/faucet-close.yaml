@@ -4,7 +4,8 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-faucet-close-DrQv2
-  name: SplatterVAE-encoder
+  name: SplatterVAE-vq-64
+  tags: [embed-dim-64]
 
 env:
   benchmark_id: Meta-World/MT1
@@ -76,25 +77,25 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE/faucet-close/step_00300000.pth
-    feature_source: encoder
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/faucet-close/codebook-embed-dim-64/step_00300000.pth
+    feature_source: codebook
     max_sh_degree: 0
     num_gaussians_per_pixel: 4
 
     codebook:
       invariant:
         quantizer: vq
-        embed_dim: 32
+        embed_dim: 64
         n_embed: 512
         beta: 0.25
       dependent:
         quantizer: vq
-        embed_dim: 32
+        embed_dim: 64
         n_embed: 64
         beta: 0.25
 
     model:
-      fusion_style: cat
+      fusion_style: plus
       use_dependent_vq: true
       is_dependent_ae: false
       use_invariant_vq: true
@@ -140,7 +141,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/faucet-close/splattervae_encoder/seed98/
+  replay_dir: ./buffer/metaworld/faucet-close/splattervae_vq-64/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -150,7 +151,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_encoder/faucet-close/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_vq-64/faucet-close/seed98/
 
 visualization:
   enabled: false

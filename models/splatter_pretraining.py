@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from typing import Any, Dict, Optional
 
@@ -17,6 +18,68 @@ from models.losses import (
 from models.splatter import SplatterConfig, VAESplatterToGaussians, render_predicted
 from models.splatter_train_config import TrainConfig
 from models.vae import SplatterVAE
+
+
+def _normalize_lr_schedule(schedule: str) -> str:
+    schedule = str(schedule or "constant").strip().lower().replace("-", "_")
+    aliases = {
+        "none": "constant",
+        "off": "constant",
+        "constant": "constant",
+        "cosine": "warmup_cosine",
+        "cosine_annealing": "warmup_cosine",
+        "warmup_cosine": "warmup_cosine",
+        "cosine_warmup": "warmup_cosine",
+    }
+    if schedule not in aliases:
+        raise ValueError(
+            f"Unknown lr_schedule={schedule!r}. "
+            "Use one of: constant, warmup_cosine, cosine."
+        )
+    return aliases[schedule]
+
+
+def _resolve_lr_total_steps(cfg_train: TrainConfig, train_dataloader: DataLoader) -> int:
+    if cfg_train.lr_total_steps is not None:
+        total_steps = int(cfg_train.lr_total_steps)
+    elif cfg_train.max_global_steps is not None:
+        total_steps = int(cfg_train.max_global_steps)
+    else:
+        try:
+            total_steps = int(cfg_train.num_epochs) * len(train_dataloader)
+        except TypeError:
+            total_steps = int(cfg_train.lr_warmup_steps) + 1
+    return max(1, total_steps)
+
+
+def _compute_scheduled_lr(cfg_train: TrainConfig, global_step: int, total_steps: int) -> float:
+    peak_lr = float(cfg_train.lr)
+    schedule = _normalize_lr_schedule(cfg_train.lr_schedule)
+    if schedule == "constant":
+        return peak_lr
+
+    min_lr = float(cfg_train.min_lr)
+    if peak_lr < 0.0:
+        raise ValueError(f"lr must be non-negative, got {peak_lr}.")
+    if min_lr < 0.0:
+        raise ValueError(f"min_lr must be non-negative, got {min_lr}.")
+    if min_lr > peak_lr:
+        raise ValueError(f"min_lr ({min_lr}) must be <= lr ({peak_lr}).")
+
+    step = max(0, int(global_step))
+    warmup_steps = max(0, int(cfg_train.lr_warmup_steps))
+    if warmup_steps > 0 and step < warmup_steps:
+        return peak_lr * float(step + 1) / float(warmup_steps)
+
+    decay_steps = max(1, int(total_steps) - warmup_steps)
+    progress = min(1.0, max(0.0, float(step - warmup_steps) / float(decay_steps)))
+    cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return min_lr + (peak_lr - min_lr) * cosine
+
+
+def _set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
 
 
 def encode_temporal_pair_batch(
@@ -678,6 +741,14 @@ def train_splatter_vae(
     splatter_to_gaussians = VAESplatterToGaussians(splatter_cfg).to(device)
 
     optimizer = torch.optim.Adam(vae.parameters(), lr=cfg_train.lr)
+    lr_total_steps = _resolve_lr_total_steps(cfg_train, train_dataloader)
+    lr_schedule = _normalize_lr_schedule(cfg_train.lr_schedule)
+    if lr_schedule != "constant":
+        print(
+            f"[LR] schedule={lr_schedule}, peak_lr={cfg_train.lr:g}, "
+            f"min_lr={cfg_train.min_lr:g}, warmup_steps={cfg_train.lr_warmup_steps}, "
+            f"total_steps={lr_total_steps}"
+        )
     bg = (
         torch.ones(3, device=device)
         if splatter_cfg.data.white_background
@@ -706,6 +777,9 @@ def train_splatter_vae(
             if cfg_train.max_global_steps is not None and global_step >= cfg_train.max_global_steps:
                 print(f"[Stop] Reached max_global_steps={cfg_train.max_global_steps}.")
                 return
+
+            current_lr = _compute_scheduled_lr(cfg_train, global_step, lr_total_steps)
+            _set_optimizer_lr(optimizer, current_lr)
 
             vae.train()
             splatter_to_gaussians.train()
@@ -792,7 +866,11 @@ def train_splatter_vae(
                 )
                 if wandb.run is not None:
                     wandb.log(
-                        {"global_step": global_step, "train/nonfinite_batch": 1.0},
+                        {
+                            "global_step": global_step,
+                            "train/nonfinite_batch": 1.0,
+                            "train/lr": current_lr,
+                        },
                         step=global_step,
                     )
                 global_step += 1
@@ -806,6 +884,7 @@ def train_splatter_vae(
                 print(
                     f"[Epoch {epoch+1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} "
+                    f"lr={current_lr:.2e} "
                     f"(rec={rec_loss.item():.4f}, "
                     f"native={rec_out['rec_native_loss'].item():.4f}, "
                     f"cross={rec_out['rec_cross_loss'].item():.4f}, "
@@ -824,6 +903,7 @@ def train_splatter_vae(
                     wandb.log(
                         {
                             "train/total_loss": total_loss.item(),
+                            "train/lr": current_lr,
                             "train/rec_loss": rec_loss.item(),
                             "train/rec_native_loss": rec_out["rec_native_loss"].item(),
                             "train/rec_cross_loss": rec_out["rec_cross_loss"].item(),

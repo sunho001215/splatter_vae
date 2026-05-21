@@ -1,11 +1,11 @@
 output:
-  path: /home/ws/data/metaworld/pre-training/lever-pull.hdf5
+  path: /home/ws/data/metaworld/pre-training/coffee-push.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "lever-pull-v3"
+  env_name: "coffee-push-v3"
   seed: 0
   max_steps: 450
   terminate_on_success: true

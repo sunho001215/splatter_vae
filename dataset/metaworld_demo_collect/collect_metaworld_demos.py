@@ -189,12 +189,12 @@ def main():
 
             for t in range(cfg.metaworld.max_steps):
                 # Quadratically anneal from nearly expert to random as demo_idx increases until halfway.
-                # prob_expert = max(0.0, 1.0 - (demo_idx / (num / 2)) ** 2)
-                # if np.random.rand() < prob_expert:
-                action = policy_obj.get_action(obs)
-                action = np.asarray(action).ravel().astype(np.float32)
-                # else:
-                    # action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
+                prob_expert = max(0.0, 1.0 - (demo_idx / (num / 2)) ** 2)
+                if np.random.rand() < prob_expert:
+                    action = policy_obj.get_action(obs)
+                    action = np.asarray(action).ravel().astype(np.float32)
+                else:
+                    action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
 
                 # Store the current state/observation before applying action_t.
                 # This keeps each dataset row aligned as (obs_t, action_t,

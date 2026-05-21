@@ -103,8 +103,11 @@ splatter:
 # -----------------------------------------------------------------------------
 train:
   num_epochs: 100
-  max_global_steps: 400001
+  max_global_steps: 300001
   lr: 3.0e-4
+  lr_schedule: warmup_cosine
+  lr_warmup_steps: 10000
+  min_lr: 3.0e-5
   device: cuda
 
   # Original no-dynamics loss weights.
@@ -113,7 +116,7 @@ train:
   shuffle_inv_rec_weight: 1.0
   shuffle_dep_rec_weight: 1.0
   shuffle_both_rec_weight: 1.0
-  vq_weight: 0.0
+  vq_weight: 0.25
   inv_contrastive_weight: 1.0
   inv_variance_weight: 1.0
   inv_variance_gamma: 0.1
@@ -125,7 +128,7 @@ train:
   eval_every: 1000
   save_every: 10000 
   ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-vq/push-wall/codebook-embed-dim-64/
-  resume_from_last: true
+  resume_from_last: false
 
 # -----------------------------------------------------------------------------
 # Optional logging
