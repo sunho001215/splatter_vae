@@ -89,14 +89,14 @@ splatter:
     max_sh_degree: 0
     isotropic: false
     depth_scale: 0.1
-    depth_bias: -0.7
+    depth_bias: 0.0
     xyz_scale: 0.1
     xyz_bias: 0.0
     opacity_scale: 1.0
     opacity_bias: -2.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 4
+    num_gaussians_per_pixel: 1
 
 # -----------------------------------------------------------------------------
 # Training
