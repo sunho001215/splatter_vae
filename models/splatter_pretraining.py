@@ -12,8 +12,9 @@ from torchvision.utils import make_grid
 import wandb
 
 from models.losses import (
-    compute_reconstruction_loss,
-    infonce_loss,
+    compute_all_camera_contrastive_losses,
+    compute_batched_reconstruction_losses,
+    compute_latent_consistency_loss,
 )
 from models.splatter import SplatterConfig, VAESplatterToGaussians, render_predicted
 from models.splatter_train_config import TrainConfig
@@ -82,151 +83,112 @@ def _set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
         param_group["lr"] = lr
 
 
-def encode_temporal_pair_batch(
+def encode_all_camera_batch(
     vae: SplatterVAE,
-    image_i_t: torch.Tensor,
-    image_j_t: torch.Tensor,
-    image_i_tk: torch.Tensor,
-    image_j_tk: torch.Tensor,
+    images: torch.Tensor,
 ) -> tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
-    """Encode two random views at t and the same views at temporal index tk.
+    """Encode every camera view while preserving the ``(B, camera_num)`` layout.
+
+    Reconstruction now samples only one source view, but the other objectives
+    still need all viewpoints.  This helper is intentionally kept in the
+    pretraining module because it calls the concrete ``SplatterVAE.encode`` API
+    and returns the branch-specific VQ losses used by the training loop.
 
     Args:
-        image_i_t, image_j_t: two randomly sampled camera views from the same
-            demo/timestep. They share view-invariant content.
-        image_i_tk, image_j_tk: the same camera viewpoints from a different
-            timestep in the same demo. They provide same-view features for
-            temporal shuffling.
+        vae: SplatterVAE model.
+        images: ``(B, A, 3, H, W)`` image tensor in [-1, 1], where ``A`` is the
+            number of camera viewpoints loaded by the dataset.
 
     Returns:
-        A dict of token tensors keyed by image name, plus invariant/dependent
-        VQ losses averaged over the four encoded images.
+        latents: ``{"z_inv": ..., "z_dep": ...}``, each shaped
+            ``(B, A, N_tokens, D)``.
+        inv_vq_loss: invariant branch VQ/AE auxiliary loss averaged by the VAE.
+        dep_vq_loss: dependent branch VQ/AE auxiliary loss averaged by the VAE.
     """
-    bsz, channels, height, width = image_i_t.shape
-    images = torch.stack((image_i_t, image_j_t, image_i_tk, image_j_tk), dim=1)
-    flat_images = images.reshape(bsz * 4, channels, height, width).contiguous()
+    if images.dim() != 5:
+        raise ValueError(f"Expected images as (B,A,3,H,W), got {tuple(images.shape)}.")
+
+    bsz, num_views, channels, height, width = images.shape
+    flat_images = images.reshape(bsz * num_views, channels, height, width).contiguous()
 
     z_inv, inv_vq_loss, z_dep, dep_vq_loss, _ = vae.encode(flat_images)
+    z_inv = z_inv.reshape(bsz, num_views, *z_inv.shape[1:]).contiguous()
+    z_dep = z_dep.reshape(bsz, num_views, *z_dep.shape[1:]).contiguous()
 
-    z_inv = z_inv.reshape(bsz, 4, *z_inv.shape[1:]).contiguous()
-    z_dep = z_dep.reshape(bsz, 4, *z_dep.shape[1:]).contiguous()
-    latents = {
-        "z_inv_i_t": z_inv[:, 0],
-        "z_inv_j_t": z_inv[:, 1],
-        "z_inv_i_tk": z_inv[:, 2],
-        "z_inv_j_tk": z_inv[:, 3],
-        "z_dep_i_t": z_dep[:, 0],
-        "z_dep_j_t": z_dep[:, 1],
-        "z_dep_i_tk": z_dep[:, 2],
-        "z_dep_j_tk": z_dep[:, 3],
-    }
-    return latents, inv_vq_loss, dep_vq_loss
+    return {"z_inv": z_inv, "z_dep": z_dep}, inv_vq_loss, dep_vq_loss
 
 
-def _flatten_latent_tokens(z: torch.Tensor) -> torch.Tensor:
-    """Flatten one token tensor to the 2D shape required by infonce_loss."""
-    z = torch.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
-    return z.reshape(z.shape[0], -1)
+def _non_identity_randperm(num_items: int, device: torch.device) -> torch.Tensor:
+    """Return a random permutation that changes order whenever possible.
 
-
-def compute_invariant_variance_loss(
-    z_inv_i_t: torch.Tensor,
-    z_inv_j_t: torch.Tensor,
-    z_inv_i_tk: torch.Tensor,
-    z_inv_j_tk: torch.Tensor,
-    gamma: float,
-    eps: float = 1e-4,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Penalize invariant features whose batch std is close to collapse."""
-    z = torch.cat(
-        (
-            _flatten_latent_tokens(z_inv_i_t),
-            _flatten_latent_tokens(z_inv_j_t),
-            _flatten_latent_tokens(z_inv_i_tk),
-            _flatten_latent_tokens(z_inv_j_tk),
-        ),
-        dim=0,
-    )
-    z = z - z.mean(dim=0, keepdim=True)
-    std = torch.sqrt(z.var(dim=0, unbiased=False) + eps)
-    loss = F.relu(float(gamma) - std).mean()
-    return loss, std.mean(), std.min()
-
-
-def compute_contrastive_losses(
-    z_inv_i_t: torch.Tensor,
-    z_inv_j_t: torch.Tensor,
-    z_inv_i_tk: torch.Tensor,
-    z_inv_j_tk: torch.Tensor,
-    z_dep_i_t: torch.Tensor,
-    z_dep_j_t: torch.Tensor,
-    z_dep_i_tk: torch.Tensor,
-    z_dep_j_tk: torch.Tensor,
-    temperature: float,
-):
-    """Compute two-view temporal contrastive losses.
-
-    The loss is intentionally built from image_{i,j}_t and image_{i,j}_tk
-    within each sampled demo item, rather than shuffling across batch rows whose
-    camera IDs may differ.
-
-    - Invariant positives: same demo/timestep, different camera.
-    - Dependent positives: same camera, different timestep.
+    The shuffle losses should not silently become self-reconstruction losses. For
+    very small dimensions there may be no non-identity permutation, but normal
+    SplatterVAE training uses ``B >= 2`` and ``camera_num >= 2``.
     """
-    zi_t = _flatten_latent_tokens(z_inv_i_t)
-    zj_t = _flatten_latent_tokens(z_inv_j_t)
-    zi_tk = _flatten_latent_tokens(z_inv_i_tk)
-    zj_tk = _flatten_latent_tokens(z_inv_j_tk)
+    if num_items <= 1:
+        return torch.arange(num_items, device=device)
 
-    # For z_inv, the positive is the other camera at the same timestep. The
-    # paired negatives are both same-demo camera views at the other timestep.
-    inv_query = torch.cat((zi_t, zj_t, zi_tk, zj_tk), dim=0)
-    inv_positive = torch.cat((zj_t, zi_t, zj_tk, zi_tk), dim=0)
-    inv_negative = torch.cat(
-        (
-            torch.stack((zi_tk, zj_tk), dim=1),
-            torch.stack((zi_tk, zj_tk), dim=1),
-            torch.stack((zi_t, zj_t), dim=1),
-            torch.stack((zi_t, zj_t), dim=1),
-        ),
-        dim=0,
-    )
-    inv_contrastive_loss = infonce_loss(
-        query=inv_query,
-        positive_keys=inv_positive,
-        negative_keys=inv_negative,
-        temperature=temperature,
-        negative_mode="mixed",
-    )
+    perm = torch.randperm(num_items, device=device)
+    if torch.equal(perm, torch.arange(num_items, device=device)):
+        perm = torch.roll(perm, shifts=1, dims=0)
+    return perm
 
-    zdi_t = _flatten_latent_tokens(z_dep_i_t)
-    zdj_t = _flatten_latent_tokens(z_dep_j_t)
-    zdi_tk = _flatten_latent_tokens(z_dep_i_tk)
-    zdj_tk = _flatten_latent_tokens(z_dep_j_tk)
 
-    # For z_dep, the positive is the same camera at tk/t. The paired negatives
-    # are both temporal states from the other sampled camera, avoiding
-    # cross-batch comparisons between inconsistent random camera pairs.
-    dep_query = torch.cat((zdi_t, zdi_tk, zdj_t, zdj_tk), dim=0)
-    dep_positive = torch.cat((zdi_tk, zdi_t, zdj_tk, zdj_t), dim=0)
-    dep_negative = torch.cat(
-        (
-            torch.stack((zdj_t, zdj_tk), dim=1),
-            torch.stack((zdj_t, zdj_tk), dim=1),
-            torch.stack((zdi_t, zdi_tk), dim=1),
-            torch.stack((zdi_t, zdi_tk), dim=1),
-        ),
-        dim=0,
-    )
-    dep_contrastive_loss = infonce_loss(
-        query=dep_query,
-        positive_keys=dep_positive,
-        negative_keys=dep_negative,
-        temperature=temperature,
-        negative_mode="paired",
+def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
+    """sqrt(max(0, x)) with zero subgradient at x <= 0."""
+    ret = torch.zeros_like(x)
+    positive = x > 0
+    ret[positive] = torch.sqrt(x[positive])
+    return ret
+
+
+def _rotation_matrix_to_quaternion_wxyz(matrix: torch.Tensor) -> torch.Tensor:
+    """Convert rotation matrices to real-first quaternions.
+
+    ``VAESplatterToGaussians`` rotates predicted Gaussian orientations from the
+    source camera frame to the world frame.  It expects quaternions in
+    ``(w, x, y, z)`` order, matching ``utils.general_utils.quaternion_raw_multiply``.
+    """
+    if matrix.shape[-2:] != (3, 3):
+        raise ValueError(f"Expected rotation matrices with shape (..., 3, 3), got {tuple(matrix.shape)}.")
+
+    m00 = matrix[..., 0, 0]
+    m01 = matrix[..., 0, 1]
+    m02 = matrix[..., 0, 2]
+    m10 = matrix[..., 1, 0]
+    m11 = matrix[..., 1, 1]
+    m12 = matrix[..., 1, 2]
+    m20 = matrix[..., 2, 0]
+    m21 = matrix[..., 2, 1]
+    m22 = matrix[..., 2, 2]
+
+    q_abs = _sqrt_positive_part(
+        torch.stack(
+            [
+                1.0 + m00 + m11 + m22,
+                1.0 + m00 - m11 - m22,
+                1.0 - m00 + m11 - m22,
+                1.0 - m00 - m11 + m22,
+            ],
+            dim=-1,
+        )
     )
 
-    return inv_contrastive_loss, dep_contrastive_loss
+    # Four candidates, each numerically stable when its corresponding q_abs is
+    # the largest component.  Candidate order is w, x, y, z.
+    quat_by_rijk = torch.stack(
+        [
+            torch.stack([q_abs[..., 0] ** 2, m21 - m12, m02 - m20, m10 - m01], dim=-1),
+            torch.stack([m21 - m12, q_abs[..., 1] ** 2, m10 + m01, m02 + m20], dim=-1),
+            torch.stack([m02 - m20, m10 + m01, q_abs[..., 2] ** 2, m21 + m12], dim=-1),
+            torch.stack([m10 - m01, m20 + m02, m21 + m12, q_abs[..., 3] ** 2], dim=-1),
+        ],
+        dim=-2,
+    )
+    quat_candidates = quat_by_rijk / (2.0 * q_abs[..., None].clamp(min=0.1))
+    best = F.one_hot(q_abs.argmax(dim=-1), num_classes=4).to(dtype=torch.bool)
+    quat = quat_candidates[best, :].reshape(*matrix.shape[:-2], 4)
+    return F.normalize(quat, dim=-1, eps=1e-6)
 
 
 def _compute_soft_image_region_penalty(
@@ -239,20 +201,18 @@ def _compute_soft_image_region_penalty(
     penalty_cap: float = 100.0,
     source_view_indices: Optional[torch.Tensor] = None,
 ) -> Dict[str, torch.Tensor]:
-    """Softly penalize Gaussian centers outside the image region or valid depth."""
+    """Softly penalize Gaussian centers outside rendered camera frustums."""
     device = xyz_world.device
-
     xyz_world_f = xyz_world.float()
     world_view_f = world_view_transform.float()
     intrinsics_f = intrinsics.float()
 
-    b, n, _ = xyz_world_f.shape
-    ones = torch.ones((b, n, 1), device=device, dtype=xyz_world_f.dtype)
+    bsz, num_gaussians, _ = xyz_world_f.shape
+    ones = torch.ones((bsz, num_gaussians, 1), device=device, dtype=xyz_world_f.dtype)
     xyz_world_h = torch.cat([xyz_world_f, ones], dim=-1)
 
     xyz_cam_h = torch.einsum("bvij,bnj->bvni", world_view_f, xyz_world_h)
     xyz_cam = xyz_cam_h[..., :3]
-
     x = xyz_cam[..., 0]
     y = xyz_cam[..., 1]
     z = xyz_cam[..., 2]
@@ -268,22 +228,16 @@ def _compute_soft_image_region_penalty(
 
     u = fx * (x / z_for_projection) + cx
     v = fy * (y / z_for_projection) + cy
-
     finite_projection = torch.isfinite(u) & torch.isfinite(v)
+
     u = torch.nan_to_num(u, nan=0.0, posinf=0.0, neginf=0.0)
     v = torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
-
     max_u = float(max(img_w - 1, 1))
     max_v = float(max(img_h - 1, 1))
 
-    u_over = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
-    v_over = F.relu(-v) / max_v + F.relu(v - max_v) / max_v
-    image_penalty = u_over + v_over
-    image_penalty = torch.where(
-        valid_depth & finite_projection,
-        image_penalty,
-        torch.zeros_like(image_penalty),
-    )
+    image_penalty = F.relu(-u) / max_u + F.relu(u - max_u) / max_u
+    image_penalty = image_penalty + F.relu(-v) / max_v + F.relu(v - max_v) / max_v
+    image_penalty = torch.where(valid_depth & finite_projection, image_penalty, torch.zeros_like(image_penalty))
 
     z_clean = torch.nan_to_num(z, nan=-min_z, posinf=min_z, neginf=-min_z)
     depth_penalty = F.relu(min_z - z_clean) / min_z
@@ -309,6 +263,7 @@ def _compute_soft_image_region_penalty(
         "invalid_depth_ratio_mean": (~valid_depth).float().mean(),
         "nonfinite_projection_ratio_mean": (~finite_projection).float().mean(),
     }
+
     if source_view_indices is not None:
         num_views = world_view_transform.shape[1]
         src_idx = source_view_indices.to(device=device, dtype=torch.long).view(-1, 1, 1)
@@ -324,284 +279,337 @@ def _compute_soft_image_region_penalty(
         else:
             stats["inactive_ratio_tgt"] = stats["inactive_ratio_src"]
     else:
-        if world_view_transform.shape[1] >= 1:
-            stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
-        if world_view_transform.shape[1] >= 2:
-            stats["inactive_ratio_tgt"] = outside_mask[:, 1].float().mean()
+        stats["inactive_ratio_src"] = outside_mask[:, 0].float().mean()
+        stats["inactive_ratio_tgt"] = outside_mask[:, 1:].float().mean() if outside_mask.shape[1] > 1 else stats["inactive_ratio_src"]
+
     return stats
 
 
-def _render_two_views_from_latents(
+def _gather_camera_rows(values: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """Gather one camera row per batch item from ``values[:, camera]``."""
+    batch_ids = torch.arange(values.shape[0], device=values.device)
+    return values[batch_ids, indices]
+
+
+def _gather_target_cameras(values: torch.Tensor, target_indices: torch.Tensor) -> torch.Tensor:
+    """Gather multiple target camera rows per batch item.
+
+    Args:
+        values: ``(B, A, ...)`` camera-indexed tensor.
+        target_indices: ``(B, T)`` target camera indices.
+    """
+    trailing_shape = values.shape[2:]
+    gather_index = target_indices.view(
+        target_indices.shape[0],
+        target_indices.shape[1],
+        *([1] * len(trailing_shape)),
+    ).expand(target_indices.shape[0], target_indices.shape[1], *trailing_shape)
+    return torch.gather(values, dim=1, index=gather_index)
+
+
+def _target_indices_excluding_source(source_indices: torch.Tensor, num_views: int) -> torch.Tensor:
+    """Return all camera indices except each row's selected source camera."""
+    if num_views < 2:
+        raise ValueError("Target-only reconstruction requires at least two camera viewpoints.")
+    all_views = torch.arange(num_views, device=source_indices.device).view(1, num_views)
+    all_views = all_views.expand(source_indices.shape[0], num_views)
+    keep_target = all_views != source_indices.view(-1, 1)
+    return all_views[keep_target].view(source_indices.shape[0], num_views - 1)
+
+
+def _random_other_camera_indices(source_indices: torch.Tensor, num_views: int) -> torch.Tensor:
+    """Sample one non-source camera index per row for invariant shuffling."""
+    if num_views < 2:
+        raise ValueError("Invariant shuffling requires at least two camera viewpoints.")
+    offset = torch.randint(
+        low=1,
+        high=num_views,
+        size=source_indices.shape,
+        device=source_indices.device,
+    )
+    return (source_indices + offset) % num_views
+
+
+def _render_selected_sources_to_targets(
     vae: SplatterVAE,
     splatter_to_gaussians: VAESplatterToGaussians,
     splatter_cfg: SplatterConfig,
-    z_inv: torch.Tensor,
-    z_dep: torch.Tensor,
-    k_src: torch.Tensor,
-    k_tgt: torch.Tensor,
-    t_src_to_tgt: torch.Tensor,
+    z_inv_source: torch.Tensor,
+    z_dep_source: torch.Tensor,
+    source_indices: torch.Tensor,
+    target_indices: torch.Tensor,
+    intrinsics: torch.Tensor,
+    c2w: torch.Tensor,
+    w2c: torch.Tensor,
     bg: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
-    """Decode one splatter per latent pair and render source/target views."""
-    device = z_inv.device
-    dtype = k_src.dtype
-    bsz = z_inv.shape[0]
+) -> tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    """Decode selected source views and render only non-source targets.
 
-    splatter = vae.decode(z_inv, z_dep)
-    eye_4 = torch.eye(4, device=device, dtype=dtype).view(1, 4, 4).repeat(bsz, 1, 1)
-    eye_q = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype).view(1, 4).repeat(bsz, 1)
+    ``z_dep_source`` defines the camera frame of the decoded Splatter image.
+    Therefore ``source_indices`` must point to the camera viewpoint that produced
+    the dependent feature, including after dependent-feature shuffling.
+    """
+    source_intrinsics = _gather_camera_rows(intrinsics, source_indices)
+    source_c2w = _gather_camera_rows(c2w, source_indices)
 
+    splatter = vae.decode(z_inv_source.contiguous(), z_dep_source.contiguous())
+    source_quat = _rotation_matrix_to_quaternion_wxyz(source_c2w[:, :3, :3])
     gaussian_pc = splatter_to_gaussians(
         splatter=splatter,
-        source_cameras_view_to_world=eye_4,
-        source_cv2wT_quat=eye_q,
-        intrinsics=k_src,
+        source_cameras_view_to_world=source_c2w,
+        source_cv2wT_quat=source_quat,
+        intrinsics=source_intrinsics,
         activate_output=True,
     )
 
-    world_views = torch.stack((eye_4, t_src_to_tgt), dim=1)
-    intrinsics = torch.stack((k_src, k_tgt), dim=1)
-
+    target_w2c = _gather_target_cameras(w2c, target_indices)
+    target_intrinsics = _gather_target_cameras(intrinsics, target_indices)
     out = render_predicted(
         pc=gaussian_pc,
-        world_view_transform=world_views,
-        intrinsics=intrinsics,
+        world_view_transform=target_w2c,
+        intrinsics=target_intrinsics,
         bg_color=bg,
         cfg=splatter_cfg,
     )
+
+    # Reconstruction excludes the source view, but frustum diagnostics still
+    # include it as view 0 so source/target inactive ratios remain meaningful.
+    source_w2c = _gather_camera_rows(w2c, source_indices).unsqueeze(1)
+    frustum_w2c = torch.cat((source_w2c, target_w2c), dim=1)
+    frustum_intrinsics = torch.cat((source_intrinsics.unsqueeze(1), target_intrinsics), dim=1)
+    source_view_indices = torch.zeros(source_indices.shape[0], device=source_indices.device, dtype=torch.long)
     frustum_stats = _compute_soft_image_region_penalty(
         xyz_world=gaussian_pc["xyz"],
-        world_view_transform=world_views,
-        intrinsics=intrinsics,
+        world_view_transform=frustum_w2c,
+        intrinsics=frustum_intrinsics,
         img_h=splatter_cfg.data.img_height,
         img_w=splatter_cfg.data.img_width,
         min_depth=splatter_cfg.data.znear,
+        source_view_indices=source_view_indices,
     )
-    return out["render"][:, 0], out["render"][:, 1], frustum_stats
+    return out["render"], frustum_stats
 
 
 def compute_reconstruction_and_renders(
     vae: SplatterVAE,
     splatter_to_gaussians: VAESplatterToGaussians,
     splatter_cfg: SplatterConfig,
-    image_i_t_01: torch.Tensor,
-    image_j_t_01: torch.Tensor,
-    image_i_tk_01: torch.Tensor,
-    image_j_tk_01: torch.Tensor,
-    z_inv_i_t: torch.Tensor,
-    z_inv_j_t: torch.Tensor,
-    z_inv_i_tk: torch.Tensor,
-    z_inv_j_tk: torch.Tensor,
-    z_dep_i_t: torch.Tensor,
-    z_dep_j_t: torch.Tensor,
-    z_dep_i_tk: torch.Tensor,
-    z_dep_j_tk: torch.Tensor,
-    k_i: torch.Tensor,
-    k_j: torch.Tensor,
-    t_ij: torch.Tensor,
+    images_01: torch.Tensor,
+    z_inv: torch.Tensor,
+    z_dep: torch.Tensor,
+    intrinsics: torch.Tensor,
+    c2w: torch.Tensor,
+    w2c: torch.Tensor,
     bg: torch.Tensor,
     cfg_train: TrainConfig,
     return_renders: bool = False,
 ) -> Dict[str, Any]:
-    """Compute the pasted-code quartet rendering loss.
+    """Compute target-only reconstruction and ReViWo shuffle losses.
 
-    Rendering now uses exactly four decoded latent combinations per batch item:
-      1. self:      z_inv_i_t  + z_dep_i_t, source i -> target j
-      2. swap_view: z_inv_i_t  + z_dep_j_t, source j -> target i
-      3. swap_time: z_inv_i_tk + z_dep_i_t, source i -> target j
-      4. swap_both: z_inv_i_tk + z_dep_j_t, source j -> target i
+    All camera images are encoded before this function is called.  This
+    function only changes reconstruction: each batch row samples one source
+    viewpoint, decodes one Gaussian scene per variant, and renders it to the
+    ``A - 1`` target viewpoints that exclude that source.
+
+    The dependent feature owns the source camera frame.  When the dependent
+    feature is shuffled from another batch row, the source camera index is
+    shuffled with it, and targets exclude that updated source viewpoint.
     """
-    _ = (z_inv_j_t, z_inv_j_tk, z_dep_i_tk, z_dep_j_tk)
-    t_ji = torch.linalg.inv(t_ij)
+    bsz, num_views = z_inv.shape[:2]
+    if num_views < 2:
+        raise ValueError("Target-only reconstruction requires at least two camera viewpoints.")
 
-    # Batch the four render terms into one decode/render call.
-    z_inv_all = torch.cat((z_inv_i_t, z_inv_i_t, z_inv_i_tk, z_inv_i_tk), dim=0)
-    z_dep_all = torch.cat((z_dep_i_t, z_dep_j_t, z_dep_i_t, z_dep_j_t), dim=0)
-    k_src_all = torch.cat((k_i, k_j, k_i, k_j), dim=0)
-    k_tgt_all = torch.cat((k_j, k_i, k_j, k_i), dim=0)
-    t_src_to_tgt_all = torch.cat((t_ij, t_ji, t_ij, t_ji), dim=0)
+    device = z_inv.device
+    batch_ids = torch.arange(bsz, device=device)
 
-    rendered_src_all, rendered_tgt_all, frustum_all = _render_two_views_from_latents(
+    source_indices = torch.randint(low=0, high=num_views, size=(bsz,), device=device)
+    inv_source_indices = _random_other_camera_indices(source_indices, num_views)
+    batch_perm = _non_identity_randperm(bsz, device=device)
+
+    # Dependent shuffling borrows another row's selected dependent feature.  The
+    # corresponding source camera index must move with it because z_dep is
+    # camera-frame specific.
+    dep_source_indices = source_indices[batch_perm]
+
+    variant_names = ("self", "shuffle_inv", "shuffle_dep", "shuffle_both")
+    num_variants = len(variant_names)
+
+    variant_z_inv = torch.stack(
+        [
+            z_inv[batch_ids, source_indices],
+            z_inv[batch_ids, inv_source_indices],
+            z_inv[batch_ids, source_indices],
+            z_inv[batch_ids, inv_source_indices],
+        ],
+        dim=0,
+    ).contiguous()
+    variant_z_dep = torch.stack(
+        [
+            z_dep[batch_ids, source_indices],
+            z_dep[batch_ids, source_indices],
+            z_dep[batch_perm, dep_source_indices],
+            z_dep[batch_perm, dep_source_indices],
+        ],
+        dim=0,
+    ).contiguous()
+    variant_source_indices = torch.stack(
+        [
+            source_indices,
+            source_indices,
+            dep_source_indices,
+            dep_source_indices,
+        ],
+        dim=0,
+    ).contiguous()
+
+    flat_count = num_variants * bsz
+    flat_z_inv = variant_z_inv.reshape(flat_count, *z_inv.shape[2:]).contiguous()
+    flat_z_dep = variant_z_dep.reshape(flat_count, *z_dep.shape[2:]).contiguous()
+    flat_source_indices = variant_source_indices.reshape(flat_count).contiguous()
+    flat_target_indices = _target_indices_excluding_source(flat_source_indices, num_views)
+
+    flat_intrinsics = intrinsics[None].expand(num_variants, *intrinsics.shape).reshape(
+        flat_count,
+        num_views,
+        3,
+        3,
+    ).contiguous()
+    flat_c2w = c2w[None].expand(num_variants, *c2w.shape).reshape(
+        flat_count,
+        num_views,
+        4,
+        4,
+    ).contiguous()
+    flat_w2c = w2c[None].expand(num_variants, *w2c.shape).reshape(
+        flat_count,
+        num_views,
+        4,
+        4,
+    ).contiguous()
+
+    rendered_flat, frustum_stats = _render_selected_sources_to_targets(
         vae=vae,
         splatter_to_gaussians=splatter_to_gaussians,
         splatter_cfg=splatter_cfg,
-        z_inv=z_inv_all,
-        z_dep=z_dep_all,
-        k_src=k_src_all,
-        k_tgt=k_tgt_all,
-        t_src_to_tgt=t_src_to_tgt_all,
+        z_inv_source=flat_z_inv,
+        z_dep_source=flat_z_dep,
+        source_indices=flat_source_indices,
+        target_indices=flat_target_indices,
+        intrinsics=flat_intrinsics,
+        c2w=flat_c2w,
+        w2c=flat_w2c,
         bg=bg,
     )
 
-    (
-        rendered_self_i,
-        rendered_swap_view_j,
-        rendered_swap_state_i,
-        rendered_swap_both_j,
-    ) = rendered_src_all.chunk(4, dim=0)
-    (
-        rendered_self_j_from_i,
-        rendered_swap_view_i_from_j,
-        rendered_swap_state_j_from_i,
-        rendered_swap_both_i_from_j,
-    ) = rendered_tgt_all.chunk(4, dim=0)
+    num_targets = num_views - 1
+    rendered = rendered_flat.reshape(
+        num_variants,
+        bsz,
+        num_targets,
+        3,
+        splatter_cfg.data.img_height,
+        splatter_cfg.data.img_width,
+    ).contiguous()
 
-    # Native/source-view losses supervise the camera frame used to decode the
-    # splatter. Cross-view losses supervise the same Gaussian scene after
-    # applying the paired relative camera transform.
-    rec_self = compute_reconstruction_loss(
-        rendered_self_i,
-        image_i_t_01,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    rec_swap_view = compute_reconstruction_loss(
-        rendered_swap_view_j,
-        image_j_t_01,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    rec_swap_state = compute_reconstruction_loss(
-        rendered_swap_state_i,
-        image_i_tk_01,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    rec_swap_both = compute_reconstruction_loss(
-        rendered_swap_both_j,
-        image_j_tk_01,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    rec_native_loss = 0.25 * (rec_self + rec_swap_view + rec_swap_state + rec_swap_both)
+    flat_images = images_01[None].expand(num_variants, *images_01.shape).reshape(
+        flat_count,
+        num_views,
+        *images_01.shape[2:],
+    ).contiguous()
+    flat_target_images = _gather_target_cameras(flat_images, flat_target_indices)
+    target_images = flat_target_images.reshape(
+        num_variants,
+        bsz,
+        num_targets,
+        *images_01.shape[2:],
+    ).contiguous()
+    target_indices = flat_target_indices.reshape(num_variants, bsz, num_targets).contiguous()
 
-    rec_self_cross = compute_reconstruction_loss(
-        rendered_self_j_from_i,
-        image_j_t_01,
+    loss_values = compute_batched_reconstruction_losses(
+        predicted=rendered,
+        ground_truth=target_images,
         ssim_weight=cfg_train.ssim_weight,
     )
-    rec_swap_view_cross = compute_reconstruction_loss(
-        rendered_swap_view_i_from_j,
-        image_i_t_01,
-        ssim_weight=cfg_train.ssim_weight,
+    losses: Dict[str, torch.Tensor] = {
+        name: loss_values[idx] for idx, name in enumerate(variant_names)
+    }
+
+    rec_loss = (
+        losses["self"]
+        + float(cfg_train.shuffle_inv_rec_weight) * losses["shuffle_inv"]
+        + float(cfg_train.shuffle_dep_rec_weight) * losses["shuffle_dep"]
+        + float(cfg_train.shuffle_both_rec_weight) * losses["shuffle_both"]
     )
-    rec_swap_state_cross = compute_reconstruction_loss(
-        rendered_swap_state_j_from_i,
-        image_j_tk_01,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    rec_swap_both_cross = compute_reconstruction_loss(
-        rendered_swap_both_i_from_j,
-        image_i_tk_01,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    rec_cross_loss = 0.25 * (
-        rec_self_cross
-        + rec_swap_view_cross
-        + rec_swap_state_cross
-        + rec_swap_both_cross
-    )
-    rec_loss = 0.1 * rec_native_loss + 0.9 * rec_cross_loss
 
     out_dict: Dict[str, Any] = {
         "rec_loss": rec_loss,
-        "rec_native_loss": rec_native_loss,
-        "rec_cross_loss": rec_cross_loss,
-        "rec_self": rec_self,
-        "rec_swap_view": rec_swap_view,
-        "rec_swap_state": rec_swap_state,
-        "rec_swap_both": rec_swap_both,
-        "rec_self_cross": rec_self_cross,
-        "rec_swap_view_cross": rec_swap_view_cross,
-        "rec_swap_state_cross": rec_swap_state_cross,
-        "rec_swap_both_cross": rec_swap_both_cross,
-        "frustum_loss": frustum_all["frustum_loss"],
-        "inactive_ratio_mean": frustum_all["inactive_ratio_mean"],
-        "inactive_ratio_src": frustum_all["inactive_ratio_src"],
-        "inactive_ratio_tgt": frustum_all["inactive_ratio_tgt"],
-        "invalid_depth_ratio_mean": frustum_all["invalid_depth_ratio_mean"],
-        "nonfinite_projection_ratio_mean": frustum_all["nonfinite_projection_ratio_mean"],
+        "rec_self": losses["self"],
+        "rec_shuffle_inv": losses["shuffle_inv"],
+        "rec_shuffle_dep": losses["shuffle_dep"],
+        "rec_shuffle_both": losses["shuffle_both"],
     }
+    for stat_name, stat_value in frustum_stats.items():
+        out_dict[stat_name] = stat_value
 
     if return_renders:
-        out_dict.update(
-            {
-                "rendered_self_i": rendered_self_i,
-                "rendered_swap_view_j": rendered_swap_view_j,
-                "rendered_swap_state_i": rendered_swap_state_i,
-                "rendered_swap_both_j": rendered_swap_both_j,
-                "rendered_self_j_from_i": rendered_self_j_from_i,
-                "rendered_swap_view_i_from_j": rendered_swap_view_i_from_j,
-                "rendered_swap_state_j_from_i": rendered_swap_state_j_from_i,
-                "rendered_swap_both_i_from_j": rendered_swap_both_i_from_j,
-                "gt_i_t": image_i_t_01,
-                "gt_j_t": image_j_t_01,
-                "gt_i_tk": image_i_tk_01,
-                "gt_j_tk": image_j_tk_01,
-            }
-        )
+        out_dict["gt_images"] = images_01
+        out_dict["target_images_self"] = target_images[0]
+        out_dict["rendered_self"] = rendered[0]
+        out_dict["rendered_shuffle_inv"] = rendered[1]
+        out_dict["rendered_shuffle_dep"] = rendered[2]
+        out_dict["rendered_shuffle_both"] = rendered[3]
+        out_dict["source_indices"] = variant_source_indices.detach().cpu()
+        out_dict["target_indices"] = target_indices.detach().cpu()
+        out_dict["batch_perm"] = batch_perm.detach().cpu()
+
     return out_dict
 
 
 def _make_wandb_named_image_panel(
-    named_images_01: list[tuple[str, torch.Tensor]],
-    max_vis: int = 4,
+    named_images: list[tuple[str, torch.Tensor]],
+    max_vis: int,
 ) -> wandb.Image:
-    """Pack multiple named image batches into one W&B media panel.
-
-    W&B creates media panels from logged media keys. Logging every render under
-    its own key makes the workspace noisy and can leave many nearly identical
-    auto-created panels. A single summary key keeps validation visualization in
-    one stable panel while the caption records the row order.
-    """
-    if not named_images_01:
-        raise ValueError("named_images_01 must contain at least one image batch.")
-
-    n_vis = max(1, min(int(max_vis), *(images.shape[0] for _name, images in named_images_01)))
+    """Create one W&B image grid with one row per named tensor."""
+    max_vis = max(1, int(max_vis))
     rows = []
-    row_names = []
-    for name, images in named_images_01:
-        rows.append(images.detach().float().cpu().clamp(0.0, 1.0)[:n_vis])
-        row_names.append(name)
+    names = []
+    for name, images in named_images:
+        rows.append(images[:max_vis].detach().cpu().clamp(0.0, 1.0))
+        names.append(name)
+    grid = make_grid(torch.cat(rows, dim=0), nrow=max_vis, padding=2)
+    return wandb.Image(grid, caption=" | ".join(names))
 
-    grid = make_grid(torch.cat(rows, dim=0), nrow=n_vis, padding=2)
-    return wandb.Image(grid, caption="rows: " + " | ".join(row_names))
 
-
-@torch.inference_mode()
+@torch.no_grad()
 def validate_and_log_wandb(
     vae: SplatterVAE,
     splatter_cfg: SplatterConfig,
     splatter_to_gaussians: VAESplatterToGaussians,
-    valid_dataloader: Optional[DataLoader],
+    valid_dataloader: DataLoader,
     device: torch.device,
     bg: torch.Tensor,
     cfg_train: TrainConfig,
     global_step: int,
-):
-    """Perform validation on the provided dataloader and log metrics and images to wandb."""
-    if valid_dataloader is None or wandb.run is None:
+) -> None:
+    """Run validation with the same all-camera losses used for training."""
+    if wandb.run is None:
         return
 
     prev_vae_mode = vae.training
     prev_splatter_mode = splatter_to_gaussians.training
-
     vae.eval()
     splatter_to_gaussians.eval()
 
     scalar_sums = {
         "val/rec_loss": 0.0,
-        "val/rec_native_loss": 0.0,
-        "val/rec_cross_loss": 0.0,
         "val/rec_self": 0.0,
-        "val/rec_swap_view": 0.0,
-        "val/rec_swap_state": 0.0,
-        "val/rec_swap_both": 0.0,
-        "val/rec_self_cross": 0.0,
-        "val/rec_swap_view_cross": 0.0,
-        "val/rec_swap_state_cross": 0.0,
-        "val/rec_swap_both_cross": 0.0,
+        "val/rec_shuffle_inv": 0.0,
+        "val/rec_shuffle_dep": 0.0,
+        "val/rec_shuffle_both": 0.0,
         "val/inv_contrastive_loss": 0.0,
-        "val/inv_variance_loss": 0.0,
-        "val/z_inv_std_mean": 0.0,
-        "val/z_inv_std_min": 0.0,
+        "val/inv_consistency_loss": 0.0,
         "val/dep_contrastive_loss": 0.0,
+        "val/dep_consistency_loss": 0.0,
         "val/frustum_loss": 0.0,
         "val/inactive_pct_mean": 0.0,
         "val/inactive_pct_src": 0.0,
@@ -617,67 +625,45 @@ def validate_and_log_wandb(
         if cfg_train.val_num_batches > 0 and batch_idx >= cfg_train.val_num_batches:
             break
 
-        image_i_t = batch["image_i_t"].to(device, non_blocking=True)
-        image_j_t = batch["image_j_t"].to(device, non_blocking=True)
-        image_i_tk = batch["image_i_tk"].to(device, non_blocking=True)
-        image_j_tk = batch["image_j_tk"].to(device, non_blocking=True)
-        k_i = batch["K_i"].to(device, non_blocking=True)
-        k_j = batch["K_j"].to(device, non_blocking=True)
-        t_ij = batch["T_ij"].to(device, non_blocking=True)
+        images = batch["images"].to(device, non_blocking=True)
+        intrinsics = batch["K"].to(device, non_blocking=True)
+        c2w = batch["c2w"].to(device, non_blocking=True)
+        w2c = batch["w2c"].to(device, non_blocking=True)
+        images_01 = (images + 1.0) * 0.5
 
-        latents, _inv_vq_loss, _dep_vq_loss = encode_temporal_pair_batch(
-            vae=vae,
-            image_i_t=image_i_t,
-            image_j_t=image_j_t,
-            image_i_tk=image_i_tk,
-            image_j_tk=image_j_tk,
-        )
-
-        inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-            **latents,
+        latents, _inv_vq_loss, _dep_vq_loss = encode_all_camera_batch(vae=vae, images=images)
+        inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
+            z_inv=latents["z_inv"],
+            z_dep=latents["z_dep"],
             temperature=cfg_train.temperature,
         )
-        inv_variance_loss, z_inv_std_mean, z_inv_std_min = compute_invariant_variance_loss(
-            latents["z_inv_i_t"],
-            latents["z_inv_j_t"],
-            latents["z_inv_i_tk"],
-            latents["z_inv_j_tk"],
-            gamma=cfg_train.inv_variance_gamma,
-        )
+        inv_consistency_loss = compute_latent_consistency_loss(latents["z_inv"], mode="state")
+        dep_consistency_loss = compute_latent_consistency_loss(latents["z_dep"], mode="view")
 
         rec_out = compute_reconstruction_and_renders(
             vae=vae,
             splatter_to_gaussians=splatter_to_gaussians,
             splatter_cfg=splatter_cfg,
-            image_i_t_01=(image_i_t + 1.0) * 0.5,
-            image_j_t_01=(image_j_t + 1.0) * 0.5,
-            image_i_tk_01=(image_i_tk + 1.0) * 0.5,
-            image_j_tk_01=(image_j_tk + 1.0) * 0.5,
-            **latents,
-            k_i=k_i,
-            k_j=k_j,
-            t_ij=t_ij,
+            images_01=images_01,
+            z_inv=latents["z_inv"],
+            z_dep=latents["z_dep"],
+            intrinsics=intrinsics,
+            c2w=c2w,
+            w2c=w2c,
             bg=bg,
             cfg_train=cfg_train,
             return_renders=(num_eval_batches == 0),
         )
 
         scalar_sums["val/rec_loss"] += float(rec_out["rec_loss"].item())
-        scalar_sums["val/rec_native_loss"] += float(rec_out["rec_native_loss"].item())
-        scalar_sums["val/rec_cross_loss"] += float(rec_out["rec_cross_loss"].item())
         scalar_sums["val/rec_self"] += float(rec_out["rec_self"].item())
-        scalar_sums["val/rec_swap_view"] += float(rec_out["rec_swap_view"].item())
-        scalar_sums["val/rec_swap_state"] += float(rec_out["rec_swap_state"].item())
-        scalar_sums["val/rec_swap_both"] += float(rec_out["rec_swap_both"].item())
-        scalar_sums["val/rec_self_cross"] += float(rec_out["rec_self_cross"].item())
-        scalar_sums["val/rec_swap_view_cross"] += float(rec_out["rec_swap_view_cross"].item())
-        scalar_sums["val/rec_swap_state_cross"] += float(rec_out["rec_swap_state_cross"].item())
-        scalar_sums["val/rec_swap_both_cross"] += float(rec_out["rec_swap_both_cross"].item())
+        scalar_sums["val/rec_shuffle_inv"] += float(rec_out["rec_shuffle_inv"].item())
+        scalar_sums["val/rec_shuffle_dep"] += float(rec_out["rec_shuffle_dep"].item())
+        scalar_sums["val/rec_shuffle_both"] += float(rec_out["rec_shuffle_both"].item())
         scalar_sums["val/inv_contrastive_loss"] += float(inv_contrastive_loss.item())
-        scalar_sums["val/inv_variance_loss"] += float(inv_variance_loss.item())
-        scalar_sums["val/z_inv_std_mean"] += float(z_inv_std_mean.item())
-        scalar_sums["val/z_inv_std_min"] += float(z_inv_std_min.item())
+        scalar_sums["val/inv_consistency_loss"] += float(inv_consistency_loss.item())
         scalar_sums["val/dep_contrastive_loss"] += float(dep_contrastive_loss.item())
+        scalar_sums["val/dep_consistency_loss"] += float(dep_consistency_loss.item())
         scalar_sums["val/frustum_loss"] += float(rec_out["frustum_loss"].item())
         scalar_sums["val/inactive_pct_mean"] += float(100.0 * rec_out["inactive_ratio_mean"].item())
         scalar_sums["val/inactive_pct_src"] += float(100.0 * rec_out["inactive_ratio_src"].item())
@@ -688,24 +674,21 @@ def validate_and_log_wandb(
         )
 
         if num_eval_batches == 0:
+            num_targets_to_show = min(rec_out["rendered_self"].shape[1], 6)
+            panel_items: list[tuple[str, torch.Tensor]] = []
+            for target_slot in range(num_targets_to_show):
+                panel_items.append((f"gt_target{target_slot}", rec_out["target_images_self"][:, target_slot]))
+            for target_slot in range(num_targets_to_show):
+                panel_items.append((f"self_target{target_slot}", rec_out["rendered_self"][:, target_slot]))
+            panel_items.extend(
+                [
+                    ("shuffle_inv_target0", rec_out["rendered_shuffle_inv"][:, 0]),
+                    ("shuffle_dep_target0", rec_out["rendered_shuffle_dep"][:, 0]),
+                    ("shuffle_both_target0", rec_out["rendered_shuffle_both"][:, 0]),
+                ]
+            )
             image_payload = {
-                "val/render_summary": _make_wandb_named_image_panel(
-                    [
-                        ("gt_i_t", rec_out["gt_i_t"]),
-                        ("gt_j_t", rec_out["gt_j_t"]),
-                        ("gt_i_tk", rec_out["gt_i_tk"]),
-                        ("gt_j_tk", rec_out["gt_j_tk"]),
-                        ("render_self_i", rec_out["rendered_self_i"]),
-                        ("render_swap_view_j", rec_out["rendered_swap_view_j"]),
-                        ("render_swap_state_i", rec_out["rendered_swap_state_i"]),
-                        ("render_swap_both_j", rec_out["rendered_swap_both_j"]),
-                        ("render_self_j_from_i", rec_out["rendered_self_j_from_i"]),
-                        ("render_swap_view_i_from_j", rec_out["rendered_swap_view_i_from_j"]),
-                        ("render_swap_state_j_from_i", rec_out["rendered_swap_state_j_from_i"]),
-                        ("render_swap_both_i_from_j", rec_out["rendered_swap_both_i_from_j"]),
-                    ],
-                    max_vis=cfg_train.val_max_vis,
-                ),
+                "val/render_summary": _make_wandb_named_image_panel(panel_items, max_vis=cfg_train.val_max_vis),
             }
 
         num_eval_batches += 1
@@ -734,13 +717,13 @@ def train_splatter_vae(
     valid_dataloader: Optional[DataLoader] = None,
     resume_ckpt: Optional[str] = None,
 ):
-    """Train SplatterVAE with two-view temporal rendering, contrastive, VQ, and frustum losses."""
+    """Train SplatterVAE with all-camera rendering and ReViWo-style shuffling."""
     device = torch.device(cfg_train.device)
     vae.to(device)
 
     splatter_to_gaussians = VAESplatterToGaussians(splatter_cfg).to(device)
-
     optimizer = torch.optim.Adam(vae.parameters(), lr=cfg_train.lr)
+
     lr_total_steps = _resolve_lr_total_steps(cfg_train, train_dataloader)
     lr_schedule = _normalize_lr_schedule(cfg_train.lr_schedule)
     if lr_schedule != "constant":
@@ -749,12 +732,8 @@ def train_splatter_vae(
             f"min_lr={cfg_train.min_lr:g}, warmup_steps={cfg_train.lr_warmup_steps}, "
             f"total_steps={lr_total_steps}"
         )
-    bg = (
-        torch.ones(3, device=device)
-        if splatter_cfg.data.white_background
-        else torch.zeros(3, device=device)
-    )
 
+    bg = torch.ones(3, device=device) if splatter_cfg.data.white_background else torch.zeros(3, device=device)
     start_epoch = 0
     global_step = 0
 
@@ -784,38 +763,29 @@ def train_splatter_vae(
             vae.train()
             splatter_to_gaussians.train()
 
-            # Move the sampled two-view temporal batch to device. Shapes:
-            # image_*: (B,3,H,W), K_*: (B,3,3), T_ij: (B,4,4).
-            image_i_t = batch["image_i_t"].to(device, non_blocking=True)
-            image_j_t = batch["image_j_t"].to(device, non_blocking=True)
-            image_i_tk = batch["image_i_tk"].to(device, non_blocking=True)
-            image_j_tk = batch["image_j_tk"].to(device, non_blocking=True)
-            k_i = batch["K_i"].to(device, non_blocking=True)
-            k_j = batch["K_j"].to(device, non_blocking=True)
-            t_ij = batch["T_ij"].to(device, non_blocking=True)
+            # Shapes:
+            #   images: (B, A, 3, H, W), K/c2w/w2c: (B, A, ...)
+            # ``A`` is stable across the batch and is the camera index used by
+            # both the shuffle loss and the view-dependent contrastive loss.
+            images = batch["images"].to(device, non_blocking=True)
+            intrinsics = batch["K"].to(device, non_blocking=True)
+            c2w = batch["c2w"].to(device, non_blocking=True)
+            w2c = batch["w2c"].to(device, non_blocking=True)
+            images_01 = (images + 1.0) * 0.5
 
             optimizer.zero_grad(set_to_none=True)
 
-            latents, inv_vq_loss, dep_vq_loss = encode_temporal_pair_batch(
-                vae=vae,
-                image_i_t=image_i_t,
-                image_j_t=image_j_t,
-                image_i_tk=image_i_tk,
-                image_j_tk=image_j_tk,
-            )
-
+            latents, inv_vq_loss, dep_vq_loss = encode_all_camera_batch(vae=vae, images=images)
             rec_out = compute_reconstruction_and_renders(
                 vae=vae,
                 splatter_to_gaussians=splatter_to_gaussians,
                 splatter_cfg=splatter_cfg,
-                image_i_t_01=(image_i_t + 1.0) * 0.5,
-                image_j_t_01=(image_j_t + 1.0) * 0.5,
-                image_i_tk_01=(image_i_tk + 1.0) * 0.5,
-                image_j_tk_01=(image_j_tk + 1.0) * 0.5,
-                **latents,
-                k_i=k_i,
-                k_j=k_j,
-                t_ij=t_ij,
+                images_01=images_01,
+                z_inv=latents["z_inv"],
+                z_dep=latents["z_dep"],
+                intrinsics=intrinsics,
+                c2w=c2w,
+                w2c=w2c,
                 bg=bg,
                 cfg_train=cfg_train,
                 return_renders=False,
@@ -823,25 +793,22 @@ def train_splatter_vae(
             rec_loss = rec_out["rec_loss"]
             frustum_loss = rec_out["frustum_loss"]
 
-            inv_contrastive_loss, dep_contrastive_loss = compute_contrastive_losses(
-                **latents,
+            inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
+                z_inv=latents["z_inv"],
+                z_dep=latents["z_dep"],
                 temperature=cfg_train.temperature,
             )
-            inv_variance_loss, z_inv_std_mean, z_inv_std_min = compute_invariant_variance_loss(
-                latents["z_inv_i_t"],
-                latents["z_inv_j_t"],
-                latents["z_inv_i_tk"],
-                latents["z_inv_j_tk"],
-                gamma=cfg_train.inv_variance_gamma,
-            )
+            inv_consistency_loss = compute_latent_consistency_loss(latents["z_inv"], mode="state")
+            dep_consistency_loss = compute_latent_consistency_loss(latents["z_dep"], mode="view")
 
             vq_loss = inv_vq_loss + dep_vq_loss
             total_loss = (
                 cfg_train.rec_weight * rec_loss
                 + cfg_train.vq_weight * vq_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
-                + cfg_train.inv_variance_weight * inv_variance_loss
+                + cfg_train.inv_consistency_weight * inv_consistency_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
+                + cfg_train.dep_consistency_weight * dep_consistency_loss
                 + cfg_train.frustum_weight * frustum_loss
             )
 
@@ -849,8 +816,9 @@ def train_splatter_vae(
                 "rec_loss": rec_loss,
                 "vq_loss": vq_loss,
                 "inv_contrastive_loss": inv_contrastive_loss,
-                "inv_variance_loss": inv_variance_loss,
+                "inv_consistency_loss": inv_consistency_loss,
                 "dep_contrastive_loss": dep_contrastive_loss,
+                "dep_consistency_loss": dep_consistency_loss,
                 "frustum_loss": frustum_loss,
                 "total_loss": total_loss,
             }
@@ -858,8 +826,7 @@ def train_splatter_vae(
             if bad_terms:
                 print(
                     f"[Warn] Non-finite loss detected at global_step={global_step} "
-                    f"(bad={bad_terms}, "
-                    f"inactive_pct={100.0 * rec_out['inactive_ratio_mean'].item():.2f}, "
+                    f"(bad={bad_terms}, inactive_pct={100.0 * rec_out['inactive_ratio_mean'].item():.2f}, "
                     f"invalid_depth_pct={100.0 * rec_out['invalid_depth_ratio_mean'].item():.2f}, "
                     f"nonfinite_proj_pct={100.0 * rec_out['nonfinite_projection_ratio_mean'].item():.2f}). "
                     "Skipping optimizer step."
@@ -882,22 +849,15 @@ def train_splatter_vae(
 
             if step % 250 == 0:
                 print(
-                    f"[Epoch {epoch+1} | Step {step} | Global {global_step}] "
-                    f"Loss={total_loss.item():.4f} "
-                    f"lr={current_lr:.2e} "
-                    f"(rec={rec_loss.item():.4f}, "
-                    f"native={rec_out['rec_native_loss'].item():.4f}, "
-                    f"cross={rec_out['rec_cross_loss'].item():.4f}, "
-                    f"self={rec_out['rec_self'].item():.4f}, "
-                    f"swap_view={rec_out['rec_swap_view'].item():.4f}, "
-                    f"swap_state={rec_out['rec_swap_state'].item():.4f}, "
-                    f"swap_both={rec_out['rec_swap_both'].item():.4f}, "
-                    f"vq={vq_loss.item():.4f}, "
-                    f"inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"inv_var={inv_variance_loss.item():.4f}, "
-                    f"z_inv_std={z_inv_std_mean.item():.4f}, "
-                    f"dep_con={dep_contrastive_loss.item():.4f}, "
-                    f"frustum={frustum_loss.item():.4f})"
+                    f"[Epoch {epoch + 1} | Step {step} | Global {global_step}] "
+                    f"Loss={total_loss.item():.4f} lr={current_lr:.2e} "
+                    f"(rec={rec_loss.item():.4f}, self={rec_out['rec_self'].item():.4f}, "
+                    f"shuffle_inv={rec_out['rec_shuffle_inv'].item():.4f}, "
+                    f"shuffle_dep={rec_out['rec_shuffle_dep'].item():.4f}, "
+                    f"shuffle_both={rec_out['rec_shuffle_both'].item():.4f}, "
+                    f"vq={vq_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
+                    f"inv_cons={inv_consistency_loss.item():.4f}, dep_con={dep_contrastive_loss.item():.4f}, "
+                    f"dep_cons={dep_consistency_loss.item():.4f}, frustum={frustum_loss.item():.4f})"
                 )
                 if wandb.run is not None:
                     wandb.log(
@@ -905,27 +865,24 @@ def train_splatter_vae(
                             "train/total_loss": total_loss.item(),
                             "train/lr": current_lr,
                             "train/rec_loss": rec_loss.item(),
-                            "train/rec_native_loss": rec_out["rec_native_loss"].item(),
-                            "train/rec_cross_loss": rec_out["rec_cross_loss"].item(),
                             "train/rec_self": rec_out["rec_self"].item(),
-                            "train/rec_swap_view": rec_out["rec_swap_view"].item(),
-                            "train/rec_swap_state": rec_out["rec_swap_state"].item(),
-                            "train/rec_swap_both": rec_out["rec_swap_both"].item(),
-                            "train/rec_self_cross": rec_out["rec_self_cross"].item(),
-                            "train/rec_swap_view_cross": rec_out["rec_swap_view_cross"].item(),
-                            "train/rec_swap_state_cross": rec_out["rec_swap_state_cross"].item(),
-                            "train/rec_swap_both_cross": rec_out["rec_swap_both_cross"].item(),
+                            "train/rec_shuffle_inv": rec_out["rec_shuffle_inv"].item(),
+                            "train/rec_shuffle_dep": rec_out["rec_shuffle_dep"].item(),
+                            "train/rec_shuffle_both": rec_out["rec_shuffle_both"].item(),
+                            "train/shuffle_inv_rec_weight": float(cfg_train.shuffle_inv_rec_weight),
+                            "train/shuffle_dep_rec_weight": float(cfg_train.shuffle_dep_rec_weight),
+                            "train/shuffle_both_rec_weight": float(cfg_train.shuffle_both_rec_weight),
                             "train/vq_loss": vq_loss.item(),
                             "train/inv_vq_loss": inv_vq_loss.item(),
                             "train/dep_vq_loss": dep_vq_loss.item(),
                             "train/inv_contrastive_loss": inv_contrastive_loss.item(),
                             "train/inv_contrastive_weight": float(cfg_train.inv_contrastive_weight),
-                            "train/inv_variance_loss": inv_variance_loss.item(),
-                            "train/inv_variance_weight": float(cfg_train.inv_variance_weight),
-                            "train/inv_variance_gamma": float(cfg_train.inv_variance_gamma),
-                            "train/z_inv_std_mean": z_inv_std_mean.item(),
-                            "train/z_inv_std_min": z_inv_std_min.item(),
+                            "train/inv_consistency_loss": inv_consistency_loss.item(),
+                            "train/inv_consistency_weight": float(cfg_train.inv_consistency_weight),
                             "train/dep_contrastive_loss": dep_contrastive_loss.item(),
+                            "train/dep_contrastive_weight": float(cfg_train.dep_contrastive_weight),
+                            "train/dep_consistency_loss": dep_consistency_loss.item(),
+                            "train/dep_consistency_weight": float(cfg_train.dep_consistency_weight),
                             "train/frustum_loss": frustum_loss.item(),
                             "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
                             "train/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"].item(),

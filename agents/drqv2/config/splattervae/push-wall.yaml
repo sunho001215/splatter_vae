@@ -4,8 +4,8 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-push-wall-DrQv2
-  name: SplatterVAE-vq-64
-  tags: [embed-dim-64]
+  name: SplatterVAE-all-view-reviwo-vit
+  tags: [all-view-reviwo-vit, embed-dim-128, codebook-embed-dim-64]
 
 env:
   benchmark_id: Meta-World/MT1
@@ -59,25 +59,25 @@ vision:
   vit:
     patch_size: 16
     in_chans: 3
-    embed_dim: 256
-    depth: 4
-    num_heads: 4
+    embed_dim: 128
+    depth: 8
+    num_heads: 8
     mlp_ratio: 4.0
     qkv_bias: true
     dropout: 0.0
     attn_dropout: 0.0
     drop_path_rate: 0.1
     layerscale_init: 1.0e-5
-    selected_layers: [0, 1, 2, 3]
-    decoder_depth: 12
+    selected_layers: [1, 3, 5, 7]
+    decoder_depth: 8
     decoder_num_heads: 8
     decoder_mlp_ratio: 4.0
     decoder_drop_path_rate: 0.1
-    decoder_selected_layers: [2, 5, 8, 11]
+    decoder_selected_layers: [1, 3, 5, 7]
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/push-wall/codebook-embed-dim-64/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/push-wall/all-view-reviwo-vit-no-mask/step_00300000.pth
     feature_source: codebook
     max_sh_degree: 0
     num_gaussians_per_pixel: 4
@@ -100,8 +100,8 @@ vision:
       is_dependent_ae: false
       use_invariant_vq: true
       is_invariant_ae: false
-      dep_input_mask_ratio: 0.75
-      dep_mask_eval: true
+      dep_input_mask_ratio: 0.0
+      dep_mask_eval: false
 
 agent:
   lr: 1.0e-4
@@ -141,7 +141,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/push-wall/splattervae_vq-64/seed98/
+  replay_dir: ./buffer/metaworld/push-wall/splattervae_all-view-reviwo-vit/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -151,7 +151,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_vq-64/push-wall/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_all-view-reviwo-vit/push-wall/seed98/
 
 visualization:
   enabled: false

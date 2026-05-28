@@ -3,14 +3,14 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_path: ../../data/metaworld/pre-training/window-open.hdf5
-  batch_size: 32
+  batch_size: 16
   num_workers: 8
   pin_memory: true
   train_ratio: 0.96
   seed: 42
   num_episodes: null
   max_frames_per_demo: null
-  min_time_gap: 25
+  camera_num: 6
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
@@ -21,8 +21,8 @@ model:
   is_dependent_ae: false
   use_invariant_vq: true
   is_invariant_ae: false
-  dep_input_mask_ratio: 0.75
-  dep_mask_eval: true
+  dep_input_mask_ratio: 0.0
+  dep_mask_eval: false
 
 # -----------------------------------------------------------------------------
 # Invariant / dependent codebooks
@@ -47,9 +47,9 @@ vit:
   # Encoder ViT hyperparameters
   patch_size: 16
   in_chans: 3
-  embed_dim: 256
-  depth: 4
-  num_heads: 4
+  embed_dim: 128
+  depth: 8
+  num_heads: 8
   mlp_ratio: 4.0
   qkv_bias: true
   dropout: 0.0
@@ -58,14 +58,14 @@ vit:
   layerscale_init: 1.0e-5
 
   # Four tap points required by the DPT-style decoder.
-  selected_layers: [0, 1, 2, 3]
+  selected_layers: [1, 3, 5, 7]
 
   # Decoder-side token transformer before the DPT dense head.
-  decoder_depth: 12
+  decoder_depth: 8
   decoder_num_heads: 8
   decoder_mlp_ratio: 4.0
   decoder_drop_path_rate: 0.1
-  decoder_selected_layers: [2, 5, 8, 11]
+  decoder_selected_layers: [1, 3, 5, 7]
 
   # DPT dense decoder width.
   dpt_features: 128
@@ -118,16 +118,16 @@ train:
   shuffle_both_rec_weight: 1.0
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
-  inv_variance_weight: 1.0
-  inv_variance_gamma: 0.1
+  inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
+  dep_consistency_weight: 0.1
   frustum_weight: 0.01
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-vq/window-open/codebook-embed-dim-64/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-vq/window-open/with-consistency-loss/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -139,15 +139,17 @@ wandb:
   entity: null
   run_name: metaworld-window-open
   tags:
-    - dep-masking-0.75
-    - self-rec-weight-0.1
-    - embed-dim-256
+    - dep-masking-0.0
+    - all-view-reviwo-shuffle
+    - all-camera-rendering
+    - embed-dim-128
     - codebook-embed-dim-64
-    - depth-4
-    - num-heads-4
+    - depth-8
+    - num-heads-8
     - DPT-fix
     - lr-3e-4
     - diverse-demo-collection
     - ssim_weight-0.0
     - max_sh_degree-0
     - VQ-codebook
+    - consistency-loss

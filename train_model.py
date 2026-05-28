@@ -86,8 +86,8 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
         is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
         use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
         is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
-        dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.95)),
-        dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
+        dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.0)),
+        dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
         dpt_features=int(vit_cfg.get("dpt_features", 256)),
     )
 
@@ -111,6 +111,7 @@ def build_metaworld_loaders(cfg: dict):
         num_episodes=ds_cfg.get("num_episodes", None),
         max_frames_per_demo=ds_cfg.get("max_frames_per_demo", None),
         views=ds_cfg.get("views", ds_cfg.get("camera_names", None)),
+        camera_num=ds_cfg.get("camera_num", None),
         min_time_gap=int(ds_cfg.get("min_time_gap", 25)),
     )
 
@@ -164,8 +165,8 @@ def main() -> None:
     train_loader, valid_loader = build_metaworld_loaders(cfg)
 
     sample_batch = next(iter(train_loader))
-    _, _, img_height, img_width = sample_batch["image_i_t"].shape
-    print(f"[Info] Training image resolution: H={img_height}, W={img_width}, sampled_views=2")
+    _, camera_num, _, img_height, img_width = sample_batch["images"].shape
+    print(f"[Info] Training image resolution: H={img_height}, W={img_width}, sampled_views={camera_num}")
 
     train_cfg_dict = cfg.get("train", {})
     train_cfg_dict.pop("use_amp", None)

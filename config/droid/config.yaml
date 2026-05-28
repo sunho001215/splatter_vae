@@ -111,7 +111,9 @@ train:
   ssim_weight: 0.2
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
+  inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
+  dep_consistency_weight: 0.1
   frustum_weight: 0.001
   temperature: 0.1
 

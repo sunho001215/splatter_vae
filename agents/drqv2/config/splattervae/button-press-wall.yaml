@@ -3,13 +3,13 @@ device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-handle-pull-DrQv2
+  project: metaworld-button-press-wall-DrQv2
   name: SplatterVAE-all-view-reviwo-vit
   tags: [all-view-reviwo-vit, embed-dim-128, codebook-embed-dim-64]
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: handle-pull
+  env_name: button-press-wall
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -77,7 +77,7 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/handle-pull/all-view-reviwo-vit-no-mask/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/button-press-wall/all-view-reviwo-vit-no-mask/step_00300000.pth
     feature_source: codebook
     max_sh_degree: 0
     num_gaussians_per_pixel: 4
@@ -128,7 +128,7 @@ agent:
   perturb_rate: 2.0
 
   stddev_type: awake
-  stddev_schedule: linear(1.0,0.1,100000)
+  stddev_schedule: linear(1.0,0.1,500000)
   stddev_clip: 0.3
   expectile: 0.9
 
@@ -141,7 +141,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/handle-pull/splattervae_all-view-reviwo-vit/seed98/
+  replay_dir: ./buffer/metaworld/button-press-wall/splattervae_all-view-reviwo-vit/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -151,10 +151,10 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_all-view-reviwo-vit/handle-pull/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_all-view-reviwo-vit/button-press-wall/seed98/
 
 visualization:
   enabled: false
-  window_name: metaworld_handle-pull_drqv2
+  window_name: metaworld_button-press-wall_drqv2
   wait_key: 1
   scale: 1.0

@@ -135,8 +135,8 @@ class SplatterVAEInvariantEncoder(nn.Module):
             is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
             use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
             is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
-            dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.95)),
-            dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
+            dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.0)),
+            dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
             dpt_features=int(vit_cfg.get("dpt_features", 256)),
         )
 
