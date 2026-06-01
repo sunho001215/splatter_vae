@@ -1,13 +1,13 @@
 output:
-  path: /home/ws/data/metaworld/pre-training/coffee-push.hdf5
+  path: /home/ws/data/metaworld/pre-training/test.hdf5
   mode: overwrite 
   compression: null
 
 metaworld:
   benchmark_id: "Meta-World/MT1"
-  env_name: "coffee-push-v3"
+  env_name: "hammer-v3"
   seed: 0
-  max_steps: 450
+  max_steps: 10
   terminate_on_success: true
 
 render:
@@ -17,32 +17,32 @@ render:
   up: [0.0, 0.0, 1.0]
   cameras:
     - name: cam0
-      r: 0.8
+      r: 2.0
       theta: -45.0
       phi: 0.0
       fovy: 45.0
     - name: cam1
-      r: 0.8
+      r: 2.0
       theta: -45.0       
       phi: 180.0          
       fovy: 45.0
     - name: cam2
-      r: 0.8
+      r: 2.0
       theta: -60.0        
       phi: -30.0             
       fovy: 45.0
     - name: cam3
-      r: 0.8
+      r: 2.0
       theta: -60.0         
       phi: 210.0           
       fovy: 45.0
     - name: cam4
-      r: 0.8
+      r: 2.0
       theta: -30.0       
       phi: 45.0          
       fovy: 45.0
     - name: cam5
-      r: 0.8
+      r: 2.0
       theta: -30.0     
       phi: 135.0            
       fovy: 45.0
@@ -54,7 +54,7 @@ segmentation:
 policies:
   scripted:
     enabled: true
-    num_demos: 400
+    num_demos: 1
     policy_class: null     # optional override
 
 visualize:

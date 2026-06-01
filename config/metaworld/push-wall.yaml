@@ -78,7 +78,7 @@ splatter:
     img_height: 128
     img_width: 128
     znear: 0.1
-    zfar: 2.5
+    zfar: 2.0
     white_background: false
     inverted_x: false
     inverted_y: false
@@ -121,7 +121,7 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 0.01
+  frustum_weight: 1.0
 
   temperature: 0.1
 

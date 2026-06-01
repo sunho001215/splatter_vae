@@ -4,8 +4,8 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-drawer-open-DrQv2
-  name: SplatterVAE-all-view-reviwo-vit
-  tags: [all-view-reviwo-vit, embed-dim-128, codebook-embed-dim-64]
+  name: SplatterVAE-with-consistency-loss
+  tags: [with-consistency-loss, embed-dim-128, codebook-embed-dim-64]
 
 env:
   benchmark_id: Meta-World/MT1
@@ -77,10 +77,10 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/drawer-open/all-view-reviwo-vit-no-mask/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/drawer-open/with-consistency-loss/step_00300000.pth
     feature_source: codebook
     max_sh_degree: 0
-    num_gaussians_per_pixel: 4
+    num_gaussians_per_pixel: 1
 
     codebook:
       invariant:
@@ -141,7 +141,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer-open/splattervae_vq-64/seed98/
+  replay_dir: ./buffer/metaworld/drawer-open/splattervae_with-consistency-loss/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -151,7 +151,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_vq-64/drawer-open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_with-consistency-loss/drawer-open/seed98/
 
 visualization:
   enabled: false

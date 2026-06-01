@@ -370,6 +370,13 @@ def main() -> None:
 
     cfg = load_cfg(args.config)
     device = torch.device(args.device)
+    if args.visibility_filter == "source" and device.type != "cuda":
+        print(
+            "Warning: --visibility_filter source requires CUDA gsplat rendering; "
+            "falling back to --visibility_filter none for CPU export.",
+            file=sys.stderr,
+        )
+        args.visibility_filter = "none"
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

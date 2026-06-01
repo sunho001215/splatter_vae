@@ -386,6 +386,14 @@ def render_predicted(
     your network.
     """
     device = pc["xyz"].device
+    if device.type != "cuda":
+        raise RuntimeError(
+            "gsplat rasterization requires CUDA tensors, but Gaussian tensors are on "
+            f"{device}. Run with --device cuda, or skip render-dependent code paths."
+        )
+
+    world_view_transform = world_view_transform.to(device=device, dtype=pc["xyz"].dtype)
+    intrinsics = intrinsics.to(device=device, dtype=pc["xyz"].dtype)
     H = cfg.data.img_height
     W = cfg.data.img_width
 
@@ -407,7 +415,7 @@ def render_predicted(
     if override_color is not None:
         # Use override_color as plain RGB features (no SH)
         # Expected: override_color: (B, N, 3) or (B, N, D)
-        colors = override_color
+        colors = override_color.to(device=device, dtype=pc["xyz"].dtype)
         sh_degree = None
     else:
         features_dc = pc["features_dc"]              # (B, N, 1, 3)

@@ -1,0 +1,220 @@
+# Single-file Diffusion Policy config for the coffee-push imitation dataset.
+# Switch vision.encoder_type among cnn, sincro, reviwo, and splatter_vae.
+
+seed: 66
+device: cuda
+
+wandb:
+  enabled: true
+  project: metaworld-coffee-push-DP
+  name: DP-UNet-cnn
+  tags: [diffusion_policy, unet, coffee-push]
+
+env:
+  env_name: coffee-push
+  image_height: 128
+  image_width: 128
+
+dataset:
+  hdf5_path: /home/ws/data/metaworld/pre-training/coffee-push.hdf5
+  image_size: [128, 128]
+  camera_names: [cam0, cam1, cam2, cam3, cam4, cam5]
+  proprio_key: obs_env/obs
+  val_ratio: 0.05
+  max_demos: null
+
+  # Training chooses one camera for the whole batch each optimizer step.
+  # Validation is deterministic by default so val/loss is easier to compare.
+  train_camera_sampling: random
+  val_camera_sampling: fixed
+  val_camera_index: 0
+
+vision:
+  encoder_type: cnn
+  img_height: 128
+  img_width: 128
+
+  sincro:
+    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/coffee-push/step_00300000_encoder.tar
+    img_size: 128
+    patch_size: 16
+    embed_dim: 256
+    vit_depth: 4
+    vit_num_heads: 4
+    vit_mlp_dim: 1024
+    decoder_depth: 2
+    decoder_num_heads: 2
+    decoder_mlp_dim: 1024
+    decoder_output_dim: 256
+    time_interval: 3
+    mask_ratio: 0.75
+    num_views: 6
+    netdepth: 8
+    netwidth: 256
+    netdepth_fine: 8
+    netwidth_fine: 256
+    N_rand: 1024
+    N_samples: 64
+    N_importance: 128
+    multires: 10
+    multires_views: 4
+    i_embed: 0
+    use_viewdirs: true
+    raw_noise_std: 0.0
+    white_bkgd: false
+    perturb: 1.0
+    lindisp: false
+    near: 0.1
+    far: 2.5
+    chunk: 32768
+
+  reviwo:
+    checkpoint_path: ./checkpoints/metaworld/encoders/ReViWo/coffee-push/step_00100000.pth
+    img_size: 128
+    patch_size: 16
+    fusion_style: plus
+    use_latent_vq: true
+    is_latent_ae: false
+    use_view_vq: true
+    is_view_ae: false
+    view_encoder:
+      block_size: 256
+      vocab_size: 512
+      n_tokens_per_frame: 256
+      n_layer: 8
+      n_head: 8
+      n_embed: 128
+      dropout: 0.1
+      bias: false
+      mask_rate: 0
+    latent_encoder:
+      block_size: 256
+      vocab_size: 512
+      n_tokens_per_frame: 256
+      n_layer: 8
+      n_head: 8
+      n_embed: 128
+      dropout: 0.1
+      bias: false
+      mask_rate: 0
+    decoder:
+      block_size: 256
+      vocab_size: 512
+      n_tokens_per_frame: 256
+      n_layer: 8
+      n_head: 8
+      n_embed: 128
+      dropout: 0.1
+      bias: false
+      mask_rate: 0
+    view_codebook:
+      embed_dim: 64
+      n_embed: 64
+      beta: 0.25
+    latent_codebook:
+      embed_dim: 64
+      n_embed: 512
+      beta: 0.25
+
+  splatter_vae:
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/coffee-push/codebook-embed-dim-64/step_00300000.pth
+    feature_source: codebook
+    img_height: 128
+    img_width: 128
+    max_sh_degree: 1
+    num_gaussians_per_pixel: 5
+    model:
+      fusion_style: cat
+      use_dependent_vq: true
+      is_dependent_ae: true
+      use_invariant_vq: true
+      is_invariant_ae: true
+      dep_input_mask_ratio: 0.95
+      dep_mask_eval: true
+    codebook:
+      invariant:
+        embed_dim: 64
+        n_embed: 512
+        beta: 0.25
+      dependent:
+        embed_dim: 64
+        n_embed: 512
+        beta: 0.25
+
+  vit:
+    img_size: 128
+    patch_size: 16
+    in_chans: 3
+    embed_dim: 256
+    depth: 4
+    num_heads: 4
+    mlp_ratio: 4.0
+    qkv_bias: true
+    drop_rate: 0.0
+    attn_drop_rate: 0.0
+    drop_path_rate: 0.0
+    dpt_features: 256
+  
+cnn_encoder:
+  crop_shape: [84, 84]
+  use_group_norm: true
+  channels_per_group: 16
+  use_spatial_softmax: true
+  num_keypoints: 32
+  projection_hidden_dim: 256
+  projection_layers: 2
+
+pretrained_encoder:
+  feature_dim: 256
+  conditioning_hidden_dim: 256
+  conditioning_layers: 2
+
+policy:
+  horizon: 16
+  n_obs_steps: 2
+  n_action_steps: 8
+  global_cond_dim: 256
+  diffusion_step_embed_dim: 128
+  down_dims: [512, 1024, 2048]
+  kernel_size: 5
+  n_groups: 8
+  cond_predict_scale: true
+
+noise_scheduler:
+  num_train_timesteps: 100
+  beta_schedule: squaredcos_cap_v2
+  beta_start: 0.0001
+  beta_end: 0.02
+  prediction_type: epsilon
+  clip_sample: true
+  variance_type: fixed_small
+
+training:
+  max_train_steps: 300000
+  batch_size: 64
+  val_batch_size: 64
+  num_workers: 8
+  val_num_workers: 4
+  pin_memory: true
+  persistent_workers: false
+  drop_last: true
+
+  lr: 0.0001
+  betas: [0.95, 0.999]
+  eps: 1.0e-8
+  weight_decay: 1.0e-6
+  lr_scheduler: cosine
+  lr_warmup_steps: 500
+  gradient_accumulate_every: 1
+  gradient_clip_norm: 1.0
+  use_amp: false
+  use_ema: true
+  ema_decay: 0.9999
+
+  log_every_steps: 100
+  val_every_steps: 1000
+  max_val_batches: 50
+  checkpoint_every_steps: 10000
+  checkpoint_dir: ./checkpoints/metaworld/policies/diffusion_policy/cnn/coffee-push/seed66/
+  resume_checkpoint: null
+

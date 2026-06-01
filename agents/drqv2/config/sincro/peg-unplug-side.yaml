@@ -1,15 +1,14 @@
-seed: 98
+seed: 66
 device: cuda
 
 wandb:
   enabled: true
-  project: metaworld-hammer-DrQv2
-  name: SplatterVAE-with-consistency-loss
-  tags: [with-consistency-loss, embed-dim-128, codebook-embed-dim-64]
+  project: metaworld-peg-unplug-side-DrQv2
+  name: SinCro
 
 env:
   benchmark_id: Meta-World/MT1
-  env_name: hammer
+  env_name: peg-unplug-side
   image_height: 128
   image_width: 128
   frame_stack: 3
@@ -52,68 +51,54 @@ env:
   up: [0.0, 0.0, 1.0]
 
 vision:
-  encoder_type: splatter_vae
+  encoder_type: sincro
   img_height: 128
   img_width: 128
 
-  vit:
+  sincro:
+    checkpoint_path: ./checkpoints/metaworld/encoders/SinCro/peg-unplug-side/step_00300000_encoder.tar
+
+    img_size: 128
+    netdepth: 8
+    netwidth: 256
+    netdepth_fine: 8
+    netwidth_fine: 256
+    N_rand: 1024
+    N_samples: 64
+    N_importance: 128
+    multires: 10
+    multires_views: 4
+    i_embed: 0
+    use_viewdirs: true
+    raw_noise_std: 0.0
+    white_bkgd: false
+    perturb: 1.0
+    lindisp: false
+
     patch_size: 16
-    in_chans: 3
-    embed_dim: 128
-    depth: 8
-    num_heads: 8
-    mlp_ratio: 4.0
-    qkv_bias: true
-    dropout: 0.0
-    attn_dropout: 0.0
-    drop_path_rate: 0.1
-    layerscale_init: 1.0e-5
-    selected_layers: [1, 3, 5, 7]
-    decoder_depth: 8
-    decoder_num_heads: 8
-    decoder_mlp_ratio: 4.0
-    decoder_drop_path_rate: 0.1
-    decoder_selected_layers: [1, 3, 5, 7]
-    dpt_features: 128
+    embed_dim: 256
+    vit_depth: 4
+    vit_num_heads: 4
+    vit_mlp_dim: 1024
+    decoder_depth: 2
+    decoder_num_heads: 2
+    decoder_mlp_dim: 1024
+    decoder_output_dim: 256
 
-  splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/hammer/with-consistency-loss/step_00300000.pth
-    feature_source: codebook
-    max_sh_degree: 0
-    num_gaussians_per_pixel: 1
+    time_interval: 3
+    mask_ratio: 0.75
+    num_views: 6
 
-    codebook:
-      invariant:
-        quantizer: vq
-        embed_dim: 64
-        n_embed: 512
-        beta: 0.25
-      dependent:
-        quantizer: vq
-        embed_dim: 64
-        n_embed: 64
-        beta: 0.25
+    near: 0.1
+    far: 2.5
+    chunk: 32768
 
-    model:
-      fusion_style: plus
-      use_dependent_vq: true
-      is_dependent_ae: false
-      use_invariant_vq: true
-      is_invariant_ae: false
-      dep_input_mask_ratio: 0.0
-      dep_mask_eval: false
+    pool: flatten
 
 agent:
   lr: 1.0e-4
   feature_dim: 256
   hidden_dim: 1024
-  augment_pixels: false
-  scene_state_head:
-    token_hidden_dim: 256
-    per_frame_dim: 256
-    stacked_hidden_dim: 256
-    stacked_num_layers: 2
-    use_tanh: true
   critic_target_tau: 0.01
 
   # DrM-specific knobs
@@ -141,7 +126,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/hammer/splattervae_with-consistency-loss/seed98/
+  replay_dir: ./buffer/metaworld/peg-unplug-side/sincro/seed66/
   replay_num_workers: 4
   nstep: 3
 
@@ -151,10 +136,11 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_with-consistency-loss/hammer/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/peg-unplug-side/seed66/
 
 visualization:
   enabled: false
-  window_name: metaworld_hammer_drqv2
+  window_name: metaworld_peg-unplug-side_drqv2
   wait_key: 1
   scale: 1.0
+
