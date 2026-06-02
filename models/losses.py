@@ -82,15 +82,22 @@ def compute_reconstruction_loss(
     """
     Compute combined MSE + SSIM reconstruction loss.
 
-    predicted, ground_truth: (B,3,H,W), values in [0,1]
-    ssim_weight: weight for SSIM term in [0,1]
+    Inputs may be ``(B,3,H,W)`` or have additional leading dimensions such as
+    ``(B,A,3,H,W)``. Extra leading dimensions are averaged uniformly.
     """
-    mse_loss = F.mse_loss(predicted, ground_truth)
+    if predicted.shape != ground_truth.shape:
+        raise ValueError(f"Reconstruction tensors must match, got {tuple(predicted.shape)} and {tuple(ground_truth.shape)}.")
+    if predicted.dim() < 4 or predicted.shape[-3] != 3:
+        raise ValueError(f"Expected image tensors ending in (3,H,W), got {tuple(predicted.shape)}.")
+
+    pred_flat = predicted.reshape(-1, *predicted.shape[-3:])
+    gt_flat = ground_truth.reshape(-1, *ground_truth.shape[-3:])
+    mse_loss = F.mse_loss(pred_flat, gt_flat)
 
     if ssim_weight <= 0.0:
         return mse_loss
 
-    ssim_map = fused_ssim(predicted, ground_truth)  # (B,H,W)
+    ssim_map = fused_ssim(pred_flat, gt_flat)  # (N,H,W)
     ssim_loss = 1.0 - ssim_map.mean()
 
     total_loss = (1 - ssim_weight) * mse_loss + ssim_weight * ssim_loss

@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import cv2
 import h5py
 import numpy as np
 import torch
@@ -20,9 +21,27 @@ from models.splatter import render_predicted
 from visualize.splattervae_common import build_visualization_models
 
 
+def depth_provider_name(cfg: dict) -> str:
+    depth_cfg = dict(cfg.get("depth_prior", {}))
+    if not bool(depth_cfg.get("enabled", False)):
+        return "none"
+    provider = str(depth_cfg.get("provider", "unidepth")).strip().lower()
+    return "dataset" if provider in {"gt", "ground_truth", "sim", "simulator"} else provider
+
+
+def depth_as_encoder_input(cfg: dict) -> bool:
+    return depth_provider_name(cfg) != "none" and bool(dict(cfg.get("depth_prior", {})).get("use_as_encoder_input", True))
+
+
 def image_to_tensor(img_rgb: np.ndarray) -> torch.Tensor:
     img = img_rgb.astype(np.float32) / 255.0
     return torch.from_numpy(img * 2.0 - 1.0).permute(2, 0, 1)
+
+
+def depth_to_encoder_channel(depth: torch.Tensor, znear: float, zfar: float) -> torch.Tensor:
+    depth = torch.nan_to_num(depth.float(), nan=zfar, posinf=zfar, neginf=znear)
+    depth = depth.clamp(min=float(znear), max=float(zfar))
+    return 2.0 * (depth - float(znear)) / (float(zfar) - float(znear)) - 1.0
 
 
 def invert_4x4(m: np.ndarray) -> np.ndarray:
@@ -159,6 +178,73 @@ def sanitize_filename(value: str) -> str:
     return "".join(safe)
 
 
+def tensor_stats(x: torch.Tensor | None) -> Dict[str, float] | None:
+    if x is None:
+        return None
+    y = x.detach().float()
+    finite = torch.isfinite(y)
+    if not bool(finite.any()):
+        return {"min": float("nan"), "max": float("nan"), "mean": float("nan"), "finite_ratio": 0.0}
+    vals = y[finite]
+    return {
+        "min": float(vals.min().item()),
+        "max": float(vals.max().item()),
+        "mean": float(vals.mean().item()),
+        "finite_ratio": float(finite.float().mean().item()),
+    }
+
+
+def depth_to_numpy(depth: torch.Tensor | None) -> np.ndarray | None:
+    if depth is None:
+        return None
+    depth_np = depth.detach().float().cpu().squeeze().numpy().astype(np.float32)
+    if depth_np.ndim != 2:
+        raise ValueError(f"Expected a single depth map after squeeze, got shape {depth_np.shape}.")
+    return depth_np
+
+
+def save_depth_outputs(depth: torch.Tensor | None, npy_path: Path, png_path: Path) -> Dict[str, object] | None:
+    depth_np = depth_to_numpy(depth)
+    if depth_np is None:
+        return None
+
+    npy_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(npy_path, depth_np)
+
+    finite = np.isfinite(depth_np)
+    if finite.any():
+        vals = depth_np[finite]
+        lo = float(np.percentile(vals, 2.0))
+        hi = float(np.percentile(vals, 98.0))
+        if not np.isfinite(lo):
+            lo = float(np.nanmin(vals))
+        if not np.isfinite(hi) or hi <= lo:
+            hi = lo + 1.0
+        vis = np.clip((depth_np - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+        vis = np.nan_to_num(vis, nan=0.0, posinf=1.0, neginf=0.0)
+    else:
+        lo, hi = float("nan"), float("nan")
+        vis = np.zeros_like(depth_np, dtype=np.float32)
+
+    vis_u8 = (vis * 255.0).round().astype(np.uint8)
+    color = cv2.applyColorMap(vis_u8, cv2.COLORMAP_TURBO)
+    if not cv2.imwrite(str(png_path), color):
+        raise IOError(f"Failed to write depth visualization: {png_path}")
+
+    return {
+        "depth_npy": str(npy_path),
+        "depth_png": str(png_path),
+        "depth_vis_percentile_min": lo,
+        "depth_vis_percentile_max": hi,
+        "depth_stats": tensor_stats(depth),
+    }
+
+
+def depth_mode_requires_prior(converter) -> bool:
+    mode = str(getattr(converter.cfg.model, "depth_parameterization", "absolute")).lower()
+    return mode in {"residual_unidepth", "depth_prior"}
+
+
 SH_C0 = 0.28209479177387814
 
 
@@ -277,8 +363,21 @@ def generate_gaussians_for_source(
     source_k: np.ndarray,
     source_c2w: np.ndarray,
     device: torch.device,
-) -> Dict[str, torch.Tensor]:
-    x = image_to_tensor(image_u8).unsqueeze(0).to(device)
+    spl_cfg,
+    depth_prior_estimator=None,
+    depth_map: np.ndarray | None = None,
+    use_depth_encoder_input: bool = False,
+) -> tuple[Dict[str, torch.Tensor], torch.Tensor | None]:
+    x_rgb = image_to_tensor(image_u8).unsqueeze(0).to(device)
+    x = x_rgb
+    depth_prior = None
+    if depth_map is not None:
+        depth_prior = torch.from_numpy(np.asarray(depth_map, dtype=np.float32)).view(1, 1, *depth_map.shape[-2:]).to(device)
+    if use_depth_encoder_input:
+        if depth_prior is None:
+            raise ValueError("RGBD encoder input was requested, but no depth map is available for this source image.")
+        depth_channel = depth_to_encoder_channel(depth_prior, spl_cfg.data.znear, spl_cfg.data.zfar).to(dtype=x_rgb.dtype)
+        x = torch.cat((x_rgb, depth_channel), dim=1).contiguous()
     z_inv, _, z_dep, _, _ = vae.encode(
         x,
         deterministic_invariant=True,
@@ -287,15 +386,26 @@ def generate_gaussians_for_source(
     splatter = vae.decode(z_inv.contiguous(), z_dep.contiguous())
 
     k = torch.from_numpy(source_k).unsqueeze(0).to(device=device, dtype=torch.float32)
+    if depth_prior is None:
+        if depth_prior_estimator is not None:
+            depth_prior = depth_prior_estimator((x_rgb + 1.0) * 0.5, k).detach().clone()
+        elif depth_mode_requires_prior(converter):
+            raise ValueError(
+                "This checkpoint/config uses depth-prior parameterization, "
+                "but no source depth map or depth estimator was available."
+            )
+
     c2w = torch.from_numpy(source_c2w).unsqueeze(0).to(device=device, dtype=torch.float32)
     source_quat = rotation_matrix_to_quaternion_wxyz(c2w[:, :3, :3])
-    return converter(
+    pc = converter(
         splatter=splatter,
         source_cameras_view_to_world=c2w,
         source_cv2wT_quat=source_quat,
         intrinsics=k,
+        depth_prior=depth_prior,
         activate_output=True,
     )
+    return pc, depth_prior
 
 
 def write_metadata(
@@ -308,6 +418,7 @@ def write_metadata(
     store_mode: str,
     source_k: np.ndarray,
     source_c2w: np.ndarray,
+    depth_info: Dict[str, object] | None = None,
 ) -> None:
     metadata = {
         "dataset": args.dataset,
@@ -326,6 +437,7 @@ def write_metadata(
         "source_intrinsics": source_k.tolist(),
         "source_camera_to_world": source_c2w.tolist(),
         "fields": "GraphDeco/3DGS-style x,y,z,nx,ny,nz,f_dc_*,f_rest_*,opacity,scale_*,rot_*",
+        "depth_prior": depth_info,
     }
     with open(path, "w") as f:
         json.dump(metadata, f, indent=2)
@@ -365,6 +477,11 @@ def main() -> None:
         default="source",
         help="When source, render from the source camera and export only splats with positive source-view radius.",
     )
+    parser.add_argument(
+        "--no_save_depth",
+        action="store_true",
+        help="Do not write depth .npy/.png sidecar files.",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
@@ -390,7 +507,11 @@ def main() -> None:
         t_len = int(demo.attrs.get("num_samples", demo["obs"][f"{cameras[0]}_rgb"].shape[0]))
         timesteps = parse_timesteps(args.timesteps, t_len=t_len, max_exports=args.max_exports)
 
-    vae, converter, spl_cfg = build_visualization_models(cfg, args.dataset, demo_key, args.ckpt, device)
+    vae, converter, spl_cfg, depth_prior_estimator = build_visualization_models(
+        cfg, args.dataset, demo_key, args.ckpt, device
+    )
+    provider = depth_provider_name(cfg)
+    use_depth_encoder_input = depth_as_encoder_input(cfg)
     bg = torch.ones(3, device=device) if spl_cfg.data.white_background else torch.zeros(3, device=device)
 
     exported = []
@@ -401,14 +522,34 @@ def main() -> None:
         for cam in cameras:
             for timestep in timesteps:
                 image_u8 = np.asarray(obs[f"{cam}_rgb"][timestep], dtype=np.uint8)
-                pc = generate_gaussians_for_source(
+                depth_map = None
+                if provider == "dataset":
+                    depth_name = f"{cam}_depth"
+                    if depth_name not in obs:
+                        raise ValueError(f"Missing dataset depth stream /obs/{depth_name} for provider='dataset'.")
+                    depth_map = np.asarray(obs[depth_name][timestep], dtype=np.float32)
+                pc, depth_prior = generate_gaussians_for_source(
                     vae=vae,
                     converter=converter,
                     image_u8=image_u8,
                     source_k=mats[cam]["K"],
                     source_c2w=mats[cam]["c2w"],
                     device=device,
+                    spl_cfg=spl_cfg,
+                    depth_prior_estimator=depth_prior_estimator,
+                    depth_map=depth_map,
+                    use_depth_encoder_input=use_depth_encoder_input,
                 )
+
+                stem = f"{sanitize_filename(demo_key)}_{sanitize_filename(cam)}_t{int(timestep):06d}"
+                depth_info = None
+                if depth_prior is not None and not args.no_save_depth:
+                    depth_info = save_depth_outputs(
+                        depth=depth_prior,
+                        npy_path=out_dir / f"{stem}_{provider}_depth.npy",
+                        png_path=out_dir / f"{stem}_{provider}_depth.png",
+                    )
+
                 visibility_mask = None
                 if args.visibility_filter == "source":
                     source_w2c = torch.from_numpy(mats[cam]["w2c"]).view(1, 1, 4, 4).to(device=device, dtype=torch.float32)
@@ -440,7 +581,6 @@ def main() -> None:
                     visibility_mask=visibility_mask,
                 )
 
-                stem = f"{sanitize_filename(demo_key)}_{sanitize_filename(cam)}_t{int(timestep):06d}"
                 ply_path = out_dir / f"{stem}.ply"
                 meta_path = out_dir / f"{stem}.json"
                 num_gaussians = write_gaussian_ply(ply_path, pc, store_mode=args.store_mode, color_mode=args.color_mode)
@@ -454,6 +594,7 @@ def main() -> None:
                     store_mode=args.store_mode,
                     source_k=mats[cam]["K"],
                     source_c2w=mats[cam]["c2w"],
+                    depth_info=depth_info,
                 )
                 exported.append(str(ply_path))
                 print(f"Saved {ply_path} ({num_gaussians} Gaussians)")
@@ -470,6 +611,7 @@ def main() -> None:
         "opacity_threshold": float(args.opacity_threshold),
         "max_gaussians": args.max_gaussians,
         "visibility_filter": args.visibility_filter,
+        "save_depth": not args.no_save_depth,
         "exports": exported,
     }
     manifest_path = out_dir / f"{sanitize_filename(demo_key)}_manifest.json"

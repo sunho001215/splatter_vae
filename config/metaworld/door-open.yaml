@@ -2,8 +2,8 @@
 # Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  hdf5_path: ../../data/metaworld/pre-training/door-open.hdf5
-  batch_size: 16
+  hdf5_path: ../../data/metaworld/with-depth/door-open.hdf5
+  batch_size: 8
   num_workers: 8
   pin_memory: true
   train_ratio: 0.96
@@ -11,6 +11,7 @@ dataset:
   num_episodes: null
   max_frames_per_demo: null
   camera_num: 6
+  load_depth: true
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
@@ -29,16 +30,14 @@ model:
 # -----------------------------------------------------------------------------
 codebook:
   invariant:
-    quantizer: vq
-    embed_dim: 64
-    n_embed: 512
-    beta: 0.25
+    quantizer: fsq
+    embed_dim: 6
+    fsq_levels: [8, 8, 8, 5, 5, 5]
 
   dependent:
-    quantizer: vq
-    embed_dim: 64
-    n_embed: 64
-    beta: 0.25
+    quantizer: fsq
+    embed_dim: 6
+    fsq_levels: [8, 8, 8, 5, 5, 5]
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -46,7 +45,7 @@ codebook:
 vit:
   # Encoder ViT hyperparameters
   patch_size: 16
-  in_chans: 3
+  in_chans: 4
   embed_dim: 128
   depth: 8
   num_heads: 8
@@ -90,13 +89,25 @@ splatter:
     isotropic: false
     depth_scale: 0.1
     depth_bias: 0.0
-    xyz_scale: 0.1
+    xyz_scale: 0.02
     xyz_bias: 0.0
     opacity_scale: 1.0
     opacity_bias: -2.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 1
+    depth_parameterization: depth_prior
+    depth_residual_scale: 0.12
+    depth_increment_scale: 0.12
+    depth_increment_min: 0.01
+    num_gaussians_per_pixel: 2
+
+# -----------------------------------------------------------------------------
+# Frozen monocular depth prior
+# -----------------------------------------------------------------------------
+depth_prior:
+  enabled: true
+  provider: dataset
+  use_as_encoder_input: true
 
 # -----------------------------------------------------------------------------
 # Training
@@ -113,21 +124,19 @@ train:
   # Original no-dynamics loss weights.
   rec_weight: 1.0
   ssim_weight: 0.0
-  shuffle_inv_rec_weight: 1.0
-  shuffle_dep_rec_weight: 1.0
-  shuffle_both_rec_weight: 1.0
+  depth_prior_weight: 0.1
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 0.01
+  frustum_weight: 0.5
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-vq/door-open/with-consistency-loss/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/door-open/with-gt-depth-k2/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -140,10 +149,12 @@ wandb:
   run_name: metaworld-door-open
   tags:
     - dep-masking-0.0
-    - all-view-reviwo-shuffle
+    - depth-prior-dataset
+    - rgbd-encoder
+    - k2
     - all-camera-rendering
     - embed-dim-128
-    - codebook-embed-dim-64
+    - codebook-embed-dim-6
     - depth-8
     - num-heads-8
     - DPT-fix
@@ -151,5 +162,5 @@ wandb:
     - diverse-demo-collection
     - ssim_weight-0.0
     - max_sh_degree-0
-    - VQ-codebook
+    - FSQ-codebook
     - consistency-loss

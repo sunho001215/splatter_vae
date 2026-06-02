@@ -13,9 +13,10 @@ import wandb
 
 from models.losses import (
     compute_all_camera_contrastive_losses,
-    compute_batched_reconstruction_losses,
     compute_latent_consistency_loss,
+    compute_reconstruction_loss,
 )
+from models.depth_prior import DepthPriorConfig
 from models.splatter import SplatterConfig, VAESplatterToGaussians, render_predicted
 from models.splatter_train_config import TrainConfig
 from models.vae import SplatterVAE
@@ -96,7 +97,7 @@ def encode_all_camera_batch(
 
     Args:
         vae: SplatterVAE model.
-        images: ``(B, A, 3, H, W)`` image tensor in [-1, 1], where ``A`` is the
+        images: ``(B, A, C, H, W)`` image tensor in [-1, 1], where ``A`` is the
             number of camera viewpoints loaded by the dataset.
 
     Returns:
@@ -118,20 +119,161 @@ def encode_all_camera_batch(
     return {"z_inv": z_inv, "z_dep": z_dep}, inv_vq_loss, dep_vq_loss
 
 
-def _non_identity_randperm(num_items: int, device: torch.device) -> torch.Tensor:
-    """Return a random permutation that changes order whenever possible.
+def _depth_provider_name(depth_prior_cfg: Optional[DepthPriorConfig]) -> str:
+    if depth_prior_cfg is None or not bool(depth_prior_cfg.enabled):
+        return "none"
+    provider = str(depth_prior_cfg.provider).strip().lower()
+    if provider in {"gt", "ground_truth", "sim", "simulator"}:
+        return "dataset"
+    return provider
 
-    The shuffle losses should not silently become self-reconstruction losses. For
-    very small dimensions there may be no non-identity permutation, but normal
-    SplatterVAE training uses ``B >= 2`` and ``camera_num >= 2``.
+
+def _use_depth_as_encoder_input(depth_prior_cfg: Optional[DepthPriorConfig]) -> bool:
+    return _depth_provider_name(depth_prior_cfg) != "none" and bool(depth_prior_cfg.use_as_encoder_input)
+
+
+def normalize_depth_for_encoder(depths: torch.Tensor, splatter_cfg: SplatterConfig) -> torch.Tensor:
+    """Map metric depth maps to the same [-1, 1] range as RGB encoder inputs."""
+    znear = float(splatter_cfg.data.znear)
+    zfar = float(splatter_cfg.data.zfar)
+    if zfar <= znear:
+        raise ValueError(f"Expected zfar > znear, got znear={znear}, zfar={zfar}.")
+    depths = torch.nan_to_num(depths.float(), nan=zfar, posinf=zfar, neginf=znear)
+    depths = depths.clamp(min=znear, max=zfar)
+    return 2.0 * (depths - znear) / (zfar - znear) - 1.0
+
+
+def build_depth_conditioned_encoder_images(
+    images: torch.Tensor,
+    depth_maps: Optional[torch.Tensor],
+    splatter_cfg: SplatterConfig,
+) -> torch.Tensor:
+    """Append one normalized depth channel when depth conditioning is enabled."""
+    if depth_maps is None:
+        return images
+    if depth_maps.shape[:2] != images.shape[:2] or depth_maps.shape[-2:] != images.shape[-2:]:
+        raise ValueError(
+            f"Depth maps must align with images, got images={tuple(images.shape)} depths={tuple(depth_maps.shape)}."
+        )
+    if depth_maps.dim() != 5 or depth_maps.shape[2] != 1:
+        raise ValueError(f"Expected depth maps as (B,A,1,H,W), got {tuple(depth_maps.shape)}.")
+    depth_channel = normalize_depth_for_encoder(depth_maps, splatter_cfg).to(device=images.device, dtype=images.dtype)
+    return torch.cat((images, depth_channel), dim=2).contiguous()
+
+
+@torch.no_grad()
+def estimate_all_camera_depth_priors(
+    depth_prior_estimator: Optional[Any],
+    images_01: torch.Tensor,
+    intrinsics: torch.Tensor,
+) -> Optional[torch.Tensor]:
+    """Predict depth priors for every loaded camera, used only for RGBD encoder input."""
+    if depth_prior_estimator is None:
+        return None
+    if images_01.dim() != 5:
+        raise ValueError(f"Expected images as (B,A,3,H,W), got {tuple(images_01.shape)}.")
+    bsz, num_views, channels, height, width = images_01.shape
+    flat_images = images_01.reshape(bsz * num_views, channels, height, width).contiguous()
+    flat_intrinsics = intrinsics.reshape(bsz * num_views, 3, 3).contiguous()
+    flat_depth = depth_prior_estimator(flat_images, flat_intrinsics).detach().clone()
+    if flat_depth.shape[-2:] != (height, width):
+        flat_depth = F.interpolate(flat_depth, size=(height, width), mode="bilinear", align_corners=False)
+    if flat_depth.dim() != 4 or flat_depth.shape[1] != 1:
+        raise ValueError(f"Expected depth prior as (N,1,H,W), got {tuple(flat_depth.shape)}.")
+    return flat_depth.reshape(bsz, num_views, 1, height, width).contiguous()
+
+
+@torch.no_grad()
+def resolve_all_camera_depth_maps(
+    depth_prior_cfg: Optional[DepthPriorConfig],
+    depth_prior_estimator: Optional[Any],
+    images_01: torch.Tensor,
+    intrinsics: torch.Tensor,
+    dataset_depths: Optional[torch.Tensor],
+) -> Optional[torch.Tensor]:
+    """Return all-camera depth maps when the active provider can supply them cheaply."""
+    provider = _depth_provider_name(depth_prior_cfg)
+    if provider == "none":
+        return None
+    if provider == "dataset":
+        if dataset_depths is None:
+            raise ValueError(
+                "depth_prior.provider='dataset' requires batch['depths']. "
+                "Regenerate the HDF5 data with render.depth=true."
+            )
+        return dataset_depths
+    if provider == "unidepth":
+        if _use_depth_as_encoder_input(depth_prior_cfg):
+            return estimate_all_camera_depth_priors(depth_prior_estimator, images_01, intrinsics)
+        return None
+    raise ValueError(f"Unsupported depth_prior.provider={provider!r}.")
+
+
+@torch.no_grad()
+def gather_selected_depth_priors(
+    depth_maps: torch.Tensor,
+    batch_indices: torch.Tensor,
+    camera_indices: torch.Tensor,
+) -> torch.Tensor:
+    """Gather depth maps for selected ``(state, camera)`` pairs."""
+    if depth_maps.dim() != 5 or depth_maps.shape[2] != 1:
+        raise ValueError(f"Expected depth_maps as (B,A,1,H,W), got {tuple(depth_maps.shape)}.")
+    if batch_indices.shape != camera_indices.shape:
+        raise ValueError(
+            f"batch_indices and camera_indices must match, got "
+            f"{tuple(batch_indices.shape)} and {tuple(camera_indices.shape)}."
+        )
+    flat_batch = batch_indices.reshape(-1).to(device=depth_maps.device, dtype=torch.long)
+    flat_camera = camera_indices.reshape(-1).to(device=depth_maps.device, dtype=torch.long)
+    selected = depth_maps[flat_batch, flat_camera].contiguous()
+    return selected.reshape(*batch_indices.shape, *depth_maps.shape[2:]).contiguous()
+
+
+@torch.no_grad()
+def estimate_selected_depth_priors(
+    depth_prior_estimator: Optional[Any],
+    images_01: torch.Tensor,
+    intrinsics: torch.Tensor,
+    batch_indices: torch.Tensor,
+    camera_indices: torch.Tensor,
+) -> Optional[torch.Tensor]:
+    """Predict depth priors only for selected ``(state, camera)`` pairs.
+
+    ``batch_indices`` identifies the invariant/state source row, while
+    ``camera_indices`` identifies the dependent/viewpoint source camera.
+    Duplicate pairs are evaluated once and then scattered back.
     """
-    if num_items <= 1:
-        return torch.arange(num_items, device=device)
+    if depth_prior_estimator is None:
+        return None
+    if images_01.dim() != 5:
+        raise ValueError(f"Expected images as (B,A,3,H,W), got {tuple(images_01.shape)}.")
+    if batch_indices.shape != camera_indices.shape:
+        raise ValueError(
+            f"batch_indices and camera_indices must match, got "
+            f"{tuple(batch_indices.shape)} and {tuple(camera_indices.shape)}."
+        )
 
-    perm = torch.randperm(num_items, device=device)
-    if torch.equal(perm, torch.arange(num_items, device=device)):
-        perm = torch.roll(perm, shifts=1, dims=0)
-    return perm
+    bsz, num_views, channels, height, width = images_01.shape
+    flat_batch = batch_indices.reshape(-1).to(device=images_01.device, dtype=torch.long)
+    flat_camera = camera_indices.reshape(-1).to(device=images_01.device, dtype=torch.long)
+    if flat_batch.numel() == 0:
+        return images_01.new_empty(*batch_indices.shape, 1, height, width)
+
+    pair_ids = flat_batch * int(num_views) + flat_camera
+    unique_pair_ids, inverse = torch.unique(pair_ids, sorted=False, return_inverse=True)
+    unique_batch = torch.div(unique_pair_ids, int(num_views), rounding_mode="floor")
+    unique_camera = unique_pair_ids.remainder(int(num_views))
+
+    selected_images = images_01[unique_batch, unique_camera].contiguous()
+    selected_intrinsics = intrinsics[unique_batch, unique_camera].contiguous()
+    unique_depth = depth_prior_estimator(selected_images, selected_intrinsics).detach().clone()
+    if unique_depth.shape[-2:] != (height, width):
+        unique_depth = F.interpolate(unique_depth, size=(height, width), mode="bilinear", align_corners=False)
+    if unique_depth.dim() != 4 or unique_depth.shape[1] != 1:
+        raise ValueError(f"Expected depth prior as (N,1,H,W), got {tuple(unique_depth.shape)}.")
+
+    flat_depth = unique_depth[inverse]
+    return flat_depth.reshape(*batch_indices.shape, 1, height, width).contiguous()
 
 
 def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
@@ -307,27 +449,9 @@ def _gather_target_cameras(values: torch.Tensor, target_indices: torch.Tensor) -
     return torch.gather(values, dim=1, index=gather_index)
 
 
-def _target_indices_excluding_source(source_indices: torch.Tensor, num_views: int) -> torch.Tensor:
-    """Return all camera indices except each row's selected source camera."""
-    if num_views < 2:
-        raise ValueError("Target-only reconstruction requires at least two camera viewpoints.")
-    all_views = torch.arange(num_views, device=source_indices.device).view(1, num_views)
-    all_views = all_views.expand(source_indices.shape[0], num_views)
-    keep_target = all_views != source_indices.view(-1, 1)
-    return all_views[keep_target].view(source_indices.shape[0], num_views - 1)
-
-
-def _random_other_camera_indices(source_indices: torch.Tensor, num_views: int) -> torch.Tensor:
-    """Sample one non-source camera index per row for invariant shuffling."""
-    if num_views < 2:
-        raise ValueError("Invariant shuffling requires at least two camera viewpoints.")
-    offset = torch.randint(
-        low=1,
-        high=num_views,
-        size=source_indices.shape,
-        device=source_indices.device,
-    )
-    return (source_indices + offset) % num_views
+def _all_camera_indices(batch_size: int, num_views: int, device: torch.device) -> torch.Tensor:
+    """Return every camera index for each batch row."""
+    return torch.arange(num_views, device=device).view(1, num_views).expand(batch_size, num_views)
 
 
 def _render_selected_sources_to_targets(
@@ -342,12 +466,13 @@ def _render_selected_sources_to_targets(
     c2w: torch.Tensor,
     w2c: torch.Tensor,
     bg: torch.Tensor,
-) -> tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    """Decode selected source views and render only non-source targets.
+    source_depth_prior: Optional[torch.Tensor] = None,
+) -> tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    """Decode selected source views and render them to requested cameras.
 
-    ``z_dep_source`` defines the camera frame of the decoded Splatter image.
-    Therefore ``source_indices`` must point to the camera viewpoint that produced
-    the dependent feature, including after dependent-feature shuffling.
+    ``z_dep_source`` defines the camera frame of the decoded Splatter image, so
+    ``source_indices`` must point to the camera viewpoint that produced it.
+    Reconstruction callers may include the source camera in ``target_indices``.
     """
     source_intrinsics = _gather_camera_rows(intrinsics, source_indices)
     source_c2w = _gather_camera_rows(c2w, source_indices)
@@ -359,6 +484,7 @@ def _render_selected_sources_to_targets(
         source_cameras_view_to_world=source_c2w,
         source_cv2wT_quat=source_quat,
         intrinsics=source_intrinsics,
+        depth_prior=source_depth_prior,
         activate_output=True,
     )
 
@@ -372,12 +498,12 @@ def _render_selected_sources_to_targets(
         cfg=splatter_cfg,
     )
 
-    # Reconstruction excludes the source view, but frustum diagnostics still
-    # include it as view 0 so source/target inactive ratios remain meaningful.
-    source_w2c = _gather_camera_rows(w2c, source_indices).unsqueeze(1)
-    frustum_w2c = torch.cat((source_w2c, target_w2c), dim=1)
-    frustum_intrinsics = torch.cat((source_intrinsics.unsqueeze(1), target_intrinsics), dim=1)
-    source_view_indices = torch.zeros(source_indices.shape[0], device=source_indices.device, dtype=torch.long)
+    # The render set includes all views used by reconstruction; source_view_indices
+    # marks the source camera position within that ordered render set.
+    frustum_w2c = target_w2c
+    frustum_intrinsics = target_intrinsics
+    source_matches = target_indices == source_indices.view(-1, 1)
+    source_view_indices = source_matches.float().argmax(dim=1).to(dtype=torch.long)
     frustum_stats = _compute_soft_image_region_penalty(
         xyz_world=gaussian_pc["xyz"],
         world_view_transform=frustum_w2c,
@@ -387,7 +513,8 @@ def _render_selected_sources_to_targets(
         min_depth=splatter_cfg.data.znear,
         source_view_indices=source_view_indices,
     )
-    return out["render"], frustum_stats
+
+    return out["render"], frustum_stats, gaussian_pc
 
 
 def compute_reconstruction_and_renders(
@@ -403,167 +530,96 @@ def compute_reconstruction_and_renders(
     bg: torch.Tensor,
     cfg_train: TrainConfig,
     return_renders: bool = False,
+    depth_prior_estimator: Optional[Any] = None,
+    depth_prior_maps: Optional[torch.Tensor] = None,
 ) -> Dict[str, Any]:
-    """Compute target-only reconstruction and ReViWo shuffle losses.
+    """Compute reconstruction loss from one source view rendered to all views.
 
-    All camera images are encoded before this function is called.  This
-    function only changes reconstruction: each batch row samples one source
-    viewpoint, decodes one Gaussian scene per variant, and renders it to the
-    ``A - 1`` target viewpoints that exclude that source.
-
-    The dependent feature owns the source camera frame.  When the dependent
-    feature is shuffled from another batch row, the source camera index is
-    shuffled with it, and targets exclude that updated source viewpoint.
+    Each batch row samples one source viewpoint, decodes one Gaussian scene from
+    the matching invariant/dependent latents, and renders it into every loaded
+    camera viewpoint, including the source view.
     """
     bsz, num_views = z_inv.shape[:2]
-    if num_views < 2:
-        raise ValueError("Target-only reconstruction requires at least two camera viewpoints.")
+    if num_views < 1:
+        raise ValueError("Reconstruction requires at least one camera viewpoint.")
 
     device = z_inv.device
     batch_ids = torch.arange(bsz, device=device)
-
     source_indices = torch.randint(low=0, high=num_views, size=(bsz,), device=device)
-    inv_source_indices = _random_other_camera_indices(source_indices, num_views)
-    batch_perm = _non_identity_randperm(bsz, device=device)
+    target_indices = _all_camera_indices(bsz, num_views, device=device).contiguous()
 
-    # Dependent shuffling borrows another row's selected dependent feature.  The
-    # corresponding source camera index must move with it because z_dep is
-    # camera-frame specific.
-    dep_source_indices = source_indices[batch_perm]
+    z_inv_source = z_inv[batch_ids, source_indices].contiguous()
+    z_dep_source = z_dep[batch_ids, source_indices].contiguous()
 
-    variant_names = ("self", "shuffle_inv", "shuffle_dep", "shuffle_both")
-    num_variants = len(variant_names)
+    if depth_prior_maps is not None:
+        source_depth_prior = gather_selected_depth_priors(
+            depth_maps=depth_prior_maps,
+            batch_indices=batch_ids,
+            camera_indices=source_indices,
+        )
+    else:
+        source_depth_prior = estimate_selected_depth_priors(
+            depth_prior_estimator=depth_prior_estimator,
+            images_01=images_01,
+            intrinsics=intrinsics,
+            batch_indices=batch_ids,
+            camera_indices=source_indices,
+        )
 
-    variant_z_inv = torch.stack(
-        [
-            z_inv[batch_ids, source_indices],
-            z_inv[batch_ids, inv_source_indices],
-            z_inv[batch_ids, source_indices],
-            z_inv[batch_ids, inv_source_indices],
-        ],
-        dim=0,
-    ).contiguous()
-    variant_z_dep = torch.stack(
-        [
-            z_dep[batch_ids, source_indices],
-            z_dep[batch_ids, source_indices],
-            z_dep[batch_perm, dep_source_indices],
-            z_dep[batch_perm, dep_source_indices],
-        ],
-        dim=0,
-    ).contiguous()
-    variant_source_indices = torch.stack(
-        [
-            source_indices,
-            source_indices,
-            dep_source_indices,
-            dep_source_indices,
-        ],
-        dim=0,
-    ).contiguous()
-
-    flat_count = num_variants * bsz
-    flat_z_inv = variant_z_inv.reshape(flat_count, *z_inv.shape[2:]).contiguous()
-    flat_z_dep = variant_z_dep.reshape(flat_count, *z_dep.shape[2:]).contiguous()
-    flat_source_indices = variant_source_indices.reshape(flat_count).contiguous()
-    flat_target_indices = _target_indices_excluding_source(flat_source_indices, num_views)
-
-    flat_intrinsics = intrinsics[None].expand(num_variants, *intrinsics.shape).reshape(
-        flat_count,
-        num_views,
-        3,
-        3,
-    ).contiguous()
-    flat_c2w = c2w[None].expand(num_variants, *c2w.shape).reshape(
-        flat_count,
-        num_views,
-        4,
-        4,
-    ).contiguous()
-    flat_w2c = w2c[None].expand(num_variants, *w2c.shape).reshape(
-        flat_count,
-        num_views,
-        4,
-        4,
-    ).contiguous()
-
-    rendered_flat, frustum_stats = _render_selected_sources_to_targets(
+    rendered, frustum_stats, gaussian_pc = _render_selected_sources_to_targets(
         vae=vae,
         splatter_to_gaussians=splatter_to_gaussians,
         splatter_cfg=splatter_cfg,
-        z_inv_source=flat_z_inv,
-        z_dep_source=flat_z_dep,
-        source_indices=flat_source_indices,
-        target_indices=flat_target_indices,
-        intrinsics=flat_intrinsics,
-        c2w=flat_c2w,
-        w2c=flat_w2c,
+        z_inv_source=z_inv_source,
+        z_dep_source=z_dep_source,
+        source_indices=source_indices,
+        target_indices=target_indices,
+        intrinsics=intrinsics,
+        c2w=c2w,
+        w2c=w2c,
         bg=bg,
+        source_depth_prior=source_depth_prior,
     )
 
-    num_targets = num_views - 1
-    rendered = rendered_flat.reshape(
-        num_variants,
-        bsz,
-        num_targets,
-        3,
-        splatter_cfg.data.img_height,
-        splatter_cfg.data.img_width,
-    ).contiguous()
-
-    flat_images = images_01[None].expand(num_variants, *images_01.shape).reshape(
-        flat_count,
-        num_views,
-        *images_01.shape[2:],
-    ).contiguous()
-    flat_target_images = _gather_target_cameras(flat_images, flat_target_indices)
-    target_images = flat_target_images.reshape(
-        num_variants,
-        bsz,
-        num_targets,
-        *images_01.shape[2:],
-    ).contiguous()
-    target_indices = flat_target_indices.reshape(num_variants, bsz, num_targets).contiguous()
-
-    loss_values = compute_batched_reconstruction_losses(
+    rec_self = compute_reconstruction_loss(
         predicted=rendered,
-        ground_truth=target_images,
+        ground_truth=images_01,
         ssim_weight=cfg_train.ssim_weight,
     )
-    losses: Dict[str, torch.Tensor] = {
-        name: loss_values[idx] for idx, name in enumerate(variant_names)
-    }
-
-    rec_loss = (
-        losses["self"]
-        + float(cfg_train.shuffle_inv_rec_weight) * losses["shuffle_inv"]
-        + float(cfg_train.shuffle_dep_rec_weight) * losses["shuffle_dep"]
-        + float(cfg_train.shuffle_both_rec_weight) * losses["shuffle_both"]
-    )
+    depth_prior_loss = rec_self.new_zeros(())
+    if source_depth_prior is not None:
+        k = int(splatter_cfg.model.num_gaussians_per_pixel)
+        first_center_z = gaussian_pc["xyz_camera"].view(bsz, -1, k, 3)[:, :, 0, 2:3]
+        znear = float(splatter_cfg.data.znear)
+        zfar = float(splatter_cfg.data.zfar)
+        prior_depth_raw = source_depth_prior.to(device=first_center_z.device, dtype=first_center_z.dtype)
+        prior_depth_raw = prior_depth_raw.flatten(2).transpose(1, 2).contiguous()
+        valid = torch.isfinite(prior_depth_raw) & torch.isfinite(first_center_z) & (prior_depth_raw > znear)
+        prior_depth = torch.nan_to_num(
+            prior_depth_raw,
+            nan=0.5 * (znear + zfar),
+            posinf=zfar,
+            neginf=znear,
+        ).clamp(min=znear, max=zfar)
+        if bool(valid.any()):
+            depth_prior_loss = (first_center_z - prior_depth).abs()[valid].mean()
 
     out_dict: Dict[str, Any] = {
-        "rec_loss": rec_loss,
-        "rec_self": losses["self"],
-        "rec_shuffle_inv": losses["shuffle_inv"],
-        "rec_shuffle_dep": losses["shuffle_dep"],
-        "rec_shuffle_both": losses["shuffle_both"],
+        "rec_loss": rec_self,
+        "rec_self": rec_self,
+        "depth_prior_loss": depth_prior_loss,
     }
     for stat_name, stat_value in frustum_stats.items():
         out_dict[stat_name] = stat_value
 
     if return_renders:
         out_dict["gt_images"] = images_01
-        out_dict["target_images_self"] = target_images[0]
-        out_dict["rendered_self"] = rendered[0]
-        out_dict["rendered_shuffle_inv"] = rendered[1]
-        out_dict["rendered_shuffle_dep"] = rendered[2]
-        out_dict["rendered_shuffle_both"] = rendered[3]
-        out_dict["source_indices"] = variant_source_indices.detach().cpu()
+        out_dict["target_images_self"] = images_01
+        out_dict["rendered_self"] = rendered
+        out_dict["source_indices"] = source_indices.detach().cpu()
         out_dict["target_indices"] = target_indices.detach().cpu()
-        out_dict["batch_perm"] = batch_perm.detach().cpu()
 
     return out_dict
-
 
 def _make_wandb_named_image_panel(
     named_images: list[tuple[str, torch.Tensor]],
@@ -590,6 +646,8 @@ def validate_and_log_wandb(
     bg: torch.Tensor,
     cfg_train: TrainConfig,
     global_step: int,
+    depth_prior_estimator: Optional[Any] = None,
+    depth_prior_cfg: Optional[DepthPriorConfig] = None,
 ) -> None:
     """Run validation with the same all-camera losses used for training."""
     if wandb.run is None:
@@ -599,13 +657,14 @@ def validate_and_log_wandb(
     prev_splatter_mode = splatter_to_gaussians.training
     vae.eval()
     splatter_to_gaussians.eval()
+    if depth_prior_estimator is not None:
+        depth_prior_estimator.eval()
 
     scalar_sums = {
         "val/rec_loss": 0.0,
         "val/rec_self": 0.0,
-        "val/rec_shuffle_inv": 0.0,
-        "val/rec_shuffle_dep": 0.0,
-        "val/rec_shuffle_both": 0.0,
+        "val/depth_prior_loss": 0.0,
+        "val/depth_prior_loss_weighted": 0.0,
         "val/inv_contrastive_loss": 0.0,
         "val/inv_consistency_loss": 0.0,
         "val/dep_contrastive_loss": 0.0,
@@ -630,8 +689,20 @@ def validate_and_log_wandb(
         c2w = batch["c2w"].to(device, non_blocking=True)
         w2c = batch["w2c"].to(device, non_blocking=True)
         images_01 = (images + 1.0) * 0.5
+        dataset_depths = batch.get("depths")
+        if dataset_depths is not None:
+            dataset_depths = dataset_depths.to(device, non_blocking=True)
+        depth_prior_maps = resolve_all_camera_depth_maps(
+            depth_prior_cfg=depth_prior_cfg,
+            depth_prior_estimator=depth_prior_estimator,
+            images_01=images_01,
+            intrinsics=intrinsics,
+            dataset_depths=dataset_depths,
+        )
+        encoder_depth_maps = depth_prior_maps if _use_depth_as_encoder_input(depth_prior_cfg) else None
+        encoder_images = build_depth_conditioned_encoder_images(images, encoder_depth_maps, splatter_cfg)
 
-        latents, _inv_vq_loss, _dep_vq_loss = encode_all_camera_batch(vae=vae, images=images)
+        latents, _inv_vq_loss, _dep_vq_loss = encode_all_camera_batch(vae=vae, images=encoder_images)
         inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
             z_inv=latents["z_inv"],
             z_dep=latents["z_dep"],
@@ -653,13 +724,16 @@ def validate_and_log_wandb(
             bg=bg,
             cfg_train=cfg_train,
             return_renders=(num_eval_batches == 0),
+            depth_prior_estimator=depth_prior_estimator,
+            depth_prior_maps=depth_prior_maps,
         )
 
         scalar_sums["val/rec_loss"] += float(rec_out["rec_loss"].item())
         scalar_sums["val/rec_self"] += float(rec_out["rec_self"].item())
-        scalar_sums["val/rec_shuffle_inv"] += float(rec_out["rec_shuffle_inv"].item())
-        scalar_sums["val/rec_shuffle_dep"] += float(rec_out["rec_shuffle_dep"].item())
-        scalar_sums["val/rec_shuffle_both"] += float(rec_out["rec_shuffle_both"].item())
+        scalar_sums["val/depth_prior_loss"] += float(rec_out["depth_prior_loss"].item())
+        scalar_sums["val/depth_prior_loss_weighted"] += float(
+            cfg_train.depth_prior_weight * rec_out["depth_prior_loss"].item()
+        )
         scalar_sums["val/inv_contrastive_loss"] += float(inv_contrastive_loss.item())
         scalar_sums["val/inv_consistency_loss"] += float(inv_consistency_loss.item())
         scalar_sums["val/dep_contrastive_loss"] += float(dep_contrastive_loss.item())
@@ -680,13 +754,6 @@ def validate_and_log_wandb(
                 panel_items.append((f"gt_target{target_slot}", rec_out["target_images_self"][:, target_slot]))
             for target_slot in range(num_targets_to_show):
                 panel_items.append((f"self_target{target_slot}", rec_out["rendered_self"][:, target_slot]))
-            panel_items.extend(
-                [
-                    ("shuffle_inv_target0", rec_out["rendered_shuffle_inv"][:, 0]),
-                    ("shuffle_dep_target0", rec_out["rendered_shuffle_dep"][:, 0]),
-                    ("shuffle_both_target0", rec_out["rendered_shuffle_both"][:, 0]),
-                ]
-            )
             image_payload = {
                 "val/render_summary": _make_wandb_named_image_panel(panel_items, max_vis=cfg_train.val_max_vis),
             }
@@ -716,10 +783,22 @@ def train_splatter_vae(
     cfg_train: TrainConfig,
     valid_dataloader: Optional[DataLoader] = None,
     resume_ckpt: Optional[str] = None,
+    depth_prior_estimator: Optional[Any] = None,
+    depth_prior_cfg: Optional[DepthPriorConfig] = None,
 ):
     """Train SplatterVAE with all-camera rendering and ReViWo-style shuffling."""
     device = torch.device(cfg_train.device)
     vae.to(device)
+    if depth_prior_estimator is not None:
+        depth_prior_estimator.to(device).eval()
+    depth_mode = str(getattr(splatter_cfg.model, "depth_parameterization", "absolute")).lower()
+    provider = _depth_provider_name(depth_prior_cfg)
+    if depth_mode in ("residual_unidepth", "depth_prior") and provider == "none":
+        raise ValueError(
+            "depth_parameterization='residual_unidepth' or 'depth_prior' requires depth_prior.enabled=true."
+        )
+    if depth_mode in ("residual_unidepth", "depth_prior") and provider == "unidepth" and depth_prior_estimator is None:
+        raise ValueError("depth_prior.provider='unidepth' requires a UniDepth estimator.")
 
     splatter_to_gaussians = VAESplatterToGaussians(splatter_cfg).to(device)
     optimizer = torch.optim.Adam(vae.parameters(), lr=cfg_train.lr)
@@ -765,17 +844,29 @@ def train_splatter_vae(
 
             # Shapes:
             #   images: (B, A, 3, H, W), K/c2w/w2c: (B, A, ...)
-            # ``A`` is stable across the batch and is the camera index used by
-            # both the shuffle loss and the view-dependent contrastive loss.
+            # ``A`` is stable across the batch and indexes the camera views used
+            # for source sampling, rendering, and view-dependent contrastive loss.
             images = batch["images"].to(device, non_blocking=True)
             intrinsics = batch["K"].to(device, non_blocking=True)
             c2w = batch["c2w"].to(device, non_blocking=True)
             w2c = batch["w2c"].to(device, non_blocking=True)
             images_01 = (images + 1.0) * 0.5
+            dataset_depths = batch.get("depths")
+            if dataset_depths is not None:
+                dataset_depths = dataset_depths.to(device, non_blocking=True)
+            depth_prior_maps = resolve_all_camera_depth_maps(
+                depth_prior_cfg=depth_prior_cfg,
+                depth_prior_estimator=depth_prior_estimator,
+                images_01=images_01,
+                intrinsics=intrinsics,
+                dataset_depths=dataset_depths,
+            )
+            encoder_depth_maps = depth_prior_maps if _use_depth_as_encoder_input(depth_prior_cfg) else None
+            encoder_images = build_depth_conditioned_encoder_images(images, encoder_depth_maps, splatter_cfg)
 
             optimizer.zero_grad(set_to_none=True)
 
-            latents, inv_vq_loss, dep_vq_loss = encode_all_camera_batch(vae=vae, images=images)
+            latents, inv_vq_loss, dep_vq_loss = encode_all_camera_batch(vae=vae, images=encoder_images)
             rec_out = compute_reconstruction_and_renders(
                 vae=vae,
                 splatter_to_gaussians=splatter_to_gaussians,
@@ -789,10 +880,12 @@ def train_splatter_vae(
                 bg=bg,
                 cfg_train=cfg_train,
                 return_renders=False,
+                depth_prior_estimator=depth_prior_estimator,
+                depth_prior_maps=depth_prior_maps,
             )
             rec_loss = rec_out["rec_loss"]
+            depth_prior_loss = rec_out["depth_prior_loss"]
             frustum_loss = rec_out["frustum_loss"]
-
             inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
                 z_inv=latents["z_inv"],
                 z_dep=latents["z_dep"],
@@ -804,6 +897,7 @@ def train_splatter_vae(
             vq_loss = inv_vq_loss + dep_vq_loss
             total_loss = (
                 cfg_train.rec_weight * rec_loss
+                + cfg_train.depth_prior_weight * depth_prior_loss
                 + cfg_train.vq_weight * vq_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
                 + cfg_train.inv_consistency_weight * inv_consistency_loss
@@ -815,6 +909,7 @@ def train_splatter_vae(
             finite_terms = {
                 "rec_loss": rec_loss,
                 "vq_loss": vq_loss,
+                "depth_prior_loss": depth_prior_loss,
                 "inv_contrastive_loss": inv_contrastive_loss,
                 "inv_consistency_loss": inv_consistency_loss,
                 "dep_contrastive_loss": dep_contrastive_loss,
@@ -852,9 +947,7 @@ def train_splatter_vae(
                     f"[Epoch {epoch + 1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} lr={current_lr:.2e} "
                     f"(rec={rec_loss.item():.4f}, self={rec_out['rec_self'].item():.4f}, "
-                    f"shuffle_inv={rec_out['rec_shuffle_inv'].item():.4f}, "
-                    f"shuffle_dep={rec_out['rec_shuffle_dep'].item():.4f}, "
-                    f"shuffle_both={rec_out['rec_shuffle_both'].item():.4f}, "
+                    f"depth_prior={rec_out['depth_prior_loss'].item():.4f}, "
                     f"vq={vq_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
                     f"inv_cons={inv_consistency_loss.item():.4f}, dep_con={dep_contrastive_loss.item():.4f}, "
                     f"dep_cons={dep_consistency_loss.item():.4f}, frustum={frustum_loss.item():.4f})"
@@ -866,12 +959,11 @@ def train_splatter_vae(
                             "train/lr": current_lr,
                             "train/rec_loss": rec_loss.item(),
                             "train/rec_self": rec_out["rec_self"].item(),
-                            "train/rec_shuffle_inv": rec_out["rec_shuffle_inv"].item(),
-                            "train/rec_shuffle_dep": rec_out["rec_shuffle_dep"].item(),
-                            "train/rec_shuffle_both": rec_out["rec_shuffle_both"].item(),
-                            "train/shuffle_inv_rec_weight": float(cfg_train.shuffle_inv_rec_weight),
-                            "train/shuffle_dep_rec_weight": float(cfg_train.shuffle_dep_rec_weight),
-                            "train/shuffle_both_rec_weight": float(cfg_train.shuffle_both_rec_weight),
+                            "train/depth_prior_loss": rec_out["depth_prior_loss"].item(),
+                            "train/depth_prior_loss_weighted": (
+                                cfg_train.depth_prior_weight * rec_out["depth_prior_loss"]
+                            ).item(),
+                            "train/depth_prior_weight": float(cfg_train.depth_prior_weight),
                             "train/vq_loss": vq_loss.item(),
                             "train/inv_vq_loss": inv_vq_loss.item(),
                             "train/dep_vq_loss": dep_vq_loss.item(),
@@ -913,6 +1005,8 @@ def train_splatter_vae(
                     bg=bg,
                     cfg_train=cfg_train,
                     global_step=global_step,
+                    depth_prior_estimator=depth_prior_estimator,
+                    depth_prior_cfg=depth_prior_cfg,
                 )
 
             if cfg_train.save_every > 0 and global_step > 0 and global_step % cfg_train.save_every == 0:

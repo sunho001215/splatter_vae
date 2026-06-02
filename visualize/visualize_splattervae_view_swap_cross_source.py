@@ -206,7 +206,9 @@ def main():
             )
 
     # Model/image size is taken from the invariant-source demo.
-    vae, converter, spl_cfg = build_models(cfg, args.dataset, demo_inv_key, args.ckpt, device)
+    vae, converter, spl_cfg, depth_prior_estimator = build_models(
+        cfg, args.dataset, demo_inv_key, args.ckpt, device
+    )
 
     with h5py.File(args.dataset, "r") as f:
         demo_inv = f["data"][demo_inv_key]
@@ -216,6 +218,15 @@ def main():
 
         img_inv_u8 = read_source(demo_inv, cam_inv, args.timestep_inv)
         img_dep_u8 = read_source(demo_dep, cam_dep, timestep_dep)
+        img_depth_u8 = None
+        if depth_prior_estimator is not None:
+            inv_cams = json.loads(demo_inv.attrs["camera_names"])
+            if cam_dep not in inv_cams:
+                raise ValueError(
+                    f"Depth prior needs invariant state with dependent viewpoint {cam_dep!r}; "
+                    f"available invariant cameras: {inv_cams}."
+                )
+            img_depth_u8 = read_source(demo_inv, cam_dep, args.timestep_inv)
 
     x_inv = image_to_tensor(img_inv_u8).unsqueeze(0).to(device)
     x_dep = image_to_tensor(img_dep_u8).unsqueeze(0).to(device)
@@ -238,12 +249,17 @@ def main():
         eye = torch.eye(4, dtype=torch.float32, device=device).unsqueeze(0)
         quat_identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], dtype=torch.float32, device=device)
         k_dep = torch.from_numpy(dep_cam_mats[cam_dep]["K"]).unsqueeze(0).to(device)
+        depth_prior = None
+        if depth_prior_estimator is not None:
+            x_depth = image_to_tensor(img_depth_u8).unsqueeze(0).to(device)
+            depth_prior = depth_prior_estimator((x_depth + 1.0) * 0.5, k_dep)
 
         gaussian_pc = converter(
             splatter,
             source_cameras_view_to_world=eye,
             source_cv2wT_quat=quat_identity,
             intrinsics=k_dep,
+            depth_prior=depth_prior,
             activate_output=True,
         )
 

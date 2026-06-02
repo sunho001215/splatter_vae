@@ -6,6 +6,7 @@ from typing import Any, Dict, Tuple
 import h5py
 import torch
 
+from models.depth_prior import DepthPriorConfig, build_depth_prior_estimator
 from models.splatter import (
     SplatterConfig,
     SplatterDataConfig,
@@ -41,6 +42,7 @@ def splatter_channels_from_config(cfg: Dict[str, Any], spl_cfg: SplatterConfig) 
             default_splatter_channels(
                 max_sh_degree=int(spl_cfg.model.max_sh_degree),
                 num_gaussians_per_pixel=int(spl_cfg.model.num_gaussians_per_pixel),
+                isotropic=bool(spl_cfg.model.isotropic),
             ),
         )
     )
@@ -96,6 +98,17 @@ def build_visualization_models(
     load_vae_state_dict(vae, ckpt_path)
 
     converter = VAESplatterToGaussians(spl_cfg)
+    depth_prior_cfg = DepthPriorConfig(**dict(cfg.get("depth_prior", {})))
+    depth_prior_estimator = build_depth_prior_estimator(depth_prior_cfg)
+    depth_mode = str(getattr(spl_cfg.model, "depth_parameterization", "absolute")).lower()
+    provider = str(depth_prior_cfg.provider).strip().lower() if depth_prior_cfg.enabled else "none"
+    dataset_provider = provider in {"dataset", "gt", "ground_truth", "sim", "simulator"}
+    if depth_mode in ("residual_unidepth", "depth_prior") and depth_prior_estimator is None and not dataset_provider:
+        raise ValueError(
+            "depth_parameterization='residual_unidepth' requires a configured depth prior provider."
+        )
     vae.to(device).eval()
     converter.to(device).eval()
-    return vae, converter, spl_cfg
+    if depth_prior_estimator is not None:
+        depth_prior_estimator.to(device).eval()
+    return vae, converter, spl_cfg, depth_prior_estimator

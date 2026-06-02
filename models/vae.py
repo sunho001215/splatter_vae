@@ -180,7 +180,7 @@ class SplatterVAE(nn.Module):
         # Patch-aligned random masking for the dependent branch input
         self.dep_input_mask_ratio = float(dep_input_mask_ratio)
         self.dep_mask_eval = bool(dep_mask_eval)
-        self.dep_mask_token = nn.Parameter(torch.zeros(1, 1, 1, 3, self.patch_h, self.patch_w))
+        self.dep_mask_token = nn.Parameter(torch.zeros(1, 1, 1, enc_cfg.in_chans, self.patch_h, self.patch_w))
         nn.init.normal_(self.dep_mask_token, mean=0.0, std=0.02)
 
     # ------------------------------------------------------------------
