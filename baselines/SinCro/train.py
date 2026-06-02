@@ -53,13 +53,36 @@ from baselines.SinCro.dataloader import (
     RobosuiteSinCroSequenceDataset,
 )
 
+
+def _move_tensor_batch_to_device(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
+    return {
+        key: value.to(device, non_blocking=True) if torch.is_tensor(value) else value
+        for key, value in batch.items()
+    }
+
+
+def _sample_validation_batch(dataloader: DataLoader, random_sample: bool) -> Optional[Dict[str, Any]]:
+    if random_sample and hasattr(dataloader, "dataset") and len(dataloader.dataset) > 0:
+        sample_idx = int(torch.randint(len(dataloader.dataset), (1,)).item())
+        sample = dataloader.dataset[sample_idx]
+        batch = {}
+        for key, value in sample.items():
+            batch[key] = value.unsqueeze(0) if torch.is_tensor(value) else [value]
+        return batch
+
+    try:
+        return next(iter(dataloader))
+    except StopIteration:
+        return None
+
 # -------------------------------------------------------------------------
 # YAML config dataclasses
 # -------------------------------------------------------------------------
 
 @dataclass
 class DatasetConfig:
-    hdf5_path: str
+    hdf5_path: Optional[str] = None
+    hdf5_paths: Optional[List[str]] = None
     num_views: int = 6
     sequence_length: int = 3
     max_episodes: Optional[int] = None
@@ -104,6 +127,7 @@ class SinCroModelConfig:
     time_interval: int = 3
     mask_ratio: float = 0.75
     num_views: int = 6
+    num_ref_views: int = 2
     # NeRF near / far
     near: float = 0.1
     far: float = 2.5
@@ -131,6 +155,8 @@ class TrainConfig:
     ckpt_dir: str = "./checkpoints_sincro"
     resume_from_last: bool = False
     seed: int = 42
+    val_random_sample: bool = True
+    val_vis_nrow: int = 6
 
 
 @dataclass
@@ -194,6 +220,7 @@ class SimpleArgs:
         # SinCro-specific bits
         self.time_interval = model_cfg.time_interval
         self.num_view = model_cfg.num_views
+        self.num_ref_views = model_cfg.num_ref_views
         self.batch_size = dataset_cfg.batch_size
         self.lrate = train_cfg.lrate
 
@@ -280,11 +307,31 @@ def encode_sincro(
     batch_images_for_vit = images.reshape(B, T, H, V * W, C)
     per_view = torch.split(batch_images_for_vit, W, dim=3)
 
-    num_ref_view = V // 3
+    num_ref_view = int(model_cfg.num_ref_views)
+    if num_ref_view != 2:
+        raise ValueError("SinCro currently expects exactly two reference views.")
+    if num_ref_view + 1 > V:
+        raise ValueError(f"Need at least {num_ref_view + 1} views, got V={V}.")
+
     if view_index is None or ref_view_indices is None:
         indices = np.random.choice(V, size=1 + num_ref_view, replace=False)
         view_index = int(indices[0])
         ref_view_indices = indices[1:].tolist()
+    else:
+        ref_view_indices = [int(idx) for idx in ref_view_indices]
+        if len(ref_view_indices) != num_ref_view:
+            raise ValueError(
+                f"Expected {num_ref_view} reference views, got {len(ref_view_indices)}."
+            )
+
+    if not (0 <= int(view_index) < V):
+        raise ValueError(f"Primary view_index={view_index} out of range for V={V}.")
+    if any(idx < 0 or idx >= V for idx in ref_view_indices):
+        raise ValueError(f"Reference view indices {ref_view_indices} out of range for V={V}.")
+    if int(view_index) in ref_view_indices:
+        raise ValueError("Primary view must be distinct from reference views.")
+    if len(set(ref_view_indices)) != len(ref_view_indices):
+        raise ValueError(f"Reference view indices must be unique: {ref_view_indices}.")
 
     primary_images = per_view[view_index]
     ref_images = torch.cat([per_view[idx] for idx in ref_view_indices], dim=3)
@@ -513,21 +560,19 @@ def run_validation(
 ):
     """
     Evaluation matching the original i_testset block:
-    - Pick one batch from val set (use first sample, B=1).
+    - Pick one validation sequence, optionally sampled at random.
     - Encode with mask_ratio=0 (no masking, like original test-time).
     - Render full H x W for ALL viewpoints.
     - Compute per-view PSNR.
-    - Log rendered vs GT images to wandb.
+    - Log one compact GT/render grid to wandb.
     """
     latent_embed.eval()
     device = torch.device(train_cfg.device)
 
-    # Get one batch
-    try:
-        batch = next(iter(dataloader))
-    except StopIteration:
+    batch = _sample_validation_batch(dataloader, random_sample=train_cfg.val_random_sample)
+    if batch is None:
         return
-    batch = {k: v.to(device) for k, v in batch.items()}
+    batch = _move_tensor_batch_to_device(batch, device)
 
     images = batch["images"]   # [B, T, H, V, W, C]
     K_mats = batch["K"]        # [B, V, 3, 3]
@@ -583,39 +628,31 @@ def run_validation(
     # ------------------------------------------------------------------
     # Build wandb log
     # ------------------------------------------------------------------
+    mean_psnr = float(np.mean(per_view_psnr))
     log_dict = {
-        "val/mean_psnr": float(np.mean(per_view_psnr)),
+        "val/mean_psnr": mean_psnr,
+        "val/min_psnr": float(np.min(per_view_psnr)),
+        "val/max_psnr": float(np.max(per_view_psnr)),
     }
 
-    # Per-view PSNR scalars
-    for v in range(V):
-        log_dict[f"val/psnr_view{v}"] = per_view_psnr[v]
+    gt_tensor = torch.from_numpy(np.stack(gt_views)).permute(0, 3, 1, 2).float() / 255.0
+    rendered_tensor = torch.from_numpy(np.stack(rendered_views)).permute(0, 3, 1, 2).float() / 255.0
+    vis_tensor = torch.cat([gt_tensor, rendered_tensor], dim=0)
+    nrow = max(1, min(V, int(train_cfg.val_vis_nrow)))
+    comparison_grid = make_grid(vis_tensor, nrow=nrow, padding=2)
 
-    # Comparison grid: stack [GT | Rendered] for each view vertically
-    pair_images = []
-    for v in range(V):
-        pair = np.concatenate([gt_views[v], rendered_views[v]], axis=1)  # [H, 2W, 3]
-        pair_images.append(pair)
-    comparison_grid = np.concatenate(pair_images, axis=0)  # [V*H, 2W, 3]
+    demo_key = batch.get("demo_key", ["unknown"])[0]
+    hdf5_path = os.path.basename(batch.get("hdf5_path", [""])[0])
     log_dict["val/gt_vs_rendered_all_views"] = wandb.Image(
         comparison_grid,
-        caption=f"Left=GT, Right=Rendered | primary={primary_idx} | step={global_step}",
+        caption=(
+            f"top rows=GT, bottom rows=rendered | primary={primary_idx} "
+            f"refs={ref_indices} | sample={demo_key} {hdf5_path} | step={global_step}"
+        ),
     )
-
-    # Individual per-view images
-    for v in range(V):
-        log_dict[f"val/rendered_view{v}"] = wandb.Image(
-            rendered_views[v],
-            caption=f"View {v}, PSNR={per_view_psnr[v]:.2f}",
-        )
-        log_dict[f"val/gt_view{v}"] = wandb.Image(
-            gt_views[v],
-            caption=f"GT View {v}",
-        )
 
     wandb.log(log_dict, step=global_step)
 
-    mean_psnr = float(np.mean(per_view_psnr))
     print(
         f"[Eval @ step {global_step}] mean_psnr={mean_psnr:.2f}, "
         f"per_view={[f'{p:.2f}' for p in per_view_psnr]}"
@@ -685,6 +722,7 @@ def main():
     # ------------------------------------------------------------------
     ds_config = RobosuiteSinCroDatasetConfig(
         hdf5_path=ds_cfg.hdf5_path,
+        hdf5_paths=ds_cfg.hdf5_paths,
         num_views=ds_cfg.num_views,
         sequence_length=ds_cfg.sequence_length,
         max_episodes=ds_cfg.max_episodes,
@@ -773,7 +811,7 @@ def main():
                 return
 
             latent_embed.train()
-            batch = {k: v.to(device) for k, v in batch.items()}
+            batch = _move_tensor_batch_to_device(batch, device)
 
             # Forward
             loss, stats = forward_sincro_batch(

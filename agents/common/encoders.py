@@ -43,14 +43,20 @@ def _flatten_feature_output(x: torch.Tensor) -> torch.Tensor:
     return x.contiguous() if x.dim() == 2 else x.flatten(1).contiguous()
 
 
-def _default_splatter_channels(max_sh_degree: int = 1, num_gaussians_per_pixel: int = 5) -> int:
+def _default_splatter_channels(
+    max_sh_degree: int = 1,
+    num_gaussians_per_pixel: int = 5,
+    isotropic: bool = False,
+    depth_parameterization: str = "absolute",
+) -> int:
     """Infer decoder channels without importing the gsplat-backed renderer."""
     if max_sh_degree not in (0, 1):
         raise ValueError("SplatterVAE encoder supports max_sh_degree in {0, 1}.")
     k = int(num_gaussians_per_pixel)
+    depth_channels = max(k - 1, 0) if str(depth_parameterization).lower() == "depth_prior" else k
     sh_rest = 0 if int(max_sh_degree) == 0 else 3 * (((int(max_sh_degree) + 1) ** 2) - 1)
-    channels_per_gaussian = 1 + 3 + 1 + 3 + 4 + 3 + sh_rest
-    return int(k * channels_per_gaussian)
+    scaling_channels = 1 if bool(isotropic) else 3
+    return int(depth_channels + k * (3 + 1 + scaling_channels + 4 + 3 + sh_rest))
 
 
 class ConvNet(nn.Module):
@@ -113,12 +119,16 @@ class SplatterVAEInvariantEncoder(nn.Module):
         dep_cb = CodebookConfig(**cb_cfg["dependent"])
         max_sh_degree = int(sv_cfg.get("max_sh_degree", 1))
         num_gaussians_per_pixel = int(sv_cfg.get("num_gaussians_per_pixel", 5))
+        isotropic = bool(sv_cfg.get("isotropic", False))
+        depth_parameterization = str(sv_cfg.get("depth_parameterization", "absolute"))
         splatter_channels = int(
             sv_cfg.get(
                 "splatter_channels",
                 _default_splatter_channels(
                     max_sh_degree=max_sh_degree,
                     num_gaussians_per_pixel=num_gaussians_per_pixel,
+                    isotropic=isotropic,
+                    depth_parameterization=depth_parameterization,
                 ),
             )
         )

@@ -72,6 +72,7 @@ class HDF5DemoWriter:
         camera_intrinsics: Dict[str, np.ndarray],
         camera_extrinsics: Dict[str, np.ndarray],
         extra_attrs: Optional[dict] = None,
+        save_depth: bool = False,
     ) -> None:
         if demo_name in self.data_grp:
             del self.data_grp[demo_name]
@@ -101,9 +102,12 @@ class HDF5DemoWriter:
         self.env_obs_grp = self.demo_grp.create_group("obs_env")
 
         self.ds_rgb = {}
+        self.ds_depth = {} if save_depth else None
         self.ds_seg = {}
         for cam in meta.camera_names:
             self.ds_rgb[cam] = self._make_extendable(self.obs_grp, f"{cam}_rgb", (H, W, 3), np.uint8)
+            if self.ds_depth is not None:
+                self.ds_depth[cam] = self._make_extendable(self.obs_grp, f"{cam}_depth", (H, W), np.float32)
             self.ds_seg[cam] = self._make_extendable(self.obs_grp, f"{cam}_seg", (H, W), np.int32)
 
         self.ds_seg_type = {}  # optional, created if you call append_step with seg_type
@@ -140,6 +144,7 @@ class HDF5DemoWriter:
         obs_vec: np.ndarray,
         rgb_by_cam: Dict[str, np.ndarray],
         seg_id_by_cam: Dict[str, np.ndarray],
+        depth_by_cam: Optional[Dict[str, np.ndarray]] = None,
         seg_type_by_cam: Optional[Dict[str, np.ndarray]] = None,
     ) -> None:
         # lazy create vector datasets
@@ -183,6 +188,10 @@ class HDF5DemoWriter:
 
         for cam in self.ds_rgb.keys():
             self._append_row(self.ds_rgb[cam], rgb_by_cam[cam].astype(np.uint8))
+            if self.ds_depth is not None:
+                if depth_by_cam is None or cam not in depth_by_cam:
+                    raise ValueError(f"Depth saving is enabled but no depth image was provided for camera {cam}.")
+                self._append_row(self.ds_depth[cam], depth_by_cam[cam].astype(np.float32))
             self._append_row(self.ds_seg[cam], seg_id_by_cam[cam].astype(np.int32))
 
         if seg_type_by_cam is not None:

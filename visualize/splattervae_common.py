@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from typing import Any, Dict, Tuple
 
@@ -41,9 +42,75 @@ def splatter_channels_from_config(cfg: Dict[str, Any], spl_cfg: SplatterConfig) 
             default_splatter_channels(
                 max_sh_degree=int(spl_cfg.model.max_sh_degree),
                 num_gaussians_per_pixel=int(spl_cfg.model.num_gaussians_per_pixel),
+                isotropic=bool(spl_cfg.model.isotropic),
+                depth_parameterization=str(getattr(spl_cfg.model, "depth_parameterization", "absolute")),
             ),
         )
     )
+
+
+def _checkpoint_state_dict(ckpt_path: str) -> Dict[str, torch.Tensor]:
+    state = torch.load(ckpt_path, map_location="cpu")
+    for key in ("vae_state_dict", "model_state_dict", "state_dict"):
+        if isinstance(state, dict) and key in state and isinstance(state[key], dict):
+            state = state[key]
+            break
+    if any(k.startswith("module.") for k in state):
+        state = {k.replace("module.", "", 1): v for k, v in state.items()}
+    return state
+
+
+def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str, Any]:
+    """Return a visualization config whose architecture matches ``ckpt_path``.
+
+    The active training config may have moved on, e.g. RGB-D/depth-prior, while
+    an older checkpoint is RGB/absolute-depth.  Visualization should follow the
+    checkpoint tensor shapes so loading is strict and the Gaussian splitter uses
+    the right channel layout.
+    """
+    cfg = copy.deepcopy(cfg)
+    state = _checkpoint_state_dict(ckpt_path)
+
+    patch = state.get("invariant_encoder.patch_embed.proj.weight")
+    if patch is not None and patch.ndim == 4:
+        cfg.setdefault("vit", {})["in_chans"] = int(patch.shape[1])
+
+    out_channels = None
+    for key in (
+        "decoder.output_conv.4.weight",
+        "decoder.scratch.output_conv2.4.weight",
+        "decoder.head.4.weight",
+    ):
+        weight = state.get(key)
+        if weight is not None and weight.ndim >= 1:
+            out_channels = int(weight.shape[0])
+            break
+
+    if out_channels is not None:
+        splatter_cfg = cfg.setdefault("splatter", {})
+        model_cfg = splatter_cfg.setdefault("model", {})
+        max_sh_degree = int(model_cfg.get("max_sh_degree", 1))
+        num_gaussians = int(model_cfg.get("num_gaussians_per_pixel", 5))
+        isotropic = bool(model_cfg.get("isotropic", False))
+        absolute_channels = default_splatter_channels(
+            max_sh_degree=max_sh_degree,
+            num_gaussians_per_pixel=num_gaussians,
+            isotropic=isotropic,
+            depth_parameterization="absolute",
+        )
+        depth_prior_channels = default_splatter_channels(
+            max_sh_degree=max_sh_degree,
+            num_gaussians_per_pixel=num_gaussians,
+            isotropic=isotropic,
+            depth_parameterization="depth_prior",
+        )
+        if out_channels == absolute_channels:
+            model_cfg["depth_parameterization"] = "absolute"
+        elif out_channels == depth_prior_channels:
+            model_cfg["depth_parameterization"] = "depth_prior"
+        splatter_cfg["splatter_channels"] = out_channels
+
+    return cfg
 
 
 def build_splattervae(cfg: Dict[str, Any], img_height: int, img_width: int, splatter_channels: int) -> SplatterVAE:
@@ -72,14 +139,7 @@ def build_splattervae(cfg: Dict[str, Any], img_height: int, img_width: int, spla
 
 
 def load_vae_state_dict(vae: SplatterVAE, ckpt_path: str) -> None:
-    state = torch.load(ckpt_path, map_location="cpu")
-    for key in ("vae_state_dict", "model_state_dict", "state_dict"):
-        if isinstance(state, dict) and key in state and isinstance(state[key], dict):
-            state = state[key]
-            break
-    if any(k.startswith("module.") for k in state):
-        state = {k.replace("module.", "", 1): v for k, v in state.items()}
-    vae.load_state_dict(state, strict=True)
+    vae.load_state_dict(_checkpoint_state_dict(ckpt_path), strict=True)
 
 
 def build_visualization_models(
@@ -89,6 +149,7 @@ def build_visualization_models(
     ckpt_path: str,
     device: torch.device,
 ):
+    cfg = adapt_config_to_checkpoint(cfg, ckpt_path)
     img_height, img_width = image_size_from_demo(dataset_path, reference_demo)
     spl_cfg = build_splatter_config(cfg, img_height, img_width)
     splatter_channels = splatter_channels_from_config(cfg, spl_cfg)

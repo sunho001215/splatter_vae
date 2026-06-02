@@ -19,9 +19,8 @@ class TrainConfig:
 
     rec_weight: float = 1.0
     ssim_weight: float = 0.2
-    # ReViWo-style reconstruction coefficients.  The base self-reconstruction
-    # term is always included once; these weights scale the three shuffled
-    # latent variants in models/splatter_pretraining.py.
+    # ReViWo-style reconstruction coefficients. The base self-reconstruction
+    # term is always included once; these scale shuffled latent variants.
     shuffle_inv_rec_weight: float = 1.0
     shuffle_dep_rec_weight: float = 1.0
     shuffle_both_rec_weight: float = 1.0
@@ -31,6 +30,13 @@ class TrainConfig:
     dep_contrastive_weight: float = 0.1
     dep_consistency_weight: float = 0.1
     frustum_weight: float = 0.001
+    erank_weight: float = 0.0
+    thin_weight: float = 0.0
+    depth_weight: float = 0.0
+    depth_local_weight: float = 0.1
+    depth_global_weight: float = 1.0
+    depth_patch_size: int = 16
+    depth_error_tolerance: float = 0.2
 
     temperature: float = 0.1
 

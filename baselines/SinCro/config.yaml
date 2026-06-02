@@ -1,13 +1,25 @@
 dataset:
-  hdf5_path: "../../data/metaworld/pre-training/window-open.hdf5"
-  num_views: 6
+  hdf5_paths:
+    - "../../data/metaworld/world-model/faucet-close.hdf5"
+    - "../../data/metaworld/world-model/button-press-wall.hdf5"
+    - "../../data/metaworld/world-model/drawer-open.hdf5"
+    - "../../data/metaworld/world-model/sweep-into.hdf5"
+    - "../../data/metaworld/world-model/lever-pull.hdf5"
+    - "../../data/metaworld/world-model/handle-pull.hdf5"
+    - "../../data/metaworld/world-model/push-wall.hdf5"
+    - "../../data/metaworld/world-model/hammer.hdf5"
+    - "../../data/metaworld/world-model/window-open.hdf5"
+    - "../../data/metaworld/world-model/peg-unplug-side.hdf5"
+    - "../../data/metaworld/world-model/door-open.hdf5"
+    - "../../data/metaworld/world-model/coffee-push.hdf5"
+  num_views: 24
   sequence_length: 3
   max_episodes: null
   max_frames_per_demo: 3000
   temporal_stride: 3
   num_workers: 8
   pin_memory: true
-  batch_size: 8
+  batch_size: 16
   train_ratio: 0.96
 
 model:
@@ -40,7 +52,8 @@ model:
 
   time_interval: 3
   mask_ratio: 0.75
-  num_views: 6
+  num_views: 24
+  num_ref_views: 2
 
   near: 0.1
   far: 2.5
@@ -56,7 +69,7 @@ model:
 
 train:
   num_epochs: 50
-  max_global_steps: 300001
+  max_global_steps: 500001
   lrate: 0.0005
   lrate_decay: 500
   device: cuda
@@ -64,15 +77,17 @@ train:
   save_every: 30000
   i_print: 100
   i_img: 500
-  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/window-open/"
+  ckpt_dir: "./checkpoints/metaworld/encoders/SinCro/world-12env-24cam/"
   resume_from_last: false
   seed: 42
+  val_random_sample: true
+  val_vis_nrow: 6
 
 wandb:
   project: "SinCro-MetaWorld"
   entity: null
-  run_name: "sincro_metaworld_window_open"
+  run_name: "sincro_metaworld_world_12env_24cam"
 
 experiment:
   basedir: "./logs/SinCro/metaworld/"
-  expname: "sincro_metaworld"
+  expname: "sincro_metaworld_world_12env_24cam"

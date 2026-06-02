@@ -1,6 +1,6 @@
 import json
 import random
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import h5py
 import numpy as np
@@ -9,213 +9,237 @@ from torch.utils.data import DataLoader, Dataset, get_worker_info
 
 from utils.general_utils import image_to_tensor, invert_4x4
 
+DatasetPathInput = Union[str, Sequence[str]]
+DemoRef = Tuple[int, str]
+SampleRef = Tuple[int, str, int]
+
+
+def _normalize_dataset_paths(dataset_path: DatasetPathInput) -> List[str]:
+    if isinstance(dataset_path, (str, bytes)):
+        paths = [str(dataset_path)]
+    else:
+        paths = [str(path) for path in dataset_path]
+    if not paths:
+        raise ValueError("At least one HDF5 dataset path is required.")
+    return paths
+
+
+def _demo_label(file_idx: int, demo_key: str, num_files: int) -> str:
+    return demo_key if num_files == 1 else f"file{file_idx}:{demo_key}"
+
 
 class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
-    """RoboSuite HDF5 dataset that returns every camera at one timestep.
+    """RoboSuite/Meta-World HDF5 dataset returning every selected camera.
 
-    SplatterVAE now follows the same all-camera sampling contract used by
-    ReViWo: one dataset item is one environment state, and the item contains all
-    selected camera viewpoints for that state.  The old temporal ``tk`` images
-    are intentionally not loaded because view/state shuffling is now performed
-    directly inside the batch with the ``(B, camera_num, ...)`` tensors.
+    ``dataset_path`` may be either one HDF5 file or a list of HDF5 files.  When
+    multiple files are supplied, the dataset builds one global sample list over
+    all ``(file, demo, timestep)`` entries, so a shuffled DataLoader naturally
+    samples across environments during training.
 
     Returned tensors:
         images: (N_cam, 3, H, W) float32 in [-1, 1]
         K:      (N_cam, 3, 3) camera intrinsics
         c2w:    (N_cam, 4, 4) OpenCV camera-to-world transforms
         w2c:    (N_cam, 4, 4) OpenCV world-to-camera transforms
+        depths: optional (N_cam, 1, H, W) float32 metric camera-z depth
     """
 
     def __init__(
         self,
-        dataset_path: str,
-        demo_keys: List[str],
+        dataset_path: DatasetPathInput,
+        demo_keys: List[Union[str, DemoRef]],
         views: Optional[List[str]] = None,
         camera_num: Optional[int] = None,
         max_frames_per_demo: Optional[int] = None,
         seed: int = 0,
         min_time_gap: int = 10,
+        use_depth: bool = False,
     ):
         super().__init__()
-        self.dataset_path = dataset_path
-        self.demo_keys = list(demo_keys)
+        self.dataset_paths = _normalize_dataset_paths(dataset_path)
+        self.dataset_path = self.dataset_paths[0]
+        self.demo_refs: List[DemoRef] = [
+            (int(item[0]), str(item[1])) if isinstance(item, tuple) else (0, str(item))
+            for item in demo_keys
+        ]
         self.max_frames_per_demo = max_frames_per_demo
         self.camera_num = None if camera_num is None else int(camera_num)
         if self.camera_num is not None and self.camera_num <= 0:
             raise ValueError(f"camera_num must be positive when set, got {camera_num}.")
 
-        # ``min_time_gap`` remains in the constructor for backward-compatible
-        # config loading, but it is no longer used because we do not sample tk.
+        # ``min_time_gap`` remains for backward-compatible config loading, but
+        # it is no longer used because this dataset returns one state at a time.
         self.min_time_gap = int(min_time_gap)
-
-        # Kept for worker seeding and future stochastic sampling.  This dataset
-        # path is deterministic for a given index.
+        self.use_depth = bool(use_depth)
         self.rng = random.Random(seed)
 
         self.views: Optional[List[str]] = None if views is None else list(views)
         if self.views is not None and self.camera_num is not None:
             self.views = self.views[: self.camera_num]
 
-        # HDF5 handles cannot be pickled safely, so each worker opens lazily.
-        self._h5: Optional[h5py.File] = None
+        self._h5_handles: Dict[int, h5py.File] = {}
+        self.demo_lengths: Dict[DemoRef, int] = {}
+        self.cam_cache: Dict[DemoRef, Dict[str, Dict[str, np.ndarray]]] = {}
+        self.samples: List[SampleRef] = []
 
-        self.demo_lengths: Dict[str, int] = {}
-        self.cam_cache: Dict[str, Dict[str, Dict[str, np.ndarray]]] = {}
-        self.samples: List[Tuple[str, int]] = []
-
-        self._index_file_and_build_samples()
+        self._index_files_and_build_samples()
 
         if self.views is None or len(self.views) < 1:
             raise ValueError("You need at least one camera view.")
 
     def __getstate__(self):
-        """Drop the live HDF5 handle before DataLoader worker pickling."""
         state = self.__dict__.copy()
-        state["_h5"] = None
+        state["_h5_handles"] = {}
         return state
 
     def __del__(self):
-        """Best-effort HDF5 cleanup."""
         try:
-            if self._h5 is not None:
-                self._h5.close()
+            for handle in self._h5_handles.values():
+                handle.close()
         except Exception:
             pass
 
-    def _get_h5(self) -> h5py.File:
-        """Open one HDF5 handle per process/worker."""
-        if self._h5 is None:
-            self._h5 = h5py.File(self.dataset_path, "r")
-        return self._h5
+    def _get_h5(self, file_idx: int) -> h5py.File:
+        if file_idx not in self._h5_handles:
+            self._h5_handles[file_idx] = h5py.File(self.dataset_paths[file_idx], "r")
+        return self._h5_handles[file_idx]
 
-    def _index_file_and_build_samples(self) -> None:
-        """Cache metadata and build the global ``(demo_key, t)`` index."""
-        with h5py.File(self.dataset_path, "r") as f:
-            if "data" not in f:
-                raise ValueError('Invalid dataset: missing top-level group "data".')
+    def _index_files_and_build_samples(self) -> None:
+        refs_by_file: Dict[int, List[str]] = {}
+        for file_idx, demo_key in self.demo_refs:
+            refs_by_file.setdefault(file_idx, []).append(demo_key)
 
-            data_grp = f["data"]
-            for demo_key in self.demo_keys:
-                if demo_key not in data_grp:
-                    raise ValueError(f'Demo key "{demo_key}" not found under /data.')
+        for file_idx, demo_keys in refs_by_file.items():
+            dataset_path = self.dataset_paths[file_idx]
+            with h5py.File(dataset_path, "r") as f:
+                if "data" not in f:
+                    raise ValueError(f'Invalid dataset "{dataset_path}": missing top-level group "data".')
 
-                demo_grp = data_grp[demo_key]
-                if "camera_names" not in demo_grp.attrs:
-                    raise ValueError(f'"/data/{demo_key}" has no "camera_names" attribute.')
-                camera_names = json.loads(demo_grp.attrs["camera_names"])
+                data_grp = f["data"]
+                for demo_key in demo_keys:
+                    if demo_key not in data_grp:
+                        raise ValueError(f'Demo key "{demo_key}" not found under /data in "{dataset_path}".')
 
-                # Infer all cameras from the first demo unless the config passed
-                # an explicit camera list.  ``camera_num`` truncates the list so
-                # configs can say "use the first six cameras" without spelling
-                # every camera name in each YAML file.
-                if self.views is None:
-                    inferred_views = list(camera_names)
-                    if self.camera_num is not None:
-                        inferred_views = inferred_views[: self.camera_num]
-                    self.views = inferred_views
-                else:
+                    demo_grp = data_grp[demo_key]
+                    if "camera_names" not in demo_grp.attrs:
+                        raise ValueError(f'"/data/{demo_key}" in "{dataset_path}" has no "camera_names" attribute.')
+                    camera_names = json.loads(demo_grp.attrs["camera_names"])
+
+                    if self.views is None:
+                        inferred_views = list(camera_names)
+                        if self.camera_num is not None:
+                            inferred_views = inferred_views[: self.camera_num]
+                        self.views = inferred_views
+                    else:
+                        for view in self.views:
+                            if view not in camera_names:
+                                raise ValueError(
+                                    f'View "{view}" not found in "{dataset_path}" demo "{demo_key}" '
+                                    f"camera_names={camera_names}."
+                                )
+
+                    if "obs" not in demo_grp:
+                        raise ValueError(f'"/data/{demo_key}" in "{dataset_path}" has no "obs" group.')
+                    obs_grp = demo_grp["obs"]
+
+                    ref_view = self.views[0]
+                    ref_name = f"{ref_view}_rgb"
+                    if ref_name not in obs_grp:
+                        raise ValueError(
+                            f'Missing dataset "{dataset_path}:/data/{demo_key}/obs/{ref_name}". '
+                            f"Available keys: {list(obs_grp.keys())[:20]} ..."
+                        )
                     for view in self.views:
-                        if view not in camera_names:
+                        rgb_name = f"{view}_rgb"
+                        if rgb_name not in obs_grp:
+                            raise ValueError(f'Missing dataset "{dataset_path}:/data/{demo_key}/obs/{rgb_name}".')
+                        depth_name = f"{view}_depth"
+                        if self.use_depth and depth_name not in obs_grp:
                             raise ValueError(
-                                f'View "{view}" not found in demo "{demo_key}" camera_names={camera_names}.'
+                                f'Missing depth dataset "{dataset_path}:/data/{demo_key}/obs/{depth_name}". '
+                                "Collect depth images or set dataset.use_depth=false."
                             )
 
-                if "obs" not in demo_grp:
-                    raise ValueError(f'"/data/{demo_key}" has no "obs" group.')
-                obs_grp = demo_grp["obs"]
+                    timesteps = int(obs_grp[ref_name].shape[0])
+                    if self.max_frames_per_demo is not None:
+                        timesteps = min(timesteps, int(self.max_frames_per_demo))
+                    demo_ref = (file_idx, demo_key)
+                    self.demo_lengths[demo_ref] = timesteps
 
-                # Every selected camera must have an RGB stream.  The reference
-                # stream provides the episode length used for this demo.
-                ref_view = self.views[0]
-                ref_name = f"{ref_view}_rgb"
-                if ref_name not in obs_grp:
-                    raise ValueError(
-                        f'Missing dataset "/data/{demo_key}/obs/{ref_name}". '
-                        f"Available keys: {list(obs_grp.keys())[:20]} ..."
-                    )
-                for view in self.views:
-                    rgb_name = f"{view}_rgb"
-                    if rgb_name not in obs_grp:
-                        raise ValueError(f'Missing dataset "/data/{demo_key}/obs/{rgb_name}".')
+                    if "camera_params" not in demo_grp:
+                        raise ValueError(f'"/data/{demo_key}" in "{dataset_path}" has no "camera_params" group.')
+                    cam_params_grp = demo_grp["camera_params"]
+                    if "intrinsics" not in cam_params_grp or "extrinsics_world_T_cam" not in cam_params_grp:
+                        raise ValueError(
+                            f'"{dataset_path}:/data/{demo_key}/camera_params" must contain "intrinsics" '
+                            'and "extrinsics_world_T_cam".'
+                        )
 
-                timesteps = int(obs_grp[ref_name].shape[0])
-                if self.max_frames_per_demo is not None:
-                    timesteps = min(timesteps, int(self.max_frames_per_demo))
-                self.demo_lengths[demo_key] = timesteps
+                    intrinsics_ds = cam_params_grp["intrinsics"]
+                    world_T_cam_ds = cam_params_grp["extrinsics_world_T_cam"]
+                    camera_names_list = list(camera_names)
+                    self.cam_cache[demo_ref] = {}
 
-                if "camera_params" not in demo_grp:
-                    raise ValueError(f'"/data/{demo_key}" has no "camera_params" group.')
-                cam_params_grp = demo_grp["camera_params"]
-                if "intrinsics" not in cam_params_grp or "extrinsics_world_T_cam" not in cam_params_grp:
-                    raise ValueError(
-                        f'"/data/{demo_key}/camera_params" must contain "intrinsics" '
-                        'and "extrinsics_world_T_cam".'
-                    )
+                    for view in self.views:
+                        cam_idx = camera_names_list.index(view)
+                        K = np.array(intrinsics_ds[cam_idx], dtype=np.float32)
+                        world_T_cam = np.array(world_T_cam_ds[cam_idx], dtype=np.float32)
 
-                intrinsics_ds = cam_params_grp["intrinsics"]
-                world_T_cam_ds = cam_params_grp["extrinsics_world_T_cam"]
-                camera_names_list = list(camera_names)
-                self.cam_cache[demo_key] = {}
+                        w2c_gl = invert_4x4(world_T_cam)
+                        gl_to_cv = np.diag([1.0, -1.0, -1.0, 1.0]).astype(np.float32)
+                        w2c = gl_to_cv @ w2c_gl
+                        c2w = invert_4x4(w2c).astype(np.float32)
 
-                for view in self.views:
-                    cam_idx = camera_names_list.index(view)
-                    K = np.array(intrinsics_ds[cam_idx], dtype=np.float32)
-                    world_T_cam = np.array(world_T_cam_ds[cam_idx], dtype=np.float32)
+                        self.cam_cache[demo_ref][view] = {"K": K, "w2c": w2c, "c2w": c2w}
 
-                    # The demos store camera-to-world in an OpenGL camera frame.
-                    # The renderer/training code uses the OpenCV convention
-                    # (x right, y down, z forward), so convert once here and
-                    # cache both directions.
-                    w2c_gl = invert_4x4(world_T_cam)
-                    gl_to_cv = np.diag([1.0, -1.0, -1.0, 1.0]).astype(np.float32)
-                    w2c = gl_to_cv @ w2c_gl
-                    c2w = invert_4x4(w2c).astype(np.float32)
-
-                    self.cam_cache[demo_key][view] = {"K": K, "w2c": w2c, "c2w": c2w}
-
-                for t_idx in range(timesteps):
-                    self.samples.append((demo_key, t_idx))
+                    for t_idx in range(timesteps):
+                        self.samples.append((file_idx, demo_key, t_idx))
 
         print(
-            f"[RoboSuiteMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_keys)} demos, "
-            f"{len(self.samples)} samples (demo,t), views={self.views}"
+            f"[RoboSuiteMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_refs)} demos "
+            f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, views={self.views}"
         )
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        """Load all selected views for one state.
-
-        No random view-pair sampling happens here.  Keeping camera order stable
-        is important because the ReViWo-style view contrastive loss and shuffle
-        loss both rely on camera index ``a`` having the same meaning for every
-        batch row.
-        """
-        demo_key, t = self.samples[idx]
-        obs_grp = self._get_h5()["data"][demo_key]["obs"]
+        file_idx, demo_key, t = self.samples[idx]
+        demo_ref = (file_idx, demo_key)
+        obs_grp = self._get_h5(file_idx)["data"][demo_key]["obs"]
 
         images = []
+        depths = []
         intrinsics = []
         c2w_mats = []
         w2c_mats = []
         for view in self.views:
             img_np = np.array(obs_grp[f"{view}_rgb"][t], dtype=np.uint8)
             images.append(image_to_tensor(img_np))
+            if self.use_depth:
+                depth_np = np.array(obs_grp[f"{view}_depth"][t], dtype=np.float32)
+                if depth_np.ndim == 3 and depth_np.shape[-1] == 1:
+                    depth_np = depth_np[..., 0]
+                depths.append(torch.from_numpy(depth_np).unsqueeze(0))
 
-            cam = self.cam_cache[demo_key][view]
+            cam = self.cam_cache[demo_ref][view]
             intrinsics.append(torch.from_numpy(cam["K"]))
             c2w_mats.append(torch.from_numpy(cam["c2w"]))
             w2c_mats.append(torch.from_numpy(cam["w2c"]))
 
-        return {
+        sample = {
             "images": torch.stack(images, dim=0),
             "K": torch.stack(intrinsics, dim=0),
             "c2w": torch.stack(c2w_mats, dim=0),
             "w2c": torch.stack(w2c_mats, dim=0),
-            "demo_key": demo_key,
+            "demo_key": _demo_label(file_idx, demo_key, len(self.dataset_paths)),
+            "hdf5_path": self.dataset_paths[file_idx],
+            "file_idx": int(file_idx),
             "t": int(t),
         }
+        if self.use_depth:
+            sample["depths"] = torch.stack(depths, dim=0)
+        return sample
 
 
 # -------------------------------------------------------------------------
@@ -224,10 +248,9 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
 
 
 def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
-    """List demo keys under /data in sorted order: demo1, demo2, ..."""
     with h5py.File(dataset_path, "r") as f:
         if "data" not in f:
-            raise ValueError('Invalid dataset: missing top-level group "data".')
+            raise ValueError(f'Invalid dataset "{dataset_path}": missing top-level group "data".')
         demos = list(f["data"].keys())
 
     def _demo_index(key: str) -> int:
@@ -239,8 +262,14 @@ def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
     return sorted(demos, key=_demo_index)
 
 
+def _list_demo_refs_robosuite(dataset_paths: Sequence[str]) -> List[DemoRef]:
+    refs: List[DemoRef] = []
+    for file_idx, path in enumerate(dataset_paths):
+        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_robosuite(path))
+    return refs
+
+
 def _worker_init_fn(worker_id: int) -> None:
-    """Give each worker an independent Python RNG stream."""
     info = get_worker_info()
     if info is None:
         return
@@ -248,7 +277,7 @@ def _worker_init_fn(worker_id: int) -> None:
 
 
 def build_train_valid_loaders_robosuite(
-    dataset_path: str,
+    dataset_path: DatasetPathInput,
     batch_size: int = 128,
     num_workers: int = 4,
     pin_memory: bool = True,
@@ -262,24 +291,26 @@ def build_train_valid_loaders_robosuite(
     drop_last_train: bool = True,
     shuffle_train: bool = True,
     shuffle_valid: bool = True,
+    use_depth: bool = False,
 ):
     """Build train/validation loaders with all selected cameras per sample."""
-    demo_keys = _list_demo_keys_robosuite(dataset_path)
+    dataset_paths = _normalize_dataset_paths(dataset_path)
+    demo_refs = _list_demo_refs_robosuite(dataset_paths)
     if num_episodes is not None:
-        demo_keys = demo_keys[: int(num_episodes)]
+        demo_refs = demo_refs[: int(num_episodes)]
 
     rng = random.Random(seed)
-    rng.shuffle(demo_keys)
+    rng.shuffle(demo_refs)
 
-    n_total = len(demo_keys)
+    n_total = len(demo_refs)
     n_train = max(1, int(n_total * train_ratio))
     n_train = min(n_train, n_total - 1) if n_total > 1 else n_train
-    train_keys = demo_keys[:n_train]
-    valid_keys = demo_keys[n_train:] if n_total > 1 else demo_keys[:]
+    train_refs = demo_refs[:n_train]
+    valid_refs = demo_refs[n_train:] if n_total > 1 else demo_refs[:]
 
     if views is None:
-        with h5py.File(dataset_path, "r") as f:
-            first_demo = train_keys[0]
+        first_file_idx, first_demo = train_refs[0]
+        with h5py.File(dataset_paths[first_file_idx], "r") as f:
             views = list(json.loads(f["data"][first_demo].attrs["camera_names"]))
     else:
         views = list(views)
@@ -288,22 +319,24 @@ def build_train_valid_loaders_robosuite(
         views = views[: int(camera_num)]
 
     train_dataset = RoboSuiteMultiViewTemporalHDF5Dataset(
-        dataset_path=dataset_path,
-        demo_keys=train_keys,
+        dataset_path=dataset_paths,
+        demo_keys=train_refs,
         views=views,
         camera_num=camera_num,
         max_frames_per_demo=max_frames_per_demo,
         seed=seed,
         min_time_gap=min_time_gap,
+        use_depth=use_depth,
     )
     valid_dataset = RoboSuiteMultiViewTemporalHDF5Dataset(
-        dataset_path=dataset_path,
-        demo_keys=valid_keys,
+        dataset_path=dataset_paths,
+        demo_keys=valid_refs,
         views=views,
         camera_num=camera_num,
         max_frames_per_demo=max_frames_per_demo,
         seed=seed + 999,
         min_time_gap=min_time_gap,
+        use_depth=use_depth,
     )
 
     train_loader = DataLoader(

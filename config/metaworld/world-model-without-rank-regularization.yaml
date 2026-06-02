@@ -2,15 +2,28 @@
 # Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  hdf5_path: ../../data/metaworld/pre-training/door-open.hdf5
-  batch_size: 16
+  hdf5_paths:
+    - "../../data/metaworld/world-model-with-depth/faucet-close.hdf5"
+    - "../../data/metaworld/world-model-with-depth/button-press-wall.hdf5"
+    - "../../data/metaworld/world-model-with-depth/drawer-open.hdf5"
+    - "../../data/metaworld/world-model-with-depth/sweep-into.hdf5"
+    - "../../data/metaworld/world-model-with-depth/lever-pull.hdf5"
+    - "../../data/metaworld/world-model-with-depth/handle-pull.hdf5"
+    - "../../data/metaworld/world-model-with-depth/push-wall.hdf5"
+    - "../../data/metaworld/world-model-with-depth/hammer.hdf5"
+    - "../../data/metaworld/world-model-with-depth/window-open.hdf5"
+    - "../../data/metaworld/world-model-with-depth/peg-unplug-side.hdf5"
+    - "../../data/metaworld/world-model-with-depth/door-open.hdf5"
+    - "../../data/metaworld/world-model-with-depth/coffee-push.hdf5"
+  batch_size: 8
   num_workers: 8
   pin_memory: true
   train_ratio: 0.96
   seed: 42
   num_episodes: null
   max_frames_per_demo: null
-  camera_num: 6
+  camera_num: 24
+  use_depth: true
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
@@ -29,16 +42,14 @@ model:
 # -----------------------------------------------------------------------------
 codebook:
   invariant:
-    quantizer: vq
-    embed_dim: 64
-    n_embed: 512
-    beta: 0.25
+    quantizer: fsq
+    embed_dim: 6
+    fsq_levels: [8, 8, 8, 5, 5, 5]
 
   dependent:
-    quantizer: vq
-    embed_dim: 64
-    n_embed: 64
-    beta: 0.25
+    quantizer: fsq
+    embed_dim: 6
+    fsq_levels: [8, 8, 8, 5, 5, 5]
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -78,7 +89,7 @@ splatter:
     img_height: 128
     img_width: 128
     znear: 0.1
-    zfar: 2.0
+    zfar: 5.0
     white_background: false
     inverted_x: false
     inverted_y: false
@@ -89,14 +100,15 @@ splatter:
     max_sh_degree: 0
     isotropic: false
     depth_scale: 0.1
-    depth_bias: 0.0
-    xyz_scale: 0.1
+    depth_bias: -0.35
+    xyz_scale: 0.02
     xyz_bias: 0.0
-    opacity_scale: 1.0
+    opacity_scale: 0.1
     opacity_bias: -2.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 1
+    num_gaussians_per_pixel: 2
+    depth_parameterization: absolute
 
 # -----------------------------------------------------------------------------
 # Training
@@ -104,7 +116,7 @@ splatter:
 train:
   num_epochs: 100
   max_global_steps: 300001
-  lr: 3.0e-4
+  lr: 1.0e-3
   lr_schedule: warmup_cosine
   lr_warmup_steps: 10000
   min_lr: 3.0e-5
@@ -121,13 +133,20 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0
+  frustum_weight: 1.0e-2
+  erank_weight: 0.0
+  thin_weight: 0.0
+  depth_weight: 1.0e-1
+  depth_local_weight: 0.1
+  depth_global_weight: 1.0
+  depth_patch_size: 16
+  depth_error_tolerance: 0.2
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-vq/door-open/with-consistency-loss/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/world-model/without-rank-regularization/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -137,17 +156,19 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-door-open
+  run_name: metaworld-world-model-without-rank-regularization
   tags:
-    - dep-masking-0.0
-    - all-view-reviwo-shuffle
+    - dep-masking-0.75
     - all-camera-rendering
+    - rgb-encoder
+    - dngaussian-depth-reg
+    - erank-reg
     - embed-dim-128
     - codebook-embed-dim-64
-    - depth-8
+    - transformer-depth-8
     - num-heads-8
     - DPT-fix
-    - lr-3e-4
+    - lr-1e-3
     - diverse-demo-collection
     - ssim_weight-0.0
     - max_sh_degree-0

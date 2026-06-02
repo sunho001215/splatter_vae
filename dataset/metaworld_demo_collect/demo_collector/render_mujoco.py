@@ -16,6 +16,7 @@ from .camera_math import CameraPose
 @dataclass
 class RenderOut:
     rgb_by_cam: Dict[str, np.ndarray]             # uint8 (H,W,3)
+    depth_by_cam: Optional[Dict[str, np.ndarray]] # float32 (H,W), metric depth
     seg_id_by_cam: Optional[Dict[str, np.ndarray]]  # int32 (H,W)
     seg_type_by_cam: Optional[Dict[str, np.ndarray]] # int32 (H,W), optional
 
@@ -37,6 +38,7 @@ class MujocoMultiCameraRenderer:
         width: int,
         enable_seg: bool,
         save_objtype: bool,
+        enable_depth: bool = False,
     ) -> None:
         self.model = model
         self.data = data
@@ -45,8 +47,14 @@ class MujocoMultiCameraRenderer:
         self.width = int(width)
         self.enable_seg = bool(enable_seg)
         self.save_objtype = bool(save_objtype)
+        self.enable_depth = bool(enable_depth)
 
         self._rgb_renderer = mujoco.Renderer(model, height=self.height, width=self.width)
+
+        self._depth_renderer = None
+        if self.enable_depth:
+            self._depth_renderer = mujoco.Renderer(model, height=self.height, width=self.width)
+            self._depth_renderer.enable_depth_rendering()
 
         self._seg_renderer = None
         if self.enable_seg:
@@ -65,6 +73,7 @@ class MujocoMultiCameraRenderer:
 
     def render_all(self, *, lookat: np.ndarray) -> RenderOut:
         rgb_by_cam: Dict[str, np.ndarray] = {}
+        depth_by_cam: Optional[Dict[str, np.ndarray]] = {} if self.enable_depth else None
         seg_id_by_cam: Optional[Dict[str, np.ndarray]] = {} if self.enable_seg else None
         seg_type_by_cam: Optional[Dict[str, np.ndarray]] = {} if (self.enable_seg and self.save_objtype) else None
 
@@ -92,6 +101,13 @@ class MujocoMultiCameraRenderer:
             rgb = self._rgb_renderer.render()
             rgb_by_cam[pose.name] = rgb.astype(np.uint8)
 
+            # Depth
+            if self.enable_depth and self._depth_renderer is not None:
+                self._depth_renderer.update_scene(self.data, camera=cam)
+                depth = np.asarray(self._depth_renderer.render(), dtype=np.float32)
+                if depth_by_cam is not None:
+                    depth_by_cam[pose.name] = depth
+
             # Segmentation
             if self.enable_seg and self._seg_renderer is not None:
                 self._seg_renderer.update_scene(self.data, camera=cam)
@@ -107,6 +123,7 @@ class MujocoMultiCameraRenderer:
 
         return RenderOut(
             rgb_by_cam=rgb_by_cam,
+            depth_by_cam=depth_by_cam,
             seg_id_by_cam=seg_id_by_cam,
             seg_type_by_cam=seg_type_by_cam,
         )

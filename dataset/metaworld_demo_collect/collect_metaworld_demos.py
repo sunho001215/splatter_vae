@@ -121,6 +121,7 @@ def main():
         width=cfg.render.width,
         enable_seg=cfg.segmentation.enabled,
         save_objtype=cfg.segmentation.save_objtype,
+        enable_depth=cfg.render.save_depth,
     )
 
     writer = HDF5DemoWriter(cfg.output.path, cfg.output.mode, cfg.output.compression)
@@ -184,12 +185,13 @@ def main():
                 W=cfg.render.width,
                 camera_intrinsics=cam_intr,
                 camera_extrinsics=cam_extr,
-                extra_attrs={"max_steps": cfg.metaworld.max_steps},
+                extra_attrs={"max_steps": cfg.metaworld.max_steps, "save_depth": bool(cfg.render.save_depth)},
+                save_depth=cfg.render.save_depth,
             )
 
             for t in range(cfg.metaworld.max_steps):
                 # Quadratically anneal from nearly expert to random as demo_idx increases until halfway.
-                prob_expert = max(0.0, 1.0 - (demo_idx / (num / 2)) ** 2)
+                prob_expert = max(0.0, 1.0 - (demo_idx / (num)) ** 2)
                 if np.random.rand() < prob_expert:
                     action = policy_obj.get_action(obs)
                     action = np.asarray(action).ravel().astype(np.float32)
@@ -246,6 +248,7 @@ def main():
                     obs_vec=obs_to_store,
                     rgb_by_cam=rend.rgb_by_cam,
                     seg_id_by_cam=seg_for_step,
+                    depth_by_cam=rend.depth_by_cam,
                     seg_type_by_cam=rend.seg_type_by_cam,
                 )
 

@@ -55,6 +55,10 @@ class SplatterModelConfig:
     max_sh_degree: int = 1            # we assume 0 or 1, see asserts below
     isotropic: bool = False           # if True: same scale for xyz
     num_gaussians_per_pixel: int = 5  # number of splat Gaussians per pixel
+    depth_parameterization: str = "absolute"
+    depth_residual_scale: float = 0.1
+    depth_increment_scale: float = 0.1
+    depth_increment_min: float = 0.01
     depth_scale: float = 1.0
     depth_bias: float = 0.0
     xyz_scale: float = 1.0
@@ -109,6 +113,9 @@ class VAESplatterToGaussians(nn.Module):
             "This direct converter currently supports max_sh_degree in {0,1}."
         assert cfg.model.num_gaussians_per_pixel >= 1, \
             "num_gaussians_per_pixel must be >= 1."
+        depth_mode = str(getattr(cfg.model, "depth_parameterization", "absolute")).lower()
+        assert depth_mode in ("absolute", "direct", "residual_unidepth", "depth_prior"), \
+            f"Unsupported depth_parameterization={cfg.model.depth_parameterization!r}."
 
         self.depth_act = nn.Sigmoid()
         self.opacity_activation = torch.sigmoid
@@ -129,15 +136,22 @@ class VAESplatterToGaussians(nn.Module):
     # ------------------------------------------------------------------
     # Splatter channel bookkeeping
     # ------------------------------------------------------------------
+    def _num_predicted_depth_layers(self) -> int:
+        k = int(self.cfg.model.num_gaussians_per_pixel)
+        depth_mode = str(getattr(self.cfg.model, "depth_parameterization", "absolute")).lower()
+        if depth_mode == "depth_prior":
+            return max(k - 1, 0)
+        return k
+
     def get_split_dimensions(self):
         k = int(self.cfg.model.num_gaussians_per_pixel)
         sh_rest = 0 if self.cfg.model.max_sh_degree == 0 else (((self.cfg.model.max_sh_degree + 1) ** 2) - 1) * 3
 
         dims = (
-            k,          # depth
+            self._num_predicted_depth_layers(),  # depth, or K-1 relative layers when using depth_prior
             3 * k,      # offset
             k,          # opacity
-            3 * k,      # scaling
+            (1 if bool(self.cfg.model.isotropic) else 3) * k,      # scaling
             4 * k,      # rotation
             3 * k,      # features_dc
         )
@@ -158,33 +172,134 @@ class VAESplatterToGaussians(nn.Module):
         self,
         x: torch.Tensor,
         channels_per_gaussian: int,
+        num_items: Optional[int] = None,
     ) -> torch.Tensor:
         """
         (B, K*C, H, W) -> (B, H*W, K, C)
         """
         b, _, h, w = x.shape
-        k = int(self.cfg.model.num_gaussians_per_pixel)
+        k = int(self.cfg.model.num_gaussians_per_pixel if num_items is None else num_items)
 
         x = x.view(b, k, channels_per_gaussian, h, w)
         x = x.permute(0, 3, 4, 1, 2).contiguous()
         return x.view(b, h * w, k, channels_per_gaussian)
 
+    def _format_depth_prior(
+        self,
+        depth_prior: torch.Tensor,
+        batch_size: int,
+        num_pixels: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Normalize a metric depth prior to ``(B, H*W, 1)`` camera-z depth."""
+        dcfg = self.cfg.data
+        if depth_prior is None:
+            raise ValueError("depth_prior is required for depth_parameterization='depth_prior' or 'residual_unidepth'.")
+
+        prior = depth_prior.to(device=device, dtype=dtype)
+        if prior.dim() == 4:
+            if prior.shape[1] != 1:
+                raise ValueError(f"Expected depth_prior channels=1, got shape {tuple(prior.shape)}.")
+            if prior.shape[-2:] != (dcfg.img_height, dcfg.img_width):
+                prior = F.interpolate(
+                    prior,
+                    size=(dcfg.img_height, dcfg.img_width),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            prior = prior.flatten(2).transpose(1, 2).contiguous()
+        elif prior.dim() == 3 and prior.shape[-2:] == (dcfg.img_height, dcfg.img_width):
+            prior = prior.unsqueeze(1).flatten(2).transpose(1, 2).contiguous()
+        elif prior.dim() == 3 and prior.shape[1:] == (num_pixels, 1):
+            pass
+        elif prior.dim() == 2 and prior.shape[1] == num_pixels:
+            prior = prior.unsqueeze(-1)
+        else:
+            raise ValueError(
+                "depth_prior must have shape (B,1,H,W), (B,H,W), (B,H*W), or (B,H*W,1); "
+                f"got {tuple(prior.shape)}."
+            )
+
+        if prior.shape[0] != batch_size or prior.shape[1] != num_pixels:
+            raise ValueError(
+                f"Expected depth_prior batch/pixels {(batch_size, num_pixels)}, "
+                f"got {tuple(prior.shape[:2])}."
+            )
+
+        prior = torch.nan_to_num(
+            prior,
+            nan=0.5 * (dcfg.znear + dcfg.zfar),
+            posinf=dcfg.zfar,
+            neginf=dcfg.znear,
+        )
+        return prior.clamp(min=dcfg.znear, max=dcfg.zfar)
+
     def _compute_xyz_camera(
         self,
-        depth_logits: torch.Tensor,   # (B, N, K, 1)
+        depth_logits: torch.Tensor,   # (B, N, K or K-1, 1)
         offset: torch.Tensor,         # (B, N, K, 3)
         intrinsics: torch.Tensor,     # (B, 3, 3)
+        depth_prior: Optional[torch.Tensor] = None,
         activate_output: bool = True,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Build camera-space Gaussian centers for the direct multi-Gaussian path."""
         dcfg = self.cfg.data
         mcfg = self.cfg.model
 
-        # depth_logits: (B, N, K, 1) -> (B, N, K)
+        # depth_logits: (B, N, K or K-1, 1) -> (B, N, K or K-1)
         depth_logits = depth_logits.squeeze(-1)
+        num_layers = int(mcfg.num_gaussians_per_pixel)
+        depth_mode = str(getattr(mcfg, "depth_parameterization", "absolute")).lower()
 
-        # Old fixed-layer monotonic depth logic
-        if activate_output:
+        if activate_output and depth_mode == "depth_prior":
+            base_depth = self._format_depth_prior(
+                depth_prior=depth_prior,
+                batch_size=offset.shape[0],
+                num_pixels=offset.shape[1],
+                device=offset.device,
+                dtype=offset.dtype,
+            ).squeeze(-1)
+            first_depth = base_depth.unsqueeze(-1)
+
+            if num_layers == 1:
+                depth = first_depth
+            else:
+                expected = num_layers - 1
+                if depth_logits.shape[2] != expected:
+                    raise ValueError(
+                        f"depth_prior mode expects {expected} predicted relative depth layers, "
+                        f"got {depth_logits.shape[2]}."
+                    )
+                inc_pre = depth_logits.clamp(min=-10.0, max=10.0)
+                inc = F.softplus(inc_pre) * float(mcfg.depth_increment_scale)
+                inc = inc + float(mcfg.depth_increment_min)
+                depth_tail = first_depth + torch.cumsum(inc, dim=2)
+                depth = torch.cat([first_depth, depth_tail], dim=2)
+
+            depth = torch.nan_to_num(depth, nan=dcfg.znear, posinf=dcfg.zfar, neginf=dcfg.znear)
+            depth = depth.clamp(min=dcfg.znear, max=dcfg.zfar)
+        elif activate_output and depth_mode == "residual_unidepth":
+            base_depth = self._format_depth_prior(
+                depth_prior=depth_prior,
+                batch_size=depth_logits.shape[0],
+                num_pixels=depth_logits.shape[1],
+                device=depth_logits.device,
+                dtype=depth_logits.dtype,
+            ).squeeze(-1)
+            residual = torch.tanh(depth_logits[:, :, :1]) * float(mcfg.depth_residual_scale)
+            first_depth = base_depth.unsqueeze(-1) + residual
+            if depth_logits.shape[2] == 1:
+                depth = first_depth
+            else:
+                inc_pre = depth_logits[:, :, 1:].clamp(min=-10.0, max=10.0)
+                inc = F.softplus(inc_pre) * float(mcfg.depth_increment_scale)
+                inc = inc + float(mcfg.depth_increment_min)
+                depth_tail = first_depth + torch.cumsum(inc, dim=2)
+                depth = torch.cat([first_depth, depth_tail], dim=2)
+            depth = torch.nan_to_num(depth, nan=dcfg.znear, posinf=dcfg.zfar, neginf=dcfg.znear)
+            depth = depth.clamp(min=dcfg.znear, max=dcfg.zfar)
+        elif activate_output:
             depth_pre = depth_logits * mcfg.depth_scale + mcfg.depth_bias  # (B, N, K)
 
             if depth_pre.shape[2] == 1:
@@ -228,7 +343,7 @@ class VAESplatterToGaussians(nn.Module):
         # depth is (B, N, K), so depth.unsqueeze(-1) -> (B, N, K, 1)
         xyz_camera = ray_dirs * depth.unsqueeze(-1) + offset  # (B, N, K, 3)
 
-        return xyz_camera, depth.unsqueeze(-1)  # keep depth as (B, N, K, 1)
+        return xyz_camera, depth.unsqueeze(-1), offset  # depth: (B, N, K, 1), offset: (B, N, K, 3)
 
     def forward(
         self,
@@ -236,6 +351,7 @@ class VAESplatterToGaussians(nn.Module):
         source_cameras_view_to_world: torch.Tensor,
         source_cv2wT_quat: torch.Tensor,
         intrinsics: torch.Tensor,
+        depth_prior: Optional[torch.Tensor] = None,
         activate_output: bool = True,
     ) -> Dict[str, torch.Tensor]:
         """
@@ -257,10 +373,17 @@ class VAESplatterToGaussians(nn.Module):
             depth_map, offset_map, opacity_map, scaling_map, rotation_map, feat_dc_map, feat_rest_map = pieces
 
         # (B, K*C, H, W) -> (B, N, K, C)
-        depth_logits = self._map_to_ordered_tensor(depth_map, 1)
+        if depth_map.shape[1] == 0:
+            depth_logits = splatter.new_empty(b, h * w, 0, 1)
+        else:
+            depth_logits = self._map_to_ordered_tensor(
+                depth_map,
+                1,
+                num_items=self._num_predicted_depth_layers(),
+            )
         offset = self._map_to_ordered_tensor(offset_map, 3)
         opacity_logits = self._map_to_ordered_tensor(opacity_map, 1)
-        scaling_raw = self._map_to_ordered_tensor(scaling_map, 3)
+        scaling_raw = self._map_to_ordered_tensor(scaling_map, 1 if bool(self.cfg.model.isotropic) else 3)
         rotation_raw = self._map_to_ordered_tensor(rotation_map, 4)
         features_dc = self._map_to_ordered_tensor(feat_dc_map, 3).unsqueeze(-2)  # (B, N, K, 1, 3)
 
@@ -280,10 +403,11 @@ class VAESplatterToGaussians(nn.Module):
             )
 
         # Build camera-space xyz + monotonic depth using old ordering logic
-        xyz_camera, depth_cont = self._compute_xyz_camera(
+        xyz_camera, depth_cont, offset_cont = self._compute_xyz_camera(
             depth_logits=depth_logits,
             offset=offset,
             intrinsics=intrinsics,
+            depth_prior=depth_prior,
             activate_output=activate_output,
         )
 
@@ -304,10 +428,14 @@ class VAESplatterToGaussians(nn.Module):
 
             opacity = self.opacity_activation(opacity_pre)
             scaling = self.scaling_activation(scaling_pre)
+            if bool(mcfg.isotropic):
+                scaling = scaling.expand(*scaling.shape[:-1], 3)
             rotation = self.rotation_activation(rotation_raw, dim=-1, eps=1e-6)
         else:
             opacity = opacity_logits
             scaling = scaling_raw
+            if bool(self.cfg.model.isotropic):
+                scaling = scaling.expand(*scaling.shape[:-1], 3)
             rotation = rotation_raw
 
         # ------------------------------------------------------------------
@@ -343,6 +471,8 @@ class VAESplatterToGaussians(nn.Module):
         return {
             "xyz": xyz_world.view(b, n_total, 3).contiguous(),
             "xyz_camera": xyz_camera.view(b, n_total, 3).contiguous(),  # useful for debugging
+            "depth_camera": depth_cont.view(b, n_total, 1).contiguous(),
+            "offset_camera": offset_cont.view(b, n_total, 3).contiguous(),
             "rotation": rotation_world.view(b, n_total, 4).contiguous(),
             "opacity": opacity.view(b, n_total, 1).contiguous(),
             "scaling": scaling.view(b, n_total, 3).contiguous(),
@@ -476,10 +606,16 @@ def render_predicted(
     )
 
     # ------------------------------------------------------------------
-    # 5) Convert render to channel-first: (B, V, 3, H, W)
+    # 5) Convert render to channel-first. RGB+D modes append one depth channel.
     # ------------------------------------------------------------------
-    # render_colors: (B, V, H, W, 3) → (B, V, 3, H, W)
-    rendered_image = render_colors.permute(0, 1, 4, 2, 3).contiguous()
+    if render_colors.shape[-1] > 3:
+        rendered_image = render_colors[..., :3].permute(0, 1, 4, 2, 3).contiguous()
+        rendered_depth = render_colors[..., 3:4].permute(0, 1, 4, 2, 3).contiguous()
+    else:
+        rendered_image = render_colors.permute(0, 1, 4, 2, 3).contiguous()
+        rendered_depth = None
+
+    rendered_alpha = render_alphas.permute(0, 1, 4, 2, 3).contiguous()
 
     # ------------------------------------------------------------------
     # 6) Radii and visibility filter
@@ -493,6 +629,8 @@ def render_predicted(
 
     return {
         "render": rendered_image,         # (B, V, 3, H, W)
+        "depth": rendered_depth,          # (B, V, 1, H, W) for RGB+D modes
+        "alpha": rendered_alpha,          # (B, V, 1, H, W)
         "viewspace_points": viewspace_points,
         "visibility_filter": visibility_filter,
         "radii": radii,
@@ -507,6 +645,8 @@ def render_predicted(
 def default_splatter_channels(
     max_sh_degree: int = 1,
     num_gaussians_per_pixel: int = 5,
+    isotropic: bool = False,
+    depth_parameterization: str = "absolute",
 ) -> int:
     """
     Helper for decoder construction:
@@ -517,6 +657,8 @@ def default_splatter_channels(
         model=SplatterModelConfig(
             max_sh_degree=max_sh_degree,
             num_gaussians_per_pixel=num_gaussians_per_pixel,
+            isotropic=bool(isotropic),
+            depth_parameterization=str(depth_parameterization),
         ),
     )
     return VAESplatterToGaussians(spl_cfg).num_splatter_channels()

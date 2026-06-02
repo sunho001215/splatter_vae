@@ -1,77 +1,168 @@
 output:
-  path: /home/ws/data/metaworld/pre-training/test.hdf5
-  mode: overwrite 
+  path: /home/ws/data/metaworld/world-model/handle-pull.hdf5
+  mode: overwrite
   compression: null
-
 metaworld:
-  benchmark_id: "Meta-World/MT1"
-  env_name: "hammer-v3"
+  benchmark_id: Meta-World/MT1
+  env_name: handle-pull-v3
   seed: 0
-  max_steps: 10
+  max_steps: 400
   terminate_on_success: true
-
 render:
   height: 128
   width: 128
-  lookat: [0.0, 0.6, 0.0]
-  up: [0.0, 0.0, 1.0]
+  save_depth: true
+  lookat:
+  - 0.0
+  - 0.6
+  - 0.0
+  up:
+  - 0.0
+  - 0.0
+  - 1.0
   cameras:
-    - name: cam0
-      r: 2.0
-      theta: -45.0
-      phi: 0.0
-      fovy: 45.0
-    - name: cam1
-      r: 2.0
-      theta: -45.0       
-      phi: 180.0          
-      fovy: 45.0
-    - name: cam2
-      r: 2.0
-      theta: -60.0        
-      phi: -30.0             
-      fovy: 45.0
-    - name: cam3
-      r: 2.0
-      theta: -60.0         
-      phi: 210.0           
-      fovy: 45.0
-    - name: cam4
-      r: 2.0
-      theta: -30.0       
-      phi: 45.0          
-      fovy: 45.0
-    - name: cam5
-      r: 2.0
-      theta: -30.0     
-      phi: 135.0            
-      fovy: 45.0
-
+  - name: cam0
+    r: 1.2
+    theta: -30.0
+    phi: -45.0
+    fovy: 45.0
+  - name: cam1
+    r: 1.2
+    theta: -30.0
+    phi: 0.0
+    fovy: 45.0
+  - name: cam2
+    r: 1.2
+    theta: -30.0
+    phi: 45.0
+    fovy: 45.0
+  - name: cam3
+    r: 1.2
+    theta: -30.0
+    phi: 135.0
+    fovy: 45.0
+  - name: cam4
+    r: 1.2
+    theta: -30.0
+    phi: 180.0
+    fovy: 45.0
+  - name: cam5
+    r: 1.2
+    theta: -30.0
+    phi: 225.0
+    fovy: 45.0
+  - name: cam6
+    r: 1.2
+    theta: -45.0
+    phi: -45.0
+    fovy: 45.0
+  - name: cam7
+    r: 1.2
+    theta: -45.0
+    phi: 0.0
+    fovy: 45.0
+  - name: cam8
+    r: 1.2
+    theta: -45.0
+    phi: 45.0
+    fovy: 45.0
+  - name: cam9
+    r: 1.2
+    theta: -45.0
+    phi: 135.0
+    fovy: 45.0
+  - name: cam10
+    r: 1.2
+    theta: -45.0
+    phi: 180.0
+    fovy: 45.0
+  - name: cam11
+    r: 1.2
+    theta: -45.0
+    phi: 225.0
+    fovy: 45.0
+  - name: cam12
+    r: 1.2
+    theta: -60.0
+    phi: -45.0
+    fovy: 45.0
+  - name: cam13
+    r: 1.2
+    theta: -60.0
+    phi: 0.0
+    fovy: 45.0
+  - name: cam14
+    r: 1.2
+    theta: -60.0
+    phi: 45.0
+    fovy: 45.0
+  - name: cam15
+    r: 1.2
+    theta: -60.0
+    phi: 135.0
+    fovy: 45.0
+  - name: cam16
+    r: 1.2
+    theta: -60.0
+    phi: 180.0
+    fovy: 45.0
+  - name: cam17
+    r: 1.2
+    theta: -60.0
+    phi: 225.0
+    fovy: 45.0
+  - name: cam18
+    r: 1.2
+    theta: -75.0
+    phi: -45.0
+    fovy: 45.0
+  - name: cam19
+    r: 1.2
+    theta: -75.0
+    phi: 0.0
+    fovy: 45.0
+  - name: cam20
+    r: 1.2
+    theta: -75.0
+    phi: 45.0
+    fovy: 45.0
+  - name: cam21
+    r: 1.2
+    theta: -75.0
+    phi: 135.0
+    fovy: 45.0
+  - name: cam22
+    r: 1.2
+    theta: -75.0
+    phi: 180.0
+    fovy: 45.0
+  - name: cam23
+    r: 1.2
+    theta: -75.0
+    phi: 225.0
+    fovy: 45.0
 segmentation:
   enabled: false
-  save_objtype: false      # if true, also store {cam}_seg_type (channel 1)
-
+  save_objtype: false
 policies:
   scripted:
     enabled: true
-    num_demos: 1
-    policy_class: null     # optional override
-
+    num_demos: 100
+    policy_class: null
 visualize:
-  enabled: false         # show live window if possible
+  enabled: false
   show_window: false
-  every_n_steps: 1       # show every step 
-  ncols: 3               # tiling columns
-  pad: 4                 # padding pixels between tiles
-  window_name: "metaworld demos (top=RGB, bottom=SEG)"
-  stop_key: "q"          # press q to stop collection early
-  save_video_dir: null  
+  every_n_steps: 1
+  ncols: 3
+  pad: 4
+  window_name: metaworld demos (top=RGB, bottom=SEG)
+  stop_key: q
+  save_video_dir: null
   video_fps: 10.0
-
 dino:
   enabled: false
-  model: "dinov2_vitb14"   # torch.hub model name
+  model: dinov2_vitb14
   image_size: 224
   batch_size: 256
-  device: "cuda"           # cuda | cpu
-  dtype: "float16"         # float16 | float32
+  device: cuda
+  dtype: float16

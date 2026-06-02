@@ -51,6 +51,7 @@ class RenderCfg:
     lookat: Optional[List[float]] = None
     up: List[float] = None
     cameras: List[CameraCfg] = None
+    save_depth: bool = False
 
 
 @dataclass
@@ -106,6 +107,7 @@ def load_config(path: str) -> Config:
         lookat=raw["render"].get("lookat", None),
         up=raw["render"].get("up", [0.0, 0.0, 1.0]),
         cameras=cams,
+        save_depth=bool(raw["render"].get("save_depth", False)),
     )
 
     seg = SegCfg(**raw.get("segmentation", {"enabled": True}))

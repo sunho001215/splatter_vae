@@ -64,12 +64,16 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
 
     max_sh_degree = int(spl_model_cfg.get("max_sh_degree", 1))
     num_gaussians_per_pixel = int(spl_model_cfg.get("num_gaussians_per_pixel", 5))
+    isotropic = bool(spl_model_cfg.get("isotropic", False))
+    depth_parameterization = str(spl_model_cfg.get("depth_parameterization", "absolute"))
     splatter_channels = int(
         cfg.get("splatter", {}).get(
             "splatter_channels",
             default_splatter_channels(
                 max_sh_degree=max_sh_degree,
                 num_gaussians_per_pixel=num_gaussians_per_pixel,
+                isotropic=isotropic,
+                depth_parameterization=depth_parameterization,
             ),
         )
     )
@@ -94,9 +98,9 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
 
 def build_metaworld_loaders(cfg: dict):
     ds_cfg = cfg.get("dataset", {})
-    dataset_path = ds_cfg.get("hdf5_path", None)
+    dataset_path = ds_cfg.get("hdf5_paths", ds_cfg.get("hdf5_path", None))
     if dataset_path is None:
-        raise ValueError('Config field "dataset.hdf5_path" is required.')
+        raise ValueError('Config field "dataset.hdf5_path" or "dataset.hdf5_paths" is required.')
 
     seed = int(ds_cfg.get("seed", 42))
     set_random_seed(seed)
@@ -113,6 +117,7 @@ def build_metaworld_loaders(cfg: dict):
         views=ds_cfg.get("views", ds_cfg.get("camera_names", None)),
         camera_num=ds_cfg.get("camera_num", None),
         min_time_gap=int(ds_cfg.get("min_time_gap", 25)),
+        use_depth=bool(ds_cfg.get("use_depth", False)),
     )
 
 
@@ -166,7 +171,11 @@ def main() -> None:
 
     sample_batch = next(iter(train_loader))
     _, camera_num, _, img_height, img_width = sample_batch["images"].shape
-    print(f"[Info] Training image resolution: H={img_height}, W={img_width}, sampled_views={camera_num}")
+    has_depth = "depths" in sample_batch
+    print(
+        f"[Info] Training image resolution: H={img_height}, W={img_width}, "
+        f"sampled_views={camera_num}, depth={has_depth}"
+    )
 
     train_cfg_dict = cfg.get("train", {})
     train_cfg_dict.pop("use_amp", None)

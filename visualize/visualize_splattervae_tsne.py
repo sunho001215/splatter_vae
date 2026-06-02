@@ -23,6 +23,7 @@ import yaml
 from sklearn.manifold import TSNE
 
 from visualize.splattervae_common import (
+    adapt_config_to_checkpoint,
     build_splatter_config,
     build_splattervae,
     image_size_from_demo,
@@ -52,6 +53,7 @@ def load_cfg(path: str) -> dict:
 
 
 def build_vae(cfg: dict, dataset_path: str, demo_key: str, ckpt_path: str, device: torch.device):
+    cfg = adapt_config_to_checkpoint(cfg, ckpt_path)
     h, w = image_size_from_demo(dataset_path, demo_key)
     spl_cfg = build_splatter_config(cfg, h, w)
     vae = build_splattervae(cfg, h, w, splatter_channels_from_config(cfg, spl_cfg))

@@ -435,9 +435,9 @@ def main():
 
     # ---------------- Dataset config (same style as your Splatter code) ----
     ds_cfg = cfg.get("dataset", {})
-    dataset_path = ds_cfg.get("hdf5_path", None)
+    dataset_path = ds_cfg.get("hdf5_paths", ds_cfg.get("hdf5_path", None))
     if dataset_path is None:
-        raise ValueError('Config "dataset.hdf5_path" must be provided.')
+        raise ValueError('Config "dataset.hdf5_path" or "dataset.hdf5_paths" must be provided.')
 
     batch_size = ds_cfg.get("batch_size", 128)
     num_workers = ds_cfg.get("num_workers", 8)
@@ -459,6 +459,8 @@ def main():
         seed=seed,
         num_episodes=num_episodes,
         max_frames_per_demo=max_frames_per_demo,
+        views=ds_cfg.get("views", ds_cfg.get("camera_names", None)),
+        camera_num=ds_cfg.get("camera_num", None),
         min_time_gap=min_time_gap,
     )
 
