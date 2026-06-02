@@ -191,7 +191,7 @@ def main():
 
             for t in range(cfg.metaworld.max_steps):
                 # Quadratically anneal from nearly expert to random as demo_idx increases until halfway.
-                prob_expert = max(0.0, 1.0 - (demo_idx / (num)) ** 2)
+                prob_expert = max(0.0, 1.0 - (demo_idx / (num * 0.5)) ** 2)
                 if np.random.rand() < prob_expert:
                     action = policy_obj.get_action(obs)
                     action = np.asarray(action).ravel().astype(np.float32)

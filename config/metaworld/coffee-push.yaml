@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/with-depth/button-press-wall.hdf5"
+    - "../../data/metaworld/with-depth/coffee-push.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -122,7 +122,7 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0e-2
+  frustum_weight: 0.1
   erank_weight: 1.0e-2
   thin_weight: 0.0
   depth_weight: 1.0e-1
@@ -135,7 +135,7 @@ train:
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/button-press-wall/full-implementation/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/coffee-push/full-implementation/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -145,7 +145,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-button-press-wall-full-implementation
+  run_name: metaworld-coffee-push-full-implementation
   tags:
     - dep-masking-0.75
     - all-camera-rendering

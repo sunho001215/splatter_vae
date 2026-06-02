@@ -6,7 +6,7 @@ metaworld:
   benchmark_id: Meta-World/MT1
   env_name: handle-pull-v3
   seed: 0
-  max_steps: 400
+  max_steps: 450
   terminate_on_success: true
 render:
   height: 128
@@ -21,126 +21,36 @@ render:
   - 0.0
   - 1.0
   cameras:
-  - name: cam0
-    r: 1.2
-    theta: -30.0
-    phi: -45.0
-    fovy: 45.0
-  - name: cam1
-    r: 1.2
-    theta: -30.0
-    phi: 0.0
-    fovy: 45.0
-  - name: cam2
-    r: 1.2
-    theta: -30.0
-    phi: 45.0
-    fovy: 45.0
-  - name: cam3
-    r: 1.2
-    theta: -30.0
-    phi: 135.0
-    fovy: 45.0
-  - name: cam4
-    r: 1.2
-    theta: -30.0
-    phi: 180.0
-    fovy: 45.0
-  - name: cam5
-    r: 1.2
-    theta: -30.0
-    phi: 225.0
-    fovy: 45.0
-  - name: cam6
-    r: 1.2
-    theta: -45.0
-    phi: -45.0
-    fovy: 45.0
-  - name: cam7
-    r: 1.2
-    theta: -45.0
-    phi: 0.0
-    fovy: 45.0
-  - name: cam8
-    r: 1.2
-    theta: -45.0
-    phi: 45.0
-    fovy: 45.0
-  - name: cam9
-    r: 1.2
-    theta: -45.0
-    phi: 135.0
-    fovy: 45.0
-  - name: cam10
-    r: 1.2
-    theta: -45.0
-    phi: 180.0
-    fovy: 45.0
-  - name: cam11
-    r: 1.2
-    theta: -45.0
-    phi: 225.0
-    fovy: 45.0
-  - name: cam12
-    r: 1.2
-    theta: -60.0
-    phi: -45.0
-    fovy: 45.0
-  - name: cam13
-    r: 1.2
-    theta: -60.0
-    phi: 0.0
-    fovy: 45.0
-  - name: cam14
-    r: 1.2
-    theta: -60.0
-    phi: 45.0
-    fovy: 45.0
-  - name: cam15
-    r: 1.2
-    theta: -60.0
-    phi: 135.0
-    fovy: 45.0
-  - name: cam16
-    r: 1.2
-    theta: -60.0
-    phi: 180.0
-    fovy: 45.0
-  - name: cam17
-    r: 1.2
-    theta: -60.0
-    phi: 225.0
-    fovy: 45.0
-  - name: cam18
-    r: 1.2
-    theta: -75.0
-    phi: -45.0
-    fovy: 45.0
-  - name: cam19
-    r: 1.2
-    theta: -75.0
-    phi: 0.0
-    fovy: 45.0
-  - name: cam20
-    r: 1.2
-    theta: -75.0
-    phi: 45.0
-    fovy: 45.0
-  - name: cam21
-    r: 1.2
-    theta: -75.0
-    phi: 135.0
-    fovy: 45.0
-  - name: cam22
-    r: 1.2
-    theta: -75.0
-    phi: 180.0
-    fovy: 45.0
-  - name: cam23
-    r: 1.2
-    theta: -75.0
-    phi: 225.0
-    fovy: 45.0
+    - name: cam0
+      r: 0.8
+      theta: -45.0
+      phi: 0.0
+      fovy: 45.0
+    - name: cam1
+      r: 0.8
+      theta: -45.0       
+      phi: 180.0          
+      fovy: 45.0
+    - name: cam2
+      r: 0.8
+      theta: -60.0        
+      phi: -30.0             
+      fovy: 45.0
+    - name: cam3
+      r: 0.8
+      theta: -60.0         
+      phi: 210.0           
+      fovy: 45.0
+    - name: cam4
+      r: 0.8
+      theta: -30.0       
+      phi: 45.0          
+      fovy: 45.0
+    - name: cam5
+      r: 0.8
+      theta: -30.0     
+      phi: 135.0            
+      fovy: 45.0
 segmentation:
   enabled: false
   save_objtype: false

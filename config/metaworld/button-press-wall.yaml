@@ -122,7 +122,7 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0e-2
+  frustum_weight: 0.1
   erank_weight: 1.0e-2
   thin_weight: 0.0
   depth_weight: 1.0e-1
