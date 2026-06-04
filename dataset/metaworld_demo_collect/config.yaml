@@ -1,5 +1,5 @@
 output:
-  path: /home/ws/data/metaworld/world-model/handle-pull.hdf5
+  path: /home/ws/data/metaworld/with-depth/handle-pull.hdf5
   mode: overwrite
   compression: null
 metaworld:
@@ -57,7 +57,7 @@ segmentation:
 policies:
   scripted:
     enabled: true
-    num_demos: 100
+    num_demos: 400
     policy_class: null
 visualize:
   enabled: false

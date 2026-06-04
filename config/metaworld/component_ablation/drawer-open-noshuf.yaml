@@ -3,18 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/world-model-with-depth/faucet-close.hdf5"
-    - "../../data/metaworld/world-model-with-depth/button-press-wall.hdf5"
-    - "../../data/metaworld/world-model-with-depth/drawer-open.hdf5"
-    - "../../data/metaworld/world-model-with-depth/sweep-into.hdf5"
-    - "../../data/metaworld/world-model-with-depth/lever-pull.hdf5"
-    - "../../data/metaworld/world-model-with-depth/handle-pull.hdf5"
-    - "../../data/metaworld/world-model-with-depth/push-wall.hdf5"
-    - "../../data/metaworld/world-model-with-depth/hammer.hdf5"
-    - "../../data/metaworld/world-model-with-depth/window-open.hdf5"
-    - "../../data/metaworld/world-model-with-depth/peg-unplug-side.hdf5"
-    - "../../data/metaworld/world-model-with-depth/door-open.hdf5"
-    - "../../data/metaworld/world-model-with-depth/coffee-push.hdf5"
+    - "../../data/metaworld/with-depth/drawer-open.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -89,7 +78,7 @@ splatter:
     img_height: 128
     img_width: 128
     znear: 0.1
-    zfar: 5.0
+    zfar: 2.5
     white_background: false
     inverted_x: false
     inverted_y: false
@@ -100,15 +89,18 @@ splatter:
     max_sh_degree: 0
     isotropic: false
     depth_scale: 0.1
-    depth_bias: -0.35
-    xyz_scale: 0.02
+    depth_bias: -0.7
+    xyz_scale: 0.1
     xyz_bias: 0.0
     opacity_scale: 0.1
-    opacity_bias: -2.0
+    opacity_bias: -1.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 2
+    scale_max: 0.3
+    num_gaussians_per_pixel: 4
     depth_parameterization: absolute
+    voxelize: true
+    voxel_size: 0.01
 
 # -----------------------------------------------------------------------------
 # Training
@@ -116,10 +108,10 @@ splatter:
 train:
   num_epochs: 100
   max_global_steps: 300001
-  lr: 1.0e-3
+  lr: 5.0e-4
   lr_schedule: warmup_cosine
   lr_warmup_steps: 10000
-  min_lr: 3.0e-5
+  min_lr: 5.0e-5
   device: cuda
 
   # Original no-dynamics loss weights.
@@ -133,20 +125,16 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0e-2
+  frustum_weight: 1.0
   erank_weight: 1.0e-2
   thin_weight: 0.0
-  depth_weight: 1.0e-1
-  depth_local_weight: 0.1
-  depth_global_weight: 1.0
-  depth_patch_size: 16
-  depth_error_tolerance: 0.2
+  depth_weight: 1.0
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/world-model/without-shuffle/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/drawer-open/component-ablation/noshuf/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -156,7 +144,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-world-model-without-shuffle
+  run_name: metaworld-drawer-open-noshuf
   tags:
     - dep-masking-0.75
     - all-camera-rendering
@@ -168,9 +156,11 @@ wandb:
     - transformer-depth-8
     - num-heads-8
     - DPT-fix
-    - lr-1e-3
+    - lr-5e-4
     - diverse-demo-collection
     - ssim_weight-0.0
     - max_sh_degree-0
     - VQ-codebook
     - consistency-loss
+    - component-ablation
+    - without-shuffling-loss

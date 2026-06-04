@@ -1,56 +1,55 @@
 # -----------------------------------------------------------------------------
-# Dataset / dataloader  (DROID-specific)
+# Dataset / dataloader
 # -----------------------------------------------------------------------------
 dataset:
-  # Path to the pre-processed DROID frame directory
-  # (output of: python droid_dataloader.py preprocess ...)
-  droid_dir: ../../data/droid/droid_frames/
-  batch_size: 192
+  hdf5_paths:
+    - "../../data/metaworld/with-depth/drawer-open.hdf5"
+  batch_size: 8
   num_workers: 8
   pin_memory: true
   train_ratio: 0.96
   seed: 42
-  img_size: 128                  # same as meta-world (128x128)
-  min_time_gap: 25
-  max_frames_per_episode: null
-  max_episodes: null             # set to e.g. 1000 for quick debugging
+  num_episodes: null
+  max_frames_per_demo: null
+  camera_num: 24
+  use_depth: true
 
 # -----------------------------------------------------------------------------
-# Model wrapper settings  (same as meta-world)
+# Model wrapper settings
 # -----------------------------------------------------------------------------
 model:
-  fusion_style: "plus"
+  fusion_style: "plus"         # ["cat", "plus"]
   use_dependent_vq: true
   is_dependent_ae: false
   use_invariant_vq: true
   is_invariant_ae: false
-  dep_input_mask_ratio: 0.75
-  dep_mask_eval: true
+  dep_input_mask_ratio: 0.0
+  dep_mask_eval: false
 
 # -----------------------------------------------------------------------------
-# Invariant / dependent codebooks  (same as meta-world)
+# Invariant / dependent codebooks
 # -----------------------------------------------------------------------------
 codebook:
   invariant:
-    quantizer: vq
-    embed_dim: 64
-    n_embed: 512
-    beta: 0.25
+    quantizer: fsq
+    embed_dim: 6
+    fsq_levels: [8, 8, 8, 5, 5, 5]
+
   dependent:
-    quantizer: vq
-    embed_dim: 64
-    n_embed: 64
-    beta: 0.25
+    quantizer: fsq
+    embed_dim: 6
+    fsq_levels: [8, 8, 8, 5, 5, 5]
 
 # -----------------------------------------------------------------------------
-# ViT encoders + token transformer + DPT decoder  (same as meta-world)
+# ViT encoders + token transformer + DPT decoder
 # -----------------------------------------------------------------------------
 vit:
+  # Encoder ViT hyperparameters
   patch_size: 16
   in_chans: 3
-  embed_dim: 256
-  depth: 4
-  num_heads: 4
+  embed_dim: 128
+  depth: 8
+  num_heads: 8
   mlp_ratio: 4.0
   qkv_bias: true
   dropout: 0.0
@@ -58,87 +57,110 @@ vit:
   drop_path_rate: 0.1
   layerscale_init: 1.0e-5
 
-  selected_layers: [2, 5, 8, 11]
+  # Four tap points required by the DPT-style decoder.
+  selected_layers: [1, 3, 5, 7]
 
-  decoder_depth: 12
+  # Decoder-side token transformer before the DPT dense head.
+  decoder_depth: 8
   decoder_num_heads: 8
   decoder_mlp_ratio: 4.0
   decoder_drop_path_rate: 0.1
-  decoder_selected_layers: [2, 5, 8, 11]
+  decoder_selected_layers: [1, 3, 5, 7]
 
+  # DPT dense decoder width.
   dpt_features: 128
 
 # -----------------------------------------------------------------------------
-# Splatter / Gaussian parameterization  (same as meta-world)
+# Splatter / Gaussian parameterization
 # -----------------------------------------------------------------------------
 splatter:
   data:
     img_height: 128
     img_width: 128
     znear: 0.1
-    zfar: 3.0
+    zfar: 2.5
     white_background: false
     inverted_x: false
     inverted_y: false
     category: "generic"
 
   model:
-    max_sh_degree: 1
+    # Parent Gaussian layout (vanilla Splatter Image)
+    max_sh_degree: 0
     isotropic: false
     depth_scale: 0.1
     depth_bias: -0.7
     xyz_scale: 0.1
     xyz_bias: 0.0
-    opacity_scale: 1.0
-    opacity_bias: -2.0
+    opacity_scale: 0.1
+    opacity_bias: -1.0
     scale_scale: 0.02
     scale_bias: -4.0
+    scale_max: 0.3
     num_gaussians_per_pixel: 4
+    depth_parameterization: absolute
+    voxelize: true
+    voxel_size: 0.01
 
 # -----------------------------------------------------------------------------
-# Training  (same as meta-world)
+# Training
 # -----------------------------------------------------------------------------
 train:
   num_epochs: 100
-  max_global_steps: 1000001
-  lr: 1.0e-3
+  max_global_steps: 300001
+  lr: 5.0e-4
   lr_schedule: warmup_cosine
-  lr_warmup_steps: 50000
-  min_lr: 1.0e-4
+  lr_warmup_steps: 10000
+  min_lr: 5.0e-5
   device: cuda
 
+  # Original no-dynamics loss weights.
   rec_weight: 1.0
-  ssim_weight: 0.2
+  ssim_weight: 0.0
+  shuffle_inv_rec_weight: 1.0
+  shuffle_dep_rec_weight: 1.0
+  shuffle_both_rec_weight: 1.0
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
-  inv_consistency_weight: 0.5
+  inv_consistency_weight: 0.0
   dep_contrastive_weight: 0.1
-  dep_consistency_weight: 0.1
-  frustum_weight: 0.001
+  dep_consistency_weight: 0.0
+  frustum_weight: 1.0
+  erank_weight: 1.0e-2
+  thin_weight: 0.0
+  depth_weight: 1.0
+
   temperature: 0.1
 
   eval_every: 1000
-  save_every: 10000
-  ckpt_dir: ./checkpoints/droid/codebook-embed-dim-64
+  save_every: 10000 
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/drawer-open/component-ablation/nocons/
   resume_from_last: false
 
-  val_num_batches: 10
-  val_max_vis: 8
-
 # -----------------------------------------------------------------------------
-# Weights & Biases
+# Optional logging
 # -----------------------------------------------------------------------------
 wandb:
   enabled: true
-  project: DROID-SplatterVAE
+  project: metaworld-SplatterVAE
   entity: null
-  run_name: droid-run
+  run_name: metaworld-drawer-open-nocons
   tags:
     - dep-masking-0.75
-    - self-rec-weight-0.1
-    - embed-dim-256
+    - all-camera-rendering
+    - rgb-encoder
+    - dngaussian-depth-reg
+    - erank-reg
+    - embed-dim-128
     - codebook-embed-dim-64
-    - depth-4
-    - num-heads-4
+    - transformer-depth-8
+    - num-heads-8
     - DPT-fix
-    - lr-1e-3
+    - lr-5e-4
+    - diverse-demo-collection
+    - ssim_weight-0.0
+    - max_sh_degree-0
+    - VQ-codebook
+    - consistency-loss
+    - component-ablation
+    - without-consistency-loss

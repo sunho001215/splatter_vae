@@ -67,6 +67,9 @@ class SplatterModelConfig:
     opacity_bias: float = 0.0
     scale_scale: float = 1.0
     scale_bias: float = 1.0
+    scale_max: float = 0.3
+    voxelize: bool = False
+    voxel_size: float = 0.01
 
 
 @dataclass
@@ -95,6 +98,7 @@ class VAESplatterToGaussians(nn.Module):
         depth(K)
         offset(3K)
         opacity(K)
+        confidence(K)
         scaling(3K)
         rotation(4K)
         features_dc(3K)
@@ -151,6 +155,7 @@ class VAESplatterToGaussians(nn.Module):
             self._num_predicted_depth_layers(),  # depth, or K-1 relative layers when using depth_prior
             3 * k,      # offset
             k,          # opacity
+            k,          # confidence logits for optional voxel fusion
             (1 if bool(self.cfg.model.isotropic) else 3) * k,      # scaling
             4 * k,      # rotation
             3 * k,      # features_dc
@@ -345,6 +350,109 @@ class VAESplatterToGaussians(nn.Module):
 
         return xyz_camera, depth.unsqueeze(-1), offset  # depth: (B, N, K, 1), offset: (B, N, K, 3)
 
+
+    def _pad_tensor_list(self, tensors: list[torch.Tensor], pad_value: float = 0.0) -> torch.Tensor:
+        max_items = max(t.shape[0] for t in tensors)
+        padded = []
+        for tensor in tensors:
+            pad_len = max_items - tensor.shape[0]
+            if pad_len > 0:
+                pad = tensor.new_full((pad_len, *tensor.shape[1:]), float(pad_value))
+                tensor = torch.cat((tensor, pad), dim=0)
+            padded.append(tensor)
+        return torch.stack(padded, dim=0)
+
+    def _pad_rotation_list(self, tensors: list[torch.Tensor]) -> torch.Tensor:
+        max_items = max(t.shape[0] for t in tensors)
+        padded = []
+        for tensor in tensors:
+            pad_len = max_items - tensor.shape[0]
+            if pad_len > 0:
+                pad = tensor.new_zeros((pad_len, 4))
+                pad[:, 0] = 1.0
+                tensor = torch.cat((tensor, pad), dim=0)
+            padded.append(tensor)
+        return torch.stack(padded, dim=0)
+
+    def _voxelize_camera_gaussians(self, gaussian: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Fuse decoded Gaussians inside a source-camera-coordinate voxel grid."""
+        voxel_size = float(getattr(self.cfg.model, "voxel_size", 0.01))
+        if voxel_size <= 0.0:
+            raise ValueError(f"voxel_size must be positive when voxelize=true, got {voxel_size}.")
+
+        batch_size = gaussian["xyz_camera"].shape[0]
+        fused: Dict[str, list[torch.Tensor]] = {
+            "xyz_camera": [],
+            "depth_camera": [],
+            "offset_camera": [],
+            "rotation_camera": [],
+            "opacity": [],
+            "scaling": [],
+            "features_dc": [],
+            "features_rest": [],
+            "confidence_logits": [],
+            "confidence": [],
+        }
+        valid_masks: list[torch.Tensor] = []
+        voxel_counts: list[torch.Tensor] = []
+
+        for batch_idx in range(batch_size):
+            xyz = gaussian["xyz_camera"][batch_idx]
+            finite_mask = torch.isfinite(xyz).all(dim=-1)
+            if not bool(finite_mask.any()):
+                finite_mask = torch.ones_like(finite_mask, dtype=torch.bool)
+
+            xyz_valid = xyz[finite_mask]
+            voxel_indices = torch.round(xyz_valid / voxel_size).to(torch.int64)
+            _, inverse_indices = torch.unique(voxel_indices, dim=0, return_inverse=True)
+            num_voxels = int(inverse_indices.max().item()) + 1
+
+            conf_logits = gaussian["confidence_logits"][batch_idx, finite_mask, 0]
+            conf_logits = torch.nan_to_num(conf_logits.float(), nan=-30.0, posinf=30.0, neginf=-30.0).clamp(-30.0, 30.0)
+            exp_conf = torch.exp(conf_logits - conf_logits.max()).to(xyz_valid.dtype)
+            denom = exp_conf.new_zeros(num_voxels)
+            denom.index_add_(0, inverse_indices, exp_conf)
+            weights = exp_conf / denom[inverse_indices].clamp_min(1e-8)
+
+            def reduce_tensor(name: str) -> torch.Tensor:
+                values = gaussian[name][batch_idx, finite_mask]
+                weight_shape = (weights.shape[0],) + (1,) * (values.ndim - 1)
+                weighted = values * weights.to(values.dtype).view(weight_shape)
+                out = values.new_zeros((num_voxels, *values.shape[1:]))
+                out.index_add_(0, inverse_indices, weighted)
+                return out
+
+            fused["xyz_camera"].append(reduce_tensor("xyz_camera"))
+            fused["depth_camera"].append(reduce_tensor("depth_camera"))
+            fused["offset_camera"].append(reduce_tensor("offset_camera"))
+            fused["rotation_camera"].append(F.normalize(reduce_tensor("rotation_camera"), dim=-1, eps=1e-6))
+            fused["opacity"].append(reduce_tensor("opacity"))
+            fused["scaling"].append(reduce_tensor("scaling"))
+            fused["features_dc"].append(reduce_tensor("features_dc"))
+            fused["features_rest"].append(reduce_tensor("features_rest"))
+            fused_conf_logits = reduce_tensor("confidence_logits")
+            fused["confidence_logits"].append(fused_conf_logits)
+            fused["confidence"].append(torch.sigmoid(fused_conf_logits))
+            valid_masks.append(torch.ones(num_voxels, device=xyz.device, dtype=torch.bool))
+            count = xyz.new_zeros(num_voxels)
+            count.index_add_(0, inverse_indices, torch.ones_like(weights))
+            voxel_counts.append(count.unsqueeze(-1))
+
+        return {
+            "xyz_camera": self._pad_tensor_list(fused["xyz_camera"], 0.0),
+            "depth_camera": self._pad_tensor_list(fused["depth_camera"], self.cfg.data.zfar),
+            "offset_camera": self._pad_tensor_list(fused["offset_camera"], 0.0),
+            "rotation_camera": self._pad_rotation_list(fused["rotation_camera"]),
+            "opacity": self._pad_tensor_list(fused["opacity"], 0.0),
+            "scaling": self._pad_tensor_list(fused["scaling"], 1e-4),
+            "features_dc": self._pad_tensor_list(fused["features_dc"], 0.0),
+            "features_rest": self._pad_tensor_list(fused["features_rest"], 0.0),
+            "confidence_logits": self._pad_tensor_list(fused["confidence_logits"], -30.0),
+            "confidence": self._pad_tensor_list(fused["confidence"], 0.0),
+            "valid_mask": self._pad_tensor_list([m.unsqueeze(-1) for m in valid_masks], 0.0).squeeze(-1).bool(),
+            "voxel_count": self._pad_tensor_list(voxel_counts, 0.0),
+        }
+
     def forward(
         self,
         splatter: torch.Tensor,
@@ -367,10 +475,10 @@ class VAESplatterToGaussians(nn.Module):
         pieces = self._split(splatter)
 
         if self.cfg.model.max_sh_degree == 0:
-            depth_map, offset_map, opacity_map, scaling_map, rotation_map, feat_dc_map = pieces
+            depth_map, offset_map, opacity_map, confidence_map, scaling_map, rotation_map, feat_dc_map = pieces
             feat_rest_map = None
         else:
-            depth_map, offset_map, opacity_map, scaling_map, rotation_map, feat_dc_map, feat_rest_map = pieces
+            depth_map, offset_map, opacity_map, confidence_map, scaling_map, rotation_map, feat_dc_map, feat_rest_map = pieces
 
         # (B, K*C, H, W) -> (B, N, K, C)
         if depth_map.shape[1] == 0:
@@ -383,6 +491,7 @@ class VAESplatterToGaussians(nn.Module):
             )
         offset = self._map_to_ordered_tensor(offset_map, 3)
         opacity_logits = self._map_to_ordered_tensor(opacity_map, 1)
+        confidence_logits = self._map_to_ordered_tensor(confidence_map, 1)
         scaling_raw = self._map_to_ordered_tensor(scaling_map, 1 if bool(self.cfg.model.isotropic) else 3)
         rotation_raw = self._map_to_ordered_tensor(rotation_map, 4)
         features_dc = self._map_to_ordered_tensor(feat_dc_map, 3).unsqueeze(-2)  # (B, N, K, 1, 3)
@@ -423,61 +532,86 @@ class VAESplatterToGaussians(nn.Module):
             scaling_pre = scaling_raw * mcfg.scale_scale + mcfg.scale_bias
 
             opacity_pre = torch.nan_to_num(opacity_pre, nan=0.0, posinf=20.0, neginf=-20.0).clamp(-20.0, 20.0)
+            confidence_pre = torch.nan_to_num(confidence_logits, nan=-30.0, posinf=30.0, neginf=-30.0).clamp(-30.0, 30.0)
             scaling_pre = torch.nan_to_num(scaling_pre, nan=-10.0, posinf=4.0, neginf=-10.0).clamp(-10.0, 4.0)
             rotation_raw = torch.nan_to_num(rotation_raw, nan=0.0, posinf=0.0, neginf=0.0)
 
             opacity = self.opacity_activation(opacity_pre)
+            confidence = torch.sigmoid(confidence_pre)
             scaling = self.scaling_activation(scaling_pre)
             if bool(mcfg.isotropic):
                 scaling = scaling.expand(*scaling.shape[:-1], 3)
+            scale_max = max(float(getattr(mcfg, "scale_max", 0.3)), 1e-5)
+            scaling = scaling.clamp(max=scale_max)
             rotation = self.rotation_activation(rotation_raw, dim=-1, eps=1e-6)
         else:
             opacity = opacity_logits
+            confidence = confidence_logits
             scaling = scaling_raw
             if bool(self.cfg.model.isotropic):
                 scaling = scaling.expand(*scaling.shape[:-1], 3)
             rotation = rotation_raw
 
         # ------------------------------------------------------------------
-        # Camera -> world transform
+        # Optional source-camera voxel fusion, then camera -> world transform.
         # ------------------------------------------------------------------
-        rot_c2w = source_cameras_view_to_world[:, None, None, :3, :3]     # (B,1,1,3,3)
-        trans_c2w = source_cameras_view_to_world[:, None, None, :3, 3]    # (B,1,1,3)
+        n_total = h * w * self.cfg.model.num_gaussians_per_pixel
+        gaussian_camera = {
+            "xyz_camera": xyz_camera.view(b, n_total, 3).contiguous(),
+            "depth_camera": depth_cont.view(b, n_total, 1).contiguous(),
+            "offset_camera": offset_cont.view(b, n_total, 3).contiguous(),
+            "rotation_camera": rotation.view(b, n_total, 4).contiguous(),
+            "opacity": opacity.view(b, n_total, 1).contiguous(),
+            "scaling": scaling.view(b, n_total, 3).contiguous(),
+            "features_dc": features_dc.view(b, n_total, 1, 3).contiguous(),
+            "features_rest": features_rest.view(b, n_total, features_rest.shape[-2], 3).contiguous(),
+            "confidence_logits": confidence_logits.view(b, n_total, 1).contiguous(),
+            "confidence": confidence.view(b, n_total, 1).contiguous(),
+            "valid_mask": torch.ones(b, n_total, device=splatter.device, dtype=torch.bool),
+        }
+
+        if bool(getattr(self.cfg.model, "voxelize", False)):
+            gaussian_camera = self._voxelize_camera_gaussians(gaussian_camera)
+
+        xyz_camera_flat = gaussian_camera["xyz_camera"]
+        rotation_camera = gaussian_camera["rotation_camera"]
+        rot_c2w = source_cameras_view_to_world[:, None, :3, :3]     # (B,1,3,3)
+        trans_c2w = source_cameras_view_to_world[:, None, :3, 3]    # (B,1,3)
 
         xyz_world = torch.matmul(
-            xyz_camera.unsqueeze(-2),
+            xyz_camera_flat.unsqueeze(-2),
             rot_c2w.transpose(-1, -2),
         ).squeeze(-2) + trans_c2w
         xyz_world = torch.nan_to_num(xyz_world, nan=0.0, posinf=0.0, neginf=0.0)
 
         # Rotate Gaussian orientation into world frame
-        q_world = source_cv2wT_quat[:, None, None, :].expand_as(rotation)
-        rotation_world = quaternion_raw_multiply(q_world, rotation)
+        q_world = source_cv2wT_quat[:, None, :].expand_as(rotation_camera)
+        rotation_world = quaternion_raw_multiply(q_world, rotation_camera)
 
         # Rotate SH coefficients into world frame if present
-        if features_rest.shape[-2] > 0:
-            features_rest_flat = features_rest.view(b, h * w * self.cfg.model.num_gaussians_per_pixel, features_rest.shape[-2], 3)
+        features_rest_flat = gaussian_camera["features_rest"]
+        if features_rest_flat.shape[-2] > 0:
             features_rest_flat = transform_SHs(
                 shs=features_rest_flat,
                 sh_to_v_transform=self.sh_to_v_transform.to(features_rest_flat.device),
                 v_to_sh_transform=self.v_to_sh_transform.to(features_rest_flat.device),
                 source_cameras_to_world=source_cameras_view_to_world,
             )
-        else:
-            features_rest_flat = features_rest.view(b, h * w * self.cfg.model.num_gaussians_per_pixel, 0, 3)
 
-        # Flatten to renderer format
-        n_total = h * w * self.cfg.model.num_gaussians_per_pixel
         return {
-            "xyz": xyz_world.view(b, n_total, 3).contiguous(),
-            "xyz_camera": xyz_camera.view(b, n_total, 3).contiguous(),  # useful for debugging
-            "depth_camera": depth_cont.view(b, n_total, 1).contiguous(),
-            "offset_camera": offset_cont.view(b, n_total, 3).contiguous(),
-            "rotation": rotation_world.view(b, n_total, 4).contiguous(),
-            "opacity": opacity.view(b, n_total, 1).contiguous(),
-            "scaling": scaling.view(b, n_total, 3).contiguous(),
-            "features_dc": features_dc.view(b, n_total, 1, 3).contiguous(),
+            "xyz": xyz_world.contiguous(),
+            "xyz_camera": xyz_camera_flat.contiguous(),
+            "depth_camera": gaussian_camera["depth_camera"].contiguous(),
+            "offset_camera": gaussian_camera["offset_camera"].contiguous(),
+            "rotation": rotation_world.contiguous(),
+            "opacity": gaussian_camera["opacity"].contiguous(),
+            "scaling": gaussian_camera["scaling"].contiguous(),
+            "features_dc": gaussian_camera["features_dc"].contiguous(),
             "features_rest": features_rest_flat.contiguous(),
+            "confidence": gaussian_camera["confidence"].contiguous(),
+            "confidence_logits": gaussian_camera["confidence_logits"].contiguous(),
+            "valid_mask": gaussian_camera["valid_mask"].contiguous(),
+            **({"voxel_count": gaussian_camera["voxel_count"].contiguous()} if "voxel_count" in gaussian_camera else {}),
         }
 
 
@@ -535,7 +669,8 @@ def render_predicted(
     quats = pc["rotation"]                           # (B, N, 4)
     opacities = pc["opacity"].squeeze(-1)            # (B, N)
     means = torch.nan_to_num(means, nan=0.0, posinf=0.0, neginf=0.0).clamp(-1e3, 1e3)
-    scales = torch.nan_to_num(scales, nan=1e-4, posinf=1e2, neginf=1e-4).clamp(1e-5, 1e2)
+    scale_max = max(float(getattr(cfg.model, "scale_max", 0.3)), 1e-5)
+    scales = torch.nan_to_num(scales, nan=1e-4, posinf=scale_max, neginf=1e-4).clamp(1e-5, scale_max)
     quats = F.normalize(torch.nan_to_num(quats, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
     opacities = torch.nan_to_num(opacities, nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
 
@@ -606,9 +741,12 @@ def render_predicted(
     )
 
     # ------------------------------------------------------------------
-    # 5) Convert render to channel-first. RGB+D modes append one depth channel.
+    # 5) Convert render to channel-first. Depth-only modes return no image.
     # ------------------------------------------------------------------
-    if render_colors.shape[-1] > 3:
+    if render_mode in {"D", "ED", "d", "Ed"}:
+        rendered_image = None
+        rendered_depth = render_colors.permute(0, 1, 4, 2, 3).contiguous()
+    elif render_colors.shape[-1] > 3:
         rendered_image = render_colors[..., :3].permute(0, 1, 4, 2, 3).contiguous()
         rendered_depth = render_colors[..., 3:4].permute(0, 1, 4, 2, 3).contiguous()
     else:

@@ -89,15 +89,18 @@ splatter:
     max_sh_degree: 0
     isotropic: false
     depth_scale: 0.1
-    depth_bias: -0.35
-    xyz_scale: 0.02
+    depth_bias: -0.7
+    xyz_scale: 0.1
     xyz_bias: 0.0
     opacity_scale: 0.1
-    opacity_bias: -2.0
+    opacity_bias: -1.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 2
+    scale_max: 0.3
+    num_gaussians_per_pixel: 4
     depth_parameterization: absolute
+    voxelize: true
+    voxel_size: 0.01
 
 # -----------------------------------------------------------------------------
 # Training
@@ -122,14 +125,10 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 0.1
+  frustum_weight: 1.0
   erank_weight: 1.0e-2
   thin_weight: 0.0
-  depth_weight: 1.0e-1
-  depth_local_weight: 0.1
-  depth_global_weight: 1.0
-  depth_patch_size: 16
-  depth_error_tolerance: 0.2
+  depth_weight: 1.0
 
   temperature: 0.1
 

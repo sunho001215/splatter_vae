@@ -150,6 +150,14 @@ def init_wandb(cfg: dict) -> None:
 
 
 def find_resume_checkpoint(cfg_train: TrainConfig) -> Optional[str]:
+    explicit_ckpt = getattr(cfg_train, "resume_from_checkpoint", None)
+    if explicit_ckpt:
+        explicit_ckpt = os.path.expanduser(str(explicit_ckpt))
+        if not os.path.isfile(explicit_ckpt):
+            raise FileNotFoundError(f"Configured resume_from_checkpoint does not exist: {explicit_ckpt}")
+        print(f"[Resume] Using configured checkpoint: {explicit_ckpt}")
+        return explicit_ckpt
+
     if not cfg_train.resume_from_last or not os.path.isdir(cfg_train.ckpt_dir):
         return None
 

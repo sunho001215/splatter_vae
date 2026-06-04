@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/with-depth/button-press-wall.hdf5"
+    - "../../data/metaworld/with-depth/drawer-open.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -89,15 +89,18 @@ splatter:
     max_sh_degree: 0
     isotropic: false
     depth_scale: 0.1
-    depth_bias: -0.35
-    xyz_scale: 0.02
+    depth_bias: -0.7
+    xyz_scale: 0.1
     xyz_bias: 0.0
     opacity_scale: 0.1
-    opacity_bias: -2.0
+    opacity_bias: -1.0
     scale_scale: 0.02
     scale_bias: -4.0
-    num_gaussians_per_pixel: 2
+    scale_max: 0.3
+    num_gaussians_per_pixel: 4
     depth_parameterization: absolute
+    voxelize: true
+    voxel_size: 0.01
 
 # -----------------------------------------------------------------------------
 # Training
@@ -118,24 +121,20 @@ train:
   shuffle_dep_rec_weight: 1.0
   shuffle_both_rec_weight: 1.0
   vq_weight: 0.25
-  inv_contrastive_weight: 1.0
+  inv_contrastive_weight: 0.0
   inv_consistency_weight: 0.5
-  dep_contrastive_weight: 0.1
+  dep_contrastive_weight: 0.0
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0e-2
+  frustum_weight: 1.0
   erank_weight: 1.0e-2
   thin_weight: 0.0
-  depth_weight: 1.0e-1
-  depth_local_weight: 0.1
-  depth_global_weight: 1.0
-  depth_patch_size: 16
-  depth_error_tolerance: 0.2
+  depth_weight: 1.0
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/button-press-wall/full-implementation/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/drawer-open/component-ablation/nocon/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -145,7 +144,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-button-press-wall-full-implementation
+  run_name: metaworld-drawer-open-nocon
   tags:
     - dep-masking-0.75
     - all-camera-rendering
@@ -163,3 +162,5 @@ wandb:
     - max_sh_degree-0
     - VQ-codebook
     - consistency-loss
+    - component-ablation
+    - without-contrastive-loss

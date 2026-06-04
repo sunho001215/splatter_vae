@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/with-depth/door-open.hdf5"
+    - "../../data/metaworld/with-depth/hammer.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -12,7 +12,7 @@ dataset:
   num_episodes: null
   max_frames_per_demo: null
   camera_num: 24
-  use_depth: true
+  use_depth: false
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
@@ -128,13 +128,13 @@ train:
   frustum_weight: 1.0
   erank_weight: 1.0e-2
   thin_weight: 0.0
-  depth_weight: 1.0
+  depth_weight: 0.0
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/door-open/full-implementation/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/hammer/component-ablation/nodepth/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -144,7 +144,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-door-open-full-implementation
+  run_name: metaworld-hammer-nodepth
   tags:
     - dep-masking-0.75
     - all-camera-rendering
@@ -162,3 +162,5 @@ wandb:
     - max_sh_degree-0
     - VQ-codebook
     - consistency-loss
+    - component-ablation
+    - without-depth-loss

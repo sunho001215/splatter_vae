@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/with-depth/door-open.hdf5"
+    - "../../data/metaworld/with-depth/hammer.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -117,9 +117,9 @@ train:
   # Original no-dynamics loss weights.
   rec_weight: 1.0
   ssim_weight: 0.0
-  shuffle_inv_rec_weight: 1.0
-  shuffle_dep_rec_weight: 1.0
-  shuffle_both_rec_weight: 1.0
+  shuffle_inv_rec_weight: 0.0
+  shuffle_dep_rec_weight: 0.0
+  shuffle_both_rec_weight: 0.0
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
@@ -134,7 +134,7 @@ train:
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/door-open/full-implementation/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/hammer/component-ablation/noshuf/
   resume_from_last: false
 
 # -----------------------------------------------------------------------------
@@ -144,7 +144,7 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-door-open-full-implementation
+  run_name: metaworld-hammer-noshuf
   tags:
     - dep-masking-0.75
     - all-camera-rendering
@@ -162,3 +162,5 @@ wandb:
     - max_sh_degree-0
     - VQ-codebook
     - consistency-loss
+    - component-ablation
+    - without-shuffling-loss

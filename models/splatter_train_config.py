@@ -33,10 +33,6 @@ class TrainConfig:
     erank_weight: float = 0.0
     thin_weight: float = 0.0
     depth_weight: float = 0.0
-    depth_local_weight: float = 0.1
-    depth_global_weight: float = 1.0
-    depth_patch_size: int = 16
-    depth_error_tolerance: float = 0.2
 
     temperature: float = 0.1
 
@@ -44,6 +40,7 @@ class TrainConfig:
     save_every: int = 5000
     ckpt_dir: str = "./checkpoints"
     resume_from_last: bool = False
+    resume_from_checkpoint: Optional[str] = None
 
     val_num_batches: int = 2
     val_max_vis: int = 8
