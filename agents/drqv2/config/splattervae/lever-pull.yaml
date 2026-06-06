@@ -1,11 +1,11 @@
-seed: 66
+seed: 42
 device: cuda
 
 wandb:
   enabled: true
   project: metaworld-lever-pull-DrQv2
-  name: SplatterVAE-with-consistency-loss
-  tags: [with-consistency-loss, embed-dim-128, codebook-embed-dim-64]
+  name: SplatterVAE-full-implementation-pre-vq
+  tags: [full-implementation, embed-dim-128, codebook-embed-dim-64]
 
 env:
   benchmark_id: Meta-World/MT1
@@ -77,22 +77,20 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/lever-pull/with-consistency-loss/step_00300000.pth
-    feature_source: codebook
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/lever-pull/full-implementation/step_00300000.pth
+    feature_source: pre_vq
     max_sh_degree: 0
-    num_gaussians_per_pixel: 1
+    num_gaussians_per_pixel: 4
 
     codebook:
       invariant:
-        quantizer: vq
-        embed_dim: 64
-        n_embed: 512
-        beta: 0.25
+        quantizer: fsq
+        embed_dim: 6
+        fsq_levels: [8, 8, 8, 5, 5, 5]
       dependent:
-        quantizer: vq
-        embed_dim: 64
-        n_embed: 64
-        beta: 0.25
+        quantizer: fsq
+        embed_dim: 6
+        fsq_levels: [8, 8, 8, 5, 5, 5]
 
     model:
       fusion_style: plus
@@ -141,7 +139,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/lever-pull/splattervae_with-consistency-loss/seed66/
+  replay_dir: ./buffer/metaworld/lever-pull/splattervae_full-implementation_pre-vq/seed42/
   replay_num_workers: 4
   nstep: 3
 
@@ -151,7 +149,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_with-consistency-loss/lever-pull/seed66/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_full-implementation_pre-vq/lever-pull/seed42/
 
 visualization:
   enabled: false

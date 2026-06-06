@@ -56,7 +56,8 @@ def _default_splatter_channels(
     depth_channels = max(k - 1, 0) if str(depth_parameterization).lower() == "depth_prior" else k
     sh_rest = 0 if int(max_sh_degree) == 0 else 3 * (((int(max_sh_degree) + 1) ** 2) - 1)
     scaling_channels = 1 if bool(isotropic) else 3
-    return int(depth_channels + k * (3 + 1 + scaling_channels + 4 + 3 + sh_rest))
+    # Keep this in sync with VAESplatterToGaussians.get_split_dimensions().
+    return int(depth_channels + k * (3 + 1 + 1 + scaling_channels + 4 + 3 + sh_rest))
 
 
 class ConvNet(nn.Module):
@@ -186,6 +187,14 @@ class ReViWoInvariantEncoder(nn.Module):
 
         rv_cfg = dict(cfg["vision"]["reviwo"])
         img_size = int(cfg["vision"]["img_height"])
+        state = torch.load(str(rv_cfg["checkpoint_path"]), map_location="cpu")
+        state_dict = _select_checkpoint_subdict(state, ("model_state_dict", "state_dict"))
+        view_proj = state_dict.get("view_encoder_output_proj.weight")
+        latent_proj = state_dict.get("latent_encoder_output_proj.weight")
+        if view_proj is not None:
+            rv_cfg.setdefault("view_codebook", {})["embed_dim"] = int(view_proj.shape[0])
+        if latent_proj is not None:
+            rv_cfg.setdefault("latent_codebook", {})["embed_dim"] = int(latent_proj.shape[0])
         self.model = MultiViewBetaVAE(
             view_encoder_config=STTransConfig(**dict(rv_cfg["view_encoder"])),
             latent_encoder_config=STTransConfig(**dict(rv_cfg["latent_encoder"])),
@@ -200,8 +209,6 @@ class ReViWoInvariantEncoder(nn.Module):
             use_view_vq=bool(rv_cfg.get("use_view_vq", True)),
             is_view_ae=bool(rv_cfg.get("is_view_ae", False)),
         )
-        state = torch.load(str(rv_cfg["checkpoint_path"]), map_location="cpu")
-        state_dict = _select_checkpoint_subdict(state, ("model_state_dict", "state_dict"))
         self.model.load_state_dict(state_dict, strict=True)
         self.model.eval()
         for p in self.model.parameters():

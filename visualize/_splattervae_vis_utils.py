@@ -10,6 +10,14 @@ import torch
 import yaml
 
 from models.vae import CodebookConfig, SplatterVAE
+from visualize.splattervae_common import (
+    adapt_config_to_checkpoint,
+    build_splatter_config as build_current_splatter_config,
+    build_splattervae as build_current_splattervae,
+    build_visualization_models,
+    load_vae_state_dict,
+    splatter_channels_from_config,
+)
 
 
 def image_to_tensor(img_rgb: np.ndarray) -> torch.Tensor:
@@ -142,51 +150,11 @@ def build_splatter_vae(
     ckpt_path: str | Path,
     device: torch.device,
 ) -> SplatterVAE:
-    model_cfg = dict(cfg.get("model", {}))
-    vit_cfg = dict(cfg.get("vit", {}))
-    if not vit_cfg:
-        vit_cfg = dict(cfg.get("swin", {}))
-    if not vit_cfg:
-        raise KeyError("Config must contain a `vit` section for the current SplatterVAE.")
-
-    vit_cfg = _normalize_vit_cfg(vit_cfg, model_cfg, img_height=img_height, img_width=img_width)
-
-    cb_cfg = dict(cfg.get("codebook", {}))
-    inv_cb_cfg = CodebookConfig(**cb_cfg.get("invariant", {}))
-    dep_cb_cfg = CodebookConfig(**cb_cfg.get("dependent", {}))
-
-    splatter_cfg = dict(cfg.get("splatter", {}))
-    splatter_model_cfg = dict(splatter_cfg.get("model", {}))
-    splatter_channels = int(
-        splatter_cfg.get(
-            "splatter_channels",
-            _default_splatter_channels(
-                max_sh_degree=int(splatter_model_cfg.get("max_sh_degree", 1)),
-                num_gaussians_per_pixel=int(splatter_model_cfg.get("num_gaussians_per_pixel", 5)),
-            ),
-        )
-    )
-
-    vae = SplatterVAE(
-        vit_cfg=vit_cfg,
-        invariant_cb_config=inv_cb_cfg,
-        dependent_cb_config=dep_cb_cfg,
-        img_height=int(img_height),
-        img_width=int(img_width),
-        splatter_channels=splatter_channels,
-        fusion_style=str(model_cfg.get("fusion_style", "cat")),
-        use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-        is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
-        use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-        is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
-        dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.95)),
-        dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
-        dpt_features=int(vit_cfg.get("dpt_features", 256)),
-    )
-
-    state = torch.load(ckpt_path, map_location="cpu")
-    state_dict = _select_checkpoint_subdict(state if isinstance(state, dict) else {"state_dict": state})
-    vae.load_state_dict(state_dict, strict=True)
+    cfg = adapt_config_to_checkpoint(cfg, str(ckpt_path))
+    spl_cfg = build_current_splatter_config(cfg, img_height, img_width)
+    splatter_channels = splatter_channels_from_config(cfg, spl_cfg)
+    vae = build_current_splattervae(cfg, img_height, img_width, splatter_channels)
+    load_vae_state_dict(vae, str(ckpt_path))
     vae.to(device).eval()
     return vae
 
@@ -216,23 +184,12 @@ def build_render_models_for_demo(
     ckpt_path: str | Path,
     device: torch.device,
 ):
-    from models.splatter import SplatterConfig, SplatterDataConfig, SplatterModelConfig, VAESplatterToGaussians
-
     img_height, img_width = infer_demo_image_size(dataset_path, demo_key)
-    spl_data_cfg_dict = dict(cfg.get("splatter", {}).get("data", {}))
-    spl_data_cfg_dict["img_height"] = int(img_height)
-    spl_data_cfg_dict["img_width"] = int(img_width)
-
-    spl_cfg = SplatterConfig(
-        data=SplatterDataConfig(**spl_data_cfg_dict),
-        model=SplatterModelConfig(**dict(cfg.get("splatter", {}).get("model", {}))),
-    )
-    converter = VAESplatterToGaussians(spl_cfg).to(device).eval()
-    vae = build_splatter_vae(
+    vae, converter, spl_cfg = build_visualization_models(
         cfg,
-        img_height=img_height,
-        img_width=img_width,
-        ckpt_path=ckpt_path,
-        device=device,
+        str(dataset_path),
+        demo_key,
+        str(ckpt_path),
+        device,
     )
     return vae, converter, spl_cfg, (img_height, img_width)

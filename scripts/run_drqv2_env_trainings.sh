@@ -8,10 +8,10 @@ CUDA_VISIBLE_DEVICES_LIST=(
   "GPU-b8ec1539-9673-d4f5-626c-fd5aa106c2d1"
   "GPU-32e2e165-4a57-b98e-d0a3-d3844b155190"
   "GPU-fd4be9bb-3d79-dfce-aaa6-9d9a62ffaa46"
-  "GPU-dca08ecc-2a77-cb21-36d9-16cffe61ebb2"
-  "GPU-c96e4904-1711-600f-5a1e-063fc3a67b1a"
-  "GPU-739a6276-3558-fd02-66f0-7acfad38098f"
-  "GPU-c952875c-7f47-e1ce-4d66-a380d7c014f1"
+  # "GPU-dca08ecc-2a77-cb21-36d9-16cffe61ebb2"
+  # "GPU-c96e4904-1711-600f-5a1e-063fc3a67b1a"
+  # "GPU-739a6276-3558-fd02-66f0-7acfad38098f"
+  # "GPU-c952875c-7f47-e1ce-4d66-a380d7c014f1"
 )
 
 # Available config families: cnn, splattervae, reviwo, sincro.
@@ -24,11 +24,11 @@ ENVS=(
   "drawer-open"
   "faucet-close"
   "hammer"
-  "handle-pull"
+  # "handle-pull"
   "lever-pull"
-  "peg-unplug-side"
-  "push-wall"
-  "sweep-into"
+  # "peg-unplug-side"
+  # "push-wall"
+  # "sweep-into"
   "window-open"
 )
 

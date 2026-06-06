@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import h5py
+import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -157,6 +158,54 @@ def sanitize_filename(value: str) -> str:
         else:
             safe.append("_")
     return "".join(safe)
+
+
+def depth_stats(depth: np.ndarray) -> Dict[str, float]:
+    valid = np.isfinite(depth) & (depth > 0)
+    if not bool(valid.any()):
+        return {"min": 0.0, "max": 0.0, "mean": 0.0, "valid_fraction": 0.0}
+    values = depth[valid].astype(np.float32)
+    return {
+        "min": float(values.min()),
+        "max": float(values.max()),
+        "mean": float(values.mean()),
+        "valid_fraction": float(valid.mean()),
+    }
+
+
+def write_depth_outputs(
+    stem_path: Path,
+    depth: np.ndarray,
+    znear: float,
+    zfar: float,
+    label: str,
+) -> Dict[str, object]:
+    depth = np.asarray(depth, dtype=np.float32)
+    npy_path = stem_path.with_name(f"{stem_path.name}_{label}_depth.npy")
+    png16_path = stem_path.with_name(f"{stem_path.name}_{label}_depth_mm.png")
+    preview_path = stem_path.with_name(f"{stem_path.name}_{label}_depth_preview.png")
+    np.save(npy_path, depth)
+
+    finite = np.isfinite(depth) & (depth > 0)
+    depth_mm = np.zeros_like(depth, dtype=np.uint16)
+    depth_mm[finite] = np.clip(depth[finite] * 1000.0, 0.0, np.iinfo(np.uint16).max).astype(np.uint16)
+    cv2.imwrite(str(png16_path), depth_mm)
+
+    znear = float(znear)
+    zfar = max(float(zfar), znear + 1e-6)
+    clipped = np.clip(np.nan_to_num(depth, nan=znear, posinf=zfar, neginf=znear), znear, zfar)
+    preview = ((clipped - znear) / (zfar - znear) * 255.0).astype(np.uint8)
+    preview[~finite] = 0
+    preview_color = cv2.applyColorMap(preview, cv2.COLORMAP_TURBO)
+    preview_color[~finite] = 0
+    cv2.imwrite(str(preview_path), preview_color)
+
+    return {
+        "raw_npy": str(npy_path),
+        "depth_mm_png": str(png16_path),
+        "preview_png": str(preview_path),
+        "stats": depth_stats(depth),
+    }
 
 
 SH_C0 = 0.28209479177387814
@@ -308,6 +357,8 @@ def write_metadata(
     store_mode: str,
     source_k: np.ndarray,
     source_c2w: np.ndarray,
+    source_depth_export: Dict[str, object] | None = None,
+    rendered_depth_export: Dict[str, object] | None = None,
 ) -> None:
     metadata = {
         "dataset": args.dataset,
@@ -325,6 +376,8 @@ def write_metadata(
         "coordinate_frame": "world, OpenCV camera convention converted from dataset extrinsics_world_T_cam",
         "source_intrinsics": source_k.tolist(),
         "source_camera_to_world": source_c2w.tolist(),
+        "source_depth_export": source_depth_export,
+        "rendered_depth_export": rendered_depth_export,
         "fields": "GraphDeco/3DGS-style x,y,z,nx,ny,nz,f_dc_*,f_rest_*,opacity,scale_*,rot_*",
     }
     with open(path, "w") as f:
@@ -408,6 +461,19 @@ def main() -> None:
         for cam in cameras:
             for timestep in timesteps:
                 image_u8 = np.asarray(obs[f"{cam}_rgb"][timestep], dtype=np.uint8)
+                source_depth_export = None
+                rendered_depth_export = None
+                depth_key = f"{cam}_depth"
+                if depth_key in obs:
+                    source_depth = np.asarray(obs[depth_key][timestep], dtype=np.float32)
+                    depth_stem = out_dir / f"{sanitize_filename(demo_key)}_{sanitize_filename(cam)}_t{int(timestep):06d}"
+                    source_depth_export = write_depth_outputs(
+                        depth_stem,
+                        source_depth,
+                        znear=float(spl_cfg.data.znear),
+                        zfar=float(spl_cfg.data.zfar),
+                        label="source",
+                    )
                 pc = generate_gaussians_for_source(
                     vae=vae,
                     converter=converter,
@@ -417,7 +483,8 @@ def main() -> None:
                     device=device,
                 )
                 visibility_mask = None
-                if args.visibility_filter == "source":
+                render_out = None
+                if device.type == "cuda":
                     source_w2c = torch.from_numpy(mats[cam]["w2c"]).view(1, 1, 4, 4).to(device=device, dtype=torch.float32)
                     source_k = torch.from_numpy(mats[cam]["K"]).view(1, 1, 3, 3).to(device=device, dtype=torch.float32)
                     render_out = render_predicted(
@@ -426,7 +493,21 @@ def main() -> None:
                         intrinsics=source_k,
                         bg_color=bg,
                         cfg=spl_cfg,
+                        render_mode="D",
                     )
+                    rendered_depth = render_out.get("depth", None)
+                    if rendered_depth is not None:
+                        rendered_depth_np = rendered_depth[0, 0, 0].detach().cpu().float().numpy()
+                        depth_stem = out_dir / f"{sanitize_filename(demo_key)}_{sanitize_filename(cam)}_t{int(timestep):06d}"
+                        rendered_depth_export = write_depth_outputs(
+                            depth_stem,
+                            rendered_depth_np,
+                            znear=float(spl_cfg.data.znear),
+                            zfar=float(spl_cfg.data.zfar),
+                            label="rendered",
+                        )
+
+                if args.visibility_filter == "source" and render_out is not None:
                     radii = render_out.get("radii", None)
                     if radii is not None:
                         radii = radii.detach()
@@ -461,8 +542,17 @@ def main() -> None:
                     store_mode=args.store_mode,
                     source_k=mats[cam]["K"],
                     source_c2w=mats[cam]["c2w"],
+                    source_depth_export=source_depth_export,
+                    rendered_depth_export=rendered_depth_export,
                 )
-                exported.append(str(ply_path))
+                exported.append(
+                    {
+                        "ply": str(ply_path),
+                        "metadata": str(meta_path),
+                        "source_depth": source_depth_export,
+                        "rendered_depth": rendered_depth_export,
+                    }
+                )
                 print(f"Saved {ply_path} ({num_gaussians} Gaussians)")
 
     manifest = {

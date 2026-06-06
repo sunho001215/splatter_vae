@@ -459,8 +459,8 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument(
         "--camera_groups",
-        default=None,
-        help="Semicolon-separated camera groups for color hues, e.g. 'cam0,cam2,cam4;cam1,cam3,cam5'.",
+        default="cam0,cam2,cam4;cam1,cam3,cam5",
+        help="Semicolon-separated camera groups for color hues.",
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
