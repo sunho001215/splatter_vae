@@ -46,6 +46,15 @@ def parse_methods(value: str) -> list[str]:
     return [item.strip().lower() for item in value.split(",") if item.strip()]
 
 
+def parse_vec3(value: str | None) -> np.ndarray | None:
+    if value is None or not str(value).strip():
+        return None
+    parts = [float(item.strip()) for item in str(value).split(",") if item.strip()]
+    if len(parts) != 3:
+        raise ValueError(f"Expected a comma-separated 3D vector, got {value!r}.")
+    return np.asarray(parts, dtype=np.float64)
+
+
 def load_sincro_sequence(demo: h5py.Group, cam: str, timestep: int, length: int, use_history: bool) -> np.ndarray:
     if not use_history:
         return read_rgb(demo, cam, timestep)
@@ -71,6 +80,8 @@ def run_one_trajectory(args, traj_name: str, cfg: dict, source: np.ndarray, stat
     h = int(cfg["env"].get("image_height", source.shape[0]))
     w = int(cfg["env"].get("image_width", source.shape[1]))
     lookat, _up = lookat_up_from_drq(cfg)
+    orbit_center = parse_vec3(args.orbit_center)
+    render_lookat = orbit_center if traj_name == "orbit" and orbit_center is not None else lookat
     poses = trajectory_poses(
         cfg,
         base_camera=args.base_camera,
@@ -79,6 +90,8 @@ def run_one_trajectory(args, traj_name: str, cfg: dict, source: np.ndarray, stat
         lateral_amplitude=float(args.lateral_amplitude),
         circular_azimuth_deg=float(args.circular_azimuth_deg),
         circular_elevation_deg=float(args.circular_elevation_deg),
+        orbit_center=orbit_center,
+        orbit_degrees=float(args.orbit_degrees),
     )
 
     gt_frames = None
@@ -90,7 +103,7 @@ def run_one_trajectory(args, traj_name: str, cfg: dict, source: np.ndarray, stat
         set_env_state_from_flat(env, state)
         model, data = unwrap_mujoco(env)
         renderer = mujoco.Renderer(model, height=h, width=w)
-        gt_frames = [render_pose_with_renderer(renderer, data, pose, lookat) for pose in poses]
+        gt_frames = [render_pose_with_renderer(renderer, data, pose, render_lookat) for pose in poses]
 
     splatter = None
     splatter_pc = None
@@ -147,7 +160,7 @@ def main() -> None:
     parser.add_argument("--timestep", type=int, default=0)
     parser.add_argument("--source_cam", default="cam0")
     parser.add_argument("--base_camera", default="cam1", help="Training camera to perturb for the rendering viewpoint.")
-    parser.add_argument("--trajectory", choices=["lateral", "circular", "both"], default="both")
+    parser.add_argument("--trajectory", choices=["lateral", "circular", "orbit", "both"], default="both")
     parser.add_argument("--methods", default="splattervae,sincro")
     parser.add_argument("--splatter_config", default="config/metaworld/button-press-wall.yaml")
     parser.add_argument("--splatter_ckpt", default=None)
@@ -159,6 +172,8 @@ def main() -> None:
     parser.add_argument("--lateral_amplitude", type=float, default=0.12)
     parser.add_argument("--circular_azimuth_deg", type=float, default=10.0)
     parser.add_argument("--circular_elevation_deg", type=float, default=6.0)
+    parser.add_argument("--orbit_center", default=None, help="Comma-separated center for full-orbit rendering, e.g. 0,0.6,0.")
+    parser.add_argument("--orbit_degrees", type=float, default=360.0, help="Azimuth sweep for --trajectory orbit.")
     parser.add_argument("--include_gt", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--out_dir", default="outputs/render_quality_videos")
     parser.add_argument("--seed", type=int, default=0)

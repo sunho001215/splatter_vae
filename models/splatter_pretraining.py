@@ -331,6 +331,23 @@ def _sanitize_metric_depth(depth: torch.Tensor, splatter_cfg: SplatterConfig) ->
     return torch.nan_to_num(depth, nan=fill, posinf=zfar, neginf=znear).clamp(min=znear, max=zfar)
 
 
+def _zero_depth_stats(device: torch.device) -> Dict[str, torch.Tensor]:
+    zero = torch.zeros((), device=device)
+    return {
+        "depth_loss": zero,
+        "depth_l1_loss": zero,
+        "depth_hard_loss": zero,
+        "depth_hard_local_loss": zero,
+        "depth_hard_global_loss": zero,
+        "depth_soft_loss": zero,
+        "depth_soft_local_loss": zero,
+        "depth_soft_global_loss": zero,
+        "rendered_depth_mean": zero,
+        "target_depth_mean": zero,
+        "depth_valid_ratio": zero,
+    }
+
+
 def _rendered_depth_l1_loss(
     rendered_depth: Optional[torch.Tensor],
     target_depth: Optional[torch.Tensor],
@@ -344,14 +361,7 @@ def _rendered_depth_l1_loss(
             device = target_depth.device
         else:
             device = torch.device("cpu")
-        zero = torch.zeros((), device=device)
-        return {
-            "depth_loss": zero,
-            "depth_l1_loss": zero,
-            "rendered_depth_mean": zero,
-            "target_depth_mean": zero,
-            "depth_valid_ratio": zero,
-        }
+        return _zero_depth_stats(device)
     if rendered_depth.shape != target_depth.shape:
         raise ValueError(
             f"Expected rendered/target depth shapes to match, got "
@@ -375,13 +385,238 @@ def _rendered_depth_l1_loss(
         rendered_mean = pred.new_zeros(())
         target_mean = pred.new_zeros(())
 
-    return {
-        "depth_loss": l1_loss,
-        "depth_l1_loss": l1_loss,
-        "rendered_depth_mean": rendered_mean,
-        "target_depth_mean": target_mean,
-        "depth_valid_ratio": valid.float().mean(),
+    stats = _zero_depth_stats(pred.device)
+    stats.update(
+        {
+            "depth_loss": l1_loss,
+            "depth_l1_loss": l1_loss,
+            "rendered_depth_mean": rendered_mean,
+            "target_depth_mean": target_mean,
+            "depth_valid_ratio": valid.float().mean(),
+        }
+    )
+    return stats
+
+
+def _normalize_depth_regularization_mode(cfg_train: TrainConfig) -> str:
+    mode = str(getattr(cfg_train, "depth_regularization", "l1") or "l1").strip().lower().replace("-", "_")
+    aliases = {
+        "simple": "l1",
+        "metric_l1": "l1",
+        "anysplat": "l1",
+        "l1": "l1",
+        "dn_gaussian": "dngaussian",
+        "dngaussian": "dngaussian",
+        "global_local": "dngaussian",
     }
+    if mode not in aliases:
+        raise ValueError(
+            f"Unknown depth_regularization={getattr(cfg_train, 'depth_regularization', None)!r}. "
+            "Use 'l1' or 'dngaussian'."
+        )
+    return aliases[mode]
+
+
+def _normalize_depth_render_mode(cfg_train: TrainConfig) -> str:
+    mode = str(getattr(cfg_train, "depth_render_mode", "D") or "D").strip().upper()
+    if mode not in {"D", "ED"}:
+        raise ValueError(f"depth_render_mode must be 'D' or 'ED', got {mode!r}.")
+    return mode
+
+
+def _depth_regularization_pc(
+    pc: Dict[str, torch.Tensor],
+    pass_type: str,
+    hard_opacity: float,
+) -> Dict[str, torch.Tensor]:
+    """Build the hard/soft DNGaussian depth-render parameter view."""
+    out: Dict[str, torch.Tensor] = {}
+    for name, value in pc.items():
+        if not torch.is_tensor(value):
+            out[name] = value
+        elif name in {"scaling", "rotation", "features_dc", "features_rest", "confidence", "confidence_logits"}:
+            out[name] = value.detach()
+        elif pass_type == "soft" and name == "xyz":
+            out[name] = value.detach()
+        elif pass_type == "hard" and name == "opacity":
+            out[name] = torch.full_like(value, float(hard_opacity))
+        else:
+            out[name] = value
+    return out
+
+
+def _render_dngaussian_depth_pass(
+    pc: Dict[str, torch.Tensor],
+    world_view_transform: torch.Tensor,
+    intrinsics: torch.Tensor,
+    bg: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+    cfg_train: TrainConfig,
+    pass_type: str,
+) -> Optional[torch.Tensor]:
+    depth_pc = _depth_regularization_pc(
+        pc=pc,
+        pass_type=pass_type,
+        hard_opacity=float(getattr(cfg_train, "depth_hard_opacity", 0.95)),
+    )
+    depth_out = render_predicted(
+        pc=depth_pc,
+        world_view_transform=world_view_transform,
+        intrinsics=intrinsics,
+        bg_color=bg,
+        cfg=splatter_cfg,
+        override_color=torch.ones_like(pc["xyz"]),
+        render_mode=_normalize_depth_render_mode(cfg_train),
+    )
+    return depth_out.get("depth")
+
+
+def _patchify_depth(depth: torch.Tensor, patch_size: int) -> torch.Tensor:
+    patches = F.unfold(depth, kernel_size=patch_size, stride=patch_size)
+    return patches.permute(0, 2, 1).reshape(-1, patch_size * patch_size)
+
+
+def _normalize_depth_patches(
+    patches: torch.Tensor,
+    std: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    patch_mean = patches.mean(dim=1, keepdim=True)
+    if std is None:
+        patch_std = patches.std(dim=1, keepdim=True, unbiased=False)
+    else:
+        patch_std = std.to(device=patches.device, dtype=patches.dtype).view(1, 1)
+    global_std = patches.reshape(-1).std(unbiased=False).clamp_min(1e-6)
+    return (patches - patch_mean) / (patch_std + 1e-2 * global_std)
+
+
+def _margin_l2_loss(pred: torch.Tensor, target: torch.Tensor, margin: float) -> torch.Tensor:
+    diff = pred - target
+    mask = diff.abs() > float(margin)
+    if not bool(mask.any()):
+        return diff.new_zeros(())
+    return diff[mask].pow(2).mean()
+
+
+def _prepare_depth_pair(
+    rendered_depth: torch.Tensor,
+    target_depth: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if rendered_depth.shape != target_depth.shape:
+        raise ValueError(
+            f"Expected rendered/target depth shapes to match, got "
+            f"{tuple(rendered_depth.shape)} and {tuple(target_depth.shape)}."
+        )
+    znear = float(splatter_cfg.data.znear)
+    zfar = float(splatter_cfg.data.zfar)
+    pred_raw = rendered_depth.to(dtype=torch.float32)
+    target_raw = target_depth.to(device=pred_raw.device, dtype=torch.float32)
+    valid = torch.isfinite(target_raw) & (target_raw >= znear) & (target_raw <= zfar)
+    pred = _sanitize_metric_depth(pred_raw, splatter_cfg)
+    target = _sanitize_metric_depth(target_raw, splatter_cfg)
+    pred = torch.where(valid, pred, target)
+    return pred, target, valid
+
+
+def _global_local_depth_normalized_loss(
+    rendered_depth: torch.Tensor,
+    target_depth: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+    cfg_train: TrainConfig,
+) -> Dict[str, torch.Tensor]:
+    pred, target, valid = _prepare_depth_pair(rendered_depth, target_depth, splatter_cfg)
+    flat_pred = pred.reshape(-1, 1, pred.shape[-2], pred.shape[-1])
+    flat_target = target.reshape(-1, 1, target.shape[-2], target.shape[-1])
+    height, width = flat_pred.shape[-2:]
+    patch_min = max(1, min(int(getattr(cfg_train, "depth_patch_min", 17)), height, width))
+    patch_max = max(patch_min, min(int(getattr(cfg_train, "depth_patch_max", 53)), height, width))
+    if patch_max > patch_min:
+        patch_size = int(torch.randint(patch_min, patch_max + 1, (1,), device=flat_pred.device).item())
+    else:
+        patch_size = patch_min
+
+    pred_patches = _patchify_depth(flat_pred, patch_size)
+    target_patches = _patchify_depth(flat_target, patch_size)
+    margin = float(getattr(cfg_train, "depth_error_tolerance", 0.2))
+
+    pred_local = _normalize_depth_patches(pred_patches)
+    target_local = _normalize_depth_patches(target_patches)
+    local_loss = _margin_l2_loss(pred_local, target_local, margin)
+
+    if bool(valid.any()):
+        global_loss = (pred[valid] - target[valid]).abs().mean()
+    else:
+        global_loss = pred.new_zeros(())
+
+    loss = (
+        float(getattr(cfg_train, "depth_global_weight", 1.0)) * global_loss
+        + float(getattr(cfg_train, "depth_local_weight", 0.1)) * local_loss
+    )
+    return {
+        "loss": loss,
+        "local_loss": local_loss,
+        "global_loss": global_loss,
+        "valid_ratio": valid.float().mean(),
+    }
+
+
+def _compute_dngaussian_depth_loss(
+    hard_depth: Optional[torch.Tensor],
+    soft_depth: Optional[torch.Tensor],
+    target_depth: Optional[torch.Tensor],
+    splatter_cfg: SplatterConfig,
+    cfg_train: TrainConfig,
+    global_step: Optional[int] = None,
+) -> Dict[str, torch.Tensor]:
+    if target_depth is None or hard_depth is None:
+        if hard_depth is not None:
+            device = hard_depth.device
+        elif soft_depth is not None:
+            device = soft_depth.device
+        elif target_depth is not None:
+            device = target_depth.device
+        else:
+            device = torch.device("cpu")
+        return _zero_depth_stats(device)
+
+    monitor = _rendered_depth_l1_loss(hard_depth, target_depth, splatter_cfg)
+    hard = _global_local_depth_normalized_loss(hard_depth, target_depth, splatter_cfg, cfg_train)
+    hard_loss = hard["loss"]
+
+    soft_loss = hard_loss.new_zeros(())
+    soft_local = hard_loss.new_zeros(())
+    soft_global = hard_loss.new_zeros(())
+    soft_start = int(getattr(cfg_train, "depth_soft_start_steps", 0))
+    use_soft = soft_depth is not None and float(getattr(cfg_train, "depth_soft_weight", 1.0)) != 0.0
+    if global_step is not None and int(global_step) < soft_start:
+        use_soft = False
+    threshold = getattr(cfg_train, "depth_soft_hard_loss_threshold", None)
+    if threshold is not None and float(hard_loss.detach().item()) >= float(threshold):
+        use_soft = False
+    if use_soft:
+        soft = _global_local_depth_normalized_loss(soft_depth, target_depth, splatter_cfg, cfg_train)
+        soft_loss = soft["loss"]
+        soft_local = soft["local_loss"]
+        soft_global = soft["global_loss"]
+
+    total = (
+        float(getattr(cfg_train, "depth_hard_weight", 1.0)) * hard_loss
+        + float(getattr(cfg_train, "depth_soft_weight", 1.0)) * soft_loss
+    )
+    stats = dict(monitor)
+    stats.update(
+        {
+            "depth_loss": total,
+            "depth_hard_loss": hard_loss,
+            "depth_hard_local_loss": hard["local_loss"],
+            "depth_hard_global_loss": hard["global_loss"],
+            "depth_soft_loss": soft_loss,
+            "depth_soft_local_loss": soft_local,
+            "depth_soft_global_loss": soft_global,
+            "depth_valid_ratio": hard["valid_ratio"],
+        }
+    )
+    return stats
 
 
 def _gather_camera_rows(values: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
@@ -441,6 +676,174 @@ def _masked_gaussian_mean(values: torch.Tensor, valid_mask: Optional[torch.Tenso
     return values.masked_select(mask).mean()
 
 
+def _zero_normal_stats(device: torch.device) -> Dict[str, torch.Tensor]:
+    zero = torch.zeros((), device=device)
+    return {
+        "normal_consistency_loss": zero,
+        "normal_valid_ratio": zero,
+    }
+
+
+def _quaternion_wxyz_to_matrix(quat: torch.Tensor) -> torch.Tensor:
+    quat = F.normalize(torch.nan_to_num(quat, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
+    w, x, y, z = quat.unbind(dim=-1)
+    ww, xx, yy, zz = w * w, x * x, y * y, z * z
+    wx, wy, wz = w * x, w * y, w * z
+    xy, xz, yz = x * y, x * z, y * z
+    return torch.stack(
+        [
+            torch.stack([ww + xx - yy - zz, 2.0 * (xy - wz), 2.0 * (xz + wy)], dim=-1),
+            torch.stack([2.0 * (xy + wz), ww - xx + yy - zz, 2.0 * (yz - wx)], dim=-1),
+            torch.stack([2.0 * (xz - wy), 2.0 * (yz + wx), ww - xx - yy + zz], dim=-1),
+        ],
+        dim=-2,
+    )
+
+
+def _gaussian_world_normals(pc: Dict[str, torch.Tensor]) -> torch.Tensor:
+    """Use each Gaussian's smallest scale axis as its surface-normal direction."""
+    rotation = _quaternion_wxyz_to_matrix(pc["rotation"])
+    axis_idx = pc["scaling"].detach().argmin(dim=-1)
+    gather_idx = axis_idx.view(*axis_idx.shape, 1, 1).expand(*axis_idx.shape, 3, 1)
+    normals = torch.gather(rotation, dim=-1, index=gather_idx).squeeze(-1)
+    return F.normalize(normals, dim=-1, eps=1e-6)
+
+
+def _depth_to_world_normals(
+    depth: torch.Tensor,
+    w2c: torch.Tensor,
+    intrinsics: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Estimate world-space normals from a rendered metric depth map."""
+    if depth is None:
+        device = w2c.device
+        return torch.zeros((), device=device), torch.zeros((), device=device, dtype=torch.bool)
+    if depth.dim() != 5 or depth.shape[2] != 1:
+        raise ValueError(f"Expected depth shape (B,V,1,H,W), got {tuple(depth.shape)}.")
+
+    bsz, num_views, _, height, width = depth.shape
+    device = depth.device
+    dtype = depth.dtype
+    flat_depth = depth.reshape(bsz * num_views, 1, height, width)
+    flat_intrinsics = intrinsics.reshape(bsz * num_views, 3, 3).to(device=device, dtype=dtype)
+    flat_w2c = w2c.reshape(bsz * num_views, 4, 4).to(device=device, dtype=dtype)
+
+    ys, xs = torch.meshgrid(
+        torch.arange(height, device=device, dtype=dtype),
+        torch.arange(width, device=device, dtype=dtype),
+        indexing="ij",
+    )
+    xs = xs.view(1, 1, height, width)
+    ys = ys.view(1, 1, height, width)
+
+    fx = flat_intrinsics[:, 0, 0].view(-1, 1, 1, 1).clamp_min(1e-6)
+    fy = flat_intrinsics[:, 1, 1].view(-1, 1, 1, 1).clamp_min(1e-6)
+    cx = flat_intrinsics[:, 0, 2].view(-1, 1, 1, 1)
+    cy = flat_intrinsics[:, 1, 2].view(-1, 1, 1, 1)
+
+    z = _sanitize_metric_depth(flat_depth, splatter_cfg)
+    x = (xs - cx) / fx * z
+    y = (ys - cy) / fy * z
+    points_cam = torch.cat((x, y, z), dim=1)
+
+    dx = points_cam[:, :, 1:-1, 2:] - points_cam[:, :, 1:-1, :-2]
+    dy = points_cam[:, :, 2:, 1:-1] - points_cam[:, :, :-2, 1:-1]
+    normal_cam = F.normalize(torch.cross(dx, dy, dim=1), dim=1, eps=1e-6)
+
+    znear = float(splatter_cfg.data.znear)
+    zfar = float(splatter_cfg.data.zfar)
+    raw_depth = flat_depth
+    depth_valid = torch.isfinite(raw_depth) & (raw_depth >= znear) & (raw_depth <= zfar)
+    valid_inner = (
+        depth_valid[:, :, 1:-1, 1:-1]
+        & depth_valid[:, :, 1:-1, 2:]
+        & depth_valid[:, :, 1:-1, :-2]
+        & depth_valid[:, :, 2:, 1:-1]
+        & depth_valid[:, :, :-2, 1:-1]
+        & torch.isfinite(normal_cam).all(dim=1, keepdim=True)
+    )
+
+    normal_cam_full = torch.zeros_like(points_cam)
+    normal_cam_full[:, :, 1:-1, 1:-1] = normal_cam
+    valid_full = torch.zeros((bsz * num_views, 1, height, width), device=device, dtype=torch.bool)
+    valid_full[:, :, 1:-1, 1:-1] = valid_inner
+
+    rot_c2w = flat_w2c[:, :3, :3].transpose(-1, -2)
+    normal_world = torch.einsum("bij,bjhw->bihw", rot_c2w, normal_cam_full)
+    normal_world = F.normalize(normal_world, dim=1, eps=1e-6)
+    return (
+        normal_world.reshape(bsz, num_views, 3, height, width).contiguous(),
+        valid_full.reshape(bsz, num_views, 1, height, width).contiguous(),
+    )
+
+
+def _compute_normal_consistency_loss(
+    pc: Dict[str, torch.Tensor],
+    rendered_depth: Optional[torch.Tensor],
+    world_view_transform: torch.Tensor,
+    intrinsics: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+    cfg_train: TrainConfig,
+    global_step: Optional[int] = None,
+) -> Dict[str, torch.Tensor]:
+    device = pc["xyz"].device
+    if float(getattr(cfg_train, "normal_consistency_weight", 0.0)) == 0.0:
+        return _zero_normal_stats(device)
+    if _normalize_depth_regularization_mode(cfg_train) == "dngaussian":
+        return _zero_normal_stats(device)
+    if global_step is not None and int(global_step) < int(getattr(cfg_train, "normal_consistency_start_steps", 0)):
+        return _zero_normal_stats(device)
+    if rendered_depth is None:
+        return _zero_normal_stats(device)
+
+    gaussian_normals = _gaussian_world_normals(pc)
+    normal_color = 0.5 * (gaussian_normals + 1.0)
+    normal_bg = torch.zeros(3, device=device, dtype=pc["xyz"].dtype)
+    normal_out = render_predicted(
+        pc=pc,
+        world_view_transform=world_view_transform,
+        intrinsics=intrinsics,
+        bg_color=normal_bg,
+        cfg=splatter_cfg,
+        override_color=normal_color,
+        render_mode="RGB",
+    )
+    rendered_normal_color = normal_out["render"]
+    rendered_alpha = normal_out["alpha"].detach()
+    rendered_normal = 2.0 * rendered_normal_color / rendered_alpha.clamp_min(1e-4) - 1.0
+    rendered_normal = F.normalize(rendered_normal, dim=2, eps=1e-6)
+
+    depth_normal, depth_valid = _depth_to_world_normals(
+        depth=rendered_depth,
+        w2c=world_view_transform,
+        intrinsics=intrinsics,
+        splatter_cfg=splatter_cfg,
+    )
+    if bool(getattr(cfg_train, "normal_consistency_detach_depth_normal", False)):
+        depth_normal = depth_normal.detach()
+    depth_normal = F.normalize(depth_normal, dim=2, eps=1e-6)
+
+    alpha_min = float(getattr(cfg_train, "normal_consistency_alpha_min", 0.05))
+    valid = (
+        depth_valid.squeeze(2)
+        & (rendered_alpha.squeeze(2) > alpha_min)
+        & torch.isfinite(rendered_normal).all(dim=2)
+        & torch.isfinite(depth_normal).all(dim=2)
+    )
+    if not bool(valid.any()):
+        return _zero_normal_stats(device)
+
+    dot = (rendered_normal * depth_normal).sum(dim=2).clamp(-1.0, 1.0)
+    if bool(getattr(cfg_train, "normal_consistency_use_abs", True)):
+        dot = dot.abs()
+    loss = (1.0 - dot).masked_select(valid).mean()
+    return {
+        "normal_consistency_loss": loss,
+        "normal_valid_ratio": valid.float().mean(),
+    }
+
+
 def _render_selected_sources_to_views(
     vae: SplatterVAE,
     splatter_to_gaussians: VAESplatterToGaussians,
@@ -454,9 +857,10 @@ def _render_selected_sources_to_views(
     w2c: torch.Tensor,
     bg: torch.Tensor,
     cfg_train: TrainConfig,
+    global_step: Optional[int] = None,
 ) -> tuple[
     torch.Tensor,
-    Optional[torch.Tensor],
+    Dict[str, Optional[torch.Tensor]],
     torch.Tensor,
     Dict[str, torch.Tensor],
 ]:
@@ -480,14 +884,57 @@ def _render_selected_sources_to_views(
 
     target_intrinsics = _gather_target_cameras(intrinsics, target_indices)
     render_intrinsics = torch.cat((source_intrinsics.unsqueeze(1), target_intrinsics), dim=1)
-    out = render_predicted(
-        pc=gaussian_pc,
-        world_view_transform=render_w2c,
-        intrinsics=render_intrinsics,
-        bg_color=bg,
-        cfg=splatter_cfg,
-        render_mode="RGB+D",
-    )
+
+    depth_mode = _normalize_depth_regularization_mode(cfg_train)
+    depth_outputs: Dict[str, Optional[torch.Tensor]] = {
+        "l1": None,
+        "hard": None,
+        "soft": None,
+        "display": None,
+    }
+    if depth_mode == "dngaussian":
+        out = render_predicted(
+            pc=gaussian_pc,
+            world_view_transform=render_w2c,
+            intrinsics=render_intrinsics,
+            bg_color=bg,
+            cfg=splatter_cfg,
+            render_mode="RGB",
+        )
+        depth_outputs["hard"] = _render_dngaussian_depth_pass(
+            pc=gaussian_pc,
+            world_view_transform=render_w2c,
+            intrinsics=render_intrinsics,
+            bg=bg,
+            splatter_cfg=splatter_cfg,
+            cfg_train=cfg_train,
+            pass_type="hard",
+        )
+        render_soft = float(getattr(cfg_train, "depth_soft_weight", 1.0)) != 0.0
+        if global_step is not None and int(global_step) < int(getattr(cfg_train, "depth_soft_start_steps", 0)):
+            render_soft = False
+        if render_soft:
+            depth_outputs["soft"] = _render_dngaussian_depth_pass(
+                pc=gaussian_pc,
+                world_view_transform=render_w2c,
+                intrinsics=render_intrinsics,
+                bg=bg,
+                splatter_cfg=splatter_cfg,
+                cfg_train=cfg_train,
+                pass_type="soft",
+            )
+        depth_outputs["display"] = depth_outputs["hard"]
+    else:
+        out = render_predicted(
+            pc=gaussian_pc,
+            world_view_transform=render_w2c,
+            intrinsics=render_intrinsics,
+            bg_color=bg,
+            cfg=splatter_cfg,
+            render_mode="RGB+D",
+        )
+        depth_outputs["l1"] = out.get("depth")
+        depth_outputs["display"] = depth_outputs["l1"]
 
     source_view_indices = torch.zeros(source_indices.shape[0], device=source_indices.device, dtype=torch.long)
     valid_mask = gaussian_pc.get("valid_mask", None)
@@ -513,9 +960,20 @@ def _render_selected_sources_to_views(
         frustum_stats["voxel_count_mean"] = _masked_gaussian_mean(gaussian_pc["voxel_count"], valid_mask)
     else:
         frustum_stats["voxel_count_mean"] = gaussian_pc["xyz"].new_zeros(())
+    frustum_stats.update(
+        _compute_normal_consistency_loss(
+            pc=gaussian_pc,
+            rendered_depth=depth_outputs.get("display"),
+            world_view_transform=render_w2c,
+            intrinsics=render_intrinsics,
+            splatter_cfg=splatter_cfg,
+            cfg_train=cfg_train,
+            global_step=global_step,
+        )
+    )
 
     render_indices = torch.cat((source_indices.view(-1, 1), target_indices), dim=1)
-    return out["render"], out.get("depth"), render_indices, frustum_stats
+    return out["render"], depth_outputs, render_indices, frustum_stats
 
 def compute_reconstruction_and_renders(
     vae: SplatterVAE,
@@ -624,7 +1082,7 @@ def compute_reconstruction_and_renders(
 
     (
         rendered_flat,
-        rendered_depth_flat,
+        depth_outputs_flat,
         render_indices_flat,
         frustum_stats,
     ) = _render_selected_sources_to_views(
@@ -640,6 +1098,7 @@ def compute_reconstruction_and_renders(
         w2c=flat_w2c,
         bg=bg,
         cfg_train=cfg_train,
+        global_step=global_step,
     )
 
     num_render_views = rendered_flat.shape[1]
@@ -669,7 +1128,9 @@ def compute_reconstruction_and_renders(
 
     target_depths = None
     rendered_depth = None
-    if flat_depths is not None and rendered_depth_flat is not None:
+    hard_depth = None
+    soft_depth = None
+    if flat_depths is not None:
         flat_target_depths = _gather_target_cameras(flat_depths, render_indices_flat)
         target_depths = flat_target_depths.reshape(
             num_variants,
@@ -677,22 +1138,47 @@ def compute_reconstruction_and_renders(
             num_render_views,
             *flat_depths.shape[2:],
         ).contiguous()
-        rendered_depth = rendered_depth_flat.reshape(
-            num_variants,
-            bsz,
-            num_render_views,
-            1,
-            splatter_cfg.data.img_height,
-            splatter_cfg.data.img_width,
-        ).contiguous()
 
-    frustum_stats.update(
-        _rendered_depth_l1_loss(
-            rendered_depth=rendered_depth,
-            target_depth=target_depths,
-            splatter_cfg=splatter_cfg,
+        def reshape_depth(depth_value: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+            if depth_value is None:
+                return None
+            return depth_value.reshape(
+                num_variants,
+                bsz,
+                num_render_views,
+                1,
+                splatter_cfg.data.img_height,
+                splatter_cfg.data.img_width,
+            ).contiguous()
+
+        rendered_depth = reshape_depth(depth_outputs_flat.get("display"))
+        hard_depth = reshape_depth(depth_outputs_flat.get("hard"))
+        soft_depth = reshape_depth(depth_outputs_flat.get("soft"))
+        l1_depth = reshape_depth(depth_outputs_flat.get("l1"))
+    else:
+        l1_depth = None
+
+    if target_depths is None:
+        frustum_stats.update(_zero_depth_stats(device))
+    elif _normalize_depth_regularization_mode(cfg_train) == "dngaussian":
+        frustum_stats.update(
+            _compute_dngaussian_depth_loss(
+                hard_depth=hard_depth,
+                soft_depth=soft_depth,
+                target_depth=target_depths,
+                splatter_cfg=splatter_cfg,
+                cfg_train=cfg_train,
+                global_step=global_step,
+            )
         )
-    )
+    else:
+        frustum_stats.update(
+            _rendered_depth_l1_loss(
+                rendered_depth=l1_depth,
+                target_depth=target_depths,
+                splatter_cfg=splatter_cfg,
+            )
+        )
 
     loss_values = compute_batched_reconstruction_losses(
         predicted=rendered,
@@ -817,9 +1303,17 @@ def validate_and_log_wandb(
         "val/scale_max": 0.0,
         "val/depth_loss": 0.0,
         "val/depth_l1_loss": 0.0,
+        "val/depth_hard_loss": 0.0,
+        "val/depth_hard_local_loss": 0.0,
+        "val/depth_hard_global_loss": 0.0,
+        "val/depth_soft_loss": 0.0,
+        "val/depth_soft_local_loss": 0.0,
+        "val/depth_soft_global_loss": 0.0,
         "val/rendered_depth_mean": 0.0,
         "val/target_depth_mean": 0.0,
         "val/depth_valid_pct": 0.0,
+        "val/normal_consistency_loss": 0.0,
+        "val/normal_valid_pct": 0.0,
         "val/gaussian_count_mean": 0.0,
         "val/confidence_mean": 0.0,
         "val/voxel_count_mean": 0.0,
@@ -892,9 +1386,17 @@ def validate_and_log_wandb(
         scalar_sums["val/scale_max"] += float(rec_out["scale_max"].item())
         scalar_sums["val/depth_loss"] += float(rec_out["depth_loss"].item())
         scalar_sums["val/depth_l1_loss"] += float(rec_out["depth_l1_loss"].item())
+        scalar_sums["val/depth_hard_loss"] += float(rec_out["depth_hard_loss"].item())
+        scalar_sums["val/depth_hard_local_loss"] += float(rec_out["depth_hard_local_loss"].item())
+        scalar_sums["val/depth_hard_global_loss"] += float(rec_out["depth_hard_global_loss"].item())
+        scalar_sums["val/depth_soft_loss"] += float(rec_out["depth_soft_loss"].item())
+        scalar_sums["val/depth_soft_local_loss"] += float(rec_out["depth_soft_local_loss"].item())
+        scalar_sums["val/depth_soft_global_loss"] += float(rec_out["depth_soft_global_loss"].item())
         scalar_sums["val/rendered_depth_mean"] += float(rec_out["rendered_depth_mean"].item())
         scalar_sums["val/target_depth_mean"] += float(rec_out["target_depth_mean"].item())
         scalar_sums["val/depth_valid_pct"] += float(100.0 * rec_out["depth_valid_ratio"].item())
+        scalar_sums["val/normal_consistency_loss"] += float(rec_out["normal_consistency_loss"].item())
+        scalar_sums["val/normal_valid_pct"] += float(100.0 * rec_out["normal_valid_ratio"].item())
         scalar_sums["val/gaussian_count_mean"] += float(rec_out["gaussian_count_mean"].item())
         scalar_sums["val/confidence_mean"] += float(rec_out["confidence_mean"].item())
         scalar_sums["val/voxel_count_mean"] += float(rec_out["voxel_count_mean"].item())
@@ -1061,6 +1563,7 @@ def train_splatter_vae(
             erank_loss = rec_out["erank_loss"]
             thin_loss = rec_out["thin_loss"]
             depth_loss = rec_out["depth_loss"]
+            normal_consistency_loss = rec_out["normal_consistency_loss"]
 
             inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
                 z_inv=latents["z_inv"],
@@ -1083,6 +1586,7 @@ def train_splatter_vae(
                 + cfg_train.erank_weight * erank_loss
                 + cfg_train.thin_weight * thin_loss
                 + cfg_train.depth_weight * depth_loss
+                + cfg_train.normal_consistency_weight * normal_consistency_loss
             )
 
             finite_terms = {
@@ -1096,6 +1600,7 @@ def train_splatter_vae(
                 "erank_loss": erank_loss,
                 "thin_loss": thin_loss,
                 "depth_loss": depth_loss,
+                "normal_consistency_loss": normal_consistency_loss,
                 "total_loss": total_loss,
             }
             bad_terms = [name for name, value in finite_terms.items() if not torch.isfinite(value).all()]
@@ -1135,7 +1640,8 @@ def train_splatter_vae(
                     f"vq={vq_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
                     f"inv_cons={inv_consistency_loss.item():.4f}, dep_con={dep_contrastive_loss.item():.4f}, "
                     f"dep_cons={dep_consistency_loss.item():.4f}, frustum={frustum_loss.item():.4f}, "
-                    f"erank={erank_loss.item():.4f}, depth={depth_loss.item():.4f})"
+                    f"erank={erank_loss.item():.4f}, depth={depth_loss.item():.4f}, "
+                    f"normal={normal_consistency_loss.item():.4f})"
                 )
                 if wandb.run is not None:
                     wandb.log(
@@ -1179,9 +1685,20 @@ def train_splatter_vae(
                             "train/depth_loss": depth_loss.item(),
                             "train/depth_loss_weighted": (cfg_train.depth_weight * depth_loss).item(),
                             "train/depth_l1_loss": rec_out["depth_l1_loss"].item(),
+                            "train/depth_hard_loss": rec_out["depth_hard_loss"].item(),
+                            "train/depth_hard_local_loss": rec_out["depth_hard_local_loss"].item(),
+                            "train/depth_hard_global_loss": rec_out["depth_hard_global_loss"].item(),
+                            "train/depth_soft_loss": rec_out["depth_soft_loss"].item(),
+                            "train/depth_soft_local_loss": rec_out["depth_soft_local_loss"].item(),
+                            "train/depth_soft_global_loss": rec_out["depth_soft_global_loss"].item(),
                             "train/rendered_depth_mean": rec_out["rendered_depth_mean"].item(),
                             "train/target_depth_mean": rec_out["target_depth_mean"].item(),
                             "train/depth_valid_pct": 100.0 * rec_out["depth_valid_ratio"].item(),
+                            "train/normal_consistency_loss": normal_consistency_loss.item(),
+                            "train/normal_consistency_loss_weighted": (
+                                cfg_train.normal_consistency_weight * normal_consistency_loss
+                            ).item(),
+                            "train/normal_valid_pct": 100.0 * rec_out["normal_valid_ratio"].item(),
                             "train/gaussian_count_mean": rec_out["gaussian_count_mean"].item(),
                             "train/confidence_mean": rec_out["confidence_mean"].item(),
                             "train/voxel_count_mean": rec_out["voxel_count_mean"].item(),
@@ -1196,6 +1713,16 @@ def train_splatter_vae(
                             "train/erank_weight": float(cfg_train.erank_weight),
                             "train/thin_weight": float(cfg_train.thin_weight),
                             "train/depth_weight": float(cfg_train.depth_weight),
+                            "train/depth_regularization_l1": float(_normalize_depth_regularization_mode(cfg_train) == "l1"),
+                            "train/depth_regularization_dngaussian": float(_normalize_depth_regularization_mode(cfg_train) == "dngaussian"),
+                            "train/depth_global_weight": float(cfg_train.depth_global_weight),
+                            "train/depth_local_weight": float(cfg_train.depth_local_weight),
+                            "train/depth_hard_weight": float(cfg_train.depth_hard_weight),
+                            "train/depth_soft_weight": float(cfg_train.depth_soft_weight),
+                            "train/depth_error_tolerance": float(cfg_train.depth_error_tolerance),
+                            "train/normal_consistency_weight": float(cfg_train.normal_consistency_weight),
+                            "train/normal_consistency_start_steps": float(cfg_train.normal_consistency_start_steps),
+                            "train/normal_consistency_alpha_min": float(cfg_train.normal_consistency_alpha_min),
                             "global_step": global_step,
                         },
                         step=global_step,

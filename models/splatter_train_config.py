@@ -33,6 +33,23 @@ class TrainConfig:
     erank_weight: float = 0.0
     thin_weight: float = 0.0
     depth_weight: float = 0.0
+    depth_regularization: str = "l1"
+    depth_render_mode: str = "D"
+    depth_global_weight: float = 1.0
+    depth_local_weight: float = 0.1
+    depth_hard_weight: float = 1.0
+    depth_soft_weight: float = 1.0
+    depth_hard_opacity: float = 0.95
+    depth_patch_min: int = 17
+    depth_patch_max: int = 53
+    depth_error_tolerance: float = 0.2
+    depth_soft_start_steps: int = 0
+    depth_soft_hard_loss_threshold: Optional[float] = None
+    normal_consistency_weight: float = 0.0
+    normal_consistency_start_steps: int = 7000
+    normal_consistency_alpha_min: float = 0.05
+    normal_consistency_use_abs: bool = True
+    normal_consistency_detach_depth_normal: bool = False
 
     temperature: float = 0.1
 

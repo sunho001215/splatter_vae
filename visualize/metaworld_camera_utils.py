@@ -264,9 +264,12 @@ def trajectory_poses(
     lateral_amplitude: float = 0.12,
     circular_azimuth_deg: float = 10.0,
     circular_elevation_deg: float = 6.0,
+    orbit_center: Sequence[float] | None = None,
+    orbit_degrees: float = 360.0,
 ) -> List[CameraPose]:
     env_cfg = env_config(cfg)
     lookat, up = lookat_up_from_drq(cfg)
+    orbit_lookat = np.asarray(orbit_center, dtype=np.float64) if orbit_center is not None else lookat
     cameras = camera_configs_from_drq(cfg)
     by_name = {str(cam.get("name", f"cam{i}")): cam for i, cam in enumerate(cameras)}
     if base_camera not in by_name:
@@ -319,7 +322,24 @@ def trajectory_poses(
             )
         return poses
 
-    raise ValueError(f"Unknown trajectory {trajectory!r}; expected lateral or circular.")
+    if traj == "orbit":
+        denom = max(1, n - 1)
+        for i in range(n):
+            frac = i / denom
+            poses.append(
+                spherical_camera_pose(
+                    name=f"{base_camera}_orbit_{i:03d}",
+                    r=float(base["r"]),
+                    theta_deg=float(base["theta"]),
+                    phi_deg=float(base["phi"]) + float(orbit_degrees) * frac,
+                    lookat=orbit_lookat,
+                    up=up,
+                    fovy_deg=float(base.get("fovy", 45.0)),
+                )
+            )
+        return poses
+
+    raise ValueError(f"Unknown trajectory {trajectory!r}; expected lateral, circular, or orbit.")
 
 
 def labeled_panel(img_rgb: np.ndarray, title: str, subtitle: str | None = None, *, width: int | None = None) -> np.ndarray:

@@ -51,6 +51,16 @@ def parse_cameras(value: str | None, available: Sequence[str]) -> List[str]:
     return requested
 
 
+def parse_demo_keys(value: str | None, available: Sequence[str]) -> List[str] | None:
+    if value is None or not value.strip():
+        return None
+    requested = [item.strip() for item in value.split(",") if item.strip()]
+    missing = [demo for demo in requested if demo not in available]
+    if missing:
+        raise ValueError(f"Requested demos {missing} are not in dataset demos {list(available)}.")
+    return requested
+
+
 def load_camera_names(dataset_path: str, demo_key: str, cfg: dict) -> List[str]:
     with h5py.File(dataset_path, "r") as f:
         demo = f["data"][demo_key]
@@ -151,9 +161,9 @@ def find_neighbors(
     results = []
     for query in query_records:
         q_idx = index_by_key[query.key]
-        candidate_indices = [idx for idx, rec in enumerate(all_records) if rec.camera != query.camera]
+        candidate_indices = [idx for idx, rec in enumerate(all_records) if rec.camera != query.camera and rec.demo != query.demo]
         if not candidate_indices:
-            raise ValueError(f"No different-viewpoint candidates found for query {query}.")
+            raise ValueError(f"No different-viewpoint, different-demo candidates found for query {query}.")
         dists = pairwise_distance(features[q_idx], features[candidate_indices], metric)
         best_local = int(np.argmin(dists))
         best_idx = candidate_indices[best_local]
@@ -167,6 +177,34 @@ def find_neighbors(
         )
     return results
 
+
+
+def find_single_query_neighbors_by_camera(
+    query: ImageRecord,
+    target_cameras: Sequence[str],
+    all_records: Sequence[ImageRecord],
+    features: np.ndarray,
+    *,
+    metric: str,
+    include_query_camera: bool = False,
+) -> List[dict]:
+    index_by_key = {rec.key: idx for idx, rec in enumerate(all_records)}
+    if query.key not in index_by_key:
+        raise ValueError(f"Query record {query} is not present in the retrieval index.")
+    q_idx = index_by_key[query.key]
+    results = []
+    for camera in target_cameras:
+        if camera == query.camera and not include_query_camera:
+            continue
+        candidate_indices = [idx for idx, rec in enumerate(all_records) if rec.camera == camera and rec.demo != query.demo]
+        if not candidate_indices:
+            raise ValueError(f"No different-demo candidate images found for target camera {camera!r}.")
+        dists = pairwise_distance(features[q_idx], features[candidate_indices], metric)
+        best_local = int(np.argmin(dists))
+        best_idx = candidate_indices[best_local]
+        neighbor = all_records[best_idx]
+        results.append({"query": query, "neighbor": neighbor, "target_camera": camera, "distance": float(dists[best_local])})
+    return results
 
 def save_figure(results: Sequence[dict], images: Dict[Tuple[str, str, int], np.ndarray], out_path: Path, title: str) -> None:
     if not results:
@@ -188,7 +226,8 @@ def save_figure(results: Sequence[dict], images: Dict[Tuple[str, str, int], np.n
             for spine in ax.spines.values():
                 spine.set_linewidth(1.0)
                 spine.set_color("#d1d5db")
-        axes[row, 0].set_ylabel(query.camera, rotation=0, labelpad=24, fontsize=11, fontweight="bold", va="center")
+        target_camera = item.get("target_camera", neighbor.camera)
+        axes[row, 0].set_ylabel(target_camera, rotation=0, labelpad=24, fontsize=11, fontweight="bold", va="center")
         axes[row, 0].text(0.5, -0.08, f"Query: {query.label()}", transform=axes[row, 0].transAxes, ha="center", va="top", fontsize=9.5)
         axes[row, 1].text(
             0.5,
@@ -214,8 +253,13 @@ def main() -> None:
     parser.add_argument("--ckpt", required=True, help="SplatterVAE checkpoint.")
     parser.add_argument("--out", default="outputs/splattervae_nearest_neighbors/retrieval.png")
     parser.add_argument("--query_demo", default=None, help="Query demo key. Defaults to the first demo.")
+    parser.add_argument("--query_cam", default="cam0", help="Single query camera for per-viewpoint retrieval.")
     parser.add_argument("--query_timestep", type=int, default=None, help="Query timestep. Defaults to the middle of the encoded range.")
+    parser.add_argument("--legacy_per_camera_queries", action="store_true", help="Use the old mode: one query per camera.")
+    parser.add_argument("--exclude_query_camera", action="store_true", help="In single-query mode, skip retrieving from the query-camera viewpoint.")
+    parser.add_argument("--include_query_camera", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--candidate_demos", type=int, default=3, help="Number of demos to include in the retrieval index.")
+    parser.add_argument("--retrieval_demos", default=None, help="Comma-separated demo keys used as retrieval candidates. Defaults to the first candidate demos.")
     parser.add_argument("--max_steps", type=int, default=100, help="Maximum timesteps per candidate demo; <=0 uses the whole demo.")
     parser.add_argument("--stride", type=int, default=2, help="Candidate timestep stride.")
     parser.add_argument("--cameras", default=None, help="Comma-separated camera list. Defaults to all configured dataset cameras.")
@@ -238,15 +282,30 @@ def main() -> None:
 
     available_cameras = load_camera_names(args.dataset, query_demo, cfg)
     cameras = parse_cameras(args.cameras, available_cameras)
-    candidate_demos = demo_keys[: max(1, int(args.candidate_demos))]
-    if query_demo not in candidate_demos:
-        candidate_demos = [query_demo] + list(candidate_demos)
+    if args.query_cam not in cameras:
+        raise ValueError(f"Query camera {args.query_cam!r} is not in the selected cameras {cameras}.")
+    candidate_demos = parse_demo_keys(args.retrieval_demos, demo_keys)
+    if candidate_demos is None:
+        candidate_demos = demo_keys[: max(1, int(args.candidate_demos))]
+        if not any(demo != query_demo for demo in candidate_demos):
+            for demo in demo_keys:
+                if demo != query_demo:
+                    candidate_demos = list(candidate_demos) + [demo]
+                    break
+    if not any(demo != query_demo for demo in candidate_demos):
+        raise ValueError(
+            f"Retrieval candidates must include at least one demo different from query demo {query_demo!r}. "
+            "Use --candidate_demos >= 2 or pass --retrieval_demos."
+        )
 
     t_len = timestep_count(args.dataset, query_demo, cameras[0])
     max_steps = t_len if int(args.max_steps) <= 0 else min(t_len, int(args.max_steps))
     query_timestep = int(args.query_timestep) if args.query_timestep is not None else max_steps // 2
     query_timestep = max(0, min(query_timestep, t_len - 1))
-    query_records = [ImageRecord(query_demo, cam, query_timestep) for cam in cameras]
+    if args.legacy_per_camera_queries:
+        query_records = [ImageRecord(query_demo, cam, query_timestep) for cam in cameras]
+    else:
+        query_records = [ImageRecord(query_demo, args.query_cam, query_timestep)]
     candidate_records = build_records(args.dataset, candidate_demos, cameras, max_steps=max_steps, stride=int(args.stride))
 
     unique: Dict[Tuple[str, str, int], ImageRecord] = {}
@@ -264,7 +323,17 @@ def main() -> None:
         device=device,
     )
     features = preprocess_features(features, args.normalize)
-    results = find_neighbors(query_records, all_records, features, metric=args.distance)
+    if args.legacy_per_camera_queries:
+        results = find_neighbors(query_records, all_records, features, metric=args.distance)
+    else:
+        results = find_single_query_neighbors_by_camera(
+            query_records[0],
+            cameras,
+            all_records,
+            features,
+            metric=args.distance,
+            include_query_camera=not bool(args.exclude_query_camera),
+        )
     image_records = []
     for item in results:
         image_records.extend([item["query"], item["neighbor"]])
@@ -277,7 +346,10 @@ def main() -> None:
         "dataset": args.dataset,
         "checkpoint": args.ckpt,
         "query_demo": query_demo,
+        "query_camera": args.query_cam,
         "query_timestep": query_timestep,
+        "retrieval_mode": "legacy_per_camera_queries" if args.legacy_per_camera_queries else "single_query_per_target_camera",
+        "different_demo_required": True,
         "candidate_demos": candidate_demos,
         "cameras": cameras,
         "pool": args.pool,
@@ -287,6 +359,7 @@ def main() -> None:
             {
                 "query": {"demo": item["query"].demo, "camera": item["query"].camera, "timestep": item["query"].timestep},
                 "neighbor": {"demo": item["neighbor"].demo, "camera": item["neighbor"].camera, "timestep": item["neighbor"].timestep},
+                "target_camera": item.get("target_camera", item["neighbor"].camera),
                 "distance": item["distance"],
             }
             for item in results
