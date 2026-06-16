@@ -311,9 +311,8 @@ class SplatterVAE(nn.Module):
         # Invariant branch sees the original image.
         h_inv_tokens, _, _ = self.invariant_encoder(x)
 
-        # Dependent branch sees the masked image.
-        x_dep_masked = self._mask_dependent_input_patches(x)
-        h_dep_tokens, _, _ = self.dependent_encoder(x_dep_masked)
+        # Dependent branch now sees the same RGB image as the invariant branch.
+        h_dep_tokens, _, _ = self.dependent_encoder(x)
 
         if h_inv_tokens.shape[1] != self.n_tokens_per_frame:
             raise ValueError("Unexpected token count from invariant encoder.")

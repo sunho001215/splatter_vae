@@ -31,7 +31,6 @@ import yaml
 
 from agents.drqv2.drqv2_metaworld import DrQv2MetaWorldAgent
 from agents.drqv2.replay_buffer import MemmapReplayBufferStorage, make_memmap_replay_loader
-from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
 
 
 def set_seed(seed: int) -> None:
@@ -226,24 +225,14 @@ class MetaWorldSingleCameraEnv:
         return self.frames[-1].copy()
 
     def _make_free_camera(self) -> "mujoco.MjvCamera":
-        """Create a free camera based on current configuration."""
+        """Create a MuJoCo free camera from the positive-down theta config."""
         cam_cfg = self.current_camera_cfg
-        pose = spherical_camera_pose(
-            name=str(cam_cfg["name"]),
-            r=float(cam_cfg["r"]),
-            theta_deg=float(cam_cfg["theta"]),
-            phi_deg=float(cam_cfg["phi"]),
-            lookat=self.lookat,
-            up=self.up,
-            fovy_deg=float(cam_cfg["fovy"])
-        )
         cam = mujoco.MjvCamera()
         cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         cam.lookat[:] = self.lookat.astype(np.float64)
-        rel = pose.pos.astype(np.float64) - self.lookat.astype(np.float64)
-        cam.distance = float(np.linalg.norm(rel))
-        cam.azimuth = float(np.degrees(np.arctan2(rel[1], rel[0])))
-        cam.elevation = float(np.degrees(np.arctan2(rel[2], np.sqrt(rel[0] ** 2 + rel[1] ** 2))))
+        cam.distance = float(cam_cfg["r"])
+        cam.azimuth = float(cam_cfg["phi"])
+        cam.elevation = -float(cam_cfg["theta"])
         return cam
 
     def _show_frame_cv2(self, frame_chw: np.ndarray) -> None:

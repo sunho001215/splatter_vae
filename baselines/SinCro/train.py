@@ -49,8 +49,8 @@ from baselines.SinCro.sincro.MV_run_nerf import (
 from baselines.SinCro.sincro.MV_mae_encoder import MaskedViTEncoder
 
 from baselines.SinCro.dataloader import (
-    RobosuiteSinCroDatasetConfig,
-    RobosuiteSinCroSequenceDataset,
+    MetaWorldSinCroDatasetConfig,
+    MetaWorldSinCroSequenceDataset,
 )
 
 
@@ -720,7 +720,7 @@ def main():
     # ------------------------------------------------------------------
     # Dataset
     # ------------------------------------------------------------------
-    ds_config = RobosuiteSinCroDatasetConfig(
+    ds_config = MetaWorldSinCroDatasetConfig(
         hdf5_path=ds_cfg.hdf5_path,
         hdf5_paths=ds_cfg.hdf5_paths,
         num_views=ds_cfg.num_views,
@@ -729,7 +729,7 @@ def main():
         max_frames_per_demo=ds_cfg.max_frames_per_demo,
         temporal_stride=ds_cfg.temporal_stride,
     )
-    full_dataset = RobosuiteSinCroSequenceDataset(ds_config)
+    full_dataset = MetaWorldSinCroSequenceDataset(ds_config)
 
     num_train = int(len(full_dataset) * ds_cfg.train_ratio)
     num_val = len(full_dataset) - num_train

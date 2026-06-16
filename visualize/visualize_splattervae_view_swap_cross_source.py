@@ -236,13 +236,12 @@ def main():
         splatter = vae.decode(z_inv, z_dep)
 
         eye = torch.eye(4, dtype=torch.float32, device=device).unsqueeze(0)
-        quat_identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], dtype=torch.float32, device=device)
         k_dep = torch.from_numpy(dep_cam_mats[cam_dep]["K"]).unsqueeze(0).to(device)
 
         gaussian_pc = converter(
-            splatter,
+            proposal_map=splatter,
+            z_inv=z_inv.contiguous(),
             source_cameras_view_to_world=eye,
-            source_cv2wT_quat=quat_identity,
             intrinsics=k_dep,
             activate_output=True,
         )

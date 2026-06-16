@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import fields
 from typing import Any, Dict, Tuple
 
 import h5py
 import torch
 
+from models.point_voxel_gaussians import PointVoxelToGaussians
 from models.splatter import (
     SplatterConfig,
     SplatterDataConfig,
     SplatterModelConfig,
-    VAESplatterToGaussians,
     default_splatter_channels,
 )
 from models.vae import CodebookConfig, SplatterVAE
@@ -23,15 +24,21 @@ def image_size_from_demo(dataset_path: str, demo_key: str) -> Tuple[int, int]:
         return tuple(f["data"][demo_key]["obs"][f"{first_cam}_rgb"].shape[1:3])
 
 
+def _filter_dataclass_kwargs(values: Dict[str, Any], cls: type) -> Dict[str, Any]:
+    allowed = {field.name for field in fields(cls)}
+    return {key: value for key, value in values.items() if key in allowed}
+
+
 def build_splatter_config(cfg: Dict[str, Any], img_height: int, img_width: int) -> SplatterConfig:
     spl_cfg = cfg.get("splatter", {})
     spl_data_cfg = dict(spl_cfg.get("data", {}))
     spl_model_cfg = dict(spl_cfg.get("model", {}))
     spl_data_cfg["img_height"] = int(img_height)
     spl_data_cfg["img_width"] = int(img_width)
+    spl_model_cfg["max_sh_degree"] = 1
     return SplatterConfig(
-        data=SplatterDataConfig(**spl_data_cfg),
-        model=SplatterModelConfig(**spl_model_cfg),
+        data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg, SplatterDataConfig)),
+        model=SplatterModelConfig(**_filter_dataclass_kwargs(spl_model_cfg, SplatterModelConfig)),
     )
 
 
@@ -39,12 +46,7 @@ def splatter_channels_from_config(cfg: Dict[str, Any], spl_cfg: SplatterConfig) 
     return int(
         cfg.get("splatter", {}).get(
             "splatter_channels",
-            default_splatter_channels(
-                max_sh_degree=int(spl_cfg.model.max_sh_degree),
-                num_gaussians_per_pixel=int(spl_cfg.model.num_gaussians_per_pixel),
-                isotropic=bool(spl_cfg.model.isotropic),
-                depth_parameterization=str(getattr(spl_cfg.model, "depth_parameterization", "absolute")),
-            ),
+            default_splatter_channels(points_per_pixel=int(spl_cfg.model.points_per_pixel)),
         )
     )
 
@@ -89,25 +91,9 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
     if out_channels is not None:
         splatter_cfg = cfg.setdefault("splatter", {})
         model_cfg = splatter_cfg.setdefault("model", {})
-        max_sh_degree = int(model_cfg.get("max_sh_degree", 1))
-        num_gaussians = int(model_cfg.get("num_gaussians_per_pixel", 5))
-        isotropic = bool(model_cfg.get("isotropic", False))
-        absolute_channels = default_splatter_channels(
-            max_sh_degree=max_sh_degree,
-            num_gaussians_per_pixel=num_gaussians,
-            isotropic=isotropic,
-            depth_parameterization="absolute",
-        )
-        depth_prior_channels = default_splatter_channels(
-            max_sh_degree=max_sh_degree,
-            num_gaussians_per_pixel=num_gaussians,
-            isotropic=isotropic,
-            depth_parameterization="depth_prior",
-        )
-        if out_channels == absolute_channels:
-            model_cfg["depth_parameterization"] = "absolute"
-        elif out_channels == depth_prior_channels:
-            model_cfg["depth_parameterization"] = "depth_prior"
+        model_cfg["max_sh_degree"] = 1
+        if out_channels % 5 == 0:
+            model_cfg["points_per_pixel"] = max(1, out_channels // 5)
         splatter_cfg["splatter_channels"] = out_channels
 
     return cfg
@@ -142,6 +128,12 @@ def load_vae_state_dict(vae: SplatterVAE, ckpt_path: str) -> None:
     vae.load_state_dict(_checkpoint_state_dict(ckpt_path), strict=True)
 
 
+def load_converter_state_dict(converter: PointVoxelToGaussians, ckpt_path: str) -> None:
+    state = torch.load(ckpt_path, map_location="cpu")
+    if isinstance(state, dict) and "point_voxel_to_gaussians_state_dict" in state:
+        converter.load_state_dict(state["point_voxel_to_gaussians_state_dict"], strict=True)
+
+
 def build_visualization_models(
     cfg: Dict[str, Any],
     dataset_path: str,
@@ -156,7 +148,11 @@ def build_visualization_models(
     vae = build_splattervae(cfg, img_height, img_width, splatter_channels)
     load_vae_state_dict(vae, ckpt_path)
 
-    converter = VAESplatterToGaussians(spl_cfg)
+    converter = PointVoxelToGaussians(
+        spl_cfg,
+        z_inv_dim=int(vae.invariant_encoder_output_proj.out_features),
+    )
+    load_converter_state_dict(converter, ckpt_path)
     vae.to(device).eval()
     converter.to(device).eval()
     return vae, converter, spl_cfg

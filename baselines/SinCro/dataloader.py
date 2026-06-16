@@ -24,7 +24,7 @@ def _normalize_hdf5_paths(hdf5_path: Optional[str], hdf5_paths: Optional[Sequenc
 
 
 @dataclass
-class RobosuiteSinCroDatasetConfig:
+class MetaWorldSinCroDatasetConfig:
     hdf5_path: Optional[str] = None
     hdf5_paths: Optional[List[str]] = None
     # number of cameras / views used for training (must be <= number in HDF5)
@@ -41,15 +41,15 @@ class RobosuiteSinCroDatasetConfig:
     camera_names: Optional[List[str]] = None
 
 
-class RobosuiteSinCroSequenceDataset(Dataset):
-    """HDF5 demos to SinCro-style multi-view temporal windows.
+class MetaWorldSinCroSequenceDataset(Dataset):
+    """MetaWorld HDF5 demos to SinCro-style multi-view temporal windows.
 
     Multiple HDF5 files are treated as one dataset.  The global index spans all
     ``(file, demo, start_t)`` windows, so DataLoader shuffling samples across all
     environments during training.
     """
 
-    def __init__(self, cfg: RobosuiteSinCroDatasetConfig):
+    def __init__(self, cfg: MetaWorldSinCroDatasetConfig):
         super().__init__()
         self.cfg = cfg
         self.hdf5_paths = _normalize_hdf5_paths(cfg.hdf5_path, cfg.hdf5_paths)
@@ -133,7 +133,7 @@ class RobosuiteSinCroSequenceDataset(Dataset):
             )
 
         print(
-            f"[Dataset] Built RobosuiteSinCroSequenceDataset from {len(self.demo_meta)} demos "
+            f"[Dataset] Built MetaWorldSinCroSequenceDataset from {len(self.demo_meta)} demos "
             f"across {len(self.hdf5_paths)} file(s) with {len(self.indices)} temporal windows."
         )
 

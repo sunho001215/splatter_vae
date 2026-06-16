@@ -74,13 +74,8 @@ def load_camera_mats(demo: h5py.Group, cam_names: Sequence[str]) -> Dict[str, Di
     return mats
 
 
-def _default_splatter_channels(max_sh_degree: int = 1, num_gaussians_per_pixel: int = 5) -> int:
-    if max_sh_degree not in (0, 1):
-        raise ValueError("SplatterVAE visualizers support max_sh_degree in {0, 1}.")
-    k = int(num_gaussians_per_pixel)
-    sh_rest = 0 if int(max_sh_degree) == 0 else 3 * (((int(max_sh_degree) + 1) ** 2) - 1)
-    channels_per_gaussian = 1 + 3 + 1 + 3 + 4 + 3 + sh_rest
-    return int(k * channels_per_gaussian)
+def _default_splatter_channels(points_per_pixel: int = 2) -> int:
+    return int(points_per_pixel) * 5
 
 
 def _normalize_vit_cfg(

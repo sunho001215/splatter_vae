@@ -19,32 +19,32 @@ env:
   cameras:
     - name: cam0
       r: 0.8
-      theta: -45.0
+      theta: 45.0
       phi: 0.0
       fovy: 45.0
     - name: cam1
       r: 0.8
-      theta: -45.0       
+      theta: 45.0       
       phi: 180.0          
       fovy: 45.0
     - name: cam2
       r: 0.8
-      theta: -60.0        
+      theta: 60.0        
       phi: -30.0             
       fovy: 45.0
     - name: cam3
       r: 0.8
-      theta: -60.0         
+      theta: 60.0         
       phi: 210.0           
       fovy: 45.0
     - name: cam4
       r: 0.8
-      theta: -30.0       
+      theta: 30.0       
       phi: 45.0          
       fovy: 45.0
     - name: cam5
       r: 0.8
-      theta: -30.0     
+      theta: 30.0     
       phi: 135.0            
       fovy: 45.0
 
@@ -79,8 +79,8 @@ vision:
   splatter_vae:
     checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/push-wall/full-implementation/step_00300000.pth
     feature_source: pre_vq
-    max_sh_degree: 0
-    num_gaussians_per_pixel: 4
+    max_sh_degree: 1
+    points_per_pixel: 2
 
     codebook:
       invariant:

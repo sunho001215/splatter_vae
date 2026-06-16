@@ -7,6 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "torch",
     "torchvision",
+    "pytorch3d",
     "gsplat",
     "fused-ssim",
     "offlinerlkit",
@@ -21,6 +22,7 @@ dependencies = [
     "robosuite-models>=1.0.0",
     "pyspacemouse>=1.1.5",
     "matplotlib>=3.10.8",
+    "lpips>=0.1.4",
     "timm>=1.0.24",
     "vector-quantize-pytorch>=1.27.15",
     "setuptools>=80.9.0",
@@ -43,11 +45,13 @@ dependencies = [
 gsplat = ["torch"]
 fused-ssim = ["torch", "torchvision"]
 offlinerlkit = ["torch"]
+pytorch3d = ["torch"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
 gsplat = { git = "https://github.com/nerfstudio-project/gsplat.git" }
+pytorch3d = { git = "https://github.com/facebookresearch/pytorch3d.git", rev = "stable" }
 fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim" }
 offlinerlkit = { git = "https://github.com/yihaosun1124/OfflineRL-Kit.git" }
 

@@ -28,8 +28,8 @@ def _demo_label(file_idx: int, demo_key: str, num_files: int) -> str:
     return demo_key if num_files == 1 else f"file{file_idx}:{demo_key}"
 
 
-class RoboSuiteMultiViewAllCamerasHDF5Dataset(Dataset):
-    """Multi-view RoboSuite/Meta-World dataset for ReViWo.
+class MetaWorldMultiViewAllCamerasHDF5Dataset(Dataset):
+    """Multi-view Meta-World dataset for ReViWo.
 
     One item is one environment state with all selected cameras.  ``dataset_path``
     can be one HDF5 file or a list of HDF5 files; multi-file datasets build one
@@ -140,7 +140,7 @@ class RoboSuiteMultiViewAllCamerasHDF5Dataset(Dataset):
                         self.samples.append((file_idx, demo_key, t_idx))
 
         print(
-            f"[RoboSuiteMultiViewAllCamerasHDF5Dataset] Indexed {len(self.demo_refs)} demos "
+            f"[MetaWorldMultiViewAllCamerasHDF5Dataset] Indexed {len(self.demo_refs)} demos "
             f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, views={self.views}"
         )
 
@@ -169,7 +169,7 @@ class RoboSuiteMultiViewAllCamerasHDF5Dataset(Dataset):
 # Helpers for building DataLoaders (train / valid)
 # -------------------------------------------------------------------------
 
-def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
+def _list_demo_keys_metaworld(dataset_path: str) -> List[str]:
     with h5py.File(dataset_path, "r") as f:
         if "data" not in f:
             raise ValueError(f'Invalid dataset "{dataset_path}": missing top-level group "data".')
@@ -184,10 +184,10 @@ def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
     return sorted(demos, key=_demo_index)
 
 
-def _list_demo_refs_robosuite(dataset_paths: Sequence[str]) -> List[DemoRef]:
+def _list_demo_refs_metaworld(dataset_paths: Sequence[str]) -> List[DemoRef]:
     refs: List[DemoRef] = []
     for file_idx, path in enumerate(dataset_paths):
-        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_robosuite(path))
+        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_metaworld(path))
     return refs
 
 
@@ -198,7 +198,7 @@ def _worker_init_fn(worker_id: int):
     info.dataset.rng = random.Random(info.seed)
 
 
-def build_train_valid_loaders_robosuite(
+def build_train_valid_loaders_metaworld(
     dataset_path: DatasetPathInput,
     batch_size: int = 128,
     num_workers: int = 4,
@@ -216,7 +216,7 @@ def build_train_valid_loaders_robosuite(
 ):
     """Build PyTorch DataLoaders from one or more HDF5 demo files."""
     dataset_paths = _normalize_dataset_paths(dataset_path)
-    demo_refs = _list_demo_refs_robosuite(dataset_paths)
+    demo_refs = _list_demo_refs_metaworld(dataset_paths)
     if num_episodes is not None:
         demo_refs = demo_refs[: int(num_episodes)]
 
@@ -240,7 +240,7 @@ def build_train_valid_loaders_robosuite(
     if camera_num is not None:
         views = views[: int(camera_num)]
 
-    train_dataset = RoboSuiteMultiViewAllCamerasHDF5Dataset(
+    train_dataset = MetaWorldMultiViewAllCamerasHDF5Dataset(
         dataset_path=dataset_paths,
         demo_keys=train_refs,
         views=views,
@@ -248,7 +248,7 @@ def build_train_valid_loaders_robosuite(
         seed=seed,
         min_time_gap=min_time_gap,
     )
-    valid_dataset = RoboSuiteMultiViewAllCamerasHDF5Dataset(
+    valid_dataset = MetaWorldMultiViewAllCamerasHDF5Dataset(
         dataset_path=dataset_paths,
         demo_keys=valid_refs,
         views=views,

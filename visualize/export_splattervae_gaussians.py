@@ -337,11 +337,10 @@ def generate_gaussians_for_source(
 
     k = torch.from_numpy(source_k).unsqueeze(0).to(device=device, dtype=torch.float32)
     c2w = torch.from_numpy(source_c2w).unsqueeze(0).to(device=device, dtype=torch.float32)
-    source_quat = rotation_matrix_to_quaternion_wxyz(c2w[:, :3, :3])
     return converter(
-        splatter=splatter,
+        proposal_map=splatter,
+        z_inv=z_inv.contiguous(),
         source_cameras_view_to_world=c2w,
-        source_cv2wT_quat=source_quat,
         intrinsics=k,
         activate_output=True,
     )

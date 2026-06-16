@@ -13,7 +13,6 @@ from models.splatter import render_predicted
 from utils.general_utils import image_to_tensor as repo_image_to_tensor
 from visualize.metaworld_camera_utils import image_to_tensor, load_yaml, tensor_to_uint8_image
 from visualize.splattervae_common import build_visualization_models
-from visualize.export_splattervae_gaussians import rotation_matrix_to_quaternion_wxyz
 
 
 def strip_module_prefix(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -84,11 +83,10 @@ class SplatterVAERenderer:
         splatter = self.vae.decode(z_inv.contiguous(), z_dep.contiguous())
         k = torch.from_numpy(np.asarray(source_k, dtype=np.float32)).unsqueeze(0).to(self.device)
         c2w = torch.from_numpy(np.asarray(source_c2w, dtype=np.float32)).unsqueeze(0).to(self.device)
-        quat = rotation_matrix_to_quaternion_wxyz(c2w[:, :3, :3])
         return self.converter(
-            splatter=splatter,
+            proposal_map=splatter,
+            z_inv=z_inv.contiguous(),
             source_cameras_view_to_world=c2w,
-            source_cv2wT_quat=quat,
             intrinsics=k,
             activate_output=True,
         )

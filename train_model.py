@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+from dataclasses import fields
 from typing import Optional
 
 import torch
 import wandb
 import yaml
 
-from dataset.dataloader import build_train_valid_loaders_robosuite
+from dataset.dataloader import build_train_valid_loaders_metaworld
 from models.splatter import (
     SplatterConfig,
     SplatterDataConfig,
@@ -38,6 +39,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _filter_dataclass_kwargs(values: dict, cls: type, section: str) -> dict:
+    allowed = {field.name for field in fields(cls)}
+    ignored = sorted(set(values) - allowed)
+    if ignored:
+        print(f"[Config] Ignoring deprecated/unknown {section} keys: {ignored}")
+    return {key: value for key, value in values.items() if key in allowed}
+
+
 def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> SplatterConfig:
     spl_cfg = cfg.get("splatter", {})
     spl_data_cfg_dict = dict(spl_cfg.get("data", {}))
@@ -46,10 +55,11 @@ def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> Splatte
     # Match the renderer config to the actual training batch resolution.
     spl_data_cfg_dict["img_height"] = img_height
     spl_data_cfg_dict["img_width"] = img_width
+    spl_model_cfg_dict["max_sh_degree"] = 1
 
     return SplatterConfig(
-        data=SplatterDataConfig(**spl_data_cfg_dict),
-        model=SplatterModelConfig(**spl_model_cfg_dict),
+        data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg_dict, SplatterDataConfig, "splatter.data")),
+        model=SplatterModelConfig(**_filter_dataclass_kwargs(spl_model_cfg_dict, SplatterModelConfig, "splatter.model")),
     )
 
 
@@ -62,19 +72,11 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
     model_cfg = dict(cfg.get("model", {}))
     spl_model_cfg = cfg.get("splatter", {}).get("model", {})
 
-    max_sh_degree = int(spl_model_cfg.get("max_sh_degree", 1))
-    num_gaussians_per_pixel = int(spl_model_cfg.get("num_gaussians_per_pixel", 5))
-    isotropic = bool(spl_model_cfg.get("isotropic", False))
-    depth_parameterization = str(spl_model_cfg.get("depth_parameterization", "absolute"))
+    points_per_pixel = int(spl_model_cfg.get("points_per_pixel", 2))
     splatter_channels = int(
         cfg.get("splatter", {}).get(
             "splatter_channels",
-            default_splatter_channels(
-                max_sh_degree=max_sh_degree,
-                num_gaussians_per_pixel=num_gaussians_per_pixel,
-                isotropic=isotropic,
-                depth_parameterization=depth_parameterization,
-            ),
+            default_splatter_channels(points_per_pixel=points_per_pixel),
         )
     )
 
@@ -105,7 +107,7 @@ def build_metaworld_loaders(cfg: dict):
     seed = int(ds_cfg.get("seed", 42))
     set_random_seed(seed)
 
-    return build_train_valid_loaders_robosuite(
+    return build_train_valid_loaders_metaworld(
         dataset_path=dataset_path,
         batch_size=int(ds_cfg.get("batch_size", 32)),
         num_workers=int(ds_cfg.get("num_workers", 8)),
@@ -185,9 +187,9 @@ def main() -> None:
         f"sampled_views={camera_num}, depth={has_depth}"
     )
 
-    train_cfg_dict = cfg.get("train", {})
+    train_cfg_dict = dict(cfg.get("train", {}))
     train_cfg_dict.pop("use_amp", None)
-    cfg_train = TrainConfig(**train_cfg_dict)
+    cfg_train = TrainConfig(**_filter_dataclass_kwargs(train_cfg_dict, TrainConfig, "train"))
 
     splatter_cfg = build_splatter_config(cfg, img_height=img_height, img_width=img_width)
     vae = build_vae(cfg, img_height=img_height, img_width=img_width)

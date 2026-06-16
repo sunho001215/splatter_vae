@@ -2,21 +2,27 @@ from __future__ import annotations
 
 import math
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+
+try:
+    from pytorch3d.loss import chamfer_distance as pytorch3d_chamfer_distance
+except ImportError:  # pragma: no cover - exercised only when the dependency is missing.
+    pytorch3d_chamfer_distance = None
 from torchvision.utils import make_grid
 
 import wandb
 
 from models.losses import (
     compute_all_camera_contrastive_losses,
-    compute_batched_reconstruction_losses,
     compute_latent_consistency_loss,
+    compute_reconstruction_loss,
 )
-from models.splatter import SplatterConfig, VAESplatterToGaussians, render_predicted
+from models.point_voxel_gaussians import PointVoxelToGaussians
+from models.splatter import SplatterConfig, render_predicted
 from models.splatter_train_config import TrainConfig
 from models.vae import SplatterVAE
 
@@ -33,10 +39,7 @@ def _normalize_lr_schedule(schedule: str) -> str:
         "cosine_warmup": "warmup_cosine",
     }
     if schedule not in aliases:
-        raise ValueError(
-            f"Unknown lr_schedule={schedule!r}. "
-            "Use one of: constant, warmup_cosine, cosine."
-        )
+        raise ValueError(f"Unknown lr_schedule={schedule!r}. Use one of: constant, warmup_cosine, cosine.")
     return aliases[schedule]
 
 
@@ -60,10 +63,6 @@ def _compute_scheduled_lr(cfg_train: TrainConfig, global_step: int, total_steps:
         return peak_lr
 
     min_lr = float(cfg_train.min_lr)
-    if peak_lr < 0.0:
-        raise ValueError(f"lr must be non-negative, got {peak_lr}.")
-    if min_lr < 0.0:
-        raise ValueError(f"min_lr must be non-negative, got {min_lr}.")
     if min_lr > peak_lr:
         raise ValueError(f"min_lr ({min_lr}) must be <= lr ({peak_lr}).")
 
@@ -83,6 +82,14 @@ def _set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
         param_group["lr"] = lr
 
 
+def _render_weight(cfg_train: TrainConfig, global_step: int) -> float:
+    base = float(cfg_train.rec_weight)
+    warmup = max(0, int(cfg_train.render_loss_warmup_steps))
+    if warmup <= 0:
+        return base
+    return base * min(1.0, float(global_step + 1) / float(warmup))
+
+
 def encode_all_camera_batch(
     vae: SplatterVAE,
     images: torch.Tensor,
@@ -93,85 +100,20 @@ def encode_all_camera_batch(
 
     bsz, num_views, channels, height, width = images.shape
     if channels != 3:
-        raise ValueError(
-            "SplatterVAE encoders now expect RGB inputs only; depth is used only for depth regularization. "
-            f"Got images with {channels} channels."
-        )
+        raise ValueError(f"SplatterVAE encoders expect RGB inputs only, got {channels} channels.")
     flat_images = images.reshape(bsz * num_views, channels, height, width).contiguous()
 
     z_inv, inv_vq_loss, z_dep, dep_vq_loss, _ = vae.encode(flat_images)
     z_inv = z_inv.reshape(bsz, num_views, *z_inv.shape[1:]).contiguous()
     z_dep = z_dep.reshape(bsz, num_views, *z_dep.shape[1:]).contiguous()
-
     return {"z_inv": z_inv, "z_dep": z_dep}, inv_vq_loss, dep_vq_loss
 
 
-def _non_identity_randperm(num_items: int, device: torch.device) -> torch.Tensor:
-    """Return a random permutation that changes order whenever possible."""
-    if num_items <= 1:
-        return torch.arange(num_items, device=device)
-
-    perm = torch.randperm(num_items, device=device)
-    if torch.equal(perm, torch.arange(num_items, device=device)):
-        perm = torch.roll(perm, shifts=1, dims=0)
-    return perm
-
-
 def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
-    """sqrt(max(0, x)) with zero subgradient at x <= 0."""
     ret = torch.zeros_like(x)
     positive = x > 0
     ret[positive] = torch.sqrt(x[positive])
     return ret
-
-
-def _rotation_matrix_to_quaternion_wxyz(matrix: torch.Tensor) -> torch.Tensor:
-    """Convert rotation matrices to real-first quaternions.
-
-    ``VAESplatterToGaussians`` rotates predicted Gaussian orientations from the
-    source camera frame to the world frame.  It expects quaternions in
-    ``(w, x, y, z)`` order, matching ``utils.general_utils.quaternion_raw_multiply``.
-    """
-    if matrix.shape[-2:] != (3, 3):
-        raise ValueError(f"Expected rotation matrices with shape (..., 3, 3), got {tuple(matrix.shape)}.")
-
-    m00 = matrix[..., 0, 0]
-    m01 = matrix[..., 0, 1]
-    m02 = matrix[..., 0, 2]
-    m10 = matrix[..., 1, 0]
-    m11 = matrix[..., 1, 1]
-    m12 = matrix[..., 1, 2]
-    m20 = matrix[..., 2, 0]
-    m21 = matrix[..., 2, 1]
-    m22 = matrix[..., 2, 2]
-
-    q_abs = _sqrt_positive_part(
-        torch.stack(
-            [
-                1.0 + m00 + m11 + m22,
-                1.0 + m00 - m11 - m22,
-                1.0 - m00 + m11 - m22,
-                1.0 - m00 - m11 + m22,
-            ],
-            dim=-1,
-        )
-    )
-
-    # Four candidates, each numerically stable when its corresponding q_abs is
-    # the largest component.  Candidate order is w, x, y, z.
-    quat_by_rijk = torch.stack(
-        [
-            torch.stack([q_abs[..., 0] ** 2, m21 - m12, m02 - m20, m10 - m01], dim=-1),
-            torch.stack([m21 - m12, q_abs[..., 1] ** 2, m10 + m01, m02 + m20], dim=-1),
-            torch.stack([m02 - m20, m10 + m01, q_abs[..., 2] ** 2, m21 + m12], dim=-1),
-            torch.stack([m10 - m01, m20 + m02, m21 + m12, q_abs[..., 3] ** 2], dim=-1),
-        ],
-        dim=-2,
-    )
-    quat_candidates = quat_by_rijk / (2.0 * q_abs[..., None].clamp(min=0.1))
-    best = F.one_hot(q_abs.argmax(dim=-1), num_classes=4).to(dtype=torch.bool)
-    quat = quat_candidates[best, :].reshape(*matrix.shape[:-2], 4)
-    return F.normalize(quat, dim=-1, eps=1e-6)
 
 
 def _compute_soft_image_region_penalty(
@@ -180,7 +122,7 @@ def _compute_soft_image_region_penalty(
     intrinsics: torch.Tensor,
     img_h: int,
     img_w: int,
-    min_depth: float = 1e-3,
+    min_depth: float = 1.0e-3,
     penalty_cap: float = 100.0,
     source_view_indices: Optional[torch.Tensor] = None,
     gaussian_mask: Optional[torch.Tensor] = None,
@@ -201,7 +143,7 @@ def _compute_soft_image_region_penalty(
     y = xyz_cam[..., 1]
     z = xyz_cam[..., 2]
 
-    min_z = max(float(min_depth), 1e-3)
+    min_z = max(float(min_depth), 1.0e-3)
     valid_depth = torch.isfinite(z) & (z > min_z)
     z_for_projection = torch.where(valid_depth, z, torch.ones_like(z))
 
@@ -225,21 +167,10 @@ def _compute_soft_image_region_penalty(
 
     z_clean = torch.nan_to_num(z, nan=-min_z, posinf=min_z, neginf=-min_z)
     depth_penalty = F.relu(min_z - z_clean) / min_z
-    depth_penalty = torch.where(
-        torch.isfinite(z),
-        depth_penalty,
-        torch.full_like(depth_penalty, float(penalty_cap)),
-    )
+    depth_penalty = torch.where(torch.isfinite(z), depth_penalty, torch.full_like(depth_penalty, float(penalty_cap)))
 
     per_view_penalty = (image_penalty + depth_penalty).clamp(max=float(penalty_cap))
-    outside_mask = (
-        (~valid_depth)
-        | (~finite_projection)
-        | (u < 0.0)
-        | (u > max_u)
-        | (v < 0.0)
-        | (v > max_v)
-    )
+    outside_mask = (~valid_depth) | (~finite_projection) | (u < 0.0) | (u > max_u) | (v < 0.0) | (v > max_v)
 
     if gaussian_mask is None:
         valid_gaussian_mask = torch.ones_like(outside_mask, dtype=torch.bool)
@@ -276,362 +207,17 @@ def _compute_soft_image_region_penalty(
             stats["inactive_ratio_tgt"] = stats["inactive_ratio_src"]
     else:
         stats["inactive_ratio_src"] = masked_mean(outside_mask[:, 0].float(), valid_gaussian_mask[:, 0])
-        if outside_mask.shape[1] > 1:
-            stats["inactive_ratio_tgt"] = masked_mean(outside_mask[:, 1:].float(), valid_gaussian_mask[:, 1:])
-        else:
-            stats["inactive_ratio_tgt"] = stats["inactive_ratio_src"]
-
+        stats["inactive_ratio_tgt"] = stats["inactive_ratio_src"]
     return stats
 
-
-def _compute_effective_rank_regularization(
-    scales: torch.Tensor,
-    valid_mask: Optional[torch.Tensor] = None,
-) -> Dict[str, torch.Tensor]:
-    """Effective-rank regularization from eRank-GS applied to valid Gaussian scales."""
-    scale = torch.nan_to_num(scales.float(), nan=1e-6, posinf=1e2, neginf=1e-6).clamp_min(1e-6)
-    flat_scale = scale.reshape(-1, 3)
-    if valid_mask is not None:
-        flat_mask = valid_mask.reshape(-1).to(device=flat_scale.device, dtype=torch.bool)
-        flat_scale = flat_scale[flat_mask]
-    if flat_scale.numel() == 0:
-        zero = scale.new_zeros(())
-        return {
-            "erank_loss": zero,
-            "thin_loss": zero,
-            "erank_mean": zero,
-            "erank_min": zero,
-            "scale_ratio_mean": zero,
-            "scale_ratio_max": zero,
-            "scale_mean": zero,
-            "scale_max": zero,
-        }
-    spectrum = flat_scale.pow(2)
-    probs = spectrum / spectrum.sum(dim=-1, keepdim=True).clamp_min(1e-12)
-    entropy = -(probs * torch.log(probs.clamp_min(1e-12))).sum(dim=-1)
-    erank = torch.exp(entropy)
-    ordered_scale, _ = torch.sort(flat_scale, dim=-1, descending=True)
-    ratio = ordered_scale[:, 0] / ordered_scale[:, 2].clamp_min(1e-6)
-    return {
-        "erank_loss": torch.clamp(-torch.log(erank - 1.0 + 1e-7), min=0.0).mean(),
-        "thin_loss": ordered_scale[:, 2].mean(),
-        "erank_mean": erank.mean(),
-        "erank_min": erank.amin(),
-        "scale_ratio_mean": ratio.mean(),
-        "scale_ratio_max": ratio.amax(),
-        "scale_mean": flat_scale.mean(),
-        "scale_max": flat_scale.amax(),
-    }
-
-
-def _sanitize_metric_depth(depth: torch.Tensor, splatter_cfg: SplatterConfig) -> torch.Tensor:
-    znear = float(splatter_cfg.data.znear)
-    zfar = float(splatter_cfg.data.zfar)
-    fill = 0.5 * (znear + zfar)
-    return torch.nan_to_num(depth, nan=fill, posinf=zfar, neginf=znear).clamp(min=znear, max=zfar)
-
-
-def _zero_depth_stats(device: torch.device) -> Dict[str, torch.Tensor]:
-    zero = torch.zeros((), device=device)
-    return {
-        "depth_loss": zero,
-        "depth_l1_loss": zero,
-        "depth_hard_loss": zero,
-        "depth_hard_local_loss": zero,
-        "depth_hard_global_loss": zero,
-        "depth_soft_loss": zero,
-        "depth_soft_local_loss": zero,
-        "depth_soft_global_loss": zero,
-        "rendered_depth_mean": zero,
-        "target_depth_mean": zero,
-        "depth_valid_ratio": zero,
-    }
-
-
-def _rendered_depth_l1_loss(
-    rendered_depth: Optional[torch.Tensor],
-    target_depth: Optional[torch.Tensor],
-    splatter_cfg: SplatterConfig,
-) -> Dict[str, torch.Tensor]:
-    """AnySplat-style metric depth supervision: L1 over valid GT depth pixels."""
-    if target_depth is None or rendered_depth is None:
-        if rendered_depth is not None:
-            device = rendered_depth.device
-        elif target_depth is not None:
-            device = target_depth.device
-        else:
-            device = torch.device("cpu")
-        return _zero_depth_stats(device)
-    if rendered_depth.shape != target_depth.shape:
-        raise ValueError(
-            f"Expected rendered/target depth shapes to match, got "
-            f"{tuple(rendered_depth.shape)} and {tuple(target_depth.shape)}."
-        )
-
-    znear = float(splatter_cfg.data.znear)
-    zfar = float(splatter_cfg.data.zfar)
-    pred_raw = rendered_depth.to(dtype=torch.float32)
-    target_raw = target_depth.to(device=pred_raw.device, dtype=torch.float32)
-    valid = torch.isfinite(target_raw) & (target_raw >= znear) & (target_raw <= zfar)
-
-    pred = _sanitize_metric_depth(pred_raw, splatter_cfg)
-    target = _sanitize_metric_depth(target_raw, splatter_cfg)
-    if bool(valid.any()):
-        l1_loss = (pred[valid] - target[valid]).abs().mean()
-        rendered_mean = pred[valid].mean()
-        target_mean = target[valid].mean()
-    else:
-        l1_loss = pred.new_zeros(())
-        rendered_mean = pred.new_zeros(())
-        target_mean = pred.new_zeros(())
-
-    stats = _zero_depth_stats(pred.device)
-    stats.update(
-        {
-            "depth_loss": l1_loss,
-            "depth_l1_loss": l1_loss,
-            "rendered_depth_mean": rendered_mean,
-            "target_depth_mean": target_mean,
-            "depth_valid_ratio": valid.float().mean(),
-        }
-    )
-    return stats
-
-
-def _normalize_depth_regularization_mode(cfg_train: TrainConfig) -> str:
-    mode = str(getattr(cfg_train, "depth_regularization", "l1") or "l1").strip().lower().replace("-", "_")
-    aliases = {
-        "simple": "l1",
-        "metric_l1": "l1",
-        "anysplat": "l1",
-        "l1": "l1",
-        "dn_gaussian": "dngaussian",
-        "dngaussian": "dngaussian",
-        "global_local": "dngaussian",
-    }
-    if mode not in aliases:
-        raise ValueError(
-            f"Unknown depth_regularization={getattr(cfg_train, 'depth_regularization', None)!r}. "
-            "Use 'l1' or 'dngaussian'."
-        )
-    return aliases[mode]
-
-
-def _normalize_depth_render_mode(cfg_train: TrainConfig) -> str:
-    mode = str(getattr(cfg_train, "depth_render_mode", "D") or "D").strip().upper()
-    if mode not in {"D", "ED"}:
-        raise ValueError(f"depth_render_mode must be 'D' or 'ED', got {mode!r}.")
-    return mode
-
-
-def _depth_regularization_pc(
-    pc: Dict[str, torch.Tensor],
-    pass_type: str,
-    hard_opacity: float,
-) -> Dict[str, torch.Tensor]:
-    """Build the hard/soft DNGaussian depth-render parameter view."""
-    out: Dict[str, torch.Tensor] = {}
-    for name, value in pc.items():
-        if not torch.is_tensor(value):
-            out[name] = value
-        elif name in {"scaling", "rotation", "features_dc", "features_rest", "confidence", "confidence_logits"}:
-            out[name] = value.detach()
-        elif pass_type == "soft" and name == "xyz":
-            out[name] = value.detach()
-        elif pass_type == "hard" and name == "opacity":
-            out[name] = torch.full_like(value, float(hard_opacity))
-        else:
-            out[name] = value
-    return out
-
-
-def _render_dngaussian_depth_pass(
-    pc: Dict[str, torch.Tensor],
-    world_view_transform: torch.Tensor,
-    intrinsics: torch.Tensor,
-    bg: torch.Tensor,
-    splatter_cfg: SplatterConfig,
-    cfg_train: TrainConfig,
-    pass_type: str,
-) -> Optional[torch.Tensor]:
-    depth_pc = _depth_regularization_pc(
-        pc=pc,
-        pass_type=pass_type,
-        hard_opacity=float(getattr(cfg_train, "depth_hard_opacity", 0.95)),
-    )
-    depth_out = render_predicted(
-        pc=depth_pc,
-        world_view_transform=world_view_transform,
-        intrinsics=intrinsics,
-        bg_color=bg,
-        cfg=splatter_cfg,
-        override_color=torch.ones_like(pc["xyz"]),
-        render_mode=_normalize_depth_render_mode(cfg_train),
-    )
-    return depth_out.get("depth")
-
-
-def _patchify_depth(depth: torch.Tensor, patch_size: int) -> torch.Tensor:
-    patches = F.unfold(depth, kernel_size=patch_size, stride=patch_size)
-    return patches.permute(0, 2, 1).reshape(-1, patch_size * patch_size)
-
-
-def _normalize_depth_patches(
-    patches: torch.Tensor,
-    std: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    patch_mean = patches.mean(dim=1, keepdim=True)
-    if std is None:
-        patch_std = patches.std(dim=1, keepdim=True, unbiased=False)
-    else:
-        patch_std = std.to(device=patches.device, dtype=patches.dtype).view(1, 1)
-    global_std = patches.reshape(-1).std(unbiased=False).clamp_min(1e-6)
-    return (patches - patch_mean) / (patch_std + 1e-2 * global_std)
-
-
-def _margin_l2_loss(pred: torch.Tensor, target: torch.Tensor, margin: float) -> torch.Tensor:
-    diff = pred - target
-    mask = diff.abs() > float(margin)
-    if not bool(mask.any()):
-        return diff.new_zeros(())
-    return diff[mask].pow(2).mean()
-
-
-def _prepare_depth_pair(
-    rendered_depth: torch.Tensor,
-    target_depth: torch.Tensor,
-    splatter_cfg: SplatterConfig,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    if rendered_depth.shape != target_depth.shape:
-        raise ValueError(
-            f"Expected rendered/target depth shapes to match, got "
-            f"{tuple(rendered_depth.shape)} and {tuple(target_depth.shape)}."
-        )
-    znear = float(splatter_cfg.data.znear)
-    zfar = float(splatter_cfg.data.zfar)
-    pred_raw = rendered_depth.to(dtype=torch.float32)
-    target_raw = target_depth.to(device=pred_raw.device, dtype=torch.float32)
-    valid = torch.isfinite(target_raw) & (target_raw >= znear) & (target_raw <= zfar)
-    pred = _sanitize_metric_depth(pred_raw, splatter_cfg)
-    target = _sanitize_metric_depth(target_raw, splatter_cfg)
-    pred = torch.where(valid, pred, target)
-    return pred, target, valid
-
-
-def _global_local_depth_normalized_loss(
-    rendered_depth: torch.Tensor,
-    target_depth: torch.Tensor,
-    splatter_cfg: SplatterConfig,
-    cfg_train: TrainConfig,
-) -> Dict[str, torch.Tensor]:
-    pred, target, valid = _prepare_depth_pair(rendered_depth, target_depth, splatter_cfg)
-    flat_pred = pred.reshape(-1, 1, pred.shape[-2], pred.shape[-1])
-    flat_target = target.reshape(-1, 1, target.shape[-2], target.shape[-1])
-    height, width = flat_pred.shape[-2:]
-    patch_min = max(1, min(int(getattr(cfg_train, "depth_patch_min", 17)), height, width))
-    patch_max = max(patch_min, min(int(getattr(cfg_train, "depth_patch_max", 53)), height, width))
-    if patch_max > patch_min:
-        patch_size = int(torch.randint(patch_min, patch_max + 1, (1,), device=flat_pred.device).item())
-    else:
-        patch_size = patch_min
-
-    pred_patches = _patchify_depth(flat_pred, patch_size)
-    target_patches = _patchify_depth(flat_target, patch_size)
-    margin = float(getattr(cfg_train, "depth_error_tolerance", 0.2))
-
-    pred_local = _normalize_depth_patches(pred_patches)
-    target_local = _normalize_depth_patches(target_patches)
-    local_loss = _margin_l2_loss(pred_local, target_local, margin)
-
-    if bool(valid.any()):
-        global_loss = (pred[valid] - target[valid]).abs().mean()
-    else:
-        global_loss = pred.new_zeros(())
-
-    loss = (
-        float(getattr(cfg_train, "depth_global_weight", 1.0)) * global_loss
-        + float(getattr(cfg_train, "depth_local_weight", 0.1)) * local_loss
-    )
-    return {
-        "loss": loss,
-        "local_loss": local_loss,
-        "global_loss": global_loss,
-        "valid_ratio": valid.float().mean(),
-    }
-
-
-def _compute_dngaussian_depth_loss(
-    hard_depth: Optional[torch.Tensor],
-    soft_depth: Optional[torch.Tensor],
-    target_depth: Optional[torch.Tensor],
-    splatter_cfg: SplatterConfig,
-    cfg_train: TrainConfig,
-    global_step: Optional[int] = None,
-) -> Dict[str, torch.Tensor]:
-    if target_depth is None or hard_depth is None:
-        if hard_depth is not None:
-            device = hard_depth.device
-        elif soft_depth is not None:
-            device = soft_depth.device
-        elif target_depth is not None:
-            device = target_depth.device
-        else:
-            device = torch.device("cpu")
-        return _zero_depth_stats(device)
-
-    monitor = _rendered_depth_l1_loss(hard_depth, target_depth, splatter_cfg)
-    hard = _global_local_depth_normalized_loss(hard_depth, target_depth, splatter_cfg, cfg_train)
-    hard_loss = hard["loss"]
-
-    soft_loss = hard_loss.new_zeros(())
-    soft_local = hard_loss.new_zeros(())
-    soft_global = hard_loss.new_zeros(())
-    soft_start = int(getattr(cfg_train, "depth_soft_start_steps", 0))
-    use_soft = soft_depth is not None and float(getattr(cfg_train, "depth_soft_weight", 1.0)) != 0.0
-    if global_step is not None and int(global_step) < soft_start:
-        use_soft = False
-    threshold = getattr(cfg_train, "depth_soft_hard_loss_threshold", None)
-    if threshold is not None and float(hard_loss.detach().item()) >= float(threshold):
-        use_soft = False
-    if use_soft:
-        soft = _global_local_depth_normalized_loss(soft_depth, target_depth, splatter_cfg, cfg_train)
-        soft_loss = soft["loss"]
-        soft_local = soft["local_loss"]
-        soft_global = soft["global_loss"]
-
-    total = (
-        float(getattr(cfg_train, "depth_hard_weight", 1.0)) * hard_loss
-        + float(getattr(cfg_train, "depth_soft_weight", 1.0)) * soft_loss
-    )
-    stats = dict(monitor)
-    stats.update(
-        {
-            "depth_loss": total,
-            "depth_hard_loss": hard_loss,
-            "depth_hard_local_loss": hard["local_loss"],
-            "depth_hard_global_loss": hard["global_loss"],
-            "depth_soft_loss": soft_loss,
-            "depth_soft_local_loss": soft_local,
-            "depth_soft_global_loss": soft_global,
-            "depth_valid_ratio": hard["valid_ratio"],
-        }
-    )
-    return stats
 
 
 def _gather_camera_rows(values: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
-    """Gather one camera row per batch item from ``values[:, camera]``."""
     batch_ids = torch.arange(values.shape[0], device=values.device)
     return values[batch_ids, indices]
 
 
 def _gather_target_cameras(values: torch.Tensor, target_indices: torch.Tensor) -> torch.Tensor:
-    """Gather multiple target camera rows per batch item.
-
-    Args:
-        values: ``(B, A, ...)`` camera-indexed tensor.
-        target_indices: ``(B, T)`` target camera indices.
-    """
     trailing_shape = values.shape[2:]
     gather_index = target_indices.view(
         target_indices.shape[0],
@@ -642,7 +228,6 @@ def _gather_target_cameras(values: torch.Tensor, target_indices: torch.Tensor) -
 
 
 def _target_indices_excluding_source(source_indices: torch.Tensor, num_views: int) -> torch.Tensor:
-    """Return all camera indices except each row's selected source camera."""
     if num_views < 2:
         raise ValueError("Source-plus-target reconstruction requires at least two camera viewpoints.")
     all_views = torch.arange(num_views, device=source_indices.device).view(1, num_views)
@@ -651,20 +236,7 @@ def _target_indices_excluding_source(source_indices: torch.Tensor, num_views: in
     return all_views[keep_target].view(source_indices.shape[0], num_views - 1)
 
 
-def _random_other_camera_indices(source_indices: torch.Tensor, num_views: int) -> torch.Tensor:
-    """Sample one non-source camera index per row for invariant shuffling."""
-    if num_views < 2:
-        raise ValueError("Invariant shuffling requires at least two camera viewpoints.")
-    offset = torch.randint(
-        low=1,
-        high=num_views,
-        size=source_indices.shape,
-        device=source_indices.device,
-    )
-    return (source_indices + offset) % num_views
-
-
-def _masked_gaussian_mean(values: torch.Tensor, valid_mask: Optional[torch.Tensor]) -> torch.Tensor:
+def _masked_mean(values: torch.Tensor, valid_mask: Optional[torch.Tensor]) -> torch.Tensor:
     if valid_mask is None:
         return values.mean()
     mask = valid_mask.to(device=values.device, dtype=torch.bool)
@@ -676,177 +248,238 @@ def _masked_gaussian_mean(values: torch.Tensor, valid_mask: Optional[torch.Tenso
     return values.masked_select(mask).mean()
 
 
-def _zero_normal_stats(device: torch.device) -> Dict[str, torch.Tensor]:
-    zero = torch.zeros((), device=device)
-    return {
-        "normal_consistency_loss": zero,
-        "normal_valid_ratio": zero,
-    }
+def _sample_points(points: torch.Tensor, mask: torch.Tensor, max_points: Optional[int]) -> Tuple[torch.Tensor, torch.Tensor]:
+    valid = mask.to(dtype=torch.bool) & torch.isfinite(points).all(dim=-1)
+    if not bool(valid.any()):
+        return points.new_zeros((1, 3)), torch.zeros((1,), device=points.device, dtype=torch.bool)
+    selected = points[valid]
+    if max_points is not None and int(max_points) > 0 and selected.shape[0] > int(max_points):
+        perm = torch.randperm(selected.shape[0], device=points.device)[: int(max_points)]
+        selected = selected[perm]
+    return selected, torch.ones((selected.shape[0],), device=points.device, dtype=torch.bool)
 
 
-def _quaternion_wxyz_to_matrix(quat: torch.Tensor) -> torch.Tensor:
-    quat = F.normalize(torch.nan_to_num(quat, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
-    w, x, y, z = quat.unbind(dim=-1)
-    ww, xx, yy, zz = w * w, x * x, y * y, z * z
-    wx, wy, wz = w * x, w * y, w * z
-    xy, xz, yz = x * y, x * z, y * z
-    return torch.stack(
-        [
-            torch.stack([ww + xx - yy - zz, 2.0 * (xy - wz), 2.0 * (xz + wy)], dim=-1),
-            torch.stack([2.0 * (xy + wz), ww - xx + yy - zz, 2.0 * (yz - wx)], dim=-1),
-            torch.stack([2.0 * (xz - wy), 2.0 * (yz + wx), ww - xx - yy + zz], dim=-1),
-        ],
-        dim=-2,
-    )
-
-
-def _gaussian_world_normals(pc: Dict[str, torch.Tensor]) -> torch.Tensor:
-    """Use each Gaussian's smallest scale axis as its surface-normal direction."""
-    rotation = _quaternion_wxyz_to_matrix(pc["rotation"])
-    axis_idx = pc["scaling"].detach().argmin(dim=-1)
-    gather_idx = axis_idx.view(*axis_idx.shape, 1, 1).expand(*axis_idx.shape, 3, 1)
-    normals = torch.gather(rotation, dim=-1, index=gather_idx).squeeze(-1)
-    return F.normalize(normals, dim=-1, eps=1e-6)
-
-
-def _depth_to_world_normals(
-    depth: torch.Tensor,
-    w2c: torch.Tensor,
+def _depths_to_world_point_cloud(
+    depths: Optional[torch.Tensor],
     intrinsics: torch.Tensor,
+    c2w: torch.Tensor,
     splatter_cfg: SplatterConfig,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Estimate world-space normals from a rendered metric depth map."""
-    if depth is None:
-        device = w2c.device
-        return torch.zeros((), device=device), torch.zeros((), device=device, dtype=torch.bool)
-    if depth.dim() != 5 or depth.shape[2] != 1:
-        raise ValueError(f"Expected depth shape (B,V,1,H,W), got {tuple(depth.shape)}.")
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if depths is None:
+        device = intrinsics.device
+        return torch.zeros((intrinsics.shape[0], 1, 3), device=device), torch.zeros((intrinsics.shape[0], 1), device=device, dtype=torch.bool)
 
-    bsz, num_views, _, height, width = depth.shape
-    device = depth.device
-    dtype = depth.dtype
-    flat_depth = depth.reshape(bsz * num_views, 1, height, width)
-    flat_intrinsics = intrinsics.reshape(bsz * num_views, 3, 3).to(device=device, dtype=dtype)
-    flat_w2c = w2c.reshape(bsz * num_views, 4, 4).to(device=device, dtype=dtype)
-
+    bsz, num_views, _, height, width = depths.shape
+    device = depths.device
+    dtype = depths.dtype
     ys, xs = torch.meshgrid(
-        torch.arange(height, device=device, dtype=dtype),
-        torch.arange(width, device=device, dtype=dtype),
+        torch.arange(height, device=device, dtype=dtype) + 0.5,
+        torch.arange(width, device=device, dtype=dtype) + 0.5,
         indexing="ij",
     )
     xs = xs.view(1, 1, height, width)
     ys = ys.view(1, 1, height, width)
 
-    fx = flat_intrinsics[:, 0, 0].view(-1, 1, 1, 1).clamp_min(1e-6)
-    fy = flat_intrinsics[:, 1, 1].view(-1, 1, 1, 1).clamp_min(1e-6)
-    cx = flat_intrinsics[:, 0, 2].view(-1, 1, 1, 1)
-    cy = flat_intrinsics[:, 1, 2].view(-1, 1, 1, 1)
-
-    z = _sanitize_metric_depth(flat_depth, splatter_cfg)
-    x = (xs - cx) / fx * z
-    y = (ys - cy) / fy * z
-    points_cam = torch.cat((x, y, z), dim=1)
-
-    dx = points_cam[:, :, 1:-1, 2:] - points_cam[:, :, 1:-1, :-2]
-    dy = points_cam[:, :, 2:, 1:-1] - points_cam[:, :, :-2, 1:-1]
-    normal_cam = F.normalize(torch.cross(dx, dy, dim=1), dim=1, eps=1e-6)
-
+    point_lists: list[torch.Tensor] = []
+    mask_lists: list[torch.Tensor] = []
     znear = float(splatter_cfg.data.znear)
     zfar = float(splatter_cfg.data.zfar)
-    raw_depth = flat_depth
-    depth_valid = torch.isfinite(raw_depth) & (raw_depth >= znear) & (raw_depth <= zfar)
-    valid_inner = (
-        depth_valid[:, :, 1:-1, 1:-1]
-        & depth_valid[:, :, 1:-1, 2:]
-        & depth_valid[:, :, 1:-1, :-2]
-        & depth_valid[:, :, 2:, 1:-1]
-        & depth_valid[:, :, :-2, 1:-1]
-        & torch.isfinite(normal_cam).all(dim=1, keepdim=True)
-    )
+    for batch_idx in range(bsz):
+        per_view_points = []
+        per_view_valid = []
+        for view_idx in range(num_views):
+            depth = depths[batch_idx, view_idx, 0].to(dtype=dtype)
+            k = intrinsics[batch_idx, view_idx].to(device=device, dtype=dtype)
+            z = depth
+            valid = torch.isfinite(z) & (z >= znear) & (z <= zfar)
+            x = (xs[0, 0] - k[0, 2]) / k[0, 0].clamp_min(1.0e-6) * z
+            y = (ys[0, 0] - k[1, 2]) / k[1, 1].clamp_min(1.0e-6) * z
+            pts_cam = torch.stack([x, y, z], dim=-1).reshape(-1, 3)
+            rot = c2w[batch_idx, view_idx, :3, :3].to(dtype=dtype)
+            trans = c2w[batch_idx, view_idx, :3, 3].to(dtype=dtype)
+            pts_world = pts_cam @ rot.transpose(0, 1) + trans.view(1, 3)
+            per_view_points.append(pts_world)
+            per_view_valid.append(valid.reshape(-1))
+        all_points = torch.cat(per_view_points, dim=0)
+        all_valid = torch.cat(per_view_valid, dim=0)
+        valid_points = all_points[all_valid]
+        if valid_points.numel() == 0:
+            valid_points = all_points.new_zeros((1, 3))
+            valid_mask = torch.zeros((1,), device=device, dtype=torch.bool)
+        else:
+            valid_mask = torch.ones((valid_points.shape[0],), device=device, dtype=torch.bool)
+        point_lists.append(valid_points)
+        mask_lists.append(valid_mask)
 
-    normal_cam_full = torch.zeros_like(points_cam)
-    normal_cam_full[:, :, 1:-1, 1:-1] = normal_cam
-    valid_full = torch.zeros((bsz * num_views, 1, height, width), device=device, dtype=torch.bool)
-    valid_full[:, :, 1:-1, 1:-1] = valid_inner
+    max_count = max(points.shape[0] for points in point_lists)
+    padded_points = []
+    padded_masks = []
+    for points, mask in zip(point_lists, mask_lists):
+        pad_len = max_count - points.shape[0]
+        if pad_len > 0:
+            points = torch.cat([points, points.new_zeros((pad_len, 3))], dim=0)
+            mask = torch.cat([mask, torch.zeros((pad_len,), device=device, dtype=torch.bool)], dim=0)
+        padded_points.append(points)
+        padded_masks.append(mask)
+    return torch.stack(padded_points, dim=0), torch.stack(padded_masks, dim=0)
 
-    rot_c2w = flat_w2c[:, :3, :3].transpose(-1, -2)
-    normal_world = torch.einsum("bij,bjhw->bihw", rot_c2w, normal_cam_full)
-    normal_world = F.normalize(normal_world, dim=1, eps=1e-6)
+
+def _masked_padded_points(
+    points: torch.Tensor,
+    mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    sampled_points = []
+    lengths = []
+    weights = []
+    for batch_idx in range(points.shape[0]):
+        valid = mask[batch_idx].to(dtype=torch.bool) & torch.isfinite(points[batch_idx]).all(dim=-1)
+        selected = points[batch_idx][valid]
+        is_valid = bool(selected.numel() > 0)
+        if not is_valid:
+            selected = points.new_zeros((1, points.shape[-1]))
+        sampled_points.append(selected)
+        lengths.append(int(selected.shape[0]))
+        weights.append(1.0 if is_valid else 0.0)
+
+    max_len = max(1, max(lengths))
+    padded = []
+    for selected in sampled_points:
+        pad_len = max_len - selected.shape[0]
+        if pad_len > 0:
+            selected = torch.cat([selected, selected.new_zeros((pad_len, selected.shape[-1]))], dim=0)
+        padded.append(selected)
+
     return (
-        normal_world.reshape(bsz, num_views, 3, height, width).contiguous(),
-        valid_full.reshape(bsz, num_views, 1, height, width).contiguous(),
+        torch.stack(padded, dim=0),
+        torch.tensor(lengths, device=points.device, dtype=torch.long),
+        torch.tensor(weights, device=points.device, dtype=points.dtype),
     )
 
 
-def _compute_normal_consistency_loss(
+def _masked_huber_reduce(
+    squared_distances: torch.Tensor,
+    lengths: torch.Tensor,
+    huber_delta: float,
+) -> torch.Tensor:
+    max_points = squared_distances.shape[1]
+    valid = torch.arange(max_points, device=squared_distances.device).view(1, -1) < lengths.view(-1, 1)
+    distances = torch.sqrt(squared_distances.clamp_min(0.0) + 1.0e-12)
+    per_point = F.smooth_l1_loss(
+        distances,
+        torch.zeros_like(distances),
+        beta=float(huber_delta),
+        reduction="none",
+    )
+    per_point = torch.where(valid, per_point, torch.zeros_like(per_point))
+    return per_point.sum(dim=1) / lengths.clamp_min(1).to(per_point.dtype)
+
+
+def huber_chamfer_loss(
+    pred_points: torch.Tensor,
+    pred_mask: torch.Tensor,
+    gt_points: torch.Tensor,
+    gt_mask: torch.Tensor,
+    huber_delta: float,
+) -> torch.Tensor:
+    if pytorch3d_chamfer_distance is None:
+        raise ImportError(
+            "PyTorch3D is required for Chamfer loss. Install pytorch3d or sync the project dependencies."
+        )
+
+    pred_padded, pred_lengths, pred_weights = _masked_padded_points(pred_points, pred_mask)
+    gt_padded, gt_lengths, gt_weights = _masked_padded_points(gt_points, gt_mask)
+    weights = pred_weights * gt_weights
+    if not bool((weights > 0).any()):
+        return pred_points.new_zeros(())
+
+    chamfer_terms, _ = pytorch3d_chamfer_distance(
+        pred_padded,
+        gt_padded,
+        x_lengths=pred_lengths,
+        y_lengths=gt_lengths,
+        weights=weights,
+        batch_reduction=None,
+        point_reduction=None,
+        norm=2,
+    )
+    pred_to_gt, gt_to_pred = chamfer_terms
+    per_batch = 0.5 * (
+        _masked_huber_reduce(pred_to_gt, pred_lengths, huber_delta)
+        + _masked_huber_reduce(gt_to_pred, gt_lengths, huber_delta)
+    )
+    return (per_batch * weights).sum() / weights.sum().clamp_min(1.0e-8)
+
+
+def _zero_point_stats(device: torch.device) -> Dict[str, torch.Tensor]:
+    zero = torch.zeros((), device=device)
+    return {
+        "point_chamfer_loss": zero,
+        "gt_point_count_mean": zero,
+    }
+
+
+def _compute_point_losses(
     pc: Dict[str, torch.Tensor],
-    rendered_depth: Optional[torch.Tensor],
-    world_view_transform: torch.Tensor,
+    depths: Optional[torch.Tensor],
     intrinsics: torch.Tensor,
+    c2w: torch.Tensor,
     splatter_cfg: SplatterConfig,
     cfg_train: TrainConfig,
-    global_step: Optional[int] = None,
 ) -> Dict[str, torch.Tensor]:
     device = pc["xyz"].device
-    if float(getattr(cfg_train, "normal_consistency_weight", 0.0)) == 0.0:
-        return _zero_normal_stats(device)
-    if _normalize_depth_regularization_mode(cfg_train) == "dngaussian":
-        return _zero_normal_stats(device)
-    if global_step is not None and int(global_step) < int(getattr(cfg_train, "normal_consistency_start_steps", 0)):
-        return _zero_normal_stats(device)
-    if rendered_depth is None:
-        return _zero_normal_stats(device)
+    if depths is None:
+        return _zero_point_stats(device)
 
-    gaussian_normals = _gaussian_world_normals(pc)
-    normal_color = 0.5 * (gaussian_normals + 1.0)
-    normal_bg = torch.zeros(3, device=device, dtype=pc["xyz"].dtype)
-    normal_out = render_predicted(
-        pc=pc,
-        world_view_transform=world_view_transform,
+    gt_points, gt_mask = _depths_to_world_point_cloud(
+        depths=depths,
         intrinsics=intrinsics,
-        bg_color=normal_bg,
-        cfg=splatter_cfg,
-        override_color=normal_color,
-        render_mode="RGB",
-    )
-    rendered_normal_color = normal_out["render"]
-    rendered_alpha = normal_out["alpha"].detach()
-    rendered_normal = 2.0 * rendered_normal_color / rendered_alpha.clamp_min(1e-4) - 1.0
-    rendered_normal = F.normalize(rendered_normal, dim=2, eps=1e-6)
-
-    depth_normal, depth_valid = _depth_to_world_normals(
-        depth=rendered_depth,
-        w2c=world_view_transform,
-        intrinsics=intrinsics,
+        c2w=c2w,
         splatter_cfg=splatter_cfg,
     )
-    if bool(getattr(cfg_train, "normal_consistency_detach_depth_normal", False)):
-        depth_normal = depth_normal.detach()
-    depth_normal = F.normalize(depth_normal, dim=2, eps=1e-6)
-
-    alpha_min = float(getattr(cfg_train, "normal_consistency_alpha_min", 0.05))
-    valid = (
-        depth_valid.squeeze(2)
-        & (rendered_alpha.squeeze(2) > alpha_min)
-        & torch.isfinite(rendered_normal).all(dim=2)
-        & torch.isfinite(depth_normal).all(dim=2)
+    point_chamfer = huber_chamfer_loss(
+        pred_points=pc["raw_points"],
+        pred_mask=pc["raw_valid_mask"],
+        gt_points=gt_points,
+        gt_mask=gt_mask,
+        huber_delta=float(cfg_train.chamfer_huber_delta),
     )
-    if not bool(valid.any()):
-        return _zero_normal_stats(device)
-
-    dot = (rendered_normal * depth_normal).sum(dim=2).clamp(-1.0, 1.0)
-    if bool(getattr(cfg_train, "normal_consistency_use_abs", True)):
-        dot = dot.abs()
-    loss = (1.0 - dot).masked_select(valid).mean()
     return {
-        "normal_consistency_loss": loss,
-        "normal_valid_ratio": valid.float().mean(),
+        "point_chamfer_loss": point_chamfer,
+        "gt_point_count_mean": gt_mask.float().sum(dim=1).mean(),
     }
+
+
+def _gaussian_stats(pc: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    valid = pc.get("valid_mask", None)
+    voxel_valid = pc.get("voxel_valid_mask", None)
+    device = pc["xyz"].device
+    if valid is None:
+        valid = torch.ones(pc["xyz"].shape[:2], device=device, dtype=torch.bool)
+    if voxel_valid is None:
+        voxel_valid = torch.ones(pc["voxel_centers"].shape[:2], device=device, dtype=torch.bool)
+
+    opacity = pc["opacity"]
+    mass = pc.get("voxel_mass", opacity.new_zeros((*voxel_valid.shape, 1)))
+    coverage = pc.get("point_to_voxel_coverage", opacity.new_zeros((opacity.shape[0],)))
+    stats = {
+        "active_voxel_count": voxel_valid.float().sum(dim=1).mean(),
+        "final_gaussian_count": valid.float().sum(dim=1).mean(),
+        "mean_opacity": _masked_mean(opacity, valid),
+        "valid_gaussian_ratio": valid.float().mean(),
+        "voxel_mass_mean": _masked_mean(mass, voxel_valid),
+        "voxel_mass_max": mass.masked_fill(~voxel_valid.unsqueeze(-1), 0.0).amax(),
+        "voxel_mass_min": mass.masked_fill(~voxel_valid.unsqueeze(-1), float("inf")).amin().clamp_max(1.0e6),
+        "voxel_mean_confidence": _masked_mean(pc.get("voxel_mean_confidence", mass.new_zeros(mass.shape)), voxel_valid),
+        "voxel_point_count_mean": _masked_mean(pc.get("voxel_point_count", mass.new_zeros(mass.shape)), voxel_valid),
+        "point_to_voxel_coverage": coverage.mean(),
+        "raw_point_confidence_mean": _masked_mean(pc["raw_confidence"], pc["raw_valid_mask"]),
+    }
+    return stats
 
 
 def _render_selected_sources_to_views(
     vae: SplatterVAE,
-    splatter_to_gaussians: VAESplatterToGaussians,
+    point_voxel_to_gaussians: PointVoxelToGaussians,
     splatter_cfg: SplatterConfig,
     z_inv_source: torch.Tensor,
     z_dep_source: torch.Tensor,
@@ -856,24 +489,15 @@ def _render_selected_sources_to_views(
     c2w: torch.Tensor,
     w2c: torch.Tensor,
     bg: torch.Tensor,
-    cfg_train: TrainConfig,
-    global_step: Optional[int] = None,
-) -> tuple[
-    torch.Tensor,
-    Dict[str, Optional[torch.Tensor]],
-    torch.Tensor,
-    Dict[str, torch.Tensor],
-]:
-    """Decode selected source views and render source plus non-source targets."""
+) -> tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
     source_intrinsics = _gather_camera_rows(intrinsics, source_indices)
     source_c2w = _gather_camera_rows(c2w, source_indices)
 
-    splatter = vae.decode(z_inv_source.contiguous(), z_dep_source.contiguous())
-    source_quat = _rotation_matrix_to_quaternion_wxyz(source_c2w[:, :3, :3])
-    gaussian_pc = splatter_to_gaussians(
-        splatter=splatter,
+    proposal_map = vae.decode(z_inv_source.contiguous(), z_dep_source.contiguous())
+    gaussian_pc = point_voxel_to_gaussians(
+        proposal_map=proposal_map,
+        z_inv=z_inv_source,
         source_cameras_view_to_world=source_c2w,
-        source_cv2wT_quat=source_quat,
         intrinsics=source_intrinsics,
         activate_output=True,
     )
@@ -885,60 +509,17 @@ def _render_selected_sources_to_views(
     target_intrinsics = _gather_target_cameras(intrinsics, target_indices)
     render_intrinsics = torch.cat((source_intrinsics.unsqueeze(1), target_intrinsics), dim=1)
 
-    depth_mode = _normalize_depth_regularization_mode(cfg_train)
-    depth_outputs: Dict[str, Optional[torch.Tensor]] = {
-        "l1": None,
-        "hard": None,
-        "soft": None,
-        "display": None,
-    }
-    if depth_mode == "dngaussian":
-        out = render_predicted(
-            pc=gaussian_pc,
-            world_view_transform=render_w2c,
-            intrinsics=render_intrinsics,
-            bg_color=bg,
-            cfg=splatter_cfg,
-            render_mode="RGB",
-        )
-        depth_outputs["hard"] = _render_dngaussian_depth_pass(
-            pc=gaussian_pc,
-            world_view_transform=render_w2c,
-            intrinsics=render_intrinsics,
-            bg=bg,
-            splatter_cfg=splatter_cfg,
-            cfg_train=cfg_train,
-            pass_type="hard",
-        )
-        render_soft = float(getattr(cfg_train, "depth_soft_weight", 1.0)) != 0.0
-        if global_step is not None and int(global_step) < int(getattr(cfg_train, "depth_soft_start_steps", 0)):
-            render_soft = False
-        if render_soft:
-            depth_outputs["soft"] = _render_dngaussian_depth_pass(
-                pc=gaussian_pc,
-                world_view_transform=render_w2c,
-                intrinsics=render_intrinsics,
-                bg=bg,
-                splatter_cfg=splatter_cfg,
-                cfg_train=cfg_train,
-                pass_type="soft",
-            )
-        depth_outputs["display"] = depth_outputs["hard"]
-    else:
-        out = render_predicted(
-            pc=gaussian_pc,
-            world_view_transform=render_w2c,
-            intrinsics=render_intrinsics,
-            bg_color=bg,
-            cfg=splatter_cfg,
-            render_mode="RGB+D",
-        )
-        depth_outputs["l1"] = out.get("depth")
-        depth_outputs["display"] = depth_outputs["l1"]
-
+    out = render_predicted(
+        pc=gaussian_pc,
+        world_view_transform=render_w2c,
+        intrinsics=render_intrinsics,
+        bg_color=bg,
+        cfg=splatter_cfg,
+        render_mode="RGB",
+    )
     source_view_indices = torch.zeros(source_indices.shape[0], device=source_indices.device, dtype=torch.long)
     valid_mask = gaussian_pc.get("valid_mask", None)
-    frustum_stats = _compute_soft_image_region_penalty(
+    stats = _compute_soft_image_region_penalty(
         xyz_world=gaussian_pc["xyz"],
         world_view_transform=render_w2c,
         intrinsics=render_intrinsics,
@@ -948,36 +529,15 @@ def _render_selected_sources_to_views(
         source_view_indices=source_view_indices,
         gaussian_mask=valid_mask,
     )
-    frustum_stats.update(_compute_effective_rank_regularization(gaussian_pc["scaling"], valid_mask=valid_mask))
-    frustum_stats["gaussian_count_mean"] = (
-        valid_mask.float().sum(dim=1).mean() if valid_mask is not None else gaussian_pc["xyz"].new_tensor(float(gaussian_pc["xyz"].shape[1]))
-    )
-    if "confidence" in gaussian_pc:
-        frustum_stats["confidence_mean"] = _masked_gaussian_mean(gaussian_pc["confidence"], valid_mask)
-    else:
-        frustum_stats["confidence_mean"] = gaussian_pc["xyz"].new_zeros(())
-    if "voxel_count" in gaussian_pc:
-        frustum_stats["voxel_count_mean"] = _masked_gaussian_mean(gaussian_pc["voxel_count"], valid_mask)
-    else:
-        frustum_stats["voxel_count_mean"] = gaussian_pc["xyz"].new_zeros(())
-    frustum_stats.update(
-        _compute_normal_consistency_loss(
-            pc=gaussian_pc,
-            rendered_depth=depth_outputs.get("display"),
-            world_view_transform=render_w2c,
-            intrinsics=render_intrinsics,
-            splatter_cfg=splatter_cfg,
-            cfg_train=cfg_train,
-            global_step=global_step,
-        )
-    )
+    stats.update(_gaussian_stats(gaussian_pc))
 
     render_indices = torch.cat((source_indices.view(-1, 1), target_indices), dim=1)
-    return out["render"], depth_outputs, render_indices, frustum_stats
+    return out["render"], render_indices, gaussian_pc, stats
+
 
 def compute_reconstruction_and_renders(
     vae: SplatterVAE,
-    splatter_to_gaussians: VAESplatterToGaussians,
+    point_voxel_to_gaussians: PointVoxelToGaussians,
     splatter_cfg: SplatterConfig,
     images_01: torch.Tensor,
     z_inv: torch.Tensor,
@@ -989,269 +549,68 @@ def compute_reconstruction_and_renders(
     cfg_train: TrainConfig,
     depths: Optional[torch.Tensor] = None,
     return_renders: bool = False,
-    global_step: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Compute source-plus-target reconstruction and shuffled latent losses.
-
-    ``z_inv`` carries state/scene information and ``z_dep`` carries viewpoint
-    information. For dependent shuffles, the decoded source viewpoint follows
-    ``z_dep`` while camera metadata and depth priors remain on the current batch
-    row, so the depth prior has the invariant state and dependent viewpoint.
-    """
+    """Decode one source view, render RGB, and supervise geometry with depth point clouds."""
     bsz, num_views = z_inv.shape[:2]
     if num_views < 2:
         raise ValueError("Source-plus-target reconstruction requires at least two camera viewpoints.")
-
     device = z_inv.device
     batch_ids = torch.arange(bsz, device=device)
 
     source_indices = torch.randint(low=0, high=num_views, size=(bsz,), device=device)
-    inv_source_indices = _random_other_camera_indices(source_indices, num_views)
-    batch_perm = _non_identity_randperm(bsz, device=device)
+    target_indices = _target_indices_excluding_source(source_indices, num_views)
+    z_inv_source = z_inv[batch_ids, source_indices]
+    z_dep_source = z_dep[batch_ids, source_indices]
 
-    # z_dep is camera-frame specific. When it is shuffled across batch rows, its
-    # source viewpoint must move with it; the row/state used for camera metadata,
-    # target images, and depth supervision remains the invariant branch row.
-    dep_source_indices = source_indices[batch_perm]
-
-    variant_names = ("self", "shuffle_inv", "shuffle_dep", "shuffle_both")
-    num_variants = len(variant_names)
-
-    variant_z_inv = torch.stack(
-        [
-            z_inv[batch_ids, source_indices],
-            z_inv[batch_ids, inv_source_indices],
-            z_inv[batch_ids, source_indices],
-            z_inv[batch_ids, inv_source_indices],
-        ],
-        dim=0,
-    ).contiguous()
-    variant_z_dep = torch.stack(
-        [
-            z_dep[batch_ids, source_indices],
-            z_dep[batch_ids, source_indices],
-            z_dep[batch_perm, dep_source_indices],
-            z_dep[batch_perm, dep_source_indices],
-        ],
-        dim=0,
-    ).contiguous()
-    variant_source_indices = torch.stack(
-        [
-            source_indices,
-            source_indices,
-            dep_source_indices,
-            dep_source_indices,
-        ],
-        dim=0,
-    ).contiguous()
-
-    flat_count = num_variants * bsz
-    flat_z_inv = variant_z_inv.reshape(flat_count, *z_inv.shape[2:]).contiguous()
-    flat_z_dep = variant_z_dep.reshape(flat_count, *z_dep.shape[2:]).contiguous()
-    flat_source_indices = variant_source_indices.reshape(flat_count).contiguous()
-    flat_target_indices = _target_indices_excluding_source(flat_source_indices, num_views)
-
-    # Expand camera tensors by invariant/state row. This deliberately does not
-    # permute rows for shuffle_dep/shuffle_both; only the dependent viewpoint id
-    # changes. The same rule is used for depth-supervision targets below.
-    flat_intrinsics = intrinsics[None].expand(num_variants, *intrinsics.shape).reshape(
-        flat_count,
-        num_views,
-        3,
-        3,
-    ).contiguous()
-    flat_c2w = c2w[None].expand(num_variants, *c2w.shape).reshape(
-        flat_count,
-        num_views,
-        4,
-        4,
-    ).contiguous()
-    flat_w2c = w2c[None].expand(num_variants, *w2c.shape).reshape(
-        flat_count,
-        num_views,
-        4,
-        4,
-    ).contiguous()
-    flat_depths = None
-    if depths is not None:
-        flat_depths = depths[None].expand(num_variants, *depths.shape).reshape(
-            flat_count,
-            num_views,
-            *depths.shape[2:],
-        ).contiguous()
-
-    (
-        rendered_flat,
-        depth_outputs_flat,
-        render_indices_flat,
-        frustum_stats,
-    ) = _render_selected_sources_to_views(
+    rendered, render_indices, gaussian_pc, stats = _render_selected_sources_to_views(
         vae=vae,
-        splatter_to_gaussians=splatter_to_gaussians,
+        point_voxel_to_gaussians=point_voxel_to_gaussians,
         splatter_cfg=splatter_cfg,
-        z_inv_source=flat_z_inv,
-        z_dep_source=flat_z_dep,
-        source_indices=flat_source_indices,
-        target_indices=flat_target_indices,
-        intrinsics=flat_intrinsics,
-        c2w=flat_c2w,
-        w2c=flat_w2c,
+        z_inv_source=z_inv_source,
+        z_dep_source=z_dep_source,
+        source_indices=source_indices,
+        target_indices=target_indices,
+        intrinsics=intrinsics,
+        c2w=c2w,
+        w2c=w2c,
         bg=bg,
+    )
+
+    target_images = _gather_target_cameras(images_01, render_indices)
+    rec_loss = compute_reconstruction_loss(
+        predicted=rendered.reshape(-1, *rendered.shape[2:]),
+        ground_truth=target_images.reshape(-1, *target_images.shape[2:]),
+        ssim_weight=float(cfg_train.ssim_weight),
+    )
+    point_stats = _compute_point_losses(
+        pc=gaussian_pc,
+        depths=depths,
+        intrinsics=intrinsics,
+        c2w=c2w,
+        splatter_cfg=splatter_cfg,
         cfg_train=cfg_train,
-        global_step=global_step,
-    )
-
-    num_render_views = rendered_flat.shape[1]
-    rendered = rendered_flat.reshape(
-        num_variants,
-        bsz,
-        num_render_views,
-        3,
-        splatter_cfg.data.img_height,
-        splatter_cfg.data.img_width,
-    ).contiguous()
-
-    flat_images = images_01[None].expand(num_variants, *images_01.shape).reshape(
-        flat_count,
-        num_views,
-        *images_01.shape[2:],
-    ).contiguous()
-    flat_target_images = _gather_target_cameras(flat_images, render_indices_flat)
-    target_images = flat_target_images.reshape(
-        num_variants,
-        bsz,
-        num_render_views,
-        *images_01.shape[2:],
-    ).contiguous()
-    render_indices = render_indices_flat.reshape(num_variants, bsz, num_render_views).contiguous()
-    target_indices = flat_target_indices.reshape(num_variants, bsz, num_views - 1).contiguous()
-
-    target_depths = None
-    rendered_depth = None
-    hard_depth = None
-    soft_depth = None
-    if flat_depths is not None:
-        flat_target_depths = _gather_target_cameras(flat_depths, render_indices_flat)
-        target_depths = flat_target_depths.reshape(
-            num_variants,
-            bsz,
-            num_render_views,
-            *flat_depths.shape[2:],
-        ).contiguous()
-
-        def reshape_depth(depth_value: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-            if depth_value is None:
-                return None
-            return depth_value.reshape(
-                num_variants,
-                bsz,
-                num_render_views,
-                1,
-                splatter_cfg.data.img_height,
-                splatter_cfg.data.img_width,
-            ).contiguous()
-
-        rendered_depth = reshape_depth(depth_outputs_flat.get("display"))
-        hard_depth = reshape_depth(depth_outputs_flat.get("hard"))
-        soft_depth = reshape_depth(depth_outputs_flat.get("soft"))
-        l1_depth = reshape_depth(depth_outputs_flat.get("l1"))
-    else:
-        l1_depth = None
-
-    if target_depths is None:
-        frustum_stats.update(_zero_depth_stats(device))
-    elif _normalize_depth_regularization_mode(cfg_train) == "dngaussian":
-        frustum_stats.update(
-            _compute_dngaussian_depth_loss(
-                hard_depth=hard_depth,
-                soft_depth=soft_depth,
-                target_depth=target_depths,
-                splatter_cfg=splatter_cfg,
-                cfg_train=cfg_train,
-                global_step=global_step,
-            )
-        )
-    else:
-        frustum_stats.update(
-            _rendered_depth_l1_loss(
-                rendered_depth=l1_depth,
-                target_depth=target_depths,
-                splatter_cfg=splatter_cfg,
-            )
-        )
-
-    loss_values = compute_batched_reconstruction_losses(
-        predicted=rendered,
-        ground_truth=target_images,
-        ssim_weight=cfg_train.ssim_weight,
-    )
-    losses: Dict[str, torch.Tensor] = {
-        name: loss_values[idx] for idx, name in enumerate(variant_names)
-    }
-
-    rec_loss = (
-        losses["self"]
-        + float(cfg_train.shuffle_inv_rec_weight) * losses["shuffle_inv"]
-        + float(cfg_train.shuffle_dep_rec_weight) * losses["shuffle_dep"]
-        + float(cfg_train.shuffle_both_rec_weight) * losses["shuffle_both"]
     )
 
     out_dict: Dict[str, Any] = {
         "rec_loss": rec_loss,
-        "rec_self": losses["self"],
-        "rec_shuffle_inv": losses["shuffle_inv"],
-        "rec_shuffle_dep": losses["shuffle_dep"],
-        "rec_shuffle_both": losses["shuffle_both"],
+        "rec_self": rec_loss,
+        **stats,
+        **point_stats,
     }
-    for stat_name, stat_value in frustum_stats.items():
-        out_dict[stat_name] = stat_value
 
     if return_renders:
-        out_dict["gt_images"] = images_01
-        out_dict["target_images_self"] = target_images[0]
-        out_dict["rendered_self"] = rendered[0]
-        out_dict["rendered_shuffle_inv"] = rendered[1]
-        out_dict["rendered_shuffle_dep"] = rendered[2]
-        out_dict["rendered_shuffle_both"] = rendered[3]
-        out_dict["source_indices"] = variant_source_indices.detach().cpu()
+        out_dict["target_images_self"] = target_images
+        out_dict["rendered_self"] = rendered
+        out_dict["source_indices"] = source_indices.detach().cpu()
         out_dict["target_indices"] = target_indices.detach().cpu()
         out_dict["render_indices"] = render_indices.detach().cpu()
-        if target_depths is not None:
-            out_dict["target_depths_self"] = target_depths[0]
-            if rendered_depth is not None:
-                out_dict["rendered_depth_self"] = rendered_depth[0]
-        out_dict["batch_perm"] = batch_perm.detach().cpu()
-
+        out_dict["gaussian_pc"] = {k: v.detach() for k, v in gaussian_pc.items() if torch.is_tensor(v)}
+        out_dict["source_c2w"] = _gather_camera_rows(c2w, source_indices).detach()
+        out_dict["source_intrinsics"] = _gather_camera_rows(intrinsics, source_indices).detach()
     return out_dict
 
 
-def _colorize_depth_images(depth_images: torch.Tensor, splatter_cfg: SplatterConfig) -> torch.Tensor:
-    """Map metric depth images to RGB using a fixed znear/zfar color scale."""
-    depth = depth_images.detach()
-    if depth.ndim == 3:
-        depth = depth.unsqueeze(1)
-    if depth.shape[1] != 1:
-        depth = depth[:, :1]
-
-    finite = torch.isfinite(depth)
-    depth = _sanitize_metric_depth(depth, splatter_cfg)
-    znear = float(splatter_cfg.data.znear)
-    zfar = float(splatter_cfg.data.zfar)
-    denom = max(zfar - znear, 1e-6)
-    x = ((depth - znear) / denom).clamp(0.0, 1.0)
-
-    red = (1.5 - (4.0 * x - 3.0).abs()).clamp(0.0, 1.0)
-    green = (1.5 - (4.0 * x - 2.0).abs()).clamp(0.0, 1.0)
-    blue = (1.5 - (4.0 * x - 1.0).abs()).clamp(0.0, 1.0)
-    color = torch.cat((red, green, blue), dim=1)
-    return torch.where(finite.expand_as(color), color, torch.zeros_like(color))
-
-
-def _make_wandb_named_image_panel(
-    named_images: list[tuple[str, torch.Tensor]],
-    max_vis: int,
-) -> wandb.Image:
-    """Create one W&B image grid with one row per named tensor."""
+def _make_wandb_named_image_panel(named_images: list[tuple[str, torch.Tensor]], max_vis: int) -> wandb.Image:
     max_vis = max(1, int(max_vis))
     rows = []
     names = []
@@ -1262,70 +621,244 @@ def _make_wandb_named_image_panel(
     return wandb.Image(grid, caption=" | ".join(names))
 
 
+def _look_at_c2w_opencv(eye: torch.Tensor, target: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
+    z_axis = F.normalize(target - eye, dim=0, eps=1.0e-6)
+    up = F.normalize(up, dim=0, eps=1.0e-6)
+    y_down = F.normalize(-up, dim=0, eps=1.0e-6)
+    x_axis = F.normalize(torch.cross(y_down, z_axis, dim=0), dim=0, eps=1.0e-6)
+    y_axis = F.normalize(torch.cross(z_axis, x_axis, dim=0), dim=0, eps=1.0e-6)
+    mat = torch.eye(4, device=eye.device, dtype=eye.dtype)
+    mat[:3, 0] = x_axis
+    mat[:3, 1] = y_axis
+    mat[:3, 2] = z_axis
+    mat[:3, 3] = eye
+    return mat
+
+
+def _invert_4x4_torch(mat: torch.Tensor) -> torch.Tensor:
+    rot = mat[:3, :3]
+    trans = mat[:3, 3]
+    out = torch.eye(4, device=mat.device, dtype=mat.dtype)
+    out[:3, :3] = rot.transpose(0, 1)
+    out[:3, 3] = -(rot.transpose(0, 1) @ trans)
+    return out
+
+
+def _trajectory_w2c(
+    base_c2w: torch.Tensor,
+    trajectory: str,
+    num_frames: int,
+    amplitude: float,
+    focus_distance: float,
+) -> torch.Tensor:
+    device = base_c2w.device
+    dtype = base_c2w.dtype
+    eye0 = base_c2w[:3, 3]
+    right = F.normalize(base_c2w[:3, 0], dim=0, eps=1.0e-6)
+    up = F.normalize(-base_c2w[:3, 1], dim=0, eps=1.0e-6)
+    forward = F.normalize(base_c2w[:3, 2], dim=0, eps=1.0e-6)
+    target = eye0 + forward * float(focus_distance)
+    frames = []
+    t_values = torch.linspace(-1.0, 1.0, steps=max(2, int(num_frames)), device=device, dtype=dtype)
+    for t in t_values:
+        if trajectory == "lateral":
+            eye = eye0 + right * (float(amplitude) * t)
+        elif trajectory == "circular":
+            angle = t * math.pi
+            eye = eye0 + right * (float(amplitude) * torch.sin(angle)) + up * (float(amplitude) * 0.5 * torch.cos(angle))
+        else:
+            raise ValueError(f"Unknown validation trajectory: {trajectory}")
+        frames.append(_invert_4x4_torch(_look_at_c2w_opencv(eye, target, up)))
+    return torch.stack(frames, dim=0)
+
+
+def _render_validation_trajectory_videos(
+    pc: Dict[str, torch.Tensor],
+    source_c2w: torch.Tensor,
+    source_intrinsics: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+    bg: torch.Tensor,
+    cfg_train: TrainConfig,
+) -> Dict[str, wandb.Video]:
+    if not bool(cfg_train.val_render_trajectory_videos):
+        return {}
+    if pc["xyz"].device.type != "cuda":
+        return {}
+
+    first_pc = {k: v[:1] for k, v in pc.items() if torch.is_tensor(v) and v.shape[0] == pc["xyz"].shape[0]}
+    videos: Dict[str, wandb.Video] = {}
+    for trajectory in ("lateral", "circular"):
+        w2c = _trajectory_w2c(
+            base_c2w=source_c2w[0],
+            trajectory=trajectory,
+            num_frames=int(cfg_train.val_video_frames),
+            amplitude=float(cfg_train.val_video_amplitude),
+            focus_distance=float(cfg_train.val_video_focus_distance),
+        ).unsqueeze(0)
+        intrinsics = source_intrinsics[0].view(1, 1, 3, 3).expand(1, w2c.shape[1], 3, 3)
+        render = render_predicted(
+            pc=first_pc,
+            world_view_transform=w2c,
+            intrinsics=intrinsics,
+            bg_color=bg,
+            cfg=splatter_cfg,
+            render_mode="RGB",
+        )["render"][0]
+        video = (render.detach().cpu().clamp(0.0, 1.0).numpy() * 255.0).astype("uint8")
+        videos[f"val/video_{trajectory}"] = wandb.Video(video, fps=int(cfg_train.val_video_fps), format="mp4")
+    return videos
+
+
+def _sample_object3d_array(
+    points: torch.Tensor,
+    mask: torch.Tensor,
+    max_points: int,
+    rgb: tuple[float, float, float],
+) -> Optional[torch.Tensor]:
+    selected, selected_mask = _sample_points(points, mask, max(1, int(max_points)))
+    if not bool(selected_mask.any()):
+        return None
+    colors = selected.new_tensor(rgb).view(1, 3).expand(selected.shape[0], 3)
+    return torch.cat([selected, colors], dim=-1).detach().cpu().float()
+
+
+def _make_wandb_pointcloud_payload(
+    rec_out: Dict[str, Any],
+    depths: Optional[torch.Tensor],
+    intrinsics: torch.Tensor,
+    c2w: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+    cfg_train: TrainConfig,
+) -> Dict[str, wandb.Object3D]:
+    if not bool(cfg_train.val_log_pointclouds):
+        return {}
+    max_points = max(1, int(cfg_train.val_pointcloud_max_points))
+    pc = rec_out.get("gaussian_pc", None)
+    if pc is None or "raw_points" not in pc:
+        return {}
+
+    pred = _sample_object3d_array(
+        points=pc["raw_points"][0],
+        mask=pc["raw_valid_mask"][0],
+        max_points=max_points,
+        rgb=(255.0, 80.0, 80.0),
+    )
+    payload: Dict[str, wandb.Object3D] = {}
+    if pred is not None:
+        payload["val/pointcloud_pred_raw"] = wandb.Object3D(
+            pred.numpy(),
+            caption=f"Predicted raw points, sampled to <= {max_points}",
+        )
+
+    if depths is None:
+        return payload
+    gt_points, gt_mask = _depths_to_world_point_cloud(
+        depths=depths[:1],
+        intrinsics=intrinsics[:1],
+        c2w=c2w[:1],
+        splatter_cfg=splatter_cfg,
+    )
+    gt = _sample_object3d_array(
+        points=gt_points[0],
+        mask=gt_mask[0],
+        max_points=max_points,
+        rgb=(80.0, 220.0, 120.0),
+    )
+    if gt is not None:
+        payload["val/pointcloud_gt_depth"] = wandb.Object3D(
+            gt.numpy(),
+            caption=f"GT depth point cloud, sampled to <= {max_points}",
+        )
+
+    view_arrays = []
+    view_palette = (
+        (80.0, 220.0, 120.0),
+        (80.0, 160.0, 255.0),
+        (255.0, 210.0, 80.0),
+        (220.0, 100.0, 255.0),
+        (255.0, 140.0, 80.0),
+        (80.0, 240.0, 240.0),
+    )
+    num_views = int(depths.shape[1])
+    per_view_cap = max(1, max_points // max(1, num_views))
+    for view_idx in range(num_views):
+        view_points, view_mask = _depths_to_world_point_cloud(
+            depths=depths[:1, view_idx: view_idx + 1],
+            intrinsics=intrinsics[:1, view_idx: view_idx + 1],
+            c2w=c2w[:1, view_idx: view_idx + 1],
+            splatter_cfg=splatter_cfg,
+        )
+        view_arr = _sample_object3d_array(
+            points=view_points[0],
+            mask=view_mask[0],
+            max_points=per_view_cap,
+            rgb=view_palette[view_idx % len(view_palette)],
+        )
+        if view_arr is not None:
+            view_arrays.append(view_arr)
+    if view_arrays:
+        payload["val/pointcloud_gt_depth_by_view"] = wandb.Object3D(
+            torch.cat(view_arrays, dim=0).numpy(),
+            caption=f"GT depth point cloud colored by camera view, sampled to <= {max_points} total",
+        )
+
+    if pred is not None and gt is not None:
+        overlay = torch.cat([pred, gt], dim=0)
+        payload["val/pointcloud_pred_gt_overlay"] = wandb.Object3D(
+            overlay.numpy(),
+            caption="Predicted raw points red; GT depth points green",
+        )
+    return payload
+
+
 @torch.no_grad()
 def validate_and_log_wandb(
     vae: SplatterVAE,
     splatter_cfg: SplatterConfig,
-    splatter_to_gaussians: VAESplatterToGaussians,
+    point_voxel_to_gaussians: PointVoxelToGaussians,
     valid_dataloader: DataLoader,
     device: torch.device,
     bg: torch.Tensor,
     cfg_train: TrainConfig,
     global_step: int,
 ) -> None:
-    """Run validation with the same all-camera losses used for training."""
     if wandb.run is None:
         return
 
     prev_vae_mode = vae.training
-    prev_splatter_mode = splatter_to_gaussians.training
+    prev_converter_mode = point_voxel_to_gaussians.training
     vae.eval()
-    splatter_to_gaussians.eval()
+    point_voxel_to_gaussians.eval()
 
-    scalar_sums = {
-        "val/rec_loss": 0.0,
-        "val/rec_self": 0.0,
-        "val/rec_shuffle_inv": 0.0,
-        "val/rec_shuffle_dep": 0.0,
-        "val/rec_shuffle_both": 0.0,
-        "val/inv_contrastive_loss": 0.0,
-        "val/inv_consistency_loss": 0.0,
-        "val/dep_contrastive_loss": 0.0,
-        "val/dep_consistency_loss": 0.0,
-        "val/frustum_loss": 0.0,
-        "val/erank_loss": 0.0,
-        "val/thin_loss": 0.0,
-        "val/erank_mean": 0.0,
-        "val/erank_min": 0.0,
-        "val/scale_ratio_mean": 0.0,
-        "val/scale_ratio_max": 0.0,
-        "val/scale_mean": 0.0,
-        "val/scale_max": 0.0,
-        "val/depth_loss": 0.0,
-        "val/depth_l1_loss": 0.0,
-        "val/depth_hard_loss": 0.0,
-        "val/depth_hard_local_loss": 0.0,
-        "val/depth_hard_global_loss": 0.0,
-        "val/depth_soft_loss": 0.0,
-        "val/depth_soft_local_loss": 0.0,
-        "val/depth_soft_global_loss": 0.0,
-        "val/rendered_depth_mean": 0.0,
-        "val/target_depth_mean": 0.0,
-        "val/depth_valid_pct": 0.0,
-        "val/normal_consistency_loss": 0.0,
-        "val/normal_valid_pct": 0.0,
-        "val/gaussian_count_mean": 0.0,
-        "val/confidence_mean": 0.0,
-        "val/voxel_count_mean": 0.0,
-        "val/inactive_pct_mean": 0.0,
-        "val/inactive_pct_src": 0.0,
-        "val/inactive_pct_tgt": 0.0,
-        "val/invalid_depth_pct_mean": 0.0,
-        "val/nonfinite_projection_pct_mean": 0.0,
-    }
-
+    scalar_keys = [
+        "val/rec_loss",
+        "val/inv_contrastive_loss",
+        "val/inv_consistency_loss",
+        "val/dep_contrastive_loss",
+        "val/dep_consistency_loss",
+        "val/frustum_loss",
+        "val/point_chamfer_loss",
+        "val/gt_point_count_mean",
+        "val/active_voxel_count",
+        "val/final_gaussian_count",
+        "val/mean_opacity",
+        "val/valid_gaussian_ratio",
+        "val/voxel_mass_mean",
+        "val/voxel_mass_max",
+        "val/voxel_mass_min",
+        "val/voxel_mean_confidence",
+        "val/voxel_point_count_mean",
+        "val/point_to_voxel_coverage",
+        "val/raw_point_confidence_mean",
+        "val/inactive_pct_mean",
+        "val/inactive_pct_src",
+        "val/inactive_pct_tgt",
+        "val/invalid_depth_pct_mean",
+        "val/nonfinite_projection_pct_mean",
+    ]
+    scalar_sums = {key: 0.0 for key in scalar_keys}
     num_eval_batches = 0
-    image_payload: Dict[str, wandb.Image] = {}
+    image_payload: Dict[str, Any] = {}
 
     for batch_idx, batch in enumerate(valid_dataloader):
         if cfg_train.val_num_batches > 0 and batch_idx >= cfg_train.val_num_batches:
@@ -1351,7 +884,7 @@ def validate_and_log_wandb(
 
         rec_out = compute_reconstruction_and_renders(
             vae=vae,
-            splatter_to_gaussians=splatter_to_gaussians,
+            point_voxel_to_gaussians=point_voxel_to_gaussians,
             splatter_cfg=splatter_cfg,
             images_01=images_01,
             z_inv=latents["z_inv"],
@@ -1363,50 +896,36 @@ def validate_and_log_wandb(
             cfg_train=cfg_train,
             depths=depths,
             return_renders=(num_eval_batches == 0),
-            global_step=global_step,
         )
 
-        scalar_sums["val/rec_loss"] += float(rec_out["rec_loss"].item())
-        scalar_sums["val/rec_self"] += float(rec_out["rec_self"].item())
-        scalar_sums["val/rec_shuffle_inv"] += float(rec_out["rec_shuffle_inv"].item())
-        scalar_sums["val/rec_shuffle_dep"] += float(rec_out["rec_shuffle_dep"].item())
-        scalar_sums["val/rec_shuffle_both"] += float(rec_out["rec_shuffle_both"].item())
-        scalar_sums["val/inv_contrastive_loss"] += float(inv_contrastive_loss.item())
-        scalar_sums["val/inv_consistency_loss"] += float(inv_consistency_loss.item())
-        scalar_sums["val/dep_contrastive_loss"] += float(dep_contrastive_loss.item())
-        scalar_sums["val/dep_consistency_loss"] += float(dep_consistency_loss.item())
-        scalar_sums["val/frustum_loss"] += float(rec_out["frustum_loss"].item())
-        scalar_sums["val/erank_loss"] += float(rec_out["erank_loss"].item())
-        scalar_sums["val/thin_loss"] += float(rec_out["thin_loss"].item())
-        scalar_sums["val/erank_mean"] += float(rec_out["erank_mean"].item())
-        scalar_sums["val/erank_min"] += float(rec_out["erank_min"].item())
-        scalar_sums["val/scale_ratio_mean"] += float(rec_out["scale_ratio_mean"].item())
-        scalar_sums["val/scale_ratio_max"] += float(rec_out["scale_ratio_max"].item())
-        scalar_sums["val/scale_mean"] += float(rec_out["scale_mean"].item())
-        scalar_sums["val/scale_max"] += float(rec_out["scale_max"].item())
-        scalar_sums["val/depth_loss"] += float(rec_out["depth_loss"].item())
-        scalar_sums["val/depth_l1_loss"] += float(rec_out["depth_l1_loss"].item())
-        scalar_sums["val/depth_hard_loss"] += float(rec_out["depth_hard_loss"].item())
-        scalar_sums["val/depth_hard_local_loss"] += float(rec_out["depth_hard_local_loss"].item())
-        scalar_sums["val/depth_hard_global_loss"] += float(rec_out["depth_hard_global_loss"].item())
-        scalar_sums["val/depth_soft_loss"] += float(rec_out["depth_soft_loss"].item())
-        scalar_sums["val/depth_soft_local_loss"] += float(rec_out["depth_soft_local_loss"].item())
-        scalar_sums["val/depth_soft_global_loss"] += float(rec_out["depth_soft_global_loss"].item())
-        scalar_sums["val/rendered_depth_mean"] += float(rec_out["rendered_depth_mean"].item())
-        scalar_sums["val/target_depth_mean"] += float(rec_out["target_depth_mean"].item())
-        scalar_sums["val/depth_valid_pct"] += float(100.0 * rec_out["depth_valid_ratio"].item())
-        scalar_sums["val/normal_consistency_loss"] += float(rec_out["normal_consistency_loss"].item())
-        scalar_sums["val/normal_valid_pct"] += float(100.0 * rec_out["normal_valid_ratio"].item())
-        scalar_sums["val/gaussian_count_mean"] += float(rec_out["gaussian_count_mean"].item())
-        scalar_sums["val/confidence_mean"] += float(rec_out["confidence_mean"].item())
-        scalar_sums["val/voxel_count_mean"] += float(rec_out["voxel_count_mean"].item())
-        scalar_sums["val/inactive_pct_mean"] += float(100.0 * rec_out["inactive_ratio_mean"].item())
-        scalar_sums["val/inactive_pct_src"] += float(100.0 * rec_out["inactive_ratio_src"].item())
-        scalar_sums["val/inactive_pct_tgt"] += float(100.0 * rec_out["inactive_ratio_tgt"].item())
-        scalar_sums["val/invalid_depth_pct_mean"] += float(100.0 * rec_out["invalid_depth_ratio_mean"].item())
-        scalar_sums["val/nonfinite_projection_pct_mean"] += float(
-            100.0 * rec_out["nonfinite_projection_ratio_mean"].item()
-        )
+        metric_map = {
+            "val/rec_loss": rec_out["rec_loss"],
+            "val/inv_contrastive_loss": inv_contrastive_loss,
+            "val/inv_consistency_loss": inv_consistency_loss,
+            "val/dep_contrastive_loss": dep_contrastive_loss,
+            "val/dep_consistency_loss": dep_consistency_loss,
+            "val/frustum_loss": rec_out["frustum_loss"],
+            "val/point_chamfer_loss": rec_out["point_chamfer_loss"],
+            "val/gt_point_count_mean": rec_out["gt_point_count_mean"],
+            "val/active_voxel_count": rec_out["active_voxel_count"],
+            "val/final_gaussian_count": rec_out["final_gaussian_count"],
+            "val/mean_opacity": rec_out["mean_opacity"],
+            "val/valid_gaussian_ratio": rec_out["valid_gaussian_ratio"],
+            "val/voxel_mass_mean": rec_out["voxel_mass_mean"],
+            "val/voxel_mass_max": rec_out["voxel_mass_max"],
+            "val/voxel_mass_min": rec_out["voxel_mass_min"],
+            "val/voxel_mean_confidence": rec_out["voxel_mean_confidence"],
+            "val/voxel_point_count_mean": rec_out["voxel_point_count_mean"],
+            "val/point_to_voxel_coverage": rec_out["point_to_voxel_coverage"],
+            "val/raw_point_confidence_mean": rec_out["raw_point_confidence_mean"],
+            "val/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"],
+            "val/inactive_pct_src": 100.0 * rec_out["inactive_ratio_src"],
+            "val/inactive_pct_tgt": 100.0 * rec_out["inactive_ratio_tgt"],
+            "val/invalid_depth_pct_mean": 100.0 * rec_out["invalid_depth_ratio_mean"],
+            "val/nonfinite_projection_pct_mean": 100.0 * rec_out["nonfinite_projection_ratio_mean"],
+        }
+        for key, value in metric_map.items():
+            scalar_sums[key] += float(value.item())
 
         if num_eval_batches == 0:
             num_targets_to_show = min(rec_out["rendered_self"].shape[1], 6)
@@ -1417,59 +936,50 @@ def validate_and_log_wandb(
             for view_slot in range(num_targets_to_show):
                 view_name = "source" if view_slot == 0 else f"target{view_slot}"
                 panel_items.append((f"render_{view_name}", rec_out["rendered_self"][:, view_slot]))
-            panel_items.extend(
-                [
-                    ("shuffle_inv_source", rec_out["rendered_shuffle_inv"][:, 0]),
-                    ("shuffle_dep_source", rec_out["rendered_shuffle_dep"][:, 0]),
-                    ("shuffle_both_source", rec_out["rendered_shuffle_both"][:, 0]),
-                ]
+            image_payload["val/render_summary"] = _make_wandb_named_image_panel(
+                panel_items,
+                max_vis=cfg_train.val_max_vis,
             )
-            image_payload = {
-                "val/render_summary": _make_wandb_named_image_panel(panel_items, max_vis=cfg_train.val_max_vis),
-            }
-            if "target_depths_self" in rec_out:
-                depth_items: list[tuple[str, torch.Tensor]] = []
-                for view_slot in range(num_targets_to_show):
-                    view_name = "source" if view_slot == 0 else f"target{view_slot}"
-                    depth_items.append(
-                        (
-                            f"gt_depth_{view_name}",
-                            _colorize_depth_images(rec_out["target_depths_self"][:, view_slot], splatter_cfg),
-                        )
-                    )
-
-                if "rendered_depth_self" in rec_out:
-                    for view_slot in range(num_targets_to_show):
-                        view_name = "source" if view_slot == 0 else f"target{view_slot}"
-                        depth_items.append(
-                            (
-                                f"render_depth_{view_name}",
-                                _colorize_depth_images(rec_out["rendered_depth_self"][:, view_slot], splatter_cfg),
-                            )
-                        )
-
-                if depth_items:
-                    image_payload["val/depth_summary"] = _make_wandb_named_image_panel(
-                        depth_items,
-                        max_vis=cfg_train.val_max_vis,
-                    )
+            image_payload.update(
+                _make_wandb_pointcloud_payload(
+                    rec_out=rec_out,
+                    depths=depths,
+                    intrinsics=intrinsics,
+                    c2w=c2w,
+                    splatter_cfg=splatter_cfg,
+                    cfg_train=cfg_train,
+                )
+            )
+            image_payload.update(
+                _render_validation_trajectory_videos(
+                    pc=rec_out["gaussian_pc"],
+                    source_c2w=rec_out["source_c2w"],
+                    source_intrinsics=rec_out["source_intrinsics"],
+                    splatter_cfg=splatter_cfg,
+                    bg=bg,
+                    cfg_train=cfg_train,
+                )
+            )
 
         num_eval_batches += 1
 
     if num_eval_batches == 0:
         vae.train(prev_vae_mode)
-        splatter_to_gaussians.train(prev_splatter_mode)
+        point_voxel_to_gaussians.train(prev_converter_mode)
         return
 
-    log_dict: Dict[str, Any] = {
-        key: value / float(num_eval_batches) for key, value in scalar_sums.items()
-    }
+    log_dict: Dict[str, Any] = {key: value / float(num_eval_batches) for key, value in scalar_sums.items()}
     log_dict["global_step"] = global_step
     log_dict.update(image_payload)
     wandb.log(log_dict, step=global_step)
 
     vae.train(prev_vae_mode)
-    splatter_to_gaussians.train(prev_splatter_mode)
+    point_voxel_to_gaussians.train(prev_converter_mode)
+
+
+def _build_converter(vae: SplatterVAE, splatter_cfg: SplatterConfig, device: torch.device) -> PointVoxelToGaussians:
+    z_inv_dim = int(vae.invariant_encoder_output_proj.out_features)
+    return PointVoxelToGaussians(splatter_cfg, z_inv_dim=z_inv_dim).to(device)
 
 
 def train_splatter_vae(
@@ -1480,21 +990,24 @@ def train_splatter_vae(
     valid_dataloader: Optional[DataLoader] = None,
     resume_ckpt: Optional[str] = None,
 ):
-    """Train SplatterVAE with all-camera rendering."""
+    """Train SplatterVAE with point-cloud geometry supervision and RGB rendering."""
     device = torch.device(cfg_train.device)
     vae.to(device)
-
-    splatter_to_gaussians = VAESplatterToGaussians(splatter_cfg).to(device)
-    optimizer = torch.optim.Adam(vae.parameters(), lr=cfg_train.lr)
+    point_voxel_to_gaussians = _build_converter(vae, splatter_cfg, device)
+    optimizer = torch.optim.Adam(
+        list(vae.parameters()) + list(point_voxel_to_gaussians.parameters()),
+        lr=cfg_train.lr,
+    )
 
     lr_total_steps = _resolve_lr_total_steps(cfg_train, train_dataloader)
     lr_schedule = _normalize_lr_schedule(cfg_train.lr_schedule)
     if lr_schedule != "constant":
         print(
-            f"[LR] schedule={lr_schedule}, peak_lr={cfg_train.lr:g}, "
-            f"min_lr={cfg_train.min_lr:g}, warmup_steps={cfg_train.lr_warmup_steps}, "
-            f"total_steps={lr_total_steps}"
+            f"[LR] schedule={lr_schedule}, peak_lr={cfg_train.lr:g}, min_lr={cfg_train.min_lr:g}, "
+            f"warmup_steps={cfg_train.lr_warmup_steps}, total_steps={lr_total_steps}"
         )
+    if int(cfg_train.render_loss_warmup_steps) > 0:
+        print(f"[Render Loss] linear warmup over {cfg_train.render_loss_warmup_steps} steps")
 
     bg = torch.ones(3, device=device) if splatter_cfg.data.white_background else torch.zeros(3, device=device)
     start_epoch = 0
@@ -1503,7 +1016,12 @@ def train_splatter_vae(
     if resume_ckpt is not None and os.path.isfile(resume_ckpt):
         ckpt = torch.load(resume_ckpt, map_location="cpu")
         vae.load_state_dict(ckpt["vae_state_dict"])
-        splatter_to_gaussians.load_state_dict(ckpt["splatter_to_gaussians_state_dict"])
+        converter_state = ckpt.get("point_voxel_to_gaussians_state_dict", ckpt.get("splatter_to_gaussians_state_dict", None))
+        if converter_state is not None:
+            try:
+                point_voxel_to_gaussians.load_state_dict(converter_state, strict=True)
+            except RuntimeError as exc:
+                print(f"[Resume] Skipping converter state because architecture changed: {exc}")
         try:
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         except ValueError as exc:
@@ -1522,14 +1040,9 @@ def train_splatter_vae(
 
             current_lr = _compute_scheduled_lr(cfg_train, global_step, lr_total_steps)
             _set_optimizer_lr(optimizer, current_lr)
-
             vae.train()
-            splatter_to_gaussians.train()
+            point_voxel_to_gaussians.train()
 
-            # Shapes:
-            #   images: (B, A, 3, H, W), K/c2w/w2c: (B, A, ...)
-            # ``A`` is stable across the batch and is the camera index used by
-            # the view-dependent contrastive loss.
             images = batch["images"].to(device, non_blocking=True)
             depths = batch.get("depths", None)
             if depths is not None:
@@ -1540,11 +1053,10 @@ def train_splatter_vae(
             images_01 = (images + 1.0) * 0.5
 
             optimizer.zero_grad(set_to_none=True)
-
             latents, inv_vq_loss, dep_vq_loss = encode_all_camera_batch(vae=vae, images=images)
             rec_out = compute_reconstruction_and_renders(
                 vae=vae,
-                splatter_to_gaussians=splatter_to_gaussians,
+                point_voxel_to_gaussians=point_voxel_to_gaussians,
                 splatter_cfg=splatter_cfg,
                 images_01=images_01,
                 z_inv=latents["z_inv"],
@@ -1556,14 +1068,10 @@ def train_splatter_vae(
                 cfg_train=cfg_train,
                 depths=depths,
                 return_renders=False,
-                global_step=global_step,
             )
             rec_loss = rec_out["rec_loss"]
+            point_chamfer_loss = rec_out["point_chamfer_loss"]
             frustum_loss = rec_out["frustum_loss"]
-            erank_loss = rec_out["erank_loss"]
-            thin_loss = rec_out["thin_loss"]
-            depth_loss = rec_out["depth_loss"]
-            normal_consistency_loss = rec_out["normal_consistency_loss"]
 
             inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
                 z_inv=latents["z_inv"],
@@ -1574,74 +1082,55 @@ def train_splatter_vae(
             dep_consistency_loss = compute_latent_consistency_loss(latents["z_dep"], mode="view")
 
             vq_loss = inv_vq_loss + dep_vq_loss
-            rec_weight_effective = float(cfg_train.rec_weight)
+            rec_weight_effective = _render_weight(cfg_train, global_step)
             total_loss = (
                 rec_weight_effective * rec_loss
+                + cfg_train.point_chamfer_weight * point_chamfer_loss
                 + cfg_train.vq_weight * vq_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
                 + cfg_train.inv_consistency_weight * inv_consistency_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
                 + cfg_train.dep_consistency_weight * dep_consistency_loss
                 + cfg_train.frustum_weight * frustum_loss
-                + cfg_train.erank_weight * erank_loss
-                + cfg_train.thin_weight * thin_loss
-                + cfg_train.depth_weight * depth_loss
-                + cfg_train.normal_consistency_weight * normal_consistency_loss
             )
 
             finite_terms = {
                 "rec_loss": rec_loss,
+                "point_chamfer_loss": point_chamfer_loss,
                 "vq_loss": vq_loss,
                 "inv_contrastive_loss": inv_contrastive_loss,
                 "inv_consistency_loss": inv_consistency_loss,
                 "dep_contrastive_loss": dep_contrastive_loss,
                 "dep_consistency_loss": dep_consistency_loss,
                 "frustum_loss": frustum_loss,
-                "erank_loss": erank_loss,
-                "thin_loss": thin_loss,
-                "depth_loss": depth_loss,
-                "normal_consistency_loss": normal_consistency_loss,
                 "total_loss": total_loss,
             }
             bad_terms = [name for name, value in finite_terms.items() if not torch.isfinite(value).all()]
             if bad_terms:
                 print(
-                    f"[Warn] Non-finite loss detected at global_step={global_step} "
+                    f"[Warn] Non-finite loss at global_step={global_step} "
                     f"(bad={bad_terms}, inactive_pct={100.0 * rec_out['inactive_ratio_mean'].item():.2f}, "
-                    f"invalid_depth_pct={100.0 * rec_out['invalid_depth_ratio_mean'].item():.2f}, "
                     f"nonfinite_proj_pct={100.0 * rec_out['nonfinite_projection_ratio_mean'].item():.2f}). "
                     "Skipping optimizer step."
                 )
                 if wandb.run is not None:
-                    wandb.log(
-                        {
-                            "global_step": global_step,
-                            "train/nonfinite_batch": 1.0,
-                            "train/lr": current_lr,
-                        },
-                        step=global_step,
-                    )
+                    wandb.log({"global_step": global_step, "train/nonfinite_batch": 1.0, "train/lr": current_lr}, step=global_step)
                 global_step += 1
                 continue
 
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(vae.parameters(), max_norm=5.0)
+            torch.nn.utils.clip_grad_norm_(list(vae.parameters()) + list(point_voxel_to_gaussians.parameters()), max_norm=5.0)
             optimizer.step()
 
             if step % 250 == 0:
                 print(
                     f"[Epoch {epoch + 1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} lr={current_lr:.2e} "
-                    f"(rec={rec_loss.item():.4f}, rec_w={rec_weight_effective:.4f}, "
-                    f"self={rec_out['rec_self'].item():.4f}, "
-                    f"shuf_inv={rec_out['rec_shuffle_inv'].item():.4f}, "
-                    f"shuf_dep={rec_out['rec_shuffle_dep'].item():.4f}, "
-                    f"shuf_both={rec_out['rec_shuffle_both'].item():.4f}, "
+                    f"(rgb={rec_loss.item():.4f}, rgb_w={rec_weight_effective:.4f}, "
+                    f"raw_chamfer={point_chamfer_loss.item():.4f}, "
                     f"vq={vq_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"inv_cons={inv_consistency_loss.item():.4f}, dep_con={dep_contrastive_loss.item():.4f}, "
-                    f"dep_cons={dep_consistency_loss.item():.4f}, frustum={frustum_loss.item():.4f}, "
-                    f"erank={erank_loss.item():.4f}, depth={depth_loss.item():.4f}, "
-                    f"normal={normal_consistency_loss.item():.4f})"
+                    f"dep_con={dep_contrastive_loss.item():.4f}, frustum={frustum_loss.item():.4f}, "
+                    f"active_vox={rec_out['active_voxel_count'].item():.1f}, gauss={rec_out['final_gaussian_count'].item():.1f})"
                 )
                 if wandb.run is not None:
                     wandb.log(
@@ -1652,92 +1141,46 @@ def train_splatter_vae(
                             "train/rec_weight": float(cfg_train.rec_weight),
                             "train/rec_weight_effective": rec_weight_effective,
                             "train/rec_loss_weighted": rec_weight_effective * rec_loss.item(),
-                            "train/rec_self": rec_out["rec_self"].item(),
-                            "train/rec_shuffle_inv": rec_out["rec_shuffle_inv"].item(),
-                            "train/rec_shuffle_dep": rec_out["rec_shuffle_dep"].item(),
-                            "train/rec_shuffle_both": rec_out["rec_shuffle_both"].item(),
-                            "train/shuffle_inv_rec_weight": float(cfg_train.shuffle_inv_rec_weight),
-                            "train/shuffle_dep_rec_weight": float(cfg_train.shuffle_dep_rec_weight),
-                            "train/shuffle_both_rec_weight": float(cfg_train.shuffle_both_rec_weight),
+                            "train/point_chamfer_loss": point_chamfer_loss.item(),
+                            "train/point_chamfer_loss_weighted": (cfg_train.point_chamfer_weight * point_chamfer_loss).item(),
+                            "train/gt_point_count_mean": rec_out["gt_point_count_mean"].item(),
                             "train/vq_loss": vq_loss.item(),
                             "train/inv_vq_loss": inv_vq_loss.item(),
                             "train/dep_vq_loss": dep_vq_loss.item(),
                             "train/inv_contrastive_loss": inv_contrastive_loss.item(),
-                            "train/inv_contrastive_weight": float(cfg_train.inv_contrastive_weight),
                             "train/inv_consistency_loss": inv_consistency_loss.item(),
-                            "train/inv_consistency_weight": float(cfg_train.inv_consistency_weight),
                             "train/dep_contrastive_loss": dep_contrastive_loss.item(),
-                            "train/dep_contrastive_weight": float(cfg_train.dep_contrastive_weight),
                             "train/dep_consistency_loss": dep_consistency_loss.item(),
-                            "train/dep_consistency_weight": float(cfg_train.dep_consistency_weight),
                             "train/frustum_loss": frustum_loss.item(),
                             "train/frustum_loss_weighted": (cfg_train.frustum_weight * frustum_loss).item(),
-                            "train/erank_loss": erank_loss.item(),
-                            "train/erank_loss_weighted": (cfg_train.erank_weight * erank_loss).item(),
-                            "train/thin_loss": thin_loss.item(),
-                            "train/thin_loss_weighted": (cfg_train.thin_weight * thin_loss).item(),
-                            "train/erank_mean": rec_out["erank_mean"].item(),
-                            "train/erank_min": rec_out["erank_min"].item(),
-                            "train/scale_ratio_mean": rec_out["scale_ratio_mean"].item(),
-                            "train/scale_ratio_max": rec_out["scale_ratio_max"].item(),
-                            "train/scale_mean": rec_out["scale_mean"].item(),
-                            "train/scale_max": rec_out["scale_max"].item(),
-                            "train/depth_loss": depth_loss.item(),
-                            "train/depth_loss_weighted": (cfg_train.depth_weight * depth_loss).item(),
-                            "train/depth_l1_loss": rec_out["depth_l1_loss"].item(),
-                            "train/depth_hard_loss": rec_out["depth_hard_loss"].item(),
-                            "train/depth_hard_local_loss": rec_out["depth_hard_local_loss"].item(),
-                            "train/depth_hard_global_loss": rec_out["depth_hard_global_loss"].item(),
-                            "train/depth_soft_loss": rec_out["depth_soft_loss"].item(),
-                            "train/depth_soft_local_loss": rec_out["depth_soft_local_loss"].item(),
-                            "train/depth_soft_global_loss": rec_out["depth_soft_global_loss"].item(),
-                            "train/rendered_depth_mean": rec_out["rendered_depth_mean"].item(),
-                            "train/target_depth_mean": rec_out["target_depth_mean"].item(),
-                            "train/depth_valid_pct": 100.0 * rec_out["depth_valid_ratio"].item(),
-                            "train/normal_consistency_loss": normal_consistency_loss.item(),
-                            "train/normal_consistency_loss_weighted": (
-                                cfg_train.normal_consistency_weight * normal_consistency_loss
-                            ).item(),
-                            "train/normal_valid_pct": 100.0 * rec_out["normal_valid_ratio"].item(),
-                            "train/gaussian_count_mean": rec_out["gaussian_count_mean"].item(),
-                            "train/confidence_mean": rec_out["confidence_mean"].item(),
-                            "train/voxel_count_mean": rec_out["voxel_count_mean"].item(),
+                            "train/active_voxel_count": rec_out["active_voxel_count"].item(),
+                            "train/final_gaussian_count": rec_out["final_gaussian_count"].item(),
+                            "train/mean_opacity": rec_out["mean_opacity"].item(),
+                            "train/valid_gaussian_ratio": rec_out["valid_gaussian_ratio"].item(),
+                            "train/voxel_mass_mean": rec_out["voxel_mass_mean"].item(),
+                            "train/voxel_mass_max": rec_out["voxel_mass_max"].item(),
+                            "train/voxel_mass_min": rec_out["voxel_mass_min"].item(),
+                            "train/voxel_mean_confidence": rec_out["voxel_mean_confidence"].item(),
+                            "train/voxel_point_count_mean": rec_out["voxel_point_count_mean"].item(),
+                            "train/point_to_voxel_coverage": rec_out["point_to_voxel_coverage"].item(),
+                            "train/raw_point_confidence_mean": rec_out["raw_point_confidence_mean"].item(),
                             "train/inactive_pct_mean": 100.0 * rec_out["inactive_ratio_mean"].item(),
                             "train/inactive_pct_src": 100.0 * rec_out["inactive_ratio_src"].item(),
                             "train/inactive_pct_tgt": 100.0 * rec_out["inactive_ratio_tgt"].item(),
                             "train/invalid_depth_pct_mean": 100.0 * rec_out["invalid_depth_ratio_mean"].item(),
-                            "train/nonfinite_projection_pct_mean": (
-                                100.0 * rec_out["nonfinite_projection_ratio_mean"].item()
-                            ),
+                            "train/nonfinite_projection_pct_mean": 100.0 * rec_out["nonfinite_projection_ratio_mean"].item(),
+                            "train/point_chamfer_weight": float(cfg_train.point_chamfer_weight),
                             "train/frustum_weight": float(cfg_train.frustum_weight),
-                            "train/erank_weight": float(cfg_train.erank_weight),
-                            "train/thin_weight": float(cfg_train.thin_weight),
-                            "train/depth_weight": float(cfg_train.depth_weight),
-                            "train/depth_regularization_l1": float(_normalize_depth_regularization_mode(cfg_train) == "l1"),
-                            "train/depth_regularization_dngaussian": float(_normalize_depth_regularization_mode(cfg_train) == "dngaussian"),
-                            "train/depth_global_weight": float(cfg_train.depth_global_weight),
-                            "train/depth_local_weight": float(cfg_train.depth_local_weight),
-                            "train/depth_hard_weight": float(cfg_train.depth_hard_weight),
-                            "train/depth_soft_weight": float(cfg_train.depth_soft_weight),
-                            "train/depth_error_tolerance": float(cfg_train.depth_error_tolerance),
-                            "train/normal_consistency_weight": float(cfg_train.normal_consistency_weight),
-                            "train/normal_consistency_start_steps": float(cfg_train.normal_consistency_start_steps),
-                            "train/normal_consistency_alpha_min": float(cfg_train.normal_consistency_alpha_min),
                             "global_step": global_step,
                         },
                         step=global_step,
                     )
 
-            if (
-                valid_dataloader is not None
-                and cfg_train.eval_every > 0
-                and global_step > 0
-                and global_step % cfg_train.eval_every == 0
-            ):
+            if valid_dataloader is not None and cfg_train.eval_every > 0 and global_step > 0 and global_step % cfg_train.eval_every == 0:
                 validate_and_log_wandb(
                     vae=vae,
                     splatter_cfg=splatter_cfg,
-                    splatter_to_gaussians=splatter_to_gaussians,
+                    point_voxel_to_gaussians=point_voxel_to_gaussians,
                     valid_dataloader=valid_dataloader,
                     device=device,
                     bg=bg,
@@ -1751,7 +1194,7 @@ def train_splatter_vae(
                     "epoch": epoch,
                     "global_step": global_step,
                     "vae_state_dict": vae.state_dict(),
-                    "splatter_to_gaussians_state_dict": splatter_to_gaussians.state_dict(),
+                    "point_voxel_to_gaussians_state_dict": point_voxel_to_gaussians.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 }
                 torch.save(ckpt, ckpt_path)

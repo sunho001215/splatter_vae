@@ -86,21 +86,18 @@ splatter:
 
   model:
     # Parent Gaussian layout (vanilla Splatter Image)
-    max_sh_degree: 0
-    isotropic: false
-    depth_scale: 0.1
-    depth_bias: -0.7
-    xyz_scale: 0.1
-    xyz_bias: 0.0
-    opacity_scale: 0.1
-    opacity_bias: -1.0
-    scale_scale: 0.02
-    scale_bias: -4.0
-    scale_max: 0.3
-    num_gaussians_per_pixel: 4
-    depth_parameterization: absolute
-    voxelize: true
-    voxel_size: 0.01
+    max_sh_degree: 1
+    points_per_pixel: 2
+    point_offset_scale: 0.05
+    voxel_size: 0.02
+    voxelization_type: trilinear_soft
+    active_voxel_threshold: 1.0e-4
+    pointnet_channels: 128
+    pointnet_depth: 4
+    pointnet_neighbors: 16
+    gaussians_per_voxel: 1
+    gaussian_scale_max: 0.05
+    gaussian_local_offset_scale: 0.5
 
 # -----------------------------------------------------------------------------
 # Training
@@ -117,25 +114,24 @@ train:
   # Original no-dynamics loss weights.
   rec_weight: 1.0
   ssim_weight: 0.0
-  shuffle_inv_rec_weight: 1.0
-  shuffle_dep_rec_weight: 1.0
-  shuffle_both_rec_weight: 1.0
+  render_loss_warmup_steps: 20000
+  point_chamfer_weight: 5.0
+  chamfer_huber_delta: 0.05
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
   frustum_weight: 1.0
-  erank_weight: 1.0e-2
-  thin_weight: 0.0
-  depth_weight: 1.0
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/handle-pull/full-implementation/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/handle-pull/point-voxel/
   resume_from_last: false
+  val_log_pointclouds: true
+  val_pointcloud_max_points: 4096
 
 # -----------------------------------------------------------------------------
 # Optional logging
@@ -144,13 +140,14 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-handle-pull-full-implementation
+  run_name: metaworld-handle-pull-point-voxel
   tags:
-    - dep-masking-0.75
+    - point-voxel
+    - raw-point-chamfer
+    - render-loss-warmup
+    - max_sh_degree-1
     - all-camera-rendering
     - rgb-encoder
-    - dngaussian-depth-reg
-    - erank-reg
     - embed-dim-128
     - codebook-embed-dim-64
     - transformer-depth-8
@@ -159,6 +156,5 @@ wandb:
     - lr-5e-4
     - diverse-demo-collection
     - ssim_weight-0.0
-    - max_sh_degree-0
     - VQ-codebook
     - consistency-loss

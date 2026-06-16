@@ -18,8 +18,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-# RoboSuite multi-view HDF5 dataloader
-from baselines.ReViWo.dataloader import build_train_valid_loaders_robosuite
+# MetaWorld multi-view HDF5 dataloader
+from baselines.ReViWo.dataloader import build_train_valid_loaders_metaworld
 
 # ReViWo model
 from baselines.ReViWo.ReViWo.common.models.multiview_vae import MultiViewBetaVAE
@@ -83,7 +83,7 @@ class ReViWoTrainConfig:
 
 
 # ===========================================================================
-# Loss computation for ReViWo on RoboSuite multi-view batch
+# Loss computation for ReViWo on MetaWorld multi-view batch
 # ===========================================================================
 
 # ===== train.py =====
@@ -450,7 +450,7 @@ def main():
 
     set_random_seed(seed)
 
-    train_loader, valid_loader = build_train_valid_loaders_robosuite(
+    train_loader, valid_loader = build_train_valid_loaders_metaworld(
         dataset_path=dataset_path,
         batch_size=batch_size,
         num_workers=num_workers,
