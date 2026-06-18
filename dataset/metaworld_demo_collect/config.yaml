@@ -1,10 +1,10 @@
 output:
-  path: /home/ws/data/metaworld/with-depth/handle-pull.hdf5
+  path: /home/ws/data/metaworld/with-depth/button-press-wall.hdf5
   mode: overwrite
   compression: null
 metaworld:
   benchmark_id: Meta-World/MT1
-  env_name: handle-pull-v3
+  env_name: button-press-wall-v3
   seed: 0
   max_steps: 450
   terminate_on_success: true
@@ -22,34 +22,34 @@ render:
   - 1.0
   cameras:
     - name: cam0
-      r: 0.8
+      r: 1.0
       theta: 45.0
       phi: 0.0
       fovy: 45.0
     - name: cam1
-      r: 0.8
+      r: 1.0
       theta: 45.0       
       phi: 180.0          
       fovy: 45.0
     - name: cam2
-      r: 0.8
+      r: 1.0
       theta: 60.0        
       phi: -30.0             
       fovy: 45.0
     - name: cam3
-      r: 0.8
+      r: 1.0
       theta: 60.0         
       phi: 210.0           
       fovy: 45.0
     - name: cam4
-      r: 0.8
+      r: 1.0
       theta: 30.0       
-      phi: 45.0          
+      phi: 30.0          
       fovy: 45.0
     - name: cam5
-      r: 0.8
+      r: 1.0
       theta: 30.0     
-      phi: 135.0            
+      phi: 150.0            
       fovy: 45.0
 segmentation:
   enabled: false
@@ -57,7 +57,7 @@ segmentation:
 policies:
   scripted:
     enabled: true
-    num_demos: 400
+    num_demos: 200
     policy_class: null
 visualize:
   enabled: false
