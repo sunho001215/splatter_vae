@@ -61,14 +61,18 @@ class MujocoMultiCameraRenderer:
             self._seg_renderer = mujoco.Renderer(model, height=self.height, width=self.width)
             self._seg_renderer.enable_segmentation_rendering()
 
-    def _mjv_cam_from_pose(self, pose: CameraPose) -> "mujoco.MjvCamera":
+    def _mjv_cam_from_pose(self, pose: CameraPose, lookat: np.ndarray) -> "mujoco.MjvCamera":
         cam = mujoco.MjvCamera()
         cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-
-        # MjvCamera uses lookat + distance + azimuth + elevation for "orbit" cameras,
-        # but mujoco.Renderer also supports passing an MjvCamera directly.
-        # We emulate orbit values using pose.pos relative to lookat stored in cam.lookat.
-        # (We set lookat via update_scene; see render_all().)
+        cam.lookat[:] = np.asarray(lookat, dtype=np.float64)
+        rel = np.asarray(lookat, dtype=np.float64) - np.asarray(pose.pos, dtype=np.float64)
+        cam.distance = float(np.linalg.norm(rel))
+        if pose.azimuth_deg is not None and pose.elevation_deg is not None:
+            cam.azimuth = float(pose.azimuth_deg)
+            cam.elevation = float(pose.elevation_deg)
+        else:
+            cam.azimuth = float(np.degrees(np.arctan2(rel[1], rel[0])))
+            cam.elevation = float(np.degrees(np.arcsin(np.clip(rel[2] / max(cam.distance, 1.0e-12), -1.0, 1.0))))
         return cam
 
     def render_all(self, *, lookat: np.ndarray) -> RenderOut:
@@ -78,23 +82,7 @@ class MujocoMultiCameraRenderer:
         seg_type_by_cam: Optional[Dict[str, np.ndarray]] = {} if (self.enable_seg and self.save_objtype) else None
 
         for pose in self.cameras:
-            # Build an MjvCamera in orbit terms from spherical placement
-            cam = mujoco.MjvCamera()
-            cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            cam.lookat[:] = lookat.astype(np.float64)
-
-            # Convert pose position back into orbit parameters:
-            rel = pose.pos.astype(np.float64) - lookat.astype(np.float64)
-            cam.distance = float(np.linalg.norm(rel))
-
-            # azimuth: angle in XY plane from +X
-            az = np.degrees(np.arctan2(rel[1], rel[0]))
-            cam.azimuth = float(az)
-
-            # elevation: angle above XY plane
-            xy = np.sqrt(rel[0] ** 2 + rel[1] ** 2)
-            el = np.degrees(np.arctan2(rel[2], xy))
-            cam.elevation = float(el)
+            cam = self._mjv_cam_from_pose(pose, lookat)
 
             # RGB
             self._rgb_renderer.update_scene(self.data, camera=cam)

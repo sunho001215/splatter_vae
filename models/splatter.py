@@ -25,29 +25,36 @@ class SplatterDataConfig:
 
 @dataclass
 class SplatterModelConfig:
-    """Point-proposal, voxelization, PointNeXt, and Gaussian-head config."""
+    """Direct decoder-to-3D-Gaussian configuration."""
 
     max_sh_degree: int = 1
-    points_per_pixel: int = 2
-    point_offset_scale: float = 0.05
-
-    voxel_size: float = 0.02
-    voxelization_type: str = "trilinear_soft"
-    active_voxel_threshold: float = 1.0e-4
-
-    pointnet_channels: int = 128
-    pointnet_depth: int = 4
-    pointnet_neighbors: int = 16
-
-    gaussians_per_voxel: int = 1
+    gaussians_per_pixel: int = 2
+    gaussian_offset_scale: float = 0.05
+    gaussian_scale_min: float = 1.0e-4
     gaussian_scale_max: float = 0.05
-    gaussian_local_offset_scale: float = 0.5
 
 
 @dataclass
 class SplatterConfig:
     data: SplatterDataConfig
     model: SplatterModelConfig
+
+
+def gaussian_params_per_gaussian(max_sh_degree: int = 1) -> int:
+    """Channels predicted for one Gaussian proposal at one pixel."""
+    sh_bases = (int(max_sh_degree) + 1) ** 2
+    sh_rest = max(0, sh_bases - 1) * 3
+    # depth, camera-space offset, scale, rotation quat, opacity, DC color, rest SH
+    return 1 + 3 + 3 + 4 + 1 + 3 + sh_rest
+
+
+def default_splatter_channels(gaussians_per_pixel: int = 2, max_sh_degree: int = 1) -> int:
+    """Return decoder channels for direct pixel-wise 3D Gaussian prediction."""
+    return int(gaussians_per_pixel) * gaussian_params_per_gaussian(max_sh_degree=max_sh_degree)
+
+
+def _depth_render_mode(render_mode: str) -> bool:
+    return render_mode in {"D", "ED", "d", "Ed"}
 
 
 def render_predicted(
@@ -58,14 +65,17 @@ def render_predicted(
     cfg: SplatterConfig,
     scaling_modifier: float = 1.0,
     override_color: Optional[torch.Tensor] = None,
+    override_opacity: Optional[float | torch.Tensor] = None,
+    detach_xyz: bool = False,
+    detach_scale_rotation: bool = False,
     packed: bool = False,
     render_mode: str = "RGB",
 ) -> Dict[str, torch.Tensor]:
     """Render a batch of 3D Gaussians with gsplat.
 
-    The renderer-facing dictionary contract is intentionally unchanged:
-    ``xyz``, ``scaling``, ``rotation``, ``opacity``, ``features_dc``, and
-    ``features_rest`` are all batch-first tensors.
+    The optional detach/override arguments are used for DNGaussian-style depth
+    regularization: hard depth freezes shape and overrides opacity, while soft
+    depth freezes centers and shape but keeps opacity trainable.
     """
     device = pc["xyz"].device
     if device.type != "cuda":
@@ -74,27 +84,45 @@ def render_predicted(
             f"{device}. Run with --device cuda, or skip render-dependent code paths."
         )
 
-    world_view_transform = world_view_transform.to(device=device, dtype=pc["xyz"].dtype)
-    intrinsics = intrinsics.to(device=device, dtype=pc["xyz"].dtype)
+    dtype = pc["xyz"].dtype
+    world_view_transform = world_view_transform.to(device=device, dtype=dtype)
+    intrinsics = intrinsics.to(device=device, dtype=dtype)
     height = int(cfg.data.img_height)
     width = int(cfg.data.img_width)
 
-    means = torch.nan_to_num(pc["xyz"], nan=0.0, posinf=0.0, neginf=0.0).clamp(-1.0e3, 1.0e3)
-    scale_max = max(
-        float(getattr(cfg.model, "gaussian_scale_max", getattr(cfg.model, "scale_max", 0.05))),
-        1.0e-5,
-    )
-    scales = pc["scaling"] * float(scaling_modifier)
-    scales = torch.nan_to_num(scales, nan=1.0e-4, posinf=scale_max, neginf=1.0e-4).clamp(1.0e-5, scale_max)
-    quats = F.normalize(torch.nan_to_num(pc["rotation"], nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1.0e-6)
-    opacities = torch.nan_to_num(pc["opacity"].squeeze(-1), nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
+    xyz = pc["xyz"].detach() if detach_xyz else pc["xyz"]
+    means = torch.nan_to_num(xyz, nan=0.0, posinf=0.0, neginf=0.0).clamp(-1.0e3, 1.0e3)
+
+    scale_max = max(float(cfg.model.gaussian_scale_max), 1.0e-5)
+    scale_min = min(max(float(cfg.model.gaussian_scale_min), 1.0e-8), scale_max)
+    scaling = pc["scaling"].detach() if detach_scale_rotation else pc["scaling"]
+    scales = scaling * float(scaling_modifier)
+    scales = torch.nan_to_num(scales, nan=scale_min, posinf=scale_max, neginf=scale_min).clamp(scale_min, scale_max)
+
+    rotation = pc["rotation"].detach() if detach_scale_rotation else pc["rotation"]
+    quats = F.normalize(torch.nan_to_num(rotation, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1.0e-6)
+
+    if override_opacity is None:
+        opacity_tensor = pc["opacity"].squeeze(-1)
+    elif torch.is_tensor(override_opacity):
+        opacity_tensor = override_opacity.to(device=device, dtype=dtype)
+        if opacity_tensor.ndim == 0:
+            opacity_tensor = opacity_tensor.expand(pc["xyz"].shape[:2])
+        elif opacity_tensor.shape[-1] == 1:
+            opacity_tensor = opacity_tensor.squeeze(-1)
+    else:
+        opacity_tensor = torch.full(pc["xyz"].shape[:2], float(override_opacity), device=device, dtype=dtype)
+    opacities = torch.nan_to_num(opacity_tensor, nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
 
     valid_mask = pc.get("valid_mask", None)
     if valid_mask is not None:
         opacities = opacities * valid_mask.to(device=device, dtype=opacities.dtype)
 
-    if override_color is not None:
-        colors = override_color.to(device=device, dtype=pc["xyz"].dtype)
+    if _depth_render_mode(render_mode) and override_color is None:
+        colors = None
+        sh_degree = None
+    elif override_color is not None:
+        colors = override_color.to(device=device, dtype=dtype)
         sh_degree = None
     else:
         features_dc = pc["features_dc"]
@@ -108,9 +136,9 @@ def render_predicted(
 
     if bg_color.dim() == 1:
         batch, views = world_view_transform.shape[:2]
-        backgrounds = bg_color.to(device=device, dtype=pc["xyz"].dtype).view(1, 1, 3).expand(batch, views, 3)
+        backgrounds = bg_color.to(device=device, dtype=dtype).view(1, 1, 3).expand(batch, views, 3)
     else:
-        backgrounds = bg_color.to(device=device, dtype=pc["xyz"].dtype)
+        backgrounds = bg_color.to(device=device, dtype=dtype)
 
     render_colors, render_alphas, meta = rasterization(
         means=means,
@@ -130,7 +158,7 @@ def render_predicted(
         render_mode=render_mode,
     )
 
-    if render_mode in {"D", "ED", "d", "Ed"}:
+    if _depth_render_mode(render_mode):
         rendered_image = None
         rendered_depth = render_colors.permute(0, 1, 4, 2, 3).contiguous()
     elif render_colors.shape[-1] > 3:
@@ -151,12 +179,3 @@ def render_predicted(
         "visibility_filter": radii > 0 if radii is not None else None,
         "radii": radii,
     }
-
-
-def default_splatter_channels(points_per_pixel: int = 2) -> int:
-    """Return decoder channels for the pixel-wise point proposal map.
-
-    Each pixel predicts ``points_per_pixel`` proposals, and each proposal stores
-    metric-depth logits, a 3D camera-space offset, and a confidence logit.
-    """
-    return int(points_per_pixel) * 5

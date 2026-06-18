@@ -28,8 +28,9 @@ def _demo_label(file_idx: int, demo_key: str, num_files: int) -> str:
     return demo_key if num_files == 1 else f"file{file_idx}:{demo_key}"
 
 
-class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
-    """RoboSuite/Meta-World HDF5 dataset returning every selected camera.
+
+class MetaWorldMultiViewTemporalHDF5Dataset(Dataset):
+    """Meta-World HDF5 dataset returning every selected camera.
 
     ``dataset_path`` may be either one HDF5 file or a list of HDF5 files.  When
     multiple files are supplied, the dataset builds one global sample list over
@@ -184,7 +185,6 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
                         cam_idx = camera_names_list.index(view)
                         K = np.array(intrinsics_ds[cam_idx], dtype=np.float32)
                         world_T_cam = np.array(world_T_cam_ds[cam_idx], dtype=np.float32)
-
                         w2c_gl = invert_4x4(world_T_cam)
                         gl_to_cv = np.diag([1.0, -1.0, -1.0, 1.0]).astype(np.float32)
                         w2c = gl_to_cv @ w2c_gl
@@ -196,7 +196,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
                         self.samples.append((file_idx, demo_key, t_idx))
 
         print(
-            f"[RoboSuiteMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_refs)} demos "
+            f"[MetaWorldMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_refs)} demos "
             f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, views={self.views}"
         )
 
@@ -247,7 +247,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
 # -------------------------------------------------------------------------
 
 
-def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
+def _list_demo_keys_metaworld(dataset_path: str) -> List[str]:
     with h5py.File(dataset_path, "r") as f:
         if "data" not in f:
             raise ValueError(f'Invalid dataset "{dataset_path}": missing top-level group "data".')
@@ -262,10 +262,10 @@ def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
     return sorted(demos, key=_demo_index)
 
 
-def _list_demo_refs_robosuite(dataset_paths: Sequence[str]) -> List[DemoRef]:
+def _list_demo_refs_metaworld(dataset_paths: Sequence[str]) -> List[DemoRef]:
     refs: List[DemoRef] = []
     for file_idx, path in enumerate(dataset_paths):
-        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_robosuite(path))
+        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_metaworld(path))
     return refs
 
 
@@ -276,7 +276,7 @@ def _worker_init_fn(worker_id: int) -> None:
     info.dataset.rng = random.Random(info.seed)
 
 
-def build_train_valid_loaders_robosuite(
+def build_train_valid_loaders_metaworld(
     dataset_path: DatasetPathInput,
     batch_size: int = 128,
     num_workers: int = 4,
@@ -295,7 +295,7 @@ def build_train_valid_loaders_robosuite(
 ):
     """Build train/validation loaders with all selected cameras per sample."""
     dataset_paths = _normalize_dataset_paths(dataset_path)
-    demo_refs = _list_demo_refs_robosuite(dataset_paths)
+    demo_refs = _list_demo_refs_metaworld(dataset_paths)
     if num_episodes is not None:
         demo_refs = demo_refs[: int(num_episodes)]
 
@@ -318,7 +318,7 @@ def build_train_valid_loaders_robosuite(
     if camera_num is not None:
         views = views[: int(camera_num)]
 
-    train_dataset = RoboSuiteMultiViewTemporalHDF5Dataset(
+    train_dataset = MetaWorldMultiViewTemporalHDF5Dataset(
         dataset_path=dataset_paths,
         demo_keys=train_refs,
         views=views,
@@ -328,7 +328,7 @@ def build_train_valid_loaders_robosuite(
         min_time_gap=min_time_gap,
         use_depth=use_depth,
     )
-    valid_dataset = RoboSuiteMultiViewTemporalHDF5Dataset(
+    valid_dataset = MetaWorldMultiViewTemporalHDF5Dataset(
         dataset_path=dataset_paths,
         demo_keys=valid_refs,
         views=views,

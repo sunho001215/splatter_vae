@@ -85,19 +85,12 @@ splatter:
     category: "generic"
 
   model:
-    # Parent Gaussian layout (vanilla Splatter Image)
+    # Direct per-pixel Gaussian layout
     max_sh_degree: 1
-    points_per_pixel: 2
-    point_offset_scale: 0.05
-    voxel_size: 0.02
-    voxelization_type: trilinear_soft
-    active_voxel_threshold: 1.0e-4
-    pointnet_channels: 128
-    pointnet_depth: 4
-    pointnet_neighbors: 16
-    gaussians_per_voxel: 1
+    gaussians_per_pixel: 2
+    gaussian_offset_scale: 0.05
+    gaussian_scale_min: 1.0e-4
     gaussian_scale_max: 0.05
-    gaussian_local_offset_scale: 0.5
 
 # -----------------------------------------------------------------------------
 # Training
@@ -111,27 +104,33 @@ train:
   min_lr: 5.0e-5
   device: cuda
 
-  # Original no-dynamics loss weights.
+  # Direct Gaussian rendering and DNGaussian depth losses.
   rec_weight: 1.0
   ssim_weight: 0.0
-  render_loss_warmup_steps: 20000
-  point_chamfer_weight: 5.0
-  chamfer_huber_delta: 0.05
+  hard_depth_weight: 1.0
+  soft_depth_weight: 1.0
+  depth_local_weight: 0.1
+  depth_global_weight: 1.0
+  depth_error_tolerance: 0.2
+  depth_patch_min: 5
+  depth_patch_max: 17
+  depth_valid_min_ratio: 0.5
+  hard_depth_opacity: 0.95
+  hard_depth_start_step: 0
+  soft_depth_start_step: 1000
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0
+  frustum_weight: 5.0e-3
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/hammer/point-voxel/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/hammer/direct-gaussian-depth/
   resume_from_last: false
-  val_log_pointclouds: true
-  val_pointcloud_max_points: 4096
 
 # -----------------------------------------------------------------------------
 # Optional logging
@@ -140,11 +139,10 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-hammer-point-voxel
+  run_name: metaworld-hammer-direct-gaussian-depth
   tags:
-    - point-voxel
-    - raw-point-chamfer
-    - render-loss-warmup
+    - direct-gaussian
+    - dngaussian-depth
     - max_sh_degree-1
     - all-camera-rendering
     - rgb-encoder

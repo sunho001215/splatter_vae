@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 import h5py
 import torch
 
-from models.point_voxel_gaussians import PointVoxelToGaussians
+from models.splatter_gaussians import DirectSplatterToGaussians
 from models.splatter import (
     SplatterConfig,
     SplatterDataConfig,
@@ -46,7 +46,10 @@ def splatter_channels_from_config(cfg: Dict[str, Any], spl_cfg: SplatterConfig) 
     return int(
         cfg.get("splatter", {}).get(
             "splatter_channels",
-            default_splatter_channels(points_per_pixel=int(spl_cfg.model.points_per_pixel)),
+            default_splatter_channels(
+                gaussians_per_pixel=int(spl_cfg.model.gaussians_per_pixel),
+                max_sh_degree=int(spl_cfg.model.max_sh_degree),
+            ),
         )
     )
 
@@ -92,8 +95,9 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
         splatter_cfg = cfg.setdefault("splatter", {})
         model_cfg = splatter_cfg.setdefault("model", {})
         model_cfg["max_sh_degree"] = 1
-        if out_channels % 5 == 0:
-            model_cfg["points_per_pixel"] = max(1, out_channels // 5)
+        params_per_gaussian = default_splatter_channels(gaussians_per_pixel=1, max_sh_degree=1)
+        if out_channels % params_per_gaussian == 0:
+            model_cfg["gaussians_per_pixel"] = max(1, out_channels // params_per_gaussian)
         splatter_cfg["splatter_channels"] = out_channels
 
     return cfg
@@ -128,10 +132,10 @@ def load_vae_state_dict(vae: SplatterVAE, ckpt_path: str) -> None:
     vae.load_state_dict(_checkpoint_state_dict(ckpt_path), strict=True)
 
 
-def load_converter_state_dict(converter: PointVoxelToGaussians, ckpt_path: str) -> None:
-    state = torch.load(ckpt_path, map_location="cpu")
-    if isinstance(state, dict) and "point_voxel_to_gaussians_state_dict" in state:
-        converter.load_state_dict(state["point_voxel_to_gaussians_state_dict"], strict=True)
+def load_converter_state_dict(converter: DirectSplatterToGaussians, ckpt_path: str) -> None:
+    # DirectSplatterToGaussians is parameter-free. Keep this hook so older
+    # visualization call sites do not need a special case.
+    return None
 
 
 def build_visualization_models(
@@ -148,10 +152,7 @@ def build_visualization_models(
     vae = build_splattervae(cfg, img_height, img_width, splatter_channels)
     load_vae_state_dict(vae, ckpt_path)
 
-    converter = PointVoxelToGaussians(
-        spl_cfg,
-        z_inv_dim=int(vae.invariant_encoder_output_proj.out_features),
-    )
+    converter = DirectSplatterToGaussians(spl_cfg)
     load_converter_state_dict(converter, ckpt_path)
     vae.to(device).eval()
     converter.to(device).eval()

@@ -72,11 +72,15 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
     model_cfg = dict(cfg.get("model", {}))
     spl_model_cfg = cfg.get("splatter", {}).get("model", {})
 
-    points_per_pixel = int(spl_model_cfg.get("points_per_pixel", 2))
+    gaussians_per_pixel = int(spl_model_cfg.get("gaussians_per_pixel", 2))
+    max_sh_degree = int(spl_model_cfg.get("max_sh_degree", 1))
     splatter_channels = int(
         cfg.get("splatter", {}).get(
             "splatter_channels",
-            default_splatter_channels(points_per_pixel=points_per_pixel),
+            default_splatter_channels(
+                gaussians_per_pixel=gaussians_per_pixel,
+                max_sh_degree=max_sh_degree,
+            ),
         )
     )
 

@@ -4,7 +4,7 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-drawer-open-DrQv2
-  name: SplatterVAE-novoxel
+  name: SplatterVAE-direct-gaussian
   tags: [full-implementation, embed-dim-128, codebook-embed-dim-64]
 
 env:
@@ -77,10 +77,10 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/drawer-open/component-ablation/novoxel/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/drawer-open/direct-gaussian-depth/step_00300000.pth
     feature_source: pre_vq
     max_sh_degree: 1
-    points_per_pixel: 2
+    gaussians_per_pixel: 2
 
     codebook:
       invariant:
@@ -139,7 +139,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer-open/splattervae_novoxel/seed98/
+  replay_dir: ./buffer/metaworld/drawer-open/splattervae_direct_gaussian/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -149,7 +149,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_novoxel/drawer-open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_direct_gaussian/drawer-open/seed98/
 
 visualization:
   enabled: false
