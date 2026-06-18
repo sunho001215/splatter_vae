@@ -20,8 +20,6 @@ class DirectSplatterToGaussians(nn.Module):
     def __init__(self, cfg: SplatterConfig):
         super().__init__()
         self.cfg = cfg
-        if int(cfg.model.max_sh_degree) != 1:
-            raise ValueError("DirectSplatterToGaussians expects splatter.model.max_sh_degree=1.")
 
     @property
     def params_per_gaussian(self) -> int:
@@ -74,19 +72,64 @@ class DirectSplatterToGaussians(nn.Module):
         features_rest_raw = params[..., cursor:]
 
         if activate_output:
-            znear = float(self.cfg.data.znear)
-            zfar = float(self.cfg.data.zfar)
-            depth = torch.sigmoid(depth_raw) * (zfar - znear) + znear
-            offset = torch.tanh(offset_raw) * float(self.cfg.model.gaussian_offset_scale)
+            depth_min = float(self.cfg.data.znear if self.cfg.model.depth_min is None else self.cfg.model.depth_min)
+            depth_max = float(self.cfg.data.zfar if self.cfg.model.depth_max is None else self.cfg.model.depth_max)
+            if depth_max <= depth_min:
+                raise ValueError(f"depth_max must be greater than depth_min, got {depth_min} and {depth_max}.")
+            depth_logits = depth_raw * float(self.cfg.model.depth_logit_scale) + float(self.cfg.model.depth_logit_bias)
+            depth_unit = torch.sigmoid(depth_logits)
+            depth_activation = str(self.cfg.model.depth_activation).lower()
+            if depth_activation in {"inverse_depth", "inv_depth", "disparity"}:
+                min_inv = 1.0 / depth_max
+                max_inv = 1.0 / depth_min
+                inv_depth = min_inv + (max_inv - min_inv) * depth_unit
+                depth = 1.0 / inv_depth.clamp_min(1.0e-8)
+            elif depth_activation in {"linear", "metric", "sigmoid"}:
+                depth = depth_unit * (depth_max - depth_min) + depth_min
+            else:
+                raise ValueError(f"Unknown depth_activation={self.cfg.model.depth_activation!r}.")
+
+            depth_ordering = str(self.cfg.model.depth_ordering).lower()
+            if depth_ordering in {"sort", "sorted", "ascending"} and g > 1:
+                depth_grid = depth.view(batch, height * width, g, 1)
+                order = torch.argsort(depth_grid.squeeze(-1), dim=2, stable=True)
+                gather_param = order.view(batch, height * width, g, 1).expand(batch, height * width, g, p)
+                params = params.view(batch, height * width, g, p).gather(dim=2, index=gather_param)
+                params = params.reshape(batch, height * width * g, p).contiguous()
+                depth = depth_grid.gather(dim=2, index=order.unsqueeze(-1)).reshape(batch, height * width * g, 1).contiguous()
+                cursor = 1
+                offset_raw = params[..., cursor: cursor + 3]; cursor += 3
+                scale_raw = params[..., cursor: cursor + 3]; cursor += 3
+                rotation_raw = params[..., cursor: cursor + 4]; cursor += 4
+                opacity_raw = params[..., cursor: cursor + 1]; cursor += 1
+                features_dc_raw = params[..., cursor: cursor + 3]; cursor += 3
+                features_rest_raw = params[..., cursor:]
+            elif depth_ordering not in {"none", "off", "false", "sort", "sorted", "ascending"}:
+                raise ValueError(f"Unknown depth_ordering={self.cfg.model.depth_ordering!r}.")
+
+            offset_logits = offset_raw * float(self.cfg.model.offset_raw_scale) + float(self.cfg.model.offset_raw_bias)
+            offset = torch.tanh(offset_logits) * float(self.cfg.model.gaussian_offset_scale)
+
             scale_min = max(float(self.cfg.model.gaussian_scale_min), 1.0e-8)
             scale_max = max(float(self.cfg.model.gaussian_scale_max), scale_min)
-            scaling = torch.sigmoid(scale_raw) * (scale_max - scale_min) + scale_min
-            identity = rotation_raw.new_tensor([1.0, 0.0, 0.0, 0.0]).view(1, 1, 4)
-            rotation = F.normalize(rotation_raw + identity, dim=-1, eps=1.0e-6)
-            opacity = torch.sigmoid(opacity_raw)
-            features_dc = torch.sigmoid(features_dc_raw).unsqueeze(-2)
+            scale_logits = scale_raw * float(self.cfg.model.scale_logit_scale) + float(self.cfg.model.scale_logit_bias)
+            scaling = torch.sigmoid(scale_logits) * (scale_max - scale_min) + scale_min
+
+            rotation_logits = rotation_raw * float(self.cfg.model.rotation_raw_scale) + float(self.cfg.model.rotation_raw_bias)
+            identity = rotation_logits.new_tensor([1.0, 0.0, 0.0, 0.0]).view(1, 1, 4)
+            rotation = F.normalize(rotation_logits + identity, dim=-1, eps=1.0e-6)
+
+            opacity_logits = opacity_raw * float(self.cfg.model.opacity_logit_scale) + float(self.cfg.model.opacity_logit_bias)
+            opacity = torch.sigmoid(opacity_logits)
+
+            color_logits = features_dc_raw * float(self.cfg.model.color_logit_scale) + float(self.cfg.model.color_logit_bias)
+            features_dc = torch.sigmoid(color_logits).unsqueeze(-2)
+
             sh_rest_bases = (int(self.cfg.model.max_sh_degree) + 1) ** 2 - 1
-            features_rest = 0.1 * torch.tanh(features_rest_raw.view(batch, height * width * g, sh_rest_bases, 3))
+            sh_rest_logits = features_rest_raw * float(self.cfg.model.sh_rest_raw_scale) + float(self.cfg.model.sh_rest_raw_bias)
+            features_rest = float(self.cfg.model.sh_rest_scale) * torch.tanh(
+                sh_rest_logits.view(batch, height * width * g, sh_rest_bases, 3)
+            )
         else:
             depth = depth_raw
             offset = offset_raw

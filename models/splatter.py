@@ -29,9 +29,35 @@ class SplatterModelConfig:
 
     max_sh_degree: int = 1
     gaussians_per_pixel: int = 2
+
+    depth_min: Optional[float] = None
+    depth_max: Optional[float] = None
+    depth_activation: str = "inverse_depth"
+    depth_ordering: str = "sort"
+    depth_logit_scale: float = 1.0
+    depth_logit_bias: float = 0.0
+
     gaussian_offset_scale: float = 0.05
+    offset_raw_scale: float = 1.0
+    offset_raw_bias: float = 0.0
+
     gaussian_scale_min: float = 1.0e-4
     gaussian_scale_max: float = 0.05
+    scale_logit_scale: float = 1.0
+    scale_logit_bias: float = 0.0
+
+    rotation_raw_scale: float = 1.0
+    rotation_raw_bias: float = 0.0
+
+    opacity_logit_scale: float = 1.0
+    opacity_logit_bias: float = 0.0
+
+    color_logit_scale: float = 1.0
+    color_logit_bias: float = 0.0
+
+    sh_rest_scale: float = 0.1
+    sh_rest_raw_scale: float = 1.0
+    sh_rest_raw_bias: float = 0.0
 
 
 @dataclass

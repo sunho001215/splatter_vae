@@ -55,7 +55,6 @@ def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> Splatte
     # Match the renderer config to the actual training batch resolution.
     spl_data_cfg_dict["img_height"] = img_height
     spl_data_cfg_dict["img_width"] = img_width
-    spl_model_cfg_dict["max_sh_degree"] = 1
 
     return SplatterConfig(
         data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg_dict, SplatterDataConfig, "splatter.data")),

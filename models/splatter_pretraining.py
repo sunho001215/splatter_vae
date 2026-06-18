@@ -165,7 +165,6 @@ def _compute_soft_image_region_penalty(
         return values.masked_select(mask).mean()
 
     stats: Dict[str, torch.Tensor] = {
-        "frustum_loss": masked_mean(per_view_penalty, valid_gaussian_mask),
         "inactive_ratio_mean": masked_mean(outside_mask.float(), valid_gaussian_mask),
         "invalid_depth_ratio_mean": masked_mean((~valid_depth).float(), valid_gaussian_mask),
         "nonfinite_projection_ratio_mean": masked_mean((~finite_projection).float(), valid_gaussian_mask),
@@ -182,11 +181,14 @@ def _compute_soft_image_region_penalty(
         if num_views > 1:
             target_view_ids = torch.arange(num_views, device=device).view(1, num_views, 1)
             non_source_mask = target_view_ids != source_view_indices.to(device=device).view(-1, 1, 1)
-            non_source_mask = non_source_mask.expand_as(outside_mask)
-            stats["inactive_ratio_tgt"] = masked_mean(outside_mask.float(), non_source_mask & valid_gaussian_mask)
+            target_mask = non_source_mask.expand_as(outside_mask) & valid_gaussian_mask
+            stats["frustum_loss"] = masked_mean(per_view_penalty, target_mask)
+            stats["inactive_ratio_tgt"] = masked_mean(outside_mask.float(), target_mask)
         else:
+            stats["frustum_loss"] = masked_mean(per_view_penalty, valid_gaussian_mask)
             stats["inactive_ratio_tgt"] = stats["inactive_ratio_src"]
     else:
+        stats["frustum_loss"] = masked_mean(per_view_penalty, valid_gaussian_mask)
         stats["inactive_ratio_src"] = masked_mean(outside_mask[:, 0].float(), valid_gaussian_mask[:, 0])
         stats["inactive_ratio_tgt"] = stats["inactive_ratio_src"]
     return stats
@@ -500,7 +502,6 @@ def _render_selected_sources_to_views(
         gaussian_mask=gaussian_pc.get("valid_mask", None),
     )
     stats.update(_gaussian_stats(gaussian_pc))
-
     render_indices = torch.cat((source_indices.view(-1, 1), target_indices), dim=1)
     target_depths = _gather_target_cameras(depths, render_indices) if depths is not None else None
     stats.update(

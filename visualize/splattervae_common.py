@@ -35,7 +35,6 @@ def build_splatter_config(cfg: Dict[str, Any], img_height: int, img_width: int) 
     spl_model_cfg = dict(spl_cfg.get("model", {}))
     spl_data_cfg["img_height"] = int(img_height)
     spl_data_cfg["img_width"] = int(img_width)
-    spl_model_cfg["max_sh_degree"] = 1
     return SplatterConfig(
         data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg, SplatterDataConfig)),
         model=SplatterModelConfig(**_filter_dataclass_kwargs(spl_model_cfg, SplatterModelConfig)),
@@ -94,10 +93,14 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
     if out_channels is not None:
         splatter_cfg = cfg.setdefault("splatter", {})
         model_cfg = splatter_cfg.setdefault("model", {})
-        model_cfg["max_sh_degree"] = 1
-        params_per_gaussian = default_splatter_channels(gaussians_per_pixel=1, max_sh_degree=1)
-        if out_channels % params_per_gaussian == 0:
-            model_cfg["gaussians_per_pixel"] = max(1, out_channels // params_per_gaussian)
+        configured_sh = int(model_cfg.get("max_sh_degree", 1))
+        candidate_degrees = [configured_sh] + [degree for degree in (0, 1) if degree != configured_sh]
+        for degree in candidate_degrees:
+            params_per_gaussian = default_splatter_channels(gaussians_per_pixel=1, max_sh_degree=degree)
+            if out_channels % params_per_gaussian == 0:
+                model_cfg["max_sh_degree"] = degree
+                model_cfg["gaussians_per_pixel"] = max(1, out_channels // params_per_gaussian)
+                break
         splatter_cfg["splatter_channels"] = out_channels
 
     return cfg
