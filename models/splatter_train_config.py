@@ -6,7 +6,7 @@ from typing import Optional
 
 @dataclass
 class TrainConfig:
-    """Training hyperparameters for SplatterVAE point-voxel pretraining."""
+    """Training hyperparameters for direct-Gaussian SplatterVAE pretraining."""
 
     num_epochs: int = 50
     max_global_steps: Optional[int] = None
@@ -18,8 +18,8 @@ class TrainConfig:
     device: str = "cuda"
 
     rec_weight: float = 1.0
-    render_loss_warmup_steps: int = 0
     ssim_weight: float = 0.2
+    rec_background_weight: float = 0.05
 
     point_chamfer_weight: float = 5.0
     chamfer_huber_delta: float = 0.05
@@ -29,7 +29,6 @@ class TrainConfig:
     inv_consistency_weight: float = 0.5
     dep_contrastive_weight: float = 0.1
     dep_consistency_weight: float = 0.1
-    frustum_weight: float = 0.001
 
     temperature: float = 0.1
 

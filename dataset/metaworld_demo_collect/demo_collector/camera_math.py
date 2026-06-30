@@ -3,15 +3,17 @@ from __future__ import annotations
 import math
 import numpy as np
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+from typing import Optional, Sequence
 
 
 @dataclass(frozen=True)
 class CameraPose:
     name: str
     pos: np.ndarray        # (3,)
-    quat_wxyz: np.ndarray  # (4,) world_R_cam, MuJoCo quat format [w,x,y,z]
+    quat_wxyz: np.ndarray  # (4,) world_R_cam, MuJoCo/OpenGL camera frame [w,x,y,z]
     fovy_deg: float
+    azimuth_deg: Optional[float] = None
+    elevation_deg: Optional[float] = None
 
 
 def _normalize(v: np.ndarray, eps: float = 1e-12) -> np.ndarray:
@@ -92,22 +94,29 @@ def spherical_camera_pose(
     up: Sequence[float],
     fovy_deg: float,
 ) -> CameraPose:
+    """Build the pose for a MuJoCo orbit camera.
+
+    Config convention: ``theta_deg`` is a positive downward tilt angle. MuJoCo's
+    free camera uses negative elevation for a camera above the table looking
+    down, so the renderer receives ``elevation=-theta_deg``.
     """
-    Matches your robosuite convention:
-      phi = azimuth around +Z, theta = elevation from XY plane.
-    """
-    th = math.radians(theta_deg)
-    ph = math.radians(phi_deg)
-
-    x = float(r) * math.cos(th) * math.cos(ph)
-    y = float(r) * math.cos(th) * math.sin(ph)
-    z = float(r) * math.sin(th)
-
-    lookat_np = np.asarray(lookat, dtype=np.float64)
-    pos = lookat_np + np.array([x, y, z], dtype=np.float64)
-    quat = look_at_quat_wxyz(pos, lookat_np, up)
-
-    return CameraPose(name=name, pos=pos, quat_wxyz=quat, fovy_deg=float(fovy_deg))
+    del up  # MuJoCo orbit cameras define roll from azimuth/elevation.
+    elevation_deg = -float(theta_deg)
+    world_t_cam = orbit_camera_world_T_cam(
+        lookat=lookat,
+        distance=float(r),
+        azimuth_deg=float(phi_deg),
+        elevation_deg=elevation_deg,
+    )
+    quat = _mat_to_quat_wxyz(world_t_cam[:3, :3])
+    return CameraPose(
+        name=name,
+        pos=world_t_cam[:3, 3].copy(),
+        quat_wxyz=quat,
+        fovy_deg=float(fovy_deg),
+        azimuth_deg=float(phi_deg),
+        elevation_deg=elevation_deg,
+    )
 
 
 def intrinsics_from_fovy(fovy_deg: float, height: int, width: int) -> np.ndarray:
@@ -143,4 +152,37 @@ def extrinsics_world_T_cam(cam_pos: np.ndarray, quat_wxyz: np.ndarray) -> np.nda
     T = np.eye(4, dtype=np.float64)
     T[:3, :3] = R
     T[:3, 3] = cam_pos.astype(np.float64)
+    return T
+
+def orbit_camera_world_T_cam(
+    *,
+    lookat: Sequence[float],
+    distance: float,
+    azimuth_deg: float,
+    elevation_deg: float,
+) -> np.ndarray:
+    """Return the camera-to-world transform used by MuJoCo's free orbit camera.
+
+    ``elevation_deg`` follows MuJoCo directly: negative values place the camera
+    above the table and look downward when the world Z axis points up.
+    """
+    lookat_np = np.asarray(lookat, dtype=np.float64)
+    az = math.radians(float(azimuth_deg))
+    el = math.radians(float(elevation_deg))
+    forward = np.array(
+        [math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)],
+        dtype=np.float64,
+    )
+    up_vec = np.array(
+        [-math.sin(el) * math.cos(az), -math.sin(el) * math.sin(az), math.cos(el)],
+        dtype=np.float64,
+    )
+    cam_pos = lookat_np - float(distance) * forward
+    z_cam_world = -forward
+    x_cam_world = _normalize(np.cross(up_vec, z_cam_world))
+    y_cam_world = _normalize(np.cross(z_cam_world, x_cam_world))
+
+    T = np.eye(4, dtype=np.float64)
+    T[:3, :3] = np.stack([x_cam_world, y_cam_world, z_cam_world], axis=1)
+    T[:3, 3] = cam_pos
     return T

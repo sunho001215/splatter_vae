@@ -1,5 +1,6 @@
 import json
 import random
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import h5py
@@ -12,6 +13,9 @@ from utils.general_utils import image_to_tensor, invert_4x4
 DatasetPathInput = Union[str, Sequence[str]]
 DemoRef = Tuple[int, str]
 SampleRef = Tuple[int, str, int]
+SegSelector = Tuple[Optional[int], int]
+SegIdValue = Union[int, str, Sequence[Union[int, str]]]
+SegIdSpec = Optional[Union[int, str, Sequence[Union[int, str]], Dict[str, SegIdValue]]]
 
 
 def _normalize_dataset_paths(dataset_path: DatasetPathInput) -> List[str]:
@@ -28,8 +32,88 @@ def _demo_label(file_idx: int, demo_key: str, num_files: int) -> str:
     return demo_key if num_files == 1 else f"file{file_idx}:{demo_key}"
 
 
-class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
-    """RoboSuite/Meta-World HDF5 dataset returning every selected camera.
+SEG_TYPE_ALIASES = {
+    "background": -1,
+    "body": 1,
+    "joint": 3,
+    "geom": 5,
+    "site": 6,
+    "camera": 7,
+    "light": 8,
+}
+SEG_TYPE_NAMES = {value: key for key, value in SEG_TYPE_ALIASES.items()}
+
+
+def _parse_seg_selector(value: Union[int, str]) -> SegSelector:
+    if isinstance(value, (int, np.integer)):
+        return (None, int(value))
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Empty segmentation selector is not allowed.")
+    if ":" not in text:
+        return (None, int(text))
+    type_text, id_text = [part.strip() for part in text.split(":", 1)]
+    if not type_text or not id_text:
+        raise ValueError(f"Invalid segmentation selector {value!r}; expected 'geom:43' or '5:43'.")
+    obj_type = SEG_TYPE_ALIASES.get(type_text.lower(), None)
+    if obj_type is None:
+        obj_type = int(type_text)
+    return (int(obj_type), int(id_text))
+
+
+def _coerce_seg_ids(value: SegIdValue | None) -> Optional[List[SegSelector]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        return [_parse_seg_selector(part.strip()) for part in text.split(",") if part.strip()]
+    if isinstance(value, (int, np.integer)):
+        return [_parse_seg_selector(value)]
+    return [_parse_seg_selector(item) for item in value]
+
+
+def _normalize_seg_id_spec(spec: SegIdSpec):
+    if spec is None:
+        return None
+    if isinstance(spec, dict):
+        return {str(key): _coerce_seg_ids(value) for key, value in spec.items()}
+    return _coerce_seg_ids(spec)
+
+
+def _format_seg_selector(selector: SegSelector) -> str:
+    obj_type, obj_id = selector
+    if obj_type is None:
+        return str(int(obj_id))
+    return f"{SEG_TYPE_NAMES.get(int(obj_type), str(int(obj_type)))}:{int(obj_id)}"
+
+
+def _format_seg_selectors(selectors: Sequence[SegSelector]) -> str:
+    return "[" + ", ".join(_format_seg_selector(selector) for selector in selectors) + "]"
+
+
+def _segmentation_mask_from_selectors(
+    seg_ids: np.ndarray,
+    seg_types: Optional[np.ndarray],
+    selectors: Sequence[SegSelector],
+) -> np.ndarray:
+    mask = np.zeros(seg_ids.shape, dtype=bool)
+    for obj_type, obj_id in selectors:
+        if obj_type is None:
+            mask |= seg_ids == int(obj_id)
+        else:
+            if seg_types is None:
+                raise ValueError(
+                    f"Typed segmentation selector {_format_seg_selector((obj_type, obj_id))!r} requires *_seg_type datasets. "
+                    "Collect with segmentation.save_objtype=true or use plain integer IDs."
+                )
+            mask |= (seg_ids == int(obj_id)) & (seg_types == int(obj_type))
+    return mask
+
+
+class metaworldMultiViewTemporalHDF5Dataset(Dataset):
+    """metaworld/Meta-World HDF5 dataset returning every selected camera.
 
     ``dataset_path`` may be either one HDF5 file or a list of HDF5 files.  When
     multiple files are supplied, the dataset builds one global sample list over
@@ -42,6 +126,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         c2w:    (N_cam, 4, 4) OpenCV camera-to-world transforms
         w2c:    (N_cam, 4, 4) OpenCV world-to-camera transforms
         depths: optional (N_cam, 1, H, W) float32 metric camera-z depth
+        masks:  optional (N_cam, 1, H, W) float32 selected segmentation mask
     """
 
     def __init__(
@@ -54,6 +139,8 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         seed: int = 0,
         min_time_gap: int = 10,
         use_depth: bool = False,
+        use_segmentation_mask: bool = False,
+        selected_seg_ids: SegIdSpec = None,
     ):
         super().__init__()
         self.dataset_paths = _normalize_dataset_paths(dataset_path)
@@ -71,6 +158,8 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         # it is no longer used because this dataset returns one state at a time.
         self.min_time_gap = int(min_time_gap)
         self.use_depth = bool(use_depth)
+        self.use_segmentation_mask = bool(use_segmentation_mask)
+        self.selected_seg_ids = _normalize_seg_id_spec(selected_seg_ids)
         self.rng = random.Random(seed)
 
         self.views: Optional[List[str]] = None if views is None else list(views)
@@ -79,6 +168,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
 
         self._h5_handles: Dict[int, h5py.File] = {}
         self.demo_lengths: Dict[DemoRef, int] = {}
+        self.demo_mask_selectors: Dict[DemoRef, List[SegSelector]] = {}
         self.cam_cache: Dict[DemoRef, Dict[str, Dict[str, np.ndarray]]] = {}
         self.samples: List[SampleRef] = []
 
@@ -104,6 +194,33 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
             self._h5_handles[file_idx] = h5py.File(self.dataset_paths[file_idx], "r")
         return self._h5_handles[file_idx]
 
+    def _selected_ids_for_demo(self, dataset_path: str, demo_key: str, env_name: str) -> List[SegSelector]:
+        if not self.use_segmentation_mask:
+            return []
+        if self.selected_seg_ids is None:
+            raise ValueError(
+                "dataset.use_segmentation_mask=true requires dataset.selected_seg_ids. "
+                "Use dataset/metaworld_demo_collect/inspect_segmentation_ids.py to list available IDs."
+            )
+        if isinstance(self.selected_seg_ids, list):
+            ids = self.selected_seg_ids
+        else:
+            path = Path(dataset_path)
+            keys = (env_name, demo_key, path.stem, path.name, "default", "*")
+            ids = None
+            for key in keys:
+                if key in self.selected_seg_ids:
+                    ids = self.selected_seg_ids[key]
+                    break
+            if ids is None:
+                raise ValueError(
+                    f"No selected_seg_ids entry matched env={env_name!r}, demo={demo_key!r}, path={path.name!r}. "
+                    "Add one of those keys or a 'default' entry."
+                )
+        if ids is None or len(ids) == 0:
+            raise ValueError(f"Selected segmentation ID list is empty for env={env_name!r}, demo={demo_key!r}.")
+        return list(ids)
+
     def _index_files_and_build_samples(self) -> None:
         refs_by_file: Dict[int, List[str]] = {}
         for file_idx, demo_key in self.demo_refs:
@@ -121,6 +238,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
                         raise ValueError(f'Demo key "{demo_key}" not found under /data in "{dataset_path}".')
 
                     demo_grp = data_grp[demo_key]
+                    env_name = str(demo_grp.attrs.get("env_name", "default"))
                     if "camera_names" not in demo_grp.attrs:
                         raise ValueError(f'"/data/{demo_key}" in "{dataset_path}" has no "camera_names" attribute.')
                     camera_names = json.loads(demo_grp.attrs["camera_names"])
@@ -159,11 +277,20 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
                                 f'Missing depth dataset "{dataset_path}:/data/{demo_key}/obs/{depth_name}". '
                                 "Collect depth images or set dataset.use_depth=false."
                             )
+                        seg_name = f"{view}_seg"
+                        if self.use_segmentation_mask and seg_name not in obs_grp:
+                            raise ValueError(
+                                f'Missing segmentation dataset "{dataset_path}:/data/{demo_key}/obs/{seg_name}". '
+                                "Collect segmentation masks or set dataset.use_segmentation_mask=false."
+                            )
+
+                    demo_ref = (file_idx, demo_key)
+                    if self.use_segmentation_mask:
+                        self.demo_mask_selectors[demo_ref] = self._selected_ids_for_demo(dataset_path, demo_key, env_name)
 
                     timesteps = int(obs_grp[ref_name].shape[0])
                     if self.max_frames_per_demo is not None:
                         timesteps = min(timesteps, int(self.max_frames_per_demo))
-                    demo_ref = (file_idx, demo_key)
                     self.demo_lengths[demo_ref] = timesteps
 
                     if "camera_params" not in demo_grp:
@@ -195,9 +322,13 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
                     for t_idx in range(timesteps):
                         self.samples.append((file_idx, demo_key, t_idx))
 
+        mask_msg = ""
+        if self.use_segmentation_mask:
+            unique_specs = sorted({_format_seg_selectors(selectors) for selectors in self.demo_mask_selectors.values()})
+            mask_msg = f", segmentation_selectors={unique_specs}"
         print(
-            f"[RoboSuiteMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_refs)} demos "
-            f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, views={self.views}"
+            f"[metaworldMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_refs)} demos "
+            f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, views={self.views}{mask_msg}"
         )
 
     def __len__(self) -> int:
@@ -210,12 +341,30 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
 
         images = []
         depths = []
+        masks = []
         intrinsics = []
         c2w_mats = []
         w2c_mats = []
+        selected_selectors = self.demo_mask_selectors.get(demo_ref, [])
         for view in self.views:
             img_np = np.array(obs_grp[f"{view}_rgb"][t], dtype=np.uint8)
+            mask_np = None
+            if self.use_segmentation_mask:
+                seg_np = np.array(obs_grp[f"{view}_seg"][t], dtype=np.int32)
+                seg_type_np = None
+                if any(obj_type is not None for obj_type, _obj_id in selected_selectors):
+                    seg_type_name = f"{view}_seg_type"
+                    if seg_type_name not in obs_grp:
+                        raise ValueError(
+                            f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
+                            "Recollect with segmentation.save_objtype=true or use plain integer IDs."
+                        )
+                    seg_type_np = np.array(obs_grp[seg_type_name][t], dtype=np.int32)
+                mask_np = _segmentation_mask_from_selectors(seg_np, seg_type_np, selected_selectors)
+                img_np = np.where(mask_np[..., None], img_np, 0).astype(np.uint8)
+                masks.append(torch.from_numpy(mask_np.astype(np.float32)).unsqueeze(0))
             images.append(image_to_tensor(img_np))
+
             if self.use_depth:
                 depth_np = np.array(obs_grp[f"{view}_depth"][t], dtype=np.float32)
                 if depth_np.ndim == 3 and depth_np.shape[-1] == 1:
@@ -239,6 +388,8 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
         }
         if self.use_depth:
             sample["depths"] = torch.stack(depths, dim=0)
+        if self.use_segmentation_mask:
+            sample["masks"] = torch.stack(masks, dim=0)
         return sample
 
 
@@ -247,7 +398,7 @@ class RoboSuiteMultiViewTemporalHDF5Dataset(Dataset):
 # -------------------------------------------------------------------------
 
 
-def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
+def _list_demo_keys_metaworld(dataset_path: str) -> List[str]:
     with h5py.File(dataset_path, "r") as f:
         if "data" not in f:
             raise ValueError(f'Invalid dataset "{dataset_path}": missing top-level group "data".')
@@ -262,10 +413,10 @@ def _list_demo_keys_robosuite(dataset_path: str) -> List[str]:
     return sorted(demos, key=_demo_index)
 
 
-def _list_demo_refs_robosuite(dataset_paths: Sequence[str]) -> List[DemoRef]:
+def _list_demo_refs_metaworld(dataset_paths: Sequence[str]) -> List[DemoRef]:
     refs: List[DemoRef] = []
     for file_idx, path in enumerate(dataset_paths):
-        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_robosuite(path))
+        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_metaworld(path))
     return refs
 
 
@@ -276,7 +427,7 @@ def _worker_init_fn(worker_id: int) -> None:
     info.dataset.rng = random.Random(info.seed)
 
 
-def build_train_valid_loaders_robosuite(
+def build_train_valid_loaders_metaworld(
     dataset_path: DatasetPathInput,
     batch_size: int = 128,
     num_workers: int = 4,
@@ -292,10 +443,12 @@ def build_train_valid_loaders_robosuite(
     shuffle_train: bool = True,
     shuffle_valid: bool = True,
     use_depth: bool = False,
+    use_segmentation_mask: bool = False,
+    selected_seg_ids: SegIdSpec = None,
 ):
     """Build train/validation loaders with all selected cameras per sample."""
     dataset_paths = _normalize_dataset_paths(dataset_path)
-    demo_refs = _list_demo_refs_robosuite(dataset_paths)
+    demo_refs = _list_demo_refs_metaworld(dataset_paths)
     if num_episodes is not None:
         demo_refs = demo_refs[: int(num_episodes)]
 
@@ -318,7 +471,7 @@ def build_train_valid_loaders_robosuite(
     if camera_num is not None:
         views = views[: int(camera_num)]
 
-    train_dataset = RoboSuiteMultiViewTemporalHDF5Dataset(
+    train_dataset = metaworldMultiViewTemporalHDF5Dataset(
         dataset_path=dataset_paths,
         demo_keys=train_refs,
         views=views,
@@ -327,8 +480,10 @@ def build_train_valid_loaders_robosuite(
         seed=seed,
         min_time_gap=min_time_gap,
         use_depth=use_depth,
+        use_segmentation_mask=use_segmentation_mask,
+        selected_seg_ids=selected_seg_ids,
     )
-    valid_dataset = RoboSuiteMultiViewTemporalHDF5Dataset(
+    valid_dataset = metaworldMultiViewTemporalHDF5Dataset(
         dataset_path=dataset_paths,
         demo_keys=valid_refs,
         views=views,
@@ -337,6 +492,8 @@ def build_train_valid_loaders_robosuite(
         seed=seed + 999,
         min_time_gap=min_time_gap,
         use_depth=use_depth,
+        use_segmentation_mask=use_segmentation_mask,
+        selected_seg_ids=selected_seg_ids,
     )
 
     train_loader = DataLoader(

@@ -13,6 +13,10 @@ dataset:
   max_frames_per_demo: null
   camera_num: 24
   use_depth: true
+  use_segmentation_mask: false
+  # Fill this after running dataset/metaworld_demo_collect/inspect_segmentation_ids.py.
+  selected_seg_ids:
+    default: []
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
@@ -85,19 +89,31 @@ splatter:
     category: "generic"
 
   model:
-    # Parent Gaussian layout (vanilla Splatter Image)
+    # Direct per-pixel Gaussian layout
     max_sh_degree: 1
-    points_per_pixel: 2
-    point_offset_scale: 0.05
-    voxel_size: 0.02
-    voxelization_type: trilinear_soft
-    active_voxel_threshold: 1.0e-4
-    pointnet_channels: 128
-    pointnet_depth: 4
-    pointnet_neighbors: 16
-    gaussians_per_voxel: 1
+    gaussians_per_pixel: 1
+    depth_min: null
+    depth_max: null
+    depth_activation: inverse_depth
+    depth_ordering: sort
+    depth_scale: 1.0
+    depth_bias: 0.0
+    gaussian_offset_scale: 0.05
+    offset_scale: 1.0
+    offset_bias: 0.0
+    gaussian_scale_min: 1.0e-4
     gaussian_scale_max: 0.05
-    gaussian_local_offset_scale: 0.5
+    scale_scale: 1.0
+    scale_bias: 0.0
+    rotation_scale: 1.0
+    rotation_bias: 0.0
+    opacity_scale: 1.0
+    opacity_bias: 0.0
+    color_scale: 1.0
+    color_bias: 0.0
+    sh_rest_scale: 0.1
+    sh_rest_raw_scale: 1.0
+    sh_rest_raw_bias: 0.0
 
 # -----------------------------------------------------------------------------
 # Training
@@ -111,10 +127,10 @@ train:
   min_lr: 5.0e-5
   device: cuda
 
-  # Original no-dynamics loss weights.
+  # Direct Gaussian masked-rendering and Chamfer loss weights.
   rec_weight: 1.0
   ssim_weight: 0.0
-  render_loss_warmup_steps: 20000
+  rec_background_weight: 0.05
   point_chamfer_weight: 5.0
   chamfer_huber_delta: 0.05
   vq_weight: 0.25
@@ -122,13 +138,12 @@ train:
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 1.0
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/hammer/point-voxel/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/hammer/direct-gaussian-masked/
   resume_from_last: false
   val_log_pointclouds: true
   val_pointcloud_max_points: 4096
@@ -140,11 +155,10 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-hammer-point-voxel
+  run_name: metaworld-hammer-direct-gaussian-masked
   tags:
-    - point-voxel
-    - raw-point-chamfer
-    - render-loss-warmup
+    - direct-gaussian-masked
+    - gaussian-center-chamfer
     - max_sh_degree-1
     - all-camera-rendering
     - rgb-encoder

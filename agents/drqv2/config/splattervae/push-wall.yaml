@@ -80,7 +80,7 @@ vision:
     checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/push-wall/full-implementation/step_00300000.pth
     feature_source: pre_vq
     max_sh_degree: 1
-    points_per_pixel: 2
+    gaussians_per_pixel: 1
 
     codebook:
       invariant:

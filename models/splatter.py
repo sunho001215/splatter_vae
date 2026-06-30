@@ -25,29 +25,61 @@ class SplatterDataConfig:
 
 @dataclass
 class SplatterModelConfig:
-    """Point-proposal, voxelization, PointNeXt, and Gaussian-head config."""
+    """Direct decoder-to-3D-Gaussian configuration."""
 
     max_sh_degree: int = 1
-    points_per_pixel: int = 2
-    point_offset_scale: float = 0.05
+    gaussians_per_pixel: int = 1
 
-    voxel_size: float = 0.02
-    voxelization_type: str = "trilinear_soft"
-    active_voxel_threshold: float = 1.0e-4
+    depth_min: Optional[float] = None
+    depth_max: Optional[float] = None
+    depth_activation: str = "inverse_depth"
+    depth_ordering: str = "sort"
+    depth_scale: float = 1.0
+    depth_bias: float = 0.0
 
-    pointnet_channels: int = 128
-    pointnet_depth: int = 4
-    pointnet_neighbors: int = 16
+    gaussian_offset_scale: float = 0.05
+    offset_scale: float = 1.0
+    offset_bias: float = 0.0
 
-    gaussians_per_voxel: int = 1
+    gaussian_scale_min: float = 1.0e-4
     gaussian_scale_max: float = 0.05
-    gaussian_local_offset_scale: float = 0.5
+    scale_scale: float = 1.0
+    scale_bias: float = 0.0
+
+    rotation_scale: float = 1.0
+    rotation_bias: float = 0.0
+
+    opacity_scale: float = 1.0
+    opacity_bias: float = 0.0
+
+    color_scale: float = 1.0
+    color_bias: float = 0.0
+
+    sh_rest_scale: float = 0.1
+    sh_rest_raw_scale: float = 1.0
+    sh_rest_raw_bias: float = 0.0
 
 
 @dataclass
 class SplatterConfig:
     data: SplatterDataConfig
     model: SplatterModelConfig
+
+
+def gaussian_params_per_gaussian(max_sh_degree: int = 1) -> int:
+    """Channels predicted for one Gaussian at one pixel."""
+    sh_bases = (int(max_sh_degree) + 1) ** 2
+    sh_rest = max(0, sh_bases - 1) * 3
+    return 1 + 3 + 3 + 4 + 1 + 3 + sh_rest
+
+
+def default_splatter_channels(gaussians_per_pixel: int = 1, max_sh_degree: int = 1) -> int:
+    """Return decoder channels for direct pixel-wise 3D Gaussian prediction."""
+    return int(gaussians_per_pixel) * gaussian_params_per_gaussian(max_sh_degree=max_sh_degree)
+
+
+def _depth_render_mode(render_mode: str) -> bool:
+    return render_mode in {"D", "ED", "d", "Ed"}
 
 
 def render_predicted(
@@ -58,15 +90,13 @@ def render_predicted(
     cfg: SplatterConfig,
     scaling_modifier: float = 1.0,
     override_color: Optional[torch.Tensor] = None,
+    override_opacity: Optional[float | torch.Tensor] = None,
+    detach_xyz: bool = False,
+    detach_scale_rotation: bool = False,
     packed: bool = False,
     render_mode: str = "RGB",
 ) -> Dict[str, torch.Tensor]:
-    """Render a batch of 3D Gaussians with gsplat.
-
-    The renderer-facing dictionary contract is intentionally unchanged:
-    ``xyz``, ``scaling``, ``rotation``, ``opacity``, ``features_dc``, and
-    ``features_rest`` are all batch-first tensors.
-    """
+    """Render a batch of 3D Gaussians with gsplat."""
     device = pc["xyz"].device
     if device.type != "cuda":
         raise RuntimeError(
@@ -74,27 +104,45 @@ def render_predicted(
             f"{device}. Run with --device cuda, or skip render-dependent code paths."
         )
 
-    world_view_transform = world_view_transform.to(device=device, dtype=pc["xyz"].dtype)
-    intrinsics = intrinsics.to(device=device, dtype=pc["xyz"].dtype)
+    dtype = pc["xyz"].dtype
+    world_view_transform = world_view_transform.to(device=device, dtype=dtype)
+    intrinsics = intrinsics.to(device=device, dtype=dtype)
     height = int(cfg.data.img_height)
     width = int(cfg.data.img_width)
 
-    means = torch.nan_to_num(pc["xyz"], nan=0.0, posinf=0.0, neginf=0.0).clamp(-1.0e3, 1.0e3)
-    scale_max = max(
-        float(getattr(cfg.model, "gaussian_scale_max", getattr(cfg.model, "scale_max", 0.05))),
-        1.0e-5,
-    )
-    scales = pc["scaling"] * float(scaling_modifier)
-    scales = torch.nan_to_num(scales, nan=1.0e-4, posinf=scale_max, neginf=1.0e-4).clamp(1.0e-5, scale_max)
-    quats = F.normalize(torch.nan_to_num(pc["rotation"], nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1.0e-6)
-    opacities = torch.nan_to_num(pc["opacity"].squeeze(-1), nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
+    xyz = pc["xyz"].detach() if detach_xyz else pc["xyz"]
+    means = torch.nan_to_num(xyz, nan=0.0, posinf=0.0, neginf=0.0).clamp(-1.0e3, 1.0e3)
+
+    scale_max = max(float(cfg.model.gaussian_scale_max), 1.0e-5)
+    scale_min = min(max(float(cfg.model.gaussian_scale_min), 1.0e-8), scale_max)
+    scaling = pc["scaling"].detach() if detach_scale_rotation else pc["scaling"]
+    scales = scaling * float(scaling_modifier)
+    scales = torch.nan_to_num(scales, nan=scale_min, posinf=scale_max, neginf=scale_min).clamp(scale_min, scale_max)
+
+    rotation = pc["rotation"].detach() if detach_scale_rotation else pc["rotation"]
+    quats = F.normalize(torch.nan_to_num(rotation, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1.0e-6)
+
+    if override_opacity is None:
+        opacity_tensor = pc["opacity"].squeeze(-1)
+    elif torch.is_tensor(override_opacity):
+        opacity_tensor = override_opacity.to(device=device, dtype=dtype)
+        if opacity_tensor.ndim == 0:
+            opacity_tensor = opacity_tensor.expand(pc["xyz"].shape[:2])
+        elif opacity_tensor.shape[-1] == 1:
+            opacity_tensor = opacity_tensor.squeeze(-1)
+    else:
+        opacity_tensor = torch.full(pc["xyz"].shape[:2], float(override_opacity), device=device, dtype=dtype)
+    opacities = torch.nan_to_num(opacity_tensor, nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
 
     valid_mask = pc.get("valid_mask", None)
     if valid_mask is not None:
         opacities = opacities * valid_mask.to(device=device, dtype=opacities.dtype)
 
-    if override_color is not None:
-        colors = override_color.to(device=device, dtype=pc["xyz"].dtype)
+    if _depth_render_mode(render_mode) and override_color is None:
+        colors = None
+        sh_degree = None
+    elif override_color is not None:
+        colors = override_color.to(device=device, dtype=dtype)
         sh_degree = None
     else:
         features_dc = pc["features_dc"]
@@ -108,29 +156,71 @@ def render_predicted(
 
     if bg_color.dim() == 1:
         batch, views = world_view_transform.shape[:2]
-        backgrounds = bg_color.to(device=device, dtype=pc["xyz"].dtype).view(1, 1, 3).expand(batch, views, 3)
+        backgrounds = bg_color.to(device=device, dtype=dtype).view(1, 1, 3).expand(batch, views, 3)
     else:
-        backgrounds = bg_color.to(device=device, dtype=pc["xyz"].dtype)
+        backgrounds = bg_color.to(device=device, dtype=dtype)
 
-    render_colors, render_alphas, meta = rasterization(
-        means=means,
-        quats=quats,
-        scales=scales,
-        opacities=opacities,
-        colors=colors,
-        viewmats=world_view_transform,
-        Ks=intrinsics,
+    raster_kwargs = dict(
         width=width,
         height=height,
         near_plane=float(cfg.data.znear),
         far_plane=float(cfg.data.zfar),
         sh_degree=sh_degree,
-        backgrounds=backgrounds,
         packed=packed,
         render_mode=render_mode,
     )
 
-    if render_mode in {"D", "ED", "d", "Ed"}:
+    # gsplat accepts batched Gaussians for activated RGB colors, but SH
+    # coefficients must be passed as an unbatched [N, K, D] tensor. The decoder
+    # predicts SH coefficients per sample, so render each sample independently
+    # and stack back to the usual [B, V, H, W, C] layout.
+    if sh_degree is not None and means.dim() == 3:
+        render_color_items = []
+        render_alpha_items = []
+        meta_items = []
+        for batch_idx in range(means.shape[0]):
+            item_colors = None if colors is None else colors[batch_idx]
+            item_bg = backgrounds[batch_idx] if backgrounds.dim() >= 3 else backgrounds
+            item_render_colors, item_render_alphas, item_meta = rasterization(
+                means=means[batch_idx],
+                quats=quats[batch_idx],
+                scales=scales[batch_idx],
+                opacities=opacities[batch_idx],
+                colors=item_colors,
+                viewmats=world_view_transform[batch_idx],
+                Ks=intrinsics[batch_idx],
+                backgrounds=item_bg,
+                **raster_kwargs,
+            )
+            render_color_items.append(item_render_colors)
+            render_alpha_items.append(item_render_alphas)
+            meta_items.append(item_meta)
+        render_colors = torch.stack(render_color_items, dim=0)
+        render_alphas = torch.stack(render_alpha_items, dim=0)
+        meta = {}
+        for key in set().union(*(item.keys() for item in meta_items)):
+            values = [item.get(key) for item in meta_items]
+            if all(torch.is_tensor(value) for value in values):
+                try:
+                    meta[key] = torch.stack(values, dim=0)
+                except RuntimeError:
+                    meta[key] = values
+            else:
+                meta[key] = values
+    else:
+        render_colors, render_alphas, meta = rasterization(
+            means=means,
+            quats=quats,
+            scales=scales,
+            opacities=opacities,
+            colors=colors,
+            viewmats=world_view_transform,
+            Ks=intrinsics,
+            backgrounds=backgrounds,
+            **raster_kwargs,
+        )
+
+    if _depth_render_mode(render_mode):
         rendered_image = None
         rendered_depth = render_colors.permute(0, 1, 4, 2, 3).contiguous()
     elif render_colors.shape[-1] > 3:
@@ -142,21 +232,13 @@ def render_predicted(
 
     rendered_alpha = render_alphas.permute(0, 1, 4, 2, 3).contiguous()
     radii = meta.get("radii", None)
+    visibility_filter = (radii > 0) if torch.is_tensor(radii) else None
 
     return {
         "render": rendered_image,
         "depth": rendered_depth,
         "alpha": rendered_alpha,
         "viewspace_points": None,
-        "visibility_filter": radii > 0 if radii is not None else None,
+        "visibility_filter": visibility_filter,
         "radii": radii,
     }
-
-
-def default_splatter_channels(points_per_pixel: int = 2) -> int:
-    """Return decoder channels for the pixel-wise point proposal map.
-
-    Each pixel predicts ``points_per_pixel`` proposals, and each proposal stores
-    metric-depth logits, a 3D camera-space offset, and a confidence logit.
-    """
-    return int(points_per_pixel) * 5

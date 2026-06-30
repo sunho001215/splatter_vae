@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/with-depth/button-press-wall.hdf5"
+    - "../../data/metaworld/pre-training/button-press-wall.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -13,6 +13,9 @@ dataset:
   max_frames_per_demo: null
   camera_num: 24
   use_depth: true
+  use_segmentation_mask: true
+  selected_seg_ids:
+    default: ["geom:25", "geom:24", "geom:13", "geom:19", "geom:16", "geom:18", "geom:22", "geom:21", "geom:27", "geom:28", "geom:31", "geom:33", "geom:29", "geom:43", "geom:44", "geom:48", "geom:36", "geom:38", "geom:37", "site:5", "site:4", "site:7"]
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
@@ -85,19 +88,31 @@ splatter:
     category: "generic"
 
   model:
-    # Parent Gaussian layout (vanilla Splatter Image)
+    # Direct per-pixel Gaussian layout
     max_sh_degree: 1
-    points_per_pixel: 2
-    point_offset_scale: 0.05
-    voxel_size: 0.02
-    voxelization_type: trilinear_soft
-    active_voxel_threshold: 1.0e-4
-    pointnet_channels: 128
-    pointnet_depth: 4
-    pointnet_neighbors: 27
-    gaussians_per_voxel: 1
+    gaussians_per_pixel: 1
+    depth_min: null
+    depth_max: null
+    depth_activation: linear
+    depth_ordering: sort
+    depth_scale: 1.0
+    depth_bias: 0.0
+    gaussian_offset_scale: 0.05
+    offset_scale: 1.0
+    offset_bias: 0.0
+    gaussian_scale_min: 1.0e-4
     gaussian_scale_max: 0.05
-    gaussian_local_offset_scale: 0.5
+    scale_scale: 0.05
+    scale_bias: -2.0
+    rotation_scale: 1.0
+    rotation_bias: 0.0
+    opacity_scale: 1.0
+    opacity_bias: 2.0
+    color_scale: 1.0
+    color_bias: 0.0
+    sh_rest_scale: 0.1
+    sh_rest_raw_scale: 1.0
+    sh_rest_raw_bias: 0.0
 
 # -----------------------------------------------------------------------------
 # Training
@@ -111,24 +126,23 @@ train:
   min_lr: 5.0e-5
   device: cuda
 
-  # Original no-dynamics loss weights.
+  # Direct Gaussian masked-rendering and Chamfer loss weights.
   rec_weight: 1.0
   ssim_weight: 0.2
-  render_loss_warmup_steps: 10000
-  point_chamfer_weight: 5.0
+  rec_background_weight: 0.05
+  point_chamfer_weight: 0.1
   chamfer_huber_delta: 0.05
   vq_weight: 0.25
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
-  frustum_weight: 0.0
 
   temperature: 0.1
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/button-press-wall/point-voxel/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/button-press-wall/direct-gaussian-masked/
   resume_from_last: false
   val_log_pointclouds: true
   val_pointcloud_max_points: 4096
@@ -140,11 +154,10 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-button-press-wall-point-voxel
+  run_name: metaworld-button-press-wall-direct-gaussian-masked
   tags:
-    - point-voxel
-    - raw-point-chamfer
-    - render-loss-warmup
+    - direct-gaussian-masked
+    - gaussian-center-chamfer
     - max_sh_degree-1
     - all-camera-rendering
     - rgb-encoder

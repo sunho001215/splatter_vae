@@ -78,22 +78,51 @@ def compute_reconstruction_loss(
     predicted: torch.Tensor,
     ground_truth: torch.Tensor,
     ssim_weight: float = 0.2,
+    pixel_weights: torch.Tensor | None = None,
 ):
     """
-    Compute combined MSE + SSIM reconstruction loss.
+    Compute combined L1 + SSIM reconstruction loss.
 
     predicted, ground_truth: (B,3,H,W), values in [0,1]
     ssim_weight: weight for SSIM term in [0,1]
+    pixel_weights: optional (B,1,H,W), (B,H,W), or (B,3,H,W) nonnegative weights.
     """
-    mse_loss = F.mse_loss(predicted, ground_truth)
+    weights_rgb = None
+    weights_ssim = None
+    if pixel_weights is not None:
+        weights = pixel_weights.to(device=predicted.device, dtype=predicted.dtype).clamp_min(0.0)
+        if weights.ndim == predicted.ndim - 1:
+            weights = weights.unsqueeze(1)
+        if weights.shape[-2:] != predicted.shape[-2:] or weights.shape[0] != predicted.shape[0]:
+            raise ValueError(
+                f"pixel_weights must match batch/spatial dimensions of predicted, got "
+                f"{tuple(weights.shape)} and {tuple(predicted.shape)}."
+            )
+        if weights.shape[1] == 1:
+            weights_rgb = weights.expand_as(predicted)
+            weights_ssim = weights[:, 0]
+        elif weights.shape[1] == predicted.shape[1]:
+            weights_rgb = weights
+            weights_ssim = weights.mean(dim=1)
+        else:
+            raise ValueError(f"pixel_weights channel count must be 1 or {predicted.shape[1]}, got {weights.shape[1]}.")
+
+    if weights_rgb is None:
+        l1_loss = F.l1_loss(predicted, ground_truth)
+    else:
+        l1_loss = ((predicted - ground_truth).abs() * weights_rgb).sum() / weights_rgb.sum().clamp_min(1.0)
 
     if ssim_weight <= 0.0:
-        return mse_loss
+        return l1_loss
 
     ssim_map = fused_ssim(predicted, ground_truth)  # (B,H,W)
-    ssim_loss = 1.0 - ssim_map.mean()
+    ssim_loss_map = 1.0 - ssim_map
+    if weights_ssim is None:
+        ssim_loss = ssim_loss_map.mean()
+    else:
+        ssim_loss = (ssim_loss_map * weights_ssim).sum() / weights_ssim.sum().clamp_min(1.0)
 
-    total_loss = (1 - ssim_weight) * mse_loss + ssim_weight * ssim_loss
+    total_loss = (1 - ssim_weight) * l1_loss + ssim_weight * ssim_loss
     return total_loss
 
 
@@ -201,6 +230,7 @@ def compute_batched_reconstruction_losses(
     predicted: torch.Tensor,
     ground_truth: torch.Tensor,
     ssim_weight: float = 0.0,
+    pixel_weights: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Compute one reconstruction loss per leading variant.
 
@@ -208,7 +238,8 @@ def compute_batched_reconstruction_losses(
         predicted: ``(V, B, T, 3, H, W)`` rendered target-only images.
         ground_truth: ``(V, B, T, 3, H, W)`` matching target images.
         ssim_weight: if positive, fall back to per-variant SSIM calls; otherwise
-            use a vectorized per-image MSE path.
+            use a vectorized per-image L1 path.
+        pixel_weights: optional weights broadcastable as ``(V,B,T,1,H,W)`` or ``(V,B,T,3,H,W)``.
 
     Returns:
         ``(V,)`` tensor, one loss for each reconstruction variant.
@@ -222,17 +253,41 @@ def compute_batched_reconstruction_losses(
         raise ValueError(f"Expected (V,B,T,3,H,W), got {tuple(predicted.shape)}.")
 
     num_variants, bsz, num_targets = predicted.shape[:3]
+    if pixel_weights is not None:
+        pixel_weights = pixel_weights.to(device=predicted.device, dtype=predicted.dtype).clamp_min(0.0)
+        if pixel_weights.ndim == predicted.ndim - 1:
+            pixel_weights = pixel_weights.unsqueeze(3)
+        if pixel_weights.shape[:3] != predicted.shape[:3] or pixel_weights.shape[-2:] != predicted.shape[-2:]:
+            raise ValueError(
+                f"pixel_weights must match leading/spatial dimensions of predicted, got "
+                f"{tuple(pixel_weights.shape)} and {tuple(predicted.shape)}."
+            )
+        if pixel_weights.shape[3] == 1:
+            weights_rgb = pixel_weights.expand_as(predicted)
+        elif pixel_weights.shape[3] == predicted.shape[3]:
+            weights_rgb = pixel_weights
+        else:
+            raise ValueError(f"pixel_weights channel count must be 1 or {predicted.shape[3]}, got {pixel_weights.shape[3]}.")
+    else:
+        weights_rgb = None
+
     if ssim_weight <= 0.0:
-        mse_per_image = F.mse_loss(predicted, ground_truth, reduction="none").mean(dim=(3, 4, 5))
-        return mse_per_image.mean(dim=(1, 2))
+        per_pixel = F.l1_loss(predicted, ground_truth, reduction="none")
+        if weights_rgb is None:
+            l1_per_image = per_pixel.mean(dim=(3, 4, 5))
+        else:
+            l1_per_image = (per_pixel * weights_rgb).sum(dim=(3, 4, 5)) / weights_rgb.sum(dim=(3, 4, 5)).clamp_min(1.0)
+        return l1_per_image.mean(dim=(1, 2))
 
     losses = []
     for variant_idx in range(num_variants):
+        weights_variant = None if pixel_weights is None else pixel_weights[variant_idx].reshape(bsz * num_targets, *pixel_weights.shape[3:])
         losses.append(
             compute_reconstruction_loss(
                 predicted[variant_idx].reshape(bsz * num_targets, *predicted.shape[3:]),
                 ground_truth[variant_idx].reshape(bsz * num_targets, *ground_truth.shape[3:]),
                 ssim_weight=ssim_weight,
+                pixel_weights=weights_variant,
             )
         )
     return torch.stack(losses, dim=0)

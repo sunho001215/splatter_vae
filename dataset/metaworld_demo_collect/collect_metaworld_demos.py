@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 import gymnasium as gym
 import metaworld  # noqa: F401
+import mujoco
 
 from demo_collector.config import load_config
 from demo_collector.camera_math import (
@@ -45,6 +46,55 @@ def _unwrap_mujoco(env):
         return sim.model, sim.data
     raise RuntimeError("Could not find MuJoCo model/data on env.unwrapped")
 
+
+
+
+def _mujoco_segmentation_objects(model) -> list[dict]:
+    rows = [{"id": -1, "type": -1, "name": "background", "type_name": "background", "body_id": -1, "body_name": "", "body_path": ""}]
+
+    def body_path(body_id: int) -> str:
+        names = []
+        current = int(body_id)
+        seen = set()
+        while current >= 0 and current not in seen:
+            seen.add(current)
+            names.append(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, current) or f"body_{current}")
+            parent = int(model.body_parentid[current]) if current > 0 else -1
+            current = parent
+        return "/".join(reversed(names))
+    object_types = (
+        (mujoco.mjtObj.mjOBJ_GEOM, "ngeom"),
+        (mujoco.mjtObj.mjOBJ_BODY, "nbody"),
+        (mujoco.mjtObj.mjOBJ_SITE, "nsite"),
+        (mujoco.mjtObj.mjOBJ_CAMERA, "ncam"),
+        (mujoco.mjtObj.mjOBJ_LIGHT, "nlight"),
+    )
+    for obj_type, count_attr in object_types:
+        count = int(getattr(model, count_attr, 0))
+        type_id = int(obj_type)
+        type_name = obj_type.name.replace("mjOBJ_", "").lower()
+        for obj_id in range(count):
+            name = mujoco.mj_id2name(model, obj_type, obj_id) or f"{type_name}_{obj_id}"
+            body_id = -1
+            body_name = ""
+            if obj_type == mujoco.mjtObj.mjOBJ_GEOM:
+                body_id = int(model.geom_bodyid[obj_id])
+            elif obj_type == mujoco.mjtObj.mjOBJ_SITE:
+                body_id = int(model.site_bodyid[obj_id])
+            elif obj_type == mujoco.mjtObj.mjOBJ_BODY:
+                body_id = int(obj_id)
+            if body_id >= 0:
+                body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id) or f"body_{body_id}"
+            rows.append({
+                "id": int(obj_id),
+                "type": type_id,
+                "name": str(name),
+                "type_name": type_name,
+                "body_id": int(body_id),
+                "body_name": str(body_name),
+                "body_path": body_path(body_id) if body_id >= 0 else "",
+            })
+    return rows
 
 def _get_state(env) -> np.ndarray:
     """Concatenate qpos and qvel for storage (best-effort across wrappers)."""
@@ -123,6 +173,7 @@ def main():
         save_objtype=cfg.segmentation.save_objtype,
         enable_depth=cfg.render.save_depth,
     )
+    segmentation_objects = _mujoco_segmentation_objects(model) if cfg.segmentation.enabled else None
 
     writer = HDF5DemoWriter(cfg.output.path, cfg.output.mode, cfg.output.compression)
 
@@ -185,8 +236,14 @@ def main():
                 W=cfg.render.width,
                 camera_intrinsics=cam_intr,
                 camera_extrinsics=cam_extr,
-                extra_attrs={"max_steps": cfg.metaworld.max_steps, "save_depth": bool(cfg.render.save_depth)},
+                extra_attrs={
+                    "max_steps": cfg.metaworld.max_steps,
+                    "save_depth": bool(cfg.render.save_depth),
+                    "segmentation_enabled": bool(cfg.segmentation.enabled),
+                    "segmentation_save_objtype": bool(cfg.segmentation.save_objtype),
+                },
                 save_depth=cfg.render.save_depth,
+                segmentation_objects=segmentation_objects,
             )
 
             for t in range(cfg.metaworld.max_steps):

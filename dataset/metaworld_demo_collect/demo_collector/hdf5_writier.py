@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 import h5py
 import numpy as np
@@ -73,6 +73,7 @@ class HDF5DemoWriter:
         camera_extrinsics: Dict[str, np.ndarray],
         extra_attrs: Optional[dict] = None,
         save_depth: bool = False,
+        segmentation_objects: Optional[Sequence[dict]] = None,
     ) -> None:
         if demo_name in self.data_grp:
             del self.data_grp[demo_name]
@@ -98,6 +99,9 @@ class HDF5DemoWriter:
         cam_grp.create_dataset("intrinsics", data=K_stack)
         cam_grp.create_dataset("extrinsics_world_T_cam", data=E_stack)
 
+        if segmentation_objects:
+            self._write_segmentation_metadata(segmentation_objects)
+
         self.obs_grp = self.demo_grp.create_group("obs")
         self.env_obs_grp = self.demo_grp.create_group("obs_env")
 
@@ -117,6 +121,25 @@ class HDF5DemoWriter:
         self.ds_dones = None
         self.ds_success = None
         self.ds_obs = None
+
+
+    def _write_segmentation_metadata(self, objects: Sequence[dict]) -> None:
+        seg_grp = self.demo_grp.create_group("segmentation")
+        string_dtype = h5py.string_dtype(encoding="utf-8")
+        ids = np.array([int(obj.get("id", -1)) for obj in objects], dtype=np.int32)
+        types = np.array([int(obj.get("type", -1)) for obj in objects], dtype=np.int32)
+        names = np.array([str(obj.get("name", "")) for obj in objects], dtype=object)
+        type_names = np.array([str(obj.get("type_name", "")) for obj in objects], dtype=object)
+        body_ids = np.array([int(obj.get("body_id", -1)) for obj in objects], dtype=np.int32)
+        body_names = np.array([str(obj.get("body_name", "")) for obj in objects], dtype=object)
+        body_paths = np.array([str(obj.get("body_path", "")) for obj in objects], dtype=object)
+        seg_grp.create_dataset("ids", data=ids)
+        seg_grp.create_dataset("types", data=types)
+        seg_grp.create_dataset("names", data=names, dtype=string_dtype)
+        seg_grp.create_dataset("type_names", data=type_names, dtype=string_dtype)
+        seg_grp.create_dataset("body_ids", data=body_ids)
+        seg_grp.create_dataset("body_names", data=body_names, dtype=string_dtype)
+        seg_grp.create_dataset("body_paths", data=body_paths, dtype=string_dtype)
 
     def _make_extendable(self, grp, name: str, shape_tail: tuple[int, ...], dtype):
         return grp.create_dataset(

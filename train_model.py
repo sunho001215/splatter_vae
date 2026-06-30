@@ -55,7 +55,6 @@ def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> Splatte
     # Match the renderer config to the actual training batch resolution.
     spl_data_cfg_dict["img_height"] = img_height
     spl_data_cfg_dict["img_width"] = img_width
-    spl_model_cfg_dict["max_sh_degree"] = 1
 
     return SplatterConfig(
         data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg_dict, SplatterDataConfig, "splatter.data")),
@@ -72,11 +71,15 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
     model_cfg = dict(cfg.get("model", {}))
     spl_model_cfg = cfg.get("splatter", {}).get("model", {})
 
-    points_per_pixel = int(spl_model_cfg.get("points_per_pixel", 2))
+    gaussians_per_pixel = int(spl_model_cfg.get("gaussians_per_pixel", 1))
+    max_sh_degree = int(spl_model_cfg.get("max_sh_degree", 1))
     splatter_channels = int(
         cfg.get("splatter", {}).get(
             "splatter_channels",
-            default_splatter_channels(points_per_pixel=points_per_pixel),
+            default_splatter_channels(
+                gaussians_per_pixel=gaussians_per_pixel,
+                max_sh_degree=max_sh_degree,
+            ),
         )
     )
 
@@ -120,6 +123,8 @@ def build_metaworld_loaders(cfg: dict):
         camera_num=ds_cfg.get("camera_num", None),
         min_time_gap=int(ds_cfg.get("min_time_gap", 25)),
         use_depth=bool(ds_cfg.get("use_depth", False)),
+        use_segmentation_mask=bool(ds_cfg.get("use_segmentation_mask", False)),
+        selected_seg_ids=ds_cfg.get("selected_seg_ids", ds_cfg.get("mask_object_ids", None)),
     )
 
 
@@ -182,9 +187,10 @@ def main() -> None:
     sample_batch = next(iter(train_loader))
     _, camera_num, _, img_height, img_width = sample_batch["images"].shape
     has_depth = "depths" in sample_batch
+    has_masks = "masks" in sample_batch
     print(
         f"[Info] Training image resolution: H={img_height}, W={img_width}, "
-        f"sampled_views={camera_num}, depth={has_depth}"
+        f"sampled_views={camera_num}, depth={has_depth}, masks={has_masks}"
     )
 
     train_cfg_dict = dict(cfg.get("train", {}))

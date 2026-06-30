@@ -43,9 +43,10 @@ def _flatten_feature_output(x: torch.Tensor) -> torch.Tensor:
     return x.contiguous() if x.dim() == 2 else x.flatten(1).contiguous()
 
 
-def _default_splatter_channels(points_per_pixel: int = 2) -> int:
-    """Infer point-proposal decoder channels without importing the renderer."""
-    return int(points_per_pixel) * 5
+def _default_splatter_channels(gaussians_per_pixel: int = 1, max_sh_degree: int = 1) -> int:
+    """Infer direct-Gaussian decoder channels without importing the renderer."""
+    sh_bases = (int(max_sh_degree) + 1) ** 2
+    return int(gaussians_per_pixel) * (1 + 3 + 3 + 4 + 1 + 3 + max(0, sh_bases - 1) * 3)
 
 
 class ConvNet(nn.Module):
@@ -106,11 +107,15 @@ class SplatterVAEInvariantEncoder(nn.Module):
 
         inv_cb = CodebookConfig(**cb_cfg["invariant"])
         dep_cb = CodebookConfig(**cb_cfg["dependent"])
-        points_per_pixel = int(sv_cfg.get("points_per_pixel", 2))
+        gaussians_per_pixel = int(sv_cfg.get("gaussians_per_pixel", sv_cfg.get("points_per_pixel", 1)))
+        max_sh_degree = int(sv_cfg.get("max_sh_degree", 1))
         splatter_channels = int(
             sv_cfg.get(
                 "splatter_channels",
-                _default_splatter_channels(points_per_pixel=points_per_pixel),
+                _default_splatter_channels(
+                    gaussians_per_pixel=gaussians_per_pixel,
+                    max_sh_degree=max_sh_degree,
+                ),
             )
         )
 
