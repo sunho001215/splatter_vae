@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import yaml
 
-from models.vae import CodebookConfig, SplatterVAE
+from models.vae import SplatterVAE
 from visualize.splattervae_common import (
     adapt_config_to_checkpoint,
     build_splatter_config as build_current_splatter_config,

@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover - exercised only when the dependency is 
     pytorch3d_chamfer_distance = None
 
 from models.splatter import SplatterConfig
-from models.splatter_train_config import TrainConfig
+from models.train_config import TrainConfig
 
 
 def sample_points(points: torch.Tensor, mask: torch.Tensor, max_points: Optional[int]) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -146,13 +146,13 @@ def _masked_huber_reduce(
     return per_point.sum(dim=1) / lengths.clamp_min(1).to(per_point.dtype)
 
 
-def huber_chamfer_loss(
+def huber_chamfer_loss_per_batch(
     pred_points: torch.Tensor,
     pred_mask: torch.Tensor,
     gt_points: torch.Tensor,
     gt_mask: torch.Tensor,
     huber_delta: float,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, torch.Tensor]:
     if pytorch3d_chamfer_distance is None:
         raise ImportError(
             "PyTorch3D is required for Chamfer loss. Install pytorch3d or sync the project dependencies."
@@ -161,33 +161,57 @@ def huber_chamfer_loss(
     pred_padded, pred_lengths, pred_weights = _masked_padded_points(pred_points, pred_mask)
     gt_padded, gt_lengths, gt_weights = _masked_padded_points(gt_points, gt_mask)
     weights = pred_weights * gt_weights
-    if not bool((weights > 0).any()):
-        return pred_points.new_zeros(())
+    per_batch = pred_points.new_zeros((pred_points.shape[0],))
+    valid = weights > 0
+    if not bool(valid.any()):
+        return per_batch, weights
 
     chamfer_terms, _ = pytorch3d_chamfer_distance(
-        pred_padded,
-        gt_padded,
-        x_lengths=pred_lengths,
-        y_lengths=gt_lengths,
-        weights=weights,
+        pred_padded[valid],
+        gt_padded[valid],
+        x_lengths=pred_lengths[valid],
+        y_lengths=gt_lengths[valid],
         batch_reduction=None,
         point_reduction=None,
         norm=2,
     )
     pred_to_gt, gt_to_pred = chamfer_terms
-    per_batch = 0.5 * (
-        _masked_huber_reduce(pred_to_gt, pred_lengths, huber_delta)
-        + _masked_huber_reduce(gt_to_pred, gt_lengths, huber_delta)
+    per_batch_valid = 0.5 * (
+        _masked_huber_reduce(pred_to_gt, pred_lengths[valid], huber_delta)
+        + _masked_huber_reduce(gt_to_pred, gt_lengths[valid], huber_delta)
     )
+    per_batch[valid] = per_batch_valid
+    return per_batch, weights
+
+
+def huber_chamfer_loss(
+    pred_points: torch.Tensor,
+    pred_mask: torch.Tensor,
+    gt_points: torch.Tensor,
+    gt_mask: torch.Tensor,
+    huber_delta: float,
+) -> torch.Tensor:
+    per_batch, weights = huber_chamfer_loss_per_batch(
+        pred_points=pred_points,
+        pred_mask=pred_mask,
+        gt_points=gt_points,
+        gt_mask=gt_mask,
+        huber_delta=huber_delta,
+    )
+    if not bool((weights > 0).any()):
+        return pred_points.new_zeros(())
     return (per_batch * weights).sum() / weights.sum().clamp_min(1.0e-8)
 
 
-def _zero_point_stats(device: torch.device) -> Dict[str, torch.Tensor]:
+def _zero_point_stats(device: torch.device, timesteps: int = 0) -> Dict[str, torch.Tensor]:
     zero = torch.zeros((), device=device)
-    return {
+    stats: Dict[str, torch.Tensor] = {
         "point_chamfer_loss": zero,
         "gt_point_count_mean": zero,
     }
+    for time_idx in range(int(timesteps)):
+        stats[f"point_chamfer_loss_t{time_idx}"] = zero
+    return stats
 
 
 def compute_point_losses(
@@ -222,3 +246,104 @@ def compute_point_losses(
         "point_chamfer_loss": point_chamfer,
         "gt_point_count_mean": gt_mask.float().sum(dim=1).mean(),
     }
+
+
+def _ensure_temporal_depths(depths: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    if depths is None:
+        return None
+    if depths.dim() == 5:
+        return depths[:, None].contiguous()
+    if depths.dim() != 6:
+        raise ValueError(f"Expected depths as (B,T,A,1,H,W), got {tuple(depths.shape)}.")
+    return depths
+
+
+def _ensure_temporal_masks(masks: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    if masks is None:
+        return None
+    if masks.dim() == 5:
+        return masks[:, None].contiguous()
+    if masks.dim() != 6:
+        raise ValueError(f"Expected masks as (B,T,A,1,H,W), got {tuple(masks.shape)}.")
+    return masks
+
+
+def _ensure_temporal_camera(camera: torch.Tensor, timesteps: int) -> torch.Tensor:
+    if camera.dim() == 4:
+        return camera[:, None].expand(-1, timesteps, -1, -1, -1).contiguous()
+    if camera.dim() == 5:
+        if camera.shape[1] != timesteps:
+            raise ValueError(f"Camera tensor has T={camera.shape[1]}, expected {timesteps}.")
+        return camera
+    raise ValueError(f"Expected camera tensor as (B,A,...) or (B,T,A,...), got {tuple(camera.shape)}.")
+
+
+def compute_temporal_point_losses(
+    pc_sequence: list[Dict[str, torch.Tensor]],
+    depths: Optional[torch.Tensor],
+    intrinsics: torch.Tensor,
+    c2w: torch.Tensor,
+    splatter_cfg: SplatterConfig,
+    cfg_train: TrainConfig,
+    masks: Optional[torch.Tensor] = None,
+) -> Dict[str, torch.Tensor]:
+    """Average Chamfer supervision over a temporal Gaussian trajectory."""
+    if not pc_sequence:
+        raise ValueError("pc_sequence must contain at least one Gaussian point cloud.")
+    device = pc_sequence[0]["xyz"].device
+    depths = _ensure_temporal_depths(depths)
+    masks = _ensure_temporal_masks(masks)
+    if depths is None:
+        return _zero_point_stats(device, timesteps=len(pc_sequence))
+
+    bsz, timesteps = depths.shape[:2]
+    intrinsics = _ensure_temporal_camera(intrinsics, timesteps)
+    c2w = _ensure_temporal_camera(c2w, timesteps)
+
+    flat_depths = depths.reshape(bsz * timesteps, *depths.shape[2:])
+    flat_intrinsics = intrinsics.reshape(bsz * timesteps, *intrinsics.shape[2:])
+    flat_c2w = c2w.reshape(bsz * timesteps, *c2w.shape[2:])
+    flat_masks = None if masks is None else masks.reshape(bsz * timesteps, *masks.shape[2:])
+    gt_points, gt_mask = depths_to_world_point_cloud(
+        depths=flat_depths,
+        intrinsics=flat_intrinsics,
+        c2w=flat_c2w,
+        splatter_cfg=splatter_cfg,
+        masks=flat_masks,
+    )
+
+    pred_xyz = torch.stack(
+        [pc_sequence[min(time_idx, len(pc_sequence) - 1)]["xyz"] for time_idx in range(timesteps)],
+        dim=1,
+    ).reshape(bsz * timesteps, -1, 3)
+    pred_masks = []
+    for time_idx in range(timesteps):
+        pc = pc_sequence[min(time_idx, len(pc_sequence) - 1)]
+        pred_masks.append(
+            pc.get(
+                "valid_mask",
+                torch.ones(pc["xyz"].shape[:2], device=device, dtype=torch.bool),
+            )
+        )
+    pred_mask = torch.stack(pred_masks, dim=1).reshape(bsz * timesteps, -1)
+
+    per_batch, weights = huber_chamfer_loss_per_batch(
+        pred_points=pred_xyz,
+        pred_mask=pred_mask,
+        gt_points=gt_points,
+        gt_mask=gt_mask,
+        huber_delta=float(cfg_train.chamfer_huber_delta),
+    )
+    loss_by_time = per_batch.view(bsz, timesteps)
+    weight_by_time = weights.view(bsz, timesteps)
+    valid_weight = weights.sum().clamp_min(1.0e-8)
+
+    stats: Dict[str, torch.Tensor] = {
+        "point_chamfer_loss": (per_batch * weights).sum() / valid_weight,
+        "gt_point_count_mean": gt_mask.float().sum(dim=1).view(bsz, timesteps).mean(),
+    }
+    for time_idx in range(timesteps):
+        time_weights = weight_by_time[:, time_idx]
+        denom = time_weights.sum().clamp_min(1.0e-8)
+        stats[f"point_chamfer_loss_t{time_idx}"] = (loss_by_time[:, time_idx] * time_weights).sum() / denom
+    return stats

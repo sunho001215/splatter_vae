@@ -75,17 +75,14 @@ class SplatterVAERenderer:
     @torch.no_grad()
     def encode_source(self, image_u8: np.ndarray, source_k: np.ndarray, source_c2w: np.ndarray) -> Dict[str, torch.Tensor]:
         x = image_to_tensor(image_u8).unsqueeze(0).to(self.device)
-        z_inv, _, z_dep, _, _ = self.vae.encode(
-            x,
-            deterministic_invariant=True,
-            deterministic_dependent=True,
-        )
-        splatter = self.vae.decode(z_inv.contiguous(), z_dep.contiguous())
+        x_seq = x[:, None, None].expand(-1, int(self.vae.temporal_window), 1, -1, -1, -1).contiguous()
+        latents, _, _ = self.vae.encode_sequence(x_seq)
+        decoded = self.vae.decode_sequence(latents["s_inv"], latents["z_dep_all"][:, 0])
         k = torch.from_numpy(np.asarray(source_k, dtype=np.float32)).unsqueeze(0).to(self.device)
         c2w = torch.from_numpy(np.asarray(source_c2w, dtype=np.float32)).unsqueeze(0).to(self.device)
         return self.converter(
-            proposal_map=splatter,
-            z_inv=z_inv.contiguous(),
+            proposal_map=decoded["base_map"],
+            z_inv=latents["s_inv"].contiguous(),
             source_cameras_view_to_world=c2w,
             intrinsics=k,
             activate_output=True,

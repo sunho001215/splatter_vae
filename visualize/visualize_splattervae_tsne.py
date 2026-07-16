@@ -63,6 +63,8 @@ def build_vae(cfg: dict, dataset_path: str, demo_key: str, ckpt_path: str, devic
 
 
 def pooled_latent(z: torch.Tensor, mode: str) -> torch.Tensor:
+    if z.dim() == 2:
+        return z.contiguous()
     if mode == "flatten":
         return z.reshape(z.shape[0], -1)
     if mode == "mean":

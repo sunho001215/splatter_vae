@@ -91,6 +91,7 @@ def render_predicted(
     scaling_modifier: float = 1.0,
     override_color: Optional[torch.Tensor] = None,
     override_opacity: Optional[float | torch.Tensor] = None,
+    occupancy_opacity: Optional[float | torch.Tensor] = None,
     detach_xyz: bool = False,
     detach_scale_rotation: bool = False,
     packed: bool = False,
@@ -165,59 +166,115 @@ def render_predicted(
         height=height,
         near_plane=float(cfg.data.znear),
         far_plane=float(cfg.data.zfar),
-        sh_degree=sh_degree,
         packed=packed,
-        render_mode=render_mode,
     )
 
-    # gsplat accepts batched Gaussians for activated RGB colors, but SH
-    # coefficients must be passed as an unbatched [N, K, D] tensor. The decoder
-    # predicts SH coefficients per sample, so render each sample independently
-    # and stack back to the usual [B, V, H, W, C] layout.
-    if sh_degree is not None and means.dim() == 3:
-        render_color_items = []
-        render_alpha_items = []
-        meta_items = []
-        for batch_idx in range(means.shape[0]):
-            item_colors = None if colors is None else colors[batch_idx]
-            item_bg = backgrounds[batch_idx] if backgrounds.dim() >= 3 else backgrounds
-            item_render_colors, item_render_alphas, item_meta = rasterization(
-                means=means[batch_idx],
-                quats=quats[batch_idx],
-                scales=scales[batch_idx],
-                opacities=opacities[batch_idx],
-                colors=item_colors,
-                viewmats=world_view_transform[batch_idx],
-                Ks=intrinsics[batch_idx],
-                backgrounds=item_bg,
-                **raster_kwargs,
-            )
-            render_color_items.append(item_render_colors)
-            render_alpha_items.append(item_render_alphas)
-            meta_items.append(item_meta)
-        render_colors = torch.stack(render_color_items, dim=0)
-        render_alphas = torch.stack(render_alpha_items, dim=0)
-        meta = {}
-        for key in set().union(*(item.keys() for item in meta_items)):
-            values = [item.get(key) for item in meta_items]
-            if all(torch.is_tensor(value) for value in values):
-                try:
-                    meta[key] = torch.stack(values, dim=0)
-                except RuntimeError:
-                    meta[key] = values
-            else:
-                meta[key] = values
-    else:
-        render_colors, render_alphas, meta = rasterization(
-            means=means,
-            quats=quats,
-            scales=scales,
-            opacities=opacities,
-            colors=colors,
+    def rasterize_path(
+        path_means: torch.Tensor,
+        path_quats: torch.Tensor,
+        path_scales: torch.Tensor,
+        path_opacities: torch.Tensor,
+        path_colors: Optional[torch.Tensor],
+        path_backgrounds: torch.Tensor,
+        path_sh_degree: Optional[int],
+        path_render_mode: str,
+    ) -> tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
+        kwargs = dict(raster_kwargs, sh_degree=path_sh_degree, render_mode=path_render_mode)
+        # gsplat accepts batched Gaussians for activated RGB colors, but SH
+        # coefficients must be passed as an unbatched [N, K, D] tensor. The
+        # decoder predicts SH coefficients per sample, so render each sample
+        # independently and stack back to the usual [B, V, H, W, C] layout.
+        if path_sh_degree is not None and path_means.dim() == 3:
+            color_items = []
+            alpha_items = []
+            meta_items = []
+            for batch_idx in range(path_means.shape[0]):
+                item_colors = None if path_colors is None else path_colors[batch_idx]
+                item_bg = path_backgrounds[batch_idx] if path_backgrounds.dim() >= 3 else path_backgrounds
+                item_colors_out, item_alphas, item_meta = rasterization(
+                    means=path_means[batch_idx],
+                    quats=path_quats[batch_idx],
+                    scales=path_scales[batch_idx],
+                    opacities=path_opacities[batch_idx],
+                    colors=item_colors,
+                    viewmats=world_view_transform[batch_idx],
+                    Ks=intrinsics[batch_idx],
+                    backgrounds=item_bg,
+                    **kwargs,
+                )
+                color_items.append(item_colors_out)
+                alpha_items.append(item_alphas)
+                meta_items.append(item_meta)
+            out_colors = torch.stack(color_items, dim=0)
+            out_alphas = torch.stack(alpha_items, dim=0)
+            out_meta: Dict[str, torch.Tensor] = {}
+            for key in set().union(*(item.keys() for item in meta_items)):
+                values = [item.get(key) for item in meta_items]
+                if all(torch.is_tensor(value) for value in values):
+                    try:
+                        out_meta[key] = torch.stack(values, dim=0)
+                    except RuntimeError:
+                        out_meta[key] = values
+                else:
+                    out_meta[key] = values
+            return out_colors, out_alphas, out_meta
+
+        return rasterization(
+            means=path_means,
+            quats=path_quats,
+            scales=path_scales,
+            opacities=path_opacities,
+            colors=path_colors,
             viewmats=world_view_transform,
             Ks=intrinsics,
-            backgrounds=backgrounds,
-            **raster_kwargs,
+            backgrounds=path_backgrounds,
+            **kwargs,
+        )
+
+    render_colors, render_alphas, meta = rasterize_path(
+        path_means=means,
+        path_quats=quats,
+        path_scales=scales,
+        path_opacities=opacities,
+        path_colors=colors,
+        path_backgrounds=backgrounds,
+        path_sh_degree=sh_degree,
+        path_render_mode=render_mode,
+    )
+
+    occupancy_alphas = None
+    if occupancy_opacity is not None:
+        if torch.is_tensor(occupancy_opacity):
+            occupancy_opacity_tensor = occupancy_opacity.to(device=device, dtype=dtype)
+            if occupancy_opacity_tensor.ndim == 0:
+                occupancy_opacity_tensor = occupancy_opacity_tensor.expand(pc["xyz"].shape[:2])
+            elif occupancy_opacity_tensor.shape[-1] == 1:
+                occupancy_opacity_tensor = occupancy_opacity_tensor.squeeze(-1)
+        else:
+            occupancy_opacity_tensor = torch.full(
+                pc["xyz"].shape[:2],
+                float(occupancy_opacity),
+                device=device,
+                dtype=dtype,
+            )
+        occupancy_opacities = torch.nan_to_num(
+            occupancy_opacity_tensor,
+            nan=0.0,
+            posinf=1.0,
+            neginf=0.0,
+        ).clamp(0.0, 1.0)
+        if valid_mask is not None:
+            occupancy_opacities = occupancy_opacities * valid_mask.to(device=device, dtype=occupancy_opacities.dtype)
+        occupancy_colors = means.new_zeros((*means.shape[:-1], 3))
+        _, occupancy_alphas, _ = rasterize_path(
+            path_means=means,
+            path_quats=quats.detach(),
+            path_scales=scales.detach(),
+            path_opacities=occupancy_opacities,
+            path_colors=occupancy_colors,
+            path_backgrounds=torch.zeros_like(backgrounds),
+            path_sh_degree=None,
+            path_render_mode="RGB",
         )
 
     if _depth_render_mode(render_mode):
@@ -231,6 +288,9 @@ def render_predicted(
         rendered_depth = None
 
     rendered_alpha = render_alphas.permute(0, 1, 4, 2, 3).contiguous()
+    occupancy_alpha = None
+    if occupancy_alphas is not None:
+        occupancy_alpha = occupancy_alphas.permute(0, 1, 4, 2, 3).contiguous()
     radii = meta.get("radii", None)
     visibility_filter = (radii > 0) if torch.is_tensor(radii) else None
 
@@ -238,6 +298,7 @@ def render_predicted(
         "render": rendered_image,
         "depth": rendered_depth,
         "alpha": rendered_alpha,
+        "occupancy_alpha": occupancy_alpha,
         "viewspace_points": None,
         "visibility_filter": visibility_filter,
         "radii": radii,

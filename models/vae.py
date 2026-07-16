@@ -1,81 +1,148 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
 
-from vector_quantize_pytorch import FSQ, VectorQuantize
+from .vision_transformer import DPTHead, RMSNorm, TransformerBlock, ViTBackbone, ViTSmallConfig
 
-from .vision_transformer import DPTHead, TokenTransformer, ViTBackbone, ViTSmallConfig
 
-@dataclass
-class CodebookConfig:
-    """Codebook / quantizer hyper-parameters used by the invariant / dependent branches."""
+class FiLMTokenTransformer(nn.Module):
+    """Fixed-grid token transformer with per-layer FiLM conditioning."""
 
-    # ----- VQ params -----
-    n_embed: int = 512
-    embed_dim: int = 64
-    beta: float = 0.25
+    def __init__(
+        self,
+        num_tokens: int,
+        embed_dim: int,
+        condition_dim: int,
+        depth: int,
+        num_heads: int,
+        mlp_ratio: float,
+        qkv_bias: bool = True,
+        dropout: float = 0.0,
+        attn_dropout: float = 0.0,
+        drop_path_rate: float = 0.0,
+        layerscale_init: float = 1e-5,
+        selected_layers: Sequence[int] = (2, 5, 8, 11),
+    ):
+        super().__init__()
+        self.num_tokens = int(num_tokens)
+        self.embed_dim = int(embed_dim)
+        self.condition_dim = int(condition_dim)
 
-    # ----- quantizer selection -----
-    quantizer: str = "vq"                     # "vq" or "fsq"
-    fsq_levels: Tuple[int, ...] = field(default_factory=tuple)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, 1 + num_tokens, embed_dim))
+        self.pos_drop = nn.Dropout(dropout)
 
-    def __post_init__(self):
-        self.quantizer = str(self.quantizer).lower()
-        self.n_embed = int(self.n_embed)
-        self.embed_dim = int(self.embed_dim)
-        self.beta = float(self.beta)
-        self.fsq_levels = tuple(int(level) for level in self.fsq_levels)
+        dpr = torch.linspace(0, drop_path_rate, depth).tolist()
+        self.blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    dropout=dropout,
+                    attn_dropout=attn_dropout,
+                    drop_path=dpr[i],
+                    layerscale_init=layerscale_init,
+                )
+                for i in range(depth)
+            ]
+        )
+        self.film_mlps = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(condition_dim, 4 * embed_dim),
+                    nn.SiLU(),
+                    nn.Linear(4 * embed_dim, 2 * embed_dim),
+                )
+                for _ in range(depth)
+            ]
+        )
+        self.norm = RMSNorm(embed_dim)
+        self.selected_layers = tuple(int(idx) for idx in selected_layers)
 
-        if self.quantizer not in {"vq", "fsq"}:
-            raise ValueError(f"Unknown quantizer type: {self.quantizer}")
-        if self.embed_dim <= 0:
-            raise ValueError(f"embed_dim must be positive, got {self.embed_dim}")
-        if self.quantizer == "vq":
-            if self.n_embed <= 0:
-                raise ValueError(f"n_embed must be positive for VQ, got {self.n_embed}")
-            if self.beta < 0:
-                raise ValueError(f"beta must be non-negative for VQ, got {self.beta}")
-        elif len(self.fsq_levels) == 0:
-            raise ValueError("FSQ selected, but fsq_levels is empty.")
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        for mlp in self.film_mlps:
+            final = mlp[-1]
+            nn.init.zeros_(final.weight)
+            nn.init.zeros_(final.bias)
+
+    def forward(self, tokens: torch.Tensor, condition: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        if tokens.shape[1] != self.num_tokens:
+            raise ValueError(f"FiLMTokenTransformer expected {self.num_tokens} tokens, got {tokens.shape[1]}")
+        if condition.dim() != 2 or condition.shape[0] != tokens.shape[0]:
+            raise ValueError(
+                f"Expected condition as (B,C) with B={tokens.shape[0]}, got {tuple(condition.shape)}."
+            )
+
+        batch = tokens.shape[0]
+        cls_tokens = self.cls_token.expand(batch, -1, -1)
+        x = torch.cat([cls_tokens, tokens], dim=1)
+        x = self.pos_drop(x + self.pos_embed)
+
+        hidden_states: List[torch.Tensor] = []
+        for idx, block in enumerate(self.blocks):
+            x = block(x)
+            gamma, beta = self.film_mlps[idx](condition).chunk(2, dim=-1)
+            gamma = gamma.unsqueeze(1)
+            beta = beta.unsqueeze(1)
+            x = torch.cat([x[:, :1], (1.0 + gamma) * x[:, 1:] + beta], dim=1)
+            if idx in self.selected_layers:
+                hidden_states.append(x)
+
+        x = self.norm(x)
+        return x[:, 1:, :], hidden_states
+
 
 class SplatterVAE(nn.Module):
-    """ReViWo-style dual-encoder VAE with a ViT+DPT generator.
+    """Joint spatiotemporal multi-view SplatterVAE.
 
-    Notes:
-        - The encode/decode interface mirrors the original implementation.
-        - The decoder outputs a *parent* Splatter Image only.
-        - The parent image is later converted to Gaussians and expanded with
-          target-conditioned child Gaussians.
+    The invariant branch consumes a 3-frame multi-view sequence and returns one
+    state vector ``s_inv``. The dependent branch consumes only the first
+    timestep and returns per-view anchor vectors. The decoder reconstructs dense
+    Gaussian maps from learnable spatial queries modulated by FiLM from
+    either concat(s_inv, z_dep_source) or s_inv + z_dep_source.
     """
 
     def __init__(
         self,
         vit_cfg: Dict,
-        invariant_cb_config: CodebookConfig,
-        dependent_cb_config: CodebookConfig,
         img_height: int,
         img_width: int,
         splatter_channels: int,
-        fusion_style: str = "cat",
-        use_dependent_vq: bool = True,
-        is_dependent_ae: bool = True,
-        use_invariant_vq: bool = True,
-        is_invariant_ae: bool = True,
-        dep_input_mask_ratio: float = 0.95,
         dep_mask_eval: bool = True,
         dpt_features: int = 256,
+        temporal_window: int = 3,
+        inv_tube_mask_ratio: float = 0.50,
+        dep_mask_ratio: float = 0.75,
+        tube_mask_per_view: bool = True,
+        state_dim: int = 256,
+        view_dim: Optional[int] = None,
+        use_single_state_vector: bool = True,
+        dependent_uses_first_timestep_only: bool = True,
+        use_temporal_delta_decoder: bool = True,
+        decoder_condition_mode: str = "concat",
+        gaussians_per_pixel: int = 1,
+        delta_xyz_scale: float = 0.05,
+        **_: object,
     ):
         super().__init__()
+        if not bool(use_single_state_vector):
+            raise ValueError("The migrated SplatterVAE requires use_single_state_vector=true.")
+        if not bool(dependent_uses_first_timestep_only):
+            raise ValueError("The migrated SplatterVAE requires dependent_uses_first_timestep_only=true.")
+        if not bool(use_temporal_delta_decoder):
+            raise ValueError("The migrated SplatterVAE requires use_temporal_delta_decoder=true.")
 
-        # -------------------------------------------------------------
-        # Image / patch setup
-        # -------------------------------------------------------------
         self.img_height = int(img_height)
         self.img_width = int(img_width)
+        self.temporal_window = int(temporal_window)
+        if self.temporal_window <= 0:
+            raise ValueError(f"temporal_window must be positive, got {temporal_window}.")
 
         patch_size = int(vit_cfg.get("patch_size", 16))
         if self.img_height % patch_size != 0 or self.img_width % patch_size != 0:
@@ -105,35 +172,46 @@ class SplatterVAE(nn.Module):
         self.invariant_encoder = ViTBackbone(enc_cfg)
         self.dependent_encoder = ViTBackbone(enc_cfg)
         self.n_tokens_per_frame = self.invariant_encoder.num_patches
+        self.grid_size = self.invariant_encoder.grid_size
         latent_dim = enc_cfg.embed_dim
 
-        # -------------------------------------------------------------
-        # Project encoder outputs into codebook spaces
-        # -------------------------------------------------------------
-        self.invariant_encoder_output_proj = nn.Linear(latent_dim, invariant_cb_config.embed_dim, bias=True)
-        self.dependent_encoder_output_proj = nn.Linear(latent_dim, dependent_cb_config.embed_dim, bias=True)
+        self.state_dim = int(state_dim)
+        self.view_dim = int(self.state_dim if view_dim is None else view_dim)
+        self.decoder_condition_mode = str(decoder_condition_mode).lower()
+        if self.decoder_condition_mode not in {"concat", "add"}:
+            raise ValueError(
+                f"decoder_condition_mode must be 'concat' or 'add', got {decoder_condition_mode!r}."
+            )
+        if self.decoder_condition_mode == "add" and self.state_dim != self.view_dim:
+            raise ValueError(
+                f"decoder_condition_mode='add' requires state_dim == view_dim, "
+                f"got state_dim={self.state_dim} and view_dim={self.view_dim}."
+            )
 
-        # -------------------------------------------------------------
-        # Fusion of invariant + dependent embeddings before the decoder
-        # -------------------------------------------------------------
-        self.fusion_style = fusion_style
-        if fusion_style == "plus":
-            if invariant_cb_config.embed_dim != dependent_cb_config.embed_dim:
-                raise ValueError("fusion_style='plus' requires equal invariant/dependent dims.")
-            decoder_in_dim = invariant_cb_config.embed_dim
-        elif fusion_style == "cat":
-            decoder_in_dim = invariant_cb_config.embed_dim + dependent_cb_config.embed_dim
-        else:
-            raise NotImplementedError(f"Unknown fusion_style={fusion_style}")
+        self.inv_tube_mask_ratio = float(inv_tube_mask_ratio)
+        self.dep_mask_ratio = float(dep_mask_ratio)
+        self.tube_mask_per_view = bool(tube_mask_per_view)
+        self.dep_mask_eval = bool(dep_mask_eval)
+        self.splatter_channels = int(splatter_channels)
+        self.gaussians_per_pixel = int(gaussians_per_pixel)
+        self.delta_channels = 3 * self.gaussians_per_pixel
+        self.delta_xyz_scale = float(delta_xyz_scale)
 
-        self.decoder_input_proj = nn.Linear(decoder_in_dim, latent_dim, bias=True)
+        self.state_token = nn.Parameter(torch.zeros(1, 1, latent_dim))
+        self.dep_token = nn.Parameter(torch.zeros(1, 1, 1, latent_dim))
+        self.temporal_embed = nn.Parameter(torch.zeros(1, self.temporal_window, 1, 1, latent_dim))
 
-        # -------------------------------------------------------------
-        # Token transformer + DPT dense head
-        # -------------------------------------------------------------
-        self.decoder_backbone = TokenTransformer(
+        self.state_norm = RMSNorm(latent_dim)
+        self.dep_norm = RMSNorm(latent_dim)
+        self.invariant_encoder_output_proj = nn.Linear(latent_dim, self.state_dim, bias=True)
+        self.dependent_encoder_output_proj = nn.Linear(latent_dim, self.view_dim, bias=True)
+
+        condition_dim = self.state_dim + self.view_dim if self.decoder_condition_mode == "concat" else self.state_dim
+        self.spatial_queries = nn.Parameter(torch.zeros(1, self.n_tokens_per_frame, latent_dim))
+        self.decoder_backbone = FiLMTokenTransformer(
             num_tokens=self.n_tokens_per_frame,
             embed_dim=latent_dim,
+            condition_dim=condition_dim,
             depth=int(vit_cfg.get("decoder_depth", enc_cfg.depth)),
             num_heads=int(vit_cfg.get("decoder_num_heads", enc_cfg.num_heads)),
             mlp_ratio=float(vit_cfg.get("decoder_mlp_ratio", enc_cfg.mlp_ratio)),
@@ -147,279 +225,234 @@ class SplatterVAE(nn.Module):
         self.decoder = DPTHead(
             in_dim=latent_dim,
             features=int(vit_cfg.get("dpt_features", dpt_features)),
-            out_channels=int(splatter_channels),
+            out_channels=self.splatter_channels + 2 * self.delta_channels,
             readout_type=str(vit_cfg.get("dpt_readout_type", "project")),
         )
 
-        # -------------------------------------------------------------
-        # VQ or Gaussian latent heads
-        # -------------------------------------------------------------
-        # Keep track of which discrete quantizer each branch uses
-        self.invariant_quantizer_type = str(invariant_cb_config.quantizer).lower()
-        self.dependent_quantizer_type = str(dependent_cb_config.quantizer).lower()
-        # Build the appropriate quantizer heads based on config:
-        self.invariant_output_head = self._build_token_quantizer(
-            invariant_cb_config,
-            use_discrete_quantizer=use_invariant_vq,
-        )
-        self.dependent_output_head = self._build_token_quantizer(
-            dependent_cb_config,
-            use_discrete_quantizer=use_dependent_vq,
-        )
-        self.dependent_output_final_proj = nn.Identity()
+        nn.init.trunc_normal_(self.state_token, std=0.02)
+        nn.init.trunc_normal_(self.dep_token, std=0.02)
+        nn.init.trunc_normal_(self.temporal_embed, std=0.02)
+        nn.init.trunc_normal_(self.spatial_queries, std=0.02)
 
-        # -------------------------------------------------------------
-        # Misc flags / helper tokens
-        # -------------------------------------------------------------
-        self.splatter_channels = int(splatter_channels)
-        self.use_dependent_vq = bool(use_dependent_vq)
-        self.is_dependent_ae = bool(is_dependent_ae)
-        self.use_invariant_vq = bool(use_invariant_vq)
-        self.is_invariant_ae = bool(is_invariant_ae)
+    def _zero_loss(self, reference: torch.Tensor) -> torch.Tensor:
+        return reference.new_zeros(())
 
-        # Patch-aligned random masking for the dependent branch input
-        self.dep_input_mask_ratio = float(dep_input_mask_ratio)
-        self.dep_mask_eval = bool(dep_mask_eval)
-        self.dep_mask_token = nn.Parameter(torch.zeros(1, 1, 1, enc_cfg.in_chans, self.patch_h, self.patch_w))
-        nn.init.normal_(self.dep_mask_token, mean=0.0, std=0.02)
-
-    # ------------------------------------------------------------------
-    # Quantizer builders and runners
-    # ------------------------------------------------------------------
-
-    def _build_token_quantizer(self, cb_config: CodebookConfig, use_discrete_quantizer: bool) -> nn.Module:
-        """
-        Build either:
-        - VQ head
-        - FSQ head
-        - Gaussian head (if use_discrete_quantizer=False)
-
-        Safe FSQ path here follows lucidrains' README usage:
-        FSQ(levels=[...]) with input last-dim == len(levels)
-        """
-        if not use_discrete_quantizer:
-            # Original Gaussian / AE path
-            return nn.Linear(cb_config.embed_dim, 2 * cb_config.embed_dim)
-
-        quantizer = str(cb_config.quantizer).lower()
-
-        if quantizer == "vq":
-            return VectorQuantize(
-                dim=cb_config.embed_dim,
-                codebook_size=cb_config.n_embed,
-                commitment_weight=cb_config.beta,
-                kmeans_init=True,
-                kmeans_iters=10,
-                threshold_ema_dead_code=2,
+    def _coerce_sequence(self, images: torch.Tensor) -> torch.Tensor:
+        if images.dim() == 4:
+            images = images[:, None, None].expand(-1, self.temporal_window, 1, -1, -1, -1).contiguous()
+        elif images.dim() == 5:
+            images = images[:, None].expand(-1, self.temporal_window, -1, -1, -1, -1).contiguous()
+        elif images.dim() != 6:
+            raise ValueError(
+                f"Expected images as (B,T,A,3,H,W), (B,A,3,H,W), or (B,3,H,W), got {tuple(images.shape)}."
             )
 
-        if quantizer == "fsq":
-            if len(cb_config.fsq_levels) == 0:
-                raise ValueError("FSQ selected, but fsq_levels is empty.")
+        _bsz, timesteps, num_views, channels, height, width = images.shape
+        if channels != 3:
+            raise ValueError(f"SplatterVAE expects RGB inputs, got {channels} channels.")
+        if height != self.img_height or width != self.img_width:
+            raise ValueError(f"Expected image size {(self.img_height, self.img_width)}, got {(height, width)}.")
+        if timesteps > self.temporal_window:
+            images = images[:, : self.temporal_window].contiguous()
+        elif timesteps < self.temporal_window:
+            pad = images[:, -1:].expand(-1, self.temporal_window - timesteps, -1, -1, -1, -1)
+            images = torch.cat([images, pad], dim=1).contiguous()
+        return images
 
-            # Safe / explicit choice:
-            # for this patch, make embed_dim exactly equal to len(levels)
-            # e.g. L = [6, 5, 5]  ->  embed_dim = 3
-            if cb_config.embed_dim != len(cb_config.fsq_levels):
-                raise ValueError(
-                    f"FSQ requires embed_dim == len(fsq_levels) in this implementation. "
-                    f"Got embed_dim={cb_config.embed_dim}, len(fsq_levels)={len(cb_config.fsq_levels)}."
-                )
-
-            return FSQ(levels=list(cb_config.fsq_levels))
-
-        raise ValueError(f"Unknown quantizer type: {cb_config.quantizer}")
-
-
-    def _run_discrete_quantizer(
+    def _sample_visible_patch_ids(
         self,
-        quantizer_module: nn.Module,
-        x: torch.Tensor,
-        quantizer_type: str,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Normalize the interface across VQ and FSQ.
+        leading_shape: Tuple[int, ...],
+        num_patches: int,
+        mask_ratio: float,
+        device: torch.device,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        ratio = min(max(float(mask_ratio), 0.0), 0.99)
+        keep_count = max(1, min(num_patches, int(round(num_patches * (1.0 - ratio)))))
+        noise = torch.rand(*leading_shape, num_patches, device=device)
+        ids_keep = torch.argsort(noise, dim=-1)[..., :keep_count]
+        mask = torch.ones(*leading_shape, num_patches, device=device, dtype=torch.bool)
+        mask.scatter_(dim=-1, index=ids_keep, value=False)
+        return ids_keep, mask
 
-        Returns:
-            z_q      : quantized tokens
-            indices  : token indices
-            aux_loss : scalar tensor
+    def _encode_invariant_branch(self, images: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        bsz, timesteps, num_views, channels, height, width = images.shape
+        flat_images = images.reshape(bsz * timesteps * num_views, channels, height, width).contiguous()
+        patch_tokens, _ = self.invariant_encoder.patch_embed(flat_images)
+        patch_tokens = patch_tokens.view(bsz, timesteps, num_views, self.n_tokens_per_frame, -1)
 
-        Notes:
-        - VQ returns (quantized, indices, aux_loss)
-        - FSQ returns (quantized, indices)
-        - For FSQ, aux_loss is zero by design in this wrapper
-        """
-        quantizer_type = str(quantizer_type).lower()
+        spatial = self.invariant_encoder.pos_embed[:, 1:].view(1, 1, 1, self.n_tokens_per_frame, -1)
+        temporal = self.temporal_embed[:, :timesteps]
+        patch_tokens = patch_tokens + spatial + temporal
 
-        if quantizer_type == "vq":
-            z_q, indices, aux_loss = quantizer_module(x)
-            return z_q, indices, aux_loss.mean()
+        if self.tube_mask_per_view:
+            ids_keep, inv_mask = self._sample_visible_patch_ids(
+                (bsz, num_views),
+                self.n_tokens_per_frame,
+                self.inv_tube_mask_ratio,
+                images.device,
+            )
+        else:
+            ids_keep, shared_mask = self._sample_visible_patch_ids(
+                (bsz, 1),
+                self.n_tokens_per_frame,
+                self.inv_tube_mask_ratio,
+                images.device,
+            )
+            ids_keep = ids_keep.expand(bsz, num_views, -1).contiguous()
+            inv_mask = shared_mask.expand(bsz, num_views, -1).contiguous()
 
-        if quantizer_type == "fsq":
-            z_q, indices = quantizer_module(x)
-            aux_loss = x.new_zeros(())
-            return z_q, indices, aux_loss
+        gather_index = ids_keep[:, None, :, :, None].expand(
+            bsz,
+            timesteps,
+            num_views,
+            ids_keep.shape[-1],
+            patch_tokens.shape[-1],
+        )
+        visible_tokens = torch.gather(patch_tokens, dim=3, index=gather_index)
+        visible_tokens = visible_tokens.reshape(bsz, timesteps * num_views * ids_keep.shape[-1], -1)
 
-        raise ValueError(f"Unknown quantizer type: {quantizer_type}")
+        state_token = self.state_token.expand(bsz, -1, -1)
+        tokens = torch.cat([state_token, visible_tokens], dim=1)
+        tokens = self.invariant_encoder.pos_drop(tokens)
 
-    # ------------------------------------------------------------------
-    # Input masking for the dependent branch
-    # ------------------------------------------------------------------
-    def _mask_dependent_input_patches(self, x: torch.Tensor) -> torch.Tensor:
-        """Patch-aligned random masking on raw pixels for the dependent branch.
+        for block in self.invariant_encoder.blocks:
+            tokens = block(tokens)
+        tokens = self.invariant_encoder.norm(tokens)
+        s_inv = self.invariant_encoder_output_proj(self.state_norm(tokens[:, 0]))
+        return s_inv.contiguous(), inv_mask
 
-        The view-dependent branch is encouraged to learn compact, view-specific
-        information instead of simply copying the RGB input.
-        """
-        if self.dep_input_mask_ratio <= 0.0:
-            return x
+    def _encode_dependent_branch(self, first_timestep_images: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        bsz, num_views, channels, height, width = first_timestep_images.shape
+        flat_images = first_timestep_images.reshape(bsz * num_views, channels, height, width).contiguous()
+        patch_tokens, _ = self.dependent_encoder.patch_embed(flat_images)
+        patch_tokens = patch_tokens.view(bsz, num_views, self.n_tokens_per_frame, -1)
+
+        spatial = self.dependent_encoder.pos_embed[:, 1:].view(1, 1, self.n_tokens_per_frame, -1)
+        patch_tokens = patch_tokens + spatial
+
+        mask_ratio = self.dep_mask_ratio
         if (not self.training) and (not self.dep_mask_eval):
-            return x
+            mask_ratio = 0.0
+        ids_keep, dep_mask = self._sample_visible_patch_ids(
+            (bsz, num_views),
+            self.n_tokens_per_frame,
+            mask_ratio,
+            first_timestep_images.device,
+        )
+        gather_index = ids_keep[..., None].expand(bsz, num_views, ids_keep.shape[-1], patch_tokens.shape[-1])
+        visible_tokens = torch.gather(patch_tokens, dim=2, index=gather_index)
 
-        b, c, h, w = x.shape
-        gh = h // self.patch_h
-        gw = w // self.patch_w
+        dep_token = self.dep_token.expand(bsz, num_views, -1, -1)
+        tokens = torch.cat([dep_token, visible_tokens], dim=2)
+        tokens = tokens.reshape(bsz * num_views, 1 + ids_keep.shape[-1], -1)
+        tokens = self.dependent_encoder.pos_drop(tokens)
 
-        x_patches = x.view(b, c, gh, self.patch_h, gw, self.patch_w)
-        x_patches = x_patches.permute(0, 2, 4, 1, 3, 5).contiguous()
+        for block in self.dependent_encoder.blocks:
+            tokens = block(tokens)
+        tokens = self.dependent_encoder.norm(tokens)
+        dep = self.dependent_encoder_output_proj(self.dep_norm(tokens[:, 0]))
+        dep = dep.view(bsz, num_views, self.view_dim).contiguous()
+        return dep, dep_mask
 
-        keep = (torch.rand(b, gh, gw, 1, 1, 1, device=x.device) >= self.dep_input_mask_ratio).to(dtype=x.dtype)
-        mask_token = self.dep_mask_token.to(dtype=x.dtype).expand(b, gh, gw, -1, -1, -1)
-        x_patches = x_patches * keep + mask_token * (1.0 - keep)
+    def encode_sequence(
+        self,
+        images: torch.Tensor,
+        source_indices: Optional[torch.Tensor] = None,
+    ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
+        """Encode a multi-view temporal sequence into state and view anchors."""
+        images = self._coerce_sequence(images)
+        s_inv, inv_mask = self._encode_invariant_branch(images)
+        z_dep_all, dep_mask = self._encode_dependent_branch(images[:, 0])
 
-        x_masked = x_patches.permute(0, 3, 1, 4, 2, 5).contiguous()
-        x_masked = x_masked.view(b, c, h, w)
-        return x_masked
+        latents: Dict[str, torch.Tensor] = {
+            "s_inv": s_inv,
+            "z_dep_all": z_dep_all,
+            "inv_mask": inv_mask,
+            "dep_mask": dep_mask,
+        }
+        if source_indices is not None:
+            batch_ids = torch.arange(s_inv.shape[0], device=s_inv.device)
+            latents["z_dep_source"] = z_dep_all[batch_ids, source_indices.to(device=s_inv.device)]
 
-    # ------------------------------------------------------------------
-    # Encoding
-    # ------------------------------------------------------------------
+        zero = self._zero_loss(s_inv)
+        return latents, zero, zero
+
     def encode(
         self,
         x: torch.Tensor,
         deterministic_invariant: bool = False,
         deterministic_dependent: bool = False,
     ):
-        """Encode one RGB or RGB-D image into invariant + dependent token sequences."""
-        b, c, h, w = x.shape
-        if h != self.img_height or w != self.img_width:
+        """Compatibility wrapper returning the single state and first-view anchor."""
+        del deterministic_invariant, deterministic_dependent
+        latents, inv_loss, dep_loss = self.encode_sequence(x)
+        s_inv = latents["s_inv"]
+        z_dep = latents["z_dep_all"][:, 0]
+        indices = (
+            torch.zeros((s_inv.shape[0], 1), device=s_inv.device, dtype=torch.long),
+            torch.zeros((s_inv.shape[0], 1), device=s_inv.device, dtype=torch.long),
+        )
+        return s_inv, inv_loss, z_dep, dep_loss, indices
+
+    def _build_decoder_condition(self, s_inv: torch.Tensor, z_dep_source: torch.Tensor) -> torch.Tensor:
+        if self.decoder_condition_mode == "concat":
+            return torch.cat([s_inv, z_dep_source], dim=-1)
+        if s_inv.shape != z_dep_source.shape:
             raise ValueError(
-                f"Expected input size {(self.img_height, self.img_width)}, got {(h, w)}"
+                f"decoder_condition_mode='add' requires matching runtime shapes, "
+                f"got s_inv={tuple(s_inv.shape)} and z_dep_source={tuple(z_dep_source.shape)}."
             )
+        return s_inv + z_dep_source
 
-        # Invariant branch sees the original image.
-        h_inv_tokens, _, _ = self.invariant_encoder(x)
-
-        # Dependent branch now sees the same RGB image as the invariant branch.
-        h_dep_tokens, _, _ = self.dependent_encoder(x)
-
-        if h_inv_tokens.shape[1] != self.n_tokens_per_frame:
-            raise ValueError("Unexpected token count from invariant encoder.")
-
-        h_inv = self.invariant_encoder_output_proj(h_inv_tokens)
-        h_dep = self.dependent_encoder_output_proj(h_dep_tokens)
-
-        # Invariant branch.
-        if self.use_invariant_vq:
-            z_inv, invariant_encoding_indices, inv_embed_loss = self._run_discrete_quantizer(
-                self.invariant_output_head,
-                h_inv,
-                self.invariant_quantizer_type,
-            )
-        else:
-            z_inv_output = self.invariant_output_head(h_inv)
-            z_inv_mu = z_inv_output[:, :, : h_inv.shape[-1]]
-            z_inv_sigma = torch.exp(z_inv_output[:, :, h_inv.shape[-1] :].clamp(-20, 2))
-            inv_embed_loss = -0.5 * torch.mean(
-                1 + torch.log(z_inv_sigma ** 2) - z_inv_mu ** 2 - z_inv_sigma ** 2
-            )
-            dist = torch.distributions.Normal(z_inv_mu, z_inv_sigma)
-            z_inv = z_inv_mu if deterministic_invariant else (dist.rsample() if self.training else dist.sample())
-            invariant_encoding_indices = torch.zeros(
-                (z_inv.shape[0], z_inv.shape[1]),
-                device=z_inv.device,
-                dtype=torch.long,
-            )
-
-        # Dependent branch.
-        if self.use_dependent_vq:
-            z_dep, dependent_encoding_indices, dep_embed_loss = self._run_discrete_quantizer(
-                self.dependent_output_head,
-                h_dep,
-                self.dependent_quantizer_type,
-            )
-            z_dep = self.dependent_output_final_proj(z_dep)
-        else:
-            z_dep_output = self.dependent_output_head(h_dep)
-            z_dep_mu = z_dep_output[:, :, : h_dep.shape[-1]]
-            z_dep_sigma = torch.exp(z_dep_output[:, :, h_dep.shape[-1] :].clamp(-20, 2))
-            dep_embed_loss = -0.5 * torch.mean(
-                1 + torch.log(z_dep_sigma ** 2) - z_dep_mu ** 2 - z_dep_sigma ** 2
-            )
-            dist = torch.distributions.Normal(z_dep_mu, z_dep_sigma)
-            z_dep = z_dep_mu if deterministic_dependent else (dist.rsample() if self.training else dist.sample())
-            dependent_encoding_indices = torch.zeros(
-                (z_dep.shape[0], z_dep.shape[1]),
-                device=z_dep.device,
-                dtype=torch.long,
-            )
-
-        return z_inv, inv_embed_loss, z_dep, dep_embed_loss, (
-            dependent_encoding_indices,
-            invariant_encoding_indices,
-        )
-
-    # ------------------------------------------------------------------
-    # Fusion
-    # ------------------------------------------------------------------
-    def fusion(self, z_inv: torch.Tensor, z_dep: torch.Tensor) -> torch.Tensor:
-        if self.fusion_style == "plus":
-            return z_inv + z_dep
-        if self.fusion_style == "cat":
-            return torch.cat([z_inv, z_dep], dim=-1)
-        raise NotImplementedError(f"Unknown fusion_style={self.fusion_style}")
-
-    # ------------------------------------------------------------------
-    # Decoding
-    # ------------------------------------------------------------------
-    def decode(self, z_inv: torch.Tensor, z_dep: torch.Tensor) -> torch.Tensor:
-        """Decode latent tokens into the vanilla (parent-only) Splatter Image."""
-        quant = self.fusion(z_inv, z_dep)
-        dec_tokens = self.decoder_input_proj(quant)
-        _, hidden_states = self.decoder_backbone(dec_tokens)
-
-        grid_h = self.img_height // self.patch_h
-        grid_w = self.img_width // self.patch_w
-        splatter = self.decoder(
+    def decode_sequence(self, s_inv: torch.Tensor, z_dep_source: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """Decode state and first-frame view anchor into base and delta maps."""
+        if s_inv.dim() != 2:
+            s_inv = s_inv.flatten(1)
+        if z_dep_source.dim() != 2:
+            z_dep_source = z_dep_source.flatten(1)
+        condition = self._build_decoder_condition(s_inv, z_dep_source)
+        queries = self.spatial_queries.expand(s_inv.shape[0], -1, -1)
+        _, hidden_states = self.decoder_backbone(queries, condition)
+        dense = self.decoder(
             hidden_states=hidden_states,
-            grid_size=(grid_h, grid_w),
+            grid_size=self.grid_size,
             output_size=(self.img_height, self.img_width),
-        )
-        return splatter.contiguous()
+        ).contiguous()
 
-    # ------------------------------------------------------------------
-    # Convenience forward
-    # ------------------------------------------------------------------
+        base_map = dense[:, : self.splatter_channels]
+        delta01_raw = dense[:, self.splatter_channels : self.splatter_channels + self.delta_channels]
+        delta12_raw = dense[:, self.splatter_channels + self.delta_channels :]
+        delta01_map = torch.tanh(delta01_raw) * self.delta_xyz_scale
+        delta12_map = torch.tanh(delta12_raw) * self.delta_xyz_scale
+        return {
+            "base_map": base_map.contiguous(),
+            "delta01_map": delta01_map.contiguous(),
+            "delta12_map": delta12_map.contiguous(),
+        }
+
+    def decode(self, z_inv: torch.Tensor, z_dep: torch.Tensor) -> torch.Tensor:
+        """Compatibility wrapper returning only the t0/base splatter map."""
+        if z_inv.dim() > 2:
+            z_inv = z_inv.mean(dim=1)
+        if z_dep.dim() > 2:
+            z_dep = z_dep.mean(dim=1)
+        return self.decode_sequence(z_inv, z_dep)["base_map"]
+
     def forward(self, x: torch.Tensor):
-        z_inv, inv_embed_loss, z_dep, dep_embed_loss, _ = self.encode(
-            x,
-            deterministic_invariant=False,
-            deterministic_dependent=False,
-        )
-        splatter = self.decode(z_inv, z_dep)
-        total_embed_loss = inv_embed_loss + dep_embed_loss
-        return splatter, total_embed_loss
+        latents, inv_loss, dep_loss = self.encode_sequence(x)
+        z_dep_source = latents["z_dep_all"][:, 0]
+        decoded = self.decode_sequence(latents["s_inv"], z_dep_source)
+        return decoded, inv_loss + dep_loss
 
-    # ------------------------------------------------------------------
-    # Checkpoint helpers
-    # ------------------------------------------------------------------
-    def save_checkpoint(self, checkpoint_file: str):
+    @torch.no_grad()
+    def policy_state(self, images: torch.Tensor) -> torch.Tensor:
+        """Return only the downstream policy representation ``s_inv``."""
+        latents, _, _ = self.encode_sequence(images)
+        return latents["s_inv"]
+
+    def save_checkpoint(self, checkpoint_file: str) -> None:
         torch.save(self.state_dict(), checkpoint_file)
 
-    def load_checkpoint(self, checkpoint_file: str):
+    def load_checkpoint(self, checkpoint_file: str) -> None:
         state = torch.load(checkpoint_file, map_location="cpu")
         self.load_state_dict(state)
-        for head in [self.invariant_output_head, self.dependent_output_head]:
-            if isinstance(head, VectorQuantize) and hasattr(head, "kmeans_init"):
-                head.kmeans_init = False

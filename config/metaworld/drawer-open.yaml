@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 dataset:
   hdf5_paths:
-    - "../../data/metaworld/with-depth/drawer-open.hdf5"
+    - "../../data/metaworld/pre-training/drawer-open.hdf5"
   batch_size: 8
   num_workers: 8
   pin_memory: true
@@ -11,38 +11,32 @@ dataset:
   seed: 42
   num_episodes: null
   max_frames_per_demo: null
+  temporal_window: 3
+  temporal_stride_list: [3, 6, 9, 12, 15, 18, 21]
+  temporal_min_state_change: 0.02
+  temporal_gripper_change_weight: 0.05
   camera_num: 24
   use_depth: true
-  use_segmentation_mask: false
-  # Fill this after running dataset/metaworld_demo_collect/inspect_segmentation_ids.py.
+  use_segmentation_mask: true
   selected_seg_ids:
-    default: []
+    default: ["geom:24", "geom:25", "geom:19", "geom:22", "geom:13", "geom:16", "geom:18", "geom:15", "geom:27", "geom:28", "geom:33", "geom:31", "geom:29", "geom:43", "geom:36", "geom:42", "site:6", "site:5", "site:0"]
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
 # -----------------------------------------------------------------------------
 model:
-  fusion_style: "plus"         # ["cat", "plus"]
-  use_dependent_vq: true
-  is_dependent_ae: false
-  use_invariant_vq: true
-  is_invariant_ae: false
-  dep_input_mask_ratio: 0.0
-  dep_mask_eval: false
-
-# -----------------------------------------------------------------------------
-# Invariant / dependent codebooks
-# -----------------------------------------------------------------------------
-codebook:
-  invariant:
-    quantizer: fsq
-    embed_dim: 6
-    fsq_levels: [8, 8, 8, 5, 5, 5]
-
-  dependent:
-    quantizer: fsq
-    embed_dim: 6
-    fsq_levels: [8, 8, 8, 5, 5, 5]
+  temporal_window: 3
+  inv_tube_mask_ratio: 0.50
+  dep_mask_ratio: 0.75
+  tube_mask_per_view: true
+  use_single_state_vector: true
+  state_dim: 256
+  view_dim: 64
+  use_temporal_delta_decoder: true
+  decoder_condition_mode: concat
+  dependent_uses_first_timestep_only: true
+  delta_xyz_scale: 0.05
+  dep_mask_eval: true
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -59,7 +53,7 @@ vit:
   dropout: 0.0
   attn_dropout: 0.0
   drop_path_rate: 0.1
-  layerscale_init: 1.0e-5
+  layerscale_init: 1.0
 
   # Four tap points required by the DPT-style decoder.
   selected_layers: [1, 3, 5, 7]
@@ -94,7 +88,7 @@ splatter:
     gaussians_per_pixel: 1
     depth_min: null
     depth_max: null
-    depth_activation: inverse_depth
+    depth_activation: linear
     depth_ordering: sort
     depth_scale: 1.0
     depth_bias: 0.0
@@ -103,12 +97,12 @@ splatter:
     offset_bias: 0.0
     gaussian_scale_min: 1.0e-4
     gaussian_scale_max: 0.05
-    scale_scale: 1.0
-    scale_bias: 0.0
+    scale_scale: 0.05
+    scale_bias: -4.0
     rotation_scale: 1.0
     rotation_bias: 0.0
     opacity_scale: 1.0
-    opacity_bias: 0.0
+    opacity_bias: 2.0
     color_scale: 1.0
     color_bias: 0.0
     sh_rest_scale: 0.1
@@ -120,8 +114,8 @@ splatter:
 # -----------------------------------------------------------------------------
 train:
   num_epochs: 100
-  max_global_steps: 300001
-  lr: 5.0e-4
+  max_global_steps: 500001
+  lr: 3.0e-4
   lr_schedule: warmup_cosine
   lr_warmup_steps: 10000
   min_lr: 5.0e-5
@@ -129,11 +123,13 @@ train:
 
   # Direct Gaussian masked-rendering and Chamfer loss weights.
   rec_weight: 1.0
-  ssim_weight: 0.0
-  rec_background_weight: 0.05
-  point_chamfer_weight: 5.0
+  ssim_weight: 0.2
+  rgb_loss_mask_dilation: 3
+  occupancy_weight: 0.1
+  occupancy_fixed_opacity: 0.8
+  point_chamfer_weight: 0.1
   chamfer_huber_delta: 0.05
-  vq_weight: 0.25
+  delta_smooth_weight: 1.0e-2
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
@@ -143,10 +139,11 @@ train:
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/drawer-open/direct-gaussian-masked/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/drawer-open/state-delta/
   resume_from_last: false
   val_log_pointclouds: true
   val_pointcloud_max_points: 4096
+  val_track_max_points: 8
 
 # -----------------------------------------------------------------------------
 # Optional logging
@@ -155,20 +152,11 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-drawer-open-direct-gaussian-masked
+  run_name: metaworld-drawer-open-temporal-state-delta
   tags:
-    - direct-gaussian-masked
-    - gaussian-center-chamfer
-    - max_sh_degree-1
-    - all-camera-rendering
-    - rgb-encoder
-    - embed-dim-128
-    - codebook-embed-dim-64
-    - transformer-depth-8
-    - num-heads-8
-    - DPT-fix
-    - lr-5e-4
+    - temporal-state-bottleneck
+    - film-query-decoder
+    - gaussian-delta-tracking
+    - sequence-rendering
     - diverse-demo-collection
-    - ssim_weight-0.0
-    - VQ-codebook
-    - consistency-loss
+    - state-vector-contrastive

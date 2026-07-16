@@ -19,12 +19,14 @@ class TrainConfig:
 
     rec_weight: float = 1.0
     ssim_weight: float = 0.2
-    rec_background_weight: float = 0.05
+    rgb_loss_mask_dilation: int = 3
+    occupancy_weight: float = 1.0
+    occupancy_fixed_opacity: float = 0.8
 
     point_chamfer_weight: float = 5.0
     chamfer_huber_delta: float = 0.05
+    delta_smooth_weight: float = 1.0e-3
 
-    vq_weight: float = 0.25
     inv_contrastive_weight: float = 1.0
     inv_consistency_weight: float = 0.5
     dep_contrastive_weight: float = 0.1
@@ -42,6 +44,7 @@ class TrainConfig:
     val_max_vis: int = 8
     val_log_pointclouds: bool = True
     val_pointcloud_max_points: int = 4096
+    val_track_max_points: int = 8
     val_render_trajectory_videos: bool = True
     val_video_frames: int = 48
     val_video_fps: int = 20

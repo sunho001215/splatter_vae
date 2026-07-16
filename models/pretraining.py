@@ -8,12 +8,19 @@ from torch.utils.data import DataLoader
 
 import wandb
 
-from models.losses import compute_all_camera_contrastive_losses, compute_latent_consistency_loss
+from models.losses import (
+    compute_dependent_view_consistency_loss,
+    compute_state_consistency_loss,
+    compute_view_structured_contrastive_losses,
+)
 from models.splatter import SplatterConfig
-from models.splatter_gaussians import DirectSplatterToGaussians
-from models.splatter_reconstruction import compute_reconstruction_and_renders, encode_all_camera_batch
-from models.splatter_train_config import TrainConfig
-from models.splatter_validation import validate_and_log_wandb
+from models.gaussians import DirectSplatterToGaussians
+from models.reconstruction import (
+    compute_reconstruction_and_renders,
+    encode_per_view_sequence_batch,
+)
+from models.train_config import TrainConfig
+from models.validation import validate_and_log_wandb
 from models.vae import SplatterVAE
 from utils.training_utils import (
     compute_scheduled_lr,
@@ -89,14 +96,15 @@ def train_splatter_vae(
             images_01 = (images + 1.0) * 0.5
 
             optimizer.zero_grad(set_to_none=True)
-            latents, inv_vq_loss, dep_vq_loss = encode_all_camera_batch(vae=vae, images=images)
+            view_latents, _view_inv_embed_loss, _view_dep_embed_loss = encode_per_view_sequence_batch(
+                vae=vae,
+                images=images,
+            )
             rec_out = compute_reconstruction_and_renders(
                 vae=vae,
                 splatter_to_gaussians=splatter_to_gaussians,
                 splatter_cfg=splatter_cfg,
                 images_01=images_01,
-                z_inv=latents["z_inv"],
-                z_dep=latents["z_dep"],
                 intrinsics=intrinsics,
                 c2w=c2w,
                 w2c=w2c,
@@ -107,22 +115,38 @@ def train_splatter_vae(
                 return_renders=False,
             )
             rec_loss = rec_out["rec_loss"]
+            occupancy_loss = rec_out["occupancy_loss"]
             point_chamfer_loss = rec_out["point_chamfer_loss"]
+            delta_smooth_loss = rec_out["delta_smooth_loss"]
 
-            inv_contrastive_loss, dep_contrastive_loss = compute_all_camera_contrastive_losses(
-                z_inv=latents["z_inv"],
-                z_dep=latents["z_dep"],
+            inv_contrastive_loss, dep_contrastive_loss = compute_view_structured_contrastive_losses(
+                s_inv_by_view=view_latents["s_inv_by_view"],
+                z_dep_by_view=view_latents["z_dep_by_view"],
                 temperature=cfg_train.temperature,
             )
-            inv_consistency_loss = compute_latent_consistency_loss(latents["z_inv"], mode="state")
-            dep_consistency_loss = compute_latent_consistency_loss(latents["z_dep"], mode="view")
+            if cfg_train.inv_consistency_weight > 0.0 or cfg_train.dep_consistency_weight > 0.0:
+                consistency_latents, _inv_embed_loss_aug, _dep_embed_loss_aug = encode_per_view_sequence_batch(
+                    vae=vae,
+                    images=images,
+                )
+                inv_consistency_loss = compute_state_consistency_loss(
+                    view_latents["s_inv_by_view"].flatten(0, 1),
+                    consistency_latents["s_inv_by_view"].flatten(0, 1),
+                )
+                dep_consistency_loss = compute_dependent_view_consistency_loss(
+                    view_latents["z_dep_by_view"],
+                    consistency_latents["z_dep_by_view"],
+                )
+            else:
+                inv_consistency_loss = rec_loss.new_zeros(())
+                dep_consistency_loss = rec_loss.new_zeros(())
 
-            vq_loss = inv_vq_loss + dep_vq_loss
             rec_weight = float(cfg_train.rec_weight)
             total_loss = (
                 rec_weight * rec_loss
+                + cfg_train.occupancy_weight * occupancy_loss
                 + cfg_train.point_chamfer_weight * point_chamfer_loss
-                + cfg_train.vq_weight * vq_loss
+                + cfg_train.delta_smooth_weight * delta_smooth_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
                 + cfg_train.inv_consistency_weight * inv_consistency_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
@@ -131,8 +155,9 @@ def train_splatter_vae(
 
             finite_terms = {
                 "rec_loss": rec_loss,
+                "occupancy_loss": occupancy_loss,
                 "point_chamfer_loss": point_chamfer_loss,
-                "vq_loss": vq_loss,
+                "delta_smooth_loss": delta_smooth_loss,
                 "inv_contrastive_loss": inv_contrastive_loss,
                 "inv_consistency_loss": inv_consistency_loss,
                 "dep_contrastive_loss": dep_contrastive_loss,
@@ -159,33 +184,48 @@ def train_splatter_vae(
                     f"[Epoch {epoch + 1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} lr={current_lr:.2e} "
                     f"(rgb={rec_loss.item():.4f}, rgb_w={rec_weight:.4f}, "
+                    f"occupancy={occupancy_loss.item():.4f}, "
                     f"gaussian_chamfer={point_chamfer_loss.item():.4f}, "
-                    f"vq={vq_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
+                    f"delta={delta_smooth_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
                     f"dep_con={dep_contrastive_loss.item():.4f}, mask={rec_out['mask_pixel_ratio'].item():.3f})"
                 )
                 if wandb.run is not None:
+                    timestep_log = {}
+                    for time_idx in range(3):
+                        chamfer_key = f"point_chamfer_loss_t{time_idx}"
+                        if chamfer_key in rec_out:
+                            timestep_log[f"train/{chamfer_key}"] = rec_out[chamfer_key].item()
                     wandb.log(
                         {
                             "train/total_loss": total_loss.item(),
                             "train/lr": current_lr,
                             "train/rec_loss": rec_loss.item(),
                             "train/rec_weight": rec_weight,
-                            "train/rec_background_weight": float(cfg_train.rec_background_weight),
                             "train/rec_loss_weighted": rec_weight * rec_loss.item(),
+                            "train/occupancy_loss": occupancy_loss.item(),
+                            "train/occupancy_weight": float(cfg_train.occupancy_weight),
+                            "train/occupancy_loss_weighted": (cfg_train.occupancy_weight * occupancy_loss).item(),
+                            "train/occupancy_fixed_opacity": float(cfg_train.occupancy_fixed_opacity),
+                            "train/rgb_loss_mask_dilation": float(cfg_train.rgb_loss_mask_dilation),
                             "train/point_chamfer_loss": point_chamfer_loss.item(),
                             "train/point_chamfer_loss_weighted": (cfg_train.point_chamfer_weight * point_chamfer_loss).item(),
+                            "train/delta_smooth_loss": delta_smooth_loss.item(),
+                            "train/delta_smooth_loss_weighted": (cfg_train.delta_smooth_weight * delta_smooth_loss).item(),
+                            "train/delta01_mean": rec_out["delta01_mean"].item(),
+                            "train/delta12_mean": rec_out["delta12_mean"].item(),
+                            "train/delta_magnitude_mean": rec_out["delta_magnitude_mean"].item(),
                             "train/gt_point_count_mean": rec_out["gt_point_count_mean"].item(),
-                            "train/vq_loss": vq_loss.item(),
-                            "train/inv_vq_loss": inv_vq_loss.item(),
-                            "train/dep_vq_loss": dep_vq_loss.item(),
                             "train/inv_contrastive_loss": inv_contrastive_loss.item(),
                             "train/inv_consistency_loss": inv_consistency_loss.item(),
                             "train/dep_contrastive_loss": dep_contrastive_loss.item(),
                             "train/dep_consistency_loss": dep_consistency_loss.item(),
                             "train/mean_opacity": rec_out["mean_opacity"].item(),
                             "train/mask_pixel_ratio": rec_out["mask_pixel_ratio"].item(),
+                            "train/expanded_mask_pixel_ratio": rec_out["expanded_mask_pixel_ratio"].item(),
                             "train/point_chamfer_weight": float(cfg_train.point_chamfer_weight),
+                            "train/delta_smooth_weight": float(cfg_train.delta_smooth_weight),
                             "global_step": global_step,
+                            **timestep_log,
                         },
                         step=global_step,
                     )

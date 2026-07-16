@@ -8,14 +8,14 @@ from typing import Any, Dict, Tuple
 import h5py
 import torch
 
-from models.splatter_gaussians import DirectSplatterToGaussians
+from models.gaussians import DirectSplatterToGaussians
 from models.splatter import (
     SplatterConfig,
     SplatterDataConfig,
     SplatterModelConfig,
     default_splatter_channels,
 )
-from models.vae import CodebookConfig, SplatterVAE
+from models.vae import SplatterVAE
 
 
 def image_size_from_demo(dataset_path: str, demo_key: str) -> Tuple[int, int]:
@@ -74,6 +74,10 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
     """
     cfg = copy.deepcopy(cfg)
     state = _checkpoint_state_dict(ckpt_path)
+    is_temporal_state = any(
+        key.startswith("spatial_queries") or key.startswith("decoder_backbone.film_mlps")
+        for key in state
+    )
 
     patch = state.get("invariant_encoder.patch_embed.proj.weight")
     if patch is not None and patch.ndim == 4:
@@ -90,7 +94,7 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
             out_channels = int(weight.shape[0])
             break
 
-    if out_channels is not None:
+    if out_channels is not None and not is_temporal_state:
         splatter_cfg = cfg.setdefault("splatter", {})
         model_cfg = splatter_cfg.setdefault("model", {})
         max_sh_degree = int(model_cfg.get("max_sh_degree", 1))
@@ -103,27 +107,29 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
 
 
 def build_splattervae(cfg: Dict[str, Any], img_height: int, img_width: int, splatter_channels: int) -> SplatterVAE:
-    cb_cfg = cfg.get("codebook", {})
-    inv_cb = CodebookConfig(**cb_cfg.get("invariant", {}))
-    dep_cb = CodebookConfig(**cb_cfg.get("dependent", {}))
     model_cfg = dict(cfg.get("model", {}))
     vit_cfg = dict(cfg.get("vit", {}))
+    spl_model_cfg = cfg.get("splatter", {}).get("model", {})
+    gaussians_per_pixel = int(spl_model_cfg.get("gaussians_per_pixel", 1))
 
     return SplatterVAE(
         vit_cfg=vit_cfg,
-        invariant_cb_config=inv_cb,
-        dependent_cb_config=dep_cb,
         img_height=img_height,
         img_width=img_width,
         splatter_channels=splatter_channels,
-        fusion_style=str(model_cfg.get("fusion_style", "cat")),
-        use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-        is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
-        use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-        is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
-        dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.95)),
         dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
         dpt_features=int(vit_cfg.get("dpt_features", 256)),
+        temporal_window=int(model_cfg.get("temporal_window", cfg.get("dataset", {}).get("temporal_window", 3))),
+        inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
+        dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
+        tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
+        state_dim=int(model_cfg.get("state_dim", 256)),
+        view_dim=model_cfg.get("view_dim", None),
+        use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
+        dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
+        use_temporal_delta_decoder=bool(model_cfg.get("use_temporal_delta_decoder", True)),
+        gaussians_per_pixel=gaussians_per_pixel,
+        delta_xyz_scale=float(model_cfg.get("delta_xyz_scale", 0.05)),
     )
 
 

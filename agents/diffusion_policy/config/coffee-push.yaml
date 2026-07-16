@@ -117,29 +117,24 @@ vision:
       beta: 0.25
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-vq/coffee-push/codebook-embed-dim-64/step_00300000.pth
-    feature_source: codebook
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/coffee-push/state-delta/step_00300000.pth
+    feature_source: state
     img_height: 128
     img_width: 128
     max_sh_degree: 1
-    num_gaussians_per_pixel: 5
+    gaussians_per_pixel: 5
     model:
-      fusion_style: cat
-      use_dependent_vq: true
-      is_dependent_ae: true
-      use_invariant_vq: true
-      is_invariant_ae: true
-      dep_input_mask_ratio: 0.95
+      temporal_window: 3
+      inv_tube_mask_ratio: 0.50
+      dep_mask_ratio: 0.75
+      tube_mask_per_view: true
+      use_single_state_vector: true
+      state_dim: 256
+      view_dim: 256
+      use_temporal_delta_decoder: true
+      dependent_uses_first_timestep_only: true
+      delta_xyz_scale: 0.05
       dep_mask_eval: true
-    codebook:
-      invariant:
-        embed_dim: 64
-        n_embed: 512
-        beta: 0.25
-      dependent:
-        embed_dim: 64
-        n_embed: 512
-        beta: 0.25
 
   vit:
     img_size: 128
@@ -217,4 +212,3 @@ training:
   checkpoint_every_steps: 10000
   checkpoint_dir: ./checkpoints/metaworld/policies/diffusion_policy/cnn/coffee-push/seed66/
   resume_checkpoint: null
-

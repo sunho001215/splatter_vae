@@ -93,20 +93,19 @@ class SplatterVAEInvariantEncoder(nn.Module):
 
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
-        from models.vae import SplatterVAE, CodebookConfig
+        from models.vae import SplatterVAE
 
         sv_cfg = dict(cfg["vision"]["splatter_vae"])
         vit_cfg = dict(cfg["vision"]["vit"])
         model_cfg = dict(sv_cfg.get("model", {}))
-        cb_cfg = dict(sv_cfg["codebook"])
 
-        self.feature_source = str(sv_cfg.get("feature_source", "codebook")).lower()
-        self.preserve_token_features = self.feature_source in {"encoder", "vit", "tokens"}
+        self.feature_source = str(sv_cfg.get("feature_source", "state")).lower()
+        self.preserve_token_features = False
+        self.returns_sequence_state = True
+        self.temporal_window = int(model_cfg.get("temporal_window", cfg.get("env", {}).get("frame_stack", 3)))
         img_h = int(cfg["vision"]["img_height"])
         img_w = int(cfg["vision"]["img_width"])
 
-        inv_cb = CodebookConfig(**cb_cfg["invariant"])
-        dep_cb = CodebookConfig(**cb_cfg["dependent"])
         gaussians_per_pixel = int(sv_cfg.get("gaussians_per_pixel", sv_cfg.get("points_per_pixel", 1)))
         max_sh_degree = int(sv_cfg.get("max_sh_degree", 1))
         splatter_channels = int(
@@ -121,20 +120,24 @@ class SplatterVAEInvariantEncoder(nn.Module):
 
         self.vae = SplatterVAE(
             vit_cfg=vit_cfg,
-            invariant_cb_config=inv_cb,
-            dependent_cb_config=dep_cb,
             img_height=img_h,
             img_width=img_w,
             splatter_channels=splatter_channels,
-            fusion_style=str(model_cfg.get("fusion_style", "cat")),
-            use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-            is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
-            use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-            is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
-            dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.0)),
             dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
             dpt_features=int(vit_cfg.get("dpt_features", 256)),
+            temporal_window=self.temporal_window,
+            inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
+            dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
+            tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
+            state_dim=int(model_cfg.get("state_dim", sv_cfg.get("state_dim", 256))),
+            view_dim=model_cfg.get("view_dim", sv_cfg.get("view_dim", None)),
+            use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
+            dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
+            use_temporal_delta_decoder=bool(model_cfg.get("use_temporal_delta_decoder", True)),
+            gaussians_per_pixel=gaussians_per_pixel,
+            delta_xyz_scale=float(model_cfg.get("delta_xyz_scale", 0.05)),
         )
+        self.repr_dim = int(self.vae.state_dim)
 
         state = torch.load(str(sv_cfg["checkpoint_path"]), map_location="cpu")
         state_dict = _select_checkpoint_subdict(state, ("vae_state_dict", "model_state_dict", "state_dict"))
@@ -146,19 +149,19 @@ class SplatterVAEInvariantEncoder(nn.Module):
         self.is_perturbable = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.float()
+        if x.ndim == 4:
+            bsz, channels, height, width = x.shape
+            if channels == 3 * self.temporal_window:
+                x = x.view(bsz, self.temporal_window, 3, height, width)
+            elif channels == 3:
+                x = x[:, None].expand(-1, self.temporal_window, -1, -1, -1).contiguous()
+            else:
+                raise ValueError(f"SplatterVAE policy encoder expected 3 or {3 * self.temporal_window} channels, got {channels}.")
+        if x.ndim != 5:
+            raise ValueError(f"Expected policy images as (B,T,3,H,W) or (B,C,H,W), got {tuple(x.shape)}.")
         x = x * 2.0 - 1.0
-        h_inv_tokens, _, _ = self.vae.invariant_encoder(x)
-        if self.preserve_token_features:
-            return h_inv_tokens.contiguous()
-
-        h_proj = self.vae.invariant_encoder_output_proj(h_inv_tokens)
-        if self.feature_source == "pre_vq":
-            feat = h_proj
-        elif self.feature_source == "codebook":
-            feat, *_ = self.vae.invariant_output_head(h_proj)
-        else:
-            raise ValueError(f"Unknown SplatterVAE feature_source={self.feature_source}")
-        return _flatten_feature_output(feat)
+        return self.vae.policy_state(x[:, :, None]).contiguous()
 
 
 class ReViWoInvariantEncoder(nn.Module):

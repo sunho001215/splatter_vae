@@ -7,8 +7,8 @@ from dataclasses import fields
 from typing import Optional
 
 import torch
-import wandb
 import yaml
+import wandb
 
 from dataset.dataloader import build_train_valid_loaders_metaworld
 from models.splatter import (
@@ -17,9 +17,9 @@ from models.splatter import (
     SplatterModelConfig,
     default_splatter_channels,
 )
-from models.splatter_pretraining import train_splatter_vae
-from models.vae import CodebookConfig, SplatterVAE
-from models.splatter_train_config import TrainConfig
+from models.pretraining import train_splatter_vae
+from models.vae import SplatterVAE
+from models.train_config import TrainConfig
 from utils.general_utils import set_random_seed
 
 
@@ -63,10 +63,6 @@ def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> Splatte
 
 
 def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
-    cb_cfg = cfg.get("codebook", {})
-    inv_cb_cfg = CodebookConfig(**cb_cfg.get("invariant", {}))
-    dep_cb_cfg = CodebookConfig(**cb_cfg.get("dependent", {}))
-
     vit_cfg = dict(cfg.get("vit", {}))
     model_cfg = dict(cfg.get("model", {}))
     spl_model_cfg = cfg.get("splatter", {}).get("model", {})
@@ -85,19 +81,23 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
 
     return SplatterVAE(
         vit_cfg=vit_cfg,
-        invariant_cb_config=inv_cb_cfg,
-        dependent_cb_config=dep_cb_cfg,
         img_height=img_height,
         img_width=img_width,
         splatter_channels=splatter_channels,
-        fusion_style=str(model_cfg.get("fusion_style", "cat")),
-        use_dependent_vq=bool(model_cfg.get("use_dependent_vq", True)),
-        is_dependent_ae=bool(model_cfg.get("is_dependent_ae", True)),
-        use_invariant_vq=bool(model_cfg.get("use_invariant_vq", True)),
-        is_invariant_ae=bool(model_cfg.get("is_invariant_ae", True)),
-        dep_input_mask_ratio=float(model_cfg.get("dep_input_mask_ratio", 0.0)),
         dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
         dpt_features=int(vit_cfg.get("dpt_features", 256)),
+        temporal_window=int(model_cfg.get("temporal_window", cfg.get("dataset", {}).get("temporal_window", 3))),
+        inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
+        dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
+        tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
+        state_dim=int(model_cfg.get("state_dim", 256)),
+        view_dim=model_cfg.get("view_dim", None),
+        use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
+        dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
+        use_temporal_delta_decoder=bool(model_cfg.get("use_temporal_delta_decoder", True)),
+        decoder_condition_mode=str(model_cfg.get("decoder_condition_mode", "concat")),
+        gaussians_per_pixel=gaussians_per_pixel,
+        delta_xyz_scale=float(model_cfg.get("delta_xyz_scale", 0.05)),
     )
 
 
@@ -122,6 +122,11 @@ def build_metaworld_loaders(cfg: dict):
         views=ds_cfg.get("views", ds_cfg.get("camera_names", None)),
         camera_num=ds_cfg.get("camera_num", None),
         min_time_gap=int(ds_cfg.get("min_time_gap", 25)),
+        temporal_window=int(ds_cfg.get("temporal_window", cfg.get("model", {}).get("temporal_window", 3))),
+        temporal_stride=int(ds_cfg.get("temporal_stride", ds_cfg.get("timestep_interval", 1))),
+        temporal_stride_list=ds_cfg.get("temporal_stride_list", None),
+        temporal_min_state_change=float(ds_cfg.get("temporal_min_state_change", 0.0)),
+        temporal_gripper_change_weight=float(ds_cfg.get("temporal_gripper_change_weight", 0.05)),
         use_depth=bool(ds_cfg.get("use_depth", False)),
         use_segmentation_mask=bool(ds_cfg.get("use_segmentation_mask", False)),
         selected_seg_ids=ds_cfg.get("selected_seg_ids", ds_cfg.get("mask_object_ids", None)),
@@ -185,11 +190,17 @@ def main() -> None:
     train_loader, valid_loader = build_metaworld_loaders(cfg)
 
     sample_batch = next(iter(train_loader))
-    _, camera_num, _, img_height, img_width = sample_batch["images"].shape
+    if sample_batch["images"].dim() == 6:
+        _, temporal_window, camera_num, _, img_height, img_width = sample_batch["images"].shape
+    else:
+        temporal_window = 1
+        _, camera_num, _, img_height, img_width = sample_batch["images"].shape
     has_depth = "depths" in sample_batch
     has_masks = "masks" in sample_batch
     print(
         f"[Info] Training image resolution: H={img_height}, W={img_width}, "
+        f"temporal_window={temporal_window}, temporal_stride_list={cfg.get('dataset', {}).get('temporal_stride_list', [cfg.get('dataset', {}).get('temporal_stride', cfg.get('dataset', {}).get('timestep_interval', 1))])}, "
+        f"temporal_min_state_change={cfg.get('dataset', {}).get('temporal_min_state_change', 0.0)}, "
         f"sampled_views={camera_num}, depth={has_depth}, masks={has_masks}"
     )
 

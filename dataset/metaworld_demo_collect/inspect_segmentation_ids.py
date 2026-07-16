@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import warnings
 from collections import Counter, defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -92,6 +94,26 @@ def _parse_selectors(raw: str | None) -> list[str] | None:
     return out
 
 
+def _dedupe(items: Iterable[str]) -> list[str]:
+    seen = set()
+    out = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _norm_tokens(*parts: Any) -> set[str]:
+    text = " ".join(str(part or "") for part in parts).lower()
+    return {token for token in re.split(r"[^a-z0-9]+", text) if token}
+
+
+def _has_any_token(tokens: set[str], *needles: str) -> bool:
+    return any(needle in tokens for needle in needles)
+
+
 def _row(
     *,
     obj_id: int,
@@ -140,6 +162,7 @@ def _load_name_table(demo: h5py.Group) -> dict[tuple[int, int], dict[str, Any]]:
     return table
 
 
+@lru_cache(maxsize=None)
 def _load_model_table(env_id: str, env_name: str) -> dict[tuple[int, int], dict[str, Any]]:
     os.environ.setdefault("MUJOCO_GL", "egl")
     warnings.filterwarnings("ignore", message=".*Box observation space maximum and minimum values are equal.*")
@@ -253,6 +276,7 @@ def _role_for(row: dict[str, Any]) -> str:
     body = str(row.get("body_name", "")).lower()
     body_path = str(row.get("body_path", "")).lower()
     label = f"{name} {body} {body_path}"
+    tokens = _norm_tokens(name, body, body_path)
 
     if typ == "background" or int(row.get("id", 0)) < 0:
         return "exclude:background"
@@ -267,28 +291,69 @@ def _role_for(row: dict[str, Any]) -> str:
             return "exclude:robot_base"
         if body == "base":
             return "exclude:robot_base"
-        if "wall" in body_path or body == "wall":
-            return "wall"
         if "buttonbox" in body or body == "box":
             return "optional:button_box"
-        if body == "button" or "button" in name or "btn" in name:
-            return "button"
-        if any(token in label for token in ("rightpad", "leftpad", "rightclaw", "leftclaw", "hand", "rail")):
+
+        # Keep robot gripper matching exact/token based. A substring check for
+        # "hand" incorrectly classifies task parts such as "handle" and
+        # "HammerHandle" as gripper geometry.
+        if (
+            body in {"right_hand", "leftpad", "rightpad", "leftclaw", "rightclaw", "hand"}
+            or name in {"rightpad_geom", "leftpad_geom", "rail"}
+            or _has_any_token(tokens, "rightpad", "leftpad", "rightclaw", "leftclaw")
+        ):
             return "robot_gripper"
-        if body == "right_arm_base_link" or body == "head" or body.startswith("right_l"):
+        if (
+            body == "right_arm_base_link"
+            or body == "head"
+            or re.fullmatch(r"right_l\d+", body or "") is not None
+            or any(re.fullmatch(r"right_l\d+", token or "") for token in tokens)
+        ):
             return "robot_arm"
+
+        if "wall" in body_path or body == "wall" or "plug_wall" in body:
+            return "task_wall"
+        if body == "button" or "button" in name or "btn" in name:
+            return "task_button"
+        if "hammerblock" in label or "nail" in label:
+            return "task_fixture"
+        if (
+            "mug" in body
+            or "mug" in name
+            or body == "obj"
+            or name == "objgeom"
+            or "plug" in body
+            or "hammer" in body
+            or "hammer" in name
+        ):
+            return "task_object"
+        if "handle" in body or "handle" in name or "hdlprs" in body or "hdlprs" in name:
+            return "task_handle"
+        if any(
+            token in label
+            for token in (
+                "cm_link",
+                "cmbutton",
+                "door",
+                "drawer",
+                "faucet",
+                "lever",
+                "window",
+            )
+        ):
+            return "task_fixture"
     if typ == "site":
         if "endeffector" in name:
             return "optional:gripper_site"
-        if "button" in name or "hole" in name:
-            return "optional:button_site"
+        if any(token in name for token in ("goal", "target", "start", "button", "handle", "hole", "coffee")):
+            return "optional:task_site"
         return "exclude:site_marker"
     return ""
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="List and recommend segmentation selectors stored in a Meta-World HDF5 dataset.")
-    parser.add_argument("hdf5_path", help="Dataset created by collect_metaworld_demos.py")
+    parser.add_argument("hdf5_paths", nargs="+", help="Dataset(s) created by collect_metaworld_demos.py")
     parser.add_argument("--demo", default=None, help="Comma-separated demo keys to inspect. Defaults to the first demo.")
     parser.add_argument("--views", default=None, help="Comma-separated camera names. Defaults to every camera in the demo.")
     parser.add_argument("--max-frames", type=int, default=25, help="Maximum frames per demo to scan; use 0 for all frames.")
@@ -298,10 +363,6 @@ def main() -> None:
     parser.add_argument("--no-model-lookup", action="store_true", help="Do not instantiate Meta-World to enrich generic geom IDs with body names.")
     args = parser.parse_args()
 
-    hdf5_path = Path(args.hdf5_path)
-    if not hdf5_path.exists():
-        raise FileNotFoundError(hdf5_path)
-
     selected = _parse_selectors(args.selectors or args.ids)
 
     env_counts: dict[str, Counter[int]] = defaultdict(Counter)
@@ -310,41 +371,46 @@ def main() -> None:
     env_infos: dict[str, dict[tuple[int, int], dict[str, Any]]] = defaultdict(dict)
     env_ids: dict[str, str] = {}
 
-    with h5py.File(hdf5_path, "r") as f:
-        if "data" not in f:
-            raise ValueError(f"{hdf5_path} has no /data group.")
-        for demo_key in _iter_demos(f, args.demo):
-            demo = f["data"][demo_key]
-            env_name = str(demo.attrs.get("env_name", "default"))
-            env_id = str(demo.attrs.get("env_id", "Meta-World/MT1"))
-            env_ids.setdefault(env_name, env_id)
-            env_infos[env_name].update(_load_name_table(demo))
-            if not args.no_model_lookup:
-                env_infos[env_name].update(_load_model_table(env_id, env_name))
+    for raw_path in args.hdf5_paths:
+        hdf5_path = Path(raw_path)
+        if not hdf5_path.exists():
+            raise FileNotFoundError(hdf5_path)
 
-            obs = demo["obs"]
-            camera_names = json.loads(demo.attrs["camera_names"])
-            views = _parse_views(args.views) or list(camera_names)
-            for view in views:
-                seg_name = f"{view}_seg"
-                if seg_name not in obs:
-                    raise ValueError(f"Missing {seg_name} in /data/{demo_key}/obs. Was segmentation enabled during collection?")
-                seg = obs[seg_name]
-                frame_count = seg.shape[0] if args.max_frames <= 0 else min(seg.shape[0], int(args.max_frames))
-                seg_type = obs.get(f"{view}_seg_type", None)
-                for frame_idx in range(frame_count):
-                    ids = np.asarray(seg[frame_idx], dtype=np.int32)
-                    unique, counts = np.unique(ids, return_counts=True)
-                    env_counts[env_name].update({int(k): int(v) for k, v in zip(unique, counts)})
-                    env_pixels[env_name] += int(ids.size)
-                    if seg_type is not None:
-                        types = np.asarray(seg_type[frame_idx], dtype=np.int32)
-                        pairs, pair_counts = np.unique(
-                            np.stack([ids.reshape(-1), types.reshape(-1)], axis=1),
-                            axis=0,
-                            return_counts=True,
-                        )
-                        env_type_counts[env_name].update({(int(row[0]), int(row[1])): int(c) for row, c in zip(pairs, pair_counts)})
+        with h5py.File(hdf5_path, "r") as f:
+            if "data" not in f:
+                raise ValueError(f"{hdf5_path} has no /data group.")
+            for demo_key in _iter_demos(f, args.demo):
+                demo = f["data"][demo_key]
+                env_name = str(demo.attrs.get("env_name", "default"))
+                env_id = str(demo.attrs.get("env_id", "Meta-World/MT1"))
+                env_ids.setdefault(env_name, env_id)
+                env_infos[env_name].update(_load_name_table(demo))
+                if not args.no_model_lookup:
+                    env_infos[env_name].update(_load_model_table(env_id, env_name))
+
+                obs = demo["obs"]
+                camera_names = json.loads(demo.attrs["camera_names"])
+                views = _parse_views(args.views) or list(camera_names)
+                for view in views:
+                    seg_name = f"{view}_seg"
+                    if seg_name not in obs:
+                        raise ValueError(f"Missing {seg_name} in /data/{demo_key}/obs. Was segmentation enabled during collection?")
+                    seg = obs[seg_name]
+                    frame_count = seg.shape[0] if args.max_frames <= 0 else min(seg.shape[0], int(args.max_frames))
+                    seg_type = obs.get(f"{view}_seg_type", None)
+                    for frame_idx in range(frame_count):
+                        ids = np.asarray(seg[frame_idx], dtype=np.int32)
+                        unique, counts = np.unique(ids, return_counts=True)
+                        env_counts[env_name].update({int(k): int(v) for k, v in zip(unique, counts)})
+                        env_pixels[env_name] += int(ids.size)
+                        if seg_type is not None:
+                            types = np.asarray(seg_type[frame_idx], dtype=np.int32)
+                            pairs, pair_counts = np.unique(
+                                np.stack([ids.reshape(-1), types.reshape(-1)], axis=1),
+                                axis=0,
+                                return_counts=True,
+                            )
+                            env_type_counts[env_name].update({(int(row[0]), int(row[1])): int(c) for row, c in zip(pairs, pair_counts)})
 
     for env_name in sorted(env_counts):
         total = max(1, env_pixels[env_name])
@@ -364,12 +430,14 @@ def main() -> None:
                 role = _role_for(info)
                 rows.append((count, obj_id, -999, info, role))
 
+        sorted_rows = sorted(rows, key=lambda item: (item[0], item[1], item[2]), reverse=True)
+
         role_selectors: dict[str, list[str]] = defaultdict(list)
-        for count, obj_id, obj_type, info, role in sorted(rows, reverse=True):
+        for count, obj_id, obj_type, info, role in sorted_rows:
             if role and not role.startswith("exclude:"):
                 role_selectors[role].append(_selector(obj_id, obj_type))
 
-        for count, obj_id, obj_type, info, role in sorted(rows, reverse=True)[: max(1, int(args.top))]:
+        for count, obj_id, obj_type, info, role in sorted_rows[: max(1, int(args.top))]:
             name = str(info.get("name", ""))
             body = str(info.get("body_name", ""))
             print(
@@ -377,25 +445,27 @@ def main() -> None:
                 f"{count}\t{100.0 * count / total:.3f}\t{role}\t{name}\t{body}"
             )
 
-        task_roles = ["robot_arm", "robot_gripper", "button", "wall"]
+        core_roles = ["robot_arm", "robot_gripper", "task_object", "task_handle", "task_button", "task_fixture", "task_wall"]
+        optional_roles = ["optional:button_box", "optional:table_retaining_wall", "optional:gripper_site", "optional:task_site"]
         task_selectors: list[str] = []
-        for role in task_roles:
+        for role in core_roles:
             task_selectors.extend(role_selectors.get(role, []))
+        task_selectors = _dedupe(task_selectors)
 
         print("\nSuggested role selectors from scanned pixels:")
-        for role in task_roles + ["optional:button_box", "optional:table_retaining_wall", "optional:gripper_site", "optional:button_site"]:
+        for role in core_roles + optional_roles:
             values = role_selectors.get(role, [])
             if values:
-                print(f"  {role}: {_yaml_list(values)}")
+                print(f"  {role}: {_yaml_list(_dedupe(values))}")
 
         if task_selectors:
-            print("\nRecommended config snippet for robot arm + gripper + button + wall:")
+            print("\nRecommended config snippet for robot + task-relevant geometry:")
             print("dataset:")
             print("  use_segmentation_mask: true")
             print("  selected_seg_ids:")
             print(f"    {env_name}: {_yaml_list(task_selectors)}")
             if role_selectors.get("optional:button_box"):
-                with_box = task_selectors + role_selectors["optional:button_box"]
+                with_box = _dedupe(task_selectors + role_selectors["optional:button_box"])
                 print("\nOptional if you also want the button housing/box:")
                 print(f"    {env_name}: {_yaml_list(with_box)}")
 

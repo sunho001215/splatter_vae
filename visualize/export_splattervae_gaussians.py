@@ -328,18 +328,15 @@ def generate_gaussians_for_source(
     device: torch.device,
 ) -> Dict[str, torch.Tensor]:
     x = image_to_tensor(image_u8).unsqueeze(0).to(device)
-    z_inv, _, z_dep, _, _ = vae.encode(
-        x,
-        deterministic_invariant=True,
-        deterministic_dependent=True,
-    )
-    splatter = vae.decode(z_inv.contiguous(), z_dep.contiguous())
+    x_seq = x[:, None, None].expand(-1, int(vae.temporal_window), 1, -1, -1, -1).contiguous()
+    latents, _, _ = vae.encode_sequence(x_seq)
+    decoded = vae.decode_sequence(latents["s_inv"], latents["z_dep_all"][:, 0])
 
     k = torch.from_numpy(source_k).unsqueeze(0).to(device=device, dtype=torch.float32)
     c2w = torch.from_numpy(source_c2w).unsqueeze(0).to(device=device, dtype=torch.float32)
     return converter(
-        proposal_map=splatter,
-        z_inv=z_inv.contiguous(),
+        proposal_map=decoded["base_map"],
+        z_inv=latents["s_inv"].contiguous(),
         source_cameras_view_to_world=c2w,
         intrinsics=k,
         activate_output=True,

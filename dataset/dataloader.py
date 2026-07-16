@@ -121,12 +121,12 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
     samples across environments during training.
 
     Returned tensors:
-        images: (N_cam, 3, H, W) float32 in [-1, 1]
-        K:      (N_cam, 3, 3) camera intrinsics
+        images: (T, N_cam, 3, H, W) float32 in [-1, 1]
+        K:      (N_cam, 3, 3) camera intrinsics for static cameras
         c2w:    (N_cam, 4, 4) OpenCV camera-to-world transforms
         w2c:    (N_cam, 4, 4) OpenCV world-to-camera transforms
-        depths: optional (N_cam, 1, H, W) float32 metric camera-z depth
-        masks:  optional (N_cam, 1, H, W) float32 selected segmentation mask
+        depths: optional (T, N_cam, 1, H, W) float32 metric camera-z depth
+        masks:  optional (T, N_cam, 1, H, W) float32 selected segmentation mask
     """
 
     def __init__(
@@ -138,6 +138,11 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         max_frames_per_demo: Optional[int] = None,
         seed: int = 0,
         min_time_gap: int = 10,
+        temporal_window: int = 3,
+        temporal_stride: int = 1,
+        temporal_stride_list: Optional[Sequence[int]] = None,
+        temporal_min_state_change: float = 0.0,
+        temporal_gripper_change_weight: float = 0.05,
         use_depth: bool = False,
         use_segmentation_mask: bool = False,
         selected_seg_ids: SegIdSpec = None,
@@ -155,8 +160,19 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
             raise ValueError(f"camera_num must be positive when set, got {camera_num}.")
 
         # ``min_time_gap`` remains for backward-compatible config loading, but
-        # it is no longer used because this dataset returns one state at a time.
+        # it is no longer used because this dataset returns strided windows.
         self.min_time_gap = int(min_time_gap)
+        self.temporal_window = max(1, int(temporal_window))
+        self.temporal_stride = max(1, int(temporal_stride))
+        if temporal_stride_list is None:
+            self.temporal_stride_list = [self.temporal_stride]
+        else:
+            self.temporal_stride_list = sorted({max(1, int(stride)) for stride in temporal_stride_list})
+            if len(self.temporal_stride_list) == 0:
+                raise ValueError("temporal_stride_list must contain at least one positive stride.")
+            self.temporal_stride = self.temporal_stride_list[0]
+        self.temporal_min_state_change = max(0.0, float(temporal_min_state_change))
+        self.temporal_gripper_change_weight = max(0.0, float(temporal_gripper_change_weight))
         self.use_depth = bool(use_depth)
         self.use_segmentation_mask = bool(use_segmentation_mask)
         self.selected_seg_ids = _normalize_seg_id_spec(selected_seg_ids)
@@ -170,6 +186,8 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         self.demo_lengths: Dict[DemoRef, int] = {}
         self.demo_mask_selectors: Dict[DemoRef, List[SegSelector]] = {}
         self.cam_cache: Dict[DemoRef, Dict[str, Dict[str, np.ndarray]]] = {}
+        self.demo_motion_features: Dict[DemoRef, Optional[np.ndarray]] = {}
+        self.demo_motion_feature_kinds: Dict[DemoRef, str] = {}
         self.samples: List[SampleRef] = []
 
         self._index_files_and_build_samples()
@@ -293,6 +311,20 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                         timesteps = min(timesteps, int(self.max_frames_per_demo))
                     self.demo_lengths[demo_ref] = timesteps
 
+                    motion_features = None
+                    motion_kind = ""
+                    obs_env_grp = demo_grp.get("obs_env", None)
+                    if obs_env_grp is not None and "obs" in obs_env_grp:
+                        motion_features = np.asarray(obs_env_grp["obs"][:timesteps], dtype=np.float32)
+                        motion_kind = "obs"
+                    elif "states" in demo_grp:
+                        motion_features = np.asarray(demo_grp["states"][:timesteps], dtype=np.float32)
+                        motion_kind = "state"
+                    if motion_features is not None and motion_features.ndim == 1:
+                        motion_features = motion_features[:, None]
+                    self.demo_motion_features[demo_ref] = motion_features
+                    self.demo_motion_feature_kinds[demo_ref] = motion_kind
+
                     if "camera_params" not in demo_grp:
                         raise ValueError(f'"/data/{demo_key}" in "{dataset_path}" has no "camera_params" group.')
                     cam_params_grp = demo_grp["camera_params"]
@@ -319,7 +351,10 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
 
                         self.cam_cache[demo_ref][view] = {"K": K, "w2c": w2c, "c2w": c2w}
 
-                    for t_idx in range(timesteps):
+                    max_start = timesteps - self.temporal_window + 1
+                    if max_start <= 0:
+                        continue
+                    for t_idx in range(max_start):
                         self.samples.append((file_idx, demo_key, t_idx))
 
         mask_msg = ""
@@ -328,56 +363,129 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
             mask_msg = f", segmentation_selectors={unique_specs}"
         print(
             f"[metaworldMultiViewTemporalHDF5Dataset] Indexed {len(self.demo_refs)} demos "
-            f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, views={self.views}{mask_msg}"
+            f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, "
+            f"temporal_window={self.temporal_window}, temporal_stride_list={self.temporal_stride_list}, "
+            f"temporal_min_state_change={self.temporal_min_state_change:g}, "
+            f"views={self.views}{mask_msg}"
         )
+        if len(self.samples) == 0:
+            raise ValueError(
+                f"No temporal windows were found. Check max_frames_per_demo, "
+                f"temporal_window={self.temporal_window}, and temporal_stride_list={self.temporal_stride_list}."
+            )
 
     def __len__(self) -> int:
         return len(self.samples)
+
+    def _largest_interval_indices(self, start: int, timesteps: int) -> List[int]:
+        if self.temporal_window <= 1:
+            return [int(start)]
+        end = int(timesteps - 1)
+        indices = [int(start)]
+        span = max(0, end - int(start))
+        for step in range(1, self.temporal_window):
+            remaining_slots = self.temporal_window - 1 - step
+            proposed = int(round(int(start) + span * step / max(1, self.temporal_window - 1)))
+            min_allowed = indices[-1] + 1
+            max_allowed = end - remaining_slots
+            indices.append(max(min_allowed, min(proposed, max_allowed)))
+        return indices
+
+    def _state_change(self, demo_ref: DemoRef, t0: int, t1: int) -> float:
+        features = self.demo_motion_features.get(demo_ref, None)
+        if features is None or t0 >= features.shape[0] or t1 >= features.shape[0]:
+            return float("inf")
+        a = features[int(t0)]
+        b = features[int(t1)]
+        if not np.isfinite(a).all() or not np.isfinite(b).all():
+            return float("inf")
+        if self.demo_motion_feature_kinds.get(demo_ref, "") == "obs" and a.shape[0] >= 4:
+            ee_change = float(np.linalg.norm(b[:3] - a[:3]))
+            gripper_change = abs(float(b[3] - a[3]))
+            return ee_change + self.temporal_gripper_change_weight * gripper_change
+        return float(np.linalg.norm(b - a))
+
+    def _sample_time_indices(self, demo_ref: DemoRef, start: int, timesteps: int, temporal_stride: int) -> List[int]:
+        if self.temporal_window <= 1:
+            return [int(start)]
+        if int(start) + (self.temporal_window - 1) * int(temporal_stride) >= int(timesteps):
+            return self._largest_interval_indices(start, timesteps)
+
+        if self.temporal_min_state_change <= 0.0 or self.demo_motion_features.get(demo_ref, None) is None:
+            return [int(start + offset * temporal_stride) for offset in range(self.temporal_window)]
+
+        indices = [int(start)]
+        prev_t = int(start)
+        for _offset in range(1, self.temporal_window):
+            candidate = prev_t + int(temporal_stride)
+            while candidate < int(timesteps) and self._state_change(demo_ref, prev_t, candidate) < self.temporal_min_state_change:
+                candidate += 1
+            if candidate >= int(timesteps):
+                return self._largest_interval_indices(start, timesteps)
+            indices.append(candidate)
+            prev_t = candidate
+        return indices
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         file_idx, demo_key, t = self.samples[idx]
         demo_ref = (file_idx, demo_key)
         obs_grp = self._get_h5(file_idx)["data"][demo_key]["obs"]
 
-        images = []
-        depths = []
-        masks = []
         intrinsics = []
         c2w_mats = []
         w2c_mats = []
-        selected_selectors = self.demo_mask_selectors.get(demo_ref, [])
         for view in self.views:
-            img_np = np.array(obs_grp[f"{view}_rgb"][t], dtype=np.uint8)
-            mask_np = None
-            if self.use_segmentation_mask:
-                seg_np = np.array(obs_grp[f"{view}_seg"][t], dtype=np.int32)
-                seg_type_np = None
-                if any(obj_type is not None for obj_type, _obj_id in selected_selectors):
-                    seg_type_name = f"{view}_seg_type"
-                    if seg_type_name not in obs_grp:
-                        raise ValueError(
-                            f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
-                            "Recollect with segmentation.save_objtype=true or use plain integer IDs."
-                        )
-                    seg_type_np = np.array(obs_grp[seg_type_name][t], dtype=np.int32)
-                mask_np = _segmentation_mask_from_selectors(seg_np, seg_type_np, selected_selectors)
-                img_np = np.where(mask_np[..., None], img_np, 0).astype(np.uint8)
-                masks.append(torch.from_numpy(mask_np.astype(np.float32)).unsqueeze(0))
-            images.append(image_to_tensor(img_np))
-
-            if self.use_depth:
-                depth_np = np.array(obs_grp[f"{view}_depth"][t], dtype=np.float32)
-                if depth_np.ndim == 3 and depth_np.shape[-1] == 1:
-                    depth_np = depth_np[..., 0]
-                depths.append(torch.from_numpy(depth_np).unsqueeze(0))
-
             cam = self.cam_cache[demo_ref][view]
             intrinsics.append(torch.from_numpy(cam["K"]))
             c2w_mats.append(torch.from_numpy(cam["c2w"]))
             w2c_mats.append(torch.from_numpy(cam["w2c"]))
 
+        images_by_time = []
+        depths_by_time = []
+        masks_by_time = []
+        selected_selectors = self.demo_mask_selectors.get(demo_ref, [])
+        temporal_stride = self.rng.choice(self.temporal_stride_list)
+        t_indices = self._sample_time_indices(
+            demo_ref=demo_ref,
+            start=int(t),
+            timesteps=self.demo_lengths[demo_ref],
+            temporal_stride=int(temporal_stride),
+        )
+        for t_idx in t_indices:
+            images = []
+            depths = []
+            masks = []
+            for view in self.views:
+                img_np = np.array(obs_grp[f"{view}_rgb"][t_idx], dtype=np.uint8)
+                if self.use_segmentation_mask:
+                    seg_np = np.array(obs_grp[f"{view}_seg"][t_idx], dtype=np.int32)
+                    seg_type_np = None
+                    if any(obj_type is not None for obj_type, _obj_id in selected_selectors):
+                        seg_type_name = f"{view}_seg_type"
+                        if seg_type_name not in obs_grp:
+                            raise ValueError(
+                                f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
+                                "Recollect with segmentation.save_objtype=true or use plain integer IDs."
+                            )
+                        seg_type_np = np.array(obs_grp[seg_type_name][t_idx], dtype=np.int32)
+                    mask_np = _segmentation_mask_from_selectors(seg_np, seg_type_np, selected_selectors)
+                    masks.append(torch.from_numpy(mask_np.astype(np.float32)).unsqueeze(0))
+                images.append(image_to_tensor(img_np))
+
+                if self.use_depth:
+                    depth_np = np.array(obs_grp[f"{view}_depth"][t_idx], dtype=np.float32)
+                    if depth_np.ndim == 3 and depth_np.shape[-1] == 1:
+                        depth_np = depth_np[..., 0]
+                    depths.append(torch.from_numpy(depth_np).unsqueeze(0))
+
+            images_by_time.append(torch.stack(images, dim=0))
+            if self.use_depth:
+                depths_by_time.append(torch.stack(depths, dim=0))
+            if self.use_segmentation_mask:
+                masks_by_time.append(torch.stack(masks, dim=0))
+
         sample = {
-            "images": torch.stack(images, dim=0),
+            "images": torch.stack(images_by_time, dim=0),
             "K": torch.stack(intrinsics, dim=0),
             "c2w": torch.stack(c2w_mats, dim=0),
             "w2c": torch.stack(w2c_mats, dim=0),
@@ -385,11 +493,13 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
             "hdf5_path": self.dataset_paths[file_idx],
             "file_idx": int(file_idx),
             "t": int(t),
+            "t_indices": torch.tensor(t_indices, dtype=torch.long),
+            "temporal_stride": int(temporal_stride),
         }
         if self.use_depth:
-            sample["depths"] = torch.stack(depths, dim=0)
+            sample["depths"] = torch.stack(depths_by_time, dim=0)
         if self.use_segmentation_mask:
-            sample["masks"] = torch.stack(masks, dim=0)
+            sample["masks"] = torch.stack(masks_by_time, dim=0)
         return sample
 
 
@@ -439,6 +549,11 @@ def build_train_valid_loaders_metaworld(
     views: Optional[List[str]] = None,
     camera_num: Optional[int] = None,
     min_time_gap: int = 25,
+    temporal_window: int = 3,
+    temporal_stride: int = 1,
+    temporal_stride_list: Optional[Sequence[int]] = None,
+    temporal_min_state_change: float = 0.0,
+    temporal_gripper_change_weight: float = 0.05,
     drop_last_train: bool = True,
     shuffle_train: bool = True,
     shuffle_valid: bool = True,
@@ -479,6 +594,11 @@ def build_train_valid_loaders_metaworld(
         max_frames_per_demo=max_frames_per_demo,
         seed=seed,
         min_time_gap=min_time_gap,
+        temporal_window=temporal_window,
+        temporal_stride=temporal_stride,
+        temporal_stride_list=temporal_stride_list,
+        temporal_min_state_change=temporal_min_state_change,
+        temporal_gripper_change_weight=temporal_gripper_change_weight,
         use_depth=use_depth,
         use_segmentation_mask=use_segmentation_mask,
         selected_seg_ids=selected_seg_ids,
@@ -491,6 +611,11 @@ def build_train_valid_loaders_metaworld(
         max_frames_per_demo=max_frames_per_demo,
         seed=seed + 999,
         min_time_gap=min_time_gap,
+        temporal_window=temporal_window,
+        temporal_stride=temporal_stride,
+        temporal_stride_list=temporal_stride_list,
+        temporal_min_state_change=temporal_min_state_change,
+        temporal_gripper_change_weight=temporal_gripper_change_weight,
         use_depth=use_depth,
         use_segmentation_mask=use_segmentation_mask,
         selected_seg_ids=selected_seg_ids,

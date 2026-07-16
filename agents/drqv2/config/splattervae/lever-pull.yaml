@@ -4,8 +4,8 @@ device: cuda
 wandb:
   enabled: true
   project: metaworld-lever-pull-DrQv2
-  name: SplatterVAE-full-implementation-pre-vq
-  tags: [full-implementation, embed-dim-128, codebook-embed-dim-64]
+  name: SplatterVAE-temporal-state
+  tags: [full-implementation, embed-dim-128]
 
 env:
   benchmark_id: Meta-World/MT1
@@ -77,28 +77,22 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-fsq/lever-pull/full-implementation/step_00300000.pth
-    feature_source: pre_vq
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/lever-pull/full-implementation/step_00300000.pth
+    feature_source: state
     max_sh_degree: 1
     gaussians_per_pixel: 1
 
-    codebook:
-      invariant:
-        quantizer: fsq
-        embed_dim: 6
-        fsq_levels: [8, 8, 8, 5, 5, 5]
-      dependent:
-        quantizer: fsq
-        embed_dim: 6
-        fsq_levels: [8, 8, 8, 5, 5, 5]
-
     model:
-      fusion_style: plus
-      use_dependent_vq: true
-      is_dependent_ae: false
-      use_invariant_vq: true
-      is_invariant_ae: false
-      dep_input_mask_ratio: 0.0
+      temporal_window: 3
+      inv_tube_mask_ratio: 0.50
+      dep_mask_ratio: 0.75
+      tube_mask_per_view: true
+      use_single_state_vector: true
+      state_dim: 256
+      view_dim: 256
+      use_temporal_delta_decoder: true
+      dependent_uses_first_timestep_only: true
+      delta_xyz_scale: 0.05
       dep_mask_eval: false
 
 agent:
@@ -139,7 +133,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/lever-pull/splattervae_full-implementation_pre-vq/seed42/
+  replay_dir: ./buffer/metaworld/lever-pull/splattervae_temporal_state/seed42/
   replay_num_workers: 4
   nstep: 3
 
@@ -149,7 +143,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_full-implementation_pre-vq/lever-pull/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_temporal_state/lever-pull/seed42/
 
 visualization:
   enabled: false

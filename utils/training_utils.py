@@ -5,7 +5,7 @@ import math
 import torch
 from torch.utils.data import DataLoader
 
-from models.splatter_train_config import TrainConfig
+from models.train_config import TrainConfig
 
 
 def normalize_lr_schedule(schedule: str) -> str:
