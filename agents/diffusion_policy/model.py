@@ -519,10 +519,16 @@ class PretrainedEncoderConditioner(nn.Module):
     def __init__(self, cfg: Dict[str, Any], proprio_dim: int, output_dim: int) -> None:
         super().__init__()
         self.n_obs_steps = int(cfg["policy"]["n_obs_steps"])
+        self.encoder_type = str(cfg["vision"].get("encoder_type", "")).lower().replace("_", "")
+        self.visual_temporal_window = self.n_obs_steps
+        if self.encoder_type == "splattervae":
+            splatter_cfg = dict(cfg["vision"].get("splatter_vae", {}))
+            model_cfg = dict(splatter_cfg.get("model", {}))
+            self.visual_temporal_window = int(model_cfg.get("temporal_window", self.n_obs_steps))
         # VisionEncoderAdapter expects the DrQ-v2 naming for stacked frames.
         adapter_cfg = copy.deepcopy(cfg)
         adapter_cfg.setdefault("env", {})
-        adapter_cfg["env"]["frame_stack"] = self.n_obs_steps
+        adapter_cfg["env"]["frame_stack"] = self.visual_temporal_window
         if "vit" not in adapter_cfg.get("vision", {}) and "vit" in adapter_cfg:
             adapter_cfg["vision"]["vit"] = adapter_cfg["vit"]
         adapter_cfg.setdefault("agent", {})
@@ -546,7 +552,15 @@ class PretrainedEncoderConditioner(nn.Module):
         b, to, c, h, w = image.shape
         if to != self.n_obs_steps:
             raise ValueError(f"Expected n_obs_steps={self.n_obs_steps}, got {to}")
-        stacked = image.reshape(b, to * c, h, w).contiguous()
+        visual_image = image
+        if self.encoder_type == "splattervae" and to != self.visual_temporal_window:
+            if to > self.visual_temporal_window:
+                visual_image = image[:, -self.visual_temporal_window :]
+            else:
+                pad_count = self.visual_temporal_window - to
+                suffix = image[:, -1:].expand(-1, pad_count, -1, -1, -1)
+                visual_image = torch.cat((image, suffix), dim=1)
+        stacked = visual_image.reshape(b, self.visual_temporal_window * c, h, w).contiguous()
         visual = self.adapter(stacked, is_feature=False)
         cond_parts = [visual]
         if proprio.shape[-1] > 0:

@@ -94,10 +94,8 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
         view_dim=model_cfg.get("view_dim", None),
         use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
         dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
-        use_temporal_delta_decoder=bool(model_cfg.get("use_temporal_delta_decoder", True)),
         decoder_condition_mode=str(model_cfg.get("decoder_condition_mode", "concat")),
         gaussians_per_pixel=gaussians_per_pixel,
-        delta_xyz_scale=float(model_cfg.get("delta_xyz_scale", 0.05)),
     )
 
 

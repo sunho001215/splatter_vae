@@ -42,7 +42,7 @@ def train_splatter_vae(
     valid_dataloader: Optional[DataLoader] = None,
     resume_ckpt: Optional[str] = None,
 ):
-    """Train SplatterVAE with direct Gaussians, masked rendering, and masked Chamfer supervision."""
+    """Train SplatterVAE with sparse motion controls and unified rendering supervision."""
     device = torch.device(cfg_train.device)
     vae.to(device)
     splatter_to_gaussians = _build_converter(splatter_cfg, device)
@@ -114,10 +114,11 @@ def train_splatter_vae(
                 masks=masks,
                 return_renders=False,
             )
-            rec_loss = rec_out["rec_loss"]
-            occupancy_loss = rec_out["occupancy_loss"]
-            point_chamfer_loss = rec_out["point_chamfer_loss"]
-            delta_smooth_loss = rec_out["delta_smooth_loss"]
+            rgb_loss = rec_out["rgb_loss"]
+            silhouette_loss = rec_out["silhouette_loss"]
+            global_depth_loss = rec_out["global_depth_loss"]
+            local_depth_loss = rec_out["local_depth_loss"]
+            depth_loss = rec_out["depth_loss"]
 
             inv_contrastive_loss, dep_contrastive_loss = compute_view_structured_contrastive_losses(
                 s_inv_by_view=view_latents["s_inv_by_view"],
@@ -138,15 +139,17 @@ def train_splatter_vae(
                     consistency_latents["z_dep_by_view"],
                 )
             else:
-                inv_consistency_loss = rec_loss.new_zeros(())
-                dep_consistency_loss = rec_loss.new_zeros(())
+                inv_consistency_loss = rgb_loss.new_zeros(())
+                dep_consistency_loss = rgb_loss.new_zeros(())
 
             rec_weight = float(cfg_train.rec_weight)
+            render_loss = (
+                rec_weight * rgb_loss
+                + float(cfg_train.silhouette_weight) * silhouette_loss
+                + float(cfg_train.global_depth_weight) * depth_loss
+            )
             total_loss = (
-                rec_weight * rec_loss
-                + cfg_train.occupancy_weight * occupancy_loss
-                + cfg_train.point_chamfer_weight * point_chamfer_loss
-                + cfg_train.delta_smooth_weight * delta_smooth_loss
+                render_loss
                 + cfg_train.inv_contrastive_weight * inv_contrastive_loss
                 + cfg_train.inv_consistency_weight * inv_consistency_loss
                 + cfg_train.dep_contrastive_weight * dep_contrastive_loss
@@ -154,10 +157,12 @@ def train_splatter_vae(
             )
 
             finite_terms = {
-                "rec_loss": rec_loss,
-                "occupancy_loss": occupancy_loss,
-                "point_chamfer_loss": point_chamfer_loss,
-                "delta_smooth_loss": delta_smooth_loss,
+                "rgb_loss": rgb_loss,
+                "silhouette_loss": silhouette_loss,
+                "global_depth_loss": global_depth_loss,
+                "local_depth_loss": local_depth_loss,
+                "depth_loss": depth_loss,
+                "render_loss": render_loss,
                 "inv_contrastive_loss": inv_contrastive_loss,
                 "inv_consistency_loss": inv_consistency_loss,
                 "dep_contrastive_loss": dep_contrastive_loss,
@@ -183,49 +188,32 @@ def train_splatter_vae(
                 print(
                     f"[Epoch {epoch + 1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} lr={current_lr:.2e} "
-                    f"(rgb={rec_loss.item():.4f}, rgb_w={rec_weight:.4f}, "
-                    f"occupancy={occupancy_loss.item():.4f}, "
-                    f"gaussian_chamfer={point_chamfer_loss.item():.4f}, "
-                    f"delta={delta_smooth_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
-                    f"dep_con={dep_contrastive_loss.item():.4f}, mask={rec_out['mask_pixel_ratio'].item():.3f})"
+                    f"(rgb={rgb_loss.item():.4f}, silhouette={silhouette_loss.item():.4f}, "
+                    f"depth={depth_loss.item():.4f}, inv_con={inv_contrastive_loss.item():.4f}, "
+                    f"dep_con={dep_contrastive_loss.item():.4f})"
                 )
                 if wandb.run is not None:
-                    timestep_log = {}
-                    for time_idx in range(3):
-                        chamfer_key = f"point_chamfer_loss_t{time_idx}"
-                        if chamfer_key in rec_out:
-                            timestep_log[f"train/{chamfer_key}"] = rec_out[chamfer_key].item()
                     wandb.log(
                         {
                             "train/total_loss": total_loss.item(),
+                            "train/render_loss": render_loss.item(),
                             "train/lr": current_lr,
-                            "train/rec_loss": rec_loss.item(),
-                            "train/rec_weight": rec_weight,
-                            "train/rec_loss_weighted": rec_weight * rec_loss.item(),
-                            "train/occupancy_loss": occupancy_loss.item(),
-                            "train/occupancy_weight": float(cfg_train.occupancy_weight),
-                            "train/occupancy_loss_weighted": (cfg_train.occupancy_weight * occupancy_loss).item(),
-                            "train/occupancy_fixed_opacity": float(cfg_train.occupancy_fixed_opacity),
-                            "train/rgb_loss_mask_dilation": float(cfg_train.rgb_loss_mask_dilation),
-                            "train/point_chamfer_loss": point_chamfer_loss.item(),
-                            "train/point_chamfer_loss_weighted": (cfg_train.point_chamfer_weight * point_chamfer_loss).item(),
-                            "train/delta_smooth_loss": delta_smooth_loss.item(),
-                            "train/delta_smooth_loss_weighted": (cfg_train.delta_smooth_weight * delta_smooth_loss).item(),
-                            "train/delta01_mean": rec_out["delta01_mean"].item(),
-                            "train/delta12_mean": rec_out["delta12_mean"].item(),
-                            "train/delta_magnitude_mean": rec_out["delta_magnitude_mean"].item(),
-                            "train/gt_point_count_mean": rec_out["gt_point_count_mean"].item(),
+                            "train/rgb_reconstruction_loss": rgb_loss.item(),
+                            "train/silhouette_foreground_loss": rec_out["silhouette_foreground_loss"].item(),
+                            "train/silhouette_background_loss": rec_out["silhouette_background_loss"].item(),
+                            "train/silhouette_loss": silhouette_loss.item(),
+                            "train/global_depth_loss": global_depth_loss.item(),
+                            "train/local_depth_loss": local_depth_loss.item(),
+                            "train/depth_loss": depth_loss.item(),
+                            "train/control_motion01_mean": rec_out["control_motion01_mean"].item(),
+                            "train/control_motion12_mean": rec_out["control_motion12_mean"].item(),
+                            "train/dense_motion_mean": rec_out["dense_motion_mean"].item(),
+                            "train/mean_valid_gaussian_opacity": rec_out["mean_valid_gaussian_opacity"].item(),
                             "train/inv_contrastive_loss": inv_contrastive_loss.item(),
                             "train/inv_consistency_loss": inv_consistency_loss.item(),
                             "train/dep_contrastive_loss": dep_contrastive_loss.item(),
                             "train/dep_consistency_loss": dep_consistency_loss.item(),
-                            "train/mean_opacity": rec_out["mean_opacity"].item(),
-                            "train/mask_pixel_ratio": rec_out["mask_pixel_ratio"].item(),
-                            "train/expanded_mask_pixel_ratio": rec_out["expanded_mask_pixel_ratio"].item(),
-                            "train/point_chamfer_weight": float(cfg_train.point_chamfer_weight),
-                            "train/delta_smooth_weight": float(cfg_train.delta_smooth_weight),
                             "global_step": global_step,
-                            **timestep_log,
                         },
                         step=global_step,
                     )

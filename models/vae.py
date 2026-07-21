@@ -98,14 +98,60 @@ class FiLMTokenTransformer(nn.Module):
         return x[:, 1:, :], hidden_states
 
 
+class SparseMotionHead(nn.Module):
+    """Shared transition-conditioned MLP for sparse control translations."""
+
+    def __init__(self, state_dim: int, hidden_dim: int = 256, transition_dim: int = 16):
+        super().__init__()
+        self.transition_embedding = nn.Embedding(2, int(transition_dim))
+        self.mlp = nn.Sequential(
+            nn.Linear(int(state_dim) + 3 + int(transition_dim), int(hidden_dim)),
+            nn.SiLU(),
+            nn.Linear(int(hidden_dim), int(hidden_dim)),
+            nn.SiLU(),
+            nn.Linear(int(hidden_dim), 3),
+        )
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+
+    def forward(
+        self,
+        s_inv: torch.Tensor,
+        normalized_control_xyz: torch.Tensor,
+        control_valid_mask: torch.Tensor,
+        delta_max: float,
+    ) -> torch.Tensor:
+        """Return bounded translations with shape ``(B,2,K,3)``."""
+        if s_inv.dim() != 2 or normalized_control_xyz.dim() != 3:
+            raise ValueError(
+                "Expected s_inv as (B,D) and normalized_control_xyz as (B,K,3), got "
+                f"{tuple(s_inv.shape)} and {tuple(normalized_control_xyz.shape)}."
+            )
+        batch, controls = normalized_control_xyz.shape[:2]
+        if control_valid_mask.shape != (batch, controls):
+            raise ValueError(
+                f"Expected control_valid_mask shape {(batch, controls)}, got {tuple(control_valid_mask.shape)}."
+            )
+
+        transition_ids = torch.arange(2, device=s_inv.device)
+        transition = self.transition_embedding(transition_ids).view(1, 2, 1, -1).expand(batch, -1, controls, -1)
+        state = s_inv[:, None, None, :].expand(-1, 2, controls, -1)
+        coords = normalized_control_xyz[:, None].expand(-1, 2, -1, -1)
+        raw_motion = self.mlp(torch.cat([state, coords, transition], dim=-1))
+        bounded_motion = float(delta_max) * torch.tanh(raw_motion)
+        return bounded_motion * control_valid_mask[:, None, :, None].to(dtype=bounded_motion.dtype)
+
+
 class SplatterVAE(nn.Module):
     """Joint spatiotemporal multi-view SplatterVAE.
 
     The invariant branch consumes a 3-frame multi-view sequence and returns one
     state vector ``s_inv``. The dependent branch consumes only the first
-    timestep and returns per-view anchor vectors. The decoder reconstructs dense
-    Gaussian maps from learnable spatial queries modulated by FiLM from
-    either concat(s_inv, z_dep_source) or s_inv + z_dep_source.
+    timestep and returns per-view anchor vectors. The DPT decoder reconstructs
+    only the dense t0 Gaussian map from learnable spatial queries modulated by
+    FiLM from either concat(s_inv, z_dep_source) or s_inv + z_dep_source. A
+    separate shared motion head predicts sparse control translations from
+    ``s_inv`` and normalized t0 control coordinates.
     """
 
     def __init__(
@@ -124,10 +170,8 @@ class SplatterVAE(nn.Module):
         view_dim: Optional[int] = None,
         use_single_state_vector: bool = True,
         dependent_uses_first_timestep_only: bool = True,
-        use_temporal_delta_decoder: bool = True,
         decoder_condition_mode: str = "concat",
         gaussians_per_pixel: int = 1,
-        delta_xyz_scale: float = 0.05,
         **_: object,
     ):
         super().__init__()
@@ -135,9 +179,6 @@ class SplatterVAE(nn.Module):
             raise ValueError("The migrated SplatterVAE requires use_single_state_vector=true.")
         if not bool(dependent_uses_first_timestep_only):
             raise ValueError("The migrated SplatterVAE requires dependent_uses_first_timestep_only=true.")
-        if not bool(use_temporal_delta_decoder):
-            raise ValueError("The migrated SplatterVAE requires use_temporal_delta_decoder=true.")
-
         self.img_height = int(img_height)
         self.img_width = int(img_width)
         self.temporal_window = int(temporal_window)
@@ -194,8 +235,6 @@ class SplatterVAE(nn.Module):
         self.dep_mask_eval = bool(dep_mask_eval)
         self.splatter_channels = int(splatter_channels)
         self.gaussians_per_pixel = int(gaussians_per_pixel)
-        self.delta_channels = 3 * self.gaussians_per_pixel
-        self.delta_xyz_scale = float(delta_xyz_scale)
 
         self.state_token = nn.Parameter(torch.zeros(1, 1, latent_dim))
         self.dep_token = nn.Parameter(torch.zeros(1, 1, 1, latent_dim))
@@ -225,8 +264,12 @@ class SplatterVAE(nn.Module):
         self.decoder = DPTHead(
             in_dim=latent_dim,
             features=int(vit_cfg.get("dpt_features", dpt_features)),
-            out_channels=self.splatter_channels + 2 * self.delta_channels,
+            out_channels=self.splatter_channels,
             readout_type=str(vit_cfg.get("dpt_readout_type", "project")),
+        )
+        self.motion_head = SparseMotionHead(
+            state_dim=self.state_dim,
+            hidden_dim=max(128, self.state_dim),
         )
 
         nn.init.trunc_normal_(self.state_token, std=0.02)
@@ -405,7 +448,7 @@ class SplatterVAE(nn.Module):
         return s_inv + z_dep_source
 
     def decode_sequence(self, s_inv: torch.Tensor, z_dep_source: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """Decode state and first-frame view anchor into base and delta maps."""
+        """Decode state and first-frame view anchor into the t0 base map only."""
         if s_inv.dim() != 2:
             s_inv = s_inv.flatten(1)
         if z_dep_source.dim() != 2:
@@ -419,16 +462,23 @@ class SplatterVAE(nn.Module):
             output_size=(self.img_height, self.img_width),
         ).contiguous()
 
-        base_map = dense[:, : self.splatter_channels]
-        delta01_raw = dense[:, self.splatter_channels : self.splatter_channels + self.delta_channels]
-        delta12_raw = dense[:, self.splatter_channels + self.delta_channels :]
-        delta01_map = torch.tanh(delta01_raw) * self.delta_xyz_scale
-        delta12_map = torch.tanh(delta12_raw) * self.delta_xyz_scale
-        return {
-            "base_map": base_map.contiguous(),
-            "delta01_map": delta01_map.contiguous(),
-            "delta12_map": delta12_map.contiguous(),
-        }
+        return {"base_map": dense.contiguous()}
+
+    def predict_control_motion(
+        self,
+        s_inv: torch.Tensor,
+        normalized_control_xyz: torch.Tensor,
+        control_valid_mask: torch.Tensor,
+        delta_max: float,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Predict t0->t1 and t1->t2 translations without using view latents."""
+        motion = self.motion_head(
+            s_inv=s_inv,
+            normalized_control_xyz=normalized_control_xyz,
+            control_valid_mask=control_valid_mask,
+            delta_max=delta_max,
+        )
+        return motion[:, 0].contiguous(), motion[:, 1].contiguous()
 
     def decode(self, z_inv: torch.Tensor, z_dep: torch.Tensor) -> torch.Tensor:
         """Compatibility wrapper returning only the t0/base splatter map."""

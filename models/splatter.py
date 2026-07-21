@@ -79,7 +79,11 @@ def default_splatter_channels(gaussians_per_pixel: int = 1, max_sh_degree: int =
 
 
 def _depth_render_mode(render_mode: str) -> bool:
-    return render_mode in {"D", "ED", "d", "Ed"}
+    return str(render_mode).upper() in {"D", "ED"}
+
+
+def _rgb_depth_render_mode(render_mode: str) -> bool:
+    return str(render_mode).upper() in {"RGB+D", "RGB+ED"}
 
 
 def render_predicted(
@@ -91,7 +95,6 @@ def render_predicted(
     scaling_modifier: float = 1.0,
     override_color: Optional[torch.Tensor] = None,
     override_opacity: Optional[float | torch.Tensor] = None,
-    occupancy_opacity: Optional[float | torch.Tensor] = None,
     detach_xyz: bool = False,
     detach_scale_rotation: bool = False,
     packed: bool = False,
@@ -242,45 +245,14 @@ def render_predicted(
         path_render_mode=render_mode,
     )
 
-    occupancy_alphas = None
-    if occupancy_opacity is not None:
-        if torch.is_tensor(occupancy_opacity):
-            occupancy_opacity_tensor = occupancy_opacity.to(device=device, dtype=dtype)
-            if occupancy_opacity_tensor.ndim == 0:
-                occupancy_opacity_tensor = occupancy_opacity_tensor.expand(pc["xyz"].shape[:2])
-            elif occupancy_opacity_tensor.shape[-1] == 1:
-                occupancy_opacity_tensor = occupancy_opacity_tensor.squeeze(-1)
-        else:
-            occupancy_opacity_tensor = torch.full(
-                pc["xyz"].shape[:2],
-                float(occupancy_opacity),
-                device=device,
-                dtype=dtype,
-            )
-        occupancy_opacities = torch.nan_to_num(
-            occupancy_opacity_tensor,
-            nan=0.0,
-            posinf=1.0,
-            neginf=0.0,
-        ).clamp(0.0, 1.0)
-        if valid_mask is not None:
-            occupancy_opacities = occupancy_opacities * valid_mask.to(device=device, dtype=occupancy_opacities.dtype)
-        occupancy_colors = means.new_zeros((*means.shape[:-1], 3))
-        _, occupancy_alphas, _ = rasterize_path(
-            path_means=means,
-            path_quats=quats.detach(),
-            path_scales=scales.detach(),
-            path_opacities=occupancy_opacities,
-            path_colors=occupancy_colors,
-            path_backgrounds=torch.zeros_like(backgrounds),
-            path_sh_degree=None,
-            path_render_mode="RGB",
-        )
-
     if _depth_render_mode(render_mode):
         rendered_image = None
         rendered_depth = render_colors.permute(0, 1, 4, 2, 3).contiguous()
-    elif render_colors.shape[-1] > 3:
+    elif _rgb_depth_render_mode(render_mode):
+        if render_colors.shape[-1] != 4:
+            raise RuntimeError(
+                f"{render_mode} rendering returned {render_colors.shape[-1]} channels; expected RGB plus one depth channel."
+            )
         rendered_image = render_colors[..., :3].permute(0, 1, 4, 2, 3).contiguous()
         rendered_depth = render_colors[..., 3:4].permute(0, 1, 4, 2, 3).contiguous()
     else:
@@ -288,9 +260,6 @@ def render_predicted(
         rendered_depth = None
 
     rendered_alpha = render_alphas.permute(0, 1, 4, 2, 3).contiguous()
-    occupancy_alpha = None
-    if occupancy_alphas is not None:
-        occupancy_alpha = occupancy_alphas.permute(0, 1, 4, 2, 3).contiguous()
     radii = meta.get("radii", None)
     visibility_filter = (radii > 0) if torch.is_tensor(radii) else None
 
@@ -298,7 +267,6 @@ def render_predicted(
         "render": rendered_image,
         "depth": rendered_depth,
         "alpha": rendered_alpha,
-        "occupancy_alpha": occupancy_alpha,
         "viewspace_points": None,
         "visibility_filter": visibility_filter,
         "radii": radii,

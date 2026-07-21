@@ -19,13 +19,15 @@ class TrainConfig:
 
     rec_weight: float = 1.0
     ssim_weight: float = 0.2
-    rgb_loss_mask_dilation: int = 3
-    occupancy_weight: float = 1.0
-    occupancy_fixed_opacity: float = 0.8
+    silhouette_weight: float = 0.1
+    global_depth_weight: float = 0.1
+    local_depth_weight: float = 1.0
+    local_depth_patch_size: int = 16
+    local_depth_min_valid_pixels: int = 16
 
-    point_chamfer_weight: float = 5.0
-    chamfer_huber_delta: float = 0.05
-    delta_smooth_weight: float = 1.0e-3
+    num_motion_controls: int = 256
+    motion_num_neighbors: int = 4
+    motion_delta_max: float = 0.05
 
     inv_contrastive_weight: float = 1.0
     inv_consistency_weight: float = 0.5

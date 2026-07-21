@@ -14,7 +14,7 @@ dataset:
     - "../../data/metaworld/pre-training/coffee-push.hdf5"
 
   # DataLoader settings
-  batch_size: 16
+  batch_size: 8
   num_workers: 8
   pin_memory: true
 

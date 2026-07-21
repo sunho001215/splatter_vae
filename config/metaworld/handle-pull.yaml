@@ -32,10 +32,8 @@ model:
   use_single_state_vector: true
   state_dim: 256
   view_dim: 64
-  use_temporal_delta_decoder: true
   decoder_condition_mode: concat
   dependent_uses_first_timestep_only: true
-  delta_xyz_scale: 0.05
   dep_mask_eval: true
 
 # -----------------------------------------------------------------------------
@@ -121,15 +119,20 @@ train:
   min_lr: 5.0e-5
   device: cuda
 
-  # Direct Gaussian masked-rendering and Chamfer loss weights.
+  # Unified RGB, silhouette, and expected-depth supervision.
   rec_weight: 1.0
   ssim_weight: 0.2
-  rgb_loss_mask_dilation: 3
-  occupancy_weight: 0.1
-  occupancy_fixed_opacity: 0.8
-  point_chamfer_weight: 0.1
-  chamfer_huber_delta: 0.05
-  delta_smooth_weight: 1.0e-2
+  silhouette_weight: 0.1
+  global_depth_weight: 0.1
+  local_depth_weight: 1.0
+  local_depth_patch_size: 16
+  local_depth_min_valid_pixels: 16
+
+  # Sparse persistent motion controls and fixed t0 interpolation.
+  num_motion_controls: 256
+  motion_num_neighbors: 4
+  motion_delta_max: 0.05
+
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
@@ -139,7 +142,7 @@ train:
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/handle-pull/state-delta/
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/handle-pull/sparse-controls/
   resume_from_last: false
   val_log_pointclouds: true
   val_pointcloud_max_points: 4096
@@ -152,11 +155,11 @@ wandb:
   enabled: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-handle-pull-temporal-state-delta
+  run_name: metaworld-handle-pull-temporal-sparse-controls
   tags:
     - temporal-state-bottleneck
     - film-query-decoder
-    - gaussian-delta-tracking
+    - sparse-control-motion
     - sequence-rendering
     - diverse-demo-collection
     - state-vector-contrastive

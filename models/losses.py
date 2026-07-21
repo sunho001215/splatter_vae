@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from fused_ssim import fused_ssim
+from fused_ssim import FusedSSIMMap
 
 
 def compute_reconstruction_loss(
@@ -11,10 +11,10 @@ def compute_reconstruction_loss(
     loss_mask: torch.Tensor | None = None,
 ):
     """
-    Compute combined L1 + SSIM reconstruction loss over a masked image region.
+    Compute combined L1 + D-SSIM reconstruction loss over a masked image region.
 
     predicted, ground_truth: (B,3,H,W), values in [0,1]
-    ssim_weight: weight for SSIM term in [0,1]
+    ssim_weight: weight for D-SSIM term in [0,1]
     loss_mask: optional (B,1,H,W) or (B,H,W) evaluation mask.
     """
     mask = None
@@ -39,7 +39,19 @@ def compute_reconstruction_loss(
     if ssim_weight <= 0.0:
         return l1_loss
 
-    ssim_map = fused_ssim(predicted, ground_truth)  # (B,H,W)
+    # ``fused_ssim`` reduces the spatial map to a scalar internally, which
+    # cannot be masked after the fact. Call its public autograd function
+    # directly, reduce the RGB channels, and only then apply the exact spatial
+    # foreground mask.
+    ssim_map = FusedSSIMMap.apply(
+        0.01**2,
+        0.03**2,
+        predicted.contiguous(),
+        ground_truth.contiguous(),
+        "same",
+        True,
+        2,
+    ).mean(dim=1)
     ssim_loss_map = 1.0 - ssim_map
     if mask is None:
         ssim_loss = ssim_loss_map.mean()
@@ -49,6 +61,118 @@ def compute_reconstruction_loss(
 
     total_loss = (1 - ssim_weight) * l1_loss + ssim_weight * ssim_loss
     return total_loss
+
+
+def compute_balanced_silhouette_loss(
+    rendered_alpha: torch.Tensor,
+    target_mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Balanced foreground/background BCE using the learned-opacity alpha."""
+    alpha = rendered_alpha.clamp(1.0e-6, 1.0 - 1.0e-6)
+    mask = target_mask.to(device=alpha.device, dtype=alpha.dtype).clamp(0.0, 1.0)
+    if alpha.shape != mask.shape:
+        raise ValueError(f"Alpha and mask shapes must match, got {tuple(alpha.shape)} and {tuple(mask.shape)}.")
+
+    if alpha.dim() < 2:
+        raise ValueError(f"Expected alpha and mask with spatial dimensions, got {tuple(alpha.shape)}.")
+
+    # Treat every item in the leading dimensions as an independent render.
+    # Separately normalize its foreground and background pixels, then average
+    # over renders containing that region. This prevents large silhouettes or
+    # backgrounds from assigning a larger weight to a camera/timestep. The
+    # weighted reductions also return graph-connected zeros when a region is
+    # absent from every render.
+    alpha_per_render = alpha.reshape(-1, alpha.shape[-2] * alpha.shape[-1])
+    mask_per_render = mask.reshape_as(alpha_per_render)
+    foreground_count = mask_per_render.sum(dim=-1)
+    foreground_per_render = -(mask_per_render * torch.log(alpha_per_render)).sum(dim=-1)
+    foreground_per_render = foreground_per_render / foreground_count.clamp_min(1.0)
+    foreground_valid = (foreground_count > 0).to(dtype=alpha.dtype)
+    foreground_loss = (foreground_per_render * foreground_valid).sum() / foreground_valid.sum().clamp_min(1.0)
+
+    background_mask = 1.0 - mask_per_render
+    background_count = background_mask.sum(dim=-1)
+    background_per_render = -(background_mask * torch.log1p(-alpha_per_render)).sum(dim=-1)
+    background_per_render = background_per_render / background_count.clamp_min(1.0)
+    background_valid = (background_count > 0).to(dtype=alpha.dtype)
+    background_loss = (background_per_render * background_valid).sum() / background_valid.sum().clamp_min(1.0)
+    silhouette_loss = 0.5 * (foreground_loss + background_loss)
+    return foreground_loss, background_loss, silhouette_loss
+
+
+def _masked_standardize(
+    values: torch.Tensor,
+    valid: torch.Tensor,
+    eps: float = 1.0e-6,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    weights = valid.to(dtype=values.dtype)
+    count = weights.sum(dim=-1, keepdim=True)
+    mean = (values * weights).sum(dim=-1, keepdim=True) / count.clamp_min(1.0)
+    centered = values - mean
+    variance = (centered.square() * weights).sum(dim=-1, keepdim=True) / count.clamp_min(1.0)
+    normalized = centered / variance.clamp_min(float(eps)).sqrt()
+    return normalized, count.squeeze(-1), variance.squeeze(-1)
+
+
+def compute_global_local_depth_loss(
+    rendered_depth: torch.Tensor,
+    target_depth: torch.Tensor | None,
+    foreground_mask: torch.Tensor,
+    patch_size: int,
+    min_valid_pixels: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Scale/shift-invariant Smooth-L1 depth supervision at global and patch scales."""
+    zero = torch.nan_to_num(rendered_depth).sum() * 0.0
+    if target_depth is None:
+        return zero, zero
+    if rendered_depth.shape != target_depth.shape or rendered_depth.shape != foreground_mask.shape:
+        raise ValueError(
+            "Rendered depth, target depth, and foreground mask must share shape, got "
+            f"{tuple(rendered_depth.shape)}, {tuple(target_depth.shape)}, and {tuple(foreground_mask.shape)}."
+        )
+
+    predicted = torch.nan_to_num(rendered_depth, nan=0.0, posinf=0.0, neginf=0.0)
+    target_is_valid = torch.isfinite(target_depth) & (target_depth > 0.0)
+    target = torch.where(target_is_valid, target_depth, torch.zeros_like(target_depth))
+    foreground = foreground_mask.to(device=predicted.device, dtype=torch.bool)
+    valid = foreground & target_is_valid
+
+    flat_predicted = predicted.reshape(-1, predicted.shape[-2] * predicted.shape[-1])
+    flat_target = target.reshape_as(flat_predicted)
+    flat_valid = valid.reshape_as(flat_predicted)
+    pred_global, global_count, _ = _masked_standardize(flat_predicted, flat_valid)
+    target_global, _, _ = _masked_standardize(flat_target, flat_valid)
+    global_penalty = F.smooth_l1_loss(pred_global, target_global, beta=1.0, reduction="none")
+    global_per_image = (global_penalty * flat_valid).sum(dim=-1) / global_count.clamp_min(1.0)
+    valid_images = global_count >= 2
+    global_loss = global_per_image.masked_select(valid_images).mean() if bool(valid_images.any()) else zero
+
+    size = max(1, int(patch_size))
+    min_pixels = max(2, int(min_valid_pixels))
+    height, width = predicted.shape[-2:]
+    pad_h = (size - height % size) % size
+    pad_w = (size - width % size) % size
+    predicted_2d = predicted.reshape(-1, 1, height, width)
+    target_2d = target.reshape(-1, 1, height, width)
+    valid_2d = valid.reshape(-1, 1, height, width)
+    if pad_h or pad_w:
+        padding = (0, pad_w, 0, pad_h)
+        predicted_2d = F.pad(predicted_2d, padding)
+        target_2d = F.pad(target_2d, padding)
+        valid_2d = F.pad(valid_2d, padding, value=False)
+
+    pred_patches = F.unfold(predicted_2d, kernel_size=size, stride=size).transpose(1, 2)
+    target_patches = F.unfold(target_2d, kernel_size=size, stride=size).transpose(1, 2)
+    valid_patches = F.unfold(valid_2d.to(dtype=predicted.dtype), kernel_size=size, stride=size)
+    valid_patches = valid_patches.transpose(1, 2) > 0.5
+
+    pred_local, local_count, _ = _masked_standardize(pred_patches, valid_patches)
+    target_local, _, target_variance = _masked_standardize(target_patches, valid_patches)
+    valid_patch = (local_count >= min_pixels) & (target_variance > 1.0e-6)
+    local_penalty = F.smooth_l1_loss(pred_local, target_local, beta=1.0, reduction="none")
+    local_per_patch = (local_penalty * valid_patches).sum(dim=-1) / local_count.clamp_min(1.0)
+    local_loss = local_per_patch.masked_select(valid_patch).mean() if bool(valid_patch.any()) else zero
+    return global_loss, local_loss
 
 
 def masked_multi_positive_nce(
