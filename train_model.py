@@ -96,6 +96,10 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
         dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
         decoder_condition_mode=str(model_cfg.get("decoder_condition_mode", "concat")),
         gaussians_per_pixel=gaussians_per_pixel,
+        motion_graph_hidden_dim=int(model_cfg.get("motion_graph_hidden_dim", 128)),
+        motion_graph_num_layers=int(model_cfg.get("motion_graph_num_layers", 2)),
+        motion_graph_num_neighbors=int(model_cfg.get("motion_graph_num_neighbors", 8)),
+        dynamic_patch_threshold=float(model_cfg.get("dynamic_patch_threshold", 0.05)),
     )
 
 

@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, get_worker_info
 
-from utils.general_utils import image_to_tensor, invert_4x4
+from utils.general_utils import invert_4x4
 
 DatasetPathInput = Union[str, Sequence[str]]
 DemoRef = Tuple[int, str]
@@ -186,6 +186,7 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         self.demo_lengths: Dict[DemoRef, int] = {}
         self.demo_mask_selectors: Dict[DemoRef, List[SegSelector]] = {}
         self.cam_cache: Dict[DemoRef, Dict[str, Dict[str, np.ndarray]]] = {}
+        self.cam_tensor_cache: Dict[DemoRef, Dict[str, torch.Tensor]] = {}
         self.demo_motion_features: Dict[DemoRef, Optional[np.ndarray]] = {}
         self.demo_motion_feature_kinds: Dict[DemoRef, str] = {}
         self.samples: List[SampleRef] = []
@@ -351,6 +352,13 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
 
                         self.cam_cache[demo_ref][view] = {"K": K, "w2c": w2c, "c2w": c2w}
 
+                    self.cam_tensor_cache[demo_ref] = {
+                        key: torch.from_numpy(
+                            np.stack([self.cam_cache[demo_ref][view][key] for view in self.views], axis=0)
+                        )
+                        for key in ("K", "c2w", "w2c")
+                    }
+
                     max_start = timesteps - self.temporal_window + 1
                     if max_start <= 0:
                         continue
@@ -431,19 +439,8 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         demo_ref = (file_idx, demo_key)
         obs_grp = self._get_h5(file_idx)["data"][demo_key]["obs"]
 
-        intrinsics = []
-        c2w_mats = []
-        w2c_mats = []
-        for view in self.views:
-            cam = self.cam_cache[demo_ref][view]
-            intrinsics.append(torch.from_numpy(cam["K"]))
-            c2w_mats.append(torch.from_numpy(cam["c2w"]))
-            w2c_mats.append(torch.from_numpy(cam["w2c"]))
-
-        images_by_time = []
-        depths_by_time = []
-        masks_by_time = []
         selected_selectors = self.demo_mask_selectors.get(demo_ref, [])
+        requires_seg_type = any(obj_type is not None for obj_type, _obj_id in selected_selectors)
         temporal_stride = self.rng.choice(self.temporal_stride_list)
         t_indices = self._sample_time_indices(
             demo_ref=demo_ref,
@@ -451,44 +448,50 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
             timesteps=self.demo_lengths[demo_ref],
             temporal_stride=int(temporal_stride),
         )
-        for t_idx in t_indices:
-            images = []
-            depths = []
-            masks = []
-            for view in self.views:
-                img_np = np.array(obs_grp[f"{view}_rgb"][t_idx], dtype=np.uint8)
-                if self.use_segmentation_mask:
-                    seg_np = np.array(obs_grp[f"{view}_seg"][t_idx], dtype=np.int32)
-                    seg_type_np = None
-                    if any(obj_type is not None for obj_type, _obj_id in selected_selectors):
-                        seg_type_name = f"{view}_seg_type"
-                        if seg_type_name not in obs_grp:
-                            raise ValueError(
-                                f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
-                                "Recollect with segmentation.save_objtype=true or use plain integer IDs."
-                            )
-                        seg_type_np = np.array(obs_grp[seg_type_name][t_idx], dtype=np.int32)
-                    mask_np = _segmentation_mask_from_selectors(seg_np, seg_type_np, selected_selectors)
-                    masks.append(torch.from_numpy(mask_np.astype(np.float32)).unsqueeze(0))
-                images.append(image_to_tensor(img_np))
 
-                if self.use_depth:
-                    depth_np = np.array(obs_grp[f"{view}_depth"][t_idx], dtype=np.float32)
-                    if depth_np.ndim == 3 and depth_np.shape[-1] == 1:
-                        depth_np = depth_np[..., 0]
-                    depths.append(torch.from_numpy(depth_np).unsqueeze(0))
+        images_by_view = []
+        depths_by_view = []
+        masks_by_view = []
+        for view in self.views:
+            # Each modality is read once per camera for the complete temporal
+            # window. HDF5 fancy indexing supports these strictly increasing IDs.
+            rgb_block = np.asarray(obs_grp[f"{view}_rgb"][t_indices], dtype=np.uint8)
+            image_block = torch.from_numpy(rgb_block).permute(0, 3, 1, 2).to(torch.float32)
+            image_block = image_block.div(255.0).mul(2.0).sub(1.0)
+            images_by_view.append(image_block)
 
-            images_by_time.append(torch.stack(images, dim=0))
             if self.use_depth:
-                depths_by_time.append(torch.stack(depths, dim=0))
-            if self.use_segmentation_mask:
-                masks_by_time.append(torch.stack(masks, dim=0))
+                depth_block = np.asarray(obs_grp[f"{view}_depth"][t_indices], dtype=np.float32)
+                if depth_block.ndim == 4 and depth_block.shape[-1] == 1:
+                    depth_block = depth_block[..., 0]
+                depths_by_view.append(torch.from_numpy(depth_block).unsqueeze(1))
 
+            if self.use_segmentation_mask:
+                seg_block = np.asarray(obs_grp[f"{view}_seg"][t_indices], dtype=np.int32)
+                seg_type_block = None
+                if requires_seg_type:
+                    seg_type_name = f"{view}_seg_type"
+                    if seg_type_name not in obs_grp:
+                        raise ValueError(
+                            f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
+                            "Recollect with segmentation.save_objtype=true or use plain integer IDs."
+                        )
+                    seg_type_block = np.asarray(obs_grp[seg_type_name][t_indices], dtype=np.int32)
+                mask_block = _segmentation_mask_from_selectors(
+                    seg_block,
+                    seg_type_block,
+                    selected_selectors,
+                )
+                masks_by_view.append(
+                    torch.from_numpy(mask_block.astype(np.float32)).unsqueeze(1)
+                )
+
+        cameras = self.cam_tensor_cache[demo_ref]
         sample = {
-            "images": torch.stack(images_by_time, dim=0),
-            "K": torch.stack(intrinsics, dim=0),
-            "c2w": torch.stack(c2w_mats, dim=0),
-            "w2c": torch.stack(w2c_mats, dim=0),
+            "images": torch.stack(images_by_view, dim=1),
+            "K": cameras["K"],
+            "c2w": cameras["c2w"],
+            "w2c": cameras["w2c"],
             "demo_key": _demo_label(file_idx, demo_key, len(self.dataset_paths)),
             "hdf5_path": self.dataset_paths[file_idx],
             "file_idx": int(file_idx),
@@ -497,9 +500,9 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
             "temporal_stride": int(temporal_stride),
         }
         if self.use_depth:
-            sample["depths"] = torch.stack(depths_by_time, dim=0)
+            sample["depths"] = torch.stack(depths_by_view, dim=1)
         if self.use_segmentation_mask:
-            sample["masks"] = torch.stack(masks_by_time, dim=0)
+            sample["masks"] = torch.stack(masks_by_view, dim=1)
         return sample
 
 
@@ -621,6 +624,12 @@ def build_train_valid_loaders_metaworld(
         selected_seg_ids=selected_seg_ids,
     )
 
+    train_worker_options = {}
+    if num_workers > 0:
+        train_worker_options = {"persistent_workers": True, "prefetch_factor": 2}
+    valid_workers = max(1, num_workers // 2)
+    valid_worker_options = {"persistent_workers": True, "prefetch_factor": 2}
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -629,15 +638,17 @@ def build_train_valid_loaders_metaworld(
         pin_memory=pin_memory,
         drop_last=drop_last_train,
         worker_init_fn=_worker_init_fn,
+        **train_worker_options,
     )
     valid_loader = DataLoader(
         valid_dataset,
         batch_size=batch_size,
         shuffle=shuffle_valid,
-        num_workers=max(1, num_workers // 2),
+        num_workers=valid_workers,
         pin_memory=pin_memory,
         drop_last=True,
         worker_init_fn=_worker_init_fn,
+        **valid_worker_options,
     )
 
     return train_loader, valid_loader

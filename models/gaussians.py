@@ -15,6 +15,24 @@ class DirectSplatterToGaussians(nn.Module):
     def __init__(self, cfg: SplatterConfig):
         super().__init__()
         self.cfg = cfg
+        height = int(cfg.data.img_height)
+        width = int(cfg.data.img_width)
+        gaussians_per_pixel = int(cfg.model.gaussians_per_pixel)
+        ys, xs = torch.meshgrid(
+            torch.arange(height, dtype=torch.float32) + 0.5,
+            torch.arange(width, dtype=torch.float32) + 0.5,
+            indexing="ij",
+        )
+        self.register_buffer(
+            "pixel_center_x",
+            xs.reshape(-1).repeat_interleave(gaussians_per_pixel).view(1, -1),
+            persistent=False,
+        )
+        self.register_buffer(
+            "pixel_center_y",
+            ys.reshape(-1).repeat_interleave(gaussians_per_pixel).view(1, -1),
+            persistent=False,
+        )
 
     @property
     def params_per_gaussian(self) -> int:
@@ -182,15 +200,13 @@ class DirectSplatterToGaussians(nn.Module):
         dtype: torch.dtype,
         device: torch.device,
     ) -> torch.Tensor:
-        ys, xs = torch.meshgrid(
-            torch.arange(height, device=device, dtype=dtype) + 0.5,
-            torch.arange(width, device=device, dtype=dtype) + 0.5,
-            indexing="ij",
-        )
-        xs = xs.reshape(1, height * width, 1).expand(depth.shape[0], height * width, gaussians_per_pixel)
-        ys = ys.reshape(1, height * width, 1).expand(depth.shape[0], height * width, gaussians_per_pixel)
-        xs = xs.reshape(depth.shape[0], height * width * gaussians_per_pixel)
-        ys = ys.reshape(depth.shape[0], height * width * gaussians_per_pixel)
+        expected_points = height * width * gaussians_per_pixel
+        if self.pixel_center_x.shape[-1] != expected_points:
+            raise ValueError(
+                f"Cached pixel grid has {self.pixel_center_x.shape[-1]} points, expected {expected_points}."
+            )
+        xs = self.pixel_center_x.to(device=device, dtype=dtype).expand(depth.shape[0], -1)
+        ys = self.pixel_center_y.to(device=device, dtype=dtype).expand(depth.shape[0], -1)
 
         k = intrinsics.to(device=device, dtype=dtype)
         fx = k[:, 0, 0].view(depth.shape[0], 1).clamp_min(1.0e-6)

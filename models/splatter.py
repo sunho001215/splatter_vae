@@ -6,6 +6,7 @@ from typing import Dict, Optional
 import torch
 import torch.nn.functional as F
 
+from gsplat import spherical_harmonics
 from gsplat.rendering import rasterization
 
 
@@ -131,11 +132,11 @@ def render_predicted(
     elif torch.is_tensor(override_opacity):
         opacity_tensor = override_opacity.to(device=device, dtype=dtype)
         if opacity_tensor.ndim == 0:
-            opacity_tensor = opacity_tensor.expand(pc["xyz"].shape[:2])
+            opacity_tensor = opacity_tensor.expand(pc["xyz"].shape[:-1])
         elif opacity_tensor.shape[-1] == 1:
             opacity_tensor = opacity_tensor.squeeze(-1)
     else:
-        opacity_tensor = torch.full(pc["xyz"].shape[:2], float(override_opacity), device=device, dtype=dtype)
+        opacity_tensor = torch.full(pc["xyz"].shape[:-1], float(override_opacity), device=device, dtype=dtype)
     opacities = torch.nan_to_num(opacity_tensor, nan=0.0, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
 
     valid_mask = pc.get("valid_mask", None)
@@ -152,17 +153,61 @@ def render_predicted(
         features_dc = pc["features_dc"]
         features_rest = pc.get("features_rest", None)
         if features_rest is not None and features_rest.numel() > 0:
-            colors = torch.cat([features_dc, features_rest], dim=2)
+            colors = torch.cat([features_dc, features_rest], dim=-2)
             sh_degree = int(cfg.model.max_sh_degree)
         else:
             colors = features_dc
             sh_degree = 0
 
+    camera_shape = world_view_transform.shape[:-2]
     if bg_color.dim() == 1:
-        batch, views = world_view_transform.shape[:2]
-        backgrounds = bg_color.to(device=device, dtype=dtype).view(1, 1, 3).expand(batch, views, 3)
+        backgrounds = bg_color.to(device=device, dtype=dtype).view(
+            *((1,) * len(camera_shape)), 3
+        ).expand(*camera_shape, 3)
     else:
-        backgrounds = bg_color.to(device=device, dtype=dtype)
+        backgrounds = bg_color.to(device=device, dtype=dtype).expand(*camera_shape, 3)
+
+    # gsplat 1.5.x accepts arbitrary Gaussian/camera batch dimensions for
+    # activated colors, but its SH helper requires coefficients shaped [N,K,D].
+    # Flatten all batch-camera-Gaussian rows for one external SH evaluation,
+    # then render the camera-conditioned RGB values with sh_degree=None.
+    if sh_degree is not None and colors is not None and colors.dim() > 3:
+        gaussian_batch_shape = means.shape[:-2]
+        if colors.shape[:-3] != gaussian_batch_shape:
+            raise ValueError(
+                f"SH coefficient batch shape {colors.shape[:-3]} does not match means {gaussian_batch_shape}."
+            )
+        camera_count = world_view_transform.shape[-3]
+        rotation_w2c = world_view_transform[..., :3, :3]
+        translation_w2c = world_view_transform[..., :3, 3]
+        camera_positions = -torch.matmul(
+            rotation_w2c.transpose(-1, -2), translation_w2c.unsqueeze(-1)
+        ).squeeze(-1)
+        directions = F.normalize(
+            means.unsqueeze(-3) - camera_positions.unsqueeze(-2),
+            p=2,
+            dim=-1,
+            eps=1.0e-8,
+        )
+        camera_coefficients = colors.unsqueeze(-4).expand(
+            *gaussian_batch_shape,
+            camera_count,
+            colors.shape[-3],
+            colors.shape[-2],
+            colors.shape[-1],
+        )
+        flat_colors = spherical_harmonics(
+            sh_degree,
+            directions.reshape(-1, 3),
+            camera_coefficients.reshape(-1, colors.shape[-2], colors.shape[-1]),
+        )
+        colors = torch.clamp_min(flat_colors + 0.5, 0.0).view(
+            *gaussian_batch_shape,
+            camera_count,
+            means.shape[-2],
+            colors.shape[-1],
+        )
+        sh_degree = None
 
     raster_kwargs = dict(
         width=width,
@@ -172,94 +217,35 @@ def render_predicted(
         packed=packed,
     )
 
-    def rasterize_path(
-        path_means: torch.Tensor,
-        path_quats: torch.Tensor,
-        path_scales: torch.Tensor,
-        path_opacities: torch.Tensor,
-        path_colors: Optional[torch.Tensor],
-        path_backgrounds: torch.Tensor,
-        path_sh_degree: Optional[int],
-        path_render_mode: str,
-    ) -> tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
-        kwargs = dict(raster_kwargs, sh_degree=path_sh_degree, render_mode=path_render_mode)
-        # gsplat accepts batched Gaussians for activated RGB colors, but SH
-        # coefficients must be passed as an unbatched [N, K, D] tensor. The
-        # decoder predicts SH coefficients per sample, so render each sample
-        # independently and stack back to the usual [B, V, H, W, C] layout.
-        if path_sh_degree is not None and path_means.dim() == 3:
-            color_items = []
-            alpha_items = []
-            meta_items = []
-            for batch_idx in range(path_means.shape[0]):
-                item_colors = None if path_colors is None else path_colors[batch_idx]
-                item_bg = path_backgrounds[batch_idx] if path_backgrounds.dim() >= 3 else path_backgrounds
-                item_colors_out, item_alphas, item_meta = rasterization(
-                    means=path_means[batch_idx],
-                    quats=path_quats[batch_idx],
-                    scales=path_scales[batch_idx],
-                    opacities=path_opacities[batch_idx],
-                    colors=item_colors,
-                    viewmats=world_view_transform[batch_idx],
-                    Ks=intrinsics[batch_idx],
-                    backgrounds=item_bg,
-                    **kwargs,
-                )
-                color_items.append(item_colors_out)
-                alpha_items.append(item_alphas)
-                meta_items.append(item_meta)
-            out_colors = torch.stack(color_items, dim=0)
-            out_alphas = torch.stack(alpha_items, dim=0)
-            out_meta: Dict[str, torch.Tensor] = {}
-            for key in set().union(*(item.keys() for item in meta_items)):
-                values = [item.get(key) for item in meta_items]
-                if all(torch.is_tensor(value) for value in values):
-                    try:
-                        out_meta[key] = torch.stack(values, dim=0)
-                    except RuntimeError:
-                        out_meta[key] = values
-                else:
-                    out_meta[key] = values
-            return out_colors, out_alphas, out_meta
-
-        return rasterization(
-            means=path_means,
-            quats=path_quats,
-            scales=path_scales,
-            opacities=path_opacities,
-            colors=path_colors,
-            viewmats=world_view_transform,
-            Ks=intrinsics,
-            backgrounds=path_backgrounds,
-            **kwargs,
-        )
-
-    render_colors, render_alphas, meta = rasterize_path(
-        path_means=means,
-        path_quats=quats,
-        path_scales=scales,
-        path_opacities=opacities,
-        path_colors=colors,
-        path_backgrounds=backgrounds,
-        path_sh_degree=sh_degree,
-        path_render_mode=render_mode,
+    render_colors, render_alphas, meta = rasterization(
+        means=means,
+        quats=quats,
+        scales=scales,
+        opacities=opacities,
+        colors=colors,
+        viewmats=world_view_transform,
+        Ks=intrinsics,
+        backgrounds=backgrounds,
+        sh_degree=sh_degree,
+        render_mode=render_mode,
+        **raster_kwargs,
     )
 
     if _depth_render_mode(render_mode):
         rendered_image = None
-        rendered_depth = render_colors.permute(0, 1, 4, 2, 3).contiguous()
+        rendered_depth = render_colors.movedim(-1, -3).contiguous()
     elif _rgb_depth_render_mode(render_mode):
         if render_colors.shape[-1] != 4:
             raise RuntimeError(
                 f"{render_mode} rendering returned {render_colors.shape[-1]} channels; expected RGB plus one depth channel."
             )
-        rendered_image = render_colors[..., :3].permute(0, 1, 4, 2, 3).contiguous()
-        rendered_depth = render_colors[..., 3:4].permute(0, 1, 4, 2, 3).contiguous()
+        rendered_image = render_colors[..., :3].movedim(-1, -3).contiguous()
+        rendered_depth = render_colors[..., 3:4].movedim(-1, -3).contiguous()
     else:
-        rendered_image = render_colors.permute(0, 1, 4, 2, 3).contiguous()
+        rendered_image = render_colors.movedim(-1, -3).contiguous()
         rendered_depth = None
 
-    rendered_alpha = render_alphas.permute(0, 1, 4, 2, 3).contiguous()
+    rendered_alpha = render_alphas.movedim(-1, -3).contiguous()
     radii = meta.get("radii", None)
     visibility_filter = (radii > 0) if torch.is_tensor(radii) else None
 

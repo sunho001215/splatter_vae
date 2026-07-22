@@ -117,11 +117,14 @@ class MultiHeadSelfAttention(nn.Module):
         qkv = qkv.permute(2, 0, 3, 1, 4)  # (3, B, heads, N, head_dim)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        out = attn @ v
+        out = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            dropout_p=self.attn_drop.p if self.training else 0.0,
+            is_causal=False,
+            scale=self.scale,
+        )
         out = out.transpose(1, 2).reshape(b, n, c)
         out = self.proj(out)
         out = self.proj_drop(out)

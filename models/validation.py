@@ -9,11 +9,7 @@ from torchvision.utils import make_grid
 
 import wandb
 
-from models.losses import (
-    compute_dependent_view_consistency_loss,
-    compute_state_consistency_loss,
-    compute_view_structured_contrastive_losses,
-)
+from models.losses import compute_view_structured_representation_losses
 from models.splatter import SplatterConfig, render_predicted
 from models.gaussians import DirectSplatterToGaussians
 from models.pointcloud_utils import depths_to_world_point_cloud, sample_points
@@ -37,15 +33,61 @@ def make_wandb_named_image_panel(named_images: list[tuple[str, torch.Tensor]], m
     return wandb.Image(grid, caption=" | ".join(names))
 
 
-def make_wandb_input_image_panel(images_01: torch.Tensor, max_vis: int) -> wandb.Image:
+def _patch_mask_to_pixel_mask(
+    patch_mask: torch.Tensor,
+    height: int,
+    width: int,
+    patch_size: int,
+) -> torch.Tensor:
+    if patch_mask.dim() != 3:
+        raise ValueError(f"Expected patch mask as (B,A,N), got {tuple(patch_mask.shape)}.")
+    if height % patch_size != 0 or width % patch_size != 0:
+        raise ValueError(f"Image size {(height, width)} is not divisible by patch size {patch_size}.")
+    grid_height = height // patch_size
+    grid_width = width // patch_size
+    if patch_mask.shape[-1] != grid_height * grid_width:
+        raise ValueError(
+            f"Patch mask has {patch_mask.shape[-1]} entries; expected {grid_height * grid_width}."
+        )
+    pixel_mask = patch_mask.view(*patch_mask.shape[:2], grid_height, grid_width)
+    pixel_mask = pixel_mask.repeat_interleave(patch_size, dim=-2)
+    return pixel_mask.repeat_interleave(patch_size, dim=-1)
+
+
+def make_wandb_input_image_panel(
+    images_01: torch.Tensor,
+    inv_mask_by_view: torch.Tensor,
+    dep_mask_by_view: torch.Tensor,
+    patch_size: int,
+    max_vis: int,
+) -> wandb.Image:
+    """Show original inputs and the exact masks used by the single encoder pass."""
     if images_01.dim() == 5:
         images_01 = images_01[:, None]
+    height, width = images_01.shape[-2:]
+    invariant_pixel_mask = _patch_mask_to_pixel_mask(
+        inv_mask_by_view, height, width, patch_size
+    )
+    dependent_pixel_mask = _patch_mask_to_pixel_mask(
+        dep_mask_by_view, height, width, patch_size
+    )
+    neutral_gray = images_01.new_tensor(0.5)
     num_times_to_show = min(images_01.shape[1], 3)
     num_views_to_show = min(images_01.shape[2], 3)
     panel_items: list[tuple[str, torch.Tensor]] = []
-    for time_idx in range(num_times_to_show):
-        for view_idx in range(num_views_to_show):
-            panel_items.append((f"input_t{time_idx}_cam{view_idx}", images_01[:, time_idx, view_idx]))
+    for view_idx in range(num_views_to_show):
+        inv_mask = invariant_pixel_mask[:, view_idx, None]
+        for time_idx in range(num_times_to_show):
+            original = images_01[:, time_idx, view_idx]
+            invariant_masked = torch.where(inv_mask, neutral_gray, original)
+            panel_items.append((f"original_t{time_idx}_cam{view_idx}", original))
+            panel_items.append((f"invariant_masked_t{time_idx}_cam{view_idx}", invariant_masked))
+        dependent_masked = torch.where(
+            dependent_pixel_mask[:, view_idx, None],
+            neutral_gray,
+            images_01[:, 0, view_idx],
+        )
+        panel_items.append((f"dependent_masked_t0_cam{view_idx}", dependent_masked))
     return make_wandb_named_image_panel(panel_items, max_vis=max_vis)
 
 
@@ -756,27 +798,21 @@ def validate_and_log_wandb(
             vae=vae,
             images=images,
         )
-        inv_contrastive_loss, dep_contrastive_loss = compute_view_structured_contrastive_losses(
+        (
+            inv_contrastive_loss,
+            dep_contrastive_loss,
+            inv_consistency_loss,
+            dep_consistency_loss,
+        ) = compute_view_structured_representation_losses(
             s_inv_by_view=view_latents["s_inv_by_view"],
             z_dep_by_view=view_latents["z_dep_by_view"],
             temperature=cfg_train.temperature,
         )
-        if cfg_train.inv_consistency_weight > 0.0 or cfg_train.dep_consistency_weight > 0.0:
-            consistency_latents, _inv_embed_loss_aug, _dep_embed_loss_aug = encode_per_view_sequence_batch(
-                vae=vae,
-                images=images,
-            )
-            inv_consistency_loss = compute_state_consistency_loss(
-                view_latents["s_inv_by_view"].flatten(0, 1),
-                consistency_latents["s_inv_by_view"].flatten(0, 1),
-            )
-            dep_consistency_loss = compute_dependent_view_consistency_loss(
-                view_latents["z_dep_by_view"],
-                consistency_latents["z_dep_by_view"],
-            )
-        else:
-            inv_consistency_loss = images.new_zeros(())
-            dep_consistency_loss = images.new_zeros(())
+        batch_size, num_views = view_latents["s_inv_by_view"].shape[:2]
+        source_indices = torch.randint(num_views, (batch_size,), device=device)
+        batch_indices = torch.arange(batch_size, device=device)
+        s_inv_source = view_latents["s_inv_by_view"][batch_indices, source_indices]
+        z_dep_source = view_latents["z_dep_by_view"][batch_indices, source_indices]
 
         rec_out = compute_reconstruction_and_renders(
             vae=vae,
@@ -788,9 +824,13 @@ def validate_and_log_wandb(
             w2c=w2c,
             bg=bg,
             cfg_train=cfg_train,
+            s_inv_source=s_inv_source,
+            z_dep_source=z_dep_source,
+            source_indices=source_indices,
             depths=depths,
             masks=masks,
             return_renders=(num_eval_batches == 0),
+            compute_diagnostics=True,
         )
 
         metric_map = {
@@ -816,6 +856,9 @@ def validate_and_log_wandb(
         if num_eval_batches == 0:
             image_payload["val/input_images"] = make_wandb_input_image_panel(
                 images_01=images_01,
+                inv_mask_by_view=view_latents["inv_mask_by_view"],
+                dep_mask_by_view=view_latents["dep_mask_by_view"],
+                patch_size=vae.patch_h,
                 max_vis=cfg_train.val_max_vis,
             )
             rendered_self = rec_out["rendered_self"]

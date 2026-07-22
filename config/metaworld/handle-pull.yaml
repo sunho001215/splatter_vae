@@ -15,7 +15,7 @@ dataset:
   temporal_stride_list: [3, 6, 9, 12, 15, 18, 21]
   temporal_min_state_change: 0.02
   temporal_gripper_change_weight: 0.05
-  camera_num: 24
+  camera_num: 6
   use_depth: true
   use_segmentation_mask: true
   selected_seg_ids:
@@ -35,6 +35,10 @@ model:
   decoder_condition_mode: concat
   dependent_uses_first_timestep_only: true
   dep_mask_eval: true
+  motion_graph_hidden_dim: 128
+  motion_graph_num_layers: 2
+  motion_graph_num_neighbors: 8
+  dynamic_patch_threshold: 0.05
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -125,13 +129,14 @@ train:
   silhouette_weight: 0.1
   global_depth_weight: 0.1
   local_depth_weight: 1.0
-  local_depth_patch_size: 16
+  local_depth_min_patch_size: 8
+  local_depth_max_patch_size: 32
   local_depth_min_valid_pixels: 16
 
   # Sparse persistent motion controls and fixed t0 interpolation.
   num_motion_controls: 256
   motion_num_neighbors: 4
-  motion_delta_max: 0.05
+  motion_delta_max: 0.5
 
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5

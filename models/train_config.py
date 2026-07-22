@@ -22,7 +22,8 @@ class TrainConfig:
     silhouette_weight: float = 0.1
     global_depth_weight: float = 0.1
     local_depth_weight: float = 1.0
-    local_depth_patch_size: int = 16
+    local_depth_min_patch_size: int = 8
+    local_depth_max_patch_size: int = 32
     local_depth_min_valid_pixels: int = 16
 
     num_motion_controls: int = 256

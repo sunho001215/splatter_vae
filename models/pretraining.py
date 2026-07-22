@@ -8,11 +8,7 @@ from torch.utils.data import DataLoader
 
 import wandb
 
-from models.losses import (
-    compute_dependent_view_consistency_loss,
-    compute_state_consistency_loss,
-    compute_view_structured_contrastive_losses,
-)
+from models.losses import compute_view_structured_representation_losses
 from models.splatter import SplatterConfig
 from models.gaussians import DirectSplatterToGaussians
 from models.reconstruction import (
@@ -46,7 +42,15 @@ def train_splatter_vae(
     device = torch.device(cfg_train.device)
     vae.to(device)
     splatter_to_gaussians = _build_converter(splatter_cfg, device)
-    optimizer = torch.optim.Adam(list(vae.parameters()), lr=cfg_train.lr)
+    trainable_parameters = list(vae.parameters())
+    optimizer_kwargs = {"lr": cfg_train.lr}
+    if device.type == "cuda":
+        optimizer_kwargs["fused"] = True
+    try:
+        optimizer = torch.optim.Adam(trainable_parameters, **optimizer_kwargs)
+    except (TypeError, RuntimeError):
+        optimizer_kwargs.pop("fused", None)
+        optimizer = torch.optim.Adam(trainable_parameters, **optimizer_kwargs)
 
     lr_total_steps = resolve_lr_total_steps(cfg_train, train_dataloader)
     lr_schedule = normalize_lr_schedule(cfg_train.lr_schedule)
@@ -100,6 +104,12 @@ def train_splatter_vae(
                 vae=vae,
                 images=images,
             )
+            batch_size, num_views = view_latents["s_inv_by_view"].shape[:2]
+            source_indices = torch.randint(num_views, (batch_size,), device=device)
+            batch_indices = torch.arange(batch_size, device=device)
+            s_inv_source = view_latents["s_inv_by_view"][batch_indices, source_indices]
+            z_dep_source = view_latents["z_dep_by_view"][batch_indices, source_indices]
+            should_log = step % 250 == 0
             rec_out = compute_reconstruction_and_renders(
                 vae=vae,
                 splatter_to_gaussians=splatter_to_gaussians,
@@ -110,9 +120,13 @@ def train_splatter_vae(
                 w2c=w2c,
                 bg=bg,
                 cfg_train=cfg_train,
+                s_inv_source=s_inv_source,
+                z_dep_source=z_dep_source,
+                source_indices=source_indices,
                 depths=depths,
                 masks=masks,
                 return_renders=False,
+                compute_diagnostics=bool(should_log and wandb.run is not None),
             )
             rgb_loss = rec_out["rgb_loss"]
             silhouette_loss = rec_out["silhouette_loss"]
@@ -120,27 +134,16 @@ def train_splatter_vae(
             local_depth_loss = rec_out["local_depth_loss"]
             depth_loss = rec_out["depth_loss"]
 
-            inv_contrastive_loss, dep_contrastive_loss = compute_view_structured_contrastive_losses(
+            (
+                inv_contrastive_loss,
+                dep_contrastive_loss,
+                inv_consistency_loss,
+                dep_consistency_loss,
+            ) = compute_view_structured_representation_losses(
                 s_inv_by_view=view_latents["s_inv_by_view"],
                 z_dep_by_view=view_latents["z_dep_by_view"],
                 temperature=cfg_train.temperature,
             )
-            if cfg_train.inv_consistency_weight > 0.0 or cfg_train.dep_consistency_weight > 0.0:
-                consistency_latents, _inv_embed_loss_aug, _dep_embed_loss_aug = encode_per_view_sequence_batch(
-                    vae=vae,
-                    images=images,
-                )
-                inv_consistency_loss = compute_state_consistency_loss(
-                    view_latents["s_inv_by_view"].flatten(0, 1),
-                    consistency_latents["s_inv_by_view"].flatten(0, 1),
-                )
-                dep_consistency_loss = compute_dependent_view_consistency_loss(
-                    view_latents["z_dep_by_view"],
-                    consistency_latents["z_dep_by_view"],
-                )
-            else:
-                inv_consistency_loss = rgb_loss.new_zeros(())
-                dep_consistency_loss = rgb_loss.new_zeros(())
 
             rec_weight = float(cfg_train.rec_weight)
             render_loss = (
@@ -169,8 +172,12 @@ def train_splatter_vae(
                 "dep_consistency_loss": dep_consistency_loss,
                 "total_loss": total_loss,
             }
-            bad_terms = [name for name, value in finite_terms.items() if not torch.isfinite(value).all()]
-            if bad_terms:
+            if not torch.isfinite(total_loss).all():
+                bad_terms = [
+                    name
+                    for name, value in finite_terms.items()
+                    if not torch.isfinite(value.detach()).all().item()
+                ]
                 print(
                     f"[Warn] Non-finite loss at global_step={global_step} "
                     f"(bad={bad_terms}). Skipping optimizer step."
@@ -181,10 +188,14 @@ def train_splatter_vae(
                 continue
 
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(list(vae.parameters()), max_norm=5.0)
+            torch.nn.utils.clip_grad_norm_(
+                trainable_parameters,
+                max_norm=5.0,
+                foreach=True,
+            )
             optimizer.step()
 
-            if step % 250 == 0:
+            if should_log:
                 print(
                     f"[Epoch {epoch + 1} | Step {step} | Global {global_step}] "
                     f"Loss={total_loss.item():.4f} lr={current_lr:.2e} "

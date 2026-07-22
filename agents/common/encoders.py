@@ -134,6 +134,18 @@ class SplatterVAEInvariantEncoder(nn.Module):
             use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
             dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
             gaussians_per_pixel=gaussians_per_pixel,
+            motion_graph_hidden_dim=int(
+                model_cfg.get("motion_graph_hidden_dim", sv_cfg.get("motion_graph_hidden_dim", 128))
+            ),
+            motion_graph_num_layers=int(
+                model_cfg.get("motion_graph_num_layers", sv_cfg.get("motion_graph_num_layers", 2))
+            ),
+            motion_graph_num_neighbors=int(
+                model_cfg.get("motion_graph_num_neighbors", sv_cfg.get("motion_graph_num_neighbors", 8))
+            ),
+            dynamic_patch_threshold=float(
+                model_cfg.get("dynamic_patch_threshold", sv_cfg.get("dynamic_patch_threshold", 0.05))
+            ),
         )
         self.repr_dim = int(self.vae.state_dim)
 

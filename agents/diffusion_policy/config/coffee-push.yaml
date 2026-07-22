@@ -133,6 +133,10 @@ vision:
       view_dim: 64
       dependent_uses_first_timestep_only: true
       dep_mask_eval: true
+      motion_graph_hidden_dim: 128
+      motion_graph_num_layers: 2
+      motion_graph_num_neighbors: 8
+      dynamic_patch_threshold: 0.05
 
   vit:
     img_size: 128

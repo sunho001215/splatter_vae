@@ -144,8 +144,8 @@ def compute_global_local_depth_loss(
     target_global, _, _ = _masked_standardize(flat_target, flat_valid)
     global_penalty = F.smooth_l1_loss(pred_global, target_global, beta=1.0, reduction="none")
     global_per_image = (global_penalty * flat_valid).sum(dim=-1) / global_count.clamp_min(1.0)
-    valid_images = global_count >= 2
-    global_loss = global_per_image.masked_select(valid_images).mean() if bool(valid_images.any()) else zero
+    valid_images = (global_count >= 2).to(dtype=predicted.dtype)
+    global_loss = (global_per_image * valid_images).sum() / valid_images.sum().clamp_min(1.0)
 
     size = max(1, int(patch_size))
     min_pixels = max(2, int(min_valid_pixels))
@@ -161,18 +161,56 @@ def compute_global_local_depth_loss(
         target_2d = F.pad(target_2d, padding)
         valid_2d = F.pad(valid_2d, padding, value=False)
 
-    pred_patches = F.unfold(predicted_2d, kernel_size=size, stride=size).transpose(1, 2)
-    target_patches = F.unfold(target_2d, kernel_size=size, stride=size).transpose(1, 2)
-    valid_patches = F.unfold(valid_2d.to(dtype=predicted.dtype), kernel_size=size, stride=size)
-    valid_patches = valid_patches.transpose(1, 2) > 0.5
+    padded_height, padded_width = predicted_2d.shape[-2:]
+    height_blocks = padded_height // size
+    width_blocks = padded_width // size
+
+    def non_overlapping_patches(values: torch.Tensor) -> torch.Tensor:
+        values = values[:, 0].reshape(-1, height_blocks, size, width_blocks, size)
+        return values.permute(0, 1, 3, 2, 4).reshape(-1, height_blocks * width_blocks, size * size)
+
+    pred_patches = non_overlapping_patches(predicted_2d)
+    target_patches = non_overlapping_patches(target_2d)
+    valid_patches = non_overlapping_patches(valid_2d).to(dtype=torch.bool)
 
     pred_local, local_count, _ = _masked_standardize(pred_patches, valid_patches)
     target_local, _, target_variance = _masked_standardize(target_patches, valid_patches)
     valid_patch = (local_count >= min_pixels) & (target_variance > 1.0e-6)
     local_penalty = F.smooth_l1_loss(pred_local, target_local, beta=1.0, reduction="none")
     local_per_patch = (local_penalty * valid_patches).sum(dim=-1) / local_count.clamp_min(1.0)
-    local_loss = local_per_patch.masked_select(valid_patch).mean() if bool(valid_patch.any()) else zero
+    valid_patch_weights = valid_patch.to(dtype=predicted.dtype)
+    local_loss = (local_per_patch * valid_patch_weights).sum() / valid_patch_weights.sum().clamp_min(1.0)
     return global_loss, local_loss
+
+
+def _masked_multi_positive_nce_from_normalized(
+    normalized_features: torch.Tensor,
+    positive_mask: torch.Tensor,
+    negative_mask: torch.Tensor,
+    temperature: float,
+) -> torch.Tensor:
+    logits = (normalized_features @ normalized_features.t()) / float(temperature)
+    positive_mask = positive_mask.to(device=logits.device, dtype=torch.bool)
+    denominator_mask = positive_mask | negative_mask.to(device=logits.device, dtype=torch.bool)
+    valid_queries = positive_mask.any(dim=1) & denominator_mask.any(dim=1)
+
+    # Give rows without a valid positive a finite, detached fallback entry.
+    # Their final weight is zero, but avoiding all-masked logsumexp rows also
+    # prevents NaNs in backward for single-state or single-camera batches.
+    fallback = torch.eye(logits.shape[0], device=logits.device, dtype=torch.bool)
+    invalid_rows = ~valid_queries
+    safe_positive_mask = positive_mask | (fallback & invalid_rows[:, None])
+    safe_denominator_mask = denominator_mask | (fallback & invalid_rows[:, None])
+    neg_inf = torch.finfo(logits.dtype).min
+    log_positive = torch.logsumexp(logits.masked_fill(~safe_positive_mask, neg_inf), dim=1)
+    log_denominator = torch.logsumexp(logits.masked_fill(~safe_denominator_mask, neg_inf), dim=1)
+    loss_per_query = torch.where(
+        valid_queries,
+        -(log_positive - log_denominator),
+        torch.zeros_like(log_positive),
+    )
+    valid_weights = valid_queries.to(dtype=logits.dtype)
+    return loss_per_query.sum() / valid_weights.sum().clamp_min(1.0)
 
 
 def masked_multi_positive_nce(
@@ -184,95 +222,95 @@ def masked_multi_positive_nce(
     """Multi-positive InfoNCE with caller-provided positive/negative masks."""
     if temperature <= 0.0:
         raise ValueError("temperature must be > 0.")
-
-    features = F.normalize(
+    normalized = F.normalize(
         torch.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0),
         dim=-1,
         eps=1e-6,
     )
-    logits = (features @ features.t()) / float(temperature)
-
-    positive_mask = positive_mask.to(device=features.device, dtype=torch.bool)
-    negative_mask = negative_mask.to(device=features.device, dtype=torch.bool)
-    denominator_mask = positive_mask | negative_mask
-
-    valid_queries = positive_mask.any(dim=1) & denominator_mask.any(dim=1)
-    if not bool(valid_queries.any()):
-        return features.new_zeros(())
-
-    neg_inf = torch.finfo(logits.dtype).min
-    positive_logits = logits.masked_fill(~positive_mask, neg_inf)
-    denominator_logits = logits.masked_fill(~denominator_mask, neg_inf)
-
-    log_positive = torch.logsumexp(positive_logits[valid_queries], dim=1)
-    log_denominator = torch.logsumexp(denominator_logits[valid_queries], dim=1)
-    return -(log_positive - log_denominator).mean()
+    return _masked_multi_positive_nce_from_normalized(
+        normalized_features=normalized,
+        positive_mask=positive_mask,
+        negative_mask=negative_mask,
+        temperature=temperature,
+    )
 
 
-def compute_state_consistency_loss(s_inv_a: torch.Tensor, s_inv_b: torch.Tensor) -> torch.Tensor:
-    """Align two masked/view-augmented encodings of the same sequence."""
-    if s_inv_a.shape != s_inv_b.shape or s_inv_a.dim() != 2:
-        raise ValueError(f"Expected matching state vectors (B,D), got {tuple(s_inv_a.shape)} and {tuple(s_inv_b.shape)}.")
-    a = F.normalize(torch.nan_to_num(s_inv_a, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
-    b = F.normalize(torch.nan_to_num(s_inv_b, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
-    return (a - b).abs().mean()
-
-
-def compute_dependent_view_consistency_loss(z_dep_a: torch.Tensor, z_dep_b: torch.Tensor) -> torch.Tensor:
-    """Weakly align first-timestep dependent anchors under different mask samples."""
-    if z_dep_a.shape != z_dep_b.shape or z_dep_a.dim() != 3:
-        raise ValueError(
-            f"Expected matching dependent anchors (B,A,D), got {tuple(z_dep_a.shape)} and {tuple(z_dep_b.shape)}."
-        )
-    a = F.normalize(torch.nan_to_num(z_dep_a, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
-    b = F.normalize(torch.nan_to_num(z_dep_b, nan=0.0, posinf=0.0, neginf=0.0), dim=-1, eps=1e-6)
-    return (a - b).abs().mean()
-
-
-def compute_view_structured_contrastive_losses(
+def compute_view_structured_representation_losses(
     s_inv_by_view: torch.Tensor,
     z_dep_by_view: torch.Tensor,
     temperature: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Multi-positive contrastive losses over ``B x A`` encoded view items.
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Contrastive and normalized-L1 consistency losses from one encoder pass.
 
-    Invariant positives are different viewpoints of the same batch sample.
-    Dependent positives are the same viewpoint across different batch samples.
-    Everything outside the positive group is treated as a negative.
+    Invariant positives are the same state under different views. Dependent
+    positives are the same camera index across different states. Camera order
+    is therefore assumed to be globally aligned across the batch.
     """
+    if temperature <= 0.0:
+        raise ValueError("temperature must be > 0.")
     if s_inv_by_view.dim() != 3 or z_dep_by_view.dim() != 3:
         raise ValueError(
-            f"Expected s_inv_by_view and z_dep_by_view as (B,A,D), got "
+            "Expected s_inv_by_view and z_dep_by_view as (B,A,D), got "
             f"{tuple(s_inv_by_view.shape)} and {tuple(z_dep_by_view.shape)}."
         )
     if s_inv_by_view.shape[:2] != z_dep_by_view.shape[:2]:
         raise ValueError(
-            f"Invariant/dependent view grids must share (B,A), got "
+            "Invariant/dependent view grids must share (B,A), got "
             f"{tuple(s_inv_by_view.shape[:2])} and {tuple(z_dep_by_view.shape[:2])}."
         )
 
-    bsz, num_views = s_inv_by_view.shape[:2]
+    batch, views = s_inv_by_view.shape[:2]
+    num_items = batch * views
     device = s_inv_by_view.device
-    num_items = bsz * num_views
-    sample_ids = torch.arange(bsz, device=device).repeat_interleave(num_views)
-    view_ids = torch.arange(num_views, device=device).repeat(bsz)
-    eye = torch.eye(num_items, device=device, dtype=torch.bool)
-
+    sample_ids = torch.arange(batch, device=device).repeat_interleave(views)
+    view_ids = torch.arange(views, device=device).repeat(batch)
+    diagonal = torch.eye(num_items, device=device, dtype=torch.bool)
     same_sample = sample_ids[:, None] == sample_ids[None, :]
     same_view = view_ids[:, None] == view_ids[None, :]
+    invariant_positive = same_sample & ~diagonal
+    dependent_positive = same_view & ~diagonal
 
-    inv_features = s_inv_by_view.reshape(num_items, -1)
-    dep_features = z_dep_by_view.reshape(num_items, -1)
-    inv_loss = masked_multi_positive_nce(
-        features=inv_features,
-        positive_mask=same_sample & ~eye,
+    invariant_features = F.normalize(
+        torch.nan_to_num(s_inv_by_view.reshape(num_items, -1), nan=0.0, posinf=0.0, neginf=0.0),
+        dim=-1,
+        eps=1e-6,
+    )
+    dependent_features = F.normalize(
+        torch.nan_to_num(z_dep_by_view.reshape(num_items, -1), nan=0.0, posinf=0.0, neginf=0.0),
+        dim=-1,
+        eps=1e-6,
+    )
+
+    invariant_contrastive = _masked_multi_positive_nce_from_normalized(
+        normalized_features=invariant_features,
+        positive_mask=invariant_positive,
         negative_mask=~same_sample,
         temperature=temperature,
     )
-    dep_loss = masked_multi_positive_nce(
-        features=dep_features,
-        positive_mask=same_view & ~eye,
+    dependent_contrastive = _masked_multi_positive_nce_from_normalized(
+        normalized_features=dependent_features,
+        positive_mask=dependent_positive,
         negative_mask=~same_view,
         temperature=temperature,
     )
-    return inv_loss, dep_loss
+
+    invariant_pair_distance = (
+        invariant_features[:, None, :] - invariant_features[None, :, :]
+    ).abs().mean(dim=-1)
+    dependent_pair_distance = (
+        dependent_features[:, None, :] - dependent_features[None, :, :]
+    ).abs().mean(dim=-1)
+    invariant_weights = invariant_positive.to(dtype=invariant_pair_distance.dtype)
+    dependent_weights = dependent_positive.to(dtype=dependent_pair_distance.dtype)
+    invariant_consistency = (
+        invariant_pair_distance * invariant_weights
+    ).sum() / invariant_weights.sum().clamp_min(1.0)
+    dependent_consistency = (
+        dependent_pair_distance * dependent_weights
+    ).sum() / dependent_weights.sum().clamp_min(1.0)
+    return (
+        invariant_contrastive,
+        dependent_contrastive,
+        invariant_consistency,
+        dependent_consistency,
+    )

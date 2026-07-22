@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .vision_transformer import DPTHead, RMSNorm, TransformerBlock, ViTBackbone, ViTSmallConfig
 
@@ -98,46 +99,239 @@ class FiLMTokenTransformer(nn.Module):
         return x[:, 1:, :], hidden_states
 
 
-class SparseMotionHead(nn.Module):
-    """Shared transition-conditioned MLP for sparse control translations."""
+class MotionGraphLayer(nn.Module):
+    """One lightweight world-space message-passing layer."""
 
-    def __init__(self, state_dim: int, hidden_dim: int = 256, transition_dim: int = 16):
+    def __init__(self, hidden_dim: int):
         super().__init__()
-        self.transition_embedding = nn.Embedding(2, int(transition_dim))
-        self.mlp = nn.Sequential(
-            nn.Linear(int(state_dim) + 3 + int(transition_dim), int(hidden_dim)),
+        hidden = int(hidden_dim)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * hidden + 4, hidden),
             nn.SiLU(),
-            nn.Linear(int(hidden_dim), int(hidden_dim)),
-            nn.SiLU(),
-            nn.Linear(int(hidden_dim), 3),
+            nn.Linear(hidden, hidden),
         )
-        nn.init.zeros_(self.mlp[-1].weight)
-        nn.init.zeros_(self.mlp[-1].bias)
+        self.node_mlp = nn.Sequential(
+            nn.Linear(2 * hidden, hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, hidden),
+        )
+
+    def forward(
+        self,
+        node_features: torch.Tensor,
+        neighbor_indices: torch.Tensor,
+        neighbor_valid_mask: torch.Tensor,
+        edge_geometry: torch.Tensor,
+        control_valid_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Update ``(B_eff,K,H)`` nodes using cached t0 graph geometry."""
+        batch_indices = torch.arange(node_features.shape[0], device=node_features.device)[:, None, None]
+        neighbor_nodes = node_features[batch_indices, neighbor_indices]
+        target_nodes = node_features[:, :, None, :].expand_as(neighbor_nodes)
+        messages = self.edge_mlp(
+            torch.cat((target_nodes, neighbor_nodes, edge_geometry), dim=-1)
+        )
+        message_mask = neighbor_valid_mask.unsqueeze(-1).to(dtype=node_features.dtype)
+        aggregated = (messages * message_mask).sum(dim=2)
+        aggregated = aggregated / message_mask.sum(dim=2).clamp_min(1.0)
+        update = self.node_mlp(torch.cat((node_features, aggregated), dim=-1))
+        return (node_features + update) * control_valid_mask.unsqueeze(-1).to(
+            dtype=node_features.dtype
+        )
+
+
+class SparseMotionHead(nn.Module):
+    """Camera-independent control MLP with a lightweight graph residual."""
+
+    def __init__(
+        self,
+        state_dim: int,
+        hidden_dim: int = 128,
+        num_graph_layers: int = 2,
+        num_graph_neighbors: int = 8,
+        transition_dim: int = 16,
+    ):
+        super().__init__()
+        hidden = int(hidden_dim)
+        if hidden <= 0:
+            raise ValueError(f"hidden_dim must be positive, got {hidden_dim}.")
+        if int(num_graph_layers) < 0:
+            raise ValueError(f"num_graph_layers must be non-negative, got {num_graph_layers}.")
+        if int(num_graph_neighbors) <= 0:
+            raise ValueError(f"num_graph_neighbors must be positive, got {num_graph_neighbors}.")
+
+        self.num_graph_neighbors = int(num_graph_neighbors)
+        self.transition_embedding = nn.Embedding(2, int(transition_dim))
+        self.local_feature_encoder = nn.Sequential(
+            nn.Linear(10, hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, hidden),
+        )
+        self.state_encoder = nn.Sequential(
+            nn.Linear(int(state_dim), hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, hidden),
+        )
+        fused_dim = 2 * hidden + int(transition_dim)
+        self.base_motion_mlp = nn.Sequential(
+            nn.Linear(fused_dim, hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, 3),
+        )
+        self.graph_input = nn.Sequential(
+            nn.Linear(fused_dim, hidden),
+            nn.SiLU(),
+            nn.Linear(hidden, hidden),
+        )
+        self.graph_layers = nn.ModuleList(
+            [MotionGraphLayer(hidden) for _ in range(int(num_graph_layers))]
+        )
+        self.graph_output = nn.Linear(hidden, 3)
+        self.register_buffer("transition_ids", torch.arange(2), persistent=False)
+        self.register_buffer(
+            "graph_diagonal_mask",
+            torch.eye(256, dtype=torch.bool),
+            persistent=False,
+        )
+        nn.init.zeros_(self.base_motion_mlp[-1].weight)
+        nn.init.zeros_(self.base_motion_mlp[-1].bias)
+        nn.init.zeros_(self.graph_output.weight)
+        nn.init.zeros_(self.graph_output.bias)
+
+    @staticmethod
+    def _pairwise_squared_distance(points: torch.Tensor) -> torch.Tensor:
+        point_norm = points.square().sum(dim=-1, keepdim=True)
+        distances = point_norm + point_norm.transpose(-1, -2)
+        distances = distances - 2.0 * torch.matmul(points, points.transpose(-1, -2))
+        return distances.clamp_min_(0.0)
+
+    def _build_control_graph(
+        self,
+        control_xyz_world: torch.Tensor,
+        control_valid_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build topology once and cache differentiable edge geometry for all layers."""
+        batch, controls = control_xyz_world.shape[:2]
+        neighbors = min(self.num_graph_neighbors, max(1, controls - 1))
+        squared_distances = self._pairwise_squared_distance(control_xyz_world.detach().float())
+        candidate_valid = control_valid_mask[:, None, :].expand(-1, controls, -1)
+        if controls <= self.graph_diagonal_mask.shape[0]:
+            diagonal = self.graph_diagonal_mask[:controls, :controls].unsqueeze(0)
+        else:
+            diagonal = torch.eye(controls, device=control_xyz_world.device, dtype=torch.bool).unsqueeze(0)
+        squared_distances = squared_distances.masked_fill(~candidate_valid | diagonal, torch.inf)
+        nearest_squared, neighbor_indices = torch.topk(
+            squared_distances,
+            k=neighbors,
+            dim=-1,
+            largest=False,
+            sorted=False,
+        )
+        batch_indices = torch.arange(batch, device=control_xyz_world.device)[:, None, None]
+        neighbor_valid = control_valid_mask[batch_indices, neighbor_indices]
+        neighbor_valid = (
+            control_valid_mask[:, :, None]
+            & neighbor_valid
+            & torch.isfinite(nearest_squared)
+        )
+        neighbor_xyz = control_xyz_world[batch_indices, neighbor_indices]
+        relative_xyz = neighbor_xyz - control_xyz_world[:, :, None, :]
+        relative_distance = relative_xyz.square().sum(dim=-1, keepdim=True).clamp_min(1.0e-12).sqrt()
+        edge_geometry = torch.cat((relative_xyz, relative_distance), dim=-1)
+        return neighbor_indices, neighbor_valid, edge_geometry
 
     def forward(
         self,
         s_inv: torch.Tensor,
         normalized_control_xyz: torch.Tensor,
+        control_xyz_world: torch.Tensor,
+        control_scaling: torch.Tensor,
+        control_opacity: torch.Tensor,
+        control_features_dc: torch.Tensor,
         control_valid_mask: torch.Tensor,
         delta_max: float,
     ) -> torch.Tensor:
         """Return bounded translations with shape ``(B,2,K,3)``."""
-        if s_inv.dim() != 2 or normalized_control_xyz.dim() != 3:
+        if s_inv.dim() != 2 or normalized_control_xyz.dim() != 3 or control_xyz_world.dim() != 3:
             raise ValueError(
-                "Expected s_inv as (B,D) and normalized_control_xyz as (B,K,3), got "
-                f"{tuple(s_inv.shape)} and {tuple(normalized_control_xyz.shape)}."
+                "Expected s_inv as (B,D) and control coordinates as (B,K,3), got "
+                f"{tuple(s_inv.shape)}, {tuple(normalized_control_xyz.shape)}, and "
+                f"{tuple(control_xyz_world.shape)}."
             )
         batch, controls = normalized_control_xyz.shape[:2]
+        expected_vector_shape = (batch, controls, 3)
+        expected_scalar_shape = (batch, controls, 1)
+        if (
+            s_inv.shape[0] != batch
+            or normalized_control_xyz.shape != expected_vector_shape
+            or control_xyz_world.shape != expected_vector_shape
+        ):
+            raise ValueError(
+                f"Expected matching batch sizes and control coordinates shaped {expected_vector_shape}."
+            )
         if control_valid_mask.shape != (batch, controls):
             raise ValueError(
                 f"Expected control_valid_mask shape {(batch, controls)}, got {tuple(control_valid_mask.shape)}."
             )
+        if control_scaling.shape != expected_vector_shape or control_features_dc.shape != expected_vector_shape:
+            raise ValueError(
+                "Expected control scaling and DC features as (B,K,3), got "
+                f"{tuple(control_scaling.shape)} and {tuple(control_features_dc.shape)}."
+            )
+        if control_opacity.shape != expected_scalar_shape:
+            raise ValueError(f"Expected control opacity as (B,K,1), got {tuple(control_opacity.shape)}.")
 
-        transition_ids = torch.arange(2, device=s_inv.device)
-        transition = self.transition_embedding(transition_ids).view(1, 2, 1, -1).expand(batch, -1, controls, -1)
-        state = s_inv[:, None, None, :].expand(-1, 2, controls, -1)
-        coords = normalized_control_xyz[:, None].expand(-1, 2, -1, -1)
-        raw_motion = self.mlp(torch.cat([state, coords, transition], dim=-1))
+        valid = control_valid_mask.unsqueeze(-1).to(dtype=normalized_control_xyz.dtype)
+        descriptor = torch.cat(
+            (
+                normalized_control_xyz,
+                torch.log(control_scaling.clamp_min(1.0e-8)),
+                control_opacity,
+                control_features_dc,
+            ),
+            dim=-1,
+        ) * valid
+        local_feature = self.local_feature_encoder(descriptor)
+        state_feature = self.state_encoder(s_inv)[:, None, :].expand(-1, controls, -1)
+        transition = self.transition_embedding(self.transition_ids).view(1, 2, 1, -1)
+        transition = transition.expand(batch, -1, controls, -1)
+        local = local_feature[:, None].expand(-1, 2, -1, -1)
+        state = state_feature[:, None].expand(-1, 2, -1, -1)
+        fused = torch.cat((local, state, transition), dim=-1)
+
+        base_motion = self.base_motion_mlp(fused)
+        graph_nodes = self.graph_input(fused) * valid[:, None]
+        neighbor_indices, neighbor_valid, edge_geometry = self._build_control_graph(
+            control_xyz_world,
+            control_valid_mask,
+        )
+        transitions = fused.shape[1]
+        effective_batch = batch * transitions
+        graph_nodes = graph_nodes.reshape(effective_batch, controls, -1)
+        neighbor_indices = neighbor_indices[:, None].expand(-1, transitions, -1, -1).reshape(
+            effective_batch, controls, -1
+        )
+        neighbor_valid = neighbor_valid[:, None].expand(-1, transitions, -1, -1).reshape(
+            effective_batch, controls, -1
+        )
+        edge_geometry = edge_geometry[:, None].expand(-1, transitions, -1, -1, -1).reshape(
+            effective_batch, controls, edge_geometry.shape[-2], edge_geometry.shape[-1]
+        )
+        effective_valid = control_valid_mask[:, None].expand(-1, transitions, -1).reshape(
+            effective_batch, controls
+        )
+        for graph_layer in self.graph_layers:
+            graph_nodes = graph_layer(
+                node_features=graph_nodes,
+                neighbor_indices=neighbor_indices,
+                neighbor_valid_mask=neighbor_valid,
+                edge_geometry=edge_geometry,
+                control_valid_mask=effective_valid,
+            )
+        graph_motion = self.graph_output(graph_nodes).view(batch, transitions, controls, 3)
+        raw_motion = base_motion + graph_motion
         bounded_motion = float(delta_max) * torch.tanh(raw_motion)
         return bounded_motion * control_valid_mask[:, None, :, None].to(dtype=bounded_motion.dtype)
 
@@ -150,8 +344,9 @@ class SplatterVAE(nn.Module):
     timestep and returns per-view anchor vectors. The DPT decoder reconstructs
     only the dense t0 Gaussian map from learnable spatial queries modulated by
     FiLM from either concat(s_inv, z_dep_source) or s_inv + z_dep_source. A
-    separate shared motion head predicts sparse control translations from
-    ``s_inv`` and normalized t0 control coordinates.
+    separate motion head predicts sparse translations from ``s_inv`` and
+    camera-independent t0 Gaussian descriptors, with a lightweight world-space
+    graph residual.
     """
 
     def __init__(
@@ -172,6 +367,10 @@ class SplatterVAE(nn.Module):
         dependent_uses_first_timestep_only: bool = True,
         decoder_condition_mode: str = "concat",
         gaussians_per_pixel: int = 1,
+        motion_graph_hidden_dim: int = 128,
+        motion_graph_num_layers: int = 2,
+        motion_graph_num_neighbors: int = 8,
+        dynamic_patch_threshold: float = 0.05,
         **_: object,
     ):
         super().__init__()
@@ -235,6 +434,7 @@ class SplatterVAE(nn.Module):
         self.dep_mask_eval = bool(dep_mask_eval)
         self.splatter_channels = int(splatter_channels)
         self.gaussians_per_pixel = int(gaussians_per_pixel)
+        self.dynamic_patch_threshold = float(dynamic_patch_threshold)
 
         self.state_token = nn.Parameter(torch.zeros(1, 1, latent_dim))
         self.dep_token = nn.Parameter(torch.zeros(1, 1, 1, latent_dim))
@@ -269,7 +469,9 @@ class SplatterVAE(nn.Module):
         )
         self.motion_head = SparseMotionHead(
             state_dim=self.state_dim,
-            hidden_dim=max(128, self.state_dim),
+            hidden_dim=int(motion_graph_hidden_dim),
+            num_graph_layers=int(motion_graph_num_layers),
+            num_graph_neighbors=int(motion_graph_num_neighbors),
         )
 
         nn.init.trunc_normal_(self.state_token, std=0.02)
@@ -312,8 +514,53 @@ class SplatterVAE(nn.Module):
         ratio = min(max(float(mask_ratio), 0.0), 0.99)
         keep_count = max(1, min(num_patches, int(round(num_patches * (1.0 - ratio)))))
         noise = torch.rand(*leading_shape, num_patches, device=device)
-        ids_keep = torch.argsort(noise, dim=-1)[..., :keep_count]
+        ids_keep = torch.topk(
+            noise,
+            k=keep_count,
+            dim=-1,
+            largest=False,
+            sorted=False,
+        ).indices
         mask = torch.ones(*leading_shape, num_patches, device=device, dtype=torch.bool)
+        mask.scatter_(dim=-1, index=ids_keep, value=False)
+        return ids_keep, mask
+
+    def _dynamic_patch_scores(self, images: torch.Tensor) -> torch.Tensor:
+        """Return max-pooled temporal RGB differences as ``(B,A,N)`` scores."""
+        batch, timesteps, num_views, _channels, height, width = images.shape
+        if timesteps < 2:
+            return images.new_zeros((batch, num_views, self.n_tokens_per_frame))
+        temporal_difference = (images[:, 1:] - images[:, :-1]).abs().mean(dim=3)
+        dynamic_pixels = temporal_difference.amax(dim=1)
+        pooled = F.max_pool2d(
+            dynamic_pixels.reshape(batch * num_views, 1, height, width),
+            kernel_size=(self.patch_h, self.patch_w),
+            stride=(self.patch_h, self.patch_w),
+        )
+        return pooled.flatten(1).view(batch, num_views, self.n_tokens_per_frame)
+
+    def _sample_dynamic_visible_patch_ids(
+        self,
+        patch_scores: torch.Tensor,
+        mask_ratio: float,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Vectorized dynamic-priority selection for invariant tube masking."""
+        num_patches = patch_scores.shape[-1]
+        ratio = min(max(float(mask_ratio), 0.0), 0.99)
+        keep_count = max(1, min(num_patches, int(round(num_patches * (1.0 - ratio)))))
+        scores = patch_scores.detach()
+        dynamic = scores > self.dynamic_patch_threshold
+        random_priority = torch.rand_like(scores)
+        dynamic_priority = 2.0 + scores
+        priority = torch.where(dynamic, dynamic_priority, random_priority)
+        ids_keep = torch.topk(
+            priority,
+            k=keep_count,
+            dim=-1,
+            largest=True,
+            sorted=False,
+        ).indices
+        mask = torch.ones_like(patch_scores, dtype=torch.bool)
         mask.scatter_(dim=-1, index=ids_keep, value=False)
         return ids_keep, mask
 
@@ -327,19 +574,18 @@ class SplatterVAE(nn.Module):
         temporal = self.temporal_embed[:, :timesteps]
         patch_tokens = patch_tokens + spatial + temporal
 
+        with torch.no_grad():
+            dynamic_scores = self._dynamic_patch_scores(images)
         if self.tube_mask_per_view:
-            ids_keep, inv_mask = self._sample_visible_patch_ids(
-                (bsz, num_views),
-                self.n_tokens_per_frame,
+            ids_keep, inv_mask = self._sample_dynamic_visible_patch_ids(
+                dynamic_scores,
                 self.inv_tube_mask_ratio,
-                images.device,
             )
         else:
-            ids_keep, shared_mask = self._sample_visible_patch_ids(
-                (bsz, 1),
-                self.n_tokens_per_frame,
+            shared_scores = dynamic_scores.amax(dim=1, keepdim=True)
+            ids_keep, shared_mask = self._sample_dynamic_visible_patch_ids(
+                shared_scores,
                 self.inv_tube_mask_ratio,
-                images.device,
             )
             ids_keep = ids_keep.expand(bsz, num_views, -1).contiguous()
             inv_mask = shared_mask.expand(bsz, num_views, -1).contiguous()
@@ -468,13 +714,21 @@ class SplatterVAE(nn.Module):
         self,
         s_inv: torch.Tensor,
         normalized_control_xyz: torch.Tensor,
+        control_xyz_world: torch.Tensor,
+        control_scaling: torch.Tensor,
+        control_opacity: torch.Tensor,
+        control_features_dc: torch.Tensor,
         control_valid_mask: torch.Tensor,
         delta_max: float,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Predict t0->t1 and t1->t2 translations without using view latents."""
+        """Predict both translations from state and camera-independent control data."""
         motion = self.motion_head(
             s_inv=s_inv,
             normalized_control_xyz=normalized_control_xyz,
+            control_xyz_world=control_xyz_world,
+            control_scaling=control_scaling,
+            control_opacity=control_opacity,
+            control_features_dc=control_features_dc,
             control_valid_mask=control_valid_mask,
             delta_max=delta_max,
         )
