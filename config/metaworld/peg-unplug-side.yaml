@@ -78,7 +78,7 @@ splatter:
     img_height: 128
     img_width: 128
     znear: 0.1
-    zfar: 2.5
+    zfar: 2.0
     white_background: false
     inverted_x: false
     inverted_y: false
@@ -117,10 +117,30 @@ splatter:
 train:
   num_epochs: 100
   max_global_steps: 500001
-  lr: 3.0e-4
-  lr_schedule: warmup_cosine
-  lr_warmup_steps: 10000
-  min_lr: 5.0e-5
+  stage1_end_step: 150000
+  stage2_end_step: 250000
+  stage2_temporal_ramp_steps: 20000
+
+  stage1_invariant_encoder_lr: 3.0e-4
+  stage1_dependent_encoder_lr: 3.0e-4
+  stage1_decoder_lr: 3.0e-4
+  stage1_motion_lr: 0.0
+  stage1_warmup_steps: 10000
+  stage1_min_lr: 5.0e-5
+
+  stage2_invariant_encoder_lr: 5.0e-5
+  stage2_dependent_encoder_lr: 3.0e-5
+  stage2_decoder_lr: 5.0e-5
+  stage2_motion_lr: 3.0e-4
+  stage2_warmup_steps: 5000
+  stage2_min_lr: 1.0e-5
+
+  stage3_invariant_encoder_lr: 5.0e-5
+  stage3_dependent_encoder_lr: 3.0e-5
+  stage3_decoder_lr: 5.0e-5
+  stage3_motion_lr: 1.5e-4
+  stage3_warmup_steps: 5000
+  stage3_min_lr: 1.0e-5
   device: cuda
 
   # Unified RGB, silhouette, and expected-depth supervision.

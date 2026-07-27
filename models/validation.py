@@ -20,6 +20,10 @@ from models.reconstruction import (
 from models.train_config import TrainConfig
 from models.vae import SplatterVAE
 from utils.camera_tensor_utils import trajectory_w2c
+from utils.training_utils import (
+    combine_stage_render_losses,
+    resolve_training_stage,
+)
 
 
 def make_wandb_named_image_panel(named_images: list[tuple[str, torch.Tensor]], max_vis: int) -> wandb.Image:
@@ -752,29 +756,13 @@ def validate_and_log_wandb(
     if wandb.run is None:
         return
 
+    stage = resolve_training_stage(cfg_train, global_step)
     prev_vae_mode = vae.training
     prev_converter_mode = splatter_to_gaussians.training
     vae.eval()
     splatter_to_gaussians.eval()
 
-    scalar_keys = [
-        "val/rgb_reconstruction_loss",
-        "val/silhouette_foreground_loss",
-        "val/silhouette_background_loss",
-        "val/silhouette_loss",
-        "val/global_depth_loss",
-        "val/local_depth_loss",
-        "val/depth_loss",
-        "val/control_motion01_mean",
-        "val/control_motion12_mean",
-        "val/dense_motion_mean",
-        "val/mean_valid_gaussian_opacity",
-        "val/inv_contrastive_loss",
-        "val/inv_consistency_loss",
-        "val/dep_contrastive_loss",
-        "val/dep_consistency_loss",
-    ]
-    scalar_sums = {key: 0.0 for key in scalar_keys}
+    scalar_sums: Dict[str, float] = {}
     num_eval_batches = 0
     image_payload: Dict[str, Any] = {}
 
@@ -831,27 +819,34 @@ def validate_and_log_wandb(
             masks=masks,
             return_renders=(num_eval_batches == 0),
             compute_diagnostics=True,
+            training_stage=stage.index,
         )
-
+        timestep_losses = rec_out["timestep_losses"]
+        stage_render_loss = combine_stage_render_losses(
+            [losses_t["render_loss"] for losses_t in timestep_losses],
+            stage,
+        )
         metric_map = {
-            "val/rgb_reconstruction_loss": rec_out["rgb_loss"],
-            "val/silhouette_foreground_loss": rec_out["silhouette_foreground_loss"],
-            "val/silhouette_background_loss": rec_out["silhouette_background_loss"],
-            "val/silhouette_loss": rec_out["silhouette_loss"],
-            "val/global_depth_loss": rec_out["global_depth_loss"],
-            "val/local_depth_loss": rec_out["local_depth_loss"],
-            "val/depth_loss": rec_out["depth_loss"],
-            "val/control_motion01_mean": rec_out["control_motion01_mean"],
-            "val/control_motion12_mean": rec_out["control_motion12_mean"],
-            "val/dense_motion_mean": rec_out["dense_motion_mean"],
+            "val/stage_render_loss": stage_render_loss,
             "val/mean_valid_gaussian_opacity": rec_out["mean_valid_gaussian_opacity"],
             "val/inv_contrastive_loss": inv_contrastive_loss,
             "val/inv_consistency_loss": inv_consistency_loss,
             "val/dep_contrastive_loss": dep_contrastive_loss,
             "val/dep_consistency_loss": dep_consistency_loss,
         }
+        for time_idx, losses_t in enumerate(timestep_losses):
+            for name, value in losses_t.items():
+                metric_map[f"val/{name}/t{time_idx}"] = value
+        for name in (
+            "control_motion01_mean",
+            "control_motion12_mean",
+            "dense_motion_mean",
+            "motion_near_bound_fraction",
+        ):
+            if name in rec_out:
+                metric_map[f"val/{name}"] = rec_out[name]
         for key, value in metric_map.items():
-            scalar_sums[key] += float(value.item())
+            scalar_sums[key] = scalar_sums.get(key, 0.0) + float(value.item())
 
         if num_eval_batches == 0:
             image_payload["val/input_images"] = make_wandb_input_image_panel(
@@ -874,14 +869,18 @@ def validate_and_log_wandb(
                 for view_slot in range(num_views_to_show):
                     exact_mask = target_masks[:, time_idx, view_slot]
                     mask_rgb = exact_mask.expand(-1, 3, -1, -1).contiguous()
-                    alpha_rgb = rendered_alpha[:, time_idx, view_slot].expand(-1, 3, -1, -1).contiguous()
+                    alpha_rgb = rendered_alpha[:, time_idx, view_slot].expand(
+                        -1, 3, -1, -1
+                    ).contiguous()
                     target_depth = (
                         torch.zeros_like(rendered_depth[:, time_idx, view_slot])
                         if target_depths is None
                         else target_depths[:, time_idx, view_slot]
                     )
                     target_depth_vis = _depth_visualization(target_depth, exact_mask)
-                    rendered_depth_vis = _depth_visualization(rendered_depth[:, time_idx, view_slot], exact_mask)
+                    rendered_depth_vis = _depth_visualization(
+                        rendered_depth[:, time_idx, view_slot], exact_mask
+                    )
                     prefix = f"t{time_idx}_cam{view_slot}"
                     panel_items.extend(
                         [
@@ -943,9 +942,21 @@ def validate_and_log_wandb(
         splatter_to_gaussians.train(prev_converter_mode)
         return
 
-    log_dict: Dict[str, Any] = {key: value / float(num_eval_batches) for key, value in scalar_sums.items()}
-    log_dict["global_step"] = global_step
-    log_dict.update({key: value for key, value in image_payload.items() if not key.startswith("mask_")})
+    log_dict: Dict[str, Any] = {
+        key: value / float(num_eval_batches) for key, value in scalar_sums.items()
+    }
+    log_dict.update(
+        {
+            "global_step": global_step,
+            "val/stage": stage.index,
+            "val/stage_name": stage.name,
+            "val/stage_local_step": stage.local_step,
+            "val/temporal_loss_weight": stage.temporal_weight,
+        }
+    )
+    log_dict.update(
+        {key: value for key, value in image_payload.items() if not key.startswith("mask_")}
+    )
     wandb.log(log_dict, step=global_step)
 
     vae.train(prev_vae_mode)

@@ -387,6 +387,82 @@ def select_local_depth_patch_size(
     return (minimum + maximum + 1) // 2
 
 
+def _detach_gaussian_dict(pc: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """Detach every tensor in the base Gaussian anchor for Stage 2 motion."""
+    return {key: value.detach() if torch.is_tensor(value) else value for key, value in pc.items()}
+
+
+def _motion_near_bound_fraction(
+    motion01: torch.Tensor,
+    motion12: torch.Tensor,
+    valid_mask: torch.Tensor,
+    delta_max: float,
+) -> torch.Tensor:
+    if float(delta_max) <= 0.0:
+        return motion01.new_zeros(())
+    threshold = 0.95 * abs(float(delta_max))
+    near01 = motion01.abs().amax(dim=-1) >= threshold
+    near12 = motion12.abs().amax(dim=-1) >= threshold
+    weights = valid_mask.to(dtype=motion01.dtype)
+    numerator = ((near01.to(motion01.dtype) + near12.to(motion01.dtype)) * weights).sum()
+    return numerator / (2.0 * weights.sum()).clamp_min(1.0)
+
+
+def _compute_timestep_render_losses(
+    rendered: torch.Tensor,
+    rendered_depth: torch.Tensor,
+    rendered_alpha: torch.Tensor,
+    target_images: torch.Tensor,
+    target_depths: Optional[torch.Tensor],
+    target_masks: torch.Tensor,
+    cfg_train: TrainConfig,
+    local_depth_patch_size: int,
+) -> list[Dict[str, torch.Tensor]]:
+    """Retain independent RGB, silhouette, depth, and weighted losses per timestep."""
+    timestep_losses: list[Dict[str, torch.Tensor]] = []
+    for time_idx in range(rendered.shape[1]):
+        rendered_t = rendered[:, time_idx]
+        target_t = target_images[:, time_idx]
+        mask_t = target_masks[:, time_idx]
+        depth_t = rendered_depth[:, time_idx]
+        target_depth_t = None if target_depths is None else target_depths[:, time_idx]
+        rgb_loss = compute_reconstruction_loss(
+            predicted=rendered_t.reshape(-1, *rendered_t.shape[2:]),
+            ground_truth=target_t.reshape(-1, *target_t.shape[2:]),
+            ssim_weight=float(cfg_train.ssim_weight),
+            loss_mask=mask_t.reshape(-1, *mask_t.shape[2:]),
+        )
+        silhouette_foreground_loss, silhouette_background_loss, silhouette_loss = (
+            compute_balanced_silhouette_loss(rendered_alpha[:, time_idx], mask_t)
+        )
+        global_depth_loss, local_depth_loss = compute_global_local_depth_loss(
+            rendered_depth=depth_t,
+            target_depth=target_depth_t,
+            foreground_mask=mask_t,
+            patch_size=local_depth_patch_size,
+            min_valid_pixels=int(cfg_train.local_depth_min_valid_pixels),
+        )
+        depth_loss = global_depth_loss + float(cfg_train.local_depth_weight) * local_depth_loss
+        render_loss = (
+            float(cfg_train.rec_weight) * rgb_loss
+            + float(cfg_train.silhouette_weight) * silhouette_loss
+            + float(cfg_train.global_depth_weight) * depth_loss
+        )
+        timestep_losses.append(
+            {
+                "rgb_loss": rgb_loss,
+                "silhouette_foreground_loss": silhouette_foreground_loss,
+                "silhouette_background_loss": silhouette_background_loss,
+                "silhouette_loss": silhouette_loss,
+                "global_depth_loss": global_depth_loss,
+                "local_depth_loss": local_depth_loss,
+                "depth_loss": depth_loss,
+                "render_loss": render_loss,
+            }
+        )
+    return timestep_losses
+
+
 def compute_reconstruction_and_renders(
     vae: SplatterVAE,
     splatter_to_gaussians: DirectSplatterToGaussians,
@@ -404,18 +480,20 @@ def compute_reconstruction_and_renders(
     masks: Optional[torch.Tensor] = None,
     return_renders: bool = False,
     compute_diagnostics: bool = False,
+    training_stage: int = 3,
 ) -> Dict[str, Any]:
-    """Decode reused source-view features and render all cameras/timesteps."""
+    """Decode once and apply stage-specific temporal construction and supervision."""
     images_01 = _ensure_temporal_images(images_01)
     depths = _ensure_temporal_optional(depths)
     masks = _ensure_temporal_optional(masks)
     bsz, timesteps, num_views = images_01.shape[:3]
+    stage = int(training_stage)
+    if stage not in (1, 2, 3):
+        raise ValueError(f"training_stage must be 1, 2, or 3, got {training_stage}.")
     if timesteps != 3:
         raise ValueError(f"Sparse temporal reconstruction requires exactly three RGB frames, got T={timesteps}.")
     if masks is None:
-        raise ValueError(
-            "Sparse control sampling and RGB-silhouette-depth supervision require exact segmentation masks."
-        )
+        raise ValueError("RGB-silhouette-depth supervision requires exact segmentation masks.")
     if num_views < 1:
         raise ValueError("Temporal reconstruction requires at least one camera viewpoint.")
     original_masks = _exact_mask_sequence(images_01, masks)
@@ -442,127 +520,169 @@ def compute_reconstruction_and_renders(
     )
     source_masks = _gather_source_time0(original_masks, source_indices)
     pc0 = apply_source_mask_to_gaussians(pc0, source_masks)
-    dense_valid_mask = pc0.get(
-        "valid_mask",
-        torch.ones(pc0["xyz"].shape[:2], device=pc0["xyz"].device, dtype=torch.bool),
-    ).to(dtype=torch.bool)
 
-    control_xyz0, control_indices, control_valid_mask = sample_sparse_motion_controls(
-        dense_xyz=pc0["xyz"],
-        dense_valid_mask=dense_valid_mask,
-        num_controls=int(cfg_train.num_motion_controls),
-    )
-    normalized_controls = normalize_control_coordinates(control_xyz0, control_valid_mask)
-    control_scaling, control_opacity, control_features_dc = gather_control_gaussian_attributes(
-        pc=pc0,
-        control_indices=control_indices,
-        control_valid_mask=control_valid_mask,
-    )
-    control_delta01, control_delta12 = vae.predict_control_motion(
-        s_inv=s_inv_source,
-        normalized_control_xyz=normalized_controls,
-        control_xyz_world=control_xyz0,
-        control_scaling=control_scaling,
-        control_opacity=control_opacity,
-        control_features_dc=control_features_dc,
-        control_valid_mask=control_valid_mask,
-        delta_max=float(cfg_train.motion_delta_max),
-    )
-    neighbor_indices, neighbor_weights = compute_dense_control_associations(
-        dense_xyz=pc0["xyz"],
-        dense_valid_mask=dense_valid_mask,
-        control_xyz=control_xyz0,
-        control_valid_mask=control_valid_mask,
-        num_neighbors=int(cfg_train.motion_num_neighbors),
-    )
-    dense_motion01 = interpolate_control_motion(control_delta01, neighbor_indices, neighbor_weights)
-    dense_motion12 = interpolate_control_motion(control_delta12, neighbor_indices, neighbor_weights)
-    pc1 = translate_gaussians(pc0, dense_motion01)
-    pc2 = translate_gaussians(pc1, dense_motion12)
-    pc_sequence = [pc0, pc1, pc2]
+    control_xyz0 = None
+    control_indices = None
+    control_valid_mask = None
+    control_delta01 = None
+    control_delta12 = None
+    dense_motion01 = None
+    dense_motion12 = None
+    if stage == 1:
+        # The invariant encoder has still consumed all three frames, but the
+        # motion path and future rasterization are completely bypassed.
+        pc_sequence = [pc0]
+    else:
+        # Stage 2 uses a complete detached copy as the temporal anchor. The
+        # live s_inv below remains the sole future-loss route into the encoder.
+        temporal_anchor = _detach_gaussian_dict(pc0) if stage == 2 else pc0
+        dense_valid_mask = temporal_anchor.get(
+            "valid_mask",
+            torch.ones(
+                temporal_anchor["xyz"].shape[:2],
+                device=temporal_anchor["xyz"].device,
+                dtype=torch.bool,
+            ),
+        ).to(dtype=torch.bool)
+        control_xyz0, control_indices, control_valid_mask = sample_sparse_motion_controls(
+            dense_xyz=temporal_anchor["xyz"],
+            dense_valid_mask=dense_valid_mask,
+            num_controls=int(cfg_train.num_motion_controls),
+        )
+        normalized_controls = normalize_control_coordinates(control_xyz0, control_valid_mask)
+        control_scaling, control_opacity, control_features_dc = gather_control_gaussian_attributes(
+            pc=temporal_anchor,
+            control_indices=control_indices,
+            control_valid_mask=control_valid_mask,
+        )
+        control_delta01, control_delta12 = vae.predict_control_motion(
+            s_inv=s_inv_source,
+            normalized_control_xyz=normalized_controls,
+            control_xyz_world=control_xyz0,
+            control_scaling=control_scaling,
+            control_opacity=control_opacity,
+            control_features_dc=control_features_dc,
+            control_valid_mask=control_valid_mask,
+            delta_max=float(cfg_train.motion_delta_max),
+        )
+        neighbor_indices, neighbor_weights = compute_dense_control_associations(
+            dense_xyz=temporal_anchor["xyz"],
+            dense_valid_mask=dense_valid_mask,
+            control_xyz=control_xyz0,
+            control_valid_mask=control_valid_mask,
+            num_neighbors=int(cfg_train.motion_num_neighbors),
+        )
+        if stage == 2:
+            neighbor_weights = neighbor_weights.detach()
+        dense_motion01 = interpolate_control_motion(
+            control_delta01, neighbor_indices, neighbor_weights
+        )
+        dense_motion12 = interpolate_control_motion(
+            control_delta12, neighbor_indices, neighbor_weights
+        )
+        pc1 = translate_gaussians(temporal_anchor, dense_motion01)
+        pc2 = translate_gaussians(pc1, dense_motion12)
+        pc_sequence = [pc0, pc1, pc2]
+
+    rendered_timesteps = len(pc_sequence)
     rendered, rendered_depth, rendered_alpha = _render_sequence(
         pc_sequence=pc_sequence,
-        w2c=w2c_t,
-        intrinsics=intrinsics_t,
+        w2c=w2c_t[:, :rendered_timesteps],
+        intrinsics=intrinsics_t[:, :rendered_timesteps],
         bg=bg,
         splatter_cfg=splatter_cfg,
     )
-    target_images = images_01 * original_masks
-
-    rec_loss = compute_reconstruction_loss(
-        predicted=rendered.reshape(-1, *rendered.shape[3:]),
-        ground_truth=target_images.reshape(-1, *target_images.shape[3:]),
-        ssim_weight=float(cfg_train.ssim_weight),
-        loss_mask=original_masks.reshape(-1, *original_masks.shape[3:]),
-    )
-    silhouette_foreground_loss, silhouette_background_loss, silhouette_loss = (
-        compute_balanced_silhouette_loss(rendered_alpha, original_masks)
-    )
+    supervised_masks = original_masks[:, :rendered_timesteps]
+    target_images = images_01[:, :rendered_timesteps] * supervised_masks
+    target_depths = None if depths is None else depths[:, :rendered_timesteps]
     local_depth_patch_size = select_local_depth_patch_size(
         cfg_train=cfg_train,
         training=vae.training,
     )
-    global_depth_loss, local_depth_loss = compute_global_local_depth_loss(
+    timestep_losses = _compute_timestep_render_losses(
+        rendered=rendered,
         rendered_depth=rendered_depth,
-        target_depth=depths,
-        foreground_mask=original_masks,
-        patch_size=local_depth_patch_size,
-        min_valid_pixels=int(cfg_train.local_depth_min_valid_pixels),
+        rendered_alpha=rendered_alpha,
+        target_images=target_images,
+        target_depths=target_depths,
+        target_masks=supervised_masks,
+        cfg_train=cfg_train,
+        local_depth_patch_size=local_depth_patch_size,
     )
-    depth_loss = global_depth_loss + float(cfg_train.local_depth_weight) * local_depth_loss
 
-    out_dict: Dict[str, Any] = {
-        "rec_loss": rec_loss,
-        "rgb_loss": rec_loss,
-        "silhouette_foreground_loss": silhouette_foreground_loss,
-        "silhouette_background_loss": silhouette_background_loss,
-        "silhouette_loss": silhouette_loss,
-        "global_depth_loss": global_depth_loss,
-        "local_depth_loss": local_depth_loss,
-        "depth_loss": depth_loss,
-    }
+    out_dict: Dict[str, Any] = {"timestep_losses": timestep_losses}
+    loss_names = tuple(timestep_losses[0])
+    for time_idx, losses_t in enumerate(timestep_losses):
+        for name, value in losses_t.items():
+            out_dict[f"{name}_t{time_idx}"] = value
+    for name in loss_names:
+        out_dict[name] = torch.stack([losses_t[name] for losses_t in timestep_losses]).mean()
+    out_dict["rec_loss"] = out_dict["rgb_loss"]
 
     need_diagnostics = bool(compute_diagnostics or return_renders)
     if need_diagnostics:
         with torch.no_grad():
-            out_dict.update(
-                {
-                    "control_motion01_mean": _masked_motion_magnitude_mean(
-                        control_delta01.detach(), control_valid_mask
+            out_dict["mean_valid_gaussian_opacity"] = _mean_valid_opacity(pc0).detach()
+            if stage > 1:
+                assert control_delta01 is not None and control_delta12 is not None
+                assert control_valid_mask is not None
+                assert dense_motion01 is not None and dense_motion12 is not None
+                dense_valid_mask = pc_sequence[0].get(
+                    "valid_mask",
+                    torch.ones(
+                        pc_sequence[0]["xyz"].shape[:2],
+                        device=pc_sequence[0]["xyz"].device,
+                        dtype=torch.bool,
                     ),
-                    "control_motion12_mean": _masked_motion_magnitude_mean(
-                        control_delta12.detach(), control_valid_mask
-                    ),
-                    "dense_motion_mean": _two_transition_motion_magnitude_mean(
-                        dense_motion01.detach(), dense_motion12.detach(), dense_valid_mask
-                    ),
-                    "mean_valid_gaussian_opacity": _mean_valid_opacity(pc0).detach(),
-                }
-            )
+                ).to(dtype=torch.bool)
+                out_dict.update(
+                    {
+                        "control_motion01_mean": _masked_motion_magnitude_mean(
+                            control_delta01.detach(), control_valid_mask
+                        ),
+                        "control_motion12_mean": _masked_motion_magnitude_mean(
+                            control_delta12.detach(), control_valid_mask
+                        ),
+                        "dense_motion_mean": _two_transition_motion_magnitude_mean(
+                            dense_motion01.detach(), dense_motion12.detach(), dense_valid_mask
+                        ),
+                        "motion_near_bound_fraction": _motion_near_bound_fraction(
+                            control_delta01.detach(),
+                            control_delta12.detach(),
+                            control_valid_mask,
+                            float(cfg_train.motion_delta_max),
+                        ),
+                    }
+                )
 
     if return_renders:
-        with torch.no_grad():
-            control_xyz1 = control_xyz0.detach() + control_delta01.detach()
-            control_xyz2 = control_xyz1 + control_delta12.detach()
-            out_dict["control_xyz_sequence"] = torch.stack(
-                [control_xyz0.detach(), control_xyz1, control_xyz2], dim=1
-            )
+        if stage > 1:
+            assert control_xyz0 is not None and control_delta01 is not None and control_delta12 is not None
+            assert control_valid_mask is not None and control_indices is not None
+            with torch.no_grad():
+                control_xyz1 = control_xyz0.detach() + control_delta01.detach()
+                control_xyz2 = control_xyz1 + control_delta12.detach()
+                out_dict["control_xyz_sequence"] = torch.stack(
+                    [control_xyz0.detach(), control_xyz1, control_xyz2], dim=1
+                )
+            out_dict["control_valid_mask"] = control_valid_mask.detach()
+            out_dict["control_indices"] = control_indices.detach()
+            out_dict["control_delta01"] = control_delta01.detach()
+            out_dict["control_delta12"] = control_delta12.detach()
         out_dict["target_images_self"] = target_images
-        out_dict["target_masks_self"] = original_masks
-        out_dict["target_depths_self"] = None if depths is None else depths.detach()
+        out_dict["target_masks_self"] = supervised_masks
+        out_dict["target_depths_self"] = None if target_depths is None else target_depths.detach()
         out_dict["rendered_self"] = rendered
         out_dict["rendered_expected_depth_self"] = rendered_depth
         out_dict["rendered_alpha_self"] = rendered_alpha
         out_dict["source_indices"] = source_indices.detach().cpu()
-        out_dict["gaussian_pc"] = {k: v.detach() for k, v in pc0.items() if torch.is_tensor(v)}
+        out_dict["gaussian_pc"] = {
+            key: value.detach() for key, value in pc0.items() if torch.is_tensor(value)
+        }
         out_dict["gaussian_pc_sequence"] = [
-            {k: v.detach() for k, v in pc.items() if torch.is_tensor(v)} for pc in pc_sequence
+            {key: value.detach() for key, value in pc.items() if torch.is_tensor(value)}
+            for pc in pc_sequence
         ]
-        out_dict["control_xyz_sequence"] = out_dict["control_xyz_sequence"].detach()
-        out_dict["control_valid_mask"] = control_valid_mask.detach()
-        out_dict["control_indices"] = control_indices.detach()
-        out_dict["control_delta01"] = control_delta01.detach()
-        out_dict["control_delta12"] = control_delta12.detach()
         out_dict["source_c2w"] = source_c2w.detach()
         out_dict["source_intrinsics"] = source_intrinsics.detach()
         out_dict["base_map"] = decoded["base_map"].detach()
