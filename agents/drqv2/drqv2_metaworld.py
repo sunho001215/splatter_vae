@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import distributions as pyd
 
 from agents.common.encoders import build_vision_encoder
-from agents.common.head import FrameMLPStackHead, SceneStateHead, SmallPostEncoderMLPHead
+from agents.common.head import FrameMLPStackHead, SmallPostEncoderMLPHead
 
 
 def weight_init(module: nn.Module) -> None:
@@ -126,8 +126,10 @@ class VisionEncoderAdapter(nn.Module):
         self.frame_stack = int(full_cfg["env"].get("frame_stack", 1))
 
         self.backbone = build_vision_encoder(full_cfg)
-        self.splatter_feature_source = str(getattr(self.backbone, "feature_source", "")).lower()
-        self.splatter_returns_sequence_state = bool(getattr(self.backbone, "returns_sequence_state", False))
+        self.backbone_outputs_stack_feature = (
+            self.vision_key == "sincro"
+            or bool(getattr(self.backbone, "returns_sequence_state", False))
+        )
         self.replay_atom_is_feature = False
         self.replay_atom_is_stack_feature = False
         self.backbone_trainable = bool(
@@ -147,11 +149,7 @@ class VisionEncoderAdapter(nn.Module):
         if not self.backbone_trainable:
             self.replay_atom_is_feature = True
             self.replay_atom_dtype = np.dtype(np.float16)
-            if self.vision_key == "sincro":
-                self.replay_atom_is_stack_feature = True
-                self.replay_atom_shape = tuple(self.backbone_out_shape)
-                self.replay_atom_frame_stack = 1
-            elif self.vision_key == "splattervae" and self.splatter_returns_sequence_state:
+            if self.backbone_outputs_stack_feature:
                 self.replay_atom_is_stack_feature = True
                 self.replay_atom_shape = tuple(self.backbone_out_shape)
                 self.replay_atom_frame_stack = 1
@@ -161,27 +159,11 @@ class VisionEncoderAdapter(nn.Module):
         self.proj_head = None
         if not self.backbone_trainable:
             proj_dim = int(full_cfg["agent"].get("feature_dim", 256))
-            if self.vision_key == "splattervae" and self.splatter_feature_source in {"encoder", "vit", "tokens"}:
-                head_cfg = dict(full_cfg["agent"].get("scene_state_head", {}))
-                self.proj_head = SceneStateHead(
-                    in_dim=self.single_frame_dim,
-                    frame_stack=self.frame_stack,
-                    token_hidden_dim=int(head_cfg.get("token_hidden_dim", proj_dim)),
-                    per_frame_dim=int(head_cfg.get("per_frame_dim", min(proj_dim, 256))),
-                    stacked_hidden_dim=int(head_cfg.get("stacked_hidden_dim", proj_dim)),
-                    out_dim=proj_dim,
-                    stacked_num_layers=int(head_cfg.get("stacked_num_layers", 2)),
-                    use_tanh=bool(head_cfg.get("use_tanh", True)),
-                )
-            elif self.vision_key == "sincro":
+            if self.backbone_outputs_stack_feature:
                 self.proj_head = SmallPostEncoderMLPHead(
                     in_dim=self.single_frame_dim, hidden_dim=proj_dim, out_dim=proj_dim
                 )
-            elif self.vision_key == "splattervae" and self.splatter_returns_sequence_state:
-                self.proj_head = SmallPostEncoderMLPHead(
-                    in_dim=self.single_frame_dim, hidden_dim=proj_dim, out_dim=proj_dim
-                )
-            elif self.vision_key in {"splattervae", "reviwo"} and self.frame_stack == 1:
+            elif self.vision_key == "reviwo" and self.frame_stack == 1:
                 self.proj_head = SmallPostEncoderMLPHead(
                     in_dim=self.single_frame_dim, hidden_dim=proj_dim, out_dim=proj_dim
                 )
@@ -231,11 +213,7 @@ class VisionEncoderAdapter(nn.Module):
                 dummy = torch.zeros(1, 3 * self.frame_stack, h, w, device=device, dtype=torch.uint8)
                 feat = self.backbone(dummy)
                 shape = tuple(feat.shape[1:]); dim = int(feat.shape[-1])
-            elif self.vision_key == "sincro":
-                dummy = torch.zeros(1, self.frame_stack, 3, h, w, device=device)
-                feat = self.backbone(dummy)
-                shape = tuple(feat.shape[1:]); dim = int(feat.flatten(1).shape[-1])
-            elif self.vision_key == "splattervae" and self.splatter_returns_sequence_state:
+            elif self.backbone_outputs_stack_feature:
                 dummy = torch.zeros(1, self.frame_stack, 3, h, w, device=device)
                 feat = self.backbone(dummy)
                 shape = tuple(feat.shape[1:]); dim = int(feat.flatten(1).shape[-1])
@@ -282,17 +260,15 @@ class VisionEncoderAdapter(nn.Module):
             obs = obs.unsqueeze(0)
         obs = self._to_unit_float(obs)
 
-        if self.vision_key == "sincro":
-            b, c, h, w = obs.shape
-            feat = self.backbone(obs.view(b, self.frame_stack, 3, h, w))
-            return feat.to(torch.float16).contiguous()
-        if self.vision_key == "splattervae" and self.splatter_returns_sequence_state:
-            b, c, h, w = obs.shape
-            feat = self.backbone(obs.view(b, self.frame_stack, 3, h, w))
+        b, c, h, w = obs.shape
+        expected_channels = 3 * self.frame_stack
+        if c != expected_channels:
+            raise ValueError(f"Expected {expected_channels} stacked RGB channels, got {c}.")
+        frames = obs.reshape(b, self.frame_stack, 3, h, w)
+        if self.backbone_outputs_stack_feature:
+            feat = self.backbone(frames)
             return feat.to(torch.float16).contiguous()
 
-        b, c, h, w = obs.shape
-        frames = obs.view(b, self.frame_stack, 3, h, w)
         feat = self.backbone(frames.reshape(b * self.frame_stack, 3, h, w).contiguous())
         if feat.ndim == 3:
             return feat.view(b, self.frame_stack, feat.shape[1], feat.shape[2]).to(torch.float16).contiguous()
@@ -312,15 +288,13 @@ class VisionEncoderAdapter(nn.Module):
         if self.backbone_trainable:
             raise RuntimeError("forward_features is only for frozen encoders.")
         feat = feat.float()
-        if self.vision_key == "sincro":
-            return self.proj_head(feat)
-        if self.vision_key == "splattervae" and self.splatter_returns_sequence_state:
+        if self.backbone_outputs_stack_feature:
             if feat.ndim != 2:
-                raise ValueError(f"Expected cached SplatterVAE state as (B,D), got {tuple(feat.shape)}")
+                raise ValueError(f"Expected cached stack feature as (B,D), got {tuple(feat.shape)}")
             return self.proj_head(feat)
         if feat.ndim not in (3, 4):
             raise ValueError(
-                f"Expected non-SinCro cached feature as (B,T,D) or (B,T,N,D), got {tuple(feat.shape)}"
+                f"Expected cached per-frame features as (B,T,D) or (B,T,N,D), got {tuple(feat.shape)}"
             )
         return self.proj_head(feat)
 

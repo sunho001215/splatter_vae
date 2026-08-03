@@ -186,3 +186,47 @@ def orbit_camera_world_T_cam(
     T[:3, :3] = np.stack([x_cam_world, y_cam_world, z_cam_world], axis=1)
     T[:3, 3] = cam_pos
     return T
+
+
+def mujoco_orbit_camera(
+    *,
+    lookat: Sequence[float],
+    distance: float,
+    azimuth_deg: float,
+    elevation_deg: float,
+):
+    """Create the MuJoCo free camera used by collection and online RL rendering."""
+    import mujoco
+
+    camera = mujoco.MjvCamera()
+    camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+    camera.lookat[:] = np.asarray(lookat, dtype=np.float64)
+    camera.distance = float(distance)
+    camera.azimuth = float(azimuth_deg)
+    camera.elevation = float(elevation_deg)
+    return camera
+
+
+def mujoco_camera_from_pose(pose: CameraPose, lookat: Sequence[float]):
+    """Convert a collected camera pose back to its MuJoCo free-camera fields."""
+    lookat_array = np.asarray(lookat, dtype=np.float64)
+    relative = lookat_array - np.asarray(pose.pos, dtype=np.float64)
+    distance = float(np.linalg.norm(relative))
+    if pose.azimuth_deg is not None and pose.elevation_deg is not None:
+        azimuth = float(pose.azimuth_deg)
+        elevation = float(pose.elevation_deg)
+    else:
+        azimuth = float(np.degrees(np.arctan2(relative[1], relative[0])))
+        elevation = float(
+            np.degrees(
+                np.arcsin(
+                    np.clip(relative[2] / max(distance, 1.0e-12), -1.0, 1.0)
+                )
+            )
+        )
+    return mujoco_orbit_camera(
+        lookat=lookat_array,
+        distance=distance,
+        azimuth_deg=azimuth,
+        elevation_deg=elevation,
+    )

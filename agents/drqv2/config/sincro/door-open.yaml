@@ -17,34 +17,34 @@ env:
 
   cameras:
     - name: cam0
-      r: 0.8
+      r: 1.0
       theta: 45.0
       phi: 0.0
       fovy: 45.0
     - name: cam1
-      r: 0.8
+      r: 1.0
       theta: 45.0       
       phi: 180.0          
       fovy: 45.0
     - name: cam2
-      r: 0.8
+      r: 1.0
       theta: 60.0        
       phi: -30.0             
       fovy: 45.0
     - name: cam3
-      r: 0.8
+      r: 1.0
       theta: 60.0         
       phi: 210.0           
       fovy: 45.0
     - name: cam4
-      r: 0.8
+      r: 1.0
       theta: 30.0       
-      phi: 45.0          
+      phi: 30.0
       fovy: 45.0
     - name: cam5
-      r: 0.8
+      r: 1.0
       theta: 30.0     
-      phi: 135.0            
+      phi: 150.0
       fovy: 45.0
 
   lookat: [0.0, 0.6, 0.0]

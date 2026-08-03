@@ -17,6 +17,7 @@ from dataset.metaworld.collector.camera import (
     extrinsics_world_T_cam,
     intrinsics_from_fovy,
     look_at_quat_wxyz,
+    mujoco_camera_from_pose,
     spherical_camera_pose,
 )
 
@@ -199,20 +200,7 @@ def reciprocating_lateral_offsets(num_frames: int, amplitude: float) -> np.ndarr
 
 
 def camera_from_pose(pose: CameraPose, lookat: np.ndarray):
-    import mujoco
-
-    cam = mujoco.MjvCamera()
-    cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-    cam.lookat[:] = np.asarray(lookat, dtype=np.float64)
-    rel = np.asarray(lookat, dtype=np.float64) - np.asarray(pose.pos, dtype=np.float64)
-    cam.distance = float(np.linalg.norm(rel))
-    if pose.azimuth_deg is not None and pose.elevation_deg is not None:
-        cam.azimuth = float(pose.azimuth_deg)
-        cam.elevation = float(pose.elevation_deg)
-    else:
-        cam.azimuth = float(np.degrees(np.arctan2(rel[1], rel[0])))
-        cam.elevation = float(np.degrees(np.arcsin(np.clip(rel[2] / max(cam.distance, 1.0e-12), -1.0, 1.0))))
-    return cam
+    return mujoco_camera_from_pose(pose, lookat)
 
 
 def render_pose_with_renderer(renderer, data, pose: CameraPose, lookat: np.ndarray) -> np.ndarray:

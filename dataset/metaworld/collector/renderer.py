@@ -10,7 +10,7 @@ try:
 except ImportError as e:
     raise ImportError("Please `pip install mujoco`") from e
 
-from .camera import CameraPose
+from .camera import CameraPose, mujoco_camera_from_pose
 
 
 @dataclass
@@ -62,18 +62,7 @@ class MujocoMultiCameraRenderer:
             self._seg_renderer.enable_segmentation_rendering()
 
     def _mjv_cam_from_pose(self, pose: CameraPose, lookat: np.ndarray) -> "mujoco.MjvCamera":
-        cam = mujoco.MjvCamera()
-        cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-        cam.lookat[:] = np.asarray(lookat, dtype=np.float64)
-        rel = np.asarray(lookat, dtype=np.float64) - np.asarray(pose.pos, dtype=np.float64)
-        cam.distance = float(np.linalg.norm(rel))
-        if pose.azimuth_deg is not None and pose.elevation_deg is not None:
-            cam.azimuth = float(pose.azimuth_deg)
-            cam.elevation = float(pose.elevation_deg)
-        else:
-            cam.azimuth = float(np.degrees(np.arctan2(rel[1], rel[0])))
-            cam.elevation = float(np.degrees(np.arcsin(np.clip(rel[2] / max(cam.distance, 1.0e-12), -1.0, 1.0))))
-        return cam
+        return mujoco_camera_from_pose(pose, lookat)
 
     def render_all(self, *, lookat: np.ndarray) -> RenderOut:
         rgb_by_cam: Dict[str, np.ndarray] = {}

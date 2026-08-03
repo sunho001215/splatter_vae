@@ -31,6 +31,7 @@ import yaml
 
 from agents.drqv2.drqv2_metaworld import DrQv2MetaWorldAgent
 from agents.drqv2.replay_buffer import MemmapReplayBufferStorage, make_memmap_replay_loader
+from dataset.metaworld.collector.camera import mujoco_orbit_camera
 
 
 def set_seed(seed: int) -> None:
@@ -225,15 +226,14 @@ class MetaWorldSingleCameraEnv:
         return self.frames[-1].copy()
 
     def _make_free_camera(self) -> "mujoco.MjvCamera":
-        """Create a MuJoCo free camera from the positive-down theta config."""
+        """Create the same MuJoCo orbit camera used during data collection."""
         cam_cfg = self.current_camera_cfg
-        cam = mujoco.MjvCamera()
-        cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-        cam.lookat[:] = self.lookat.astype(np.float64)
-        cam.distance = float(cam_cfg["r"])
-        cam.azimuth = float(cam_cfg["phi"])
-        cam.elevation = -float(cam_cfg["theta"])
-        return cam
+        return mujoco_orbit_camera(
+            lookat=self.lookat,
+            distance=float(cam_cfg["r"]),
+            azimuth_deg=float(cam_cfg["phi"]),
+            elevation_deg=-float(cam_cfg["theta"]),
+        )
 
     def _show_frame_cv2(self, frame_chw: np.ndarray) -> None:
         """Display the frame using OpenCV if visualization is enabled."""
@@ -308,6 +308,10 @@ class MetaWorldSingleCameraEnv:
                 cv2.destroyWindow(self.vis_window_name)
             except Exception:
                 pass
+        try:
+            self._renderer.close()
+        except Exception:
+            pass
         try:
             self._env.close()
         except Exception:

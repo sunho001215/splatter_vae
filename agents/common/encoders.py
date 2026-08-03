@@ -100,10 +100,13 @@ class SplatterVAEInvariantEncoder(nn.Module):
         vit_cfg = dict(cfg["vision"]["vit"])
         model_cfg = dict(sv_cfg.get("model", {}))
 
-        self.feature_source = str(sv_cfg.get("feature_source", "state")).lower()
-        self.preserve_token_features = False
         self.returns_sequence_state = True
         self.temporal_window = TEMPORAL_WINDOW
+        frame_stack = int(cfg["env"].get("frame_stack", self.temporal_window))
+        if frame_stack != self.temporal_window:
+            raise ValueError(
+                f"SplatterVAE requires frame_stack={self.temporal_window}, got {frame_stack}."
+            )
         img_h = int(cfg["vision"]["img_height"])
         img_w = int(cfg["vision"]["img_width"])
 
@@ -151,19 +154,23 @@ class SplatterVAEInvariantEncoder(nn.Module):
         self.is_perturbable = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Jointly encode one chronological three-frame RGB sequence."""
         x = x.float()
         if x.ndim == 4:
-            bsz, channels, height, width = x.shape
-            if channels == 3 * self.temporal_window:
-                x = x.view(bsz, self.temporal_window, 3, height, width)
-            elif channels == 3:
-                x = x[:, None].expand(-1, self.temporal_window, -1, -1, -1).contiguous()
-            else:
-                raise ValueError(f"SplatterVAE policy encoder expected 3 or {3 * self.temporal_window} channels, got {channels}.")
-        if x.ndim != 5:
-            raise ValueError(f"Expected policy images as (B,T,3,H,W) or (B,C,H,W), got {tuple(x.shape)}.")
-        x = x * 2.0 - 1.0
-        return self.vae.policy_state(x[:, :, None]).contiguous()
+            batch, channels, height, width = x.shape
+            expected_channels = 3 * self.temporal_window
+            if channels != expected_channels:
+                raise ValueError(
+                    f"SplatterVAE requires {expected_channels} stacked RGB channels, got {channels}."
+                )
+            x = x.reshape(batch, self.temporal_window, 3, height, width)
+        if x.ndim != 5 or x.shape[1] != self.temporal_window or x.shape[2] != 3:
+            raise ValueError(
+                "Expected one chronological SplatterVAE sequence as (B,3,3,H,W) "
+                f"or channel-stacked (B,9,H,W), got {tuple(x.shape)}."
+            )
+        normalized_sequence = x.mul(2.0).sub(1.0)
+        return self.vae.policy_state(normalized_sequence.unsqueeze(2)).contiguous()
 
 
 class ReViWoInvariantEncoder(nn.Module):
