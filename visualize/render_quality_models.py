@@ -9,10 +9,10 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 
-from models.splatter import render_predicted
+from models.gaussian.rendering import render_rgb
 from utils.general_utils import image_to_tensor as repo_image_to_tensor
 from visualize.metaworld_camera_utils import image_to_tensor, load_yaml, tensor_to_uint8_image
-from visualize.splattervae_common import build_visualization_models
+from visualize.splattervae_common import build_visualization_models, decode_single_image_gaussians
 
 
 def strip_module_prefix(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -75,24 +75,16 @@ class SplatterVAERenderer:
     @torch.no_grad()
     def encode_source(self, image_u8: np.ndarray, source_k: np.ndarray, source_c2w: np.ndarray) -> Dict[str, torch.Tensor]:
         x = image_to_tensor(image_u8).unsqueeze(0).to(self.device)
-        x_seq = x[:, None, None].expand(-1, int(self.vae.temporal_window), 1, -1, -1, -1).contiguous()
-        latents, _, _ = self.vae.encode_sequence(x_seq)
-        decoded = self.vae.decode_sequence(latents["s_inv"], latents["z_dep_all"][:, 0])
         k = torch.from_numpy(np.asarray(source_k, dtype=np.float32)).unsqueeze(0).to(self.device)
         c2w = torch.from_numpy(np.asarray(source_c2w, dtype=np.float32)).unsqueeze(0).to(self.device)
-        return self.converter(
-            proposal_map=decoded["base_map"],
-            z_inv=latents["s_inv"].contiguous(),
-            source_cameras_view_to_world=c2w,
-            intrinsics=k,
-            activate_output=True,
-        )
+        pc, _features = decode_single_image_gaussians(self.vae, self.converter, x, k, c2w)
+        return pc
 
     @torch.no_grad()
     def render_pc(self, pc: Dict[str, torch.Tensor], target_k: np.ndarray, target_w2c: np.ndarray) -> np.ndarray:
         k = torch.from_numpy(np.asarray(target_k, dtype=np.float32)).view(1, 1, 3, 3).to(self.device)
         w2c = torch.from_numpy(np.asarray(target_w2c, dtype=np.float32)).view(1, 1, 4, 4).to(self.device)
-        out = render_predicted(
+        out = render_rgb(
             pc=pc,
             world_view_transform=w2c,
             intrinsics=k,
@@ -263,8 +255,8 @@ class SinCroRenderer:
 class ReViWoRenderer:
     def __init__(self, drq_config_path: str | Path, ckpt_path: str | Path | None, device: torch.device):
         from baselines.ReViWo.ReViWo.common.models.multiview_vae import MultiViewBetaVAE
-        from models.transformer import STTransConfig
-        from models.vae import CodebookConfig
+        from baselines.ReViWo.transformer import STTransConfig
+        from baselines.ReViWo.transformer import CodebookConfig
 
         self.cfg = load_yaml(drq_config_path)
         rv_cfg = dict(self.cfg["vision"]["reviwo"])

@@ -93,7 +93,8 @@ class SplatterVAEInvariantEncoder(nn.Module):
 
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
-        from models.vae import SplatterVAE
+        from models.splattervae.config import TEMPORAL_WINDOW
+        from models.splattervae.model import SplatterVAE
 
         sv_cfg = dict(cfg["vision"]["splatter_vae"])
         vit_cfg = dict(cfg["vision"]["vit"])
@@ -102,7 +103,7 @@ class SplatterVAEInvariantEncoder(nn.Module):
         self.feature_source = str(sv_cfg.get("feature_source", "state")).lower()
         self.preserve_token_features = False
         self.returns_sequence_state = True
-        self.temporal_window = int(model_cfg.get("temporal_window", cfg.get("env", {}).get("frame_stack", 3)))
+        self.temporal_window = TEMPORAL_WINDOW
         img_h = int(cfg["vision"]["img_height"])
         img_w = int(cfg["vision"]["img_width"])
 
@@ -125,26 +126,17 @@ class SplatterVAEInvariantEncoder(nn.Module):
             splatter_channels=splatter_channels,
             dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
             dpt_features=int(vit_cfg.get("dpt_features", 256)),
-            temporal_window=self.temporal_window,
             inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
             dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
             tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
             state_dim=int(model_cfg.get("state_dim", sv_cfg.get("state_dim", 256))),
             view_dim=model_cfg.get("view_dim", sv_cfg.get("view_dim", None)),
-            use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
-            dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
             gaussians_per_pixel=gaussians_per_pixel,
-            motion_graph_hidden_dim=int(
-                model_cfg.get("motion_graph_hidden_dim", sv_cfg.get("motion_graph_hidden_dim", 128))
+            flow_patch_threshold_pixels=float(
+                model_cfg.get("flow_patch_threshold_pixels", sv_cfg.get("flow_patch_threshold_pixels", 0.5))
             ),
-            motion_graph_num_layers=int(
-                model_cfg.get("motion_graph_num_layers", sv_cfg.get("motion_graph_num_layers", 2))
-            ),
-            motion_graph_num_neighbors=int(
-                model_cfg.get("motion_graph_num_neighbors", sv_cfg.get("motion_graph_num_neighbors", 8))
-            ),
-            dynamic_patch_threshold=float(
-                model_cfg.get("dynamic_patch_threshold", sv_cfg.get("dynamic_patch_threshold", 0.05))
+            motion_translation_max=float(
+                model_cfg.get("motion_translation_max", sv_cfg.get("motion_translation_max", 0.5))
             ),
         )
         self.repr_dim = int(self.vae.state_dim)
@@ -180,8 +172,7 @@ class ReViWoInvariantEncoder(nn.Module):
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
         from baselines.ReViWo.ReViWo.common.models.multiview_vae import MultiViewBetaVAE
-        from models.transformer import STTransConfig
-        from models.vae import CodebookConfig
+        from baselines.ReViWo.transformer import CodebookConfig, STTransConfig
 
         rv_cfg = dict(cfg["vision"]["reviwo"])
         img_size = int(cfg["vision"]["img_height"])

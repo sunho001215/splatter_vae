@@ -26,6 +26,7 @@ from visualize.splattervae_common import (
     adapt_config_to_checkpoint,
     build_splatter_config,
     build_splattervae,
+    fixed_window_from_single_image,
     image_size_from_demo,
     load_vae_state_dict,
     splatter_channels_from_config,
@@ -97,13 +98,9 @@ def encode_trajectories(
                 [image_to_tensor(np.asarray(obs[f"{cam}_rgb"][t], dtype=np.uint8)) for cam, t in chunk],
                 dim=0,
             ).to(device)
-            z_inv, _, z_dep, _, _ = vae.encode(
-                x,
-                deterministic_invariant=True,
-                deterministic_dependent=True,
-            )
-            inv_feats.append(pooled_latent(z_inv, pool).detach().cpu())
-            dep_feats.append(pooled_latent(z_dep, pool).detach().cpu())
+            features = vae.inference_features(fixed_window_from_single_image(x))
+            inv_feats.append(pooled_latent(features["s_inv"], pool).detach().cpu())
+            dep_feats.append(pooled_latent(features["z_dep_all"][:, 0], pool).detach().cpu())
             labels.extend([cam for cam, _t in chunk])
             times.extend([int(t) for _cam, t in chunk])
 
@@ -474,10 +471,11 @@ def main() -> None:
         demo_keys = sort_demo_keys(list(f["data"].keys()))
         demo_key = args.demo or demo_keys[0]
         demo = f["data"][demo_key]
-        cameras = json.loads(demo.attrs["camera_names"])
-        camera_num = cfg.get("dataset", {}).get("camera_num", None)
-        if camera_num is not None:
-            cameras = cameras[: int(camera_num)]
+        available_cameras = json.loads(demo.attrs["camera_names"])
+        configured_views = list(cfg.get("dataset", {}).get("views", available_cameras))
+        cameras = [camera for camera in configured_views if camera in available_cameras]
+        if not cameras:
+            raise ValueError("No configured dataset.views are available in the selected demonstration.")
         t_len = int(demo.attrs.get("num_samples", demo["obs"][f"{cameras[0]}_rgb"].shape[0]))
         num_steps = min(int(args.max_steps), t_len)
 

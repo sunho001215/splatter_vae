@@ -22,7 +22,7 @@ import cv2
 import mujoco
 import numpy as np
 
-from dataset.metaworld_demo_collect.demo_collector.camera_math import spherical_camera_pose
+from dataset.metaworld.collector.camera import spherical_camera_pose
 from visualize.metaworld_camera_utils import camera_from_pose, camera_poses_from_drq, load_yaml, lookat_up_from_drq, make_metaworld_env, render_pose_with_renderer, unwrap_mujoco
 
 

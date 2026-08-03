@@ -17,8 +17,8 @@ import torch
 import torch.nn.functional as F
 import yaml
 
-from models.splatter import render_predicted
-from visualize.splattervae_common import build_visualization_models
+from models.gaussian.rendering import render_rgb_depth
+from visualize.splattervae_common import build_visualization_models, decode_single_image_gaussians
 
 
 def image_to_tensor(img_rgb: np.ndarray) -> torch.Tensor:
@@ -328,19 +328,10 @@ def generate_gaussians_for_source(
     device: torch.device,
 ) -> Dict[str, torch.Tensor]:
     x = image_to_tensor(image_u8).unsqueeze(0).to(device)
-    x_seq = x[:, None, None].expand(-1, int(vae.temporal_window), 1, -1, -1, -1).contiguous()
-    latents, _, _ = vae.encode_sequence(x_seq)
-    decoded = vae.decode_sequence(latents["s_inv"], latents["z_dep_all"][:, 0])
-
     k = torch.from_numpy(source_k).unsqueeze(0).to(device=device, dtype=torch.float32)
     c2w = torch.from_numpy(source_c2w).unsqueeze(0).to(device=device, dtype=torch.float32)
-    return converter(
-        proposal_map=decoded["base_map"],
-        z_inv=latents["s_inv"].contiguous(),
-        source_cameras_view_to_world=c2w,
-        intrinsics=k,
-        activate_output=True,
-    )
+    pc, _features = decode_single_image_gaussians(vae, converter, x, k, c2w)
+    return pc
 
 
 def write_metadata(
@@ -436,8 +427,10 @@ def main() -> None:
             raise ValueError(f"Demo {demo_key!r} not found. Available examples: {demo_keys[:5]}")
         demo = f["data"][demo_key]
         all_cameras = json.loads(demo.attrs["camera_names"])
-        cfg_camera_num = cfg.get("dataset", {}).get("camera_num", None)
-        selected_cameras = all_cameras[: int(cfg_camera_num)] if cfg_camera_num is not None else all_cameras
+        configured_views = list(cfg.get("dataset", {}).get("views", all_cameras))
+        selected_cameras = [camera for camera in configured_views if camera in all_cameras]
+        if not selected_cameras:
+            raise ValueError("No configured dataset.views are available in the selected demonstration.")
         requested_cameras = parse_csv(args.cameras)
         cameras = requested_cameras or [selected_cameras[0]]
         for cam in cameras:
@@ -483,13 +476,12 @@ def main() -> None:
                 if device.type == "cuda":
                     source_w2c = torch.from_numpy(mats[cam]["w2c"]).view(1, 1, 4, 4).to(device=device, dtype=torch.float32)
                     source_k = torch.from_numpy(mats[cam]["K"]).view(1, 1, 3, 3).to(device=device, dtype=torch.float32)
-                    render_out = render_predicted(
+                    render_out = render_rgb_depth(
                         pc=pc,
                         world_view_transform=source_w2c,
                         intrinsics=source_k,
                         bg_color=bg,
                         cfg=spl_cfg,
-                        render_mode="D",
                     )
                     rendered_depth = render_out.get("depth", None)
                     if rendered_depth is not None:

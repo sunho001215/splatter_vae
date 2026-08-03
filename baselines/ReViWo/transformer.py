@@ -12,6 +12,13 @@ from torch.nn import functional as F
 # -------------------------------------------------------------------
 
 @dataclass
+class CodebookConfig:
+    n_embed: int = 512
+    embed_dim: int = 64
+    beta: float = 0.25
+
+
+@dataclass
 class STTransConfig:
     block_size: int = 4*4
     vocab_size: int = 0

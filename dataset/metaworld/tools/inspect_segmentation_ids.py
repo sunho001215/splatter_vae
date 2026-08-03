@@ -353,7 +353,7 @@ def _role_for(row: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="List and recommend segmentation selectors stored in a Meta-World HDF5 dataset.")
-    parser.add_argument("hdf5_paths", nargs="+", help="Dataset(s) created by collect_metaworld_demos.py")
+    parser.add_argument("hdf5_paths", nargs="+", help="Dataset(s) created by dataset.metaworld.collect")
     parser.add_argument("--demo", default=None, help="Comma-separated demo keys to inspect. Defaults to the first demo.")
     parser.add_argument("--views", default=None, help="Comma-separated camera names. Defaults to every camera in the demo.")
     parser.add_argument("--max-frames", type=int, default=25, help="Maximum frames per demo to scan; use 0 for all frames.")
@@ -461,7 +461,6 @@ def main() -> None:
         if task_selectors:
             print("\nRecommended config snippet for robot + task-relevant geometry:")
             print("dataset:")
-            print("  use_segmentation_mask: true")
             print("  selected_seg_ids:")
             print(f"    {env_name}: {_yaml_list(task_selectors)}")
             if role_selectors.get("optional:button_box"):
@@ -472,7 +471,6 @@ def main() -> None:
         if selected is not None:
             print("\nConfig snippet for requested selectors:")
             print("dataset:")
-            print("  use_segmentation_mask: true")
             print("  selected_seg_ids:")
             print(f"    {env_name}: {_yaml_list(selected)}")
 

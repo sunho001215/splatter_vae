@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 import yaml
 
-from dataset.metaworld_demo_collect.demo_collector.camera_math import (
+from dataset.metaworld.collector.camera import (
     CameraPose,
     extrinsics_world_T_cam,
     intrinsics_from_fovy,

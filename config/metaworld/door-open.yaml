@@ -11,34 +11,33 @@ dataset:
   seed: 42
   num_episodes: null
   max_frames_per_demo: null
-  temporal_window: 3
-  temporal_stride_list: [3, 6, 9, 12, 15, 18, 21]
-  temporal_min_state_change: 0.02
-  temporal_gripper_change_weight: 0.05
-  camera_num: 6
-  use_depth: true
-  use_segmentation_mask: true
+  views: [cam0, cam1, cam2, cam3, cam4, cam5]
+  train_temporal_strides: [3, 6, 9]
+  validation_temporal_stride: 9
   selected_seg_ids:
     default: ["geom:24", "geom:25", "geom:22", "geom:19", "geom:13", "geom:16", "geom:18", "geom:27", "geom:28", "geom:31", "geom:33", "geom:29", "geom:43", "geom:36", "geom:42", "geom:44", "geom:45", "geom:46", "site:5", "site:6", "site:0"]
 
 # -----------------------------------------------------------------------------
 # Model wrapper settings
 # -----------------------------------------------------------------------------
+optical_flow_preprocessing:
+  model: SEA-RAFT
+  checkpoint: pretrained_checkpoint
+  output_dtype: float16
+  temporal_gaps: [3, 6, 9, 12, 18]
+  compression: lzf
+  overwrite_existing: false
+
 model:
-  temporal_window: 3
   inv_tube_mask_ratio: 0.50
   dep_mask_ratio: 0.75
   tube_mask_per_view: true
-  use_single_state_vector: true
   state_dim: 256
   view_dim: 64
   decoder_condition_mode: concat
-  dependent_uses_first_timestep_only: true
   dep_mask_eval: true
-  motion_graph_hidden_dim: 128
-  motion_graph_num_layers: 2
-  motion_graph_num_neighbors: 8
-  dynamic_patch_threshold: 0.05
+  flow_patch_threshold_pixels: 0.5
+  motion_translation_max: 0.5
 
 # -----------------------------------------------------------------------------
 # ViT encoders + token transformer + DPT decoder
@@ -80,9 +79,6 @@ splatter:
     znear: 0.1
     zfar: 2.0
     white_background: false
-    inverted_x: false
-    inverted_y: false
-    category: "generic"
 
   model:
     # Direct per-pixel Gaussian layout
@@ -100,7 +96,7 @@ splatter:
     gaussian_scale_min: 1.0e-4
     gaussian_scale_max: 0.05
     scale_scale: 0.05
-    scale_bias: -4.0
+    scale_bias: -1.5
     rotation_scale: 1.0
     rotation_bias: 0.0
     opacity_scale: 1.0
@@ -117,30 +113,16 @@ splatter:
 train:
   num_epochs: 100
   max_global_steps: 500001
-  stage1_end_step: 150000
-  stage2_end_step: 250000
-  stage2_temporal_ramp_steps: 20000
-
-  stage1_invariant_encoder_lr: 3.0e-4
-  stage1_dependent_encoder_lr: 3.0e-4
-  stage1_decoder_lr: 3.0e-4
-  stage1_motion_lr: 0.0
-  stage1_warmup_steps: 10000
-  stage1_min_lr: 5.0e-5
-
-  stage2_invariant_encoder_lr: 5.0e-5
-  stage2_dependent_encoder_lr: 3.0e-5
-  stage2_decoder_lr: 5.0e-5
-  stage2_motion_lr: 3.0e-4
-  stage2_warmup_steps: 5000
-  stage2_min_lr: 1.0e-5
-
-  stage3_invariant_encoder_lr: 5.0e-5
-  stage3_dependent_encoder_lr: 3.0e-5
-  stage3_decoder_lr: 5.0e-5
-  stage3_motion_lr: 1.5e-4
-  stage3_warmup_steps: 5000
-  stage3_min_lr: 1.0e-5
+  lr: 1.0e-4
+  lr_schedule: cosine
+  lr_warmup_steps: 10000
+  min_lr: 1.0e-5
+  temporal_loss_ramp_steps: 20000
+  flow_weight: 0.1
+  flow_alpha_threshold: 0.01
+  flow_smooth_l1_beta: 1.0
+  dynamic_region_weight: 1.0
+  frustum_weight: 0.01
   device: cuda
 
   # Unified RGB, silhouette, and expected-depth supervision.
@@ -153,38 +135,37 @@ train:
   local_depth_max_patch_size: 32
   local_depth_min_valid_pixels: 16
 
-  # Sparse persistent motion controls and fixed t0 interpolation.
-  num_motion_controls: 256
-  motion_num_neighbors: 4
-  motion_delta_max: 0.5
-
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   dep_contrastive_weight: 0.1
   dep_consistency_weight: 0.1
 
   temperature: 0.1
+  scalar_log_every: 250
+  val_num_batches: 2
 
   eval_every: 1000
   save_every: 10000 
-  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/door-open/sparse-controls/
-  resume_from_last: false
-  val_log_pointclouds: true
+  ckpt_dir: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/door-open/dense-flow/
+  resume_from_last: true
   val_pointcloud_max_points: 4096
-  val_track_max_points: 8
 
 # -----------------------------------------------------------------------------
 # Optional logging
 # -----------------------------------------------------------------------------
 wandb:
   enabled: true
+  scalar_log_every: 250
+  use_compact_logging: true
+  use_qualitative_table: true
   project: metaworld-SplatterVAE
   entity: null
-  run_name: metaworld-door-open-temporal-sparse-controls
+  run_name: metaworld-door-open-temporal-dense-flow
   tags:
     - temporal-state-bottleneck
     - film-query-decoder
-    - sparse-control-motion
+    - dense-gaussian-motion
+    - sea-raft-flow
     - sequence-rendering
     - diverse-demo-collection
     - state-vector-contrastive

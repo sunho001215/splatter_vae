@@ -20,8 +20,9 @@ import numpy as np
 import torch
 import yaml
 
-from models.splatter import render_predicted
-from visualize.splattervae_common import build_visualization_models
+from models.gaussian.motion import activate_motion_map
+from models.gaussian.rendering import render_rgb
+from visualize.splattervae_common import build_visualization_models, fixed_window_from_single_image
 
 
 # ---------- small helpers ----------
@@ -221,29 +222,21 @@ def main():
     x_dep = image_to_tensor(img_dep_u8).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        z_inv, _, _, _, _ = vae.encode(
-            x_inv,
-            deterministic_invariant=True,
-            deterministic_dependent=True,
-        )
-        _, _, z_dep, _, _ = vae.encode(
-            x_dep,
-            deterministic_invariant=True,
-            deterministic_dependent=True,
-        )
-
-        # The output should keep the content/scene cues from z_inv and adopt the viewpoint cues from z_dep.
-        splatter = vae.decode(z_inv, z_dep)
+        invariant_features = vae.inference_features(fixed_window_from_single_image(x_inv))
+        dependent_features = vae.inference_features(fixed_window_from_single_image(x_dep))
+        z_inv = invariant_features["s_inv"]
+        z_dep = dependent_features["z_dep_all"][:, 0]
+        raw = vae.predict_raw_maps(z_inv, z_dep)
+        splatter = raw["raw_base_map"].float()
+        motion = activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
 
         eye = torch.eye(4, dtype=torch.float32, device=device).unsqueeze(0)
         k_dep = torch.from_numpy(dep_cam_mats[cam_dep]["K"]).unsqueeze(0).to(device)
-
         gaussian_pc = converter(
-            proposal_map=splatter,
-            z_inv=z_inv.contiguous(),
+            splatter_map=splatter,
+            motion_map=motion,
             source_cameras_view_to_world=eye,
             intrinsics=k_dep,
-            activate_output=True,
         )
 
         # Anchor the decoded splatter to the z_dep camera frame, then render to all training viewpoints from demo_dep.
@@ -261,7 +254,7 @@ def main():
             else torch.zeros(3, dtype=torch.float32, device=device)
         )
 
-        renders = render_predicted(
+        renders = render_rgb(
             pc=gaussian_pc,
             world_view_transform=world_view_transform,
             intrinsics=intrinsics,

@@ -10,3 +10,4 @@ outputs/
 runs/
 wandb/
 buffer/
+dataset/assets/sea_raft/*.pth

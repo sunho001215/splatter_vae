@@ -522,9 +522,8 @@ class PretrainedEncoderConditioner(nn.Module):
         self.encoder_type = str(cfg["vision"].get("encoder_type", "")).lower().replace("_", "")
         self.visual_temporal_window = self.n_obs_steps
         if self.encoder_type == "splattervae":
-            splatter_cfg = dict(cfg["vision"].get("splatter_vae", {}))
-            model_cfg = dict(splatter_cfg.get("model", {}))
-            self.visual_temporal_window = int(model_cfg.get("temporal_window", self.n_obs_steps))
+            from models.splattervae.config import TEMPORAL_WINDOW
+            self.visual_temporal_window = TEMPORAL_WINDOW
         # VisionEncoderAdapter expects the DrQ-v2 naming for stacked frames.
         adapter_cfg = copy.deepcopy(cfg)
         adapter_cfg.setdefault("env", {})

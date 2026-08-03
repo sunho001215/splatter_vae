@@ -22,17 +22,22 @@ import gymnasium as gym
 import metaworld  # noqa: F401
 import mujoco
 
-from demo_collector.config import load_config
-from demo_collector.camera_math import (
+from dataset.metaworld.collector.config import load_config
+from dataset.metaworld.collector.camera import (
     spherical_camera_pose,
     intrinsics_from_fovy,
     extrinsics_world_T_cam,
 )
-from demo_collector.render_mujoco import MujocoMultiCameraRenderer
-from demo_collector.policy_factory import make_scripted_policy
-from demo_collector.hdf5_writier import HDF5DemoWriter, DemoMeta
-from demo_collector.viz import MultiCamVisualizer
-from dino_postprocess import add_dino_features_inplace
+from dataset.metaworld.collector.renderer import MujocoMultiCameraRenderer
+from dataset.metaworld.collector.policy import make_scripted_policy
+from dataset.metaworld.collector.hdf5_writer import HDF5DemoWriter, DemoMeta
+from dataset.metaworld.collector.actions import (
+    build_action_generator,
+    build_episode_configs,
+    episode_config_metadata,
+)
+from dataset.metaworld.collector.visualization import MultiCamVisualizer
+from dataset.metaworld.tools.dino_postprocess import add_dino_features_inplace
 
 
 def _unwrap_mujoco(env):
@@ -124,11 +129,26 @@ def _step_env(env, action):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="Collect one transactional LZF-compressed Meta-World dataset."
+    )
     ap.add_argument("--config", required=True)
+    ap.add_argument("--env-name", help="Override metaworld.env_name from the YAML.")
+    ap.add_argument("--output-path", help="Override output.path from the YAML.")
+    ap.add_argument("--max-steps", type=int, help="Override metaworld.max_steps.")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if args.env_name is not None:
+        cfg.metaworld.env_name = args.env_name
+    if args.output_path is not None:
+        cfg.output.path = args.output_path
+    if args.max_steps is not None:
+        if args.max_steps <= 0:
+            raise ValueError("--max-steps must be positive.")
+        cfg.metaworld.max_steps = args.max_steps
+    if cfg.output.compression != "lzf":
+        raise ValueError("Meta-World collection requires output.compression: lzf.")
 
     # Create Meta-World env via Gym API
     env = gym.make(cfg.metaworld.benchmark_id, env_name=cfg.metaworld.env_name, seed=cfg.metaworld.seed)
@@ -203,32 +223,52 @@ def main():
             video_fps=float(cfg.visualize.video_fps),
         )
 
-    def run_policy_block(policy_type: str, num: int, policy_obj, policy_name: str):
+    def run_policy_block(
+        mode: str,
+        episode_configs: list,
+        policy_obj,
+        policy_name: str,
+        mode_seed_offset: int,
+    ) -> None:
         nonlocal lookat, stop_requested
 
-        for _ in tqdm(range(num), desc=f"{policy_type} demos"):
+        for episode_config in tqdm(episode_configs, desc=f"{mode} demos"):
             if stop_requested:
                 break
 
             demo_idx = writer.next_demo_index()
             demo_name = f"demo{demo_idx}"
             seed = cfg.metaworld.seed + demo_idx
+            action_rng = np.random.default_rng(
+                cfg.metaworld.seed + mode_seed_offset + demo_idx
+            )
+            action_generator = build_action_generator(
+                episode_config,
+                env.action_space.low,
+                env.action_space.high,
+                action_rng,
+            )
 
             obs, info = env.reset(seed=seed)
             obs = np.asarray(obs).ravel().astype(np.float32)
-
-            # Create per-demo visualizer (optional)
             viz = _make_demo_visualizer(demo_name)
 
             meta = DemoMeta(
                 env_id=cfg.metaworld.benchmark_id,
                 env_name=cfg.metaworld.env_name,
                 seed=seed,
-                policy_type=policy_type,
+                policy_type=mode,
                 policy_name=policy_name,
-                camera_names=[p.name for p in cam_poses],
+                camera_names=[pose.name for pose in cam_poses],
                 model_file="unknown",
             )
+            extra_attrs = {
+                "max_steps": cfg.metaworld.max_steps,
+                "save_depth": bool(cfg.render.save_depth),
+                "segmentation_enabled": bool(cfg.segmentation.enabled),
+                "segmentation_save_objtype": bool(cfg.segmentation.save_objtype),
+                **episode_config_metadata(episode_config),
+            }
             writer.begin_demo(
                 demo_name,
                 meta,
@@ -236,66 +276,65 @@ def main():
                 W=cfg.render.width,
                 camera_intrinsics=cam_intr,
                 camera_extrinsics=cam_extr,
-                extra_attrs={
-                    "max_steps": cfg.metaworld.max_steps,
-                    "save_depth": bool(cfg.render.save_depth),
-                    "segmentation_enabled": bool(cfg.segmentation.enabled),
-                    "segmentation_save_objtype": bool(cfg.segmentation.save_objtype),
-                },
+                extra_attrs=extra_attrs,
                 save_depth=cfg.render.save_depth,
                 segmentation_objects=segmentation_objects,
             )
 
-            for t in range(cfg.metaworld.max_steps):
-                # Quadratically anneal from nearly expert to random as demo_idx increases until halfway.
-                prob_expert = max(0.0, 1.0 - (demo_idx / (num * 0.5)) ** 2)
-                if np.random.rand() < prob_expert:
-                    action = policy_obj.get_action(obs)
-                    action = np.asarray(action).ravel().astype(np.float32)
-                else:
-                    action = np.random.uniform(env.action_space.low, env.action_space.high).astype(np.float32)
+            frames_saved = 0
+            for timestep in range(cfg.metaworld.max_steps):
+                # Every mode receives the current scripted action. The selected
+                # generator is solely responsible for transforming it.
+                expert_action = np.asarray(
+                    policy_obj.get_action(obs), dtype=np.float32
+                ).reshape(4)
+                action = action_generator.get_action(
+                    expert_action=expert_action,
+                    timestep=timestep,
+                )
 
-                # Store the current state/observation before applying action_t.
-                # This keeps each dataset row aligned as (obs_t, action_t,
-                # reward_t, done_t), instead of accidentally saving obs_{t+1}
-                # with action_t.
+                # Store state/observation at t before applying action_t. The
+                # synchronous writer completes compression before the next step.
                 state = _get_state(env)
                 obs_to_store = obs.copy()
                 rend = renderer.render_all(lookat=lookat)
-
-                # Step after capturing obs_t; reward/done/success describe the
-                # transition caused by action_t.
                 next_obs, reward, done, info = _step_env(env, action)
                 next_obs = np.asarray(next_obs).ravel().astype(np.float32)
 
-                # Ensure seg dict exists for downstream (writer + viz)
                 if rend.seg_id_by_cam is None:
-                    seg_for_step = {p.name: np.zeros((cfg.render.height, cfg.render.width), np.int32) for p in cam_poses}
+                    seg_for_step = {
+                        pose.name: np.zeros(
+                            (cfg.render.height, cfg.render.width), np.int32
+                        )
+                        for pose in cam_poses
+                    }
                 else:
                     seg_for_step = rend.seg_id_by_cam
 
-                # Success heuristic from Meta-World info
-                success = bool(info.get("success", False) or info.get("is_success", False))
-
-                # -------- live visualization (optional) --------
-                if viz is not None and (t % max(int(cfg.visualize.every_n_steps), 1) == 0):
+                success = bool(
+                    info.get("success", False) or info.get("is_success", False)
+                )
+                if viz is not None and (
+                    timestep % max(int(cfg.visualize.every_n_steps), 1) == 0
+                ):
                     key = viz.update(
                         rend.rgb_by_cam,
                         seg_for_step,
-                        step_i=t,
+                        step_i=timestep,
                         overlay_lines=[
-                            f"{demo_name} | {policy_type}:{policy_name}",
+                            f"{demo_name} | {mode}:{policy_name}",
                             f"reward={reward:.3f} success={int(success)} done={int(done)}",
                             f"MUJOCO_GL={os.environ.get('MUJOCO_GL', '')}",
                         ],
                     )
-
-                    # Press stop_key (default 'q') to stop collection early
-                    if key != -1 and chr(key).lower() == str(cfg.visualize.stop_key).lower():
+                    if (
+                        key != -1
+                        and chr(key).lower()
+                        == str(cfg.visualize.stop_key).lower()
+                    ):
                         stop_requested = True
                         break
 
-                # -------- write step to dataset --------
                 writer.append_step(
                     state=state,
                     action=action,
@@ -308,29 +347,66 @@ def main():
                     depth_by_cam=rend.depth_by_cam,
                     seg_type_by_cam=rend.seg_type_by_cam,
                 )
-
+                frames_saved += 1
                 obs = next_obs
 
-                # Task-based termination
-                if cfg.metaworld.terminate_on_success and success:
-                    print(f"Demo {demo_name} succeeded at step {t}, terminating episode.")
+                if (
+                    cfg.metaworld.terminate_on_success
+                    and success
+                    and action_generator.allow_success_termination(timestep)
+                ):
+                    print(
+                        f"Demo {demo_name} succeeded at step {timestep}, "
+                        "terminating episode."
+                    )
                     break
                 if done:
-                    print(f"Demo {demo_name} ended at step {t} with done=True.")
+                    print(
+                        f"Demo {demo_name} ended at step {timestep} with done=True."
+                    )
                     break
 
-            writer.end_demo()
-
+            writer.end_demo(expected_frames=frames_saved)
             if viz is not None:
                 viz.close()
 
-    # ---- Collect scripted demos ----
-    if cfg.policies.scripted.enabled and cfg.policies.scripted.num_demos > 0:
-        pol, polinfo = make_scripted_policy(cfg.metaworld.env_name, cfg.policies.scripted.policy_class)
-        run_policy_block("scripted", cfg.policies.scripted.num_demos, pol, polinfo.policy_name)
-
-    writer.close()
-    env.close()
+    modes = (
+        ("expert_guided", cfg.collection.expert_guided.num_demos),
+        ("perturb_recover", cfg.collection.perturb_recover.num_demos),
+        ("smooth_random", cfg.collection.smooth_random.num_demos),
+    )
+    policy, policy_info = make_scripted_policy(
+        cfg.metaworld.env_name,
+        cfg.collection.scripted_policy_class,
+    )
+    expected_demos = sum(count for _mode, count in modes)
+    try:
+        for mode_index, (mode, expected_mode_demos) in enumerate(modes):
+            episode_configs = build_episode_configs(
+                mode,
+                cfg.collection,
+                cfg.metaworld.max_steps,
+                np.random.default_rng(cfg.metaworld.seed + 10_000 * mode_index),
+            )
+            if len(episode_configs) != expected_mode_demos:
+                raise RuntimeError(
+                    f"{mode} produced {len(episode_configs)} configurations; "
+                    f"expected {expected_mode_demos}."
+                )
+            run_policy_block(
+                mode,
+                episode_configs,
+                policy,
+                policy_info.policy_name,
+                mode_seed_offset=100_000 * (mode_index + 1),
+            )
+        writer.close(expected_demos=expected_demos)
+    except BaseException:
+        writer.abort()
+        raise
+    finally:
+        renderer.close()
+        env.close()
 
     # Postprocess DINO into same HDF5
     if cfg.dino.enabled:

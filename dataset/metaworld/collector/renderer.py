@@ -10,7 +10,7 @@ try:
 except ImportError as e:
     raise ImportError("Please `pip install mujoco`") from e
 
-from .camera_math import CameraPose
+from .camera import CameraPose
 
 
 @dataclass
@@ -115,3 +115,11 @@ class MujocoMultiCameraRenderer:
             seg_id_by_cam=seg_id_by_cam,
             seg_type_by_cam=seg_type_by_cam,
         )
+
+    def close(self) -> None:
+        """Release all MuJoCo rendering contexts deterministically."""
+        self._rgb_renderer.close()
+        if self._depth_renderer is not None:
+            self._depth_renderer.close()
+        if self._seg_renderer is not None:
+            self._seg_renderer.close()

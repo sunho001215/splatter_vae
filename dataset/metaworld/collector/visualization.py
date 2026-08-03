@@ -1,4 +1,4 @@
-# demo_collector/viz.py
+# Collection visualization helpers.
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -22,3 +22,6 @@
 [submodule "baselines/SinCro/sincro"]
 	path = baselines/SinCro/sincro
 	url = https://github.com/sunho001215/sincro.git
+[submodule "dataset/third_party/SEA-RAFT"]
+	path = dataset/third_party/SEA-RAFT
+	url = https://github.com/princeton-vl/SEA-RAFT.git

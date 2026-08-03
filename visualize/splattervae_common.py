@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from contextlib import nullcontext
 import json
 from dataclasses import fields
 from typing import Any, Dict, Tuple
@@ -8,14 +9,15 @@ from typing import Any, Dict, Tuple
 import h5py
 import torch
 
-from models.gaussians import DirectSplatterToGaussians
-from models.splatter import (
+from models.gaussian.motion import activate_motion_map
+from models.gaussian.parameterization import (
+    DirectSplatterToGaussians,
     SplatterConfig,
     SplatterDataConfig,
     SplatterModelConfig,
     default_splatter_channels,
 )
-from models.vae import SplatterVAE
+from models.splattervae.model import SplatterVAE
 
 
 def image_size_from_demo(dataset_path: str, demo_key: str) -> Tuple[int, int]:
@@ -119,19 +121,14 @@ def build_splattervae(cfg: Dict[str, Any], img_height: int, img_width: int, spla
         splatter_channels=splatter_channels,
         dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
         dpt_features=int(vit_cfg.get("dpt_features", 256)),
-        temporal_window=int(model_cfg.get("temporal_window", cfg.get("dataset", {}).get("temporal_window", 3))),
         inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
         dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
         tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
         state_dim=int(model_cfg.get("state_dim", 256)),
         view_dim=model_cfg.get("view_dim", None),
-        use_single_state_vector=bool(model_cfg.get("use_single_state_vector", True)),
-        dependent_uses_first_timestep_only=bool(model_cfg.get("dependent_uses_first_timestep_only", True)),
         gaussians_per_pixel=gaussians_per_pixel,
-        motion_graph_hidden_dim=int(model_cfg.get("motion_graph_hidden_dim", 128)),
-        motion_graph_num_layers=int(model_cfg.get("motion_graph_num_layers", 2)),
-        motion_graph_num_neighbors=int(model_cfg.get("motion_graph_num_neighbors", 8)),
-        dynamic_patch_threshold=float(model_cfg.get("dynamic_patch_threshold", 0.05)),
+        flow_patch_threshold_pixels=float(model_cfg.get("flow_patch_threshold_pixels", 0.5)),
+        motion_translation_max=float(model_cfg.get("motion_translation_max", 0.5)),
     )
 
 
@@ -162,3 +159,37 @@ def build_visualization_models(
     vae.to(device).eval()
     converter.to(device).eval()
     return vae, converter, spl_cfg
+
+
+def fixed_window_from_single_image(images: torch.Tensor) -> torch.Tensor:
+    """Expand normalized ``(B,3,H,W)`` input in a visualization-only utility."""
+    if images.dim() != 4 or images.shape[1] != 3:
+        raise ValueError(f"Expected normalized images as (B,3,H,W), got {tuple(images.shape)}.")
+    return images[:, None, None].expand(-1, 3, 1, -1, -1, -1).contiguous()
+
+
+@torch.no_grad()
+def decode_single_image_gaussians(
+    vae: SplatterVAE,
+    converter: DirectSplatterToGaussians,
+    images: torch.Tensor,
+    intrinsics: torch.Tensor,
+    source_c2w: torch.Tensor,
+) -> tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    sequence = fixed_window_from_single_image(images)
+    context = (
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+        if images.device.type == "cuda"
+        else nullcontext()
+    )
+    with context:
+        features = vae.inference_features(sequence)
+        raw = vae.predict_raw_maps(features["s_inv"], features["z_dep_all"][:, 0])
+    motion = activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
+    pc = converter(
+        splatter_map=raw["raw_base_map"].float(),
+        motion_map=motion,
+        source_cameras_view_to_world=source_c2w.float(),
+        intrinsics=intrinsics.float(),
+    )
+    return pc, features

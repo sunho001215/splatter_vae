@@ -77,25 +77,20 @@ vision:
     dpt_features: 128
 
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/handle-pull/sparse-controls/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/handle-pull/dense-flow/step_00300000.pth
     feature_source: state
     max_sh_degree: 1
     gaussians_per_pixel: 1
 
     model:
-      temporal_window: 3
       inv_tube_mask_ratio: 0.50
       dep_mask_ratio: 0.75
       tube_mask_per_view: true
-      use_single_state_vector: true
       state_dim: 256
       view_dim: 64
-      dependent_uses_first_timestep_only: true
       dep_mask_eval: false
-      motion_graph_hidden_dim: 128
-      motion_graph_num_layers: 2
-      motion_graph_num_neighbors: 8
-      dynamic_patch_threshold: 0.05
+      flow_patch_threshold_pixels: 0.5
+      motion_translation_max: 0.5
 
 agent:
   lr: 1.0e-4

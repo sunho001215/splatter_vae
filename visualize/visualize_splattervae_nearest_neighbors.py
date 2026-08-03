@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from visualize.visualize_splattervae_tsne import (
     build_vae,
+    fixed_window_from_single_image,
     image_to_tensor,
     load_cfg,
     pooled_latent,
@@ -65,10 +66,11 @@ def load_camera_names(dataset_path: str, demo_key: str, cfg: dict) -> List[str]:
     with h5py.File(dataset_path, "r") as f:
         demo = f["data"][demo_key]
         cameras = json.loads(demo.attrs["camera_names"])
-    camera_num = cfg.get("dataset", {}).get("camera_num", None)
-    if camera_num is not None:
-        cameras = cameras[: int(camera_num)]
-    return list(cameras)
+    configured_views = list(cfg.get("dataset", {}).get("views", cameras))
+    selected = [camera for camera in configured_views if camera in cameras]
+    if not selected:
+        raise ValueError("No configured dataset.views are available in the selected demonstration.")
+    return selected
 
 
 def timestep_count(dataset_path: str, demo_key: str, camera: str) -> int:
@@ -121,12 +123,8 @@ def encode_records(
                 img = np.asarray(f["data"][rec.demo]["obs"][f"{rec.camera}_rgb"][rec.timestep], dtype=np.uint8)
                 images.append(image_to_tensor(img))
             x = torch.stack(images, dim=0).to(device)
-            z_inv, _, _z_dep, _, _ = vae.encode(
-                x,
-                deterministic_invariant=True,
-                deterministic_dependent=True,
-            )
-            feats.append(pooled_latent(z_inv, pool).detach().cpu())
+            features = vae.inference_features(fixed_window_from_single_image(x))
+            feats.append(pooled_latent(features["s_inv"], pool).detach().cpu())
     return torch.cat(feats, dim=0).numpy()
 
 

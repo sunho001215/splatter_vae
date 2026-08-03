@@ -1,7 +1,7 @@
 output:
   path: /home/ws/data/metaworld/pre-training/button-press-wall.hdf5
   mode: overwrite
-  compression: null
+  compression: lzf
 metaworld:
   benchmark_id: Meta-World/MT1
   env_name: button-press-wall-v3
@@ -54,11 +54,32 @@ render:
 segmentation:
   enabled: true
   save_objtype: true
-policies:
-  scripted:
-    enabled: true
-    num_demos: 200
-    policy_class: null
+collection:
+  scripted_policy_class: null
+  expert_guided:
+    num_demos: 150
+    noise_schedule:
+      - {strength: 0.00, num_demos: 30}
+      - {strength: 0.05, num_demos: 30}
+      - {strength: 0.15, num_demos: 30}
+      - {strength: 0.30, num_demos: 30}
+      - {strength: 0.50, num_demos: 30}
+    noise_smoothing: 0.85
+    noise_target_hold_steps: [8, 16]
+  perturb_recover:
+    num_demos: 60
+    start_fraction: [0.25, 0.55]
+    duration_steps: [8, 24]
+    strength_range: [0.30, 0.70]
+    noise_smoothing: 0.85
+    noise_target_hold_steps: [4, 10]
+    minimum_recovery_steps: 10
+  smooth_random:
+    num_demos: 40
+    xyz_smoothing: 0.80
+    gripper_smoothing: 0.95
+    xyz_target_hold_steps: [6, 14]
+    gripper_target_hold_steps: [30, 60]
 visualize:
   enabled: false
   show_window: false

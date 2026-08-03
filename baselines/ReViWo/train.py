@@ -25,8 +25,8 @@ from baselines.ReViWo.dataloader import build_train_valid_loaders_metaworld
 from baselines.ReViWo.ReViWo.common.models.multiview_vae import MultiViewBetaVAE
 
 # ST transformer + codebook configs 
-from models.transformer import STTransConfig       
-from models.vae import CodebookConfig
+from baselines.ReViWo.transformer import STTransConfig
+from baselines.ReViWo.transformer import CodebookConfig
 
 # Utilities: set_random_seed + losses/similarity helpers (same as ReViWo)
 from baselines.ReViWo.ReViWo.common.utils import (
