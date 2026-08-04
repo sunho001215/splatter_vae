@@ -289,6 +289,11 @@ class VisionEncoderAdapter(nn.Module):
             raise RuntimeError("forward_features is only for frozen encoders.")
         feat = feat.float()
         if self.backbone_outputs_stack_feature:
+            # Older cached SplatterVAE features retained the singleton view
+            # axis. Accept that representation while enforcing one state per
+            # batch item below.
+            if feat.ndim == 3 and feat.shape[1] == 1:
+                feat = feat[:, 0]
             if feat.ndim != 2:
                 raise ValueError(f"Expected cached stack feature as (B,D), got {tuple(feat.shape)}")
             return self.proj_head(feat)

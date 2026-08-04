@@ -170,7 +170,17 @@ class SplatterVAEInvariantEncoder(nn.Module):
                 f"or channel-stacked (B,9,H,W), got {tuple(x.shape)}."
             )
         normalized_sequence = x.mul(2.0).sub(1.0)
-        return self.vae.policy_state(normalized_sequence.unsqueeze(2)).contiguous()
+        state = self.vae.policy_state(normalized_sequence.unsqueeze(2))
+        # policy_state preserves the view dimension used by pretraining. RL
+        # supplies exactly one view, so expose one fused state per batch item.
+        if state.ndim == 3 and state.shape[1] == 1:
+            state = state[:, 0]
+        if state.ndim != 2:
+            raise ValueError(
+                "SplatterVAE policy_state must produce (B,D) for single-view RL "
+                f"input, got {tuple(state.shape)}"
+            )
+        return state.contiguous()
 
 
 class ReViWoInvariantEncoder(nn.Module):
