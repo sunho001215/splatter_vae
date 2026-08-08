@@ -1,4 +1,4 @@
-seed: 66
+seed: 42
 device: cuda
 
 wandb:
@@ -100,22 +100,8 @@ agent:
   feature_dim: 256
   hidden_dim: 1024
   critic_target_tau: 0.01
-
-  # DrM-specific knobs
-  dormant_threshold: 0.025
-  target_dormant_ratio: 0.20
-  dormant_temp: 10.0
-  target_lambda: 0.70
-  lambda_temp: 50.0
-  dormant_perturb_interval: 100000
-  min_perturb_factor: 0.20
-  max_perturb_factor: 0.95
-  perturb_rate: 2.0
-
-  stddev_type: awake
   stddev_schedule: linear(1.0,0.1,500000)
   stddev_clip: 0.3
-  expectile: 0.9
 
 train:
   num_train_steps: 1000000
@@ -126,7 +112,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/peg-unplug-side/sincro/seed66/
+  replay_dir: ./buffer/metaworld/peg-unplug-side/sincro/seed42/
   replay_num_workers: 4
   nstep: 3
 
@@ -136,7 +122,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/peg-unplug-side/seed66/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/sincro/peg-unplug-side/seed42/
 
 visualization:
   enabled: false

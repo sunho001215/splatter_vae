@@ -93,13 +93,14 @@ class DirectSplatterToGaussians(nn.Module):
         self,
         *,
         splatter_map: torch.Tensor,
-        motion_map: torch.Tensor,
+        motion_map: Optional[torch.Tensor],
         source_cameras_view_to_world: torch.Tensor,
         intrinsics: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
         # Activation, back-projection, and camera transforms are deliberately FP32.
         splatter_map = splatter_map.float()
-        motion_map = motion_map.float()
+        if motion_map is not None:
+            motion_map = motion_map.float()
         c2w = source_cameras_view_to_world.float()
         intrinsics = intrinsics.float()
         if splatter_map.dim() != 4:
@@ -111,14 +112,18 @@ class DirectSplatterToGaussians(nn.Module):
             )
         g = int(self.cfg.model.gaussians_per_pixel)
         expected_motion = (batch, g * 6, height, width)
-        if tuple(motion_map.shape) != expected_motion:
+        if motion_map is not None and tuple(motion_map.shape) != expected_motion:
             raise ValueError(f"Expected activated motion map {expected_motion}, got {tuple(motion_map.shape)}.")
 
         p = self.params_per_gaussian
         params = splatter_map.view(batch, g, p, height, width)
         params = params.permute(0, 3, 4, 1, 2).reshape(batch, height * width * g, p).contiguous()
-        motion = motion_map.view(batch, g, 6, height, width)
-        motion = motion.permute(0, 3, 4, 1, 2).reshape(batch, height * width * g, 6).contiguous()
+        motion = None
+        if motion_map is not None:
+            motion = motion_map.view(batch, g, 6, height, width)
+            motion = motion.permute(0, 3, 4, 1, 2).reshape(
+                batch, height * width * g, 6
+            ).contiguous()
 
         depth_raw = params[..., 0:1]
         depth = self._activate_depth(depth_raw)
@@ -129,9 +134,10 @@ class DirectSplatterToGaussians(nn.Module):
             params = params.view(batch, height * width, g, p).gather(
                 2, order[..., None].expand(batch, height * width, g, p)
             ).reshape(batch, height * width * g, p).contiguous()
-            motion = motion.view(batch, height * width, g, 6).gather(
-                2, order[..., None].expand(batch, height * width, g, 6)
-            ).reshape(batch, height * width * g, 6).contiguous()
+            if motion is not None:
+                motion = motion.view(batch, height * width, g, 6).gather(
+                    2, order[..., None].expand(batch, height * width, g, 6)
+                ).reshape(batch, height * width * g, 6).contiguous()
             depth = depth_grid.gather(2, order[..., None]).reshape(batch, height * width * g, 1)
         elif ordering not in {"none", "off", "false", "sort", "sorted", "ascending"}:
             raise ValueError(f"Unknown depth_ordering={self.cfg.model.depth_ordering!r}.")
@@ -165,7 +171,7 @@ class DirectSplatterToGaussians(nn.Module):
         xyz_world = torch.einsum("bij,bnj->bni", c2w[:, :3, :3], xyz_camera) + c2w[:, None, :3, 3]
         valid = torch.isfinite(xyz_world).all(-1) & torch.isfinite(scaling).all(-1)
         opacity = opacity * valid[..., None].to(opacity.dtype)
-        return {
+        output = {
             "xyz": xyz_world.contiguous(),
             "scaling": scaling.contiguous(),
             "rotation": rotation.contiguous(),
@@ -174,9 +180,11 @@ class DirectSplatterToGaussians(nn.Module):
             "features_rest": features_rest.contiguous(),
             "valid_mask": valid.contiguous(),
             "source_depth": depth.contiguous(),
-            "delta_xyz_01": motion[..., 0:3].contiguous(),
-            "delta_xyz_12": motion[..., 3:6].contiguous(),
         }
+        if motion is not None:
+            output["delta_xyz_01"] = motion[..., 0:3].contiguous()
+            output["delta_xyz_12"] = motion[..., 3:6].contiguous()
+        return output
 
     def _activate_depth(self, raw: torch.Tensor) -> torch.Tensor:
         minimum = float(self.cfg.data.znear if self.cfg.model.depth_min is None else self.cfg.model.depth_min)

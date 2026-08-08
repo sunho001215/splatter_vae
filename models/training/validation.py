@@ -28,7 +28,7 @@ FLOW_TRACK_POINT_COUNT = 12
 FLOW_TRACK_PREFERRED_COVERAGE = 0.05
 NOVEL_VIEW_ORBIT_FRAMES = 24
 NOVEL_VIEW_ORBIT_FPS = 8
-# dataset/metaworld/config.yaml uses this look-at point for every generated view.
+# dataset/metaworld/configs/<environment>.yaml uses this look-at point for every generated view.
 METAWORLD_SCENE_CENTER = (0.0, 0.6, 0.0)
 MASK_OVERLAY_ALPHA = 0.55
 MASK_OVERLAY_COLOR = (1.0, 0.15, 0.15)
@@ -450,7 +450,7 @@ def _point_trajectory_panel(
         nrow=3,
         caption=(
             f"flow point tracks ({predicted.shape[0]} uniformly distributed points) | "
-            "columns: t0/t1/t2 | top: ground-truth RGB with SEA-RAFT dashed "
+            "columns: t0/t1/t2 | top: ground-truth RGB with WAFT dashed "
             "tracks/cross markers | bottom: rendered RGB with predicted solid "
             "tracks/square markers | colors and t0 query points match across rows"
         ),
@@ -512,10 +512,12 @@ def _input_panel(
     dep_mask: torch.Tensor,
     patch_size: int,
     view_idx: int,
+    temporal_modeling: bool,
 ) -> wandb.Image:
     if not 0 <= view_idx < images.shape[2]:
         raise ValueError(f"View index {view_idx} is outside [0, {images.shape[2]}).")
-    rgb = [images[0, time_idx, view_idx].detach().cpu() for time_idx in range(3)]
+    num_timesteps = 3 if temporal_modeling else 1
+    rgb = [images[0, time_idx, view_idx].detach().cpu() for time_idx in range(num_timesteps)]
     colored_flows = [_flow_to_rgb(flows[0, pair_idx, view_idx]).cpu() for pair_idx in range(3)]
     invariant_overlays = [
         _overlay_patch_mask(image, inv_mask[0, view_idx].cpu(), patch_size)
@@ -535,9 +537,10 @@ def _input_panel(
         list(items),
         nrow=3,
         caption=(
-            f"source view {view_idx} | RGB t0/t1/t2 | SEA-RAFT color flow 01/12/02 "
+            f"source view {view_idx} | RGB {'t0/t1/t2' if temporal_modeling else 't0 only'} | "
+            "WAFT color flow 01/12/02 used for token masking "
             f"(hue=direction, saturation=0-{FLOW_VISUALIZATION_MAX_MAGNITUDE_PIXELS:g} px, "
-            "white=zero) | invariant mask overlays t0/t1/t2 | dependent mask overlay t0 "
+            "white=zero) | invariant mask overlay(s) | dependent mask overlay t0 "
             "(red=masked)"
         ),
     )
@@ -553,16 +556,16 @@ def _reconstruction_panel(rec_out: Dict[str, Any], view_idx: int) -> wandb.Image
     target_depths = rec_out["target_depths_self"]
     items.extend(image.detach().cpu() for image in targets)
     items.extend(image.detach().cpu() for image in predicted)
-    for time_idx in range(3):
+    for time_idx in range(targets.shape[0]):
         target_depth = target_depths[0, time_idx, view_idx]
         items.append(_depth_rgb(target_depth, target_masks[time_idx]).detach().cpu())
-    for time_idx in range(3):
+    for time_idx in range(targets.shape[0]):
         items.append(_depth_rgb(predicted_depth[time_idx], target_masks[time_idx]).detach().cpu())
     items.extend(mask.expand(3, -1, -1).detach().cpu() for mask in target_masks)
     items.extend(alpha.expand(3, -1, -1).detach().cpu() for alpha in predicted_alpha)
     return _wandb_image_grid(
         items,
-        nrow=3,
+        nrow=int(targets.shape[0]),
         caption="target/predicted RGB, depth, mask/alpha",
     )
 
@@ -691,7 +694,8 @@ def _evaluate_batch(
         else nullcontext()
     )
     with autocast_context:
-        view_latents = encode_per_view_sequence_batch(vae, images, flows)
+        encoder_images = images if vae.temporal_modeling else images[:, :1]
+        view_latents = encode_per_view_sequence_batch(vae, encoder_images, flows)
         batch_size = images.shape[0]
         source_indices = torch.randint(images.shape[2], (batch_size,), device=device)
         batch_ids = torch.arange(batch_size, device=device)
@@ -701,12 +705,19 @@ def _evaluate_batch(
         )
     view_latents["s_inv_by_view"] = view_latents["s_inv_by_view"].float()
     view_latents["z_dep_by_view"] = view_latents["z_dep_by_view"].float()
-    ramp = temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
+    ramp = (
+        temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
+        if vae.temporal_modeling
+        else 0.0
+    )
     rec_out = compute_reconstruction_and_renders(
         splatter_to_gaussians=converter,
         splatter_cfg=splatter_cfg,
         raw_base_map=raw_outputs["raw_base_map"].float(),
-        raw_motion_map=raw_outputs["raw_motion_map"].float(),
+        raw_motion_map=(
+            raw_outputs["raw_motion_map"].float()
+            if vae.temporal_modeling else None
+        ),
         motion_translation_max=float(vae.motion_translation_max),
         images_01=(images + 1.0) * 0.5,
         optical_flows=flows,
@@ -732,29 +743,24 @@ def _evaluate_batch(
         + cfg_train.dep_contrastive_weight * dep_con
         + cfg_train.dep_consistency_weight * dep_cons
     )
-    render_loss = rec_out["render_loss_t0"] + ramp * 0.5 * (
-        rec_out["render_loss_t1"] + rec_out["render_loss_t2"]
-    )
+    render_loss = rec_out["render_loss_t0"]
+    flow_objective = render_loss.new_zeros(())
+    if vae.temporal_modeling:
+        render_loss = render_loss + ramp * 0.5 * (
+            rec_out["render_loss_t1"] + rec_out["render_loss_t2"]
+        )
+        flow_objective = ramp * cfg_train.flow_weight * rec_out["flow_loss"]
     total = (
         render_loss
-        + ramp * cfg_train.flow_weight * rec_out["flow_loss"]
+        + flow_objective
         + representation_loss
         + cfg_train.frustum_weight * rec_out["frustum_loss"]
     )
     metrics = {
         "val/core/total_loss": total,
         "val/core/render_loss": render_loss,
-        "val/core/flow_loss": rec_out["flow_loss"],
         "val/core/representation_loss": representation_loss,
         "val/render/t0": rec_out["render_loss_t0"],
-        "val/render/t1": rec_out["render_loss_t1"],
-        "val/render/t2": rec_out["render_loss_t2"],
-        "val/flow/epe_01": rec_out["flow_epe_01"],
-        "val/flow/epe_12": rec_out["flow_epe_12"],
-        "val/flow/epe_02": rec_out["flow_epe_02"],
-        "val/flow/visible_fraction": rec_out["flow_visible_fraction"],
-        "val/motion/translation_01_mean": rec_out["translation_01_mean"],
-        "val/motion/translation_12_mean": rec_out["translation_12_mean"],
         "val/components/rgb": rec_out["rgb_loss"],
         "val/components/silhouette": rec_out["silhouette_loss"],
         "val/components/global_depth": rec_out["global_depth_loss"],
@@ -762,6 +768,18 @@ def _evaluate_batch(
         "val/components/frustum": rec_out["frustum_loss"],
         "val/gaussian/mean_opacity": rec_out["mean_valid_gaussian_opacity"],
     }
+    if vae.temporal_modeling:
+        metrics.update({
+            "val/core/flow_loss": rec_out["flow_loss"],
+            "val/render/t1": rec_out["render_loss_t1"],
+            "val/render/t2": rec_out["render_loss_t2"],
+            "val/flow/epe_01": rec_out["flow_epe_01"],
+            "val/flow/epe_12": rec_out["flow_epe_12"],
+            "val/flow/epe_02": rec_out["flow_epe_02"],
+            "val/flow/visible_fraction": rec_out["flow_visible_fraction"],
+            "val/motion/translation_01_mean": rec_out["translation_01_mean"],
+            "val/motion/translation_12_mean": rec_out["translation_12_mean"],
+        })
     return metrics, rec_out, view_latents, moved
 
 
@@ -806,7 +824,11 @@ def validate_and_log_wandb(
         vae.train(previous_mode)
         return
 
-    ramp = temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
+    ramp = (
+        temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
+        if vae.temporal_modeling
+        else 0.0
+    )
     log_values: Dict[str, Any] = {key: value / count for key, value in sums.items()}
     log_values.update({"global_step": global_step, "val/temporal_loss_ramp": ramp})
     _metrics, rec_out, latents, moved = first_result
@@ -821,20 +843,22 @@ def validate_and_log_wandb(
             latents["dep_mask_by_view"],
             vae.patch_h,
             source_view_idx,
+            vae.temporal_modeling,
         ),
         f"{prefix}/reconstruction": _reconstruction_panel(rec_out, source_view_idx),
-        f"{prefix}/flow_point_trajectories": _point_trajectory_panel(
-            validation_images,
-            rec_out,
-            source_view_idx,
-            float(cfg_train.flow_alpha_threshold),
-        ),
         f"{prefix}/novel_view_orbit": _novel_view_orbit_video(
             rec_out,
             bg,
             splatter_cfg,
         ),
     })
+    if vae.temporal_modeling:
+        log_values[f"{prefix}/flow_point_trajectories"] = _point_trajectory_panel(
+            validation_images,
+            rec_out,
+            source_view_idx,
+            float(cfg_train.flow_alpha_threshold),
+        )
     log_values.update(
         _combined_pointcloud_payload(
             rec_out,

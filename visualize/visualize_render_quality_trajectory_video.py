@@ -162,7 +162,7 @@ def main() -> None:
     parser.add_argument("--base_camera", default="cam1", help="Training camera to perturb for the rendering viewpoint.")
     parser.add_argument("--trajectory", choices=["lateral", "circular", "orbit", "both"], default="both")
     parser.add_argument("--methods", default="splattervae,sincro")
-    parser.add_argument("--splatter_config", default="config/metaworld/button-press-wall.yaml")
+    parser.add_argument("--splatter_config", default="config/splattervae/metaworld/temporal/button-press-wall.yaml")
     parser.add_argument("--splatter_ckpt", default=None)
     parser.add_argument("--sincro_config", default=None, help="Defaults to --drq_config.")
     parser.add_argument("--sincro_ckpt", default=None, help="Full SinCro NeRF checkpoint.")

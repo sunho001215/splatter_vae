@@ -118,11 +118,10 @@ class VisionEncoderAdapter(nn.Module):
 
     def __init__(self, full_cfg: Dict[str, Any]):
         super().__init__()
-        self.full_cfg = full_cfg
-        self.vision_name = str(
+        vision_name = str(
             full_cfg["vision"].get("encoder_type", full_cfg["vision"].get("name", "convnet"))
         ).lower()
-        self.vision_key = self.vision_name.replace("_", "")
+        self.vision_key = vision_name.replace("_", "")
         self.frame_stack = int(full_cfg["env"].get("frame_stack", 1))
 
         self.backbone = build_vision_encoder(full_cfg)
@@ -133,7 +132,7 @@ class VisionEncoderAdapter(nn.Module):
         self.replay_atom_is_feature = False
         self.replay_atom_is_stack_feature = False
         self.backbone_trainable = bool(
-            getattr(self.backbone, "is_trainable", self.vision_name == "convnet")
+            getattr(self.backbone, "is_trainable", vision_name == "convnet")
         )
         if not self.backbone_trainable:
             self.backbone.eval()
@@ -361,36 +360,33 @@ class DrQv2MetaWorldAgent:
     """DrQ-v2 agent for MetaWorld environments."""
 
     def __init__(
-        self, cfg: Dict[str, Any], obs_shape: Tuple[int, ...], action_shape: Tuple[int, ...],
+        self, cfg: Dict[str, Any], action_shape: Tuple[int, ...],
         proprio_shape: Tuple[int, ...], device: torch.device
     ):
-        del obs_shape
-        self.cfg = cfg
         self.device = device
         acfg = cfg["agent"]
         self.critic_target_tau = float(acfg.get("critic_target_tau", 0.01))
-        self.update_every_steps = int(acfg.get("update_every_steps", 2))
         self.num_expl_steps = int(cfg["train"].get("seed_steps", 4000))
         self.stddev_schedule = acfg.get("stddev_schedule", "linear(1.0,0.1,100000)")
         self.stddev_clip = float(acfg.get("stddev_clip", 0.3))
-        self.feature_dim = int(acfg.get("feature_dim", 256))
-        self.hidden_dim = int(acfg.get("hidden_dim", 256))
-        self.lr = float(acfg.get("lr", 1e-4))
+        feature_dim = int(acfg.get("feature_dim", 256))
+        hidden_dim = int(acfg.get("hidden_dim", 256))
+        lr = float(acfg.get("lr", 1e-4))
 
         self.encoder = VisionEncoderAdapter(cfg).to(device)
         self.use_pixels = self.encoder.replay_obs_dtype == np.dtype(np.uint8)
         self.augment_pixels = bool(acfg.get("augment_pixels", self.encoder.backbone_trainable))
         proprio_dim = int(np.prod(proprio_shape))
         repr_dim = self.encoder.repr_dim
-        self.actor = Actor(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
-        self.critic = Critic(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
-        self.critic_target = Critic(repr_dim, proprio_dim, action_shape, self.feature_dim, self.hidden_dim).to(device)
+        self.actor = Actor(repr_dim, proprio_dim, action_shape, feature_dim, hidden_dim).to(device)
+        self.critic = Critic(repr_dim, proprio_dim, action_shape, feature_dim, hidden_dim).to(device)
+        self.critic_target = Critic(repr_dim, proprio_dim, action_shape, feature_dim, hidden_dim).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         encoder_params = [p for p in self.encoder.parameters() if p.requires_grad]
-        self.encoder_opt = torch.optim.Adam(encoder_params, lr=self.lr) if encoder_params else None
-        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
-        self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
+        self.encoder_opt = torch.optim.Adam(encoder_params, lr=lr) if encoder_params else None
+        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=lr)
+        self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=lr)
         self.aug = RandomShiftsAug(pad=int(acfg.get("random_shift_pad", 4)))
 
         self.train(True)
@@ -513,8 +509,6 @@ class DrQv2MetaWorldAgent:
     def update(self, replay_iter, step: int) -> Dict[str, float]:
         """Perform update step."""
         metrics: Dict[str, float] = {}
-        if step % self.update_every_steps != 0:
-            return metrics
 
         obs, proprio, action, reward, discount, next_obs, next_proprio = next(replay_iter)
         tdtype = torch.float32

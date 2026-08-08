@@ -435,9 +435,9 @@ def main():
 
     # ---------------- Dataset config (same style as your Splatter code) ----
     ds_cfg = cfg.get("dataset", {})
-    dataset_path = ds_cfg.get("hdf5_paths", ds_cfg.get("hdf5_path", None))
+    dataset_path = ds_cfg.get("hdf5_path", None)
     if dataset_path is None:
-        raise ValueError('Config "dataset.hdf5_path" or "dataset.hdf5_paths" must be provided.')
+        raise ValueError('Config "dataset.hdf5_path" must identify one environment dataset.')
 
     batch_size = ds_cfg.get("batch_size", 128)
     num_workers = ds_cfg.get("num_workers", 8)

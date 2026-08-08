@@ -222,13 +222,16 @@ def main():
     x_dep = image_to_tensor(img_dep_u8).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        invariant_features = vae.inference_features(fixed_window_from_single_image(x_inv))
-        dependent_features = vae.inference_features(fixed_window_from_single_image(x_dep))
+        invariant_features = vae.inference_features(fixed_window_from_single_image(x_inv, vae.temporal_modeling))
+        dependent_features = vae.inference_features(fixed_window_from_single_image(x_dep, vae.temporal_modeling))
         z_inv = invariant_features["s_inv"]
         z_dep = dependent_features["z_dep_all"][:, 0]
         raw = vae.predict_raw_maps(z_inv, z_dep)
         splatter = raw["raw_base_map"].float()
-        motion = activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
+        motion = (
+            activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
+            if vae.temporal_modeling else None
+        )
 
         eye = torch.eye(4, dtype=torch.float32, device=device).unsqueeze(0)
         k_dep = torch.from_numpy(dep_cam_mats[cam_dep]["K"]).unsqueeze(0).to(device)

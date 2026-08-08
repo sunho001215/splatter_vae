@@ -4,32 +4,28 @@ set -euo pipefail
 # Run this script from inside the multiview_policy container.
 # Edit this list to choose the GPUs used by the training jobs.
 CUDA_VISIBLE_DEVICES_LIST=(
-  "GPU-fe480a9b-c516-3522-72b2-b633fc42834e"
-  "GPU-b8ec1539-9673-d4f5-626c-fd5aa106c2d1"
-  "GPU-32e2e165-4a57-b98e-d0a3-d3844b155190"
-  "GPU-fd4be9bb-3d79-dfce-aaa6-9d9a62ffaa46"
-  # "GPU-dca08ecc-2a77-cb21-36d9-16cffe61ebb2"
-  # "GPU-c96e4904-1711-600f-5a1e-063fc3a67b1a"
-  # "GPU-739a6276-3558-fd02-66f0-7acfad38098f"
-  # "GPU-c952875c-7f47-e1ce-4d66-a380d7c014f1"
+  "MIG-c2db2b36-91aa-5230-9337-9911fc28e9a9"
+  "MIG-a400a724-7df2-5cc4-8a05-7f5fb8c98f8c"
+  "MIG-53163a37-eee6-51b3-9b99-b38fc416cc41"
+  "MIG-a10bf323-eb1c-567a-a6d8-91d1dc7306d3"
+  "MIG-c8c9f08a-c87b-5fc9-874f-2ec68a020e0e"
+  "MIG-b25bc715-171e-5c7c-934a-ae6828b0df44"
+  "MIG-6dc2ec27-ea8a-5fc6-a3b1-50dfc4d52550"
+  "MIG-fabf06f6-097d-5592-8124-9f6c4e16b3c5"
 )
 
 # Available config families: cnn, splattervae, reviwo, sincro.
-CONFIG_FAMILY="splattervae"
+CONFIG_FAMILY="splattervae_single_timestep_ablation"
 
 ENVS=(
   "button-press-wall"
-  "coffee-push"
-  "door-open"
   "drawer-open"
-  "faucet-close"
+  "door-open"
   "hammer"
-  # "handle-pull"
-  "lever-pull"
-  # "peg-unplug-side"
-  # "push-wall"
-  # "sweep-into"
-  "window-open"
+  "peg-unplug-side"
+  "handle-press"
+  "plate-slide"
+  "stick-push"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

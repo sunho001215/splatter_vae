@@ -123,7 +123,7 @@ def encode_records(
                 img = np.asarray(f["data"][rec.demo]["obs"][f"{rec.camera}_rgb"][rec.timestep], dtype=np.uint8)
                 images.append(image_to_tensor(img))
             x = torch.stack(images, dim=0).to(device)
-            features = vae.inference_features(fixed_window_from_single_image(x))
+            features = vae.inference_features(fixed_window_from_single_image(x, vae.temporal_modeling))
             feats.append(pooled_latent(features["s_inv"], pool).detach().cpu())
     return torch.cat(feats, dim=0).numpy()
 

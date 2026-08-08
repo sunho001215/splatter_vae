@@ -29,7 +29,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 
 import wandb
-from torchvision.utils import make_grid
 from einops import rearrange, repeat
 
 # Ensure repo root is on sys.path so absolute imports work when run as a script.
@@ -52,6 +51,38 @@ from baselines.SinCro.dataloader import (
     MetaWorldSinCroDatasetConfig,
     MetaWorldSinCroSequenceDataset,
 )
+
+
+def _make_image_grid(
+    images: torch.Tensor,
+    nrow: int = 8,
+    padding: int = 2,
+) -> torch.Tensor:
+    """Arrange a BCHW image batch into a padded CHW grid."""
+    if images.ndim != 4:
+        raise ValueError(f"Expected BCHW images, got shape {tuple(images.shape)}.")
+    if nrow < 1:
+        raise ValueError(f"nrow must be positive, got {nrow}.")
+    if padding < 0:
+        raise ValueError(f"padding must be non-negative, got {padding}.")
+
+    num_images, channels, height, width = images.shape
+    if num_images == 0:
+        return images.new_empty((channels, 0, 0))
+
+    num_columns = min(int(nrow), num_images)
+    num_rows = (num_images + num_columns - 1) // num_columns
+    grid_height = num_rows * height + (num_rows + 1) * padding
+    grid_width = num_columns * width + (num_columns + 1) * padding
+    grid = images.new_zeros((channels, grid_height, grid_width))
+
+    for image_idx in range(num_images):
+        row, column = divmod(image_idx, num_columns)
+        top = padding + row * (height + padding)
+        left = padding + column * (width + padding)
+        grid[:, top : top + height, left : left + width] = images[image_idx]
+
+    return grid
 
 
 def _move_tensor_batch_to_device(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
@@ -81,8 +112,7 @@ def _sample_validation_batch(dataloader: DataLoader, random_sample: bool) -> Opt
 
 @dataclass
 class DatasetConfig:
-    hdf5_path: Optional[str] = None
-    hdf5_paths: Optional[List[str]] = None
+    hdf5_path: str = ""
     num_views: int = 6
     sequence_length: int = 3
     max_episodes: Optional[int] = None
@@ -639,7 +669,7 @@ def run_validation(
     rendered_tensor = torch.from_numpy(np.stack(rendered_views)).permute(0, 3, 1, 2).float() / 255.0
     vis_tensor = torch.cat([gt_tensor, rendered_tensor], dim=0)
     nrow = max(1, min(V, int(train_cfg.val_vis_nrow)))
-    comparison_grid = make_grid(vis_tensor, nrow=nrow, padding=2)
+    comparison_grid = _make_image_grid(vis_tensor, nrow=nrow, padding=2)
 
     demo_key = batch.get("demo_key", ["unknown"])[0]
     hdf5_path = os.path.basename(batch.get("hdf5_path", [""])[0])
@@ -722,7 +752,6 @@ def main():
     # ------------------------------------------------------------------
     ds_config = MetaWorldSinCroDatasetConfig(
         hdf5_path=ds_cfg.hdf5_path,
-        hdf5_paths=ds_cfg.hdf5_paths,
         num_views=ds_cfg.num_views,
         sequence_length=ds_cfg.sequence_length,
         max_episodes=ds_cfg.max_episodes,
@@ -750,6 +779,9 @@ def main():
     # Model
     # ------------------------------------------------------------------
     simple_args = SimpleArgs(model_cfg, train_cfg, ds_cfg, exp_cfg)
+    experiment_dir = os.path.join(simple_args.basedir, simple_args.expname)
+    os.makedirs(experiment_dir, exist_ok=True)
+    os.makedirs(train_cfg.ckpt_dir, exist_ok=True)
     (
         render_kwargs_train,
         render_kwargs_test,
@@ -766,7 +798,6 @@ def main():
     # ------------------------------------------------------------------
     global_step = 0
     start_epoch = 0
-    os.makedirs(train_cfg.ckpt_dir, exist_ok=True)
 
     if train_cfg.resume_from_last:
         ckpt_files = [

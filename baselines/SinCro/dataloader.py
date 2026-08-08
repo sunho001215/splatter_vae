@@ -1,37 +1,23 @@
 import json
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Tuple
 
 import h5py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-DatasetPathInput = Union[str, Sequence[str]]
 IndexRef = Tuple[int, int, int]
-
-
-def _normalize_hdf5_paths(hdf5_path: Optional[str], hdf5_paths: Optional[Sequence[str]]) -> List[str]:
-    if hdf5_paths is not None:
-        paths = [str(path) for path in hdf5_paths]
-    elif hdf5_path is not None:
-        paths = [str(hdf5_path)]
-    else:
-        paths = []
-    if not paths:
-        raise ValueError("At least one HDF5 path is required.")
-    return paths
 
 
 @dataclass
 class MetaWorldSinCroDatasetConfig:
-    hdf5_path: Optional[str] = None
-    hdf5_paths: Optional[List[str]] = None
+    hdf5_path: str = ""
     # number of cameras / views used for training (must be <= number in HDF5)
     num_views: int = 6
     # number of timesteps per training sample (SinCro often uses 3 * time_interval)
     sequence_length: int = 9
-    # optional: only take first N episodes across the combined file list
+    # optional: only take first N episodes from this environment
     max_episodes: Optional[int] = None
     # optional: truncate each demo to first N frames
     max_frames_per_demo: Optional[int] = None
@@ -44,16 +30,16 @@ class MetaWorldSinCroDatasetConfig:
 class MetaWorldSinCroSequenceDataset(Dataset):
     """MetaWorld HDF5 demos to SinCro-style multi-view temporal windows.
 
-    Multiple HDF5 files are treated as one dataset.  The global index spans all
-    ``(file, demo, start_t)`` windows, so DataLoader shuffling samples across all
-    environments during training.
+    Each dataset instance is intentionally scoped to one environment HDF5 file.
     """
 
     def __init__(self, cfg: MetaWorldSinCroDatasetConfig):
         super().__init__()
         self.cfg = cfg
-        self.hdf5_paths = _normalize_hdf5_paths(cfg.hdf5_path, cfg.hdf5_paths)
-        self.hdf5_path = self.hdf5_paths[0]
+        if not cfg.hdf5_path:
+            raise ValueError("Exactly one HDF5 path is required per training run.")
+        self.hdf5_path = str(cfg.hdf5_path)
+        self.hdf5_paths = [self.hdf5_path]
         self.sequence_length = cfg.sequence_length
         self.num_views = cfg.num_views
         self.temporal_stride = cfg.temporal_stride

@@ -54,17 +54,18 @@ def _parameter_groups(vae: SplatterVAE) -> list[Dict]:
         "base_gaussian_head": ("base_gaussian_head.",),
         "dense_motion_head": ("dense_motion_head.",),
     }
-    grouped = {name: [] for name in OPTIMIZER_GROUPS}
+    active_groups = OPTIMIZER_GROUPS if vae.temporal_modeling else OPTIMIZER_GROUPS[:-1]
+    grouped = {name: [] for name in active_groups}
     unmatched = []
     for parameter_name, parameter in vae.named_parameters():
         if not parameter.requires_grad:
             continue
         matches = [
             group_name
-            for group_name, group_prefixes in prefixes.items()
+            for group_name in active_groups
             if any(
                 parameter_name == prefix or parameter_name.startswith(prefix)
-                for prefix in group_prefixes
+                for prefix in prefixes[group_name]
             )
         ]
         if len(matches) != 1:
@@ -73,9 +74,9 @@ def _parameter_groups(vae: SplatterVAE) -> list[Dict]:
             grouped[matches[0]].append(parameter)
     if unmatched:
         raise RuntimeError(f"Could not uniquely assign optimizer parameters: {unmatched}")
-    if any(not grouped[name] for name in OPTIMIZER_GROUPS):
-        raise RuntimeError("Every single-stage optimizer module group must be non-empty.")
-    return [{"name": name, "params": grouped[name]} for name in OPTIMIZER_GROUPS]
+    if any(not grouped[name] for name in active_groups):
+        raise RuntimeError("Every active optimizer module group must be non-empty.")
+    return [{"name": name, "params": grouped[name]} for name in active_groups]
 
 
 def _build_optimizer_and_scheduler(
@@ -138,21 +139,12 @@ def _core_log_values(
     optimizer: torch.optim.Optimizer,
     global_step: int,
 ) -> Dict[str, float | int]:
-    return {
+    values = {
         "global_step": global_step,
         "train/core/total_loss": total_loss.item(),
         "train/core/render_loss": render_loss.item(),
-        "train/core/flow_loss": rec_out["flow_loss"].item(),
         "train/core/representation_loss": representation_loss.item(),
         "train/render/t0": rec_out["render_loss_t0"].item(),
-        "train/render/t1": rec_out["render_loss_t1"].item(),
-        "train/render/t2": rec_out["render_loss_t2"].item(),
-        "train/flow/epe_01": rec_out["flow_epe_01"].item(),
-        "train/flow/epe_12": rec_out["flow_epe_12"].item(),
-        "train/flow/epe_02": rec_out["flow_epe_02"].item(),
-        "train/flow/visible_fraction": rec_out["flow_visible_fraction"].item(),
-        "train/motion/translation_01_mean": rec_out["translation_01_mean"].item(),
-        "train/motion/translation_12_mean": rec_out["translation_12_mean"].item(),
         "train/components/rgb": rec_out["rgb_loss"].item(),
         "train/components/silhouette": rec_out["silhouette_loss"].item(),
         "train/components/global_depth": rec_out["global_depth_loss"].item(),
@@ -167,6 +159,19 @@ def _core_log_values(
         "train/lr": float(optimizer.param_groups[0]["lr"]),
     }
 
+    if "flow_loss" in rec_out:
+        values.update({
+            "train/core/flow_loss": rec_out["flow_loss"].item(),
+            "train/render/t1": rec_out["render_loss_t1"].item(),
+            "train/render/t2": rec_out["render_loss_t2"].item(),
+            "train/flow/epe_01": rec_out["flow_epe_01"].item(),
+            "train/flow/epe_12": rec_out["flow_epe_12"].item(),
+            "train/flow/epe_02": rec_out["flow_epe_02"].item(),
+            "train/flow/visible_fraction": rec_out["flow_visible_fraction"].item(),
+            "train/motion/translation_01_mean": rec_out["translation_01_mean"].item(),
+            "train/motion/translation_12_mean": rec_out["translation_12_mean"].item(),
+        })
+    return values
 
 def train_splatter_vae(
     vae: SplatterVAE,
@@ -192,6 +197,12 @@ def train_splatter_vae(
     global_step = 0
     if resume_ckpt is not None and os.path.isfile(resume_ckpt):
         checkpoint = torch.load(resume_ckpt, map_location="cpu")
+        checkpoint_mode = checkpoint.get("temporal_modeling")
+        if checkpoint_mode is not None and bool(checkpoint_mode) != vae.temporal_modeling:
+            raise ValueError(
+                "Checkpoint temporal_modeling mode does not match the current YAML: "
+                f"checkpoint={bool(checkpoint_mode)}, config={vae.temporal_modeling}."
+            )
         vae.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -226,7 +237,8 @@ def train_splatter_vae(
                 else nullcontext()
             )
             with autocast_context:
-                view_latents = encode_per_view_sequence_batch(vae, images, optical_flows)
+                encoder_images = images if vae.temporal_modeling else images[:, :1]
+                view_latents = encode_per_view_sequence_batch(vae, encoder_images, optical_flows)
                 batch_size, views = view_latents["s_inv_by_view"].shape[:2]
                 source_indices = torch.randint(views, (batch_size,), device=device)
                 batch_ids = torch.arange(batch_size, device=device)
@@ -235,10 +247,17 @@ def train_splatter_vae(
                     view_latents["z_dep_by_view"][batch_ids, source_indices],
                 )
             raw_base_map = raw_outputs["raw_base_map"].float()
-            raw_motion_map = raw_outputs["raw_motion_map"].float()
+            raw_motion_map = (
+                raw_outputs["raw_motion_map"].float()
+                if vae.temporal_modeling else None
+            )
             view_latents["s_inv_by_view"] = view_latents["s_inv_by_view"].float()
             view_latents["z_dep_by_view"] = view_latents["z_dep_by_view"].float()
-            ramp = temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
+            ramp = (
+                temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
+                if vae.temporal_modeling
+                else 0.0
+            )
             should_log = global_step % max(1, int(cfg_train.scalar_log_every)) == 0
             rec_out = compute_reconstruction_and_renders(
                 splatter_to_gaussians=converter,
@@ -260,12 +279,21 @@ def train_splatter_vae(
                 training=True,
                 compute_diagnostics=should_log,
             )
-            future_render = 0.5 * (rec_out["render_loss_t1"] + rec_out["render_loss_t2"])
-            render_loss = rec_out["render_loss_t0"] + ramp * future_render
+            render_loss = rec_out["render_loss_t0"]
+            if vae.temporal_modeling:
+                future_render = 0.5 * (
+                    rec_out["render_loss_t1"] + rec_out["render_loss_t2"]
+                )
+                render_loss = render_loss + ramp * future_render
             representation_loss, representation = _representation_loss(view_latents, cfg_train)
+            flow_objective = (
+                ramp * float(cfg_train.flow_weight) * rec_out["flow_loss"]
+                if vae.temporal_modeling
+                else render_loss.new_zeros(())
+            )
             total_loss = (
                 render_loss
-                + ramp * float(cfg_train.flow_weight) * rec_out["flow_loss"]
+                + flow_objective
                 + representation_loss
                 + float(cfg_train.frustum_weight) * rec_out["frustum_loss"]
             )
@@ -279,12 +307,19 @@ def train_splatter_vae(
             scheduler.step()
 
             if should_log:
+                if vae.temporal_modeling:
+                    loss_details = (
+                        f"render=({rec_out['render_loss_t0'].item():.4f}, "
+                        f"{rec_out['render_loss_t1'].item():.4f}, "
+                        f"{rec_out['render_loss_t2'].item():.4f}) "
+                        f"flow={rec_out['flow_loss'].item():.4f}"
+                    )
+                else:
+                    loss_details = f"render_t0={rec_out['render_loss_t0'].item():.4f}"
                 print(
                     f"[Epoch {epoch + 1} | Batch {batch_idx} | Global {global_step}] "
                     f"ramp={ramp:.3f} loss={total_loss.item():.4f} "
-                    f"render=({rec_out['render_loss_t0'].item():.4f}, "
-                    f"{rec_out['render_loss_t1'].item():.4f}, {rec_out['render_loss_t2'].item():.4f}) "
-                    f"flow={rec_out['flow_loss'].item():.4f}"
+                    f"{loss_details}"
                 )
                 if wandb.run is not None:
                     wandb.log(
@@ -329,6 +364,7 @@ def train_splatter_vae(
                         "epoch": epoch,
                         "global_step": completed_steps,
                         "model_state_dict": vae.state_dict(),
+                        "temporal_modeling": vae.temporal_modeling,
                         "optimizer_state_dict": optimizer.state_dict(),
                         "scheduler_state_dict": scheduler.state_dict(),
                         "configuration": {

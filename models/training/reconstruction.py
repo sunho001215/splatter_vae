@@ -27,9 +27,13 @@ def encode_per_view_sequence_batch(
     images: torch.Tensor,
     optical_flows: torch.Tensor,
 ) -> Dict[str, torch.Tensor]:
-    """Run the one allowed encoder pass over independent camera sequences."""
-    if images.dim() != 6 or images.shape[1] != TEMPORAL_WINDOW:
-        raise ValueError(f"Expected images as (B,3,A,3,H,W), got {tuple(images.shape)}.")
+    """Encode each camera using either the temporal sequence or t0-only ablation."""
+    expected_timesteps = TEMPORAL_WINDOW if vae.temporal_modeling else 1
+    if images.dim() != 6 or images.shape[1] != expected_timesteps:
+        raise ValueError(
+            f"Expected images with T={expected_timesteps} as (B,T,A,3,H,W), "
+            f"got {tuple(images.shape)}."
+        )
     batch, timesteps, views, channels, height, width = images.shape
     expected_flow = (batch, 3, views, 2, height, width)
     if tuple(optical_flows.shape) != expected_flow:
@@ -158,7 +162,7 @@ def _timestep_render_losses(
     local_depth = local_depth.view(shape); local_valid_count = local_valid_count.view(shape)
 
     losses: list[Dict[str, torch.Tensor]] = []
-    for time_idx in range(TEMPORAL_WINDOW):
+    for time_idx in range(timesteps):
         rgb_t = _weighted_mean(rgb, rgb_weights, time_idx)
         sil_fg_t = _weighted_mean(sil_fg, sil_fg_valid, time_idx)
         sil_bg_t = _weighted_mean(sil_bg, sil_bg_valid, time_idx)
@@ -193,7 +197,7 @@ def compute_reconstruction_and_renders(
     splatter_to_gaussians: DirectSplatterToGaussians,
     splatter_cfg: SplatterConfig,
     raw_base_map: torch.Tensor,
-    raw_motion_map: torch.Tensor,
+    raw_motion_map: torch.Tensor | None,
     motion_translation_max: float,
     images_01: torch.Tensor,
     optical_flows: torch.Tensor,
@@ -220,15 +224,20 @@ def compute_reconstruction_and_renders(
     expected_flow = (batch, 3, views, 2, *images_01.shape[-2:])
     if tuple(optical_flows.shape) != expected_flow:
         raise ValueError(f"Expected teacher flows as {expected_flow}, got {tuple(optical_flows.shape)}.")
+    temporal_modeling = raw_motion_map is not None
+    num_render_timesteps = TEMPORAL_WINDOW if temporal_modeling else 1
     raw_base_map = raw_base_map.float()
-    raw_motion_map = raw_motion_map.float()
-    activated_motion = activate_motion_map(raw_motion_map, motion_translation_max)
-    target_masks = masks.bool()
+    activated_motion = (
+        activate_motion_map(raw_motion_map.float(), motion_translation_max)
+        if temporal_modeling else None
+    )
+    images_01 = images_01[:, :num_render_timesteps]
+    target_masks = masks[:, :num_render_timesteps].bool()
     target_masks_float = target_masks.float()
-    depths = depths.float()
-    intrinsics_t = _expand_camera_time(intrinsics).float()
-    c2w_t = _expand_camera_time(c2w).float()
-    w2c_t = _expand_camera_time(w2c).float()
+    depths = depths[:, :num_render_timesteps].float()
+    intrinsics_t = _expand_camera_time(intrinsics).float()[:, :num_render_timesteps]
+    c2w_t = _expand_camera_time(c2w).float()[:, :num_render_timesteps]
+    w2c_t = _expand_camera_time(w2c).float()[:, :num_render_timesteps]
     source_indices = source_indices.to(device=images_01.device, dtype=torch.long)
     if source_indices.shape != (batch,):
         raise ValueError(f"Expected source_indices shape {(batch,)}, got {tuple(source_indices.shape)}.")
@@ -242,28 +251,31 @@ def compute_reconstruction_and_renders(
         intrinsics=source_intrinsics,
     )
     pc0 = apply_source_mask_to_gaussians(pc0, _gather_source_time0(target_masks, source_indices))
-    pc1 = translate_gaussians(pc0, pc0["delta_xyz_01"])
-    pc2 = translate_gaussians(pc1, pc0["delta_xyz_12"])
-    pc_sequence = [pc0, pc1, pc2]
+    pc_sequence = [pc0]
+    if temporal_modeling:
+        pc1 = translate_gaussians(pc0, pc0["delta_xyz_01"])
+        pc2 = translate_gaussians(pc1, pc0["delta_xyz_12"])
+        pc_sequence.extend((pc1, pc2))
     rendered, rendered_depth, rendered_alpha = _render_sequence(
         pc_sequence, w2c_t, intrinsics_t, bg, splatter_cfg
     )
-    rendered_flows, flow_coverages, flow_valid_masks, flow_source_alphas = (
-        render_translation_flow_sequence(pc0, w2c_t, intrinsics_t, splatter_cfg)
-    )
-    flow_foreground_masks = torch.stack(
-        (target_masks[:, 0], target_masks[:, 1], target_masks[:, 0]), dim=1
-    )
-    flow_loss, flow_metrics = compute_optical_flow_loss(
-        predicted_flows=rendered_flows,
-        target_flows=optical_flows,
-        rendered_coverage=flow_coverages,
-        predicted_valid_mask=flow_valid_masks,
-        foreground_mask=flow_foreground_masks,
-        alpha_threshold=float(cfg_train.flow_alpha_threshold),
-        smooth_l1_beta=float(cfg_train.flow_smooth_l1_beta),
-    )
-    dynamic_scores = build_target_dynamic_scores(optical_flows)
+    flow_metrics: Dict[str, torch.Tensor] = {}
+    if temporal_modeling:
+        rendered_flows, flow_coverages, flow_valid_masks, flow_source_alphas = render_translation_flow_sequence(
+            pc0, w2c_t, intrinsics_t, splatter_cfg
+        )
+        flow_foreground_masks = torch.stack(
+            (target_masks[:, 0], target_masks[:, 1], target_masks[:, 0]), dim=1
+        )
+        flow_loss, flow_metrics = compute_optical_flow_loss(
+            predicted_flows=rendered_flows, target_flows=optical_flows,
+            rendered_coverage=flow_coverages,
+            predicted_valid_mask=flow_valid_masks,
+            foreground_mask=flow_foreground_masks,
+            alpha_threshold=float(cfg_train.flow_alpha_threshold),
+            smooth_l1_beta=float(cfg_train.flow_smooth_l1_beta),
+        )
+    dynamic_scores = build_target_dynamic_scores(optical_flows)[:, :num_render_timesteps]
     target_images = images_01.float() * target_masks_float
     timestep_losses = _timestep_render_losses(
         rendered,
@@ -278,8 +290,8 @@ def compute_reconstruction_and_renders(
     )
     frustum_loss, frustum_per_timestep = compute_union_frustum_loss(
         pc0["xyz"],
-        pc0["delta_xyz_01"],
-        pc0["delta_xyz_12"],
+        pc0.get("delta_xyz_01"),
+        pc0.get("delta_xyz_12"),
         pc0["valid_mask"],
         w2c_t,
         intrinsics_t,
@@ -291,11 +303,11 @@ def compute_reconstruction_and_renders(
     )
     output: Dict[str, Any] = {
         "timestep_losses": timestep_losses,
-        "flow_loss": flow_loss,
         "frustum_loss": frustum_loss,
         "frustum_loss_per_timestep": frustum_per_timestep,
-        **flow_metrics,
     }
+    if temporal_modeling:
+        output.update({"flow_loss": flow_loss, **flow_metrics})
     for time_idx, losses_t in enumerate(timestep_losses):
         for name, value in losses_t.items():
             output[f"{name}_t{time_idx}"] = value
@@ -305,13 +317,14 @@ def compute_reconstruction_and_renders(
 
     if compute_diagnostics or return_renders:
         valid = pc0["valid_mask"]
-        output.update({
-            "mean_valid_gaussian_opacity": _masked_mean(pc0["opacity"].squeeze(-1), valid),
-            "translation_01_mean": _masked_mean(pc0["delta_xyz_01"].norm(dim=-1), valid),
-            "translation_12_mean": _masked_mean(pc0["delta_xyz_12"].norm(dim=-1), valid),
-        })
+        output["mean_valid_gaussian_opacity"] = _masked_mean(
+            pc0["opacity"].squeeze(-1), valid
+        )
+        if temporal_modeling:
+            output["translation_01_mean"] = _masked_mean(pc0["delta_xyz_01"].norm(dim=-1), valid)
+            output["translation_12_mean"] = _masked_mean(pc0["delta_xyz_12"].norm(dim=-1), valid)
     if return_renders:
-        output.update({
+        render_payload: Dict[str, Any] = {
             "target_images_self": target_images,
             "target_masks_self": target_masks_float,
             "target_depths_self": depths,
@@ -319,10 +332,6 @@ def compute_reconstruction_and_renders(
             "rendered_self": rendered,
             "rendered_expected_depth_self": rendered_depth,
             "rendered_alpha_self": rendered_alpha,
-            "rendered_optical_flows": rendered_flows,
-            "rendered_flow_alpha": flow_source_alphas,
-            "rendered_flow_coverage": flow_coverages,
-            "rendered_flow_valid_mask": flow_valid_masks,
             "source_indices": source_indices.detach().cpu(),
             "gaussian_pc": {key: value.detach() for key, value in pc0.items() if torch.is_tensor(value)},
             "gaussian_pc_sequence": [
@@ -332,6 +341,14 @@ def compute_reconstruction_and_renders(
             "source_c2w": source_c2w.detach(),
             "source_intrinsics": source_intrinsics.detach(),
             "base_map": raw_base_map.detach(),
-            "motion_map": activated_motion.detach(),
-        })
+        }
+        if temporal_modeling:
+            render_payload.update({
+                "rendered_optical_flows": rendered_flows,
+                "rendered_flow_alpha": flow_source_alphas,
+                "rendered_flow_coverage": flow_coverages,
+                "rendered_flow_valid_mask": flow_valid_masks,
+                "motion_map": activated_motion.detach(),
+            })
+        output.update(render_payload)
     return output

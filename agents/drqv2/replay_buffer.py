@@ -280,9 +280,6 @@ class MemmapReplayBuffer(IterableDataset):
             return 0
         return int(min(int(self._meta[_META_NUM_TRANSITIONS]), self._max_size))
 
-    def update_nstep(self, nstep: int) -> None:
-        self._nstep = int(nstep)
-
     def _slot(self, state_id: int) -> int:
         return int(state_id % self._capacity)
 
@@ -373,8 +370,8 @@ class MemmapReplayBuffer(IterableDataset):
             yield self._sample()
 
 
-def _seed_worker(worker_id: int) -> None:
-    seed = np.random.randint(0, 2**31 - 1) + worker_id
+def _seed_worker(_worker_id: int) -> None:
+    seed = torch.initial_seed() % (2**32)
     np.random.seed(seed)
     random.seed(seed)
 

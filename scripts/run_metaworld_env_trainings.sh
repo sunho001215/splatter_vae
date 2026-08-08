@@ -14,24 +14,24 @@ CUDA_VISIBLE_DEVICES_LIST=(
   "MIG-fabf06f6-097d-5592-8124-9f6c4e16b3c5"
 )
 
-CONFIGS=(
-  "config/metaworld/button-press-wall.yaml"
-  "config/metaworld/coffee-push.yaml"
-  "config/metaworld/door-open.yaml"
-  "config/metaworld/drawer-open.yaml"
-  "config/metaworld/faucet-close.yaml"
-  "config/metaworld/hammer.yaml"
-  "config/metaworld/handle-pull.yaml"
-  "config/metaworld/lever-pull.yaml"
-  # "config/metaworld/peg-unplug-side.yaml"
-  # "config/metaworld/push-wall.yaml"
-  # "config/metaworld/sweep-into.yaml"
-  # "config/metaworld/window-open.yaml"
+# Select either "temporal" or "ablations/single_timestep".
+CONFIG_SET="${CONFIG_SET:-temporal}"
+CONFIG_DIR="config/splattervae/metaworld/${CONFIG_SET}"
+
+ENVS=(
+  "button-press-wall"
+  "drawer-open"
+  "door-open"
+  "hammer"
+  "peg-unplug-side"
+  "handle-press"
+  "plate-slide"
+  "stick-push"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOG_DIR="${REPO_ROOT}/logs/metaworld_env_trainings/$(date +%Y%m%d_%H%M%S)"
+LOG_DIR="${REPO_ROOT}/logs/metaworld_env_trainings/${CONFIG_SET}/$(date +%Y%m%d_%H%M%S)"
 
 if [[ "${#CUDA_VISIBLE_DEVICES_LIST[@]}" -eq 0 ]]; then
   echo "CUDA_VISIBLE_DEVICES_LIST is empty. Add at least one GPU UUID." >&2
@@ -52,16 +52,22 @@ cleanup() {
 trap cleanup INT TERM
 
 echo "Repository: ${REPO_ROOT}"
+echo "Config set: ${CONFIG_SET}"
 echo "Logs: ${LOG_DIR}"
-echo "Launching ${#CONFIGS[@]} training jobs over ${#CUDA_VISIBLE_DEVICES_LIST[@]} GPU assignment(s)."
+echo "Launching ${#ENVS[@]} training jobs over ${#CUDA_VISIBLE_DEVICES_LIST[@]} GPU assignment(s)."
 
-for idx in "${!CONFIGS[@]}"; do
-  config="${CONFIGS[$idx]}"
+for idx in "${!ENVS[@]}"; do
+  env_name="${ENVS[$idx]}"
+  config="${CONFIG_DIR}/${env_name}.yaml"
   gpu="${CUDA_VISIBLE_DEVICES_LIST[$((idx % ${#CUDA_VISIBLE_DEVICES_LIST[@]}))]}"
-  name="$(basename "${config}" .yaml)"
-  log_file="${LOG_DIR}/${name}.log"
+  log_file="${LOG_DIR}/${env_name}.log"
 
-  echo "[launch] ${name} -> CUDA_VISIBLE_DEVICES=${gpu}"
+  if [[ ! -f "${config}" ]]; then
+    echo "Missing config: ${config}" >&2
+    exit 1
+  fi
+
+  echo "[launch] ${env_name} -> CUDA_VISIBLE_DEVICES=${gpu}"
   (
     export CUDA_VISIBLE_DEVICES="${gpu}"
     uv run train_model.py --config "${config}"
@@ -73,14 +79,13 @@ done
 failed=0
 for idx in "${!PIDS[@]}"; do
   pid="${PIDS[$idx]}"
-  config="${CONFIGS[$idx]}"
-  name="$(basename "${config}" .yaml)"
+  env_name="${ENVS[$idx]}"
 
   if wait "${pid}"; then
-    echo "[done] ${name}"
+    echo "[done] ${env_name}"
   else
     status="$?"
-    echo "[failed] ${name} exited with status ${status}. See ${LOG_DIR}/${name}.log" >&2
+    echo "[failed] ${env_name} exited with status ${status}. See ${LOG_DIR}/${env_name}.log" >&2
     failed=1
   fi
 done

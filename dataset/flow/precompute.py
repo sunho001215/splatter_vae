@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Callable, Sequence
@@ -12,12 +13,15 @@ import torch
 
 
 DEFAULT_GAPS = (3, 6, 9, 12, 18)
-PREPROCESSING_VERSION = "sea-raft-hdf5-v1"
+DEFAULT_BATCH_SIZE = 160
+PREPROCESSING_VERSION = "waft-hdf5-v1"
 DATASET_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SEA_RAFT_ROOT = DATASET_ROOT / "third_party" / "SEA-RAFT"
-DEFAULT_CONFIG = DEFAULT_SEA_RAFT_ROOT / "config" / "eval" / "spring-M.json"
-DEFAULT_CHECKPOINT = (
-    DATASET_ROOT / "assets" / "sea_raft" / "Tartan-C-T-TSKH-spring540x960-M.pth"
+DEFAULT_WAFT_ROOT = DATASET_ROOT / "third_party" / "WAFT"
+DEFAULT_CONFIG = DEFAULT_WAFT_ROOT / "config" / "a1" / "tar-c-t.json"
+DEFAULT_ASSET_ROOT = DATASET_ROOT / "assets" / "waft"
+DEFAULT_CHECKPOINT = DEFAULT_ASSET_ROOT / "waft-a1-downstream.pth"
+DEFAULT_DEPTH_CHECKPOINT = (
+    DEFAULT_ASSET_ROOT / "depth-anything-ckpts" / "depth_anything_v2_vits.pth"
 )
 
 
@@ -30,41 +34,63 @@ def _camera_names(demo_group: h5py.Group) -> list[str]:
     return [str(name) for name in json.loads(value)]
 
 
-def _load_sea_raft(
-    sea_raft_root: str,
+def _load_waft(
+    waft_root: str,
     config_path: str,
     checkpoint: str,
+    depth_checkpoint: str,
     device: torch.device,
 ) -> tuple[torch.nn.Module, str]:
-    """Load the official SEA-RAFT implementation from the pinned submodule."""
-    root = Path(sea_raft_root).resolve()
-    core = root / "core"
-    if not (core / "raft.py").is_file():
+    """Load the official WAFT a1 implementation from the pinned submodule."""
+    root = Path(waft_root).resolve()
+    if not (root / "model" / "waft_a1.py").is_file():
         raise FileNotFoundError(
-            f"SEA-RAFT core was not found at {core}. Clone https://github.com/princeton-vl/SEA-RAFT."
+            f"WAFT was not found at {root}. Clone https://github.com/princeton-vl/WAFT."
         )
     config_file = Path(config_path).resolve()
     checkpoint_file = Path(checkpoint).resolve()
-    if not config_file.is_file() or not checkpoint_file.is_file():
-        raise FileNotFoundError("Both --config and --checkpoint must point to existing files.")
-    for path in (str(root), str(core)):
-        if path not in sys.path:
-            sys.path.insert(0, path)
+    depth_checkpoint_file = Path(depth_checkpoint).resolve()
+    if not all(path.is_file() for path in (config_file, checkpoint_file, depth_checkpoint_file)):
+        raise FileNotFoundError(
+            "--config, --checkpoint, and --depth-checkpoint must point to existing files."
+        )
+    if depth_checkpoint_file.name != "depth_anything_v2_vits.pth":
+        raise ValueError("WAFT a1 requires the Depth Anything V2 Small checkpoint.")
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
-    from raft import RAFT  # type: ignore
+    from model import fetch_model  # type: ignore
 
     config_values = json.loads(config_file.read_text(encoding="utf-8"))
     model_args = argparse.Namespace(**config_values)
-    model = RAFT(model_args)
+    if getattr(model_args, "algorithm", None) != "waft-a1":
+        raise ValueError("The preprocessing configuration must use algorithm='waft-a1'.")
+
+    # The official a1 constructor loads
+    # depth-anything-ckpts/depth_anything_v2_vits.pth relative to cwd. Build
+    # from the checkpoint asset root without modifying third-party WAFT code.
+    previous_cwd = Path.cwd()
+    os.chdir(depth_checkpoint_file.parent.parent)
+    try:
+        model = fetch_model(model_args)
+    finally:
+        os.chdir(previous_cwd)
+
     checkpoint_state = torch.load(checkpoint_file, map_location="cpu")
     if isinstance(checkpoint_state, dict) and "state_dict" in checkpoint_state:
         checkpoint_state = checkpoint_state["state_dict"]
     checkpoint_state = {
         str(key).removeprefix("module."): value for key, value in checkpoint_state.items()
     }
-    model.load_state_dict(checkpoint_state, strict=True)
+    incompatible = model.load_state_dict(checkpoint_state, strict=False)
+    if incompatible.missing_keys or incompatible.unexpected_keys:
+        raise RuntimeError(
+            "WAFT checkpoint mismatch: "
+            f"missing={incompatible.missing_keys}, unexpected={incompatible.unexpected_keys}."
+        )
     model.requires_grad_(False).eval().to(device)
-    return model, checkpoint_file.name
+    identifier = f"{checkpoint_file.name}|{depth_checkpoint_file.name}|{config_file.name}"
+    return model, identifier
 
 
 def _make_predictor(
@@ -78,11 +104,11 @@ def _make_predictor(
         image2 = torch.from_numpy(np.ascontiguousarray(second)).permute(0, 3, 1, 2)
         image1 = image1.to(device=device, dtype=torch.float32)
         image2 = image2.to(device=device, dtype=torch.float32)
-        inference_kwargs = {"test_mode": True}
-        if iterations is not None:
-            inference_kwargs["iters"] = int(iterations)
-        output = model(image1, image2, **inference_kwargs)
-        flow = output["final"] if "final" in output else output["flow"][-1]
+        output = model(image1, image2, iters=iterations)
+        flow_predictions = output.get("flow")
+        if not isinstance(flow_predictions, (tuple, list)) or not flow_predictions:
+            raise RuntimeError("WAFT did not return a nonempty flow prediction list.")
+        flow = flow_predictions[-1]
         return flow.permute(0, 2, 3, 1).float().cpu().numpy()
 
     return predict
@@ -114,7 +140,7 @@ def _metadata_matches(
     except (TypeError, ValueError, json.JSONDecodeError):
         return False
     return (
-        text_attr("model_name") == "SEA-RAFT"
+        text_attr("model_name") == "WAFT"
         and text_attr("checkpoint_identifier") == str(checkpoint_identifier)
         and stored_resolution == resolution
         and text_attr("flow_direction") == "forward"
@@ -185,12 +211,12 @@ def _write_gap(
         flow = predictor(first, second)
         if flow.shape != (stop - start, height, width, 2):
             raise RuntimeError(
-                f"SEA-RAFT returned {flow.shape}; expected {(stop - start, height, width, 2)}."
+                f"WAFT returned {flow.shape}; expected {(stop - start, height, width, 2)}."
             )
         if not np.isfinite(flow).all():
-            raise RuntimeError("SEA-RAFT returned non-finite optical flow.")
+            raise RuntimeError("WAFT returned non-finite optical flow.")
         if np.abs(flow).max(initial=0.0) > np.finfo(np.float16).max:
-            raise RuntimeError("SEA-RAFT flow exceeds the float16 storage range.")
+            raise RuntimeError("WAFT flow exceeds the float16 storage range.")
         output[start:stop] = flow.astype(np.float16)
     camera_group.move(temporary_name, final_name)
 
@@ -200,7 +226,7 @@ def preprocess_hdf5(
     predictor: Callable[[np.ndarray, np.ndarray], np.ndarray],
     checkpoint_identifier: str,
     gaps: Sequence[int] = DEFAULT_GAPS,
-    batch_size: int = 8,
+    batch_size: int = DEFAULT_BATCH_SIZE,
     chunk_frames: int = 16,
     compression: str | None = "lzf",
     overwrite: bool = False,
@@ -247,12 +273,12 @@ def preprocess_hdf5(
                 and bool(flow_group.attrs.get("preprocessing_complete", False))
                 and _flow_datasets_complete(flow_group, obs_group, cameras, requested_gaps)
             ):
-                print(f"[SEA-RAFT] skipped completed {Path(hdf5_path).name}:{demo_key}")
+                print(f"[WAFT] skipped completed {Path(hdf5_path).name}:{demo_key}")
                 continue
 
             flow_group.attrs.update(
                 {
-                    "model_name": "SEA-RAFT",
+                    "model_name": "WAFT",
                     "checkpoint_identifier": str(checkpoint_identifier),
                     "flow_resolution": json.dumps(list(resolution)),
                     "flow_direction": "forward",
@@ -283,31 +309,36 @@ def preprocess_hdf5(
                     )
             flow_group.attrs["preprocessing_complete"] = True
             h5_file.flush()
-            print(f"[SEA-RAFT] completed {Path(hdf5_path).name}:{demo_key}")
+            print(f"[WAFT] completed {Path(hdf5_path).name}:{demo_key}")
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Precompute frozen SEA-RAFT flow inside Meta-World HDF5 datasets."
+        description="Precompute frozen WAFT flow inside Meta-World HDF5 datasets."
     )
     parser.add_argument("hdf5_paths", nargs="+", help="HDF5 datasets to update in place.")
     parser.add_argument(
-        "--sea-raft-root",
-        default=str(DEFAULT_SEA_RAFT_ROOT),
-        help="SEA-RAFT submodule checkout.",
+        "--waft-root",
+        default=str(DEFAULT_WAFT_ROOT),
+        help="WAFT submodule checkout.",
     )
     parser.add_argument(
         "--config",
         default=str(DEFAULT_CONFIG),
-        help="SEA-RAFT evaluation JSON config.",
+        help="WAFT a1 JSON config.",
     )
     parser.add_argument(
         "--checkpoint",
         default=str(DEFAULT_CHECKPOINT),
-        help="Frozen SEA-RAFT checkpoint.",
+        help="Frozen WAFT checkpoint.",
+    )
+    parser.add_argument(
+        "--depth-checkpoint",
+        default=str(DEFAULT_DEPTH_CHECKPOINT),
+        help="Depth Anything V2 Small checkpoint required by WAFT a1.",
     )
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument(
         "--chunk-frames",
         type=int,
@@ -324,10 +355,11 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     device = torch.device(args.device)
-    model, checkpoint_identifier = _load_sea_raft(
-        sea_raft_root=args.sea_raft_root,
+    model, checkpoint_identifier = _load_waft(
+        waft_root=args.waft_root,
         config_path=args.config,
         checkpoint=args.checkpoint,
+        depth_checkpoint=args.depth_checkpoint,
         device=device,
     )
     predictor = _make_predictor(model, device=device, iterations=args.iterations)

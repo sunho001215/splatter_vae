@@ -1,0 +1,99 @@
+output:
+  path: /home/ws/data/metaworld/pre-training/peg-unplug-side.hdf5
+  mode: overwrite
+  compression: lzf
+metaworld:
+  benchmark_id: Meta-World/MT1
+  env_name: peg-unplug-side-v3
+  seed: 0
+  max_steps: 450
+  terminate_on_success: true
+render:
+  height: 128
+  width: 128
+  save_depth: true
+  lookat:
+  - 0.0
+  - 0.6
+  - 0.0
+  up:
+  - 0.0
+  - 0.0
+  - 1.0
+  cameras:
+    - name: cam0
+      r: 1.0
+      theta: 45.0
+      phi: 0.0
+      fovy: 45.0
+    - name: cam1
+      r: 1.0
+      theta: 45.0       
+      phi: 180.0          
+      fovy: 45.0
+    - name: cam2
+      r: 1.0
+      theta: 60.0        
+      phi: -30.0             
+      fovy: 45.0
+    - name: cam3
+      r: 1.0
+      theta: 60.0         
+      phi: 210.0           
+      fovy: 45.0
+    - name: cam4
+      r: 1.0
+      theta: 30.0       
+      phi: 30.0          
+      fovy: 45.0
+    - name: cam5
+      r: 1.0
+      theta: 30.0     
+      phi: 150.0            
+      fovy: 45.0
+segmentation:
+  enabled: true
+  save_objtype: true
+collection:
+  scripted_policy_class: null
+  expert_guided:
+    num_demos: 150
+    noise_schedule:
+      - {strength: 0.00, num_demos: 30}
+      - {strength: 0.05, num_demos: 30}
+      - {strength: 0.15, num_demos: 30}
+      - {strength: 0.30, num_demos: 30}
+      - {strength: 0.50, num_demos: 30}
+    noise_smoothing: 0.85
+    noise_target_hold_steps: [8, 16]
+  perturb_recover:
+    num_demos: 60
+    start_fraction: [0.25, 0.55]
+    duration_steps: [8, 24]
+    strength_range: [0.30, 0.70]
+    noise_smoothing: 0.85
+    noise_target_hold_steps: [4, 10]
+    minimum_recovery_steps: 10
+  smooth_random:
+    num_demos: 40
+    xyz_smoothing: 0.80
+    gripper_smoothing: 0.95
+    xyz_target_hold_steps: [6, 14]
+    gripper_target_hold_steps: [30, 60]
+visualize:
+  enabled: false
+  show_window: false
+  every_n_steps: 1
+  ncols: 3
+  pad: 4
+  window_name: metaworld demos (top=RGB, bottom=SEG)
+  stop_key: q
+  save_video_dir: null
+  video_fps: 10.0
+dino:
+  enabled: false
+  model: dinov2_vitb14
+  image_size: 224
+  batch_size: 256
+  device: cuda
+  dtype: float16

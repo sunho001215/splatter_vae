@@ -76,6 +76,9 @@ def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str,
     """
     cfg = copy.deepcopy(cfg)
     state = _checkpoint_state_dict(ckpt_path)
+    cfg.setdefault("model", {})["temporal_modeling"] = any(
+        key.startswith("dense_motion_head.") for key in state
+    )
     is_temporal_state = any(
         key.startswith("spatial_queries") or key.startswith("decoder_backbone.film_mlps")
         for key in state
@@ -129,6 +132,7 @@ def build_splattervae(cfg: Dict[str, Any], img_height: int, img_width: int, spla
         gaussians_per_pixel=gaussians_per_pixel,
         flow_patch_threshold_pixels=float(model_cfg.get("flow_patch_threshold_pixels", 0.5)),
         motion_translation_max=float(model_cfg.get("motion_translation_max", 0.5)),
+        temporal_modeling=bool(model_cfg.get("temporal_modeling", True)),
     )
 
 
@@ -161,11 +165,16 @@ def build_visualization_models(
     return vae, converter, spl_cfg
 
 
-def fixed_window_from_single_image(images: torch.Tensor) -> torch.Tensor:
+def fixed_window_from_single_image(
+    images: torch.Tensor, temporal_modeling: bool = True
+) -> torch.Tensor:
     """Expand normalized ``(B,3,H,W)`` input in a visualization-only utility."""
     if images.dim() != 4 or images.shape[1] != 3:
         raise ValueError(f"Expected normalized images as (B,3,H,W), got {tuple(images.shape)}.")
-    return images[:, None, None].expand(-1, 3, 1, -1, -1, -1).contiguous()
+    window = 3 if temporal_modeling else 1
+    return images[:, None, None].expand(
+        -1, window, 1, -1, -1, -1
+    ).contiguous()
 
 
 @torch.no_grad()
@@ -176,7 +185,7 @@ def decode_single_image_gaussians(
     intrinsics: torch.Tensor,
     source_c2w: torch.Tensor,
 ) -> tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
-    sequence = fixed_window_from_single_image(images)
+    sequence = fixed_window_from_single_image(images, vae.temporal_modeling)
     context = (
         torch.autocast(device_type="cuda", dtype=torch.bfloat16)
         if images.device.type == "cuda"
@@ -185,7 +194,10 @@ def decode_single_image_gaussians(
     with context:
         features = vae.inference_features(sequence)
         raw = vae.predict_raw_maps(features["s_inv"], features["z_dep_all"][:, 0])
-    motion = activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
+    motion = (
+        activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
+        if vae.temporal_modeling else None
+    )
     pc = converter(
         splatter_map=raw["raw_base_map"].float(),
         motion_map=motion,

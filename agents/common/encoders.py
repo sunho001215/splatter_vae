@@ -38,11 +38,6 @@ def _select_checkpoint_subdict(state: Dict[str, Any], preferred_keys: Sequence[s
     return _strip_module_prefix(state)
 
 
-def _flatten_feature_output(x: torch.Tensor) -> torch.Tensor:
-    """Flatten feature output to 2D if necessary."""
-    return x.contiguous() if x.dim() == 2 else x.flatten(1).contiguous()
-
-
 def _default_splatter_channels(gaussians_per_pixel: int = 1, max_sh_degree: int = 1) -> int:
     """Infer direct-Gaussian decoder channels without importing the renderer."""
     sh_bases = (int(max_sh_degree) + 1) ** 2
@@ -81,7 +76,6 @@ class ConvNet(nn.Module):
             self.repr_dim = int(self.convnet(dummy).flatten(1).shape[-1])
 
         self.is_trainable = True
-        self.is_perturbable = True
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         obs = obs.float() / 255.0 - 0.5
@@ -100,7 +94,8 @@ class SplatterVAEInvariantEncoder(nn.Module):
         vit_cfg = dict(cfg["vision"]["vit"])
         model_cfg = dict(sv_cfg.get("model", {}))
 
-        self.returns_sequence_state = True
+        self.temporal_modeling = bool(model_cfg.get("temporal_modeling", True))
+        self.returns_sequence_state = self.temporal_modeling
         self.temporal_window = TEMPORAL_WINDOW
         frame_stack = int(cfg["env"].get("frame_stack", self.temporal_window))
         if frame_stack != self.temporal_window:
@@ -141,34 +136,51 @@ class SplatterVAEInvariantEncoder(nn.Module):
             motion_translation_max=float(
                 model_cfg.get("motion_translation_max", sv_cfg.get("motion_translation_max", 0.5))
             ),
+            temporal_modeling=self.temporal_modeling,
         )
         self.repr_dim = int(self.vae.state_dim)
 
         state = torch.load(str(sv_cfg["checkpoint_path"]), map_location="cpu")
         state_dict = _select_checkpoint_subdict(state, ("vae_state_dict", "model_state_dict", "state_dict"))
+        checkpoint_temporal = any(
+            key.startswith("dense_motion_head.") for key in state_dict
+        )
+        if checkpoint_temporal != self.temporal_modeling:
+            raise ValueError(
+                "SplatterVAE checkpoint mode does not match "
+                "vision.splatter_vae.model.temporal_modeling."
+            )
         self.vae.load_state_dict(state_dict, strict=True)
         self.vae.eval()
         for p in self.vae.parameters():
             p.requires_grad = False
         self.is_trainable = False
-        self.is_perturbable = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Jointly encode one chronological three-frame RGB sequence."""
+        """Encode either one frame independently or one joint three-frame sequence."""
         x = x.float()
-        if x.ndim == 4:
-            batch, channels, height, width = x.shape
-            expected_channels = 3 * self.temporal_window
-            if channels != expected_channels:
+        if self.temporal_modeling:
+            if x.ndim == 4:
+                batch, channels, height, width = x.shape
+                expected_channels = 3 * self.temporal_window
+                if channels != expected_channels:
+                    raise ValueError(
+                        f"Temporal SplatterVAE requires {expected_channels} stacked RGB channels, "
+                        f"got {channels}."
+                    )
+                x = x.reshape(batch, self.temporal_window, 3, height, width)
+            if x.ndim != 5 or x.shape[1:3] != (self.temporal_window, 3):
                 raise ValueError(
-                    f"SplatterVAE requires {expected_channels} stacked RGB channels, got {channels}."
+                    "Expected a chronological SplatterVAE sequence as (B,3,3,H,W) "
+                    f"or channel-stacked (B,9,H,W), got {tuple(x.shape)}."
                 )
-            x = x.reshape(batch, self.temporal_window, 3, height, width)
-        if x.ndim != 5 or x.shape[1] != self.temporal_window or x.shape[2] != 3:
-            raise ValueError(
-                "Expected one chronological SplatterVAE sequence as (B,3,3,H,W) "
-                f"or channel-stacked (B,9,H,W), got {tuple(x.shape)}."
-            )
+        else:
+            if x.ndim != 4 or x.shape[1] != 3:
+                raise ValueError(
+                    "Single-timestep SplatterVAE expects independent frames as (B,3,H,W), "
+                    f"got {tuple(x.shape)}."
+                )
+            x = x[:, None]
         normalized_sequence = x.mul(2.0).sub(1.0)
         state = self.vae.policy_state(normalized_sequence.unsqueeze(2))
         # policy_state preserves the view dimension used by pretraining. RL
@@ -220,7 +232,6 @@ class ReViWoInvariantEncoder(nn.Module):
         for p in self.model.parameters():
             p.requires_grad = False
         self.is_trainable = False
-        self.is_perturbable = False
         for sub in self.model.modules():
             if hasattr(sub, "init_kmeans"):
                 try:
@@ -315,7 +326,6 @@ class SinCroSceneEncoder(nn.Module):
         for p in self.encoder.parameters():
             p.requires_grad = False
         self.is_trainable = False
-        self.is_perturbable = False
 
     def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
         if x_seq.ndim != 5:

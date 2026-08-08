@@ -95,6 +95,7 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
         gaussians_per_pixel=gaussians_per_pixel,
         flow_patch_threshold_pixels=float(model_cfg.get("flow_patch_threshold_pixels", 0.5)),
         motion_translation_max=float(model_cfg.get("motion_translation_max", 0.5)),
+        temporal_modeling=bool(model_cfg.get("temporal_modeling", True)),
     )
 
 

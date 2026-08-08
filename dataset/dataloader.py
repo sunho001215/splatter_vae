@@ -299,7 +299,7 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                     if OPTICAL_FLOW_GROUP not in demo_grp:
                         raise ValueError(
                             f'Missing flow group "{dataset_path}:/data/{demo_key}/{OPTICAL_FLOW_GROUP}". '
-                            "Run the SEA-RAFT preprocessing utility first."
+                            "Run the WAFT preprocessing utility first."
                         )
                     flow_grp = demo_grp[OPTICAL_FLOW_GROUP]
                     if not bool(flow_grp.attrs.get("preprocessing_complete", False)):

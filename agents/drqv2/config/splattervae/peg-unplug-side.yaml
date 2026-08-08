@@ -1,4 +1,4 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
@@ -90,6 +90,7 @@ vision:
       dep_mask_eval: false
       flow_patch_threshold_pixels: 0.5
       motion_translation_max: 0.5
+      temporal_modeling: true  # false: encode each policy frame independently
 
 agent:
   lr: 1.0e-4
@@ -97,22 +98,8 @@ agent:
   hidden_dim: 1024
   augment_pixels: false
   critic_target_tau: 0.01
-
-  # DrM-specific knobs
-  dormant_threshold: 0.025
-  target_dormant_ratio: 0.20
-  dormant_temp: 10.0
-  target_lambda: 0.70
-  lambda_temp: 50.0
-  dormant_perturb_interval: 100000
-  min_perturb_factor: 0.20
-  max_perturb_factor: 0.95
-  perturb_rate: 2.0
-
-  stddev_type: awake
   stddev_schedule: linear(1.0,0.1,500000)
   stddev_clip: 0.3
-  expectile: 0.9
 
 train:
   num_train_steps: 1000000
@@ -123,7 +110,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/peg-unplug-side/splattervae_temporal_state/seed42/
+  replay_dir: ./buffer/metaworld/peg-unplug-side/splattervae_temporal_state/seed98/
   replay_num_workers: 4
   nstep: 3
 
@@ -133,7 +120,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_temporal_state/peg-unplug-side/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_temporal_state/peg-unplug-side/seed98/
 
 visualization:
   enabled: false

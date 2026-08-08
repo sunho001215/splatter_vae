@@ -1,6 +1,6 @@
 import json
 import random
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -9,19 +9,14 @@ from torch.utils.data import DataLoader, Dataset, get_worker_info
 
 from utils.general_utils import image_to_tensor
 
-DatasetPathInput = Union[str, Sequence[str]]
 DemoRef = Tuple[int, str]
 SampleRef = Tuple[int, str, int]
 
 
-def _normalize_dataset_paths(dataset_path: DatasetPathInput) -> List[str]:
-    if isinstance(dataset_path, (str, bytes)):
-        paths = [str(dataset_path)]
-    else:
-        paths = [str(path) for path in dataset_path]
-    if not paths:
-        raise ValueError("At least one HDF5 dataset path is required.")
-    return paths
+def _validate_dataset_path(dataset_path: str) -> str:
+    if not isinstance(dataset_path, (str, bytes)) or not str(dataset_path):
+        raise ValueError("Exactly one HDF5 dataset path is required per training run.")
+    return str(dataset_path)
 
 
 def _demo_label(file_idx: int, demo_key: str, num_files: int) -> str:
@@ -31,14 +26,13 @@ def _demo_label(file_idx: int, demo_key: str, num_files: int) -> str:
 class MetaWorldMultiViewAllCamerasHDF5Dataset(Dataset):
     """Multi-view Meta-World dataset for ReViWo.
 
-    One item is one environment state with all selected cameras.  ``dataset_path``
-    can be one HDF5 file or a list of HDF5 files; multi-file datasets build one
-    global sample index over all files, demos, and timesteps.
+    One item is one environment state with all selected cameras. Each training
+    run is intentionally scoped to one environment HDF5 file.
     """
 
     def __init__(
         self,
-        dataset_path: DatasetPathInput,
+        dataset_path: str,
         demo_keys: List[Union[str, DemoRef]],
         views: Optional[List[str]] = None,
         max_frames_per_demo: Optional[int] = None,
@@ -46,8 +40,8 @@ class MetaWorldMultiViewAllCamerasHDF5Dataset(Dataset):
         min_time_gap: int = 10,
     ):
         super().__init__()
-        self.dataset_paths = _normalize_dataset_paths(dataset_path)
-        self.dataset_path = self.dataset_paths[0]
+        self.dataset_path = _validate_dataset_path(dataset_path)
+        self.dataset_paths = [self.dataset_path]
         self.demo_refs: List[DemoRef] = [
             (int(item[0]), str(item[1])) if isinstance(item, tuple) else (0, str(item))
             for item in demo_keys
@@ -184,13 +178,6 @@ def _list_demo_keys_metaworld(dataset_path: str) -> List[str]:
     return sorted(demos, key=_demo_index)
 
 
-def _list_demo_refs_metaworld(dataset_paths: Sequence[str]) -> List[DemoRef]:
-    refs: List[DemoRef] = []
-    for file_idx, path in enumerate(dataset_paths):
-        refs.extend((file_idx, demo_key) for demo_key in _list_demo_keys_metaworld(path))
-    return refs
-
-
 def _worker_init_fn(worker_id: int):
     info = get_worker_info()
     if info is None:
@@ -199,7 +186,7 @@ def _worker_init_fn(worker_id: int):
 
 
 def build_train_valid_loaders_metaworld(
-    dataset_path: DatasetPathInput,
+    dataset_path: str,
     batch_size: int = 128,
     num_workers: int = 4,
     pin_memory: bool = True,
@@ -214,9 +201,10 @@ def build_train_valid_loaders_metaworld(
     shuffle_train: bool = True,
     shuffle_valid: bool = True,
 ):
-    """Build PyTorch DataLoaders from one or more HDF5 demo files."""
-    dataset_paths = _normalize_dataset_paths(dataset_path)
-    demo_refs = _list_demo_refs_metaworld(dataset_paths)
+    """Build PyTorch DataLoaders for one environment HDF5 demo file."""
+    dataset_path = _validate_dataset_path(dataset_path)
+    dataset_paths = [dataset_path]
+    demo_refs = [(0, demo_key) for demo_key in _list_demo_keys_metaworld(dataset_path)]
     if num_episodes is not None:
         demo_refs = demo_refs[: int(num_episodes)]
 
@@ -241,7 +229,7 @@ def build_train_valid_loaders_metaworld(
         views = views[: int(camera_num)]
 
     train_dataset = MetaWorldMultiViewAllCamerasHDF5Dataset(
-        dataset_path=dataset_paths,
+        dataset_path=dataset_path,
         demo_keys=train_refs,
         views=views,
         max_frames_per_demo=max_frames_per_demo,
@@ -249,7 +237,7 @@ def build_train_valid_loaders_metaworld(
         min_time_gap=min_time_gap,
     )
     valid_dataset = MetaWorldMultiViewAllCamerasHDF5Dataset(
-        dataset_path=dataset_paths,
+        dataset_path=dataset_path,
         demo_keys=valid_refs,
         views=views,
         max_frames_per_demo=max_frames_per_demo,

@@ -176,11 +176,6 @@ class MetaWorldSingleCameraEnv:
         self._vis_window_initialized = False
 
     @property
-    def obs_shape(self) -> Tuple[int, int, int]:
-        """Shape of the observation (pixels)."""
-        return (3 * self.frame_stack, self.image_height, self.image_width)
-
-    @property
     def proprio_shape(self) -> Tuple[int, ...]:
         """Shape of the proprioceptive observation."""
         return (len(self.proprio_indices),)
@@ -405,14 +400,15 @@ def main() -> None:
         cfg: Dict[str, Any] = yaml.safe_load(f)
     cfg.setdefault("vision", {}).setdefault("img_height", int(cfg["env"]["image_height"]))
     cfg["vision"].setdefault("img_width", int(cfg["env"]["image_width"]))
-    seed = int(cfg.get("seed", 0))
+    seed = int(cfg.get("seed", 42))
+    cfg["seed"] = seed
     set_seed(seed)
     device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
     cfg["device"] = str(device)
 
     train_env = MetaWorldSingleCameraEnv(cfg, seed=seed)
     eval_env = MetaWorldSingleCameraEnv(cfg, seed=seed + 1)
-    agent = DrQv2MetaWorldAgent(cfg, train_env.obs_shape, train_env.action_shape, train_env.proprio_shape, device)
+    agent = DrQv2MetaWorldAgent(cfg, train_env.action_shape, train_env.proprio_shape, device)
 
     tcfg = cfg["train"]
     replay_dir = Path(tcfg.get("replay_dir", "buffer"))
@@ -427,7 +423,7 @@ def main() -> None:
         int(agent.encoder.replay_atom_frame_stack),
         nstep,
     )
-    replay_loader, replay_buffer = make_memmap_replay_loader(
+    replay_loader, _ = make_memmap_replay_loader(
         replay_dir,
         agent.encoder.replay_atom_shape,
         agent.encoder.replay_atom_dtype,

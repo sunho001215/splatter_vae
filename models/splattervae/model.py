@@ -102,7 +102,7 @@ class FiLMTokenTransformer(nn.Module):
 
 
 class SplatterVAE(nn.Module):
-    """Joint three-frame encoder and dense per-Gaussian motion decoder."""
+    """Dense Gaussian scene encoder with optional temporal motion prediction."""
 
     motion_params_per_gaussian = 6
 
@@ -122,6 +122,7 @@ class SplatterVAE(nn.Module):
         decoder_condition_mode: str = "concat",
         gaussians_per_pixel: int = 1,
         flow_patch_threshold_pixels: float = 0.5,
+        temporal_modeling: bool = True,
         motion_translation_max: float = 0.5,
     ):
         super().__init__()
@@ -179,8 +180,9 @@ class SplatterVAE(nn.Module):
         self.splatter_channels = int(splatter_channels)
         self.gaussians_per_pixel = int(gaussians_per_pixel)
         self.flow_patch_threshold_pixels = float(flow_patch_threshold_pixels)
+        self.temporal_modeling = bool(temporal_modeling)
         self.motion_translation_max = float(motion_translation_max)
-        if self.motion_translation_max <= 0.0:
+        if self.temporal_modeling and self.motion_translation_max <= 0.0:
             raise ValueError("Motion translation bound must be positive.")
 
         self.state_token = nn.Parameter(torch.zeros(1, 1, latent_dim))
@@ -218,12 +220,14 @@ class SplatterVAE(nn.Module):
             features=dpt_width,
             out_channels=self.splatter_channels,
         )
-        self.dense_motion_head = DPTOutputHead(
-            features=dpt_width,
-            out_channels=self.gaussians_per_pixel * self.motion_params_per_gaussian,
-        )
-        nn.init.zeros_(self.dense_motion_head.final_conv.weight)
-        nn.init.zeros_(self.dense_motion_head.final_conv.bias)
+        self.dense_motion_head = None
+        if self.temporal_modeling:
+            self.dense_motion_head = DPTOutputHead(
+                features=dpt_width,
+                out_channels=self.gaussians_per_pixel * self.motion_params_per_gaussian,
+            )
+            nn.init.zeros_(self.dense_motion_head.final_conv.weight)
+            nn.init.zeros_(self.dense_motion_head.final_conv.bias)
 
         nn.init.trunc_normal_(self.state_token, std=0.02)
         nn.init.trunc_normal_(self.dep_token, std=0.02)
@@ -235,10 +239,11 @@ class SplatterVAE(nn.Module):
     ) -> None:
         if images.dim() != 6:
             raise ValueError(
-                f"Expected pretraining images as (B,3,A,3,H,W), got {tuple(images.shape)}."
+                f"Expected pretraining images as (B,T,A,3,H,W), got {tuple(images.shape)}."
             )
         batch, timesteps, views, channels, height, width = images.shape
-        expected_images = (batch, TEMPORAL_WINDOW, views, 3, self.img_height, self.img_width)
+        expected_timesteps = TEMPORAL_WINDOW if self.temporal_modeling else 1
+        expected_images = (batch, expected_timesteps, views, 3, self.img_height, self.img_width)
         if tuple(images.shape) != expected_images:
             raise ValueError(f"Expected pretraining images as {expected_images}, got {tuple(images.shape)}.")
         expected_flows = (batch, 3, views, 2, height, width)
@@ -394,7 +399,7 @@ class SplatterVAE(nn.Module):
         images: torch.Tensor,
         optical_flows: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
-        """Encode the fixed three-frame training input with teacher-flow masking."""
+        """Encode configured image timesteps with teacher-flow-guided masking."""
         self._validate_pretraining_inputs(images, optical_flows)
         s_inv, inv_mask = self._encode_invariant_branch(images, optical_flows)
         z_dep_all, dep_mask = self._encode_dependent_branch(images[:, 0])
@@ -407,9 +412,10 @@ class SplatterVAE(nn.Module):
 
     def _encode_invariant_all_patches(self, images: torch.Tensor) -> torch.Tensor:
         if images.dim() != 6:
-            raise ValueError(f"Expected policy images as (B,3,A,3,H,W), got {tuple(images.shape)}.")
+            raise ValueError(f"Expected policy images as (B,T,A,3,H,W), got {tuple(images.shape)}.")
         batch, timesteps, views, channels, height, width = images.shape
-        expected = (batch, TEMPORAL_WINDOW, views, 3, self.img_height, self.img_width)
+        expected_timesteps = TEMPORAL_WINDOW if self.temporal_modeling else 1
+        expected = (batch, expected_timesteps, views, 3, self.img_height, self.img_width)
         if tuple(images.shape) != expected:
             raise ValueError(f"Expected policy images as {expected}, got {tuple(images.shape)}.")
         flat = images.reshape(batch * timesteps * views, channels, height, width).contiguous()
@@ -420,7 +426,7 @@ class SplatterVAE(nn.Module):
         spatial = self.invariant_encoder.pos_embed[:, 1:].to(patch_tokens.dtype).view(
             1, 1, 1, self.n_tokens_per_frame, -1
         )
-        tokens = patch_tokens + spatial + self.temporal_embed.to(patch_tokens.dtype)
+        tokens = patch_tokens + spatial + self.temporal_embed[:, :timesteps].to(patch_tokens.dtype)
         tokens = tokens.reshape(batch, timesteps * views * self.n_tokens_per_frame, -1)
         tokens = torch.cat((self.state_token.to(tokens.dtype).expand(batch, -1, -1), tokens), dim=1)
         tokens = self.invariant_encoder.pos_drop(tokens)
@@ -483,10 +489,16 @@ class SplatterVAE(nn.Module):
             hidden_states=hidden_states, grid_size=self.grid_size
         )
         output_size = (self.img_height, self.img_width)
-        return {
+        outputs = {
             "raw_base_map": self.base_gaussian_head(shared_features, output_size).contiguous(),
-            "raw_motion_map": self.dense_motion_head(shared_features, output_size).contiguous(),
         }
+        if self.temporal_modeling:
+            if self.dense_motion_head is None:
+                raise RuntimeError("Temporal modeling is enabled without a dense motion head.")
+            outputs["raw_motion_map"] = self.dense_motion_head(
+                shared_features, output_size
+            ).contiguous()
+        return outputs
 
     def decode_sequence(
         self, s_inv: torch.Tensor, z_dep_source: torch.Tensor
@@ -496,7 +508,7 @@ class SplatterVAE(nn.Module):
 
     @torch.no_grad()
     def policy_state(self, images: torch.Tensor) -> torch.Tensor:
-        """Return deterministic all-patch policy features with fixed CUDA BF16 forward."""
+        """Return deterministic all-patch sequence or single-frame policy features."""
         context = (
             torch.autocast(device_type="cuda", dtype=torch.bfloat16)
             if images.device.type == "cuda"

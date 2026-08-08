@@ -115,7 +115,7 @@ def evaluate_policy_on_trajectory(
     seed = int(args.seed)
     env = MetaWorldCameraTrajectoryEnv(cfg, seed=seed, poses=poses, lookat=lookat, loop=bool(args.loop_trajectory))
     device = torch.device(args.device)
-    agent = DrQv2MetaWorldAgent(cfg, env.obs_shape, env.action_shape, env.proprio_shape, device)
+    agent = DrQv2MetaWorldAgent(cfg, env.action_shape, env.proprio_shape, device)
     ckpt_step = load_policy_checkpoint(agent, ckpt_path, device)
     eval_step = int(args.policy_step) if args.policy_step is not None else ckpt_step
 

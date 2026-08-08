@@ -1,4 +1,4 @@
-seed: 98
+seed: 42
 device: cuda
 
 wandb:
@@ -118,9 +118,8 @@ agent:
   feature_dim: 256
   hidden_dim: 1024
   critic_target_tau: 0.01
-  stddev_schedule: linear(1.0,0.1,100000)
+  stddev_schedule: linear(1.0,0.1,500000)
   stddev_clip: 0.3
-  expectile: 0.9
 
 train:
   num_train_steps: 1000000
@@ -131,7 +130,7 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/door-open/reviwo/seed98/
+  replay_dir: ./buffer/metaworld/door-open/reviwo/seed42/
   replay_num_workers: 4
   nstep: 3
 
@@ -141,7 +140,7 @@ train:
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/reviwo/door-open/seed98/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/reviwo/door-open/seed42/
 
 visualization:
   enabled: false

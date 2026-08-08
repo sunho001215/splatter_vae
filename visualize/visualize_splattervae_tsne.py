@@ -98,7 +98,7 @@ def encode_trajectories(
                 [image_to_tensor(np.asarray(obs[f"{cam}_rgb"][t], dtype=np.uint8)) for cam, t in chunk],
                 dim=0,
             ).to(device)
-            features = vae.inference_features(fixed_window_from_single_image(x))
+            features = vae.inference_features(fixed_window_from_single_image(x, vae.temporal_modeling))
             inv_feats.append(pooled_latent(features["s_inv"], pool).detach().cpu())
             dep_feats.append(pooled_latent(features["z_dep_all"][:, 0], pool).detach().cpu())
             labels.extend([cam for cam, _t in chunk])
