@@ -6,8 +6,8 @@ from .reconstruction import (
     compute_balanced_silhouette_loss,
     compute_reconstruction_loss,
 )
-from .regularization import compute_union_frustum_loss
-from .representation import compute_view_structured_representation_losses, masked_multi_positive_nce
+from .regularization import compute_visibility_loss
+from .representation import compute_view_structured_invariant_losses, masked_multi_positive_nce
 
 __all__ = [
     "DYNAMIC_FLOW_SCALE_PIXELS",
@@ -16,7 +16,7 @@ __all__ = [
     "compute_global_local_depth_loss",
     "compute_optical_flow_loss",
     "compute_reconstruction_loss",
-    "compute_union_frustum_loss",
-    "compute_view_structured_representation_losses",
+    "compute_visibility_loss",
+    "compute_view_structured_invariant_losses",
     "masked_multi_positive_nce",
 ]

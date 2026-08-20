@@ -1,4 +1,4 @@
-seed: 42
+seed: 98
 device: cuda
 
 wandb:
@@ -59,7 +59,7 @@ agent:
   feature_dim: 50
   hidden_dim: 1024
   critic_target_tau: 0.01
-  stddev_schedule: linear(1.0,0.1,500000)
+  stddev_schedule: linear(1.0,0.1,150000)
   stddev_clip: 0.3
 
 train:
@@ -71,17 +71,16 @@ train:
   gradient_steps: 1
   discount: 0.99
 
-  replay_dir: ./buffer/metaworld/drawer-open/cnn_w_crop/seed42/
-  replay_num_workers: 4
+  replay_dir: ./buffer/metaworld/drawer-open/cnn_w_crop/seed98/
+  replay_num_workers: 1
   nstep: 3
-
   log_every_steps: 1000
   eval_every_steps: 10000
   num_eval_episodes: 120
   rolling_window: 10
 
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/drawer-open/seed42/
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/cnn_w_crop/drawer-open/seed98/
 
 visualization:
   enabled: false

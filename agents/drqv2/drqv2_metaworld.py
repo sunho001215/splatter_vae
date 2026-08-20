@@ -366,8 +366,7 @@ class DrQv2MetaWorldAgent:
         self.device = device
         acfg = cfg["agent"]
         self.critic_target_tau = float(acfg.get("critic_target_tau", 0.01))
-        self.num_expl_steps = int(cfg["train"].get("seed_steps", 4000))
-        self.stddev_schedule = acfg.get("stddev_schedule", "linear(1.0,0.1,100000)")
+        self.stddev_schedule = acfg.get("stddev_schedule", "linear(1.0,0.1,150000)")
         self.stddev_clip = float(acfg.get("stddev_clip", 0.3))
         feature_dim = int(acfg.get("feature_dim", 256))
         hidden_dim = int(acfg.get("hidden_dim", 256))
@@ -419,8 +418,6 @@ class DrQv2MetaWorldAgent:
         obs_repr = self.encoder(obs_t, is_feature=not self.use_pixels)
         dist = self.actor(obs_repr, proprio_t, self.stddev(step))
         action = dist.mean if eval_mode else dist.sample(clip=None)
-        if (not eval_mode) and step < self.num_expl_steps:
-            action.uniform_(-1.0, 1.0)
         self.train(prev_mode)
         return action.cpu().numpy()[0]
 

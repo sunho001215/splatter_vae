@@ -3,7 +3,7 @@ set -euo pipefail
 
 ENV_NAME="${ENV_NAME:-button-press-wall}"
 DATASET="${DATASET:-../../data/metaworld/with-depth/${ENV_NAME}.hdf5}"
-SPLATTER_CONFIG="${SPLATTER_CONFIG:-config/splattervae/metaworld/temporal/${ENV_NAME}.yaml}"
+SPLATTER_CONFIG="${SPLATTER_CONFIG:-config/splattervae/metaworld/temporal-no-segmentation-mask/${ENV_NAME}.yaml}"
 SINCRO_CONFIG="${SINCRO_CONFIG:-agents/drqv2/config/sincro/${ENV_NAME}.yaml}"
 REVIWO_CONFIG="${REVIWO_CONFIG:-agents/drqv2/config/reviwo/${ENV_NAME}.yaml}"
 OUT_DIR="${OUT_DIR:-outputs/render_quality/${ENV_NAME}}"

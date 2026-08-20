@@ -112,9 +112,8 @@ def _encode_adjacent_windows(
     cameras: Sequence[str],
     batch_size: int,
     device: torch.device,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     invariant: list[torch.Tensor] = []
-    dependent: list[torch.Tensor] = []
     camera_ids: list[int] = []
     starts: list[int] = []
 
@@ -133,7 +132,6 @@ def _encode_adjacent_windows(
                 images = images.float().div_(255.0).mul_(2.0).sub_(1.0)
                 encoded = vae.inference_features(images)
                 invariant.append(encoded["s_inv"].detach().cpu())
-                dependent.append(encoded["z_dep_all"][:, 0].detach().cpu())
                 camera_ids.extend([camera_id] * len(chunk_starts))
                 starts.extend(chunk_starts.tolist())
 
@@ -141,7 +139,6 @@ def _encode_adjacent_windows(
         raise ValueError(f"No adjacent three-frame windows in {dataset_path}:{demo_key}.")
     return (
         torch.cat(invariant).numpy(),
-        torch.cat(dependent).numpy(),
         np.asarray(camera_ids, dtype=np.int16),
         np.asarray(starts, dtype=np.int32),
     )
@@ -211,11 +208,10 @@ def export_tsne(
         available = json.loads(handle["data"][demo_key].attrs["camera_names"])
     configured = cfg.get("dataset", {}).get("views", available)
     cameras = [camera for camera in configured if camera in available]
-    inv, dep, camera_ids, starts = _encode_adjacent_windows(
+    inv, camera_ids, starts = _encode_adjacent_windows(
         vae, dataset_path, demo_key, cameras, batch_size, device
     )
     inv_embedding = _tsne(inv, perplexity, seed)
-    dep_embedding = _tsne(dep, perplexity, seed)
 
     tsne_dir = output_dir / environment / "tsne"
     _plot_embedding(
@@ -226,20 +222,10 @@ def export_tsne(
         f"{environment}: view-invariant encoder",
         tsne_dir / "view_invariant_tsne.png",
     )
-    _plot_embedding(
-        dep_embedding,
-        camera_ids,
-        starts,
-        cameras,
-        f"{environment}: view-dependent encoder",
-        tsne_dir / "view_dependent_tsne.png",
-    )
     np.savez_compressed(
         tsne_dir / "embeddings_and_features.npz",
         invariant_features=inv.astype(np.float16),
-        dependent_features=dep.astype(np.float16),
         invariant_tsne=inv_embedding.astype(np.float32),
-        dependent_tsne=dep_embedding.astype(np.float32),
         camera_ids=camera_ids,
         camera_names=np.asarray(cameras),
         window_start=starts,
@@ -252,7 +238,6 @@ def export_tsne(
         "num_adjacent_windows": int(len(starts)),
         "num_cameras": len(cameras),
         "view_invariant_plot": str(tsne_dir / "view_invariant_tsne.png"),
-        "view_dependent_plot": str(tsne_dir / "view_dependent_tsne.png"),
     }
     del vae
     gc.collect()

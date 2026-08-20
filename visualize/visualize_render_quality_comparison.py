@@ -215,7 +215,7 @@ def main() -> None:
         help="Semicolon-separated scene specs: 'demo,timestep,source_cam,target_cam;demo,timestep,source_cam,target_cam'.",
     )
     parser.add_argument("--methods", default="splattervae,sincro,reviwo", help="Comma-separated methods to run.")
-    parser.add_argument("--splatter_config", default="config/splattervae/metaworld/temporal/button-press-wall.yaml")
+    parser.add_argument("--splatter_config", default="config/splattervae/metaworld/temporal-no-segmentation-mask/button-press-wall.yaml")
     parser.add_argument("--splatter_ckpt", default=None)
     parser.add_argument("--sincro_config", default="agents/drqv2/config/sincro/button-press-wall.yaml")
     parser.add_argument("--sincro_ckpt", default=None, help="Full SinCro NeRF checkpoint.")

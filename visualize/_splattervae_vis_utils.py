@@ -74,11 +74,6 @@ def load_camera_mats(demo: h5py.Group, cam_names: Sequence[str]) -> Dict[str, Di
     return mats
 
 
-def _default_splatter_channels(gaussians_per_pixel: int = 1, max_sh_degree: int = 1) -> int:
-    sh_bases = (int(max_sh_degree) + 1) ** 2
-    return int(gaussians_per_pixel) * (1 + 3 + 3 + 4 + 1 + 3 + max(0, sh_bases - 1) * 3)
-
-
 def _normalize_vit_cfg(
     vit_cfg: Dict[str, Any],
     model_cfg: Dict[str, Any],
@@ -116,9 +111,6 @@ def _normalize_vit_cfg(
 
     vit_cfg["patch_size"] = patch_size
 
-    for key in ("selected_layers", "decoder_selected_layers"):
-        if key in vit_cfg and isinstance(vit_cfg[key], list):
-            vit_cfg[key] = tuple(int(v) for v in vit_cfg[key])
 
     return vit_cfg
 

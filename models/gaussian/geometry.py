@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-FRUSTUM_MARGIN_PIXELS = 4
+VISIBILITY_MARGIN_PIXELS = 4
 
 
 def project_gaussian_centers(
@@ -38,7 +38,7 @@ def project_gaussian_centers(
     return pixel_xy, depth, finite
 
 
-def union_frustum_loss_per_timestep(
+def visibility_loss_per_timestep(
     xyz: torch.Tensor,
     valid_mask: torch.Tensor,
     world_view_transform: torch.Tensor,
@@ -48,9 +48,9 @@ def union_frustum_loss_per_timestep(
     image_width: int,
     near_plane: float,
     far_plane: float,
-    margin_pixels: int = FRUSTUM_MARGIN_PIXELS,
+    margin_pixels: int = VISIBILITY_MARGIN_PIXELS,
 ) -> torch.Tensor:
-    """Return the all-camera union-frustum penalty for each timestep."""
+    """Return the all-view visibility penalty for each timestep."""
     if float(far_plane) <= float(near_plane):
         raise ValueError("far_plane must be greater than near_plane.")
     if valid_mask.shape != xyz.shape[:-1]:
@@ -72,7 +72,7 @@ def union_frustum_loss_per_timestep(
     ) / float(far_plane - near_plane)
     violation = du + dv + dz
     violation = torch.where(finite, violation, torch.ones_like(violation))
-    union_violation = violation.amin(dim=2)
-    weights = valid_mask.to(dtype=union_violation.dtype)
-    per_batch_timestep = (union_violation * weights).sum(-1) / weights.sum(-1).clamp_min(1.0)
+    visibility_violation = violation.mean(dim=2)
+    weights = valid_mask.to(dtype=visibility_violation.dtype)
+    per_batch_timestep = (visibility_violation * weights).sum(-1) / weights.sum(-1).clamp_min(1.0)
     return per_batch_timestep.mean(0)

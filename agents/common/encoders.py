@@ -38,12 +38,6 @@ def _select_checkpoint_subdict(state: Dict[str, Any], preferred_keys: Sequence[s
     return _strip_module_prefix(state)
 
 
-def _default_splatter_channels(gaussians_per_pixel: int = 1, max_sh_degree: int = 1) -> int:
-    """Infer direct-Gaussian decoder channels without importing the renderer."""
-    sh_bases = (int(max_sh_degree) + 1) ** 2
-    return int(gaussians_per_pixel) * (1 + 3 + 3 + 4 + 1 + 3 + max(0, sh_bases - 1) * 3)
-
-
 class ConvNet(nn.Module):
     """
     Official DrQ-v2 style encoder: stacked frames are channels and there is no
@@ -83,17 +77,20 @@ class ConvNet(nn.Module):
 
 
 class SplatterVAEInvariantEncoder(nn.Module):
-    """Encoder using SplatterVAE for invariant features."""
+    """Frozen invariant state encoder from grouped Gaussian set SplatterVAE."""
 
     def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
-        from models.splattervae.config import TEMPORAL_WINDOW
+        from models.gaussian.parameterization import gaussian_params_per_gaussian
+        from models.splattervae.config import SPLATTERVAE_ARCHITECTURE, TEMPORAL_WINDOW
         from models.splattervae.model import SplatterVAE
 
         sv_cfg = dict(cfg["vision"]["splatter_vae"])
         vit_cfg = dict(cfg["vision"]["vit"])
         model_cfg = dict(sv_cfg.get("model", {}))
-
+        masking_cfg = dict(model_cfg.get("masking", {}))
+        decoder_cfg = dict(model_cfg.get("decoder", {}))
+        motion_cfg = dict(model_cfg.get("motion", {}))
         self.temporal_modeling = bool(model_cfg.get("temporal_modeling", True))
         self.returns_sequence_state = self.temporal_modeling
         self.temporal_window = TEMPORAL_WINDOW
@@ -104,47 +101,50 @@ class SplatterVAEInvariantEncoder(nn.Module):
             )
         img_h = int(cfg["vision"]["img_height"])
         img_w = int(cfg["vision"]["img_width"])
-
-        gaussians_per_pixel = int(sv_cfg.get("gaussians_per_pixel", sv_cfg.get("points_per_pixel", 1)))
         max_sh_degree = int(sv_cfg.get("max_sh_degree", 1))
-        splatter_channels = int(
-            sv_cfg.get(
-                "splatter_channels",
-                _default_splatter_channels(
-                    gaussians_per_pixel=gaussians_per_pixel,
-                    max_sh_degree=max_sh_degree,
-                ),
-            )
-        )
-
         self.vae = SplatterVAE(
             vit_cfg=vit_cfg,
             img_height=img_h,
             img_width=img_w,
-            splatter_channels=splatter_channels,
-            dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
-            dpt_features=int(vit_cfg.get("dpt_features", 256)),
-            inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
-            dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
-            tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
-            state_dim=int(model_cfg.get("state_dim", sv_cfg.get("state_dim", 256))),
-            view_dim=model_cfg.get("view_dim", sv_cfg.get("view_dim", None)),
-            gaussians_per_pixel=gaussians_per_pixel,
+            gaussian_params_per_gaussian=gaussian_params_per_gaussian(max_sh_degree),
+            inv_tube_mask_ratio=float(
+                masking_cfg.get("inv_tube_mask_ratio", 0.50)
+            ),
+            tube_mask_per_view=bool(
+                masking_cfg.get("tube_mask_per_view", True)
+            ),
+            state_dim=int(model_cfg.get("state_dim", 256)),
             flow_patch_threshold_pixels=float(
-                model_cfg.get("flow_patch_threshold_pixels", sv_cfg.get("flow_patch_threshold_pixels", 0.5))
+                masking_cfg.get("flow_patch_threshold_pixels", 0.5)
             ),
             motion_translation_max=float(
-                model_cfg.get("motion_translation_max", sv_cfg.get("motion_translation_max", 0.5))
+                motion_cfg.get("translation_max", 0.5)
             ),
             temporal_modeling=self.temporal_modeling,
+            decoder_num_parent_tokens=int(
+                decoder_cfg.get("num_parent_tokens", 256)
+            ),
+            decoder_gaussians_per_parent=int(
+                decoder_cfg.get("gaussians_per_parent", 8)
+            ),
+            decoder_dim=int(decoder_cfg.get("dim", 128)),
+            decoder_depth=int(decoder_cfg.get("depth", 2)),
+            decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
+            decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
         )
         self.repr_dim = int(self.vae.state_dim)
 
         state = torch.load(str(sv_cfg["checkpoint_path"]), map_location="cpu")
-        state_dict = _select_checkpoint_subdict(state, ("vae_state_dict", "model_state_dict", "state_dict"))
-        checkpoint_temporal = any(
-            key.startswith("dense_motion_head.") for key in state_dict
+        architecture = state.get("architecture") if isinstance(state, dict) else None
+        if architecture != SPLATTERVAE_ARCHITECTURE:
+            raise ValueError(
+                "The configured SplatterVAE checkpoint uses an incompatible decoder architecture: "
+                f"expected {SPLATTERVAE_ARCHITECTURE!r}, found {architecture!r}."
+            )
+        state_dict = _select_checkpoint_subdict(
+            state, ("vae_state_dict", "model_state_dict", "state_dict")
         )
+        checkpoint_temporal = any(key.startswith("dense_motion_head.") for key in state_dict)
         if checkpoint_temporal != self.temporal_modeling:
             raise ValueError(
                 "SplatterVAE checkpoint mode does not match "
@@ -152,12 +152,12 @@ class SplatterVAEInvariantEncoder(nn.Module):
             )
         self.vae.load_state_dict(state_dict, strict=True)
         self.vae.eval()
-        for p in self.vae.parameters():
-            p.requires_grad = False
+        for parameter in self.vae.parameters():
+            parameter.requires_grad = False
         self.is_trainable = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Encode either one frame independently or one joint three-frame sequence."""
+        """Encode one joint temporal sequence or one independent ablation frame."""
         x = x.float()
         if self.temporal_modeling:
             if x.ndim == 4:
@@ -165,33 +165,23 @@ class SplatterVAEInvariantEncoder(nn.Module):
                 expected_channels = 3 * self.temporal_window
                 if channels != expected_channels:
                     raise ValueError(
-                        f"Temporal SplatterVAE requires {expected_channels} stacked RGB channels, "
-                        f"got {channels}."
+                        f"Temporal SplatterVAE requires {expected_channels} stacked RGB channels, got {channels}."
                     )
                 x = x.reshape(batch, self.temporal_window, 3, height, width)
             if x.ndim != 5 or x.shape[1:3] != (self.temporal_window, 3):
                 raise ValueError(
-                    "Expected a chronological SplatterVAE sequence as (B,3,3,H,W) "
-                    f"or channel-stacked (B,9,H,W), got {tuple(x.shape)}."
+                    "Expected a chronological sequence as (B,3,3,H,W) or channel-stacked "
+                    f"(B,9,H,W), got {tuple(x.shape)}."
                 )
         else:
             if x.ndim != 4 or x.shape[1] != 3:
                 raise ValueError(
-                    "Single-timestep SplatterVAE expects independent frames as (B,3,H,W), "
-                    f"got {tuple(x.shape)}."
+                    f"Single-timestep SplatterVAE expects (B,3,H,W), got {tuple(x.shape)}."
                 )
             x = x[:, None]
-        normalized_sequence = x.mul(2.0).sub(1.0)
-        state = self.vae.policy_state(normalized_sequence.unsqueeze(2))
-        # policy_state preserves the view dimension used by pretraining. RL
-        # supplies exactly one view, so expose one fused state per batch item.
-        if state.ndim == 3 and state.shape[1] == 1:
-            state = state[:, 0]
+        state = self.vae.policy_state(x.mul(2.0).sub(1.0).unsqueeze(2))
         if state.ndim != 2:
-            raise ValueError(
-                "SplatterVAE policy_state must produce (B,D) for single-view RL "
-                f"input, got {tuple(state.shape)}"
-            )
+            raise ValueError(f"SplatterVAE policy_state must produce (B,D), got {tuple(state.shape)}")
         return state.contiguous()
 
 

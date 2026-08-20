@@ -9,14 +9,15 @@ from typing import Any, Dict, Tuple
 import h5py
 import torch
 
-from models.gaussian.motion import activate_motion_map
+from models.gaussian.motion import activate_motion_parameters
 from models.gaussian.parameterization import (
-    DirectSplatterToGaussians,
+    WorldSpaceGaussianParameterization,
     SplatterConfig,
     SplatterDataConfig,
     SplatterModelConfig,
-    default_splatter_channels,
+    gaussian_params_per_gaussian,
 )
+from models.splattervae.config import SPLATTERVAE_ARCHITECTURE
 from models.splattervae.model import SplatterVAE
 
 
@@ -32,27 +33,27 @@ def _filter_dataclass_kwargs(values: Dict[str, Any], cls: type) -> Dict[str, Any
 
 
 def build_splatter_config(cfg: Dict[str, Any], img_height: int, img_width: int) -> SplatterConfig:
-    spl_cfg = cfg.get("splatter", {})
-    spl_data_cfg = dict(spl_cfg.get("data", {}))
-    spl_model_cfg = dict(spl_cfg.get("model", {}))
-    spl_data_cfg["img_height"] = int(img_height)
-    spl_data_cfg["img_width"] = int(img_width)
+    renderer_cfg = dict(cfg.get("renderer", {}))
+    gaussian_cfg = dict(cfg.get("gaussian", {}))
+    bounds = dict(gaussian_cfg.pop("world_bounds", {}))
+    if bounds:
+        gaussian_cfg["world_bounds_min"] = bounds.get("min")
+        gaussian_cfg["world_bounds_max"] = bounds.get("max")
+    renderer_cfg["img_height"] = int(img_height)
+    renderer_cfg["img_width"] = int(img_width)
     return SplatterConfig(
-        data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg, SplatterDataConfig)),
-        model=SplatterModelConfig(**_filter_dataclass_kwargs(spl_model_cfg, SplatterModelConfig)),
+        data=SplatterDataConfig(
+            **_filter_dataclass_kwargs(renderer_cfg, SplatterDataConfig)
+        ),
+        model=SplatterModelConfig(
+            **_filter_dataclass_kwargs(gaussian_cfg, SplatterModelConfig)
+        ),
     )
 
 
 def splatter_channels_from_config(cfg: Dict[str, Any], spl_cfg: SplatterConfig) -> int:
-    return int(
-        cfg.get("splatter", {}).get(
-            "splatter_channels",
-            default_splatter_channels(
-                gaussians_per_pixel=int(spl_cfg.model.gaussians_per_pixel),
-                max_sh_degree=int(spl_cfg.model.max_sh_degree),
-            ),
-        )
-    )
+    del cfg
+    return gaussian_params_per_gaussian(int(spl_cfg.model.max_sh_degree))
 
 
 def _checkpoint_state_dict(ckpt_path: str) -> Dict[str, torch.Tensor]:
@@ -67,72 +68,46 @@ def _checkpoint_state_dict(ckpt_path: str) -> Dict[str, torch.Tensor]:
 
 
 def adapt_config_to_checkpoint(cfg: Dict[str, Any], ckpt_path: str) -> Dict[str, Any]:
-    """Return a visualization config whose architecture matches ``ckpt_path``.
-
-    The active training config may have moved on, e.g. RGB-D/depth-prior, while
-    an older checkpoint is RGB/absolute-depth.  Visualization should follow the
-    checkpoint tensor shapes so loading is strict and the Gaussian splitter uses
-    the right channel layout.
-    """
-    cfg = copy.deepcopy(cfg)
-    state = _checkpoint_state_dict(ckpt_path)
-    cfg.setdefault("model", {})["temporal_modeling"] = any(
-        key.startswith("dense_motion_head.") for key in state
-    )
-    is_temporal_state = any(
-        key.startswith("spatial_queries") or key.startswith("decoder_backbone.film_mlps")
-        for key in state
-    )
-
-    patch = state.get("invariant_encoder.patch_embed.proj.weight")
-    if patch is not None and patch.ndim == 4:
-        cfg.setdefault("vit", {})["in_chans"] = int(patch.shape[1])
-
-    out_channels = None
-    for key in (
-        "decoder.output_conv.4.weight",
-        "decoder.scratch.output_conv2.4.weight",
-        "decoder.head.4.weight",
-    ):
-        weight = state.get(key)
-        if weight is not None and weight.ndim >= 1:
-            out_channels = int(weight.shape[0])
-            break
-
-    if out_channels is not None and not is_temporal_state:
-        splatter_cfg = cfg.setdefault("splatter", {})
-        model_cfg = splatter_cfg.setdefault("model", {})
-        max_sh_degree = int(model_cfg.get("max_sh_degree", 1))
-        params_per_gaussian = default_splatter_channels(gaussians_per_pixel=1, max_sh_degree=max_sh_degree)
-        if out_channels % params_per_gaussian == 0:
-            model_cfg["gaussians_per_pixel"] = max(1, out_channels // params_per_gaussian)
-        splatter_cfg["splatter_channels"] = out_channels
-
-    return cfg
+    """Reject pixel-aligned checkpoints instead of silently adapting them."""
+    payload = torch.load(ckpt_path, map_location="cpu")
+    architecture = payload.get("architecture") if isinstance(payload, dict) else None
+    if architecture != SPLATTERVAE_ARCHITECTURE:
+        raise ValueError(
+            "Visualization requires an invariant grouped Gaussian set checkpoint; "
+            f"expected {SPLATTERVAE_ARCHITECTURE!r}, found {architecture!r}."
+        )
+    return copy.deepcopy(cfg)
 
 
-def build_splattervae(cfg: Dict[str, Any], img_height: int, img_width: int, splatter_channels: int) -> SplatterVAE:
+def build_splattervae(
+    cfg: Dict[str, Any], img_height: int, img_width: int, splatter_channels: int
+) -> SplatterVAE:
     model_cfg = dict(cfg.get("model", {}))
     vit_cfg = dict(cfg.get("vit", {}))
-    spl_model_cfg = cfg.get("splatter", {}).get("model", {})
-    gaussians_per_pixel = int(spl_model_cfg.get("gaussians_per_pixel", 1))
-
+    masking_cfg = dict(model_cfg.get("masking", {}))
+    decoder_cfg = dict(model_cfg.get("decoder", {}))
+    motion_cfg = dict(model_cfg.get("motion", {}))
     return SplatterVAE(
         vit_cfg=vit_cfg,
         img_height=img_height,
         img_width=img_width,
-        splatter_channels=splatter_channels,
-        dep_mask_eval=bool(model_cfg.get("dep_mask_eval", True)),
-        dpt_features=int(vit_cfg.get("dpt_features", 256)),
-        inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
-        dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
-        tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
+        gaussian_params_per_gaussian=splatter_channels,
+        inv_tube_mask_ratio=float(masking_cfg.get("inv_tube_mask_ratio", 0.50)),
+        tube_mask_per_view=bool(masking_cfg.get("tube_mask_per_view", True)),
         state_dim=int(model_cfg.get("state_dim", 256)),
-        view_dim=model_cfg.get("view_dim", None),
-        gaussians_per_pixel=gaussians_per_pixel,
-        flow_patch_threshold_pixels=float(model_cfg.get("flow_patch_threshold_pixels", 0.5)),
-        motion_translation_max=float(model_cfg.get("motion_translation_max", 0.5)),
+        flow_patch_threshold_pixels=float(
+            masking_cfg.get("flow_patch_threshold_pixels", 0.5)
+        ),
+        motion_translation_max=float(motion_cfg.get("translation_max", 0.5)),
         temporal_modeling=bool(model_cfg.get("temporal_modeling", True)),
+        decoder_num_parent_tokens=int(decoder_cfg.get("num_parent_tokens", 256)),
+        decoder_gaussians_per_parent=int(
+            decoder_cfg.get("gaussians_per_parent", 8)
+        ),
+        decoder_dim=int(decoder_cfg.get("dim", 128)),
+        decoder_depth=int(decoder_cfg.get("depth", 2)),
+        decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
+        decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
     )
 
 
@@ -140,7 +115,7 @@ def load_vae_state_dict(vae: SplatterVAE, ckpt_path: str) -> None:
     vae.load_state_dict(_checkpoint_state_dict(ckpt_path), strict=True)
 
 
-def load_converter_state_dict(converter: DirectSplatterToGaussians, ckpt_path: str) -> None:
+def load_converter_state_dict(converter: WorldSpaceGaussianParameterization, ckpt_path: str) -> None:
     del converter, ckpt_path
 
 
@@ -158,7 +133,7 @@ def build_visualization_models(
     vae = build_splattervae(cfg, img_height, img_width, splatter_channels)
     load_vae_state_dict(vae, ckpt_path)
 
-    converter = DirectSplatterToGaussians(spl_cfg)
+    converter = WorldSpaceGaussianParameterization(spl_cfg)
     load_converter_state_dict(converter, ckpt_path)
     vae.to(device).eval()
     converter.to(device).eval()
@@ -180,28 +155,23 @@ def fixed_window_from_single_image(
 @torch.no_grad()
 def decode_single_image_gaussians(
     vae: SplatterVAE,
-    converter: DirectSplatterToGaussians,
+    converter: WorldSpaceGaussianParameterization,
     images: torch.Tensor,
-    intrinsics: torch.Tensor,
-    source_c2w: torch.Tensor,
 ) -> tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
     sequence = fixed_window_from_single_image(images, vae.temporal_modeling)
     context = (
         torch.autocast(device_type="cuda", dtype=torch.bfloat16)
-        if images.device.type == "cuda"
-        else nullcontext()
+        if images.device.type == "cuda" else nullcontext()
     )
     with context:
         features = vae.inference_features(sequence)
-        raw = vae.predict_raw_maps(features["s_inv"], features["z_dep_all"][:, 0])
+        raw = vae.predict_gaussian_parameters(features["s_inv"])
     motion = (
-        activate_motion_map(raw["raw_motion_map"].float(), vae.motion_translation_max)
+        activate_motion_parameters(raw["raw_motion_params"].float(), vae.motion_translation_max)
         if vae.temporal_modeling else None
     )
     pc = converter(
-        splatter_map=raw["raw_base_map"].float(),
-        motion_map=motion,
-        source_cameras_view_to_world=source_c2w.float(),
-        intrinsics=intrinsics.float(),
+        gaussian_parameters=raw["raw_gaussian_params"].float(),
+        motion_parameters=motion,
     )
     return pc, features

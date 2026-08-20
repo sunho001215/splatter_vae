@@ -118,7 +118,7 @@ agent:
   feature_dim: 256
   hidden_dim: 1024
   critic_target_tau: 0.01
-  stddev_schedule: linear(1.0,0.1,500000)
+  stddev_schedule: linear(1.0,0.1,150000)
   stddev_clip: 0.3
 
 train:
@@ -131,9 +131,8 @@ train:
   discount: 0.99
 
   replay_dir: ./buffer/metaworld/button-press-wall/reviwo/seed42/
-  replay_num_workers: 4
+  replay_num_workers: 1
   nstep: 3
-
   log_every_steps: 1000
   eval_every_steps: 10000
   num_eval_episodes: 120

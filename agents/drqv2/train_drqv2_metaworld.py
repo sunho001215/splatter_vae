@@ -42,6 +42,25 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
+def _output_dir_for_seed(path: Any, seed: int) -> str:
+    """Return an output path whose final component identifies the run seed."""
+    output_dir = Path(str(path))
+    seed_dir = f"seed{seed}"
+    if re.fullmatch(r"seed\d+", output_dir.name, flags=re.IGNORECASE):
+        output_dir = output_dir.with_name(seed_dir)
+    else:
+        output_dir = output_dir / seed_dir
+    return str(output_dir)
+
+
+def _apply_seed_override(cfg: Dict[str, Any], seed: int) -> None:
+    """Override the random seed and isolate all mutable training outputs."""
+    cfg["seed"] = seed
+    train_cfg = cfg.setdefault("train", {})
+    train_cfg["replay_dir"] = _output_dir_for_seed(train_cfg.get("replay_dir", "buffer"), seed)
+    train_cfg["checkpoint_dir"] = _output_dir_for_seed(train_cfg.get("checkpoint_dir", "checkpoints"), seed)
+
+
 def _format_step_tag(step: int) -> str:
     if step > 0 and step % 1000 == 0:
         return f"{step // 1000}k"
@@ -164,6 +183,7 @@ class MetaWorldSingleCameraEnv:
             base_env._freeze_rand_vec = False
 
         self.action_space = self._env.action_space
+        self.action_space.seed(int(seed) + 23456)
         self.frames: Deque[np.ndarray] = deque(maxlen=self.frame_stack)
         self.episode_step = 0
         self._last_proprio = np.zeros((len(self.proprio_indices),), dtype=np.float32)
@@ -395,9 +415,19 @@ def main() -> None:
     """Main training loop."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the config seed and use matching seed-specific replay/checkpoint directories.",
+    )
     args = parser.parse_args()
+    if args.seed is not None and args.seed < 0:
+        parser.error("--seed must be a non-negative integer")
     with open(args.config, "r") as f:
         cfg: Dict[str, Any] = yaml.safe_load(f)
+    if args.seed is not None:
+        _apply_seed_override(cfg, args.seed)
     cfg.setdefault("vision", {}).setdefault("img_height", int(cfg["env"]["image_height"]))
     cfg["vision"].setdefault("img_width", int(cfg["env"]["image_width"]))
     seed = int(cfg.get("seed", 42))

@@ -15,7 +15,7 @@ from models.gaussian.parameterization import (
     SplatterConfig,
     SplatterDataConfig,
     SplatterModelConfig,
-    default_splatter_channels,
+    gaussian_params_per_gaussian,
 )
 from models.training.loop import train_splatter_vae
 from models.splattervae.model import SplatterVAE
@@ -47,55 +47,64 @@ def _filter_dataclass_kwargs(values: dict, cls: type, section: str) -> dict:
     return {key: value for key, value in values.items() if key in allowed}
 
 
+def _gaussian_config_values(cfg: dict) -> dict:
+    values = dict(cfg.get("gaussian", {}))
+    bounds = dict(values.pop("world_bounds", {}))
+    if bounds:
+        values["world_bounds_min"] = bounds.get("min")
+        values["world_bounds_max"] = bounds.get("max")
+    return values
+
+
 def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> SplatterConfig:
-    spl_cfg = cfg.get("splatter", {})
-    spl_data_cfg_dict = dict(spl_cfg.get("data", {}))
-    spl_model_cfg_dict = dict(spl_cfg.get("model", {}))
-
-    # Match the renderer config to the actual training batch resolution.
-    spl_data_cfg_dict["img_height"] = img_height
-    spl_data_cfg_dict["img_width"] = img_width
-
+    renderer_values = dict(cfg.get("renderer", {}))
+    renderer_values["img_height"] = img_height
+    renderer_values["img_width"] = img_width
+    gaussian_values = _gaussian_config_values(cfg)
     return SplatterConfig(
-        data=SplatterDataConfig(**_filter_dataclass_kwargs(spl_data_cfg_dict, SplatterDataConfig, "splatter.data")),
-        model=SplatterModelConfig(**_filter_dataclass_kwargs(spl_model_cfg_dict, SplatterModelConfig, "splatter.model")),
+        data=SplatterDataConfig(
+            **_filter_dataclass_kwargs(renderer_values, SplatterDataConfig, "renderer")
+        ),
+        model=SplatterModelConfig(
+            **_filter_dataclass_kwargs(gaussian_values, SplatterModelConfig, "gaussian")
+        ),
     )
 
 
 def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
     vit_cfg = dict(cfg.get("vit", {}))
     model_cfg = dict(cfg.get("model", {}))
-    spl_model_cfg = cfg.get("splatter", {}).get("model", {})
-
-    gaussians_per_pixel = int(spl_model_cfg.get("gaussians_per_pixel", 1))
-    max_sh_degree = int(spl_model_cfg.get("max_sh_degree", 1))
-    splatter_channels = int(
-        cfg.get("splatter", {}).get(
-            "splatter_channels",
-            default_splatter_channels(
-                gaussians_per_pixel=gaussians_per_pixel,
-                max_sh_degree=max_sh_degree,
-            ),
+    masking_cfg = dict(model_cfg.get("masking", {}))
+    decoder_cfg = dict(model_cfg.get("decoder", {}))
+    motion_cfg = dict(model_cfg.get("motion", {}))
+    gaussian_cfg = SplatterModelConfig(
+        **_filter_dataclass_kwargs(
+            _gaussian_config_values(cfg), SplatterModelConfig, "gaussian"
         )
     )
-
     return SplatterVAE(
         vit_cfg=vit_cfg,
         img_height=img_height,
         img_width=img_width,
-        splatter_channels=splatter_channels,
-        dep_mask_eval=bool(model_cfg.get("dep_mask_eval", False)),
-        dpt_features=int(vit_cfg.get("dpt_features", 256)),
-        inv_tube_mask_ratio=float(model_cfg.get("inv_tube_mask_ratio", 0.50)),
-        dep_mask_ratio=float(model_cfg.get("dep_mask_ratio", 0.75)),
-        tube_mask_per_view=bool(model_cfg.get("tube_mask_per_view", True)),
+        gaussian_params_per_gaussian=gaussian_params_per_gaussian(
+            gaussian_cfg.max_sh_degree
+        ),
+        inv_tube_mask_ratio=float(masking_cfg.get("inv_tube_mask_ratio", 0.50)),
+        tube_mask_per_view=bool(masking_cfg.get("tube_mask_per_view", True)),
         state_dim=int(model_cfg.get("state_dim", 256)),
-        view_dim=model_cfg.get("view_dim", None),
-        decoder_condition_mode=str(model_cfg.get("decoder_condition_mode", "concat")),
-        gaussians_per_pixel=gaussians_per_pixel,
-        flow_patch_threshold_pixels=float(model_cfg.get("flow_patch_threshold_pixels", 0.5)),
-        motion_translation_max=float(model_cfg.get("motion_translation_max", 0.5)),
+        flow_patch_threshold_pixels=float(
+            masking_cfg.get("flow_patch_threshold_pixels", 0.5)
+        ),
+        motion_translation_max=float(motion_cfg.get("translation_max", 0.5)),
         temporal_modeling=bool(model_cfg.get("temporal_modeling", True)),
+        decoder_num_parent_tokens=int(decoder_cfg.get("num_parent_tokens", 256)),
+        decoder_gaussians_per_parent=int(
+            decoder_cfg.get("gaussians_per_parent", 8)
+        ),
+        decoder_dim=int(decoder_cfg.get("dim", 128)),
+        decoder_depth=int(decoder_cfg.get("depth", 2)),
+        decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
+        decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
     )
 
 
@@ -110,19 +119,24 @@ def build_metaworld_loaders(cfg: dict):
 
     if "views" not in ds_cfg or not ds_cfg["views"]:
         raise ValueError('Config field "dataset.views" must be an explicit non-empty camera list.')
-    if "selected_seg_ids" not in ds_cfg:
-        raise ValueError('Config field "dataset.selected_seg_ids" is required.')
+    use_segmentation_mask = bool(
+        cfg.get("train", {}).get("use_segmentation_mask", True)
+    )
+    if use_segmentation_mask and "selected_seg_ids" not in ds_cfg:
+        raise ValueError(
+            'Config field "dataset.selected_seg_ids" is required when '
+            '"train.use_segmentation_mask" is true.'
+        )
     return build_train_valid_loaders_metaworld(
         dataset_path=dataset_path,
         views=list(ds_cfg["views"]),
-        selected_seg_ids=ds_cfg["selected_seg_ids"],
-        batch_size=int(ds_cfg.get("batch_size", 32)),
+        selected_seg_ids=ds_cfg.get("selected_seg_ids"),
+        use_segmentation_mask=use_segmentation_mask,
+        batch_size=int(ds_cfg.get("batch_size", 16)),
         num_workers=int(ds_cfg.get("num_workers", 8)),
         pin_memory=bool(ds_cfg.get("pin_memory", True)),
         train_ratio=float(ds_cfg.get("train_ratio", 0.90)),
         seed=seed,
-        num_episodes=ds_cfg.get("num_episodes"),
-        max_frames_per_demo=ds_cfg.get("max_frames_per_demo"),
         train_temporal_strides=ds_cfg.get("train_temporal_strides", [3, 6, 9]),
         validation_temporal_stride=int(ds_cfg.get("validation_temporal_stride", 9)),
         split_manifest_path=ds_cfg.get("split_manifest_path"),
@@ -210,11 +224,11 @@ def main() -> None:
         f"[Info] Training image resolution: H={img_height}, W={img_width}, "
         f"temporal_window={timesteps}, train_temporal_strides={cfg['dataset']['train_temporal_strides']}, "
         f"validation_temporal_stride={cfg['dataset']['validation_temporal_stride']}, "
+        f"use_segmentation_mask={cfg.get('train', {}).get('use_segmentation_mask', True)}, "
         f"sampled_views={num_views}, mandatory_modalities=ok"
     )
 
     train_cfg_dict = dict(cfg.get("train", {}))
-    train_cfg_dict.pop("use_amp", None)
     cfg_train = TrainConfig(**_filter_dataclass_kwargs(train_cfg_dict, TrainConfig, "train"))
 
     splatter_cfg = build_splatter_config(cfg, img_height=img_height, img_width=img_width)

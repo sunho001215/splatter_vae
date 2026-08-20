@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from .geometry import project_gaussian_centers
 from .parameterization import SplatterConfig
+from models.splattervae.temporal import temporal_anchor_index
 
 
 def _load_rasterization():
@@ -20,13 +21,13 @@ def _load_rasterization():
     return rasterization
 
 
-def activate_motion_map(raw_motion_map: torch.Tensor, max_translation: float) -> torch.Tensor:
-    """Activate the six raw translation channels in FP32."""
-    if raw_motion_map.dim() != 4 or raw_motion_map.shape[1] % 6 != 0:
-        raise ValueError(f"Expected raw motion map as (B,6*G,H,W), got {tuple(raw_motion_map.shape)}.")
+def activate_motion_parameters(raw_motion: torch.Tensor, max_translation: float) -> torch.Tensor:
+    """Activate the six per-Gaussian translation channels in FP32."""
+    if raw_motion.dim() != 3 or raw_motion.shape[-1] != 6:
+        raise ValueError(f"Expected raw motion as (B,N,6), got {tuple(raw_motion.shape)}.")
     if float(max_translation) <= 0.0:
         raise ValueError("max_translation must be positive.")
-    return torch.tanh(raw_motion_map.float()) * float(max_translation)
+    return torch.tanh(raw_motion.float()) * float(max_translation)
 
 
 def translate_gaussians(
@@ -38,6 +39,33 @@ def translate_gaussians(
     output = dict(pc)
     output["xyz"] = (pc["xyz"] + xyz_delta).contiguous()
     return output
+
+
+def construct_chronological_gaussian_sequence(
+    anchor_pc: Dict[str, torch.Tensor],
+    temporal_anchor: str = "t0",
+) -> list[Dict[str, torch.Tensor]]:
+    """Construct and return the chronological [G0, G1, G2] sequence."""
+    required = ("xyz", "delta_xyz_01", "delta_xyz_12")
+    missing = [key for key in required if key not in anchor_pc]
+    if missing:
+        raise KeyError(f"Temporal Gaussian construction requires fields {missing}.")
+    xyz = anchor_pc["xyz"]
+    delta01 = anchor_pc["delta_xyz_01"]
+    delta12 = anchor_pc["delta_xyz_12"]
+    if delta01.shape != xyz.shape or delta12.shape != xyz.shape:
+        raise ValueError("Dense translation residuals must align with anchor Gaussian centers.")
+
+    if temporal_anchor_index(temporal_anchor) == 0:
+        gaussian0 = anchor_pc
+        gaussian1 = translate_gaussians(gaussian0, delta01)
+        gaussian2 = translate_gaussians(gaussian1, delta12)
+    else:
+        gaussian2 = anchor_pc
+        gaussian1 = translate_gaussians(gaussian2, -delta12)
+        gaussian0 = translate_gaussians(gaussian1, -delta01)
+    return [gaussian0, gaussian1, gaussian2]
+
 
 def _valid_flow_features(flow: torch.Tensor, valid: torch.Tensor) -> torch.Tensor:
     valid = valid.detach() & torch.isfinite(flow).all(dim=-1)
@@ -74,12 +102,37 @@ def _normalize_flow_signal(
     )
 
 
+def _detached_forward_flow_endpoints(
+    anchor_pc: Dict[str, torch.Tensor],
+    temporal_anchor: str,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Build chronological source/target endpoints with delta-only gradients."""
+    delta01 = anchor_pc["delta_xyz_01"]
+    delta12 = anchor_pc["delta_xyz_12"]
+    chronological_pc = construct_chronological_gaussian_sequence(
+        anchor_pc, temporal_anchor
+    )
+    xyz0_source = chronological_pc[0]["xyz"].detach()
+    xyz1_target = xyz0_source + delta01
+    xyz1_source = xyz1_target.detach()
+    xyz2_from_1 = xyz1_source + delta12
+    xyz2_from_0 = xyz0_source + delta01 + delta12
+    return (
+        xyz0_source,
+        xyz1_target,
+        xyz1_source,
+        xyz2_from_1,
+        xyz2_from_0,
+    )
+
+
 def render_translation_flow_sequence(
-    pc0: Dict[str, torch.Tensor],
+    anchor_pc: Dict[str, torch.Tensor],
     world_view_transform: torch.Tensor,
     intrinsics: torch.Tensor,
     cfg: SplatterConfig,
     eps: float = 1.0e-6,
+    temporal_anchor: str = "t0",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Render translation-only flows 01, 12, and 02 in one gsplat call.
 
@@ -96,36 +149,39 @@ def render_translation_flow_sequence(
         "delta_xyz_01",
         "delta_xyz_12",
     )
-    missing = [key for key in required if key not in pc0]
+    missing = [key for key in required if key not in anchor_pc]
     if missing:
         raise KeyError(f"Flow rendering requires Gaussian fields {missing}.")
 
-    xyz0 = pc0["xyz"]
-    if xyz0.dim() != 3 or xyz0.shape[-1] != 3:
-        raise ValueError(f"Expected base centers as (B,N,3), got {tuple(xyz0.shape)}.")
-    if pc0["delta_xyz_01"].shape != xyz0.shape or pc0["delta_xyz_12"].shape != xyz0.shape:
-        raise ValueError("Dense translation residuals must align with base Gaussian centers.")
+    anchor_xyz = anchor_pc["xyz"]
+    if anchor_xyz.dim() != 3 or anchor_xyz.shape[-1] != 3:
+        raise ValueError(f"Expected anchor centers as (B,N,3), got {tuple(anchor_xyz.shape)}.")
+    if (
+        anchor_pc["delta_xyz_01"].shape != anchor_xyz.shape
+        or anchor_pc["delta_xyz_12"].shape != anchor_xyz.shape
+    ):
+        raise ValueError("Dense translation residuals must align with anchor Gaussian centers.")
     if world_view_transform.dim() != 5 or world_view_transform.shape[1] != 3:
         raise ValueError(
             f"Expected world-to-camera matrices as (B,3,A,4,4), got {tuple(world_view_transform.shape)}."
         )
     if intrinsics.shape != (*world_view_transform.shape[:3], 3, 3):
         raise ValueError("Intrinsics must match the three-timestep camera batch.")
-    if xyz0.device.type != "cuda":
+    if anchor_xyz.device.type != "cuda":
         raise RuntimeError("Optical-flow rasterization requires CUDA tensors.")
 
-    device = xyz0.device
-    dtype = xyz0.dtype
+    device = anchor_xyz.device
+    dtype = anchor_xyz.dtype
     w2c = world_view_transform.to(device=device, dtype=dtype).detach()
     camera_k = intrinsics.to(device=device, dtype=dtype).detach()
 
-    delta01 = pc0["delta_xyz_01"]
-    delta12 = pc0["delta_xyz_12"]
-    xyz0_source = xyz0.detach()
-    xyz1_live = xyz0_source + delta01
-    xyz1_source = xyz1_live.detach()
-    xyz2_from_1 = xyz1_source + delta12
-    xyz2_accumulated = xyz0_source + delta01 + delta12
+    (
+        xyz0_source,
+        xyz1_live,
+        xyz1_source,
+        xyz2_from_1,
+        xyz2_accumulated,
+    ) = _detached_forward_flow_endpoints(anchor_pc, temporal_anchor)
 
     # Project all distinct endpoints together; timestep-1 source projection is
     # the detached version of the already computed timestep-1 target endpoint.
@@ -156,7 +212,7 @@ def render_translation_flow_sequence(
     valid1 = projection_valid[:, 1].detach()
     valid2_from_1 = projection_valid[:, 2].detach()
     valid2_accumulated = projection_valid[:, 3].detach()
-    base_valid = pc0["valid_mask"].detach().to(device=device, dtype=torch.bool)[:, None, :]
+    base_valid = anchor_pc["valid_mask"].detach().to(device=device, dtype=torch.bool)[:, None, :]
 
     valid01 = valid0 & valid1 & base_valid
     valid12 = valid1 & valid2_from_1 & base_valid
@@ -172,28 +228,28 @@ def render_translation_flow_sequence(
     flow_features[:, 0, ..., 3:6] = features02
     flow_features[:, 1, ..., 0:3] = features12
 
-    scale_min = max(float(cfg.model.gaussian_scale_min), 1.0e-8)
-    scale_max = max(float(cfg.model.gaussian_scale_max), scale_min)
+    scale_min = min(float(value) for value in cfg.model.scale_min)
+    scale_max = max(float(value) for value in cfg.model.scale_max)
     base_scales = torch.nan_to_num(
-        pc0["scaling"].detach(),
+        anchor_pc["scaling"].detach(),
         nan=scale_min,
         posinf=scale_max,
         neginf=scale_min,
     ).clamp(scale_min, scale_max)
     base_quaternions = F.normalize(
         torch.nan_to_num(
-            pc0["rotation"].detach(), nan=0.0, posinf=0.0, neginf=0.0
+            anchor_pc["rotation"].detach(), nan=0.0, posinf=0.0, neginf=0.0
         ),
         dim=-1,
         eps=1.0e-6,
     )
     base_opacities = torch.nan_to_num(
-        pc0["opacity"].detach().squeeze(-1),
+        anchor_pc["opacity"].detach().squeeze(-1),
         nan=0.0,
         posinf=1.0,
         neginf=0.0,
     ).clamp(0.0, 1.0)
-    base_opacities = base_opacities * pc0["valid_mask"].detach().to(dtype=dtype)
+    base_opacities = base_opacities * anchor_pc["valid_mask"].detach().to(dtype=dtype)
 
     source_means = torch.nan_to_num(
         torch.stack((xyz0_source, xyz1_source), dim=1),

@@ -1,12 +1,12 @@
-seed: 98
+seed: 42
 device: cuda
-
 wandb:
   enabled: true
   project: metaworld-peg-unplug-side-DrQv2
-  name: SplatterVAE-temporal-state
-  tags: [full-implementation, embed-dim-128]
-
+  name: SplatterVAE-t2-anchor-3-strides
+  tags:
+  - full-implementation
+  - embed-dim-128
 env:
   benchmark_id: Meta-World/MT1
   env_name: peg-unplug-side
@@ -15,47 +15,49 @@ env:
   frame_stack: 3
   action_repeat: 2
   max_episode_steps: 250
-
   cameras:
-    - name: cam0
-      r: 1.0
-      theta: 45.0
-      phi: 0.0
-      fovy: 45.0
-    - name: cam1
-      r: 1.0
-      theta: 45.0       
-      phi: 180.0          
-      fovy: 45.0
-    - name: cam2
-      r: 1.0
-      theta: 60.0        
-      phi: -30.0             
-      fovy: 45.0
-    - name: cam3
-      r: 1.0
-      theta: 60.0         
-      phi: 210.0           
-      fovy: 45.0
-    - name: cam4
-      r: 1.0
-      theta: 30.0       
-      phi: 30.0
-      fovy: 45.0
-    - name: cam5
-      r: 1.0
-      theta: 30.0     
-      phi: 150.0
-      fovy: 45.0
-
-  lookat: [0.0, 0.6, 0.0]
-  up: [0.0, 0.0, 1.0]
-
+  - name: cam0
+    r: 1.0
+    theta: 45.0
+    phi: 0.0
+    fovy: 45.0
+  - name: cam1
+    r: 1.0
+    theta: 45.0
+    phi: 180.0
+    fovy: 45.0
+  - name: cam2
+    r: 1.0
+    theta: 60.0
+    phi: -30.0
+    fovy: 45.0
+  - name: cam3
+    r: 1.0
+    theta: 60.0
+    phi: 210.0
+    fovy: 45.0
+  - name: cam4
+    r: 1.0
+    theta: 30.0
+    phi: 30.0
+    fovy: 45.0
+  - name: cam5
+    r: 1.0
+    theta: 30.0
+    phi: 150.0
+    fovy: 45.0
+  lookat:
+  - 0.0
+  - 0.6
+  - 0.0
+  up:
+  - 0.0
+  - 0.0
+  - 1.0
 vision:
   encoder_type: splatter_vae
   img_height: 128
   img_width: 128
-
   vit:
     patch_size: 16
     in_chans: 3
@@ -68,39 +70,33 @@ vision:
     attn_dropout: 0.0
     drop_path_rate: 0.1
     layerscale_init: 1.0
-    selected_layers: [1, 3, 5, 7]
-    decoder_depth: 8
-    decoder_num_heads: 8
-    decoder_mlp_ratio: 4.0
-    decoder_drop_path_rate: 0.1
-    decoder_selected_layers: [1, 3, 5, 7]
-    dpt_features: 128
-
   splatter_vae:
-    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/peg-unplug-side/dense-flow/step_00300000.pth
+    checkpoint_path: ./checkpoints/metaworld/encoders/SplatterVAE-temporal/peg-unplug-side/t2-anchor-3-strides/step_00300000.pth
     max_sh_degree: 1
-    gaussians_per_pixel: 1
-
     model:
-      inv_tube_mask_ratio: 0.50
-      dep_mask_ratio: 0.75
-      tube_mask_per_view: true
       state_dim: 256
-      view_dim: 64
-      dep_mask_eval: false
-      flow_patch_threshold_pixels: 0.5
-      motion_translation_max: 0.5
-      temporal_modeling: true  # false: encode each policy frame independently
-
+      temporal_modeling: true
+      masking:
+        inv_tube_mask_ratio: 0.5
+        tube_mask_per_view: true
+        flow_patch_threshold_pixels: 0.5
+      decoder:
+        num_parent_tokens: 256
+        gaussians_per_parent: 16
+        dim: 128
+        depth: 2
+        num_heads: 4
+        mlp_ratio: 4.0
+      motion:
+        translation_max: 0.5
 agent:
-  lr: 1.0e-4
+  lr: 0.0001
   feature_dim: 256
   hidden_dim: 1024
   augment_pixels: false
   critic_target_tau: 0.01
-  stddev_schedule: linear(1.0,0.1,500000)
+  stddev_schedule: linear(1.0,0.1,150000)
   stddev_clip: 0.3
-
 train:
   num_train_steps: 1000000
   seed_steps: 4000
@@ -109,19 +105,15 @@ train:
   update_every_steps: 2
   gradient_steps: 1
   discount: 0.99
-
-  replay_dir: ./buffer/metaworld/peg-unplug-side/splattervae_temporal_state/seed98/
-  replay_num_workers: 4
+  replay_dir: ./buffer/metaworld/peg-unplug-side/splattervae-t2-anchor-3-strides/seed42/
+  replay_num_workers: 1
   nstep: 3
-
   log_every_steps: 1000
   eval_every_steps: 10000
   num_eval_episodes: 120
   rolling_window: 10
-
   checkpoint_every_steps: 50000
-  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae_temporal_state/peg-unplug-side/seed98/
-
+  checkpoint_dir: ./checkpoints/metaworld/policies/drqv2/splattervae-t2-anchor-3-strides/peg-unplug-side/seed42/
 visualization:
   enabled: false
   window_name: metaworld_peg-unplug-side_drqv2

@@ -15,12 +15,16 @@ from models.training.reconstruction import (
     compute_reconstruction_and_renders,
     encode_per_view_sequence_batch,
 )
-from models.gaussian.parameterization import DirectSplatterToGaussians
-from models.training.losses import compute_view_structured_representation_losses
+from models.gaussian.parameterization import (
+    ACTIVE_GAUSSIAN_OPACITY_THRESHOLD,
+    WorldSpaceGaussianParameterization,
+)
+from models.training.losses import compute_view_structured_invariant_losses
 from models.gaussian.parameterization import SplatterConfig
 from models.gaussian.rendering import render_rgb
 from models.training.config import TrainConfig
 from models.splattervae.model import SplatterVAE
+from models.splattervae.temporal import combine_temporal_anchor_losses
 
 
 FLOW_VISUALIZATION_MAX_MAGNITUDE_PIXELS = 32.0
@@ -32,6 +36,30 @@ NOVEL_VIEW_ORBIT_FPS = 8
 METAWORLD_SCENE_CENTER = (0.0, 0.6, 0.0)
 MASK_OVERLAY_ALPHA = 0.55
 MASK_OVERLAY_COLOR = (1.0, 0.15, 0.15)
+TURBO_RED_COEFFICIENTS = (
+    0.13572138,
+    4.61539260,
+    -42.66032258,
+    132.13108234,
+    -152.94239396,
+    59.28637943,
+)
+TURBO_GREEN_COEFFICIENTS = (
+    0.09140261,
+    2.19418839,
+    4.84296658,
+    -14.18503333,
+    4.27729857,
+    2.82956604,
+)
+TURBO_BLUE_COEFFICIENTS = (
+    0.10667330,
+    12.64194608,
+    -60.58204836,
+    110.36276771,
+    -89.90310912,
+    27.34824973,
+)
 FLOW_TRACK_COLORS = (
     (1.00, 0.20, 0.20),
     (0.20, 0.85, 0.25),
@@ -103,7 +131,9 @@ def _novel_view_orbit_video(
     splatter_cfg: SplatterConfig,
 ) -> wandb.Video:
     """Render one source-anchored full orbit in one batched RGB-only call."""
-    sample_pc = {key: value[:1] for key, value in rec_out["gaussian_pc"].items()}
+    sample_pc = {
+        key: value[:1] for key, value in rec_out["gaussian_pc_anchor"].items()
+    }
     source_c2w = rec_out["source_c2w"][0]
     source_intrinsics = rec_out["source_intrinsics"][0]
     scene_center = source_c2w.new_tensor(METAWORLD_SCENE_CENTER)
@@ -457,16 +487,64 @@ def _point_trajectory_panel(
     )
 
 
-def _depth_rgb(depth: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    valid = mask.bool() & torch.isfinite(depth) & (depth > 0)
+def _valid_visualization_depths(
+    depth: torch.Tensor,
+    mask: torch.Tensor,
+    near_plane: float,
+    far_plane: float,
+) -> torch.Tensor:
+    if depth.shape != mask.shape or depth.dim() != 3 or depth.shape[0] != 1:
+        raise ValueError(
+            f"Expected matching (1,H,W) depth and mask tensors, got "
+            f"{tuple(depth.shape)} and {tuple(mask.shape)}."
+        )
+    near = float(near_plane)
+    far = float(far_plane)
+    if not near < far:
+        raise ValueError(f"Expected near_plane < far_plane, got {near} and {far}.")
+    return (
+        mask.bool()
+        & torch.isfinite(depth)
+        & (depth >= near)
+        & (depth <= far)
+    )
+
+
+def _turbo_rgb(normalized: torch.Tensor) -> torch.Tensor:
+    if normalized.dim() != 2:
+        raise ValueError(
+            f"Expected a normalized (H,W) depth image, got {normalized.shape}."
+        )
+    x = normalized.float().clamp(0.0, 1.0)
+    powers = torch.stack(
+        (torch.ones_like(x), x, x.square(), x.pow(3), x.pow(4), x.pow(5)),
+        dim=0,
+    )
+    coefficients = x.new_tensor(
+        (
+            TURBO_RED_COEFFICIENTS,
+            TURBO_GREEN_COEFFICIENTS,
+            TURBO_BLUE_COEFFICIENTS,
+        )
+    )
+    return torch.einsum("cp,phw->chw", coefficients, powers).clamp(0.0, 1.0)
+
+
+def _depth_rgb(
+    depth: torch.Tensor,
+    mask: torch.Tensor,
+    near_plane: float,
+    far_plane: float,
+) -> torch.Tensor:
+    valid = _valid_visualization_depths(depth, mask, near_plane, far_plane)
     if not bool(valid.any()):
         return torch.zeros(3, *depth.shape[-2:], device=depth.device)
-    values = depth[valid]
-    low = torch.quantile(values, 0.02)
-    high = torch.quantile(values, 0.98)
-    normalized = ((depth - low) / (high - low).clamp_min(1.0e-6)).clamp(0.0, 1.0)
-    normalized = torch.where(valid, normalized, torch.zeros_like(normalized))
-    return normalized.expand(3, -1, -1)
+    normalized = (
+        (depth - float(near_plane))
+        / max(float(far_plane) - float(near_plane), 1.0e-6)
+    ).clamp(0.0, 1.0)
+    rgb = _turbo_rgb(normalized[0])
+    return torch.where(valid[0].unsqueeze(0), rgb, torch.zeros_like(rgb))
 
 
 def _make_grid(images: list[torch.Tensor], nrow: int, padding: int = 2) -> torch.Tensor:
@@ -509,7 +587,6 @@ def _input_panel(
     images: torch.Tensor,
     flows: torch.Tensor,
     inv_mask: torch.Tensor,
-    dep_mask: torch.Tensor,
     patch_size: int,
     view_idx: int,
     temporal_modeling: bool,
@@ -523,16 +600,7 @@ def _input_panel(
         _overlay_patch_mask(image, inv_mask[0, view_idx].cpu(), patch_size)
         for image in rgb
     ]
-    dependent_overlay = _overlay_patch_mask(
-        rgb[0], dep_mask[0, view_idx].cpu(), patch_size
-    )
-    placeholder = torch.ones_like(rgb[0])
-    items = (
-        rgb
-        + colored_flows
-        + invariant_overlays
-        + [dependent_overlay, placeholder, placeholder]
-    )
+    items = rgb + colored_flows + invariant_overlays
     return _wandb_image_grid(
         list(items),
         nrow=3,
@@ -540,33 +608,70 @@ def _input_panel(
             f"source view {view_idx} | RGB {'t0/t1/t2' if temporal_modeling else 't0 only'} | "
             "WAFT color flow 01/12/02 used for token masking "
             f"(hue=direction, saturation=0-{FLOW_VISUALIZATION_MAX_MAGNITUDE_PIXELS:g} px, "
-            "white=zero) | invariant mask overlay(s) | dependent mask overlay t0 "
-            "(red=masked)"
+            "white=zero) | invariant tube-mask overlay(s) (red=masked)"
         ),
     )
 
 
-def _reconstruction_panel(rec_out: Dict[str, Any], view_idx: int) -> wandb.Image:
+def _reconstruction_panel(
+    rec_out: Dict[str, Any],
+    view_idx: int,
+    *,
+    use_segmentation_mask: bool,
+    near_plane: float,
+    far_plane: float,
+) -> wandb.Image:
     items = []
     targets = rec_out["target_images_self"][0, :, view_idx]
     predicted = rec_out["rendered_self"][0, :, view_idx]
     target_masks = rec_out["target_masks_self"][0, :, view_idx]
-    predicted_alpha = rec_out["rendered_alpha_self"][0, :, view_idx]
-    predicted_depth = rec_out["rendered_expected_depth_self"][0, :, view_idx]
+    hard_depth = rec_out["rendered_hard_depth_self"][0, :, view_idx]
+    soft_depth = rec_out["rendered_soft_depth_self"][0, :, view_idx]
     target_depths = rec_out["target_depths_self"]
     items.extend(image.detach().cpu() for image in targets)
     items.extend(image.detach().cpu() for image in predicted)
     for time_idx in range(targets.shape[0]):
         target_depth = target_depths[0, time_idx, view_idx]
-        items.append(_depth_rgb(target_depth, target_masks[time_idx]).detach().cpu())
-    for time_idx in range(targets.shape[0]):
-        items.append(_depth_rgb(predicted_depth[time_idx], target_masks[time_idx]).detach().cpu())
-    items.extend(mask.expand(3, -1, -1).detach().cpu() for mask in target_masks)
-    items.extend(alpha.expand(3, -1, -1).detach().cpu() for alpha in predicted_alpha)
+        items.append(
+            _depth_rgb(
+                target_depth,
+                target_masks[time_idx],
+                near_plane,
+                far_plane,
+            ).detach().cpu()
+        )
+
+    for depth_variant in (hard_depth, soft_depth):
+        for time_idx in range(targets.shape[0]):
+            items.append(
+                _depth_rgb(
+                    depth_variant[time_idx],
+                    target_masks[time_idx],
+                    near_plane,
+                    far_plane,
+                ).detach().cpu()
+            )
+
+    rows = (
+        "target RGB / rendered RGB / target Turbo depth / "
+        "hard accumulated Turbo depth / soft accumulated Turbo depth"
+    )
+    if use_segmentation_mask:
+        predicted_alpha = rec_out["rendered_alpha_self"][0, :, view_idx]
+        items.extend(mask.expand(3, -1, -1).detach().cpu() for mask in target_masks)
+        items.extend(
+            alpha.expand(3, -1, -1).detach().cpu()
+            for alpha in predicted_alpha
+        )
+        rows += " / target mask / rendered alpha"
     return _wandb_image_grid(
         items,
         nrow=int(targets.shape[0]),
-        caption="target/predicted RGB, depth, mask/alpha",
+        caption=(
+            f"columns: chronological timesteps | rows: {rows} | "
+            f"depth range [{float(near_plane):g}, {float(far_plane):g}] m; "
+            "out-of-frustum depth is black"
+        ),
     )
 
 
@@ -575,6 +680,8 @@ def _reference_points(
     mask: torch.Tensor,
     intrinsics: torch.Tensor,
     c2w: torch.Tensor,
+    near_plane: float,
+    far_plane: float,
 ) -> torch.Tensor:
     height, width = depth.shape[-2:]
     ys, xs = torch.meshgrid(
@@ -586,7 +693,9 @@ def _reference_points(
     x = (xs - intrinsics[0, 2]) / intrinsics[0, 0].clamp_min(1.0e-6) * z
     y = (ys - intrinsics[1, 2]) / intrinsics[1, 1].clamp_min(1.0e-6) * z
     camera = torch.stack((x, y, z), dim=-1)
-    valid = mask[0].bool() & torch.isfinite(camera).all(-1) & (z > 0)
+    valid = _valid_visualization_depths(
+        depth, mask, near_plane, far_plane
+    )[0] & torch.isfinite(camera).all(dim=-1)
     camera = camera[valid]
     return torch.einsum("ij,nj->ni", c2w[:3, :3], camera) + c2w[:3, 3]
 
@@ -625,13 +734,34 @@ def _combined_pointcloud_payload(
     c2w: torch.Tensor,
     max_points: int,
     prefix: str,
+    *,
+    near_plane: float,
+    far_plane: float,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {}
     num_views = int(depths.shape[2])
-    per_view_max_points = max(1, int(max_points) // max(1, num_views))
+    point_limit = max(2, int(max_points))
+    predicted_budget = point_limit // 2
+    reference_budget = point_limit - predicted_budget
+    per_view_max_points = max(
+        1, (reference_budget + max(1, num_views) - 1) // max(1, num_views)
+    )
     for time_idx, pc in enumerate(rec_out["gaussian_pc_sequence"][:3]):
-        valid = pc["valid_mask"][0]
-        predicted = _evenly_sample_points(pc["xyz"][0, valid], int(max_points))
+        opacity = pc["opacity"][0, :, 0]
+        eligible = (
+            pc["valid_mask"][0]
+            & torch.isfinite(pc["xyz"][0]).all(dim=-1)
+            & torch.isfinite(opacity)
+        )
+        active = eligible & (opacity >= ACTIVE_GAUSSIAN_OPACITY_THRESHOLD)
+        if not bool(active.any()) and bool(eligible.any()):
+            scores = torch.where(
+                eligible, opacity, torch.full_like(opacity, float("-inf"))
+            )
+            active[scores.argmax()] = True
+        predicted = _evenly_sample_points(
+            pc["xyz"][0, active], predicted_budget
+        )
         references = [
             _evenly_sample_points(
                 _reference_points(
@@ -639,18 +769,32 @@ def _combined_pointcloud_payload(
                     masks[0, time_idx, view_idx],
                     _camera_matrix_at(intrinsics, time_idx, view_idx),
                     _camera_matrix_at(c2w, time_idx, view_idx),
+                    near_plane,
+                    far_plane,
                 ),
                 per_view_max_points,
             )
             for view_idx in range(num_views)
         ]
-        reference = torch.cat(references, dim=0)
-        pred_rgb = torch.tensor([255.0, 64.0, 64.0], device=predicted.device).expand(predicted.shape[0], -1)
-        ref_rgb = torch.tensor([64.0, 192.0, 255.0], device=reference.device).expand(reference.shape[0], -1)
+        reference = _evenly_sample_points(
+            torch.cat(references, dim=0), reference_budget
+        )
+        pred_rgb = predicted.new_tensor((255.0, 64.0, 64.0)).expand(
+            predicted.shape[0], -1
+        )
+        ref_rgb = reference.new_tensor((64.0, 192.0, 255.0)).expand(
+            reference.shape[0], -1
+        )
         combined = torch.cat(
-            (torch.cat((predicted, pred_rgb), dim=-1), torch.cat((reference, ref_rgb), dim=-1)),
+            (
+                torch.cat((predicted, pred_rgb), dim=-1),
+                torch.cat((reference, ref_rgb), dim=-1),
+            ),
             dim=0,
         )
+        if combined.shape[0] == 0:
+            continue
+        combined = _evenly_sample_points(combined, point_limit)
         payload[f"{prefix}/pointcloud_overlay_t{time_idx}"] = wandb.Object3D(
             combined.cpu().numpy()
         )
@@ -677,7 +821,7 @@ def _move_batch(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
 def _evaluate_batch(
     batch: Dict[str, Any],
     vae: SplatterVAE,
-    converter: DirectSplatterToGaussians,
+    converter: WorldSpaceGaussianParameterization,
     splatter_cfg: SplatterConfig,
     cfg_train: TrainConfig,
     background: torch.Tensor,
@@ -699,12 +843,10 @@ def _evaluate_batch(
         batch_size = images.shape[0]
         source_indices = torch.randint(images.shape[2], (batch_size,), device=device)
         batch_ids = torch.arange(batch_size, device=device)
-        raw_outputs = vae.predict_raw_maps(
-            view_latents["s_inv_by_view"][batch_ids, source_indices],
-            view_latents["z_dep_by_view"][batch_ids, source_indices],
+        raw_outputs = vae.predict_gaussian_parameters(
+            view_latents["s_inv_by_view"][batch_ids, source_indices]
         )
     view_latents["s_inv_by_view"] = view_latents["s_inv_by_view"].float()
-    view_latents["z_dep_by_view"] = view_latents["z_dep_by_view"].float()
     ramp = (
         temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
         if vae.temporal_modeling
@@ -713,9 +855,9 @@ def _evaluate_batch(
     rec_out = compute_reconstruction_and_renders(
         splatter_to_gaussians=converter,
         splatter_cfg=splatter_cfg,
-        raw_base_map=raw_outputs["raw_base_map"].float(),
-        raw_motion_map=(
-            raw_outputs["raw_motion_map"].float()
+        raw_gaussian_params=raw_outputs["raw_gaussian_params"].float(),
+        raw_motion_params=(
+            raw_outputs["raw_motion_params"].float()
             if vae.temporal_modeling else None
         ),
         motion_translation_max=float(vae.motion_translation_max),
@@ -734,39 +876,42 @@ def _evaluate_batch(
         return_renders=return_renders,
         compute_diagnostics=True,
     )
-    inv_con, dep_con, inv_cons, dep_cons = compute_view_structured_representation_losses(
-        view_latents["s_inv_by_view"], view_latents["z_dep_by_view"], cfg_train.temperature
+    inv_con, inv_cons = compute_view_structured_invariant_losses(
+        view_latents["s_inv_by_view"], cfg_train.temperature
     )
     representation_loss = (
         cfg_train.inv_contrastive_weight * inv_con
         + cfg_train.inv_consistency_weight * inv_cons
-        + cfg_train.dep_contrastive_weight * dep_con
-        + cfg_train.dep_consistency_weight * dep_cons
     )
     render_loss = rec_out["render_loss_t0"]
     flow_objective = render_loss.new_zeros(())
     if vae.temporal_modeling:
-        render_loss = render_loss + ramp * 0.5 * (
-            rec_out["render_loss_t1"] + rec_out["render_loss_t2"]
+        render_loss = combine_temporal_anchor_losses(
+            [rec_out[f"render_loss_t{time_idx}"] for time_idx in range(3)],
+            cfg_train.temporal_anchor,
+            ramp,
         )
         flow_objective = ramp * cfg_train.flow_weight * rec_out["flow_loss"]
     total = (
         render_loss
         + flow_objective
         + representation_loss
-        + cfg_train.frustum_weight * rec_out["frustum_loss"]
+        + cfg_train.visibility_weight * rec_out["visibility_loss"]
     )
     metrics = {
         "val/core/total_loss": total,
         "val/core/render_loss": render_loss,
         "val/core/representation_loss": representation_loss,
+        "val/representation/inv_contrastive": inv_con,
+        "val/representation/inv_consistency": inv_cons,
         "val/render/t0": rec_out["render_loss_t0"],
         "val/components/rgb": rec_out["rgb_loss"],
         "val/components/silhouette": rec_out["silhouette_loss"],
-        "val/components/global_depth": rec_out["global_depth_loss"],
-        "val/components/local_depth": rec_out["local_depth_loss"],
-        "val/components/frustum": rec_out["frustum_loss"],
+        "val/components/hard_depth": rec_out["hard_depth_loss"],
+        "val/components/soft_depth": rec_out["soft_depth_loss"],
+        "val/components/visibility": rec_out["visibility_loss"],
         "val/gaussian/mean_opacity": rec_out["mean_valid_gaussian_opacity"],
+        "val/gaussian/active_fraction": rec_out["active_gaussian_fraction"],
     }
     if vae.temporal_modeling:
         metrics.update({
@@ -787,7 +932,7 @@ def _evaluate_batch(
 def validate_and_log_wandb(
     vae: SplatterVAE,
     splatter_cfg: SplatterConfig,
-    splatter_to_gaussians: DirectSplatterToGaussians,
+    splatter_to_gaussians: WorldSpaceGaussianParameterization,
     valid_dataloader: DataLoader,
     device: torch.device,
     bg: torch.Tensor,
@@ -840,12 +985,17 @@ def validate_and_log_wandb(
             validation_images,
             moved["optical_flows"],
             latents["inv_mask_by_view"],
-            latents["dep_mask_by_view"],
             vae.patch_h,
             source_view_idx,
             vae.temporal_modeling,
         ),
-        f"{prefix}/reconstruction": _reconstruction_panel(rec_out, source_view_idx),
+        f"{prefix}/reconstruction": _reconstruction_panel(
+            rec_out,
+            source_view_idx,
+            use_segmentation_mask=bool(cfg_train.use_segmentation_mask),
+            near_plane=float(splatter_cfg.data.znear),
+            far_plane=float(splatter_cfg.data.zfar),
+        ),
         f"{prefix}/novel_view_orbit": _novel_view_orbit_video(
             rec_out,
             bg,
@@ -868,6 +1018,8 @@ def validate_and_log_wandb(
             moved["c2w"],
             int(cfg_train.val_pointcloud_max_points),
             prefix,
+            near_plane=float(splatter_cfg.data.znear),
+            far_plane=float(splatter_cfg.data.zfar),
         )
     )
     wandb.log(log_values, step=global_step)

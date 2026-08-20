@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 import yaml
 
-from models.gaussian.rendering import render_rgb_depth
+from models.gaussian.rendering import render_rgb
 from visualize.splattervae_common import build_visualization_models, decode_single_image_gaussians
 
 
@@ -328,9 +328,8 @@ def generate_gaussians_for_source(
     device: torch.device,
 ) -> Dict[str, torch.Tensor]:
     x = image_to_tensor(image_u8).unsqueeze(0).to(device)
-    k = torch.from_numpy(source_k).unsqueeze(0).to(device=device, dtype=torch.float32)
-    c2w = torch.from_numpy(source_c2w).unsqueeze(0).to(device=device, dtype=torch.float32)
-    pc, _features = decode_single_image_gaussians(vae, converter, x, k, c2w)
+    del source_k, source_c2w
+    pc, _features = decode_single_image_gaussians(vae, converter, x)
     return pc
 
 
@@ -345,7 +344,6 @@ def write_metadata(
     source_k: np.ndarray,
     source_c2w: np.ndarray,
     source_depth_export: Dict[str, object] | None = None,
-    rendered_depth_export: Dict[str, object] | None = None,
 ) -> None:
     metadata = {
         "dataset": args.dataset,
@@ -364,7 +362,6 @@ def write_metadata(
         "source_intrinsics": source_k.tolist(),
         "source_camera_to_world": source_c2w.tolist(),
         "source_depth_export": source_depth_export,
-        "rendered_depth_export": rendered_depth_export,
         "fields": "GraphDeco/3DGS-style x,y,z,nx,ny,nz,f_dc_*,f_rest_*,opacity,scale_*,rot_*",
     }
     with open(path, "w") as f:
@@ -451,7 +448,6 @@ def main() -> None:
             for timestep in timesteps:
                 image_u8 = np.asarray(obs[f"{cam}_rgb"][timestep], dtype=np.uint8)
                 source_depth_export = None
-                rendered_depth_export = None
                 depth_key = f"{cam}_depth"
                 if depth_key in obs:
                     source_depth = np.asarray(obs[depth_key][timestep], dtype=np.float32)
@@ -476,24 +472,13 @@ def main() -> None:
                 if device.type == "cuda":
                     source_w2c = torch.from_numpy(mats[cam]["w2c"]).view(1, 1, 4, 4).to(device=device, dtype=torch.float32)
                     source_k = torch.from_numpy(mats[cam]["K"]).view(1, 1, 3, 3).to(device=device, dtype=torch.float32)
-                    render_out = render_rgb_depth(
+                    render_out = render_rgb(
                         pc=pc,
                         world_view_transform=source_w2c,
                         intrinsics=source_k,
                         bg_color=bg,
                         cfg=spl_cfg,
                     )
-                    rendered_depth = render_out.get("depth", None)
-                    if rendered_depth is not None:
-                        rendered_depth_np = rendered_depth[0, 0, 0].detach().cpu().float().numpy()
-                        depth_stem = out_dir / f"{sanitize_filename(demo_key)}_{sanitize_filename(cam)}_t{int(timestep):06d}"
-                        rendered_depth_export = write_depth_outputs(
-                            depth_stem,
-                            rendered_depth_np,
-                            znear=float(spl_cfg.data.znear),
-                            zfar=float(spl_cfg.data.zfar),
-                            label="rendered",
-                        )
 
                 if args.visibility_filter == "source" and render_out is not None:
                     radii = render_out.get("radii", None)
@@ -531,14 +516,12 @@ def main() -> None:
                     source_k=mats[cam]["K"],
                     source_c2w=mats[cam]["c2w"],
                     source_depth_export=source_depth_export,
-                    rendered_depth_export=rendered_depth_export,
                 )
                 exported.append(
                     {
                         "ply": str(ply_path),
                         "metadata": str(meta_path),
                         "source_depth": source_depth_export,
-                        "rendered_depth": rendered_depth_export,
                     }
                 )
                 print(f"Saved {ply_path} ({num_gaussians} Gaussians)")

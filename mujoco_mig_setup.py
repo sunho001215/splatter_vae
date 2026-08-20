@@ -25,11 +25,14 @@ Requires:
     - nvidia-smi available in PATH
 """
 
+import fcntl
 import os
 import re
 import subprocess
 import ctypes
 from ctypes import byref, c_int, c_void_p, c_char_p, c_uint32
+from pathlib import Path
+import time
 from typing import Optional
 
 # ---------------------------------------------------------------------------
@@ -134,6 +137,79 @@ def create_initialized_egl_device_display_full():
 # nvidia-smi helpers: MIG UUID -> parent GPU index
 # ---------------------------------------------------------------------------
 
+_NVIDIA_SMI_L_OUTPUT: Optional[str] = None
+_NVIDIA_SMI_CACHE_TTL_SECONDS = 300.0
+_NVIDIA_SMI_TIMEOUT_SECONDS = 60
+_NVIDIA_SMI_CACHE_PATH = Path(f"/tmp/mujoco_mig_setup_{os.getuid()}_nvidia_smi_l.txt")
+_NVIDIA_SMI_LOCK_PATH = Path(f"/tmp/mujoco_mig_setup_{os.getuid()}_nvidia_smi_l.lock")
+
+
+def _valid_nvidia_smi_l_output(output: str) -> bool:
+    return bool(re.search(r"^GPU\s+\d+:", output, flags=re.MULTILINE))
+
+
+def _read_nvidia_smi_l_cache() -> Optional[str]:
+    try:
+        age = time.time() - _NVIDIA_SMI_CACHE_PATH.stat().st_mtime
+        if not 0.0 <= age <= _NVIDIA_SMI_CACHE_TTL_SECONDS:
+            return None
+        output = _NVIDIA_SMI_CACHE_PATH.read_text(encoding="utf-8")
+        return output if _valid_nvidia_smi_l_output(output) else None
+    except OSError:
+        return None
+
+
+def _write_nvidia_smi_l_cache(output: str) -> None:
+    temporary_path = _NVIDIA_SMI_CACHE_PATH.with_name(
+        f"{_NVIDIA_SMI_CACHE_PATH.name}.{os.getpid()}.tmp"
+    )
+    try:
+        temporary_path.write_text(output, encoding="utf-8")
+        os.replace(temporary_path, _NVIDIA_SMI_CACHE_PATH)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _get_nvidia_smi_l_output() -> str:
+    """
+    Query MIG topology once for a group of concurrently starting jobs.
+
+    nvidia-smi can time out when every training process invokes it at once.
+    An advisory lock serializes the query, and a short-lived cache lets the
+    remaining processes reuse the same topology snapshot.
+    """
+    global _NVIDIA_SMI_L_OUTPUT
+    if _NVIDIA_SMI_L_OUTPUT is not None:
+        return _NVIDIA_SMI_L_OUTPUT
+
+    try:
+        with _NVIDIA_SMI_LOCK_PATH.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+
+            output = _read_nvidia_smi_l_cache()
+            if output is None:
+                try:
+                    result = subprocess.run(
+                        ["nvidia-smi", "-L"],
+                        capture_output=True,
+                        text=True,
+                        timeout=_NVIDIA_SMI_TIMEOUT_SECONDS,
+                    )
+                except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+                    raise RuntimeError(f"Failed to run nvidia-smi -L: {e}") from e
+
+                output = result.stdout
+                if result.returncode != 0 or not _valid_nvidia_smi_l_output(output):
+                    detail = result.stderr.strip() or f"exit status {result.returncode}"
+                    raise RuntimeError(f"nvidia-smi -L failed: {detail}")
+                _write_nvidia_smi_l_cache(output)
+
+            _NVIDIA_SMI_L_OUTPUT = output
+            return output
+    except OSError as e:
+        raise RuntimeError(f"Failed to coordinate nvidia-smi -L topology query: {e}") from e
+
+
 def _parse_nvidia_smi_l():
     """
     Parse `nvidia-smi -L` and return:
@@ -147,14 +223,7 @@ def _parse_nvidia_smi_l():
           MIG 2g.48gb  Device 0: (UUID: MIG-87f2fc44-...)
           MIG 2g.48gb  Device 1: (UUID: MIG-e07350af-...)
     """
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "-L"],
-            capture_output=True, text=True, timeout=10,
-        )
-        output = result.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        raise RuntimeError(f"Failed to run nvidia-smi -L: {e}")
+    output = _get_nvidia_smi_l_output()
 
     mig_to_gpu = {}
     mig_to_local_device_idx = {}
@@ -327,7 +396,12 @@ def _find_egl_device_index_for_visible_cuda(
     if not matching_device_indices:
         return None
 
-    if mig_local_device_idx is not None and mig_local_device_idx < len(matching_device_indices):
+    if mig_local_device_idx is not None:
+        if mig_local_device_idx >= len(matching_device_indices):
+            raise RuntimeError(
+                f"MIG local index {mig_local_device_idx} is outside the "
+                f"{len(matching_device_indices)} EGL devices matching visible CUDA device {visible_cuda_idx}."
+            )
         selected_idx = matching_device_indices[mig_local_device_idx]
         print(
             f"[mujoco_mig_setup] EGL device {selected_idx} matches "
@@ -377,7 +451,12 @@ def _find_egl_device_index_for_gpu(target_gpu_idx: int, mig_local_device_idx: Op
                 matching_device_indices.append(i)
 
         if matching_device_indices:
-            if mig_local_device_idx is not None and mig_local_device_idx < len(matching_device_indices):
+            if mig_local_device_idx is not None:
+                if mig_local_device_idx >= len(matching_device_indices):
+                    raise RuntimeError(
+                        f"MIG local index {mig_local_device_idx} is outside the "
+                        f"{len(matching_device_indices)} EGL devices matching physical GPU {target_gpu_idx}."
+                    )
                 selected_idx = matching_device_indices[mig_local_device_idx]
                 print(
                     f"[mujoco_mig_setup] EGL device {selected_idx} matches "
@@ -431,16 +510,14 @@ def setup():
         _patch_mujoco_egl()
         return
 
+    device_id = cuda_visible.split(",")[0].strip()
+    is_mig_device = device_id.startswith("MIG-")
     print(f"[mujoco_mig_setup] CUDA_VISIBLE_DEVICES = {cuda_visible}")
-    if cuda_visible.split(",")[0].strip().startswith("MIG-"):
-        print(
-            "[mujoco_mig_setup] NOTE: EGL can only target the parent physical GPU, "
-            "not an individual MIG slice. MuJoCo rendering may share the same "
-            "physical GPU as PyTorch, but it cannot be pinned to the exact MIG instance."
-        )
 
     try:
         mig_local_device_idx = _get_mig_local_device_index(cuda_visible)
+        if is_mig_device and mig_local_device_idx is None:
+            raise RuntimeError(f"Could not resolve the local MIG index for {device_id}")
         if mig_local_device_idx is not None:
             print(f"[mujoco_mig_setup] Local MIG device index = {mig_local_device_idx}")
 
@@ -462,6 +539,11 @@ def setup():
 
         os.environ["MUJOCO_EGL_DEVICE_ID"] = str(egl_device_idx)
     except RuntimeError as e:
+        if is_mig_device:
+            raise RuntimeError(
+                f"Could not map compute MIG device '{device_id}' to an EGL device. "
+                "Refusing to use EGL's default device because it may select a different MIG instance."
+            ) from e
         print(f"[mujoco_mig_setup] WARNING: Auto-detection failed: {e}")
         print("[mujoco_mig_setup] Falling back to default EGL device selection.")
 

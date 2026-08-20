@@ -4,11 +4,16 @@ from typing import Optional
 
 import torch
 
-from models.gaussian.geometry import FRUSTUM_MARGIN_PIXELS, union_frustum_loss_per_timestep
+from models.gaussian.geometry import VISIBILITY_MARGIN_PIXELS, visibility_loss_per_timestep
+from models.gaussian.motion import construct_chronological_gaussian_sequence
+from models.splattervae.temporal import (
+    combine_temporal_anchor_losses,
+    temporal_anchor_index,
+)
 
 
-def compute_union_frustum_loss(
-    base_xyz: torch.Tensor,
+def compute_visibility_loss(
+    anchor_xyz: torch.Tensor,
     delta_xyz_01: Optional[torch.Tensor],
     delta_xyz_12: Optional[torch.Tensor],
     valid_mask: torch.Tensor,
@@ -20,31 +25,34 @@ def compute_union_frustum_loss(
     near_plane: float,
     far_plane: float,
     temporal_ramp: float,
+    temporal_anchor: str = "t0",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute t0-only or ramped temporal union-frustum regularization."""
+    """Compute anchor-first temporal all-view visibility regularization."""
     if delta_xyz_01 is None or delta_xyz_12 is None:
         if delta_xyz_01 is not None or delta_xyz_12 is not None:
             raise ValueError("Both temporal deltas must be provided together.")
-        xyz = base_xyz[:, None]
+        xyz = anchor_xyz[:, None]
         validity = valid_mask[:, None]
-        per_timestep = union_frustum_loss_per_timestep(
+        per_timestep = visibility_loss_per_timestep(
             xyz, validity, world_view_transform[:, :1], intrinsics[:, :1],
             image_height=image_height, image_width=image_width,
             near_plane=near_plane, far_plane=far_plane,
-            margin_pixels=FRUSTUM_MARGIN_PIXELS,
+            margin_pixels=VISIBILITY_MARGIN_PIXELS,
         )
         return per_timestep[0], per_timestep
-    detached_base = base_xyz.detach()
-    xyz = torch.stack(
-        (
-            base_xyz,
-            detached_base + delta_xyz_01,
-            detached_base + delta_xyz_01 + delta_xyz_12,
-        ),
-        dim=1,
+    detached_anchor_pc = {
+        "xyz": anchor_xyz.detach(),
+        "delta_xyz_01": delta_xyz_01,
+        "delta_xyz_12": delta_xyz_12,
+    }
+    chronological_pc = construct_chronological_gaussian_sequence(
+        detached_anchor_pc, temporal_anchor
     )
+    chronological_xyz = [pc["xyz"] for pc in chronological_pc]
+    chronological_xyz[temporal_anchor_index(temporal_anchor)] = anchor_xyz
+    xyz = torch.stack(chronological_xyz, dim=1)
     validity = valid_mask[:, None].expand(-1, 3, -1)
-    per_timestep = union_frustum_loss_per_timestep(
+    per_timestep = visibility_loss_per_timestep(
         xyz,
         validity,
         world_view_transform,
@@ -53,7 +61,9 @@ def compute_union_frustum_loss(
         image_width=image_width,
         near_plane=near_plane,
         far_plane=far_plane,
-        margin_pixels=FRUSTUM_MARGIN_PIXELS,
+        margin_pixels=VISIBILITY_MARGIN_PIXELS,
     )
-    combined = per_timestep[0] + float(temporal_ramp) * 0.5 * (per_timestep[1] + per_timestep[2])
+    combined = combine_temporal_anchor_losses(
+        per_timestep, temporal_anchor, temporal_ramp
+    )
     return combined, per_timestep

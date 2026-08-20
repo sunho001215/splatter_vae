@@ -4,21 +4,13 @@ set -euo pipefail
 # Run this script from inside the multiview_policy container.
 # Edit these lists to select the GPU instances and Meta-World environments.
 CUDA_VISIBLE_DEVICES_LIST=(
-  "MIG-c2db2b36-91aa-5230-9337-9911fc28e9a9"
-  "MIG-a400a724-7df2-5cc4-8a05-7f5fb8c98f8c"
-  "MIG-53163a37-eee6-51b3-9b99-b38fc416cc41"
-  "MIG-a10bf323-eb1c-567a-a6d8-91d1dc7306d3"
-  "MIG-c8c9f08a-c87b-5fc9-874f-2ec68a020e0e"
-  "MIG-b25bc715-171e-5c7c-934a-ae6828b0df44"
-  "MIG-6dc2ec27-ea8a-5fc6-a3b1-50dfc4d52550"
-  "MIG-fabf06f6-097d-5592-8124-9f6c4e16b3c5"
+  "MIG-f30be823-f40d-5292-9474-427746dd3703"
+  "MIG-908fda99-f524-5319-ae5a-9f534a881ee1"
+  "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8"
+  "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29"
 )
 
 ENVS=(
-  "button-press-wall"
-  "drawer-open"
-  "door-open"
-  "hammer"
   "peg-unplug-side"
   "handle-press"
   "plate-slide"

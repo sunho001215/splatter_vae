@@ -83,9 +83,8 @@ def encode_trajectories(
     batch_size: int,
     pool: str,
     device: torch.device,
-) -> Tuple[np.ndarray, np.ndarray, List[str], List[int]]:
+) -> Tuple[np.ndarray, List[str], List[int]]:
     inv_feats = []
-    dep_feats = []
     labels = []
     times = []
 
@@ -100,13 +99,11 @@ def encode_trajectories(
             ).to(device)
             features = vae.inference_features(fixed_window_from_single_image(x, vae.temporal_modeling))
             inv_feats.append(pooled_latent(features["s_inv"], pool).detach().cpu())
-            dep_feats.append(pooled_latent(features["z_dep_all"][:, 0], pool).detach().cpu())
             labels.extend([cam for cam, _t in chunk])
             times.extend([int(t) for _cam, t in chunk])
 
     inv = torch.cat(inv_feats, dim=0).numpy()
-    dep = torch.cat(dep_feats, dim=0).numpy()
-    return inv, dep, labels, times
+    return inv, labels, times
 
 
 def preprocess_features(x: np.ndarray, normalize: str) -> np.ndarray:
@@ -355,7 +352,6 @@ def plot_embedding_panel(
 
 def save_paper_figure(
     inv_emb: np.ndarray,
-    dep_emb: np.ndarray,
     labels: List[str],
     times: List[int],
     cameras: List[str],
@@ -416,12 +412,10 @@ def save_paper_figure(
             spine.set_color(cam_color)
             spine.set_linewidth(2.0)
 
-    ax_inv = fig.add_subplot(grid[1, :mid])
-    ax_dep = fig.add_subplot(grid[1, mid + 1:])
+    ax_inv = fig.add_subplot(grid[1, :])
     plot_embedding_panel(ax_inv, inv_emb, labels, times, display_cameras, group_by_cam, group_colors, markers, "View-Invariant Feature")
-    plot_embedding_panel(ax_dep, dep_emb, labels, times, display_cameras, group_by_cam, group_colors, markers, "View-Dependent Feature")
 
-    handles, legend_labels = ax_dep.get_legend_handles_labels()
+    handles, legend_labels = ax_inv.get_legend_handles_labels()
     fig.legend(
         handles,
         legend_labels,
@@ -485,7 +479,7 @@ def main() -> None:
     sample_step = max(0, min(int(sample_step), t_len - 1))
 
     vae, _ = build_vae(cfg, args.dataset, demo_key, args.ckpt, device)
-    inv_feats, dep_feats, labels, times = encode_trajectories(
+    inv_feats, labels, times = encode_trajectories(
         vae=vae,
         dataset_path=args.dataset,
         demo_key=demo_key,
@@ -496,10 +490,7 @@ def main() -> None:
         device=device,
     )
     inv_feats = preprocess_features(inv_feats, args.normalize)
-    dep_feats = preprocess_features(dep_feats, args.normalize)
-
     inv_emb = run_tsne(inv_feats, args.perplexity, args.seed, args.metric)
-    dep_emb = run_tsne(dep_feats, args.perplexity, args.seed, args.metric)
     samples = load_camera_samples(args.dataset, demo_key, cameras, sample_step)
     group_by_cam = parse_camera_groups(cameras, args.camera_groups)
 
@@ -507,7 +498,7 @@ def main() -> None:
         out_path = Path("paper_tsne_outputs") / f"{demo_key}_splattervae_paper_tsne.png"
     else:
         out_path = Path(args.out)
-    save_paper_figure(inv_emb, dep_emb, labels, times, cameras, samples, group_by_cam, demo_key, sample_step, out_path)
+    save_paper_figure(inv_emb, labels, times, cameras, samples, group_by_cam, demo_key, sample_step, out_path)
     print(f"Saved: {out_path}")
 
 

@@ -130,7 +130,8 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         c2w:    (N_cam, 4, 4) OpenCV camera-to-world transforms
         w2c:    (N_cam, 4, 4) OpenCV world-to-camera transforms
         depths: (3, N_cam, 1, H, W) float32 metric camera-z depth
-        masks:  (3, N_cam, 1, H, W) bool selected segmentation mask
+        masks:  (3, N_cam, 1, H, W) bool selected segmentation mask, or all
+                true when segmentation-mask training is disabled
         optical_flows: (3, N_cam, 2, H, W) float16 pixel displacement
     """
 
@@ -144,6 +145,7 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         temporal_strides: Sequence[int] = TRAIN_TEMPORAL_STRIDES,
         fixed_temporal_stride: Optional[int] = None,
         selected_seg_ids: SegIdSpec = None,
+        use_segmentation_mask: bool = True,
     ):
         super().__init__()
         self.dataset_paths = _normalize_dataset_paths(dataset_path)
@@ -154,13 +156,20 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
         ]
         self.max_frames_per_demo = max_frames_per_demo
         self.temporal_strides = tuple(sorted({int(stride) for stride in temporal_strides}))
-        if self.temporal_strides != TRAIN_TEMPORAL_STRIDES:
+        if not self.temporal_strides:
+            raise ValueError("temporal_strides must contain at least one stride.")
+        if any(stride <= 0 for stride in self.temporal_strides):
             raise ValueError(
-                f"Training temporal strides are fixed to {list(TRAIN_TEMPORAL_STRIDES)}, "
-                f"got {list(self.temporal_strides)}."
+                f"Every temporal stride must be positive, got {self.temporal_strides}."
             )
+        self.required_flow_gaps = tuple(
+            sorted(
+                set(self.temporal_strides)
+                | {2 * stride for stride in self.temporal_strides}
+            )
+        )
         self.fixed_temporal_stride = (
-            None if fixed_temporal_stride is None else max(1, int(fixed_temporal_stride))
+            None if fixed_temporal_stride is None else int(fixed_temporal_stride)
         )
         if (
             self.fixed_temporal_stride is not None
@@ -170,7 +179,12 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                 f"fixed_temporal_stride={self.fixed_temporal_stride} must be included in "
                 f"temporal_strides={self.temporal_strides}."
             )
+        self.use_segmentation_mask = bool(use_segmentation_mask)
         self.selected_seg_ids = _normalize_seg_id_spec(selected_seg_ids)
+        if self.use_segmentation_mask and self.selected_seg_ids is None:
+            raise ValueError(
+                "selected_seg_ids is required when use_segmentation_mask=true."
+            )
         self.rng = random.Random(seed)
         self.views = list(views)
         if not self.views:
@@ -279,16 +293,19 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                                 f'Missing depth dataset "{dataset_path}:/data/{demo_key}/obs/{depth_name}". '
                                 "The fixed training contract requires depth."
                             )
-                        seg_name = f"{view}_seg"
-                        if seg_name not in obs_grp:
-                            raise ValueError(
-                                f'Missing segmentation dataset "{dataset_path}:/data/{demo_key}/obs/{seg_name}". '
-                                "The fixed training contract requires segmentation IDs."
-                            )
+                        if self.use_segmentation_mask:
+                            seg_name = f"{view}_seg"
+                            if seg_name not in obs_grp:
+                                raise ValueError(
+                                    f'Missing segmentation dataset "{dataset_path}:/data/{demo_key}/obs/{seg_name}". '
+                                    "Segmentation-mask training requires segmentation IDs."
+                                )
 
                     demo_ref = (file_idx, demo_key)
-                    self.demo_mask_selectors[demo_ref] = self._selected_ids_for_demo(
-                        dataset_path, demo_key, env_name
+                    self.demo_mask_selectors[demo_ref] = (
+                        self._selected_ids_for_demo(dataset_path, demo_key, env_name)
+                        if self.use_segmentation_mask
+                        else []
                     )
 
                     timesteps = int(obs_grp[ref_name].shape[0])
@@ -313,9 +330,13 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                             dtype=np.int64,
                         ).tolist()
                     )
-                    if available_gaps != FLOW_TEMPORAL_GAPS:
+                    missing_gaps = sorted(
+                        set(self.required_flow_gaps).difference(available_gaps)
+                    )
+                    if missing_gaps:
                         raise ValueError(
-                            f"Invalid available_temporal_gaps for {demo_key}: {available_gaps}."
+                            f"Missing required optical-flow gaps for {demo_key}: "
+                            f"{missing_gaps}; available gaps are {available_gaps}."
                         )
                     flow_direction = flow_grp.attrs.get("flow_direction", "")
                     flow_units = flow_grp.attrs.get("flow_units", "")
@@ -331,7 +352,7 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                     for view in self.views:
                         if view not in flow_grp:
                             raise ValueError(f'Missing optical-flow camera group for {demo_key}/{view}.')
-                        for gap in FLOW_TEMPORAL_GAPS:
+                        for gap in self.required_flow_gaps:
                             name = f"gap_{gap}"
                             if name not in flow_grp[view]:
                                 raise ValueError(f'Missing optical-flow dataset {demo_key}/{view}/{name}.')
@@ -402,6 +423,7 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
             f"from {len(self.dataset_paths)} file(s), {len(self.samples)} samples, "
             f"temporal_window={TEMPORAL_WINDOW}, temporal_strides={self.temporal_strides}, "
             f"fixed_temporal_stride={self.fixed_temporal_stride}, views={self.views}, "
+            f"use_segmentation_mask={self.use_segmentation_mask}, "
             f"segmentation_selectors={unique_specs}"
         )
         if not self.samples:
@@ -458,19 +480,26 @@ class metaworldMultiViewTemporalHDF5Dataset(Dataset):
                 depth_block = depth_block[..., 0]
             depths_by_view.append(torch.from_numpy(depth_block).unsqueeze(1))
 
-            seg_block = np.asarray(obs_grp[f"{view}_seg"][t_indices], dtype=np.int32)
-            seg_type_block = None
-            if requires_seg_type:
-                seg_type_name = f"{view}_seg_type"
-                if seg_type_name not in obs_grp:
-                    raise ValueError(
-                        f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
-                        "Recollect with segmentation.save_objtype=true or use plain integer IDs."
+            if self.use_segmentation_mask:
+                seg_block = np.asarray(
+                    obs_grp[f"{view}_seg"][t_indices], dtype=np.int32
+                )
+                seg_type_block = None
+                if requires_seg_type:
+                    seg_type_name = f"{view}_seg_type"
+                    if seg_type_name not in obs_grp:
+                        raise ValueError(
+                            f"Typed selected_seg_ids require dataset '{seg_type_name}'. "
+                            "Recollect with segmentation.save_objtype=true or use plain integer IDs."
+                        )
+                    seg_type_block = np.asarray(
+                        obs_grp[seg_type_name][t_indices], dtype=np.int32
                     )
-                seg_type_block = np.asarray(obs_grp[seg_type_name][t_indices], dtype=np.int32)
-            mask_block = _segmentation_mask_from_selectors(
-                seg_block, seg_type_block, selected_selectors
-            )
+                mask_block = _segmentation_mask_from_selectors(
+                    seg_block, seg_type_block, selected_selectors
+                )
+            else:
+                mask_block = np.ones(depth_block.shape, dtype=bool)
             masks_by_view.append(torch.from_numpy(mask_block).unsqueeze(1))
 
             flow_view_grp = demo_grp[OPTICAL_FLOW_GROUP][view]
@@ -584,8 +613,8 @@ def _worker_init_fn(worker_id: int) -> None:
 def build_train_valid_loaders_metaworld(
     dataset_path: DatasetPathInput,
     views: List[str],
-    selected_seg_ids: SegIdSpec,
-    batch_size: int = 128,
+    selected_seg_ids: SegIdSpec = None,
+    batch_size: int = 16,
     num_workers: int = 4,
     pin_memory: bool = True,
     train_ratio: float = 0.9,
@@ -597,6 +626,7 @@ def build_train_valid_loaders_metaworld(
     split_manifest_path: Optional[str] = None,
     drop_last_train: bool = True,
     shuffle_train: bool = True,
+    use_segmentation_mask: bool = True,
 ):
     """Build fixed-contract train/validation loaders from a seeded demo split."""
     dataset_paths = _normalize_dataset_paths(dataset_path)
@@ -623,15 +653,20 @@ def build_train_valid_loaders_metaworld(
         dataset_path=dataset_paths,
         views=explicit_views,
         max_frames_per_demo=max_frames_per_demo,
-        temporal_strides=train_temporal_strides,
         selected_seg_ids=selected_seg_ids,
+        use_segmentation_mask=use_segmentation_mask,
     )
     train_dataset = metaworldMultiViewTemporalHDF5Dataset(
-        demo_keys=train_refs, seed=seed, **common
+        demo_keys=train_refs,
+        seed=seed,
+        temporal_strides=train_temporal_strides,
+        fixed_temporal_stride=None,
+        **common,
     )
     valid_dataset = metaworldMultiViewTemporalHDF5Dataset(
         demo_keys=valid_refs,
         seed=seed + 999,
+        temporal_strides=[int(validation_temporal_stride)],
         fixed_temporal_stride=int(validation_temporal_stride),
         **common,
     )
@@ -658,7 +693,7 @@ def build_train_valid_loaders_metaworld(
     valid_loader = DataLoader(
         valid_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=valid_workers,
         pin_memory=pin_memory,
         drop_last=False,

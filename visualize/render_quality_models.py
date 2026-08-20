@@ -75,9 +75,8 @@ class SplatterVAERenderer:
     @torch.no_grad()
     def encode_source(self, image_u8: np.ndarray, source_k: np.ndarray, source_c2w: np.ndarray) -> Dict[str, torch.Tensor]:
         x = image_to_tensor(image_u8).unsqueeze(0).to(self.device)
-        k = torch.from_numpy(np.asarray(source_k, dtype=np.float32)).unsqueeze(0).to(self.device)
-        c2w = torch.from_numpy(np.asarray(source_c2w, dtype=np.float32)).unsqueeze(0).to(self.device)
-        pc, _features = decode_single_image_gaussians(self.vae, self.converter, x, k, c2w)
+        del source_k, source_c2w
+        pc, _features = decode_single_image_gaussians(self.vae, self.converter, x)
         return pc
 
     @torch.no_grad()

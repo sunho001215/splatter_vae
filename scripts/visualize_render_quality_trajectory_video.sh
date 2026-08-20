@@ -4,7 +4,7 @@ set -euo pipefail
 ENV_NAME="${ENV_NAME:-button-press-wall}"
 DRQ_CONFIG="${DRQ_CONFIG:-agents/drqv2/config/sincro/${ENV_NAME}.yaml}"
 DATASET="${DATASET:-../../data/metaworld/with-depth/${ENV_NAME}.hdf5}"
-SPLATTER_CONFIG="${SPLATTER_CONFIG:-config/splattervae/metaworld/temporal/${ENV_NAME}.yaml}"
+SPLATTER_CONFIG="${SPLATTER_CONFIG:-config/splattervae/metaworld/temporal-no-segmentation-mask/${ENV_NAME}.yaml}"
 SINCRO_CONFIG="${SINCRO_CONFIG:-${DRQ_CONFIG}}"
 OUT_DIR="${OUT_DIR:-outputs/render_quality_videos/${ENV_NAME}}"
 SOURCE_CAM="${SOURCE_CAM:-cam0}"

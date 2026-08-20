@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ENV_NAME="${ENV_NAME:-button-press-wall}"
-CONFIG="${CONFIG:-config/splattervae/metaworld/temporal/${ENV_NAME}.yaml}"
+CONFIG="${CONFIG:-config/splattervae/metaworld/temporal-no-segmentation-mask/${ENV_NAME}.yaml}"
 DATASET="${DATASET:-../../data/metaworld/with-depth/${ENV_NAME}.hdf5}"
 CKPT="${CKPT:-}"
 OUT_DIR="${OUT_DIR:-outputs/gaussian_exports/${ENV_NAME}}"

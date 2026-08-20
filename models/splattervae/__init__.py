@@ -1,4 +1,9 @@
-from .config import TEMPORAL_WINDOW
-from .model import FiLMTokenTransformer, SplatterVAE
+from .config import SPLATTERVAE_ARCHITECTURE, TEMPORAL_WINDOW
+from .model import ParentTransformerBlock, SplatterVAE
 
-__all__ = ["FiLMTokenTransformer", "SplatterVAE", "TEMPORAL_WINDOW"]
+__all__ = [
+    "ParentTransformerBlock",
+    "SPLATTERVAE_ARCHITECTURE",
+    "SplatterVAE",
+    "TEMPORAL_WINDOW",
+]

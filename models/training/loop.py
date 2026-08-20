@@ -14,19 +14,23 @@ from models.training.reconstruction import (
     compute_reconstruction_and_renders,
     encode_per_view_sequence_batch,
 )
-from models.gaussian.parameterization import DirectSplatterToGaussians
-from models.training.losses import compute_view_structured_representation_losses
+from models.gaussian.parameterization import WorldSpaceGaussianParameterization
+from models.training.losses import compute_view_structured_invariant_losses
 from models.gaussian.parameterization import SplatterConfig
 from models.training.config import TrainConfig
+from models.splattervae.config import SPLATTERVAE_ARCHITECTURE
 from models.splattervae.model import SplatterVAE
+from models.splattervae.temporal import (
+    combine_temporal_anchor_losses,
+    validate_checkpoint_temporal_anchor,
+)
 from models.training.schedules import compute_scheduled_lr, resolve_lr_total_steps, temporal_loss_ramp
 
 
 OPTIMIZER_GROUPS = (
     "invariant_encoder",
-    "dependent_encoder",
-    "decoder_backbone",
-    "base_gaussian_head",
+    "gaussian_set_decoder",
+    "gaussian_prediction_head",
     "dense_motion_head",
 )
 
@@ -40,18 +44,18 @@ def _parameter_groups(vae: SplatterVAE) -> list[Dict]:
             "state_norm.",
             "invariant_encoder_output_proj.",
         ),
-        "dependent_encoder": (
-            "dependent_encoder.",
-            "dep_token",
-            "dep_norm.",
-            "dependent_encoder_output_proj.",
+        "gaussian_set_decoder": (
+            "parent_tokens",
+            "parent_token_norm.",
+            "decoder_film.",
+            "parent_transformer.",
+            "child_identities",
+            "child_expansion_mlp.",
         ),
-        "decoder_backbone": (
-            "spatial_queries",
-            "decoder_backbone.",
-            "decoder_dpt_backbone.",
+        "gaussian_prediction_head": (
+            "xyz_head.",
+            "gaussian_attribute_head.",
         ),
-        "base_gaussian_head": ("base_gaussian_head.",),
         "dense_motion_head": ("dense_motion_head.",),
     }
     active_groups = OPTIMIZER_GROUPS if vae.temporal_modeling else OPTIMIZER_GROUPS[:-1]
@@ -61,12 +65,9 @@ def _parameter_groups(vae: SplatterVAE) -> list[Dict]:
         if not parameter.requires_grad:
             continue
         matches = [
-            group_name
-            for group_name in active_groups
-            if any(
-                parameter_name == prefix or parameter_name.startswith(prefix)
-                for prefix in prefixes[group_name]
-            )
+            group_name for group_name in active_groups
+            if any(parameter_name == prefix or parameter_name.startswith(prefix)
+                   for prefix in prefixes[group_name])
         ]
         if len(matches) != 1:
             unmatched.append((parameter_name, matches))
@@ -110,22 +111,17 @@ def _representation_loss(
     view_latents: Dict[str, torch.Tensor],
     cfg_train: TrainConfig,
 ) -> tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    inv_con, dep_con, inv_cons, dep_cons = compute_view_structured_representation_losses(
+    inv_con, inv_cons = compute_view_structured_invariant_losses(
         s_inv_by_view=view_latents["s_inv_by_view"],
-        z_dep_by_view=view_latents["z_dep_by_view"],
         temperature=cfg_train.temperature,
     )
     total = (
         cfg_train.inv_contrastive_weight * inv_con
         + cfg_train.inv_consistency_weight * inv_cons
-        + cfg_train.dep_contrastive_weight * dep_con
-        + cfg_train.dep_consistency_weight * dep_cons
     )
     return total, {
         "inv_contrastive": inv_con,
         "inv_consistency": inv_cons,
-        "dep_contrastive": dep_con,
-        "dep_consistency": dep_cons,
     }
 
 
@@ -147,14 +143,13 @@ def _core_log_values(
         "train/render/t0": rec_out["render_loss_t0"].item(),
         "train/components/rgb": rec_out["rgb_loss"].item(),
         "train/components/silhouette": rec_out["silhouette_loss"].item(),
-        "train/components/global_depth": rec_out["global_depth_loss"].item(),
-        "train/components/local_depth": rec_out["local_depth_loss"].item(),
-        "train/components/frustum": rec_out["frustum_loss"].item(),
+        "train/components/hard_depth": rec_out["hard_depth_loss"].item(),
+        "train/components/soft_depth": rec_out["soft_depth_loss"].item(),
+        "train/components/visibility": rec_out["visibility_loss"].item(),
         "train/representation/inv_contrastive": representation["inv_contrastive"].item(),
         "train/representation/inv_consistency": representation["inv_consistency"].item(),
-        "train/representation/dep_contrastive": representation["dep_contrastive"].item(),
-        "train/representation/dep_consistency": representation["dep_consistency"].item(),
         "train/gaussian/mean_opacity": rec_out["mean_valid_gaussian_opacity"].item(),
+        "train/gaussian/active_fraction": rec_out["active_gaussian_fraction"].item(),
         "train/temporal_loss_ramp": float(ramp),
         "train/lr": float(optimizer.param_groups[0]["lr"]),
     }
@@ -184,7 +179,7 @@ def train_splatter_vae(
     """Train every module jointly with one optimizer from the first batch."""
     device = torch.device(cfg_train.device)
     vae.to(device)
-    converter = DirectSplatterToGaussians(splatter_cfg).to(device)
+    converter = WorldSpaceGaussianParameterization(splatter_cfg).to(device)
     optimizer, scheduler, trainable_parameters = _build_optimizer_and_scheduler(
         vae, cfg_train, train_dataloader, device
     )
@@ -197,12 +192,23 @@ def train_splatter_vae(
     global_step = 0
     if resume_ckpt is not None and os.path.isfile(resume_ckpt):
         checkpoint = torch.load(resume_ckpt, map_location="cpu")
+        checkpoint_architecture = checkpoint.get("architecture")
+        if checkpoint_architecture != SPLATTERVAE_ARCHITECTURE:
+            raise ValueError(
+                "Checkpoint is not compatible with the invariant grouped Gaussian set decoder: "
+                f"expected architecture={SPLATTERVAE_ARCHITECTURE!r}, "
+                f"found {checkpoint_architecture!r}. Start fresh or explicitly load only "
+                "compatible invariant-encoder weights."
+            )
         checkpoint_mode = checkpoint.get("temporal_modeling")
         if checkpoint_mode is not None and bool(checkpoint_mode) != vae.temporal_modeling:
             raise ValueError(
                 "Checkpoint temporal_modeling mode does not match the current YAML: "
                 f"checkpoint={bool(checkpoint_mode)}, config={vae.temporal_modeling}."
             )
+        validate_checkpoint_temporal_anchor(
+            checkpoint, cfg_train.temporal_anchor
+        )
         vae.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -242,17 +248,15 @@ def train_splatter_vae(
                 batch_size, views = view_latents["s_inv_by_view"].shape[:2]
                 source_indices = torch.randint(views, (batch_size,), device=device)
                 batch_ids = torch.arange(batch_size, device=device)
-                raw_outputs = vae.predict_raw_maps(
-                    view_latents["s_inv_by_view"][batch_ids, source_indices],
-                    view_latents["z_dep_by_view"][batch_ids, source_indices],
+                raw_outputs = vae.predict_gaussian_parameters(
+                    view_latents["s_inv_by_view"][batch_ids, source_indices]
                 )
-            raw_base_map = raw_outputs["raw_base_map"].float()
-            raw_motion_map = (
-                raw_outputs["raw_motion_map"].float()
+            raw_gaussian_params = raw_outputs["raw_gaussian_params"].float()
+            raw_motion_params = (
+                raw_outputs["raw_motion_params"].float()
                 if vae.temporal_modeling else None
             )
             view_latents["s_inv_by_view"] = view_latents["s_inv_by_view"].float()
-            view_latents["z_dep_by_view"] = view_latents["z_dep_by_view"].float()
             ramp = (
                 temporal_loss_ramp(global_step, cfg_train.temporal_loss_ramp_steps)
                 if vae.temporal_modeling
@@ -262,8 +266,8 @@ def train_splatter_vae(
             rec_out = compute_reconstruction_and_renders(
                 splatter_to_gaussians=converter,
                 splatter_cfg=splatter_cfg,
-                raw_base_map=raw_base_map,
-                raw_motion_map=raw_motion_map,
+                raw_gaussian_params=raw_gaussian_params,
+                raw_motion_params=raw_motion_params,
                 motion_translation_max=float(vae.motion_translation_max),
                 images_01=images_01,
                 optical_flows=optical_flows,
@@ -281,10 +285,11 @@ def train_splatter_vae(
             )
             render_loss = rec_out["render_loss_t0"]
             if vae.temporal_modeling:
-                future_render = 0.5 * (
-                    rec_out["render_loss_t1"] + rec_out["render_loss_t2"]
+                render_loss = combine_temporal_anchor_losses(
+                    [rec_out[f"render_loss_t{time_idx}"] for time_idx in range(3)],
+                    cfg_train.temporal_anchor,
+                    ramp,
                 )
-                render_loss = render_loss + ramp * future_render
             representation_loss, representation = _representation_loss(view_latents, cfg_train)
             flow_objective = (
                 ramp * float(cfg_train.flow_weight) * rec_out["flow_loss"]
@@ -295,7 +300,7 @@ def train_splatter_vae(
                 render_loss
                 + flow_objective
                 + representation_loss
-                + float(cfg_train.frustum_weight) * rec_out["frustum_loss"]
+                + float(cfg_train.visibility_weight) * rec_out["visibility_loss"]
             )
             if not torch.isfinite(total_loss):
                 print(f"[Warn] Non-finite loss at global_step={global_step}; skipping batch.")
@@ -364,7 +369,9 @@ def train_splatter_vae(
                         "epoch": epoch,
                         "global_step": completed_steps,
                         "model_state_dict": vae.state_dict(),
+                        "architecture": SPLATTERVAE_ARCHITECTURE,
                         "temporal_modeling": vae.temporal_modeling,
+                        "temporal_anchor": cfg_train.temporal_anchor,
                         "optimizer_state_dict": optimizer.state_dict(),
                         "scheduler_state_dict": scheduler.state_dict(),
                         "configuration": {
