@@ -131,6 +131,16 @@ class SplatterVAEInvariantEncoder(nn.Module):
             decoder_depth=int(decoder_cfg.get("depth", 2)),
             decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
             decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
+            decoder_global_center=decoder_cfg.get(
+                "global_center", [0.0, 0.5, 0.1]
+            ),
+            decoder_anchor_init_std=float(
+                decoder_cfg.get("anchor_init_std", 0.15)
+            ),
+            decoder_parent_offset_scale=float(
+                decoder_cfg.get("parent_offset_scale", 0.1)
+            ),
+            decoder_child_radius=float(decoder_cfg.get("child_radius", 0.05)),
         )
         self.repr_dim = int(self.vae.state_dim)
 
@@ -141,6 +151,7 @@ class SplatterVAEInvariantEncoder(nn.Module):
                 "The configured SplatterVAE checkpoint uses an incompatible decoder architecture: "
                 f"expected {SPLATTERVAE_ARCHITECTURE!r}, found {architecture!r}."
             )
+        self.vae.validate_checkpoint_decoder_configuration(state)
         state_dict = _select_checkpoint_subdict(
             state, ("vae_state_dict", "model_state_dict", "state_dict")
         )

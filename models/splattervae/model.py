@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from typing import Dict, Tuple
+import math
+from typing import Dict, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -39,7 +40,7 @@ class ParentTransformerBlock(nn.Module):
 
 
 class SplatterVAE(nn.Module):
-    """Invariant-only anchor-free grouped Gaussian set model."""
+    """Invariant-only parent-anchored grouped Gaussian set model."""
 
     architecture_id = SPLATTERVAE_ARCHITECTURE
     motion_params_per_gaussian = 6
@@ -62,6 +63,10 @@ class SplatterVAE(nn.Module):
         decoder_depth: int = 2,
         decoder_num_heads: int = 4,
         decoder_mlp_ratio: float = 4.0,
+        decoder_global_center: Sequence[float] = (0.0, 0.5, 0.1),
+        decoder_anchor_init_std: float = 0.15,
+        decoder_parent_offset_scale: float = 0.1,
+        decoder_child_radius: float = 0.05,
     ):
         super().__init__()
         self.img_height = int(img_height)
@@ -109,20 +114,49 @@ class SplatterVAE(nn.Module):
         self.num_parent_tokens = int(decoder_num_parent_tokens)
         self.gaussians_per_parent = int(decoder_gaussians_per_parent)
         self.decoder_dim = int(decoder_dim)
-        if self.num_parent_tokens != 256 or self.gaussians_per_parent != 16:
-            raise ValueError("The grouped decoder requires exactly 256 parents and 16 children per parent.")
+        self.decoder_depth = int(decoder_depth)
+        self.decoder_num_heads = int(decoder_num_heads)
+        self.decoder_mlp_ratio = float(decoder_mlp_ratio)
+        configured_global_center = tuple(
+            float(value) for value in decoder_global_center
+        )
+        global_center = torch.tensor(configured_global_center, dtype=torch.float32)
+        if global_center.shape != (3,) or not torch.isfinite(global_center).all():
+            raise ValueError("decoder_global_center must contain three finite values.")
+        self.decoder_global_center = configured_global_center
+        self.decoder_anchor_init_std = float(decoder_anchor_init_std)
+        self.decoder_parent_offset_scale = float(decoder_parent_offset_scale)
+        self.decoder_child_radius = float(decoder_child_radius)
+        if self.num_parent_tokens != 256 or self.gaussians_per_parent != 8:
+            raise ValueError("The grouped decoder requires exactly 256 parents and 8 children per parent.")
         if self.num_parent_tokens * self.gaussians_per_parent != NUM_GAUSSIANS:
             raise ValueError(f"The grouped decoder must produce exactly {NUM_GAUSSIANS} Gaussians.")
-        if int(decoder_depth) != 2:
+        if self.decoder_depth != 2:
             raise ValueError("The grouped decoder requires exactly two parent Transformer blocks.")
-        if self.decoder_dim <= 0 or self.decoder_dim % int(decoder_num_heads) != 0:
+        if (
+            self.decoder_dim <= 0
+            or self.decoder_num_heads <= 0
+            or self.decoder_dim % self.decoder_num_heads != 0
+        ):
             raise ValueError("decoder_dim must be positive and divisible by decoder_num_heads.")
-        if float(decoder_mlp_ratio) <= 0.0:
+        if not math.isfinite(self.decoder_mlp_ratio) or self.decoder_mlp_ratio <= 0.0:
             raise ValueError("decoder_mlp_ratio must be positive.")
+        if not math.isfinite(self.decoder_anchor_init_std) or self.decoder_anchor_init_std <= 0.0:
+            raise ValueError("decoder_anchor_init_std must be positive.")
+        if (
+            not math.isfinite(self.decoder_parent_offset_scale)
+            or self.decoder_parent_offset_scale <= 0.0
+        ):
+            raise ValueError("decoder_parent_offset_scale must be positive.")
+        if not math.isfinite(self.decoder_child_radius) or self.decoder_child_radius <= 0.0:
+            raise ValueError("decoder_child_radius must be positive.")
         if int(gaussian_params_per_gaussian) <= 3:
             raise ValueError("Gaussian prediction width must include XYZ and renderer attributes.")
 
         self.num_gaussians = NUM_GAUSSIANS
+        self.parent_anchor = nn.Parameter(
+            torch.empty(self.num_parent_tokens, 3)
+        )
         self.parent_tokens = nn.Parameter(
             torch.empty(self.num_parent_tokens, self.decoder_dim)
         )
@@ -135,11 +169,12 @@ class SplatterVAE(nn.Module):
         self.parent_transformer = nn.ModuleList(
             ParentTransformerBlock(
                 dim=self.decoder_dim,
-                num_heads=int(decoder_num_heads),
-                mlp_ratio=float(decoder_mlp_ratio),
+                num_heads=self.decoder_num_heads,
+                mlp_ratio=self.decoder_mlp_ratio,
             )
             for _ in range(2)
         )
+        self.parent_position_head = nn.Linear(self.decoder_dim, 3)
         self.child_identities = nn.Parameter(
             torch.empty(self.gaussians_per_parent, self.decoder_dim)
         )
@@ -154,8 +189,11 @@ class SplatterVAE(nn.Module):
         self.gaussian_attribute_head = nn.Linear(
             self.decoder_dim, int(gaussian_params_per_gaussian) - 3
         )
-        # Give free Gaussian identities broad, non-collapsed initial ROI coverage.
-        nn.init.xavier_uniform_(self.xyz_head.weight, gain=4.0)
+        # Parent motion starts exactly at zero, while tiny child offsets break
+        # symmetry without scattering children away from their parent anchor.
+        nn.init.zeros_(self.parent_position_head.weight)
+        nn.init.zeros_(self.parent_position_head.bias)
+        nn.init.normal_(self.xyz_head.weight, mean=0.0, std=1.0e-3)
         nn.init.zeros_(self.xyz_head.bias)
         nn.init.zeros_(self.gaussian_attribute_head.bias)
 
@@ -169,8 +207,47 @@ class SplatterVAE(nn.Module):
 
         nn.init.trunc_normal_(self.state_token, std=0.02)
         nn.init.trunc_normal_(self.temporal_embed, std=0.02)
+        with torch.no_grad():
+            nn.init.normal_(
+                self.parent_anchor, mean=0.0, std=self.decoder_anchor_init_std
+            )
+            self.parent_anchor.add_(global_center)
         nn.init.trunc_normal_(self.parent_tokens, std=0.02)
         nn.init.trunc_normal_(self.child_identities, std=0.02)
+
+    def decoder_configuration(self) -> Dict[str, object]:
+        """Return the architecture-sensitive decoder settings stored in checkpoints."""
+        return {
+            "num_parent_tokens": self.num_parent_tokens,
+            "gaussians_per_parent": self.gaussians_per_parent,
+            "dim": self.decoder_dim,
+            "depth": self.decoder_depth,
+            "num_heads": self.decoder_num_heads,
+            "mlp_ratio": self.decoder_mlp_ratio,
+            "global_center": list(self.decoder_global_center),
+            "anchor_init_std": self.decoder_anchor_init_std,
+            "parent_offset_scale": self.decoder_parent_offset_scale,
+            "child_radius": self.decoder_child_radius,
+        }
+
+    def validate_checkpoint_decoder_configuration(self, checkpoint: Dict) -> None:
+        """Reject checkpoints whose parent-anchor geometry differs from this model."""
+        found = checkpoint.get("decoder_configuration")
+        expected = self.decoder_configuration()
+        if not isinstance(found, dict):
+            raise ValueError(
+                "Checkpoint is missing parent-anchor decoder configuration metadata."
+            )
+        mismatches = {
+            key: {"checkpoint": found.get(key), "configured": value}
+            for key, value in expected.items()
+            if found.get(key) != value
+        }
+        if mismatches:
+            raise ValueError(
+                "Checkpoint decoder configuration does not match the current model: "
+                f"{mismatches}."
+            )
 
     def _validate_pretraining_inputs(self, images: torch.Tensor, optical_flows: torch.Tensor) -> None:
         if images.dim() != 6:
@@ -314,12 +391,29 @@ class SplatterVAE(nn.Module):
         )
         return conditioned, parents, child_features
 
+    def _decode_world_positions(
+        self, parents: torch.Tensor, child_features: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Decode unbounded parent centers and bounded parent-local child offsets."""
+        parent_displacements = (
+            self.decoder_parent_offset_scale * self.parent_position_head(parents)
+        )
+        parent_centers = self.parent_anchor[None] + parent_displacements
+        child_offsets = self.decoder_child_radius * torch.tanh(
+            self.xyz_head(child_features)
+        )
+        world_xyz = parent_centers[:, :, None, :] + child_offsets
+        return parent_centers, parent_displacements, world_xyz
+
     def predict_gaussian_parameters(self, s_inv: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """Decode only s_inv into 2048 free Gaussian attributes and translations."""
-        _conditioned, _parents, child_features = self.decode_grouped_features(s_inv)
+        """Decode only s_inv into 2048 global Gaussians and translations."""
+        _conditioned, parents, child_features = self.decode_grouped_features(s_inv)
+        _parent_centers, _parent_displacements, world_xyz = (
+            self._decode_world_positions(parents, child_features)
+        )
         shared = child_features.flatten(1, 2)
         raw_gaussian_params = torch.cat(
-            (self.xyz_head(shared), self.gaussian_attribute_head(shared)), dim=-1
+            (world_xyz.flatten(1, 2), self.gaussian_attribute_head(shared)), dim=-1
         )
         outputs = {"raw_gaussian_params": raw_gaussian_params.contiguous()}
         if self.temporal_modeling:
@@ -327,6 +421,31 @@ class SplatterVAE(nn.Module):
                 raise RuntimeError("Temporal modeling is enabled without a dense motion head.")
             outputs["raw_motion_params"] = self.dense_motion_head(shared).contiguous()
         return outputs
+
+    @torch.no_grad()
+    def position_initialization_diagnostics(self) -> Dict[str, object]:
+        """Summarize canonical anchors and zero-state parent/child positions."""
+        state = self.parent_anchor.new_zeros(1, self.state_dim)
+        _conditioned, parents, child_features = self.decode_grouped_features(state)
+        parent_centers, parent_displacements, world_xyz = self._decode_world_positions(
+            parents, child_features
+        )
+        child_offsets = world_xyz - parent_centers[:, :, None, :]
+        anchor_mean = self.parent_anchor.mean(0)
+        anchor_std = self.parent_anchor.std(0, unbiased=False)
+        configured_center = self.parent_anchor.new_tensor(self.decoder_global_center)
+        return {
+            "parent_anchor_mean": tuple(float(value) for value in anchor_mean),
+            "parent_anchor_std": tuple(float(value) for value in anchor_std),
+            "parent_anchor_center_error": float(
+                torch.linalg.vector_norm(anchor_mean - configured_center)
+            ),
+            "parent_displacement_max": float(parent_displacements.abs().max()),
+            "child_offset_rms": float(child_offsets.square().mean().sqrt()),
+            "child_offset_max": float(torch.linalg.vector_norm(child_offsets, dim=-1).max()),
+            "xyz_min": tuple(float(value) for value in world_xyz.amin(dim=(0, 1, 2))),
+            "xyz_max": tuple(float(value) for value in world_xyz.amax(dim=(0, 1, 2))),
+        }
 
     def decode_sequence(self, s_inv: torch.Tensor) -> Dict[str, torch.Tensor]:
         return self.predict_gaussian_parameters(s_inv)

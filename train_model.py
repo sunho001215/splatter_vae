@@ -48,12 +48,7 @@ def _filter_dataclass_kwargs(values: dict, cls: type, section: str) -> dict:
 
 
 def _gaussian_config_values(cfg: dict) -> dict:
-    values = dict(cfg.get("gaussian", {}))
-    bounds = dict(values.pop("world_bounds", {}))
-    if bounds:
-        values["world_bounds_min"] = bounds.get("min")
-        values["world_bounds_max"] = bounds.get("max")
-    return values
+    return dict(cfg.get("gaussian", {}))
 
 
 def build_splatter_config(cfg: dict, img_height: int, img_width: int) -> SplatterConfig:
@@ -105,6 +100,14 @@ def build_vae(cfg: dict, img_height: int, img_width: int) -> SplatterVAE:
         decoder_depth=int(decoder_cfg.get("depth", 2)),
         decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
         decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
+        decoder_global_center=decoder_cfg.get(
+            "global_center", [0.0, 0.5, 0.1]
+        ),
+        decoder_anchor_init_std=float(decoder_cfg.get("anchor_init_std", 0.15)),
+        decoder_parent_offset_scale=float(
+            decoder_cfg.get("parent_offset_scale", 0.1)
+        ),
+        decoder_child_radius=float(decoder_cfg.get("child_radius", 0.05)),
     )
 
 
@@ -233,6 +236,15 @@ def main() -> None:
 
     splatter_cfg = build_splatter_config(cfg, img_height=img_height, img_width=img_width)
     vae = build_vae(cfg, img_height=img_height, img_width=img_width)
+    init_position = vae.position_initialization_diagnostics()
+    print(
+        "[Init] Parent-anchor geometry: "
+        f"anchor_mean={init_position['parent_anchor_mean']}, "
+        f"anchor_std={init_position['parent_anchor_std']}, "
+        f"parent_displacement_max={init_position['parent_displacement_max']:.3e}, "
+        f"child_offset_max={init_position['child_offset_max']:.3e}, "
+        f"xyz_range=({init_position['xyz_min']}, {init_position['xyz_max']})"
+    )
 
     init_wandb(cfg)
 

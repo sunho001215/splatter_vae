@@ -35,10 +35,6 @@ def _filter_dataclass_kwargs(values: Dict[str, Any], cls: type) -> Dict[str, Any
 def build_splatter_config(cfg: Dict[str, Any], img_height: int, img_width: int) -> SplatterConfig:
     renderer_cfg = dict(cfg.get("renderer", {}))
     gaussian_cfg = dict(cfg.get("gaussian", {}))
-    bounds = dict(gaussian_cfg.pop("world_bounds", {}))
-    if bounds:
-        gaussian_cfg["world_bounds_min"] = bounds.get("min")
-        gaussian_cfg["world_bounds_max"] = bounds.get("max")
     renderer_cfg["img_height"] = int(img_height)
     renderer_cfg["img_width"] = int(img_width)
     return SplatterConfig(
@@ -56,8 +52,8 @@ def splatter_channels_from_config(cfg: Dict[str, Any], spl_cfg: SplatterConfig) 
     return gaussian_params_per_gaussian(int(spl_cfg.model.max_sh_degree))
 
 
-def _checkpoint_state_dict(ckpt_path: str) -> Dict[str, torch.Tensor]:
-    state = torch.load(ckpt_path, map_location="cpu")
+def _checkpoint_state_dict(payload: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+    state: Any = payload
     for key in ("vae_state_dict", "model_state_dict", "state_dict"):
         if isinstance(state, dict) and key in state and isinstance(state[key], dict):
             state = state[key]
@@ -108,11 +104,23 @@ def build_splattervae(
         decoder_depth=int(decoder_cfg.get("depth", 2)),
         decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
         decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
+        decoder_global_center=decoder_cfg.get(
+            "global_center", [0.0, 0.5, 0.1]
+        ),
+        decoder_anchor_init_std=float(decoder_cfg.get("anchor_init_std", 0.15)),
+        decoder_parent_offset_scale=float(
+            decoder_cfg.get("parent_offset_scale", 0.1)
+        ),
+        decoder_child_radius=float(decoder_cfg.get("child_radius", 0.05)),
     )
 
 
 def load_vae_state_dict(vae: SplatterVAE, ckpt_path: str) -> None:
-    vae.load_state_dict(_checkpoint_state_dict(ckpt_path), strict=True)
+    payload = torch.load(ckpt_path, map_location="cpu")
+    if not isinstance(payload, dict):
+        raise ValueError("SplatterVAE checkpoint payload must be a dictionary.")
+    vae.validate_checkpoint_decoder_configuration(payload)
+    vae.load_state_dict(_checkpoint_state_dict(payload), strict=True)
 
 
 def load_converter_state_dict(converter: WorldSpaceGaussianParameterization, ckpt_path: str) -> None:

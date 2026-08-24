@@ -27,7 +27,7 @@ def compute_visibility_loss(
     temporal_ramp: float,
     temporal_anchor: str = "t0",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute anchor-first temporal all-view visibility regularization."""
+    """Compute temporal at-least-one-camera visibility regularization."""
     if delta_xyz_01 is None or delta_xyz_12 is None:
         if delta_xyz_01 is not None or delta_xyz_12 is not None:
             raise ValueError("Both temporal deltas must be provided together.")

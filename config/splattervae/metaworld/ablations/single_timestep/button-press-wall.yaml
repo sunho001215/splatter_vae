@@ -40,7 +40,14 @@ model:
     flow_patch_threshold_pixels: 0.5
   decoder:
     num_parent_tokens: 256
-    gaussians_per_parent: 16
+    gaussians_per_parent: 8
+    global_center:
+      - 0.0
+      - 0.5
+      - 0.1
+    anchor_init_std: 0.15
+    parent_offset_scale: 0.1
+    child_radius: 0.05
     dim: 128
     depth: 2
     num_heads: 4
@@ -49,15 +56,6 @@ model:
     translation_max: 0.5
 gaussian:
   max_sh_degree: 1
-  world_bounds:
-    min:
-    - -0.65
-    - -0.05
-    - -0.05
-    max:
-    - 0.7
-    - 1.1
-    - 0.8
   scale_min:
   - 0.0005
   - 0.0005
@@ -94,17 +92,17 @@ train:
   flow_alpha_threshold: 0.01
   flow_smooth_l1_beta: 1.0
   dynamic_region_weight: 1.0
-  visibility_weight: 1.0
+  visibility_weight: 10.0
   device: cuda
   use_segmentation_mask: false
   rec_weight: 1.0
   ssim_weight: 0.2
   silhouette_weight: 0.0
-  global_depth_weight: 0.1
+  global_depth_weight: 1.0
   hard_depth_weight: 1.0
   soft_depth_weight: 1.0
   hard_depth_opacity: 0.95
-  local_depth_weight: 1.0
+  local_depth_weight: 0.75
   local_depth_min_patch_size: 8
   local_depth_max_patch_size: 32
   local_depth_min_valid_pixels: 16
@@ -132,4 +130,4 @@ wandb:
   - invariant-only
   - grouped-gaussian-set
   - no-segmentation-mask
-  - anchor-free
+  - parent-anchor

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import colorsys
 from contextlib import nullcontext
 from itertools import islice
 from typing import Any, Dict, Optional
@@ -732,7 +733,7 @@ def _combined_pointcloud_payload(
     masks: torch.Tensor,
     intrinsics: torch.Tensor,
     c2w: torch.Tensor,
-    max_points: int,
+    max_reference_points: int,
     prefix: str,
     *,
     near_plane: float,
@@ -740,9 +741,7 @@ def _combined_pointcloud_payload(
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {}
     num_views = int(depths.shape[2])
-    point_limit = max(2, int(max_points))
-    predicted_budget = point_limit // 2
-    reference_budget = point_limit - predicted_budget
+    reference_budget = max(1, int(max_reference_points))
     per_view_max_points = max(
         1, (reference_budget + max(1, num_views) - 1) // max(1, num_views)
     )
@@ -759,9 +758,9 @@ def _combined_pointcloud_payload(
                 eligible, opacity, torch.full_like(opacity, float("-inf"))
             )
             active[scores.argmax()] = True
-        predicted = _evenly_sample_points(
-            pc["xyz"][0, active], predicted_budget
-        )
+        # Prediction density is fixed by the decoder, while max_reference_points
+        # independently controls the ground-truth geometry density.
+        predicted = pc["xyz"][0, active]
         references = [
             _evenly_sample_points(
                 _reference_points(
@@ -794,11 +793,67 @@ def _combined_pointcloud_payload(
         )
         if combined.shape[0] == 0:
             continue
-        combined = _evenly_sample_points(combined, point_limit)
         payload[f"{prefix}/pointcloud_overlay_t{time_idx}"] = wandb.Object3D(
             combined.cpu().numpy()
         )
     return payload
+
+
+def _parent_identity_colors(
+    num_parents: int,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Return deterministic, visually separated RGB colors for parent identities."""
+    if int(num_parents) <= 0:
+        raise ValueError("num_parents must be positive.")
+    golden_ratio = 0.6180339887498949
+    rgb = [
+        colorsys.hsv_to_rgb((parent_idx * golden_ratio) % 1.0, 0.75, 1.0)
+        for parent_idx in range(int(num_parents))
+    ]
+    return 255.0 * torch.tensor(rgb, device=device, dtype=dtype)
+
+
+def _anchor_parent_pointcloud_payload(
+    rec_out: Dict[str, Any],
+    num_parent_tokens: int,
+    gaussians_per_parent: int,
+    prefix: str,
+) -> Dict[str, Any]:
+    """Log every finite/valid anchor Gaussian, colored by its decoder parent."""
+    pc = rec_out["gaussian_pc_anchor"]
+    xyz = pc["xyz"][0]
+    valid = pc["valid_mask"][0]
+    expected_gaussians = int(num_parent_tokens) * int(gaussians_per_parent)
+    if xyz.shape != (expected_gaussians, 3):
+        raise ValueError(
+            "Anchor point cloud does not match the configured parent/child hierarchy: "
+            f"expected {(expected_gaussians, 3)}, got {tuple(xyz.shape)}."
+        )
+    if valid.shape != (expected_gaussians,):
+        raise ValueError(
+            f"Expected anchor validity shape {(expected_gaussians,)}, got {tuple(valid.shape)}."
+        )
+
+    eligible = valid & torch.isfinite(xyz).all(dim=-1)
+    if not bool(eligible.any()):
+        return {}
+    parent_ids = torch.arange(
+        int(num_parent_tokens), device=xyz.device
+    ).repeat_interleave(int(gaussians_per_parent))
+    parent_colors = _parent_identity_colors(
+        int(num_parent_tokens), device=xyz.device, dtype=xyz.dtype
+    )
+    colored_points = torch.cat(
+        (xyz[eligible], parent_colors[parent_ids[eligible]]), dim=-1
+    )
+    return {
+        f"{prefix}/pointcloud_anchor_by_parent": wandb.Object3D(
+            colored_points.cpu().numpy()
+        )
+    }
 
 
 def _move_batch(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
@@ -1020,6 +1075,14 @@ def validate_and_log_wandb(
             prefix,
             near_plane=float(splatter_cfg.data.znear),
             far_plane=float(splatter_cfg.data.zfar),
+        )
+    )
+    log_values.update(
+        _anchor_parent_pointcloud_payload(
+            rec_out,
+            vae.num_parent_tokens,
+            vae.gaussians_per_parent,
+            prefix,
         )
     )
     wandb.log(log_values, step=global_step)

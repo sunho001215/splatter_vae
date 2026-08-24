@@ -45,6 +45,7 @@ def _parameter_groups(vae: SplatterVAE) -> list[Dict]:
             "invariant_encoder_output_proj.",
         ),
         "gaussian_set_decoder": (
+            "parent_anchor",
             "parent_tokens",
             "parent_token_norm.",
             "decoder_film.",
@@ -53,6 +54,7 @@ def _parameter_groups(vae: SplatterVAE) -> list[Dict]:
             "child_expansion_mlp.",
         ),
         "gaussian_prediction_head": (
+            "parent_position_head.",
             "xyz_head.",
             "gaussian_attribute_head.",
         ),
@@ -209,6 +211,7 @@ def train_splatter_vae(
         validate_checkpoint_temporal_anchor(
             checkpoint, cfg_train.temporal_anchor
         )
+        vae.validate_checkpoint_decoder_configuration(checkpoint)
         vae.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -370,6 +373,7 @@ def train_splatter_vae(
                         "global_step": completed_steps,
                         "model_state_dict": vae.state_dict(),
                         "architecture": SPLATTERVAE_ARCHITECTURE,
+                        "decoder_configuration": vae.decoder_configuration(),
                         "temporal_modeling": vae.temporal_modeling,
                         "temporal_anchor": cfg_train.temporal_anchor,
                         "optimizer_state_dict": optimizer.state_dict(),
