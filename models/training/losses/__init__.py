@@ -1,22 +1,16 @@
-from .depth import compute_global_local_depth_loss
+from .depth import confidence_weighted_metric_depth_l1, scale_invariant_log_depth_loss
 from .flow import compute_optical_flow_loss
-from .reconstruction import (
-    DYNAMIC_FLOW_SCALE_PIXELS,
-    build_target_dynamic_scores,
-    compute_balanced_silhouette_loss,
-    compute_reconstruction_loss,
-)
-from .regularization import compute_visibility_loss
-from .representation import compute_view_structured_invariant_losses, masked_multi_positive_nce
+from .reconstruction import masked_rgb_reconstruction_losses
+from .regularization import compute_visibility_loss, gaussian_regularization
+from .representation import autograd_safe_all_gather, cross_view_info_nce
 
 __all__ = [
-    "DYNAMIC_FLOW_SCALE_PIXELS",
-    "build_target_dynamic_scores",
-    "compute_balanced_silhouette_loss",
-    "compute_global_local_depth_loss",
+    "autograd_safe_all_gather",
     "compute_optical_flow_loss",
-    "compute_reconstruction_loss",
     "compute_visibility_loss",
-    "compute_view_structured_invariant_losses",
-    "masked_multi_positive_nce",
+    "confidence_weighted_metric_depth_l1",
+    "cross_view_info_nce",
+    "gaussian_regularization",
+    "masked_rgb_reconstruction_losses",
+    "scale_invariant_log_depth_loss",
 ]

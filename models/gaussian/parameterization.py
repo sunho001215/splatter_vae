@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, Optional, Sequence
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-
+from torch import nn
 
 ACTIVE_GAUSSIAN_OPACITY_THRESHOLD = 0.05
 NUM_GAUSSIANS = 2048
@@ -16,10 +15,10 @@ NUM_GAUSSIANS = 2048
 class SplatterDataConfig:
     """Camera and image configuration shared by Gaussian rendering."""
 
-    img_height: int = 128
-    img_width: int = 128
-    znear: float = 0.1
-    zfar: float = 2.0
+    img_height: int
+    img_width: int
+    znear: float
+    zfar: float
     white_background: bool = False
 
 
@@ -27,9 +26,9 @@ class SplatterDataConfig:
 class SplatterModelConfig:
     """World-space Gaussian attribute activation settings."""
 
-    max_sh_degree: int = 1
-    scale_min: Sequence[float] = (0.0005, 0.0005, 0.0005)
-    scale_max: Sequence[float] = (0.05, 0.05, 0.05)
+    max_sh_degree: int
+    scale_min: Sequence[float]
+    scale_max: Sequence[float]
     scale_scale: float = 1.0
     scale_bias: float = 0.0
     rotation_scale: float = 1.0
@@ -64,7 +63,9 @@ def _axis_vector(
 ) -> torch.Tensor:
     tensor = torch.as_tensor(tuple(values), dtype=torch.float32, device=device)
     if tensor.shape != (3,):
-        raise ValueError(f"{name} must contain exactly three values, got {tuple(tensor.shape)}.")
+        raise ValueError(
+            f"{name} must contain exactly three values, got {tuple(tensor.shape)}."
+        )
     if not torch.isfinite(tensor).all():
         raise ValueError(f"{name} must contain only finite values.")
     return tensor
@@ -83,7 +84,9 @@ class WorldSpaceGaussianParameterization(nn.Module):
             cfg.model.scale_max, name="scale_max", device=torch.device("cpu")
         )
         if not torch.all(scale_min > 0.0) or not torch.all(scale_max >= scale_min):
-            raise ValueError("Scale bounds must satisfy 0 < scale_min <= scale_max per axis.")
+            raise ValueError(
+                "Scale bounds must satisfy 0 < scale_min <= scale_max per axis."
+            )
         self.register_buffer("scale_min", scale_min, persistent=False)
         self.register_buffer("scale_max", scale_max, persistent=False)
 
@@ -99,15 +102,19 @@ class WorldSpaceGaussianParameterization(nn.Module):
         self,
         *,
         gaussian_parameters: torch.Tensor,
-        motion_parameters: Optional[torch.Tensor],
-    ) -> Dict[str, torch.Tensor]:
+        motion_parameters: torch.Tensor | None,
+    ) -> dict[str, torch.Tensor]:
         params = gaussian_parameters.float()
         if params.dim() != 3:
-            raise ValueError(f"Expected Gaussian parameters as (B,N,P), got {tuple(params.shape)}.")
+            raise ValueError(
+                f"Expected Gaussian parameters as (B,N,P), got {tuple(params.shape)}."
+            )
         batch, _count, _channels = params.shape
         expected = (batch, self.num_gaussians, self.params_per_gaussian)
         if tuple(params.shape) != expected:
-            raise ValueError(f"Expected Gaussian parameters {expected}, got {tuple(params.shape)}.")
+            raise ValueError(
+                f"Expected Gaussian parameters {expected}, got {tuple(params.shape)}."
+            )
         if motion_parameters is not None:
             motion_parameters = motion_parameters.float()
             expected_motion = (batch, self.num_gaussians, 6)
@@ -117,30 +124,28 @@ class WorldSpaceGaussianParameterization(nn.Module):
                 )
 
         cursor = 0
-        xyz = params[..., cursor:cursor + 3]
+        xyz = params[..., cursor : cursor + 3]
         cursor += 3
-        scale_raw = params[..., cursor:cursor + 3]
+        scale_raw = params[..., cursor : cursor + 3]
         cursor += 3
-        rotation_raw = params[..., cursor:cursor + 4]
+        rotation_raw = params[..., cursor : cursor + 4]
         cursor += 4
-        opacity_raw = params[..., cursor:cursor + 1]
+        opacity_raw = params[..., cursor : cursor + 1]
         cursor += 1
-        dc_raw = params[..., cursor:cursor + 3]
+        dc_raw = params[..., cursor : cursor + 3]
         cursor += 3
         rest_raw = params[..., cursor:]
 
         scale_unit = torch.sigmoid(
-            scale_raw * float(self.cfg.model.scale_scale) + float(self.cfg.model.scale_bias)
+            scale_raw * float(self.cfg.model.scale_scale)
+            + float(self.cfg.model.scale_bias)
         )
-        scaling = (
-            self.scale_min.float().view(1, 1, 3)
-            + scale_unit
-            * (self.scale_max.float() - self.scale_min.float()).view(1, 1, 3)
-        )
+        scaling = self.scale_min.float().view(1, 1, 3) + scale_unit * (
+            self.scale_max.float() - self.scale_min.float()
+        ).view(1, 1, 3)
 
-        rotation_logits = (
-            rotation_raw * float(self.cfg.model.rotation_scale)
-            + float(self.cfg.model.rotation_bias)
+        rotation_logits = rotation_raw * float(self.cfg.model.rotation_scale) + float(
+            self.cfg.model.rotation_bias
         )
         identity = rotation_logits.new_tensor((1.0, 0.0, 0.0, 0.0)).view(1, 1, 4)
         rotation = F.normalize(rotation_logits + identity, dim=-1, eps=1.0e-6)
@@ -149,12 +154,12 @@ class WorldSpaceGaussianParameterization(nn.Module):
             + float(self.cfg.model.opacity_bias)
         )
         features_dc = (
-            dc_raw * float(self.cfg.model.color_scale) + float(self.cfg.model.color_bias)
+            dc_raw * float(self.cfg.model.color_scale)
+            + float(self.cfg.model.color_bias)
         ).unsqueeze(-2)
         rest_bases = (int(self.cfg.model.max_sh_degree) + 1) ** 2 - 1
-        rest_logits = (
-            rest_raw * float(self.cfg.model.sh_rest_raw_scale)
-            + float(self.cfg.model.sh_rest_raw_bias)
+        rest_logits = rest_raw * float(self.cfg.model.sh_rest_raw_scale) + float(
+            self.cfg.model.sh_rest_raw_bias
         )
         features_rest = float(self.cfg.model.sh_rest_scale) * torch.tanh(
             rest_logits.view(batch, self.num_gaussians, rest_bases, 3)

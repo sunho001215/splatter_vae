@@ -1,9 +1,16 @@
-from .config import SPLATTERVAE_ARCHITECTURE, TEMPORAL_WINDOW
-from .model import ParentTransformerBlock, SplatterVAE
+from .backbones import ContrastiveProjector, RMSNorm, TemporalViTEncoder, ViTSmallConfig
+from .config import CURRENT_FRAME_INDEX, SPLATTERVAE_ARCHITECTURE, TEMPORAL_WINDOW
+from .decoder import GaussianSlotDecoder
+from .model import SplatterVAE
 
 __all__ = [
-    "ParentTransformerBlock",
+    "CURRENT_FRAME_INDEX",
     "SPLATTERVAE_ARCHITECTURE",
-    "SplatterVAE",
     "TEMPORAL_WINDOW",
+    "ContrastiveProjector",
+    "GaussianSlotDecoder",
+    "RMSNorm",
+    "SplatterVAE",
+    "TemporalViTEncoder",
+    "ViTSmallConfig",
 ]

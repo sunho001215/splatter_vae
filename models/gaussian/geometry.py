@@ -17,7 +17,9 @@ def project_gaussian_centers(
     if xyz.dim() != 4 or xyz.shape[-1] != 3:
         raise ValueError(f"Expected xyz as (B,T,N,3), got {tuple(xyz.shape)}.")
     if w2c.dim() != 5 or w2c.shape[:2] != xyz.shape[:2] or w2c.shape[-2:] != (4, 4):
-        raise ValueError("World-to-camera matrices must align with the center batch and timesteps.")
+        raise ValueError(
+            "World-to-camera matrices must align with the center batch and timesteps."
+        )
     if camera_k.shape != (*w2c.shape[:3], 3, 3):
         raise ValueError("Intrinsics must align with world-to-camera matrices.")
     finite_world = torch.isfinite(xyz).all(-1)
@@ -26,7 +28,9 @@ def project_gaussian_centers(
     camera_xyz = camera_xyz + w2c[..., :3, 3].unsqueeze(-2)
     homogeneous = torch.einsum("btaij,btanj->btani", camera_k, camera_xyz)
     denominator = homogeneous[..., 2]
-    safe_denominator = torch.where(denominator.abs() > 1.0e-8, denominator, torch.ones_like(denominator))
+    safe_denominator = torch.where(
+        denominator.abs() > 1.0e-8, denominator, torch.ones_like(denominator)
+    )
     pixel_xy = homogeneous[..., :2] / safe_denominator[..., None]
     depth = camera_xyz[..., 2]
     finite = (
@@ -55,24 +59,25 @@ def visibility_loss_per_timestep(
         raise ValueError("far_plane must be greater than near_plane.")
     if valid_mask.shape != xyz.shape[:-1]:
         raise ValueError("Gaussian validity must align with xyz.")
-    pixel_xy, depth, finite = project_gaussian_centers(xyz, world_view_transform, intrinsics)
+    pixel_xy, depth, finite = project_gaussian_centers(
+        xyz, world_view_transform, intrinsics
+    )
     u, v = pixel_xy.unbind(-1)
     margin = float(margin_pixels)
     du = (
-        torch.relu(-margin - u)
-        + torch.relu(u - (float(image_width - 1) + margin))
+        torch.relu(-margin - u) + torch.relu(u - (float(image_width - 1) + margin))
     ) / float(image_width)
     dv = (
-        torch.relu(-margin - v)
-        + torch.relu(v - (float(image_height - 1) + margin))
+        torch.relu(-margin - v) + torch.relu(v - (float(image_height - 1) + margin))
     ) / float(image_height)
     dz = (
-        torch.relu(float(near_plane) - depth)
-        + torch.relu(depth - float(far_plane))
+        torch.relu(float(near_plane) - depth) + torch.relu(depth - float(far_plane))
     ) / float(far_plane - near_plane)
     violation = du + dv + dz
     violation = torch.where(finite, violation, torch.ones_like(violation))
     visibility_violation = violation.mean(dim=2)
     weights = valid_mask.to(dtype=visibility_violation.dtype)
-    per_batch_timestep = (visibility_violation * weights).sum(-1) / weights.sum(-1).clamp_min(1.0)
+    per_batch_timestep = (visibility_violation * weights).sum(-1) / weights.sum(
+        -1
+    ).clamp_min(1.0)
     return per_batch_timestep.mean(0)

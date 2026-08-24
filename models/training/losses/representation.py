@@ -1,100 +1,82 @@
+from __future__ import annotations
+
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 
-def _masked_multi_positive_nce_from_normalized(
-    normalized_features: torch.Tensor,
-    positive_mask: torch.Tensor,
-    negative_mask: torch.Tensor,
-    temperature: float,
-) -> torch.Tensor:
-    logits = (normalized_features @ normalized_features.t()) / float(temperature)
-    positive_mask = positive_mask.to(device=logits.device, dtype=torch.bool)
-    denominator_mask = positive_mask | negative_mask.to(device=logits.device, dtype=torch.bool)
-    valid_queries = positive_mask.any(dim=1) & denominator_mask.any(dim=1)
 
-    # Give rows without a valid positive a finite, detached fallback entry.
-    # Their final weight is zero, but avoiding all-masked logsumexp rows also
-    # prevents NaNs in backward for single-state or single-camera batches.
-    fallback = torch.eye(logits.shape[0], device=logits.device, dtype=torch.bool)
-    invalid_rows = ~valid_queries
-    safe_positive_mask = positive_mask | (fallback & invalid_rows[:, None])
-    safe_denominator_mask = denominator_mask | (fallback & invalid_rows[:, None])
-    neg_inf = torch.finfo(logits.dtype).min
-    log_positive = torch.logsumexp(logits.masked_fill(~safe_positive_mask, neg_inf), dim=1)
-    log_denominator = torch.logsumexp(logits.masked_fill(~safe_denominator_mask, neg_inf), dim=1)
-    loss_per_query = torch.where(
-        valid_queries,
-        -(log_positive - log_denominator),
-        torch.zeros_like(log_positive),
-    )
-    valid_weights = valid_queries.to(dtype=logits.dtype)
-    return loss_per_query.sum() / valid_weights.sum().clamp_min(1.0)
+class _AllGatherWithGradient(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, local: torch.Tensor) -> torch.Tensor:
+        if not dist.is_available() or not dist.is_initialized():
+            ctx.world_size = 1
+            ctx.rank = 0
+            return local
+        ctx.world_size = dist.get_world_size()
+        ctx.rank = dist.get_rank()
+        gathered = [torch.empty_like(local) for _ in range(ctx.world_size)]
+        dist.all_gather(gathered, local.contiguous())
+        return torch.cat(gathered, dim=0)
+
+    @staticmethod
+    def backward(ctx, gradient: torch.Tensor) -> tuple[torch.Tensor]:
+        if ctx.world_size == 1:
+            return (gradient,)
+        local_gradient = gradient.chunk(ctx.world_size, dim=0)[ctx.rank].contiguous()
+        dist.all_reduce(local_gradient, op=dist.ReduceOp.SUM)
+        return (local_gradient,)
 
 
-def masked_multi_positive_nce(
-    features: torch.Tensor,
-    positive_mask: torch.Tensor,
-    negative_mask: torch.Tensor,
-    temperature: float,
-) -> torch.Tensor:
-    """Multi-positive InfoNCE with caller-provided positive/negative masks."""
-    if temperature <= 0.0:
-        raise ValueError("temperature must be > 0.")
-    normalized = F.normalize(
-        torch.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0),
-        dim=-1,
-        eps=1e-6,
-    )
-    return _masked_multi_positive_nce_from_normalized(
-        normalized_features=normalized,
-        positive_mask=positive_mask,
-        negative_mask=negative_mask,
-        temperature=temperature,
-    )
+def autograd_safe_all_gather(features: torch.Tensor) -> torch.Tensor:
+    return _AllGatherWithGradient.apply(features)
 
 
-def compute_view_structured_invariant_losses(
-    s_inv_by_view: torch.Tensor,
-    temperature: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Invariant contrastive and normalized-L1 consistency from one encoder pass.
-
-    Positives are the same state under different views; negatives are different
-    batch/state indices. The deleted dependent representation is not emulated.
-    """
-    if temperature <= 0.0:
-        raise ValueError("temperature must be > 0.")
-    if s_inv_by_view.dim() != 3:
-        raise ValueError(
-            f"Expected s_inv_by_view as (B,A,D), got {tuple(s_inv_by_view.shape)}."
+def _assert_equal_local_counts(local_count: int, device: torch.device) -> None:
+    if not dist.is_available() or not dist.is_initialized():
+        return
+    count = torch.tensor([int(local_count)], device=device, dtype=torch.long)
+    gathered = [torch.empty_like(count) for _ in range(dist.get_world_size())]
+    dist.all_gather(gathered, count)
+    values = [int(item.item()) for item in gathered]
+    if len(set(values)) != 1:
+        raise RuntimeError(
+            f"Distributed contrastive batches must have equal size, got {values}."
         )
-    batch, views = s_inv_by_view.shape[:2]
-    num_items = batch * views
-    device = s_inv_by_view.device
-    sample_ids = torch.arange(batch, device=device).repeat_interleave(views)
-    diagonal = torch.eye(num_items, device=device, dtype=torch.bool)
-    same_sample = sample_ids[:, None] == sample_ids[None, :]
-    invariant_positive = same_sample & ~diagonal
-    invariant_features = F.normalize(
-        torch.nan_to_num(
-            s_inv_by_view.reshape(num_items, -1), nan=0.0, posinf=0.0, neginf=0.0
-        ),
-        dim=-1,
-        eps=1e-6,
+
+
+def cross_view_info_nce(
+    projected_by_view: torch.Tensor,
+    temperature: float,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Local paired queries against autograd-safe global DDP negatives."""
+    if projected_by_view.dim() != 3 or projected_by_view.shape[1] != 2:
+        raise ValueError("Projected positives must have shape (B,2,D).")
+    if float(temperature) <= 0.0:
+        raise ValueError("InfoNCE temperature must be positive.")
+    local = F.normalize(projected_by_view.float(), dim=-1, eps=1.0e-6).flatten(0, 1)
+    _assert_equal_local_counts(local.shape[0], local.device)
+    global_features = autograd_safe_all_gather(local)
+    rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else 0
+    offset = rank * local.shape[0]
+    local_indices = torch.arange(local.shape[0], device=local.device)
+    self_indices = offset + local_indices
+    positive_indices = offset + torch.bitwise_xor(
+        local_indices, torch.ones_like(local_indices)
     )
-    invariant_contrastive = _masked_multi_positive_nce_from_normalized(
-        normalized_features=invariant_features,
-        positive_mask=invariant_positive,
-        negative_mask=~same_sample,
-        temperature=temperature,
+    logits = (local @ global_features.t()) / float(temperature)
+    logits.scatter_(1, self_indices[:, None], torch.finfo(logits.dtype).min)
+    loss = F.cross_entropy(logits, positive_indices)
+    cosine = local @ global_features.detach().t()
+    positive_cosine = cosine.gather(1, positive_indices[:, None]).mean()
+    negative_mask = torch.ones_like(cosine, dtype=torch.bool)
+    negative_mask.scatter_(1, self_indices[:, None], False)
+    negative_mask.scatter_(1, positive_indices[:, None], False)
+    negative_cosine = (
+        cosine.masked_select(negative_mask).mean()
+        if negative_mask.any()
+        else cosine.new_zeros(())
     )
-    invariant_grid = invariant_features.view(batch, views, -1)
-    pair_distance = (
-        invariant_grid[:, :, None, :] - invariant_grid[:, None, :, :]
-    ).abs().mean(dim=-1)
-    pair_mask = ~torch.eye(views, device=device, dtype=torch.bool)[None]
-    weights = pair_mask.to(pair_distance.dtype)
-    invariant_consistency = (
-        pair_distance * weights
-    ).sum() / weights.expand(batch, -1, -1).sum().clamp_min(1.0)
-    return invariant_contrastive, invariant_consistency
+    return loss, {
+        "positive_cosine_similarity": positive_cosine.detach(),
+        "negative_cosine_similarity": negative_cosine.detach(),
+    }

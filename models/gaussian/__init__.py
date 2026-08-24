@@ -13,7 +13,7 @@ from .parameterization import (
     WorldSpaceGaussianParameterization,
     gaussian_params_per_gaussian,
 )
-from .rendering import render_dngaussian_depths, render_rgb
+from .rendering import render_rgb, render_rgb_expected_depth
 
 __all__ = [
     "ACTIVE_GAUSSIAN_OPACITY_THRESHOLD",
@@ -25,8 +25,8 @@ __all__ = [
     "activate_motion_parameters",
     "construct_chronological_gaussian_sequence",
     "gaussian_params_per_gaussian",
-    "render_dngaussian_depths",
     "render_rgb",
+    "render_rgb_expected_depth",
     "render_translation_flow_sequence",
     "translate_gaussians",
 ]

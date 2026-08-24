@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Dict
-
 import torch
 import torch.nn.functional as F
 
+from models.splattervae.temporal import temporal_anchor_index
+
 from .geometry import project_gaussian_centers
 from .parameterization import SplatterConfig
-from models.splattervae.temporal import temporal_anchor_index
 
 
 def _load_rasterization():
@@ -21,31 +20,43 @@ def _load_rasterization():
     return rasterization
 
 
-def activate_motion_parameters(raw_motion: torch.Tensor, max_translation: float) -> torch.Tensor:
+def activate_motion_parameters(
+    raw_motion: torch.Tensor, max_translation: float
+) -> torch.Tensor:
     """Activate the six per-Gaussian translation channels in FP32."""
     if raw_motion.dim() != 3 or raw_motion.shape[-1] != 6:
-        raise ValueError(f"Expected raw motion as (B,N,6), got {tuple(raw_motion.shape)}.")
+        raise ValueError(
+            f"Expected raw motion as (B,N,6), got {tuple(raw_motion.shape)}."
+        )
     if float(max_translation) <= 0.0:
         raise ValueError("max_translation must be positive.")
     return torch.tanh(raw_motion.float()) * float(max_translation)
 
 
 def translate_gaussians(
-    pc: Dict[str, torch.Tensor], xyz_delta: torch.Tensor
-) -> Dict[str, torch.Tensor]:
+    pc: dict[str, torch.Tensor], xyz_delta: torch.Tensor
+) -> dict[str, torch.Tensor]:
     """Translate centers while retaining all non-positional Gaussian attributes."""
     if xyz_delta.shape != pc["xyz"].shape:
-        raise ValueError("Dense translation residuals must align with Gaussian centers.")
+        raise ValueError(
+            "Dense translation residuals must align with Gaussian centers."
+        )
     output = dict(pc)
     output["xyz"] = (pc["xyz"] + xyz_delta).contiguous()
     return output
 
 
 def construct_chronological_gaussian_sequence(
-    anchor_pc: Dict[str, torch.Tensor],
-    temporal_anchor: str = "t0",
-) -> list[Dict[str, torch.Tensor]]:
-    """Construct and return the chronological [G0, G1, G2] sequence."""
+    anchor_pc: dict[str, torch.Tensor],
+    temporal_anchor: str = "current",
+) -> list[dict[str, torch.Tensor]]:
+    """Recover chronological history ``[G(t-2s), G(t-s), G(t)]``.
+
+    The decoded Gaussian state is always anchored at the current observation.
+    Motion channels describe chronological 0->1 and 1->2 displacement, so the
+    two historical states are obtained by subtracting them from the current
+    state. No future image is consumed or reconstructed.
+    """
     required = ("xyz", "delta_xyz_01", "delta_xyz_12")
     missing = [key for key in required if key not in anchor_pc]
     if missing:
@@ -54,16 +65,17 @@ def construct_chronological_gaussian_sequence(
     delta01 = anchor_pc["delta_xyz_01"]
     delta12 = anchor_pc["delta_xyz_12"]
     if delta01.shape != xyz.shape or delta12.shape != xyz.shape:
-        raise ValueError("Dense translation residuals must align with anchor Gaussian centers.")
+        raise ValueError(
+            "Dense translation residuals must align with anchor Gaussian centers."
+        )
 
-    if temporal_anchor_index(temporal_anchor) == 0:
-        gaussian0 = anchor_pc
-        gaussian1 = translate_gaussians(gaussian0, delta01)
-        gaussian2 = translate_gaussians(gaussian1, delta12)
-    else:
-        gaussian2 = anchor_pc
-        gaussian1 = translate_gaussians(gaussian2, -delta12)
-        gaussian0 = translate_gaussians(gaussian1, -delta01)
+    if temporal_anchor_index(temporal_anchor) != 2:
+        raise RuntimeError(
+            "The DROID temporal anchor must resolve to the current frame."
+        )
+    gaussian2 = anchor_pc
+    gaussian1 = translate_gaussians(gaussian2, -delta12)
+    gaussian0 = translate_gaussians(gaussian1, -delta01)
     return [gaussian0, gaussian1, gaussian2]
 
 
@@ -79,7 +91,9 @@ def _normalize_flow_signal(
     eps: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if signal.shape[-1] != 3:
-        raise ValueError(f"Expected a three-channel flow signal, got {tuple(signal.shape)}.")
+        raise ValueError(
+            f"Expected a three-channel flow signal, got {tuple(signal.shape)}."
+        )
     numerator = signal[..., :2]
     coverage = torch.nan_to_num(
         signal[..., 2:3], nan=0.0, posinf=0.0, neginf=0.0
@@ -91,8 +105,10 @@ def _normalize_flow_signal(
         posinf=0.0,
         neginf=0.0,
     )
-    valid = (coverage > float(eps)) & finite & torch.isfinite(normalized).all(
-        dim=-1, keepdim=True
+    valid = (
+        (coverage > float(eps))
+        & finite
+        & torch.isfinite(normalized).all(dim=-1, keepdim=True)
     )
     normalized = torch.where(valid, normalized, torch.zeros_like(normalized))
     return (
@@ -103,7 +119,7 @@ def _normalize_flow_signal(
 
 
 def _detached_forward_flow_endpoints(
-    anchor_pc: Dict[str, torch.Tensor],
+    anchor_pc: dict[str, torch.Tensor],
     temporal_anchor: str,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Build chronological source/target endpoints with delta-only gradients."""
@@ -127,12 +143,12 @@ def _detached_forward_flow_endpoints(
 
 
 def render_translation_flow_sequence(
-    anchor_pc: Dict[str, torch.Tensor],
+    anchor_pc: dict[str, torch.Tensor],
     world_view_transform: torch.Tensor,
     intrinsics: torch.Tensor,
     cfg: SplatterConfig,
     eps: float = 1.0e-6,
-    temporal_anchor: str = "t0",
+    temporal_anchor: str = "current",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Render translation-only flows 01, 12, and 02 in one gsplat call.
 
@@ -155,12 +171,16 @@ def render_translation_flow_sequence(
 
     anchor_xyz = anchor_pc["xyz"]
     if anchor_xyz.dim() != 3 or anchor_xyz.shape[-1] != 3:
-        raise ValueError(f"Expected anchor centers as (B,N,3), got {tuple(anchor_xyz.shape)}.")
+        raise ValueError(
+            f"Expected anchor centers as (B,N,3), got {tuple(anchor_xyz.shape)}."
+        )
     if (
         anchor_pc["delta_xyz_01"].shape != anchor_xyz.shape
         or anchor_pc["delta_xyz_12"].shape != anchor_xyz.shape
     ):
-        raise ValueError("Dense translation residuals must align with anchor Gaussian centers.")
+        raise ValueError(
+            "Dense translation residuals must align with anchor Gaussian centers."
+        )
     if world_view_transform.dim() != 5 or world_view_transform.shape[1] != 3:
         raise ValueError(
             f"Expected world-to-camera matrices as (B,3,A,4,4), got {tuple(world_view_transform.shape)}."
@@ -188,9 +208,7 @@ def render_translation_flow_sequence(
     projection_xyz = torch.stack(
         (xyz0_source, xyz1_live, xyz2_from_1, xyz2_accumulated), dim=1
     )
-    projection_w2c = torch.stack(
-        (w2c[:, 0], w2c[:, 1], w2c[:, 2], w2c[:, 2]), dim=1
-    )
+    projection_w2c = torch.stack((w2c[:, 0], w2c[:, 1], w2c[:, 2], w2c[:, 2]), dim=1)
     projection_k = torch.stack(
         (camera_k[:, 0], camera_k[:, 1], camera_k[:, 2], camera_k[:, 2]), dim=1
     )
@@ -212,7 +230,9 @@ def render_translation_flow_sequence(
     valid1 = projection_valid[:, 1].detach()
     valid2_from_1 = projection_valid[:, 2].detach()
     valid2_accumulated = projection_valid[:, 3].detach()
-    base_valid = anchor_pc["valid_mask"].detach().to(device=device, dtype=torch.bool)[:, None, :]
+    base_valid = (
+        anchor_pc["valid_mask"].detach().to(device=device, dtype=torch.bool)[:, None, :]
+    )
 
     valid01 = valid0 & valid1 & base_valid
     valid12 = valid1 & valid2_from_1 & base_valid

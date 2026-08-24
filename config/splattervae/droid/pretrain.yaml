@@ -1,0 +1,234 @@
+dataset:
+  droid_root: /ws/data/ws/droid
+  derived_root: /ws/data/ws/droid_splattervae
+  calibration_manifest: /ws/data/ws/droid_splattervae/manifests/calibration.jsonl.gz
+  split_manifest: /ws/data/ws/droid_splattervae/manifests/episode_splits.json
+  xlens_cache_index: /ws/data/ws/droid_splattervae/xlens/depth-index.json
+  waft_cache_index: /ws/data/ws/droid_splattervae/waft/flow-index.json
+  see3d_cache_index: /ws/data/ws/droid_splattervae/see3d/see3d-index.json
+  validation_fraction: 0.02
+  split_seed: 42
+  seed: 42
+  temporal_strides: [1, 3, 6]
+  temporal_probabilities: [0.40, 0.35, 0.25]
+  validation_stride: 3
+  per_gpu_logical_batch: 8
+  workers: 8
+  prefetch_factor: 2
+  persistent_workers: true
+  pin_memory: true
+  drop_last: true
+  require_xlens_cache: true
+  require_waft_cache: true
+
+preprocessing:
+  input_resolution: [320, 180]
+  encoder_resolution: [224, 224]
+  rgb_normalization:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  global:
+    resized_resolution: [224, 126]
+    scale: 0.7
+    pad_top: 49
+    pad_bottom: 49
+  local:
+    crop_size: 180
+    output_size: 224
+    motion_probability: 0.50
+    random_probability: 0.25
+    center_probability: 0.25
+  logical_pair:
+    second_view_local_probability: 0.50
+    gaussian_source: global_camera_a
+
+calibration:
+  official_repository: KarlP/droid
+  official_revision: main
+  use_exterior_cameras_only: true
+  world_frame: robot_base
+  stage: 0
+  thresholds:
+    rotation_orthonormal_atol: 0.02
+    rotation_determinant_atol: 0.02
+    maximum_translation_m: 5.0
+    minimum_exterior_baseline_m: 0.05
+    maximum_exterior_baseline_m: 3.0
+    principal_point_margin_fraction: 0.25
+    direct_relative_max_rotation_deg: 20.0
+    direct_relative_max_translation_m: 0.35
+    direction_minimum_samples: 100
+    direction_maximum_samples: 25000
+
+vit:
+  image_size: 224
+  patch_size: 16
+  input_channels: 3
+  embed_dimension: 384
+  depth: 12
+  num_heads: 6
+  qkv_bias: true
+  normalization: rmsnorm
+  swiglu_hidden_dimension: 1024
+  dropout: 0.0
+  attention_dropout: 0.0
+  drop_path_rate: 0.1
+  layerscale_initial_value: 1.0e-5
+  temporal_window: 3
+  initialize_from: scratch
+
+model:
+  temporal_anchor: current
+  masking_ratio: 0.60
+  motion_visible_fraction: 0.50
+  motion_translation_max_m: 0.25
+
+contrastive:
+  projector_hidden_dimension: 1024
+  projector_output_dimension: 256
+  temperature: 0.10
+  weight: 1.0
+  distributed_negatives: true
+
+decoder:
+  num_groups: 256
+  gaussians_per_group: 8
+  dimension: 256
+  depth: 2
+  num_heads: 8
+  swiglu_hidden_dimension: 512
+  use_self_attention: true
+  conditioning: multi_token_cross_attention
+  # Provisional only: the workspace-statistics command must replace these
+  # before real training. The entrypoint rejects this status by default.
+  workspace_parameter_status: provisional_requires_droid_stats
+  require_validated_workspace_parameters: true
+  global_center: [0.50, 0.00, 0.50]
+  anchor_initial_spread: 0.45
+  parent_displacement_scale: 0.25
+  child_radius: 0.06
+
+renderer:
+  image_height: 224
+  image_width: 224
+  znear: 0.05
+  zfar: 3.0
+  white_background: false
+  max_sh_degree: 1
+  scale_min: [0.001, 0.001, 0.001]
+  scale_max: [0.08, 0.08, 0.08]
+
+depth:
+  teacher: xlens
+  official_repo_path: /home/ws/ws/droid_training/third_party/XLens
+  checkpoint_path: null
+  inference_resolution: [320, 180]
+  confidence_threshold: 0.0
+  metric_depth_weight: 0.5
+  scale_invariant_depth_weight: 0.25
+  scale_invariant_mean_weight: 1.0
+  cache_format: hdf5_shards
+  items_per_shard: 16
+
+flow:
+  teacher: waft
+  official_repo_path: /home/ws/ws/droid_training/dataset/third_party/WAFT
+  checkpoint_path: null
+  depth_checkpoint_path: null
+  config_path: /home/ws/ws/droid_training/dataset/third_party/WAFT/config/a1/tar-c-t.json
+  iterations: null
+  inference_batch_size: 16
+  cached_gaps: [1, 2, 3, 6, 12]
+  weight: 0.1
+  pair_weights: [0.4, 0.4, 0.2]
+  alpha_threshold: 0.01
+  smooth_l1_beta: 1.0
+  cache_format: hdf5_shards
+  items_per_shard: 8
+
+novel_view:
+  enabled: false
+  backend: see3d
+  see3d:
+    repo_path: /home/ws/ws/droid_training/third_party/See3D
+    checkpoint_path: null
+    cache_root: /ws/data/ws/droid_splattervae/see3d
+    super_resolution: false
+  pose_sampling:
+    mode: interpolate
+    min_alpha: 0.25
+    max_alpha: 0.75
+  geometric_warp:
+    use_xlens_depth: true
+    fuse_two_external_views: true
+    preserve_observed_pixels: true
+    relative_depth_tolerance: 0.05
+    absolute_depth_tolerance_m: 0.03
+  training:
+    probability: 0.20
+    loss_weight: 0.05
+    warmup_steps: 50000
+    minimum_confidence: 0.50
+    require_cached: true
+    samples_per_episode: 8
+    items_per_shard: 8
+    hallucinated_depth_confidence_scale: 0.25
+  supervision:
+    rgb: true
+    metric_depth: true
+    scale_invariant_depth: true
+  validation:
+    required_before_enable: true
+    summary_path: /ws/data/ws/droid_splattervae/see3d/validation/summary.json
+    maximum_samples: 100
+    motion_threshold_pixels: 3.0
+    dinov2_repository: null
+
+loss:
+  rgb_l1: 1.0
+  ssim: 0.2
+  visibility: 0.05
+  gaussian_regularization: 0.01
+
+optimizer:
+  name: adamw
+  reference_lr: 1.5e-4
+  reference_batch_size: 256
+  decoder_lr_multiplier: 2.0
+  betas: [0.9, 0.95]
+  weight_decay: 0.05
+  min_lr: 1.0e-6
+  warmup_fraction: 0.05
+  warmup_steps: 10000
+  schedule: cosine
+  gradient_clip_norm: 1.0
+  gradient_accumulation_steps: 4
+  num_epochs: 100
+  max_global_steps: 300000
+  bf16: true
+  tf32: true
+
+distributed:
+  backend: nccl
+  use_ddp: true
+  find_unused_parameters: false
+
+logging:
+  wandb_enabled: false
+  wandb_project: splattervae-droid
+  wandb_entity: null
+  run_name: null
+  checkpoint_dir: /ws/data/ws/droid_splattervae/logs/checkpoints
+  scalar_every_steps: 50
+  validation_every_steps: 2000
+  checkpoint_every_steps: 5000
+  visualization_every_steps: 5000
+  validation_batches: 8
+
+workspace_statistics:
+  output_path: /ws/data/ws/droid_splattervae/workspace_stats/workspace_stats.json
+  maximum_episodes: 2000
+  frames_per_episode: 8
+  depth_confidence_threshold: 0.5
+  depth_percentiles: [1.0, 5.0, 50.0, 95.0, 99.0]
+  coordinate_percentiles: [1.0, 5.0, 50.0, 95.0, 99.0]
