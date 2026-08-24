@@ -25,7 +25,7 @@ class TrainConfig:
     flow_alpha_threshold: float = 0.01
     flow_smooth_l1_beta: float = 1.0
     dynamic_region_weight: float = 1.0
-    visibility_weight: float = 0.5
+    visibility_weight: float = 2.5
 
     rec_weight: float = 1.0
     ssim_weight: float = 0.2

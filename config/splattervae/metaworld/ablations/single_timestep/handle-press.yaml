@@ -92,7 +92,7 @@ train:
   flow_alpha_threshold: 0.01
   flow_smooth_l1_beta: 1.0
   dynamic_region_weight: 1.0
-  visibility_weight: 10.0
+  visibility_weight: 2.5
   device: cuda
   use_segmentation_mask: false
   rec_weight: 1.0

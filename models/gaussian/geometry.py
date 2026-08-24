@@ -50,7 +50,7 @@ def visibility_loss_per_timestep(
     far_plane: float,
     margin_pixels: int = VISIBILITY_MARGIN_PIXELS,
 ) -> torch.Tensor:
-    """Penalize a valid Gaussian only when every supervision camera misses it."""
+    """Average each valid Gaussian's frustum violation over supervision cameras."""
     if float(far_plane) <= float(near_plane):
         raise ValueError("far_plane must be greater than near_plane.")
     if valid_mask.shape != xyz.shape[:-1]:
@@ -72,7 +72,7 @@ def visibility_loss_per_timestep(
     ) / float(far_plane - near_plane)
     violation = du + dv + dz
     violation = torch.where(finite, violation, torch.ones_like(violation))
-    visibility_violation = violation.amin(dim=2)
+    visibility_violation = violation.mean(dim=2)
     weights = valid_mask.to(dtype=visibility_violation.dtype)
     per_batch_timestep = (visibility_violation * weights).sum(-1) / weights.sum(-1).clamp_min(1.0)
     return per_batch_timestep.mean(0)
