@@ -151,21 +151,29 @@ def normalize_episode_path(value: str | bytes | os.PathLike[str]) -> str:
 
 class EpisodePathMatcher:
     def __init__(self, episode_id_to_path: Mapping[str, str]):
-        self._exact: dict[str, str] = {}
+        exact_candidates: dict[str, list[str]] = defaultdict(list)
         suffixes: dict[str, list[str]] = defaultdict(list)
         for episode_id, path in episode_id_to_path.items():
             normalized = normalize_episode_path(path)
-            existing = self._exact.get(normalized)
-            if existing is not None and existing != episode_id:
-                raise ValueError(f"Duplicate official episode path: {normalized}")
-            self._exact[normalized] = str(episode_id)
+            exact_candidates[normalized].append(str(episode_id))
             parts = normalized.split("/")
             for count in (4, 5, 6):
                 if len(parts) >= count:
                     suffixes["/".join(parts[-count:])].append(str(episode_id))
+        self._exact = {
+            key: values[0]
+            for key, values in exact_candidates.items()
+            if len(set(values)) == 1
+        }
+        self._ambiguous_exact = {
+            key for key, values in exact_candidates.items() if len(set(values)) > 1
+        }
         self._suffix = {
             key: values[0] for key, values in suffixes.items() if len(set(values)) == 1
         }
+
+    def is_ambiguous(self, normalized_path: str) -> bool:
+        return normalized_path in self._ambiguous_exact
 
     def match(
         self, file_path: str, recording_folderpath: str = ""
@@ -425,7 +433,12 @@ def build_calibration_entry(
         metadata.file_path, metadata.recording_folderpath
     )
     if episode_id is None:
-        return _invalid_entry(metadata, None, normalized_path, "path_match_failed")
+        reason = (
+            "ambiguous_path_match"
+            if matcher.is_ambiguous(normalized_path)
+            else "path_match_failed"
+        )
+        return _invalid_entry(metadata, None, normalized_path, reason)
     serials_all = official["camera_serials"]
     intrinsics_all = official["intrinsics"]
     if episode_id not in serials_all:

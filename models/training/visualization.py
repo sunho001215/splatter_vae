@@ -78,11 +78,36 @@ def save_droid_validation_visualization(
     )
     teacher_flow = batch["target_flow"][0, 1, 0]
     rendered_flow = reconstruction["rendered_flow"][0, 1, 0]
+    crop = batch["crop_metadata"]
+    crop_a = (
+        int(crop["crop_size"][0, 0]),
+        int(crop["crop_center_x"][0, 0]),
+        int(crop["crop_center_y"][0, 0]),
+    )
+    crop_b = (
+        int(crop["crop_size"][0, 1]),
+        int(crop["crop_center_x"][0, 1]),
+        int(crop["crop_center_y"][0, 1]),
+    )
     panels: list[tuple[str, np.ndarray]] = [
-        ("global RGB input A", _uint8_rgb(target_rgb[2, 0])),
-        ("local crop B", _uint8_rgb(batch["local_rgb_b"][0])),
-        ("paired exterior A", _uint8_rgb(target_rgb[2, 0])),
-        ("paired exterior B", _uint8_rgb(target_rgb[2, 1])),
+        (
+            f"motion crop A S={crop_a[0]} c=({crop_a[1]},{crop_a[2]})",
+            _uint8_rgb(target_rgb[2, 0]),
+        ),
+        (
+            f"motion crop B S={crop_b[0]} c=({crop_b[1]},{crop_b[2]})",
+            _uint8_rgb(target_rgb[2, 1]),
+        ),
+        (
+            "geometric validity A",
+            batch["target_image_validity"][0, 2, 0, 0].numpy().astype(np.uint8)
+            * 255,
+        ),
+        (
+            "geometric validity B",
+            batch["target_image_validity"][0, 2, 1, 0].numpy().astype(np.uint8)
+            * 255,
+        ),
         ("X-Lens metric depth", colorize_scalar(teacher_depth)),
         ("rendered expected depth", colorize_scalar(rendered_depth)),
         ("rendered RGB A", _uint8_rgb(reconstruction["rendered_rgb"][0, 2, 0])),

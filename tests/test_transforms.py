@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import random
+
 import torch
 
+from dataset.droid.sampling import (
+    MotionCropConfig,
+    sample_uniform_crop_size,
+    select_motion_crop,
+)
 from dataset.droid.transforms import (
-    GLOBAL_PAD_BOTTOM,
-    GLOBAL_PAD_TOP,
+    PAD_BOTTOM,
+    PAD_TOP,
     apply_spatial_transform,
-    global_transform,
     image_validity_mask,
-    local_transform,
+    motion_crop_transform,
+    pad_to_square,
     transform_confidence,
     transform_depth,
     transform_flow,
@@ -17,24 +24,68 @@ from dataset.droid.transforms import (
 )
 
 
-def test_global_320x180_to_224x126_then_padding() -> None:
-    transform = global_transform()
-    assert transform.scale_x == 0.7
-    assert transform.scale_y == 0.7
-    assert transform.resized_width == 224
-    assert transform.resized_height == 126
-    assert transform.pad_top == GLOBAL_PAD_TOP == 49
-    assert transform.pad_bottom == GLOBAL_PAD_BOTTOM == 49
+def test_320x180_is_padded_to_320_square_with_70_pixel_borders() -> None:
+    transform = motion_crop_transform(320, 160, 160)
     image = torch.ones(3, 180, 320)
-    output = apply_spatial_transform(image, transform)
-    assert output.shape == (3, 224, 224)
-    assert torch.count_nonzero(output[:, :49]) == 0
-    assert torch.count_nonzero(output[:, 175:]) == 0
-    assert torch.all(output[:, 49:175] == 1)
+    padded = pad_to_square(image, transform, padding_value=(0.5, 0.5, 0.5))
+    assert padded.shape == (3, 320, 320)
+    assert transform.pad_top == PAD_TOP == 70
+    assert transform.pad_bottom == PAD_BOTTOM == 70
+    assert torch.all(padded[:, :70] == 0.5)
+    assert torch.all(padded[:, 70:250] == 1.0)
+    assert torch.all(padded[:, 250:] == 0.5)
 
 
-def test_global_validity_mask() -> None:
-    mask = image_validity_mask(global_transform())
+def test_crop_size_sampling_is_uniform_on_closed_interval() -> None:
+    config = MotionCropConfig()
+    rng = random.Random(20260825)
+    draws = torch.tensor([sample_uniform_crop_size(config, rng) for _ in range(28_200)])
+    assert int(draws.min()) == 180
+    assert int(draws.max()) == 320
+    counts = torch.bincount(draws - 180, minlength=141).float()
+    expected = draws.numel() / 141
+    chi_square = (((counts - expected) ** 2) / expected).sum()
+    # Deterministic empirical guard against a hidden endpoint/global mixture.
+    assert float(chi_square) < 210.0
+    assert float(counts.max() / counts.min()) < 1.6
+
+
+def test_motion_center_is_highest_feasible_flow_after_size_is_known() -> None:
+    config = MotionCropConfig(flow_smoothing_kernel=1)
+    flows = torch.zeros(3, 2, 180, 320)
+    validity = torch.ones(3, 1, 180, 320, dtype=torch.bool)
+    # x=310 is outside the feasible center region for S=180; x=220 is inside.
+    flows[:, 0, 100, 310] = 100.0
+    flows[:, 0, 100, 220] = 10.0
+    selected = select_motion_crop(flows, validity, 180, config)
+    assert selected.metadata.crop_center_x == 220
+    assert selected.metadata.crop_center_y == 170  # raw y=100 plus top padding
+    assert selected.transform.crop_x == 130
+    assert selected.transform.crop_y == 80
+    assert selected.transform.crop_x + 180 <= 320
+    assert selected.transform.crop_y + 180 <= 320
+    assert not selected.metadata.low_motion_fallback_used
+
+
+def test_flow_smoothing_prefers_active_region_over_isolated_noisy_pixel() -> None:
+    config = MotionCropConfig(flow_smoothing_kernel=15)
+    flows = torch.zeros(3, 2, 180, 320)
+    validity = torch.ones(3, 1, 180, 320, dtype=torch.bool)
+    flows[0, 0, 40, 100] = 100.0
+    flows[:, 0, 90:105, 205:220] = 2.0
+    selected = select_motion_crop(flows, validity, 180, config)
+    assert 205 <= selected.metadata.crop_center_x <= 219
+    assert 160 <= selected.metadata.crop_center_y <= 174
+
+
+def test_full_canvas_crop_has_only_center_and_exact_validity() -> None:
+    config = MotionCropConfig(flow_smoothing_kernel=1)
+    flows = torch.rand(3, 2, 180, 320)
+    selected = select_motion_crop(flows, None, 320, config)
+    assert selected.metadata.crop_center_x == 160
+    assert selected.metadata.crop_center_y == 160
+    assert selected.transform.crop_x == selected.transform.crop_y == 0
+    mask = image_validity_mask(selected.transform)
     assert mask.shape == (1, 224, 224)
     assert int(mask.sum()) == 224 * 126
     assert not mask[:, :49].any()
@@ -42,44 +93,73 @@ def test_global_validity_mask() -> None:
     assert not mask[:, 175:].any()
 
 
-def test_global_intrinsics_exact_update() -> None:
+def test_zero_flow_uses_deterministic_center_fallback() -> None:
+    config = MotionCropConfig(low_motion_threshold=1.0e-4)
+    flows = torch.zeros(3, 2, 180, 320)
+    first = select_motion_crop(flows, None, 181, config)
+    second = select_motion_crop(flows, None, 181, config)
+    assert first.metadata.low_motion_fallback_used
+    assert first.metadata.crop_center_x == first.metadata.crop_center_y == 160
+    assert first.transform == second.transform
+    assert first.transform.crop_x == first.transform.crop_y == 70
+
+
+def test_intrinsics_follow_padding_crop_and_resize_formula_exactly() -> None:
+    transform = motion_crop_transform(200, center_x=180, center_y=120)
+    assert transform.crop_x == 80
+    assert transform.crop_y == 20
     K = torch.tensor(((200.0, 0.0, 160.0), (0.0, 210.0, 90.0), (0.0, 0.0, 1.0)))
-    output = transform_intrinsics(K, global_transform())
-    expected = torch.tensor(((140.0, 0.0, 112.0), (0.0, 147.0, 112.0), (0.0, 0.0, 1.0)))
+    output = transform_intrinsics(K, transform)
+    scale = 224.0 / 200.0
+    expected = torch.tensor(
+        (
+            (200.0 * scale, 0.0, (160.0 - 80.0) * scale),
+            (0.0, 210.0 * scale, (90.0 + 70.0 - 20.0) * scale),
+            (0.0, 0.0, 1.0),
+        )
+    )
     torch.testing.assert_close(output, expected)
 
 
-def test_local_crop_and_intrinsics() -> None:
-    transform = local_transform(70)
-    assert transform.scale_x == transform.scale_y == 224 / 180
-    image = torch.rand(3, 180, 320)
-    assert apply_spatial_transform(image, transform).shape == (3, 224, 224)
-    K = torch.tensor(((200.0, 0.0, 160.0), (0.0, 200.0, 90.0), (0.0, 0.0, 1.0)))
-    output = transform_intrinsics(K, transform)
-    assert torch.isclose(output[0, 2], torch.tensor((160.0 - 70.0) * 224 / 180))
-    assert torch.isclose(output[1, 2], torch.tensor(90.0 * 224 / 180))
+def test_depth_confidence_validity_and_padding_are_consistent() -> None:
+    transform = motion_crop_transform(320, 160, 160)
+    depth = torch.full((1, 180, 320), 2.0)
+    confidence = torch.ones_like(depth)
+    validity = torch.ones_like(depth, dtype=torch.bool)
+    output_depth = transform_depth(depth, transform)
+    output_confidence = transform_confidence(confidence, transform)
+    output_validity = transform_validity(validity, transform)
+    image_validity = image_validity_mask(transform)
+    assert output_depth.shape == output_confidence.shape == (1, 224, 224)
+    assert torch.equal(output_validity, image_validity)
+    assert torch.count_nonzero(output_depth[~image_validity]) == 0
+    assert torch.count_nonzero(output_confidence[~image_validity]) == 0
+    torch.testing.assert_close(
+        output_depth[image_validity], torch.full((224 * 126,), 2.0)
+    )
 
 
-def test_depth_confidence_and_validity_transform_shapes() -> None:
-    transform = local_transform(10)
-    depth = torch.arange(180 * 320, dtype=torch.float32).view(1, 180, 320)
-    confidence = torch.rand_like(depth)
-    validity = depth > 10
-    assert transform_depth(depth, transform).shape == (1, 224, 224)
-    assert transform_confidence(confidence, transform).shape == (1, 224, 224)
-    transformed_validity = transform_validity(validity, transform)
-    assert transformed_validity.dtype == torch.bool
-    assert transformed_validity.shape == (1, 224, 224)
-
-
-def test_flow_vector_scaling() -> None:
+def test_flow_spatial_resize_and_vector_magnitudes_use_crop_scale() -> None:
+    transform = motion_crop_transform(200, 160, 160)
     flow = torch.zeros(2, 180, 320)
     flow[0] = 10.0
     flow[1] = -5.0
-    global_flow = transform_flow(flow, global_transform())
-    valid = image_validity_mask(global_transform())[0]
-    torch.testing.assert_close(global_flow[0][valid], torch.full((224 * 126,), 7.0))
-    torch.testing.assert_close(global_flow[1][valid], torch.full((224 * 126,), -3.5))
-    local_flow = transform_flow(flow, local_transform(50))
-    torch.testing.assert_close(local_flow[0], torch.full((224, 224), 10.0 * 224 / 180))
-    torch.testing.assert_close(local_flow[1], torch.full((224, 224), -5.0 * 224 / 180))
+    output = transform_flow(flow, transform)
+    validity = image_validity_mask(transform)[0]
+    scale = 224.0 / 200.0
+    torch.testing.assert_close(output[0][validity], torch.full_like(output[0][validity], 10.0 * scale))
+    torch.testing.assert_close(output[1][validity], torch.full_like(output[1][validity], -5.0 * scale))
+    assert torch.count_nonzero(output[:, ~validity]) == 0
+
+
+def test_apply_transform_accepts_a_shared_temporal_tensor() -> None:
+    transform = motion_crop_transform(231, 160, 160)
+    history = torch.arange(3, dtype=torch.float32).view(3, 1, 1, 1).expand(3, 3, 180, 320)
+    output = apply_spatial_transform(history, transform, mode="bilinear")
+    assert output.shape == (3, 3, 224, 224)
+    validity = image_validity_mask(transform, leading_shape=(3,))
+    for frame in range(3):
+        torch.testing.assert_close(
+            output[frame][validity[frame].expand_as(output[frame])],
+            torch.full_like(output[frame][validity[frame].expand_as(output[frame])], float(frame)),
+        )

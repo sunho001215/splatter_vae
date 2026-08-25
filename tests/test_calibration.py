@@ -92,6 +92,23 @@ def test_rlds_path_to_episode_id_matching() -> None:
     )
 
 
+def test_duplicate_official_paths_are_rejected_as_ambiguous_not_crashed() -> None:
+    duplicate_id = "Lab+other+2023-08-01-12h-00m-00s"
+    matcher = EpisodePathMatcher(
+        {EPISODE_ID: EPISODE_PATH, duplicate_id: EPISODE_PATH}
+    )
+    episode_id, normalized = matcher.match(_metadata().file_path, "")
+    assert episode_id is None
+    assert matcher.is_ambiguous(normalized)
+    official = _official()
+    official["episode_id_to_path"][duplicate_id] = EPISODE_PATH
+    entry = build_calibration_entry(
+        _metadata(), official, matcher, CalibrationThresholds()
+    )
+    assert not entry["valid"]
+    assert entry["failure_reason"] == "ambiguous_path_match"
+
+
 def test_intrinsics_parse_and_scale_to_rlds() -> None:
     K, width, height = parse_intrinsics(
         {"cameraMatrix": [800.0, 640.0, 820.0, 360.0], "width": 1280, "height": 720}

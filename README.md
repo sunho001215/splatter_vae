@@ -14,6 +14,13 @@ contrastive projector are pretraining-only heads.
 
 - Three-frame causal history `[t-2s, t-s, t]`, with configurable strides
   `1/3/6` and learned temporal embeddings. No future frame is used.
+- Every logical sample pads 320 x 180 RGB to 320 x 320 with 70 neutral pixels
+  above and below, samples one square FOV uniformly from integer sizes
+  `[180,320]`, and centers each camera crop on the strongest smoothed WAFT
+  region that can contain that FOV. One crop is shared by all three frames and
+  all modalities for a camera; the two physical cameras may use different
+  motion centers. Crops are resized to 224 x 224 with exact K and flow-vector
+  updates, and padded pixels are excluded from reconstruction.
 - 224 x 224 RGB, 16 x 16 patches, 384 dimensions, 12 blocks, 6 heads,
   RMSNorm, SwiGLU hidden size 1024, LayerScale `1e-5`, and drop path `0.1`.
 - Flow-guided temporal tube masking at 60%, with an even motion-prioritized and
@@ -51,9 +58,17 @@ The three storage domains are deliberately separate:
 
 ```text
 code:          /home/ws/ws/droid_training
-DROID source:  /ws/data/ws/droid                 (strictly read-only)
+DROID source:  /home/ws/data/droid               (strictly read-only)
 derived data:  /ws/data/ws/droid_splattervae     (configurable)
 ```
+
+`/ws/data/ws/droid` was an earlier incorrect source path and is not used. The
+loader discovers the actual TFDS builder at `/home/ws/data/droid/1.0.1`; the
+release has one `train` split of 95,658 episodes in 2,048 TFRecord shards.
+Each step contains synchronized `exterior_image_1_left`,
+`exterior_image_2_left`, and `wrist_image_left` uint8 images with explicit
+`H x W x C = 180 x 320 x 3`, plus action and proprioception fields. Geometry
+training only consumes the two calibrated exterior streams.
 
 Every output entrypoint rejects a derived path inside, or containing, the DROID
 source tree. Calibration manifests and HDF5 shard indices carry content-based
@@ -93,7 +108,8 @@ Obtain their official released weights using each upstream repository's
 instructions. Set `depth.checkpoint_path`, `flow.checkpoint_path`,
 `flow.depth_checkpoint_path`, and `novel_view.see3d.checkpoint_path` in
 `config/splattervae/droid/pretrain.yaml`. Training never invokes these teachers
-inside the optimizer loop.
+inside the optimizer loop. X-Lens currently requires accepting the model's
+Hugging Face access conditions before its checkpoint can be downloaded.
 
 All GPU commands below expose only the authorized device. It must be reported
 inside PyTorch as `cuda:0`:
@@ -115,6 +131,13 @@ CFG=config/splattervae/droid/pretrain.yaml
 # infer/verify cam2cam direction, and write the Stage-0 manifest and split.
 .venv/bin/python scripts/prepare_droid_calibration.py --config "$CFG"
 
+# A bounded representative manifest is useful for validating a new mount
+# without overwriting the configured full manifest.
+.venv/bin/python scripts/prepare_droid_calibration.py --config "$CFG" \
+  --maximum-episodes 200 \
+  --manifest-output /ws/data/ws/droid_splattervae/manifests/sanity-200/calibration.jsonl.gz \
+  --split-output /ws/data/ws/droid_splattervae/manifests/sanity-200/episode_splits.json
+
 # Cache synchronized exterior-camera metric depth at the 320 x 180 RLDS grid.
 CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
   .venv/bin/python scripts/precompute_xlens_droid.py --config "$CFG"
@@ -134,8 +157,20 @@ statistics. Splits are episode-level and grouped by recording session where the
 metadata permits it.
 
 Official calibration intrinsics are interpreted on their released 1280 x 720
-grid and exactly transformed to 320 x 180 before global/local augmentation.
+grid and exactly transformed to the 320 x 180 RLDS grid before the unified
+motion-centered variable-FOV transform.
 `cam2base` means `T_base<-camera`; robot base is the world frame.
+
+Inspect crop behavior on cached real WAFT sequences. The output contains the
+original frame, aggregate motion, the same rectangle on all history frames,
+the native crop, the resized image, crop statistics, and a uniform-sampler
+audit:
+
+```bash
+.venv/bin/python scripts/visualize_droid_motion_crops.py --config "$CFG" \
+  --flow-cache /ws/data/ws/droid_splattervae/waft/flow-index.json \
+  --output-root /ws/data/ws/droid_splattervae/logs/crop_visualizations
+```
 
 ### Workspace pilot
 
@@ -212,9 +247,9 @@ counts, GPU mapping, and initialization diagnostics.
 ## Validation and development tests
 
 CPU tests cover calibration matching/direction/poses, 1280 x 720 to RLDS
-intrinsics, global/local RGB/depth/confidence/flow transforms, cache safety and
-provenance, temporal sampling, model contracts, losses, distributed sampling,
-and rank-aware checkpoint RNG state:
+intrinsics, motion-centered padding/cropping plus RGB/depth/confidence/flow/K
+transforms, cache safety and provenance, temporal sampling, model contracts,
+losses, distributed sampling, and rank-aware checkpoint RNG state:
 
 ```bash
 .venv/bin/ruff check --select F,B,I,RUF022 \
@@ -233,6 +268,17 @@ CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
 CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
   torchrun --standalone --nproc_per_node=1 \
   scripts/smoke_test_droid_gpu.py --ddp
+```
+
+The equivalent smoke test on an actual calibrated DROID history and its WAFT
+cache is:
+
+```bash
+CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
+  .venv/bin/python scripts/smoke_test_real_droid_gpu.py --config "$CFG" \
+  --manifest /ws/data/ws/droid_splattervae/manifests/calibration.jsonl.gz \
+  --flow-cache /ws/data/ws/droid_splattervae/waft/flow-index.json \
+  --output-root /ws/data/ws/droid_splattervae/logs/real_droid_smoke
 ```
 
 Multi-GPU DDP is implemented, but it should only be runtime-tested when the

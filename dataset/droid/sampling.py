@@ -5,9 +5,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DistributedSampler
 
-from .transforms import LOCAL_CROP_SIZE, RLDS_WIDTH
+from .transforms import (
+    MODEL_SIZE,
+    PAD_BOTTOM,
+    PAD_TOP,
+    PADDED_SIZE,
+    RLDS_HEIGHT,
+    RLDS_WIDTH,
+    SpatialTransform,
+    motion_crop_transform,
+)
 
 
 @dataclass(frozen=True)
@@ -32,26 +42,65 @@ class TemporalSamplingConfig:
 
 
 @dataclass(frozen=True)
-class LocalCropConfig:
-    motion_probability: float = 0.50
-    random_probability: float = 0.25
-    center_probability: float = 0.25
-    crop_size: int = LOCAL_CROP_SIZE
+class MotionCropConfig:
+    """Unified variable-FOV crop used by every DROID representation view."""
+
+    min_size: int = 180
+    max_size: int = 320
+    size_sampling: str = "uniform"
+    padded_size: int = PADDED_SIZE
+    pad_top: int = PAD_TOP
+    pad_bottom: int = PAD_BOTTOM
+    output_size: int = MODEL_SIZE
+    center_mode: str = "optical_flow_argmax"
+    flow_aggregation: str = "max"
+    flow_smoothing_kernel: int = 15
+    low_motion_threshold: float = 1.0e-4
+    low_motion_fallback: str = "image_center"
 
     def __post_init__(self) -> None:
-        probabilities = (
-            self.motion_probability,
-            self.random_probability,
-            self.center_probability,
-        )
-        if any(value < 0 for value in probabilities):
-            raise ValueError("Crop probabilities must be non-negative.")
-        if abs(sum(probabilities) - 1.0) > 1.0e-6:
-            raise ValueError("Crop probabilities must sum to one.")
-        if self.crop_size != LOCAL_CROP_SIZE:
-            raise ValueError(
-                f"The initial DROID local view is fixed at {LOCAL_CROP_SIZE}x{LOCAL_CROP_SIZE}."
-            )
+        if self.size_sampling != "uniform":
+            raise ValueError("DROID crop-size sampling must be uniform.")
+        if self.center_mode != "optical_flow_argmax":
+            raise ValueError("DROID crop centers must use the optical-flow argmax.")
+        if self.flow_aggregation not in ("max", "mean", "sum"):
+            raise ValueError("Flow aggregation must be max, mean, or sum.")
+        if self.low_motion_fallback != "image_center":
+            raise ValueError("The only degenerate low-motion fallback is image_center.")
+        if self.min_size <= 0 or self.max_size < self.min_size:
+            raise ValueError("Crop sizes must define a non-empty positive interval.")
+        if self.max_size > self.padded_size:
+            raise ValueError("Maximum crop size exceeds the padded canvas.")
+        if self.pad_top + RLDS_HEIGHT + self.pad_bottom != self.padded_size:
+            raise ValueError("Configured vertical padding does not produce the canvas.")
+        if RLDS_WIDTH != self.padded_size:
+            raise ValueError("DROID padding must not alter the RLDS image width.")
+        if self.flow_smoothing_kernel <= 0 or self.flow_smoothing_kernel % 2 == 0:
+            raise ValueError("Flow smoothing kernel must be a positive odd integer.")
+        if self.low_motion_threshold < 0:
+            raise ValueError("Low-motion threshold must be non-negative.")
+
+
+@dataclass(frozen=True)
+class MotionCropMetadata:
+    crop_size: int
+    crop_x0: int
+    crop_y0: int
+    crop_center_x: int
+    crop_center_y: int
+    resize_scale: float
+    real_pixel_fraction: float
+    flow_peak_value: float
+    selected_crop_flow_mean: float
+    low_motion_fallback_used: bool
+
+
+@dataclass(frozen=True)
+class MotionCropSelection:
+    transform: SpatialTransform
+    metadata: MotionCropMetadata
+    aggregate_motion_map: torch.Tensor
+    smoothed_motion_map: torch.Tensor
 
 
 def history_indices(current_timestep: int, stride: int) -> tuple[int, int, int]:
@@ -83,36 +132,136 @@ def sample_temporal_stride(
     )
 
 
-def _motion_crop_x(flow_magnitude: torch.Tensor, crop_size: int) -> int:
-    if flow_magnitude.dim() == 3:
-        score = flow_magnitude.amax(dim=0)
-    elif flow_magnitude.dim() == 2:
-        score = flow_magnitude
-    else:
-        raise ValueError(
-            "Motion crop selection expects (pairs,H,W) or (H,W) flow magnitude."
-        )
-    width = int(score.shape[-1])
-    if crop_size >= width:
-        return 0
-    column_score = torch.nan_to_num(score.float(), nan=0.0).sum(dim=-2)
-    window = torch.ones(1, 1, crop_size, device=score.device)
-    totals = torch.nn.functional.conv1d(column_score.view(1, 1, width), window)[0, 0]
-    return int(totals.argmax().item())
+def sample_uniform_crop_size(config: MotionCropConfig, rng: random.Random) -> int:
+    """Sample every integer in [min_size,max_size] with equal probability."""
+    return int(rng.randint(int(config.min_size), int(config.max_size)))
 
 
-def choose_local_crop_x(
-    flow_magnitude: torch.Tensor,
-    config: LocalCropConfig,
-    rng: random.Random,
-) -> tuple[int, str]:
-    maximum_x = RLDS_WIDTH - int(config.crop_size)
-    draw = rng.random()
-    if draw < config.motion_probability:
-        return _motion_crop_x(flow_magnitude, int(config.crop_size)), "motion"
-    if draw < config.motion_probability + config.random_probability:
-        return rng.randint(0, maximum_x), "random"
-    return maximum_x // 2, "center"
+def aggregate_flow_magnitude(
+    flows: torch.Tensor,
+    validity: torch.Tensor | None = None,
+    *,
+    aggregation: str = "max",
+) -> torch.Tensor:
+    """Aggregate all WAFT pairs on the original 180x320 pixel grid."""
+    if flows.dim() != 4 or flows.shape[1] != 2:
+        raise ValueError(f"Expected flow (pairs,2,H,W), got {tuple(flows.shape)}.")
+    if tuple(flows.shape[-2:]) != (RLDS_HEIGHT, RLDS_WIDTH):
+        raise ValueError("Flow crop selection requires the original RLDS grid.")
+    magnitude = torch.linalg.vector_norm(flows.float(), dim=1)
+    magnitude = torch.nan_to_num(magnitude, nan=0.0, posinf=0.0, neginf=0.0)
+    if validity is not None:
+        mask = validity.bool()
+        if mask.dim() == 4 and mask.shape[1] == 1:
+            mask = mask[:, 0]
+        if mask.shape != magnitude.shape:
+            raise ValueError(
+                f"Flow validity {tuple(mask.shape)} does not match {tuple(magnitude.shape)}."
+            )
+        magnitude = magnitude.masked_fill(~mask, 0.0)
+    if aggregation == "max":
+        return magnitude.amax(dim=0)
+    if aggregation == "mean":
+        return magnitude.mean(dim=0)
+    if aggregation == "sum":
+        return magnitude.sum(dim=0)
+    raise ValueError(f"Unknown flow aggregation {aggregation!r}.")
+
+
+def _pad_motion_map(score: torch.Tensor, config: MotionCropConfig) -> torch.Tensor:
+    if score.shape != (RLDS_HEIGHT, RLDS_WIDTH):
+        raise ValueError(f"Expected motion map (180,320), got {tuple(score.shape)}.")
+    return F.pad(score[None, None], (0, 0, config.pad_top, config.pad_bottom))[0, 0]
+
+
+def smooth_motion_map(score: torch.Tensor, kernel_size: int) -> torch.Tensor:
+    if score.dim() != 2:
+        raise ValueError("Motion smoothing expects a two-dimensional map.")
+    kernel = int(kernel_size)
+    if kernel <= 0 or kernel % 2 == 0:
+        raise ValueError("Motion smoothing kernel must be a positive odd integer.")
+    return F.avg_pool2d(
+        score[None, None],
+        kernel_size=kernel,
+        stride=1,
+        padding=kernel // 2,
+    )[0, 0]
+
+
+def _real_pixel_fraction(transform: SpatialTransform) -> float:
+    source_top = transform.pad_top
+    source_bottom = transform.pad_top + transform.source_height
+    crop_top = transform.crop_y
+    crop_bottom = transform.crop_y + transform.crop_size
+    vertical_overlap = max(0, min(source_bottom, crop_bottom) - max(source_top, crop_top))
+    source_left = transform.pad_left
+    source_right = transform.pad_left + transform.source_width
+    crop_left = transform.crop_x
+    crop_right = transform.crop_x + transform.crop_size
+    horizontal_overlap = max(
+        0, min(source_right, crop_right) - max(source_left, crop_left)
+    )
+    return float(vertical_overlap * horizontal_overlap) / float(transform.crop_size**2)
+
+
+def select_motion_crop(
+    flows: torch.Tensor,
+    validity: torch.Tensor | None,
+    crop_size: int,
+    config: MotionCropConfig,
+) -> MotionCropSelection:
+    """Select the deterministic highest-flow feasible center for one camera."""
+    size = int(crop_size)
+    if size < config.min_size or size > config.max_size:
+        raise ValueError(f"Crop size {size} is outside the configured interval.")
+    aggregate = aggregate_flow_magnitude(
+        flows, validity, aggregation=config.flow_aggregation
+    )
+    padded = _pad_motion_map(aggregate, config)
+    smoothed = smooth_motion_map(padded, config.flow_smoothing_kernel)
+
+    half_left = size // 2
+    half_right = size - half_left
+    minimum = half_left
+    maximum = config.padded_size - half_right
+    feasible = smoothed[minimum : maximum + 1, minimum : maximum + 1]
+    if feasible.numel() == 0:
+        raise RuntimeError("No feasible center exists for the sampled crop size.")
+    flat_index = int(feasible.reshape(-1).argmax().item())
+    feasible_width = int(feasible.shape[1])
+    center_y = minimum + flat_index // feasible_width
+    center_x = minimum + flat_index % feasible_width
+    peak = float(feasible.reshape(-1)[flat_index].item())
+    fallback = peak <= float(config.low_motion_threshold)
+    if fallback:
+        center_x = center_y = config.padded_size // 2
+
+    transform = motion_crop_transform(
+        size,
+        center_x,
+        center_y,
+        padded_size=config.padded_size,
+        pad_top=config.pad_top,
+        pad_bottom=config.pad_bottom,
+        output_size=config.output_size,
+    )
+    selected = padded[
+        transform.crop_y : transform.crop_y + size,
+        transform.crop_x : transform.crop_x + size,
+    ]
+    metadata = MotionCropMetadata(
+        crop_size=size,
+        crop_x0=transform.crop_x,
+        crop_y0=transform.crop_y,
+        crop_center_x=center_x,
+        crop_center_y=center_y,
+        resize_scale=transform.resize_scale,
+        real_pixel_fraction=_real_pixel_fraction(transform),
+        flow_peak_value=peak,
+        selected_crop_flow_mean=float(selected.mean().item()),
+        low_motion_fallback_used=fallback,
+    )
+    return MotionCropSelection(transform, metadata, padded, smoothed)
 
 
 def randomize_camera_order(rng: random.Random) -> tuple[int, int]:

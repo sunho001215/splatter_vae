@@ -6,7 +6,7 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-DEFAULT_DROID_ROOT = Path("/ws/data/ws/droid")
+DEFAULT_DROID_ROOT = Path("/home/ws/data/droid")
 DEFAULT_DERIVED_ROOT = Path("/ws/data/ws/droid_splattervae")
 
 

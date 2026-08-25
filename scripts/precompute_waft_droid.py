@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", required=True)
     parser.add_argument("--maximum-episodes", type=int, default=None)
+    parser.add_argument("--maximum-frames", type=int, default=None)
+    parser.add_argument("--manifest", default=None)
+    parser.add_argument("--output-root", default=None)
+    parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--depth-checkpoint", default=None)
     return parser.parse_args()
 
 
@@ -48,12 +53,13 @@ def main() -> None:
     if not droid_root.is_dir():
         raise FileNotFoundError(f"DROID source is not mounted at {droid_root}.")
     output_root = validate_derived_root(
-        Path(dataset_cfg["derived_root"]) / "waft", droid_root
+        args.output_root or Path(dataset_cfg["derived_root"]) / "waft", droid_root
     )
     configure_external_model_caches(dataset_cfg["derived_root"], droid_root)
     required_paths = {
-        "checkpoint_path": flow_cfg.get("checkpoint_path"),
-        "depth_checkpoint_path": flow_cfg.get("depth_checkpoint_path"),
+        "checkpoint_path": args.checkpoint or flow_cfg.get("checkpoint_path"),
+        "depth_checkpoint_path": args.depth_checkpoint
+        or flow_cfg.get("depth_checkpoint_path"),
         "config_path": flow_cfg.get("config_path"),
     }
     missing = [name for name, value in required_paths.items() if not value]
@@ -73,6 +79,7 @@ def main() -> None:
     predictor = make_waft_predictor(
         model, device, iterations=flow_cfg.get("iterations")
     )
+    torch.cuda.reset_peak_memory_stats(device)
     checkpoint_identity = "|".join(
         f"{Path(path).name}:{sha256_file(path)}"
         for path in (
@@ -81,13 +88,12 @@ def main() -> None:
             required_paths["config_path"],
         )
     )
+    manifest_path = args.manifest or dataset_cfg["calibration_manifest"]
     provenance = CacheProvenance(
         teacher_name="WAFT",
         checkpoint=checkpoint_identity,
         teacher_version=git_revision(repository),
-        calibration_version=calibration_manifest_version(
-            dataset_cfg["calibration_manifest"]
-        ),
+        calibration_version=calibration_manifest_version(manifest_path),
         preprocessing_version=WAFT_PREPROCESSING_VERSION,
         resolution=(320, 180),
     )
@@ -103,13 +109,14 @@ def main() -> None:
         )
     entries = [
         entry
-        for entry in load_calibration_manifest(dataset_cfg["calibration_manifest"])
+        for entry in load_calibration_manifest(manifest_path)
         if entry.get("valid")
     ]
     if args.maximum_episodes is not None:
         entries = entries[: max(0, args.maximum_episodes)]
     backend = TFDSRLDSBackend(droid_root)
     batch_size = int(flow_cfg.get("inference_batch_size", 16))
+    predicted_pairs = 0
     with HDF5ShardWriter(
         output_root,
         provenance,
@@ -122,6 +129,13 @@ def main() -> None:
                 entry["rlds_split"], int(entry["rlds_ordinal"])
             )
             images = np.asarray(episode["images"], dtype=np.uint8)
+            if args.maximum_frames is not None:
+                images = images[: max(0, int(args.maximum_frames))]
+            if len(images) <= max(gaps):
+                raise ValueError(
+                    f"Episode {entry['episode_id']} has only {len(images)} selected frames; "
+                    f"WAFT gaps require more than {max(gaps)}."
+                )
             for camera_index, camera in enumerate(entry["exterior_cameras"]):
                 frames = images[:, camera_index]
                 arrays: dict[str, np.ndarray] = {}
@@ -136,6 +150,7 @@ def main() -> None:
                         prediction = predictor(
                             frames[start:stop], frames[start + gap : stop + gap]
                         )
+                        predicted_pairs += stop - start
                         predicted_flow = prediction["forward_flow"]
                         if predicted_flow.shape != (stop - start, 180, 320, 2):
                             raise RuntimeError(
@@ -170,6 +185,7 @@ def main() -> None:
                         "logical_camera_id": camera["logical_id"],
                         "physical_serial": camera["serial"],
                         "frame_count": int(entry["num_steps"]),
+                        "cached_frame_count": int(len(images)),
                         "gaps": list(gaps),
                         "direction": "forward",
                         "flow_units": "RLDS_pixels",
@@ -182,6 +198,21 @@ def main() -> None:
                 f"[WAFT] {episode_index + 1}/{len(entries)} {entry['episode_id']}",
                 flush=True,
             )
+    print(
+        json.dumps(
+            {
+                "waft_sanity": {
+                    "episodes": len(entries),
+                    "predicted_camera_pairs": predicted_pairs,
+                    "peak_gpu_memory_gib": torch.cuda.max_memory_allocated(device)
+                    / (1024**3),
+                    "output_root": str(output_root),
+                }
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ from dataset.droid.dataset import DROIDDatasetConfig, DROIDLogicalDataset, droid
 from dataset.droid.safety import assert_paths_outside_source, validate_derived_root
 from dataset.droid.sampling import (
     EpisodeGroupedDistributedSampler,
-    LocalCropConfig,
+    MotionCropConfig,
     TemporalSamplingConfig,
 )
 from models.gaussian.parameterization import (
@@ -66,31 +66,29 @@ def _only_dataclass_fields(cls, values: Mapping[str, Any]) -> dict[str, Any]:
 def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
     """Fail fast instead of silently ignoring architecture-sensitive YAML keys."""
     preprocessing = config["preprocessing"]
+    crop = preprocessing["crop"]
     expected = {
-        "preprocessing.input_resolution": (
-            tuple(preprocessing["input_resolution"]),
-            (320, 180),
+        "preprocessing.source_width": (int(preprocessing["source_width"]), 320),
+        "preprocessing.source_height": (int(preprocessing["source_height"]), 180),
+        "preprocessing.padded_size": (int(preprocessing["padded_size"]), 320),
+        "preprocessing.pad_top": (int(preprocessing["pad_top"]), 70),
+        "preprocessing.pad_bottom": (int(preprocessing["pad_bottom"]), 70),
+        "preprocessing.output_size": (int(preprocessing["output_size"]), 224),
+        "preprocessing.padding_value": (
+            str(preprocessing["padding_value"]),
+            "imagenet_mean",
         ),
-        "preprocessing.encoder_resolution": (
-            tuple(preprocessing["encoder_resolution"]),
-            (224, 224),
+        "preprocessing.crop.size_sampling": (
+            str(crop["size_sampling"]),
+            "uniform",
         ),
-        "preprocessing.global.resized_resolution": (
-            tuple(preprocessing["global"]["resized_resolution"]),
-            (224, 126),
+        "preprocessing.crop.center_mode": (
+            str(crop["center_mode"]),
+            "optical_flow_argmax",
         ),
-        "preprocessing.global.pad_top": (int(preprocessing["global"]["pad_top"]), 49),
-        "preprocessing.global.pad_bottom": (
-            int(preprocessing["global"]["pad_bottom"]),
-            49,
-        ),
-        "preprocessing.local.crop_size": (
-            int(preprocessing["local"]["crop_size"]),
-            180,
-        ),
-        "preprocessing.local.output_size": (
-            int(preprocessing["local"]["output_size"]),
-            224,
+        "preprocessing.crop.low_motion_fallback": (
+            str(crop["low_motion_fallback"]),
+            "image_center",
         ),
         "vit.normalization": (str(config["vit"]["normalization"]).lower(), "rmsnorm"),
         "vit.initialize_from": (
@@ -151,20 +149,15 @@ def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
         for name, (configured, required) in expected.items()
         if configured != required
     }
-    if abs(float(preprocessing["global"]["scale"]) - 0.7) > 1.0e-12:
-        mismatches["preprocessing.global.scale"] = {
-            "configured": preprocessing["global"]["scale"],
-            "required": 0.7,
+    if int(crop["min_size"]) != 180 or int(crop["max_size"]) != 320:
+        mismatches["preprocessing.crop.size_interval"] = {
+            "configured": (crop["min_size"], crop["max_size"]),
+            "required": (180, 320),
         }
     if not bool(config["calibration"]["use_exterior_cameras_only"]):
         mismatches["calibration.use_exterior_cameras_only"] = {
             "configured": False,
             "required": True,
-        }
-    if str(preprocessing["logical_pair"]["gaussian_source"]) != "global_camera_a":
-        mismatches["preprocessing.logical_pair.gaussian_source"] = {
-            "configured": preprocessing["logical_pair"]["gaussian_source"],
-            "required": "global_camera_a",
         }
     temporal_strides = tuple(
         int(value) for value in config["dataset"]["temporal_strides"]
@@ -194,26 +187,35 @@ def _dataset_config(config: Mapping[str, Any], split: str) -> DROIDDatasetConfig
         ),
         validation_stride=int(dataset["validation_stride"]),
     )
-    local = preprocessing["local"]
-    local_crop = LocalCropConfig(
-        motion_probability=float(local["motion_probability"]),
-        random_probability=float(local["random_probability"]),
-        center_probability=float(local["center_probability"]),
-        crop_size=int(local["crop_size"]),
+    crop = preprocessing["crop"]
+    motion_crop = MotionCropConfig(
+        min_size=int(crop["min_size"]),
+        max_size=int(crop["max_size"]),
+        size_sampling=str(crop["size_sampling"]),
+        padded_size=int(preprocessing["padded_size"]),
+        pad_top=int(preprocessing["pad_top"]),
+        pad_bottom=int(preprocessing["pad_bottom"]),
+        output_size=int(preprocessing["output_size"]),
+        center_mode=str(crop["center_mode"]),
+        flow_aggregation=str(crop["flow_aggregation"]),
+        flow_smoothing_kernel=int(crop["flow_smoothing_kernel"]),
+        low_motion_threshold=float(crop["low_motion_threshold"]),
+        low_motion_fallback=str(crop["low_motion_fallback"]),
     )
     normalization = preprocessing["rgb_normalization"]
+    if str(preprocessing["padding_value"]) != "imagenet_mean":
+        raise ValueError("Only neutral ImageNet-mean RGB padding is supported.")
+    mean = tuple(float(value) for value in normalization["mean"])
     return DROIDDatasetConfig(
         droid_root=str(dataset["droid_root"]),
         calibration_manifest=str(dataset["calibration_manifest"]),
         split=split,
         seed=int(dataset.get("seed", 42)),
         temporal=temporal,
-        local_crop=local_crop,
-        second_view_local_probability=float(
-            preprocessing["logical_pair"]["second_view_local_probability"]
-        ),
-        normalize_mean=tuple(float(value) for value in normalization["mean"]),
+        motion_crop=motion_crop,
+        normalize_mean=mean,
         normalize_std=tuple(float(value) for value in normalization["std"]),
+        rgb_padding_value=tuple(value * 255.0 for value in mean),
         require_depth_cache=bool(dataset.get("require_xlens_cache", True)),
         require_flow_cache=bool(dataset.get("require_waft_cache", True)),
     )

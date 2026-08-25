@@ -4,7 +4,7 @@ import bisect
 import multiprocessing as mp
 import random
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -16,21 +16,22 @@ from .cache import HDF5CacheReader, calibration_manifest_version
 from .calibration import load_calibration_manifest
 from .rlds import EpisodeBackend, TFDSRLDSBackend
 from .sampling import (
-    LocalCropConfig,
+    MotionCropConfig,
     TemporalSamplingConfig,
-    choose_local_crop_x,
     history_indices,
     randomize_camera_order,
     sample_temporal_stride,
+    sample_uniform_crop_size,
+    select_motion_crop,
 )
 from .transforms import (
+    IMAGENET_NEUTRAL_RGB,
     MODEL_SIZE,
     RLDS_HEIGHT,
     RLDS_WIDTH,
     SpatialTransform,
-    global_transform,
     image_validity_mask,
-    local_transform,
+    pad_to_square,
     transform_confidence,
     transform_depth,
     transform_flow,
@@ -45,29 +46,30 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 
 @dataclass(frozen=True)
 class DROIDDatasetConfig:
-    droid_root: str = "/ws/data/ws/droid"
+    droid_root: str = "/home/ws/data/droid"
     calibration_manifest: str = (
         "/ws/data/ws/droid_splattervae/manifests/calibration.jsonl.gz"
     )
     split: str = "train"
     seed: int = 42
     temporal: TemporalSamplingConfig = field(default_factory=TemporalSamplingConfig)
-    local_crop: LocalCropConfig = field(default_factory=LocalCropConfig)
-    second_view_local_probability: float = 0.50
+    motion_crop: MotionCropConfig = field(default_factory=MotionCropConfig)
     normalize_mean: tuple[float, float, float] = IMAGENET_MEAN
     normalize_std: tuple[float, float, float] = IMAGENET_STD
+    rgb_padding_value: tuple[float, float, float] = IMAGENET_NEUTRAL_RGB
     require_depth_cache: bool = True
     require_flow_cache: bool = True
+    include_crop_debug: bool = False
 
     def __post_init__(self) -> None:
         if self.split not in ("train", "validation"):
             raise ValueError("DROID split must be 'train' or 'validation'.")
-        if not 0.0 <= self.second_view_local_probability <= 1.0:
-            raise ValueError("second_view_local_probability must lie in [0,1].")
         if len(self.normalize_mean) != 3 or len(self.normalize_std) != 3:
             raise ValueError("RGB normalization requires three-channel mean and std.")
         if any(float(value) <= 0.0 for value in self.normalize_std):
             raise ValueError("RGB normalization standard deviations must be positive.")
+        if len(self.rgb_padding_value) != 3:
+            raise ValueError("RGB padding requires three channel values.")
 
 
 def _chw_rgb(image: np.ndarray) -> torch.Tensor:
@@ -125,10 +127,10 @@ def normalize_encoder_rgb(
 class DROIDLogicalDataset(Dataset[dict[str, Any]]):
     """One item is one physical DROID history with two calibrated exterior views.
 
-    Representation view 1 is always a global history from camera A. View 2 is
-    a global or local history from camera B. Geometry supervision always uses
-    global histories and has camera A first, so the Gaussian source is explicit.
-    No semantic segmentation field exists in this contract.
+    One uniformly sampled variable-FOV size is shared across the positive pair.
+    Each camera independently selects its highest-WAFT feasible crop center, and
+    that camera transform is shared by all three history frames and geometric
+    modalities. No semantic segmentation field exists in this contract.
     """
 
     def __init__(
@@ -299,9 +301,13 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
 
     @staticmethod
     def _apply_rgb(
-        history: torch.Tensor, transform: SpatialTransform
+        history: torch.Tensor,
+        transform: SpatialTransform,
+        padding_value: Sequence[float],
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        transformed = transform_rgb(history, transform)
+        transformed = transform_rgb(
+            history, transform, padding_value=tuple(padding_value)
+        )
         validity = image_validity_mask(transform, leading_shape=(history.shape[0],))
         return transformed, validity
 
@@ -368,60 +374,88 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
             raw_depth_confidence.append(torch.stack(confidence))
             raw_depth_validity.append(torch.stack(validity))
 
-        global_tx = global_transform()
-        motion_magnitude_b = torch.linalg.vector_norm(raw_flows[1][:2], dim=1)
-        local_x, local_strategy = choose_local_crop_x(
-            motion_magnitude_b, self.config.local_crop, rng
-        )
-        local_tx = local_transform(local_x)
-        use_local_second = rng.random() < self.config.second_view_local_probability
-
-        global_histories, global_image_validity = zip(
-            *(self._apply_rgb(history, global_tx) for history in histories_raw),
+        # A logical positive pair samples one FOV, while each physical camera
+        # independently finds its strongest feasible WAFT region. Each selected
+        # transform is then fixed across all three history frames and modalities.
+        crop_size = sample_uniform_crop_size(self.config.motion_crop, rng)
+        crop_selections = [
+            select_motion_crop(
+                raw_flows[camera_index],
+                raw_flow_validity[camera_index],
+                crop_size,
+                self.config.motion_crop,
+            )
+            for camera_index in range(2)
+        ]
+        transforms = [selection.transform for selection in crop_selections]
+        transformed_histories, transformed_image_validity = zip(
+            *(
+                self._apply_rgb(
+                    history, transform, self.config.rgb_padding_value
+                )
+                for history, transform in zip(
+                    histories_raw, transforms, strict=True
+                )
+            ),
             strict=True,
         )
-        local_history_b, local_validity_b = self._apply_rgb(histories_raw[1], local_tx)
-        representation_raw = torch.stack(
-            (
-                global_histories[0],
-                local_history_b if use_local_second else global_histories[1],
-            )
-        )
-        representation_validity = torch.stack(
-            (
-                global_image_validity[0],
-                local_validity_b if use_local_second else global_image_validity[1],
-            )
-        )
-        transformed_flow_a = transform_flow(raw_flows[0][:2], global_tx)
-        transformed_flow_b = transform_flow(
-            raw_flows[1][:2], local_tx if use_local_second else global_tx
-        )
+        representation_raw = torch.stack(transformed_histories)
+        representation_validity = torch.stack(transformed_image_validity)
+        transformed_flows = [
+            transform_flow(value, transform)
+            for value, transform in zip(raw_flows, transforms, strict=True)
+        ]
 
-        target_rgb = torch.stack(global_histories, dim=1).float() / 255.0
-        target_image_validity = torch.stack(global_image_validity, dim=1)
+        target_rgb = torch.stack(transformed_histories, dim=1).float() / 255.0
+        target_image_validity = torch.stack(transformed_image_validity, dim=1)
         target_depth = torch.stack(
-            [transform_depth(value, global_tx) for value in raw_depths], dim=1
+            [
+                transform_depth(value, transform)
+                for value, transform in zip(raw_depths, transforms, strict=True)
+            ],
+            dim=1,
         )
         target_depth_confidence = torch.stack(
-            [transform_confidence(value, global_tx) for value in raw_depth_confidence],
+            [
+                transform_confidence(value, transform)
+                for value, transform in zip(
+                    raw_depth_confidence, transforms, strict=True
+                )
+            ],
             dim=1,
         )
         target_depth_validity = (
             torch.stack(
-                [transform_validity(value, global_tx) for value in raw_depth_validity],
+                [
+                    transform_validity(value, transform)
+                    for value, transform in zip(
+                        raw_depth_validity, transforms, strict=True
+                    )
+                ],
                 dim=1,
             )
             & target_image_validity
         )
-        target_flow = torch.stack(
-            [transform_flow(value, global_tx) for value in raw_flows], dim=1
+        target_flow = torch.stack(transformed_flows, dim=1)
+        target_flow_validity = (
+            torch.stack(
+                [
+                    transform_validity(value, transform)
+                    for value, transform in zip(
+                        raw_flow_validity, transforms, strict=True
+                    )
+                ],
+                dim=1,
+            )
+            & target_image_validity
         )
-        target_flow_validity = torch.stack(
-            [transform_validity(value, global_tx) for value in raw_flow_validity], dim=1
-        ) & image_validity_mask(global_tx, leading_shape=(3, 2))
         target_flow_confidence = torch.stack(
-            [transform_confidence(value, global_tx) for value in raw_flow_confidence],
+            [
+                transform_confidence(value, transform)
+                for value, transform in zip(
+                    raw_flow_confidence, transforms, strict=True
+                )
+            ],
             dim=1,
         )
 
@@ -431,16 +465,13 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                 for camera in cameras
             ]
         )
-        global_K = torch.stack([transform_intrinsics(K, global_tx) for K in K_rlds])
         representation_K = torch.stack(
-            (
-                global_K[0],
-                transform_intrinsics(K_rlds[1], local_tx)
-                if use_local_second
-                else global_K[1],
-            )
+            [
+                transform_intrinsics(K, transform)
+                for K, transform in zip(K_rlds, transforms, strict=True)
+            ]
         )
-        target_K = global_K[None].expand(3, -1, -1, -1).contiguous()
+        target_K = representation_K[None].expand(3, -1, -1, -1).contiguous()
         target_c2w = (
             torch.stack(
                 [
@@ -469,7 +500,7 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                 self.config.normalize_std,
             ),
             "representation_flows": torch.stack(
-                (transformed_flow_a, transformed_flow_b)
+                [value[:2] for value in transformed_flows]
             ),
             "representation_validity": representation_validity,
             "representation_K": representation_K[:, None]
@@ -486,7 +517,6 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
             "target_K": target_K,
             "target_c2w": target_c2w,
             "target_w2c": target_w2c,
-            "local_rgb_b": local_history_b[-1].float() / 255.0,
             "calibration_validity": torch.tensor(True),
             "current_timestep": torch.tensor(current, dtype=torch.long),
             "history_indices": torch.tensor(indices, dtype=torch.long),
@@ -494,10 +524,51 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
             "camera_order": torch.tensor((camera_a, camera_b), dtype=torch.long),
             "camera_serials": tuple(str(camera["serial"]) for camera in cameras),
             "episode_id": episode_id,
-            "second_view_is_local": torch.tensor(use_local_second),
-            "local_crop_x": torch.tensor(local_x, dtype=torch.long),
-            "local_crop_strategy": local_strategy,
+            "crop_metadata": {
+                key: torch.tensor(
+                    [asdict(selection.metadata)[key] for selection in crop_selections],
+                    dtype=(
+                        torch.bool
+                        if key == "low_motion_fallback_used"
+                        else (
+                            torch.long
+                            if key
+                            in {
+                                "crop_size",
+                                "crop_x0",
+                                "crop_y0",
+                                "crop_center_x",
+                                "crop_center_y",
+                            }
+                            else torch.float32
+                        )
+                    ),
+                )
+                for key in asdict(crop_selections[0].metadata)
+            },
         }
+        if self.config.include_crop_debug:
+            output["crop_debug"] = {
+                "original_rgb": torch.stack(histories_raw),
+                "padded_rgb": torch.stack(
+                    [
+                        pad_to_square(
+                            history,
+                            transform,
+                            padding_value=self.config.rgb_padding_value,
+                        )
+                        for history, transform in zip(
+                            histories_raw, transforms, strict=True
+                        )
+                    ]
+                ),
+                "aggregate_motion": torch.stack(
+                    [selection.aggregate_motion_map for selection in crop_selections]
+                ),
+                "smoothed_motion": torch.stack(
+                    [selection.smoothed_motion_map for selection in crop_selections]
+                ),
+            }
         synthetic = (
             None
             if self.see3d_cache is None
@@ -505,12 +576,16 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                 episode_id, current, occurrence=rng.randrange(2**31)
             )
         )
+        # See3D is optional and precomputed on the RLDS grid. Reuse camera A's
+        # sampled spatial transform so its virtual K and all synthetic targets
+        # remain mutually consistent; See3D is disabled by default.
+        synthetic_tx = transforms[0]
         if synthetic is None:
             output.update(
                 {
                     "synthetic_available": torch.tensor(False),
                     "synthetic_rgb": torch.zeros(3, MODEL_SIZE, MODEL_SIZE),
-                    "synthetic_image_validity": image_validity_mask(global_tx),
+                    "synthetic_image_validity": image_validity_mask(synthetic_tx),
                     "synthetic_confidence": torch.zeros(1, MODEL_SIZE, MODEL_SIZE),
                     "synthetic_depth": torch.zeros(1, MODEL_SIZE, MODEL_SIZE),
                     "synthetic_depth_confidence": torch.zeros(
@@ -530,7 +605,11 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
             )
         else:
             synthetic_rgb = (
-                transform_rgb(_chw_rgb(synthetic["generated_rgb"]), global_tx).float()
+                transform_rgb(
+                    _chw_rgb(synthetic["generated_rgb"]),
+                    synthetic_tx,
+                    padding_value=self.config.rgb_padding_value,
+                ).float()
                 / 255.0
             )
             synthetic_confidence = transform_confidence(
@@ -539,7 +618,7 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                     name="synthetic confidence",
                     dtype=torch.float32,
                 ),
-                global_tx,
+                synthetic_tx,
             )
             synthetic_depth_confidence = (
                 transform_confidence(
@@ -548,7 +627,7 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                         name="synthetic depth confidence",
                         dtype=torch.float32,
                     ),
-                    global_tx,
+                    synthetic_tx,
                 )
                 * synthetic_confidence
             )
@@ -558,7 +637,7 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                     name="synthetic depth validity",
                     dtype=torch.bool,
                 ),
-                global_tx,
+                synthetic_tx,
             )
             synthetic_geometry = transform_validity(
                 _one_channel(
@@ -566,13 +645,13 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                     name="synthetic geometry support",
                     dtype=torch.bool,
                 ),
-                global_tx,
+                synthetic_tx,
             )
             output.update(
                 {
                     "synthetic_available": torch.tensor(True),
                     "synthetic_rgb": synthetic_rgb,
-                    "synthetic_image_validity": image_validity_mask(global_tx),
+                    "synthetic_image_validity": image_validity_mask(synthetic_tx),
                     "synthetic_confidence": synthetic_confidence,
                     "synthetic_depth": transform_depth(
                         _one_channel(
@@ -580,14 +659,14 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                             name="synthetic depth",
                             dtype=torch.float32,
                         ),
-                        global_tx,
+                        synthetic_tx,
                     ),
                     "synthetic_depth_confidence": synthetic_depth_confidence,
                     "synthetic_depth_validity": synthetic_depth_validity,
                     "synthetic_geometry_supported": synthetic_geometry,
                     "synthetic_K": transform_intrinsics(
                         torch.as_tensor(synthetic["virtual_K"], dtype=torch.float32),
-                        global_tx,
+                        synthetic_tx,
                     ),
                     "synthetic_c2w": torch.as_tensor(
                         synthetic["virtual_c2w"], dtype=torch.float32
@@ -596,7 +675,7 @@ class DROIDLogicalDataset(Dataset[dict[str, Any]]):
                         synthetic["virtual_w2c"], dtype=torch.float32
                     ),
                     "synthetic_view_confidence": synthetic_confidence[
-                        image_validity_mask(global_tx)
+                        image_validity_mask(synthetic_tx)
                     ].mean(),
                 }
             )

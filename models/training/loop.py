@@ -237,6 +237,36 @@ def _feature_diagnostics(
     }
 
 
+def _crop_diagnostics(batch: Mapping[str, Any]) -> dict[str, torch.Tensor]:
+    metadata = batch["crop_metadata"]
+    sizes = metadata["crop_size"].float()
+    logical_sizes = sizes[..., 0]
+    values: dict[str, torch.Tensor] = {
+        "crop_size_mean": logical_sizes.mean(),
+        "crop_size_min": logical_sizes.amin(),
+        "crop_size_max": logical_sizes.amax(),
+        "crop_center_x_mean": metadata["crop_center_x"].float().mean(),
+        "crop_center_y_mean": metadata["crop_center_y"].float().mean(),
+        "crop_center_x_std": metadata["crop_center_x"].float().std(unbiased=False),
+        "crop_center_y_std": metadata["crop_center_y"].float().std(unbiased=False),
+        "crop_real_pixel_fraction": metadata["real_pixel_fraction"].float().mean(),
+        "crop_flow_peak_mean": metadata["flow_peak_value"].float().mean(),
+        "crop_selected_flow_mean": metadata["selected_crop_flow_mean"].float().mean(),
+        "crop_low_motion_fallback_fraction": metadata[
+            "low_motion_fallback_used"
+        ].float().mean(),
+    }
+    # Eight fixed bins make the intended uniform [180,320] distribution easy
+    # to audit in console/W&B scalars without sending a framework-specific object.
+    edges = torch.linspace(180.0, 321.0, 9, device=logical_sizes.device)
+    for index in range(8):
+        in_bin = (logical_sizes >= edges[index]) & (
+            logical_sizes < edges[index + 1]
+        )
+        values[f"crop_size_histogram_bin_{index}"] = in_bin.float().mean()
+    return values
+
+
 def _all_ranks_finite(value: torch.Tensor) -> bool:
     finite = torch.isfinite(value.detach()).to(dtype=torch.int32)
     if dist.is_initialized():
@@ -431,6 +461,10 @@ def train_droid(
                 **{
                     f"train/{key}": value
                     for key, value in _feature_diagnostics(prediction).items()
+                },
+                **{
+                    f"train/{key}": value
+                    for key, value in _crop_diagnostics(batch).items()
                 },
             }
             if state.global_step % max(1, int(config.scalar_log_every_steps)) == 0:

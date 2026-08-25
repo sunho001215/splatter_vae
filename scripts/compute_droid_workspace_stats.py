@@ -25,6 +25,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", required=True)
     parser.add_argument("--maximum-episodes", type=int, default=None)
+    parser.add_argument("--manifest", default=None)
+    parser.add_argument("--depth-cache", default=None)
+    parser.add_argument("--output", default=None)
     return parser.parse_args()
 
 
@@ -48,22 +51,27 @@ def main() -> None:
     droid_root = Path(dataset_cfg["droid_root"]).expanduser().resolve()
     if not droid_root.is_dir():
         raise FileNotFoundError(f"DROID source is not mounted at {droid_root}.")
-    output = Path(stats_cfg["output_path"]).expanduser().resolve(strict=False)
+    output = Path(args.output or stats_cfg["output_path"]).expanduser().resolve(
+        strict=False
+    )
     validate_derived_root(output.parent, droid_root).mkdir(parents=True, exist_ok=True)
     entries = [
         entry
-        for entry in load_calibration_manifest(dataset_cfg["calibration_manifest"])
+        for entry in load_calibration_manifest(
+            args.manifest or dataset_cfg["calibration_manifest"]
+        )
         if entry.get("valid")
     ]
     random.Random(int(dataset_cfg.get("seed", 42))).shuffle(entries)
     maximum_episodes = args.maximum_episodes or int(stats_cfg["maximum_episodes"])
     entries = entries[:maximum_episodes]
-    depth_cache = HDF5CacheReader(dataset_cfg["xlens_cache_index"])
+    manifest_path = args.manifest or dataset_cfg["calibration_manifest"]
+    depth_cache = HDF5CacheReader(
+        args.depth_cache or dataset_cfg["xlens_cache_index"]
+    )
     depth_cache.require_compatible(
         teacher_name="X-Lens",
-        calibration_version=calibration_manifest_version(
-            dataset_cfg["calibration_manifest"]
-        ),
+        calibration_version=calibration_manifest_version(manifest_path),
     )
     rng = np.random.default_rng(int(dataset_cfg.get("seed", 42)))
     point_samples = np.empty((0, 3), dtype=np.float32)

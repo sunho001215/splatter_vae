@@ -13,7 +13,7 @@ from dataset.droid.cache import (
     calibration_manifest_version,
     sequence_cache_key,
 )
-from dataset.droid.safety import validate_derived_root
+from dataset.droid.safety import DEFAULT_DROID_ROOT, validate_derived_root
 from preprocessing.common import configure_external_model_caches
 
 
@@ -28,6 +28,12 @@ def test_derived_outputs_cannot_be_inside_droid_source(tmp_path) -> None:
         validate_derived_root(tmp_path / "derived", source)
         == (tmp_path / "derived").resolve()
     )
+
+
+def test_default_read_only_source_is_the_actual_droid_mount() -> None:
+    assert str(DEFAULT_DROID_ROOT) == "/home/ws/data/droid"
+    with pytest.raises(ValueError):
+        validate_derived_root("/home/ws/data/droid/manifests")
 
 
 def test_foundation_model_caches_are_forced_under_external_derived_root(

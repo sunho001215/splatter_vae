@@ -77,13 +77,17 @@ def scan_rlds_episode_metadata(
     droid_root: str | os.PathLike[str],
     *,
     splits: Iterable[str] | None = None,
+    maximum_episodes: int | None = None,
 ) -> Iterator[RLDSEpisodeMetadata]:
     """Read only episode metadata and ordinals from a local DROID TFDS release."""
+    if maximum_episodes is not None and int(maximum_episodes) <= 0:
+        return
     _tf, tfds = _load_tensorflow_stack()
     builder = tfds.builder_from_directory(str(find_tfds_builder_directory(droid_root)))
     selected_splits = (
         list(splits) if splits is not None else sorted(builder.info.splits)
     )
+    inspected = 0
     for split in selected_splits:
         dataset = builder.as_dataset(split=split, shuffle_files=False)
         for ordinal, episode in enumerate(dataset):
@@ -95,6 +99,9 @@ def scan_rlds_episode_metadata(
                 recording_folderpath=_decode_text(metadata["recording_folderpath"]),
                 num_steps=_episode_length(episode["steps"]),
             )
+            inspected += 1
+            if maximum_episodes is not None and inspected >= int(maximum_episodes):
+                return
 
 
 def write_rlds_metadata_index(
@@ -169,11 +176,11 @@ class TFDSRLDSBackend:
         if source is not None:
             return source[int(ordinal)]
         _tf, tfds = _load_tensorflow_stack()
-        dataset = (
-            builder.as_dataset(split=split, shuffle_files=False)
-            .skip(int(ordinal))
-            .take(1)
-        )
+        # A TFDS absolute slice resolves the target shard and only skips within
+        # that shard. Calling ``.skip(ordinal)`` on the whole 95k-episode split
+        # would reread all preceding ~1.7 TiB records for late ordinals.
+        split_slice = f"{split}[{int(ordinal)}:{int(ordinal) + 1}]"
+        dataset = builder.as_dataset(split=split_slice, shuffle_files=False)
         try:
             return next(iter(tfds.as_numpy(dataset)))
         except StopIteration as exc:
@@ -184,7 +191,7 @@ class TFDSRLDSBackend:
     @staticmethod
     def _materialize(raw: Any) -> Mapping[str, Any]:
         _tf, tfds = _load_tensorflow_stack()
-        if isinstance(raw, Mapping) and isinstance(raw.get("steps"), np.ndarray):
+        if isinstance(raw, Mapping):
             episode = raw
         else:
             episode = tfds.as_numpy(raw)

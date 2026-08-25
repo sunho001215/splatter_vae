@@ -30,6 +30,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download-only", action="store_true")
     parser.add_argument("--overwrite-downloads", action="store_true")
     parser.add_argument("--metadata-index", default=None)
+    parser.add_argument("--manifest-output", default=None)
+    parser.add_argument("--split-output", default=None)
+    parser.add_argument(
+        "--maximum-episodes",
+        type=int,
+        default=None,
+        help="Bound a representative sanity manifest; omit for the full release.",
+    )
     return parser.parse_args()
 
 
@@ -57,12 +65,21 @@ def main() -> None:
     metadata_path = (
         Path(args.metadata_index)
         if args.metadata_index
-        else layout["manifests"] / "rlds_episodes.jsonl"
+        else layout["manifests"]
+        / (
+            "rlds_episodes.jsonl"
+            if args.maximum_episodes is None
+            else f"rlds_episodes.max-{int(args.maximum_episodes)}.jsonl"
+        )
     )
     if metadata_path.is_file():
         metadata = load_rlds_metadata_index(metadata_path)
     else:
-        metadata = list(scan_rlds_episode_metadata(droid_root))
+        metadata = list(
+            scan_rlds_episode_metadata(
+                droid_root, maximum_episodes=args.maximum_episodes
+            )
+        )
         write_rlds_metadata_index(metadata, metadata_path, droid_root=droid_root)
     calibration_cfg = config.get("calibration", {})
     configured_release = (
@@ -84,7 +101,10 @@ def main() -> None:
     if unknown:
         raise ValueError(f"Unknown calibration thresholds: {sorted(unknown)}")
     thresholds = CalibrationThresholds(**thresholds_cfg)
-    manifest_path = Path(dataset_cfg["calibration_manifest"])
+    manifest_path = Path(args.manifest_output or dataset_cfg["calibration_manifest"])
+    split_output_path = args.split_output or dataset_cfg["split_manifest"]
+    validate_derived_root(manifest_path.parent, droid_root)
+    validate_derived_root(Path(split_output_path).parent, droid_root)
     result = prepare_calibration_manifest(
         metadata,
         calibration_dir,
@@ -92,9 +112,11 @@ def main() -> None:
         thresholds=thresholds,
         validation_fraction=float(dataset_cfg.get("validation_fraction", 0.02)),
         split_seed=int(dataset_cfg.get("split_seed", 42)),
-        split_output_path=dataset_cfg["split_manifest"],
+        split_output_path=split_output_path,
         droid_root=droid_root,
     )
+    result["rlds_metadata_limit"] = args.maximum_episodes
+    result["rlds_metadata_index"] = str(metadata_path.resolve())
     print(json.dumps(result, indent=2))
 
 

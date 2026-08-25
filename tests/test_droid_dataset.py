@@ -13,7 +13,7 @@ from dataset.droid.dataset import DROIDDatasetConfig, DROIDLogicalDataset, droid
 from dataset.droid.rlds import MemoryEpisodeBackend
 from dataset.droid.sampling import (
     EpisodeGroupedDistributedSampler,
-    LocalCropConfig,
+    MotionCropConfig,
     TemporalSamplingConfig,
 )
 
@@ -81,7 +81,10 @@ def _write_caches(root):
         for camera in ("exterior_1", "exterior_2"):
             for frame, gap in ((0, 3), (3, 3), (0, 6)):
                 flow = np.zeros((180, 320, 2), np.float16)
-                flow[..., 0] = np.linspace(0, 4, 320, dtype=np.float16)
+                if camera == "exterior_1":
+                    flow[60, 100, 0] = 10.0
+                else:
+                    flow[120, 220, 0] = 10.0
                 writer.add(
                     cache_item_key("episode-test", camera, frame, gap=gap),
                     {"forward_flow": flow, "validity": np.ones((180, 320), np.uint8)},
@@ -102,10 +105,9 @@ def test_logical_batch_contract_uses_history_and_no_segmentation(tmp_path) -> No
         DROIDDatasetConfig(
             split="validation",
             temporal=TemporalSamplingConfig(validation_stride=3),
-            local_crop=LocalCropConfig(
-                motion_probability=1.0, random_probability=0.0, center_probability=0.0
+            motion_crop=MotionCropConfig(
+                min_size=180, max_size=180, flow_smoothing_kernel=1
             ),
-            second_view_local_probability=1.0,
         ),
         backend=MemoryEpisodeBackend({("train", 0): {"images": images}}),
         depth_cache=depth,
@@ -123,12 +125,26 @@ def test_logical_batch_contract_uses_history_and_no_segmentation(tmp_path) -> No
     assert item["target_flow_confidence"].shape == (3, 2, 1, 224, 224)
     assert item["target_K"].shape == (3, 2, 3, 3)
     assert item["target_w2c"].shape == (3, 2, 4, 4)
-    assert item["second_view_is_local"]
+    assert item["crop_metadata"]["crop_size"].tolist() == [180, 180]
+    centers = set(
+        zip(
+            item["crop_metadata"]["crop_center_x"].tolist(),
+            item["crop_metadata"]["crop_center_y"].tolist(),
+            strict=True,
+        )
+    )
+    assert centers == {(100, 130), (220, 190)}
+    assert not item["crop_metadata"]["low_motion_fallback_used"].any()
+    torch_K = item["target_K"]
+    assert (torch_K[0] == torch_K[1]).all() and (torch_K[1] == torch_K[2]).all()
     assert "segmentation" not in item
     assert "semantic_mask" not in item
-    assert item["target_image_validity"][:, :, :, :49].sum() == 0
+    assert "local_rgb_b" not in item
+    assert "second_view_is_local" not in item
+    assert (~item["target_image_validity"]).any()
     batch = droid_collate([item, item])
     assert batch["representation_histories"].shape == (2, 2, 3, 3, 224, 224)
+    assert batch["crop_metadata"]["crop_size"].shape == (2, 2)
     assert batch["episode_id"] == ["episode-test", "episode-test"]
 
 
@@ -162,6 +178,9 @@ def test_optional_see3d_sequence_cache_is_transformed_into_batch(tmp_path) -> No
         DROIDDatasetConfig(
             split="validation",
             temporal=TemporalSamplingConfig(validation_stride=3),
+            motion_crop=MotionCropConfig(
+                min_size=180, max_size=180, flow_smoothing_kernel=1
+            ),
         ),
         backend=MemoryEpisodeBackend({("train", 0): {"images": images}}),
         depth_cache=depth,
@@ -173,8 +192,9 @@ def test_optional_see3d_sequence_cache_is_transformed_into_batch(tmp_path) -> No
     assert item["synthetic_available"]
     assert item["synthetic_rgb"].shape == (3, 224, 224)
     assert item["synthetic_depth"].shape == (1, 224, 224)
-    assert item["synthetic_K"][0, 0].item() == 140.0
-    assert item["synthetic_K"][1, 2].item() == 112.0
+    # Synthetic targets reuse camera A's variable-FOV transform and therefore
+    # remain geometrically aligned with that transformed camera matrix.
+    np.testing.assert_allclose(item["synthetic_K"], item["target_K"][0, 0])
 
 
 def test_episode_grouped_distributed_sampler_has_equal_disjoint_rank_shards() -> None:

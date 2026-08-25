@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import torch
 import yaml
 
 from dataset.droid.cache import (
@@ -31,7 +32,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", required=True)
     parser.add_argument("--maximum-episodes", type=int, default=None)
+    parser.add_argument("--maximum-frames", type=int, default=None)
     parser.add_argument("--frame-stride", type=int, default=1)
+    parser.add_argument("--manifest", default=None)
+    parser.add_argument("--output-root", default=None)
+    parser.add_argument("--checkpoint", default=None)
     return parser.parse_args()
 
 
@@ -48,10 +53,10 @@ def main() -> None:
     if not droid_root.is_dir():
         raise FileNotFoundError(f"DROID source is not mounted at {droid_root}.")
     output_root = validate_derived_root(
-        Path(dataset_cfg["derived_root"]) / "xlens", droid_root
+        args.output_root or Path(dataset_cfg["derived_root"]) / "xlens", droid_root
     )
     configure_external_model_caches(dataset_cfg["derived_root"], droid_root)
-    checkpoint = depth_cfg.get("checkpoint_path")
+    checkpoint = args.checkpoint or depth_cfg.get("checkpoint_path")
     if not checkpoint:
         raise ValueError(
             "depth.checkpoint_path must point to an official released X-Lens checkpoint."
@@ -67,19 +72,19 @@ def main() -> None:
         if architecture_config.is_file()
         else None,
     )
+    torch.cuda.reset_peak_memory_stats(torch.device("cuda:0"))
+    manifest_path = args.manifest or dataset_cfg["calibration_manifest"]
     provenance = CacheProvenance(
         teacher_name="X-Lens",
         checkpoint=f"{Path(checkpoint).name}:{sha256_file(checkpoint)}",
         teacher_version=git_revision(repository),
-        calibration_version=calibration_manifest_version(
-            dataset_cfg["calibration_manifest"]
-        ),
+        calibration_version=calibration_manifest_version(manifest_path),
         preprocessing_version=XLENS_PREPROCESSING_VERSION,
         resolution=(320, 180),
     )
     entries = [
         entry
-        for entry in load_calibration_manifest(dataset_cfg["calibration_manifest"])
+        for entry in load_calibration_manifest(manifest_path)
         if entry.get("valid")
     ]
     if args.maximum_episodes is not None:
@@ -97,11 +102,15 @@ def main() -> None:
                 entry["rlds_split"], int(entry["rlds_ordinal"])
             )
             images = np.asarray(episode["images"], dtype=np.uint8)
+            if args.maximum_frames is not None:
+                images = images[: max(0, int(args.maximum_frames))]
+            if len(images) == 0:
+                raise ValueError("X-Lens sanity selection contains no frames.")
             cameras = entry["exterior_cameras"]
             depths = [[], []]
             confidence = [[], []]
             validity = [[], []]
-            for frame in range(int(entry["num_steps"])):
+            for frame in range(len(images)):
                 prediction = teacher.predict(
                     [images[frame, 0], images[frame, 1]],
                     [
@@ -137,6 +146,7 @@ def main() -> None:
                         "calibration_source": camera["calibration_source"],
                         "pose_flag": camera["pose_flag"],
                         "frame_count": int(entry["num_steps"]),
+                        "cached_frame_count": int(len(images)),
                         "resolution": [320, 180],
                         "patch_padding_lrtb": [1, 1, 1, 1],
                     },
@@ -145,6 +155,21 @@ def main() -> None:
                 f"[X-Lens] {episode_index + 1}/{len(entries)} {entry['episode_id']}",
                 flush=True,
             )
+    print(
+        json.dumps(
+            {
+                "xlens_sanity": {
+                    "episodes": len(entries),
+                    "frames_per_exterior_pair": args.maximum_frames,
+                    "peak_gpu_memory_gib": torch.cuda.max_memory_allocated("cuda:0")
+                    / (1024**3),
+                    "output_root": str(output_root),
+                }
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

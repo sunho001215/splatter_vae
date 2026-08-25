@@ -2,11 +2,11 @@ from .dataset import DROIDDatasetConfig, DROIDLogicalDataset, droid_collate
 from .safety import DEFAULT_DERIVED_ROOT, DEFAULT_DROID_ROOT, validate_derived_root
 from .sampling import (
     EpisodeGroupedDistributedSampler,
-    LocalCropConfig,
+    MotionCropConfig,
     TemporalSamplingConfig,
     history_indices,
 )
-from .transforms import SpatialTransform, global_transform, local_transform
+from .transforms import SpatialTransform, motion_crop_transform
 
 __all__ = [
     "DEFAULT_DERIVED_ROOT",
@@ -14,12 +14,11 @@ __all__ = [
     "DROIDDatasetConfig",
     "DROIDLogicalDataset",
     "EpisodeGroupedDistributedSampler",
-    "LocalCropConfig",
+    "MotionCropConfig",
     "SpatialTransform",
     "TemporalSamplingConfig",
     "droid_collate",
-    "global_transform",
     "history_indices",
-    "local_transform",
+    "motion_crop_transform",
     "validate_derived_root",
 ]

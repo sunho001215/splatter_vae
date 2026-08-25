@@ -1,5 +1,5 @@
 dataset:
-  droid_root: /ws/data/ws/droid
+  droid_root: /home/ws/data/droid
   derived_root: /ws/data/ws/droid_splattervae
   calibration_manifest: /ws/data/ws/droid_splattervae/manifests/calibration.jsonl.gz
   split_manifest: /ws/data/ws/droid_splattervae/manifests/episode_splits.json
@@ -22,25 +22,25 @@ dataset:
   require_waft_cache: true
 
 preprocessing:
-  input_resolution: [320, 180]
-  encoder_resolution: [224, 224]
+  source_width: 320
+  source_height: 180
+  padded_size: 320
+  pad_top: 70
+  pad_bottom: 70
+  padding_value: imagenet_mean
+  output_size: 224
   rgb_normalization:
     mean: [0.485, 0.456, 0.406]
     std: [0.229, 0.224, 0.225]
-  global:
-    resized_resolution: [224, 126]
-    scale: 0.7
-    pad_top: 49
-    pad_bottom: 49
-  local:
-    crop_size: 180
-    output_size: 224
-    motion_probability: 0.50
-    random_probability: 0.25
-    center_probability: 0.25
-  logical_pair:
-    second_view_local_probability: 0.50
-    gaussian_source: global_camera_a
+  crop:
+    min_size: 180
+    max_size: 320
+    size_sampling: uniform
+    center_mode: optical_flow_argmax
+    flow_aggregation: max
+    flow_smoothing_kernel: 15
+    low_motion_threshold: 1.0e-4
+    low_motion_fallback: image_center
 
 calibration:
   official_repository: KarlP/droid
