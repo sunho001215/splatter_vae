@@ -6,6 +6,58 @@ from dataclasses import dataclass
 import numpy as np
 
 
+def estimate_scene_center_from_camera_axes(
+    camera_c2w: np.ndarray,
+    *,
+    maximum_axis_residual_m: float = 0.35,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Estimate a robust robot workspace center from paired optical axes.
+
+    Returns the median closest-point center, every accepted per-pair center,
+    and ``(distance_along_a, distance_along_b, residual)`` diagnostics.  Only
+    forward-facing, non-parallel ray pairs with a bounded closest-point
+    residual contribute.
+    """
+
+    poses = np.asarray(camera_c2w, dtype=np.float64)
+    if poses.ndim != 4 or poses.shape[1:] != (2, 4, 4):
+        raise ValueError("Camera poses must have shape (N,2,4,4).")
+    centers: list[np.ndarray] = []
+    diagnostics: list[tuple[float, float, float]] = []
+    for pair in poses:
+        origins = pair[:, :3, 3]
+        directions = pair[:, :3, 2]
+        norms = np.linalg.norm(directions, axis=-1)
+        if not np.isfinite(pair).all() or np.any(norms < 1.0e-8):
+            continue
+        directions = directions / norms[:, None]
+        if abs(float(np.dot(directions[0], directions[1]))) >= 0.9999:
+            continue
+        system = np.stack((directions[0], -directions[1]), axis=1)
+        distances = np.linalg.lstsq(
+            system, origins[1] - origins[0], rcond=None
+        )[0]
+        point_a = origins[0] + distances[0] * directions[0]
+        point_b = origins[1] + distances[1] * directions[1]
+        residual = float(np.linalg.norm(point_a - point_b))
+        if (
+            distances[0] <= 0.0
+            or distances[1] <= 0.0
+            or residual > float(maximum_axis_residual_m)
+        ):
+            continue
+        centers.append((point_a + point_b) * 0.5)
+        diagnostics.append((float(distances[0]), float(distances[1]), residual))
+    if not centers:
+        raise ValueError("No stable forward camera-axis intersections were available.")
+    accepted = np.asarray(centers, dtype=np.float64)
+    return (
+        np.median(accepted, axis=0),
+        accepted,
+        np.asarray(diagnostics, dtype=np.float64),
+    )
+
+
 def backproject_z_depth_to_world(
     depth: np.ndarray,
     K: np.ndarray,

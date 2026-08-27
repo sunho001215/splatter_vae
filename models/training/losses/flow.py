@@ -14,19 +14,21 @@ def compute_optical_flow_loss(
     target_validity: torch.Tensor,
     target_confidence: torch.Tensor | None = None,
     *,
-    pair_weights: Sequence[float] = (0.4, 0.4, 0.2),
+    pair_weights: Sequence[float] = (0.5, 0.5),
     alpha_threshold: float = 0.01,
     smooth_l1_beta: float = 1.0,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Compare rendered Gaussian flow to WAFT without semantic masks."""
+    """Compare middle-frame Gaussian flow to frozen MEMFOF predictions."""
     if predicted_flows.shape != target_flows.shape:
-        raise ValueError("Predicted and WAFT flow tensors must have identical shapes.")
+        raise ValueError("Predicted and MEMFOF flow tensors must have identical shapes.")
     if (
         predicted_flows.dim() != 6
-        or predicted_flows.shape[1] != 3
+        or predicted_flows.shape[1] != 2
         or predicted_flows.shape[3] != 2
     ):
-        raise ValueError("Flow must have shape (B,3,A,2,H,W) for pairs 01, 12, and 02.")
+        raise ValueError(
+            "Flow must have shape (B,2,A,2,H,W) for middle->previous/next."
+        )
     auxiliary_shape = (*predicted_flows.shape[:3], 1, *predicted_flows.shape[-2:])
     for name, value in (
         ("rendered_coverage", rendered_coverage),
@@ -41,8 +43,8 @@ def compute_optical_flow_loss(
         raise ValueError(
             f"Expected target_confidence as {auxiliary_shape}, got {tuple(target_confidence.shape)}."
         )
-    if len(pair_weights) != 3 or sum(float(value) for value in pair_weights) <= 0.0:
-        raise ValueError("Exactly three nonnegative flow-pair weights are required.")
+    if len(pair_weights) != 2 or sum(float(value) for value in pair_weights) <= 0.0:
+        raise ValueError("Exactly two nonnegative MEMFOF direction weights are required.")
     prediction = predicted_flows.float()
     teacher = target_flows.detach().float()
     coverage = rendered_coverage.detach().float().clamp(0.0, 1.0)
@@ -67,7 +69,7 @@ def compute_optical_flow_loss(
     endpoint = (safe_prediction - safe_teacher).square().sum(dim=3, keepdim=True).sqrt()
     pair_losses = []
     metrics: dict[str, torch.Tensor] = {}
-    for pair, name in enumerate(("01", "12", "02")):
+    for pair, name in enumerate(("middle_to_previous", "middle_to_next")):
         pair_weight = weights[:, pair]
         denominator = pair_weight.sum().clamp_min(1.0)
         pair_losses.append((component[:, pair] * pair_weight).sum() / denominator)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import torch
@@ -8,7 +10,7 @@ from models.gaussian.geometry import project_gaussian_centers
 from models.gaussian.motion import (
     activate_motion_parameters,
     construct_chronological_gaussian_sequence,
-    render_translation_flow_sequence,
+    render_middle_frame_translation_flow,
 )
 from models.gaussian.parameterization import (
     ACTIVE_GAUSSIAN_OPACITY_THRESHOLD,
@@ -60,28 +62,39 @@ def compute_droid_reconstruction(
     motion_translation_max: float,
     background_color: torch.Tensor,
     return_renders: bool = False,
-    synthetic_enabled: bool = False,
+    novel_view_enabled: bool = False,
+    stage_runner: Callable[[str, Callable[[], Any]], Any] | None = None,
 ) -> dict[str, Any]:
     """Render current-anchored Gaussians into both real exterior histories."""
+    run_stage = stage_runner or (lambda _name, callable_: callable_())
     raw_gaussians = prediction["raw_gaussian_params"].float()
     activated_motion = activate_motion_parameters(
         prediction["raw_motion_params"], motion_translation_max
     )
-    anchor_pc = parameterization(
-        gaussian_parameters=raw_gaussians,
-        motion_parameters=activated_motion,
+    anchor_pc = run_stage(
+        "gaussian_parameterization_and_dynamics",
+        lambda: parameterization(
+            gaussian_parameters=raw_gaussians,
+            motion_parameters=activated_motion,
+        ),
     )
     sequence = construct_chronological_gaussian_sequence(anchor_pc, "current")
     temporal_pc = _stack_gaussian_sequence(sequence)
     w2c = batch["target_w2c"].float()
     intrinsics = batch["target_K"].float()
-    render = render_rgb_expected_depth(
-        temporal_pc, w2c, intrinsics, background_color, splatter_config
+    render = run_stage(
+        "real_rgb_depth_render",
+        lambda: render_rgb_expected_depth(
+            temporal_pc, w2c, intrinsics, background_color, splatter_config
+        ),
     )
     target_rgb = batch["target_rgb"].float()
     image_validity = batch["target_image_validity"].bool()
-    rgb_l1, dssim, rgb_metrics = masked_rgb_reconstruction_losses(
-        render["rgb"], target_rgb, image_validity
+    rgb_l1, dssim, rgb_metrics = run_stage(
+        "real_rgb_losses",
+        lambda: masked_rgb_reconstruction_losses(
+            render["rgb"], target_rgb, image_validity
+        ),
     )
 
     confidence = batch["target_depth_confidence"].float()
@@ -95,132 +108,142 @@ def compute_droid_reconstruction(
     while calibration_validity.dim() < depth_validity.dim():
         calibration_validity = calibration_validity.unsqueeze(-1)
     depth_validity = depth_validity & calibration_validity
-    metric_depth, depth_metrics = confidence_weighted_metric_depth_l1(
-        render["expected_depth"],
-        batch["target_depth"],
-        confidence,
-        depth_validity,
+    metric_depth, depth_metrics = run_stage(
+        "metric_depth_loss",
+        lambda: confidence_weighted_metric_depth_l1(
+            render["expected_depth"],
+            batch["target_depth"],
+            confidence,
+            depth_validity,
+        ),
     )
-    scale_invariant_depth = scale_invariant_log_depth_loss(
-        render["expected_depth"],
-        batch["target_depth"],
-        confidence,
-        depth_validity,
-        mean_weight=float(train_config.scale_invariant_mean_weight),
+    scale_invariant_depth = run_stage(
+        "scale_invariant_depth_loss",
+        lambda: scale_invariant_log_depth_loss(
+            render["expected_depth"],
+            batch["target_depth"],
+            confidence,
+            depth_validity,
+            mean_weight=float(train_config.scale_invariant_mean_weight),
+        ),
     )
 
     predicted_flow, flow_coverage, predicted_flow_validity, flow_alpha = (
-        render_translation_flow_sequence(
-            anchor_pc,
+        run_stage(
+            "gaussian_flow_render",
+            lambda: render_middle_frame_translation_flow(
+                anchor_pc,
+                w2c,
+                intrinsics,
+                splatter_config,
+                temporal_anchor="current",
+            ),
+        )
+    )
+    flow_loss, flow_metrics = run_stage(
+        "flow_loss",
+        lambda: compute_optical_flow_loss(
+            predicted_flow,
+            batch["target_flow"],
+            flow_coverage,
+            predicted_flow_validity,
+            batch["target_flow_validity"],
+            batch.get("target_flow_confidence"),
+            pair_weights=train_config.flow_pair_weights,
+            alpha_threshold=float(train_config.flow_alpha_threshold),
+            smooth_l1_beta=float(train_config.flow_smooth_l1_beta),
+        ),
+    )
+    visibility, visibility_by_time = run_stage(
+        "visibility_loss",
+        lambda: compute_visibility_loss(
+            anchor_pc["xyz"],
+            anchor_pc["delta_xyz_01"],
+            anchor_pc["delta_xyz_12"],
+            anchor_pc["valid_mask"],
             w2c,
             intrinsics,
-            splatter_config,
-            temporal_anchor="current",
-        )
+            image_height=int(splatter_config.data.img_height),
+            image_width=int(splatter_config.data.img_width),
+            near_plane=float(splatter_config.data.znear),
+            far_plane=float(splatter_config.data.zfar),
+        ),
     )
-    flow_loss, flow_metrics = compute_optical_flow_loss(
-        predicted_flow,
-        batch["target_flow"],
-        flow_coverage,
-        predicted_flow_validity,
-        batch["target_flow_validity"],
-        batch.get("target_flow_confidence"),
-        pair_weights=train_config.flow_pair_weights,
-        alpha_threshold=float(train_config.flow_alpha_threshold),
-        smooth_l1_beta=float(train_config.flow_smooth_l1_beta),
+    gaussian_reg, gaussian_metrics = run_stage(
+        "gaussian_regularization_loss",
+        lambda: gaussian_regularization(
+            anchor_pc, prediction.get("child_offsets")
+        ),
     )
-    visibility, visibility_by_time = compute_visibility_loss(
-        anchor_pc["xyz"],
-        anchor_pc["delta_xyz_01"],
-        anchor_pc["delta_xyz_12"],
-        anchor_pc["valid_mask"],
-        w2c,
-        intrinsics,
-        image_height=int(splatter_config.data.img_height),
-        image_width=int(splatter_config.data.img_width),
-        near_plane=float(splatter_config.data.znear),
-        far_plane=float(splatter_config.data.zfar),
-    )
-    gaussian_reg, gaussian_metrics = gaussian_regularization(
-        anchor_pc, prediction.get("child_offsets")
-    )
-    synthetic_loss = rgb_l1.new_zeros(())
-    synthetic_metrics: dict[str, torch.Tensor] = {
-        "synthetic_rgb_l1_loss": synthetic_loss.detach(),
-        "synthetic_dssim_loss": synthetic_loss.detach(),
-        "synthetic_metric_depth_loss": synthetic_loss.detach(),
-        "synthetic_scale_invariant_depth_loss": synthetic_loss.detach(),
-        "synthetic_applied_fraction": synthetic_loss.detach(),
+    novel_view_loss = rgb_l1.new_zeros(())
+    novel_metrics: dict[str, torch.Tensor] = {
+        "novel_rgb_l1_loss": novel_view_loss.detach(),
+        "novel_dssim_loss": novel_view_loss.detach(),
+        "novel_support_fraction": novel_view_loss.detach(),
     }
-    synthetic_render = None
-    if synthetic_enabled:
-        eligible = batch["synthetic_available"].bool() & (
-            batch["synthetic_view_confidence"].float()
-            >= float(train_config.novel_view_minimum_confidence)
+    novel_render = None
+    if novel_view_enabled:
+        required_novel = (
+            "novel_rgb",
+            "novel_K",
+            "novel_w2c",
+            "novel_support_mask",
         )
-        if eligible.any():
-            synthetic_render = render_rgb_expected_depth(
+        missing_novel = [name for name in required_novel if name not in batch]
+        if missing_novel:
+            raise KeyError(
+                "Enabled LagerNVS supervision is missing online fields "
+                f"{missing_novel}."
+            )
+        novel_config = replace(
+            splatter_config,
+            data=replace(
+                splatter_config.data,
+                img_height=256,
+                img_width=256,
+            ),
+        )
+        novel_render = run_stage(
+            "virtual_camera_render",
+            lambda: render_rgb_expected_depth(
                 anchor_pc,
-                batch["synthetic_w2c"].float()[:, None],
-                batch["synthetic_K"].float()[:, None],
+                batch["novel_w2c"].float()[:, None],
+                batch["novel_K"].float()[:, None],
                 background_color,
-                splatter_config,
-            )
-            eligible_pixels = eligible[:, None, None, None, None].to(
-                dtype=torch.float32
-            )
-            rgb_weight = (
-                batch["synthetic_image_validity"].float()[:, None]
-                * batch["synthetic_confidence"].float()[:, None]
-                * eligible_pixels
-            )
-            synthetic_rgb_l1, synthetic_dssim, _synthetic_rgb_metrics = (
-                masked_rgb_reconstruction_losses(
-                    synthetic_render["rgb"],
-                    batch["synthetic_rgb"].float()[:, None],
-                    rgb_weight,
-                )
-            )
-            synthetic_depth_validity = (
-                batch["synthetic_depth_validity"].bool()[:, None]
-                & synthetic_render["depth_validity"].bool()
-                & eligible_pixels.bool()
-            )
-            synthetic_metric, _synthetic_depth_metrics = (
-                confidence_weighted_metric_depth_l1(
-                    synthetic_render["expected_depth"],
-                    batch["synthetic_depth"].float()[:, None],
-                    batch["synthetic_depth_confidence"].float()[:, None],
-                    synthetic_depth_validity,
-                )
-            )
-            synthetic_si = scale_invariant_log_depth_loss(
-                synthetic_render["expected_depth"],
-                batch["synthetic_depth"].float()[:, None],
-                batch["synthetic_depth_confidence"].float()[:, None],
-                synthetic_depth_validity,
-                mean_weight=float(train_config.scale_invariant_mean_weight),
-            )
-            synthetic_loss = (
-                float(train_config.novel_view_supervise_rgb)
-                * (
-                    float(train_config.rgb_l1_weight) * synthetic_rgb_l1
-                    + float(train_config.ssim_weight) * synthetic_dssim
-                )
-                + float(train_config.novel_view_supervise_metric_depth)
-                * float(train_config.metric_depth_weight)
-                * synthetic_metric
-                + float(train_config.novel_view_supervise_scale_invariant_depth)
-                * float(train_config.scale_invariant_depth_weight)
-                * synthetic_si
-            )
-            synthetic_metrics = {
-                "synthetic_rgb_l1_loss": synthetic_rgb_l1.detach(),
-                "synthetic_dssim_loss": synthetic_dssim.detach(),
-                "synthetic_metric_depth_loss": synthetic_metric.detach(),
-                "synthetic_scale_invariant_depth_loss": synthetic_si.detach(),
-                "synthetic_applied_fraction": eligible.float().mean().detach(),
-            }
+                novel_config,
+            ),
+        )
+        support = batch["novel_support_mask"].bool()[:, None]
+        pixel_weights = torch.where(
+            support,
+            support.new_full(
+                support.shape,
+                float(train_config.novel_view_supported_weight),
+                dtype=torch.float32,
+            ),
+            support.new_full(
+                support.shape,
+                float(train_config.novel_view_unsupported_weight),
+                dtype=torch.float32,
+            ),
+        )
+        novel_rgb_l1, novel_dssim, _novel_rgb_metrics = run_stage(
+            "novel_view_loss",
+            lambda: masked_rgb_reconstruction_losses(
+                novel_render["rgb"],
+                batch["novel_rgb"].float()[:, None],
+                pixel_weights,
+            ),
+        )
+        novel_view_loss = (
+            float(train_config.rgb_l1_weight) * novel_rgb_l1
+            + float(train_config.ssim_weight) * novel_dssim
+        )
+        novel_metrics = {
+            "novel_rgb_l1_loss": novel_rgb_l1.detach(),
+            "novel_dssim_loss": novel_dssim.detach(),
+            "novel_support_fraction": support.float().mean().detach(),
+        }
     total = (
         float(train_config.rgb_l1_weight) * rgb_l1
         + float(train_config.ssim_weight) * dssim
@@ -229,7 +252,7 @@ def compute_droid_reconstruction(
         + float(train_config.flow_weight) * flow_loss
         + float(train_config.visibility_weight) * visibility
         + float(train_config.gaussian_regularization_weight) * gaussian_reg
-        + float(train_config.synthetic_view_weight) * synthetic_loss
+        + float(train_config.novel_view_rgb_weight) * novel_view_loss
     )
     opacity = anchor_pc["opacity"].squeeze(-1)
     valid_gaussians = anchor_pc["valid_mask"]
@@ -260,7 +283,7 @@ def compute_droid_reconstruction(
         "flow_loss": flow_loss,
         "visibility_loss": visibility,
         "gaussian_regularization_loss": gaussian_reg,
-        "synthetic_view_loss": synthetic_loss,
+        "novel_view_loss": novel_view_loss,
         "visibility_loss_by_time": visibility_by_time.detach(),
         "mean_opacity": _masked_mean(opacity, valid_gaussians).detach(),
         "active_gaussian_fraction": (
@@ -310,7 +333,7 @@ def compute_droid_reconstruction(
         **depth_metrics,
         **flow_metrics,
         **gaussian_metrics,
-        **synthetic_metrics,
+        **novel_metrics,
     }
     if return_renders:
         output.update(
@@ -326,14 +349,14 @@ def compute_droid_reconstruction(
                 "gaussian_pc_sequence": sequence,
             }
         )
-        if synthetic_render is not None:
+        if novel_render is not None:
             output.update(
                 {
-                    "synthetic_rendered_rgb": synthetic_render["rgb"],
-                    "synthetic_rendered_expected_depth": synthetic_render[
+                    "novel_rendered_rgb": novel_render["rgb"],
+                    "novel_rendered_expected_depth": novel_render[
                         "expected_depth"
                     ],
-                    "synthetic_rendered_alpha": synthetic_render["alpha"],
+                    "novel_rendered_alpha": novel_render["alpha"],
                 }
             )
     return output

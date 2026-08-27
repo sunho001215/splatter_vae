@@ -311,9 +311,9 @@ class TemporalViTEncoder(nn.Module):
         valid_patches: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         batch, patch_count = scores.shape
-        keep_count = max(1, int(round(patch_count * (1.0 - self.masking_ratio))))
+        keep_count = max(1, round(patch_count * (1.0 - self.masking_ratio)))
         motion_count = min(
-            keep_count, int(round(keep_count * self.motion_visible_fraction))
+            keep_count, round(keep_count * self.motion_visible_fraction)
         )
         uniform_count = keep_count - motion_count
         ranked_scores = torch.nan_to_num(
@@ -389,7 +389,7 @@ class TemporalViTEncoder(nn.Module):
         )
         if apply_mask:
             if optical_flows is None:
-                raise ValueError("Masked pretraining requires WAFT optical flow.")
+                raise ValueError("Masked pretraining requires MEMFOF optical flow.")
             scores = self.flow_patch_scores(optical_flows)
             visible_ids, mask = self._sample_visible_patch_ids(
                 scores, self._patch_validity(image_validity, batch)

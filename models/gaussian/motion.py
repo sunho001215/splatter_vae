@@ -326,3 +326,120 @@ def render_translation_flow_sequence(
         (source_alpha[:, 0], source_alpha[:, 1], source_alpha[:, 0]), dim=1
     )
     return flows, coverages, valid_masks, pair_alphas
+
+
+def render_middle_frame_translation_flow(
+    anchor_pc: dict[str, torch.Tensor],
+    world_view_transform: torch.Tensor,
+    intrinsics: torch.Tensor,
+    cfg: SplatterConfig,
+    eps: float = 1.0e-6,
+    temporal_anchor: str = "current",
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Render MEMFOF-aligned middle->previous and middle->next flow.
+
+    MEMFOF defines both predictions on the middle-frame grid. Source geometry,
+    opacity, and visibility are detached; gradients pass only through the two
+    learned chronological Gaussian displacements.
+    """
+
+    if world_view_transform.dim() != 5 or world_view_transform.shape[1] != 3:
+        raise ValueError("MEMFOF rendering expects cameras as (B,3,A,4,4).")
+    if intrinsics.shape != (*world_view_transform.shape[:3], 3, 3):
+        raise ValueError("MEMFOF rendering intrinsics must match every camera.")
+    chronological = construct_chronological_gaussian_sequence(
+        anchor_pc, temporal_anchor
+    )
+    xyz1_source = chronological[1]["xyz"].detach()
+    xyz0_live = xyz1_source - anchor_pc["delta_xyz_01"]
+    xyz2_live = xyz1_source + anchor_pc["delta_xyz_12"]
+    w2c = world_view_transform.float().detach()
+    camera_k = intrinsics.float().detach()
+    projection_xyz = torch.stack((xyz1_source, xyz0_live, xyz2_live), dim=1)
+    projection_w2c = torch.stack((w2c[:, 1], w2c[:, 0], w2c[:, 2]), dim=1)
+    projection_k = torch.stack((camera_k[:, 1], camera_k[:, 0], camera_k[:, 2]), dim=1)
+    projected, projected_depth, projected_finite = project_gaussian_centers(
+        projection_xyz, projection_w2c, projection_k
+    )
+    projected_valid = (
+        projected_finite
+        & (projected_depth > float(cfg.data.znear))
+        & (projected_depth < float(cfg.data.zfar))
+    )
+    source_pixels = projected[:, 0].detach()
+    previous_pixels = projected[:, 1]
+    next_pixels = projected[:, 2]
+    base_valid = anchor_pc["valid_mask"].detach().bool()[:, None]
+    backward_valid = (
+        projected_valid[:, 0].detach()
+        & projected_valid[:, 1].detach()
+        & base_valid
+    )
+    forward_valid = (
+        projected_valid[:, 0].detach()
+        & projected_valid[:, 2].detach()
+        & base_valid
+    )
+    backward_features = _valid_flow_features(
+        previous_pixels - source_pixels, backward_valid
+    )
+    forward_features = _valid_flow_features(next_pixels - source_pixels, forward_valid)
+    flow_features = torch.cat((backward_features, forward_features), dim=-1)
+
+    scale_min = min(float(value) for value in cfg.model.scale_min)
+    scale_max = max(float(value) for value in cfg.model.scale_max)
+    scales = torch.nan_to_num(
+        anchor_pc["scaling"].detach().float(),
+        nan=scale_min,
+        posinf=scale_max,
+        neginf=scale_min,
+    ).clamp(scale_min, scale_max)
+    quaternions = F.normalize(
+        torch.nan_to_num(anchor_pc["rotation"].detach().float()),
+        dim=-1,
+        eps=1.0e-6,
+    )
+    opacities = torch.nan_to_num(
+        anchor_pc["opacity"].detach().float().squeeze(-1),
+        nan=0.0,
+        posinf=1.0,
+        neginf=0.0,
+    ).clamp(0.0, 1.0)
+    opacities *= anchor_pc["valid_mask"].detach().to(opacities.dtype)
+    source_w2c = w2c[:, 1]
+    source_K = camera_k[:, 1]
+    camera_shape = source_w2c.shape[:-2]
+    backgrounds = torch.zeros(*camera_shape, 6, device=xyz1_source.device)
+    rasterization = _load_rasterization()
+    rendered, alpha, _metadata = rasterization(
+        means=xyz1_source.float(),
+        quats=quaternions,
+        scales=scales,
+        opacities=opacities,
+        colors=flow_features.float(),
+        viewmats=source_w2c,
+        Ks=source_K,
+        backgrounds=backgrounds,
+        width=int(cfg.data.img_width),
+        height=int(cfg.data.img_height),
+        near_plane=float(cfg.data.znear),
+        far_plane=float(cfg.data.zfar),
+        packed=False,
+        segmented=False,
+        sh_degree=None,
+        render_mode="RGB",
+        sparse_grad=False,
+        absgrad=False,
+    )
+    backward, backward_coverage, backward_pixels_valid = _normalize_flow_signal(
+        rendered[..., 0:3], eps
+    )
+    forward, forward_coverage, forward_pixels_valid = _normalize_flow_signal(
+        rendered[..., 3:6], eps
+    )
+    flows = torch.stack((backward, forward), dim=1)
+    coverages = torch.stack((backward_coverage, forward_coverage), dim=1)
+    validity = torch.stack((backward_pixels_valid, forward_pixels_valid), dim=1)
+    source_alpha = alpha.detach().movedim(-1, -3).contiguous()
+    pair_alpha = source_alpha[:, None].expand(-1, 2, -1, -1, -1, -1)
+    return flows, coverages, validity, pair_alpha

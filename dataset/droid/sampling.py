@@ -143,7 +143,7 @@ def aggregate_flow_magnitude(
     *,
     aggregation: str = "max",
 ) -> torch.Tensor:
-    """Aggregate all WAFT pairs on the original 180x320 pixel grid."""
+    """Aggregate MEMFOF backward/forward flow on the native 180x320 grid."""
     if flows.dim() != 4 or flows.shape[1] != 2:
         raise ValueError(f"Expected flow (pairs,2,H,W), got {tuple(flows.shape)}.")
     if tuple(flows.shape[-2:]) != (RLDS_HEIGHT, RLDS_WIDTH):
@@ -204,27 +204,52 @@ def _real_pixel_fraction(transform: SpatialTransform) -> float:
     return float(vertical_overlap * horizontal_overlap) / float(transform.crop_size**2)
 
 
-def select_motion_crop(
+def build_motion_maps(
     flows: torch.Tensor,
     validity: torch.Tensor | None,
-    crop_size: int,
     config: MotionCropConfig,
-) -> MotionCropSelection:
-    """Select the deterministic highest-flow feasible center for one camera."""
-    size = int(crop_size)
-    if size < config.min_size or size > config.max_size:
-        raise ValueError(f"Crop size {size} is outside the configured interval.")
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Aggregate, pad, and smooth MEMFOF motion before crop selection.
+
+    Keeping this stage separate makes the online profiler able to distinguish
+    flow post-processing from the small feasible-argmax crop-selection step.
+    Both returned maps use the padded ``320 x 320`` image grid.
+    """
+
     aggregate = aggregate_flow_magnitude(
         flows, validity, aggregation=config.flow_aggregation
     )
     padded = _pad_motion_map(aggregate, config)
     smoothed = smooth_motion_map(padded, config.flow_smoothing_kernel)
+    return padded, smoothed
+
+
+def select_motion_crop_from_maps(
+    aggregate_motion_map: torch.Tensor,
+    smoothed_motion_map: torch.Tensor,
+    crop_size: int,
+    config: MotionCropConfig,
+) -> MotionCropSelection:
+    """Select the highest-motion feasible crop from precomputed motion maps."""
+
+    expected = (config.padded_size, config.padded_size)
+    if aggregate_motion_map.shape != expected or smoothed_motion_map.shape != expected:
+        raise ValueError(
+            "Motion maps must use the padded square grid; got "
+            f"{tuple(aggregate_motion_map.shape)} and "
+            f"{tuple(smoothed_motion_map.shape)}."
+        )
+    size = int(crop_size)
+    if size < config.min_size or size > config.max_size:
+        raise ValueError(f"Crop size {size} is outside the configured interval.")
 
     half_left = size // 2
     half_right = size - half_left
     minimum = half_left
     maximum = config.padded_size - half_right
-    feasible = smoothed[minimum : maximum + 1, minimum : maximum + 1]
+    feasible = smoothed_motion_map[
+        minimum : maximum + 1, minimum : maximum + 1
+    ]
     if feasible.numel() == 0:
         raise RuntimeError("No feasible center exists for the sampled crop size.")
     flat_index = int(feasible.reshape(-1).argmax().item())
@@ -245,7 +270,7 @@ def select_motion_crop(
         pad_bottom=config.pad_bottom,
         output_size=config.output_size,
     )
-    selected = padded[
+    selected = aggregate_motion_map[
         transform.crop_y : transform.crop_y + size,
         transform.crop_x : transform.crop_x + size,
     ]
@@ -261,7 +286,23 @@ def select_motion_crop(
         selected_crop_flow_mean=float(selected.mean().item()),
         low_motion_fallback_used=fallback,
     )
-    return MotionCropSelection(transform, metadata, padded, smoothed)
+    return MotionCropSelection(
+        transform,
+        metadata,
+        aggregate_motion_map,
+        smoothed_motion_map,
+    )
+
+
+def select_motion_crop(
+    flows: torch.Tensor,
+    validity: torch.Tensor | None,
+    crop_size: int,
+    config: MotionCropConfig,
+) -> MotionCropSelection:
+    """Select the deterministic highest-flow feasible center for one camera."""
+    aggregate, smoothed = build_motion_maps(flows, validity, config)
+    return select_motion_crop_from_maps(aggregate, smoothed, crop_size, config)
 
 
 def randomize_camera_order(rng: random.Random) -> tuple[int, int]:

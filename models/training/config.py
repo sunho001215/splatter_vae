@@ -29,23 +29,18 @@ class TrainConfig:
     flow_weight: float = 0.1
     visibility_weight: float = 0.05
     gaussian_regularization_weight: float = 0.01
-    synthetic_view_weight: float = 0.05
+    novel_view_rgb_weight: float = 0.05
 
     contrastive_temperature: float = 0.1
     depth_confidence_threshold: float = 0.0
     scale_invariant_mean_weight: float = 1.0
-    flow_pair_weights: tuple[float, float, float] = (0.4, 0.4, 0.2)
+    flow_pair_weights: tuple[float, float] = (0.5, 0.5)
     flow_alpha_threshold: float = 0.01
     flow_smooth_l1_beta: float = 1.0
 
     novel_view_enabled: bool = False
-    novel_view_probability: float = 0.20
-    novel_view_warmup_steps: int = 50_000
-    novel_view_minimum_confidence: float = 0.5
-    novel_view_require_cached: bool = True
-    novel_view_supervise_rgb: bool = True
-    novel_view_supervise_metric_depth: bool = True
-    novel_view_supervise_scale_invariant_depth: bool = True
+    novel_view_supported_weight: float = 1.0
+    novel_view_unsupported_weight: float = 0.0
 
     seed: int = 42
     checkpoint_dir: str = "/ws/data/ws/droid_splattervae/logs/checkpoints"
@@ -55,6 +50,7 @@ class TrainConfig:
     visualization_every_steps: int = 5_000
     scalar_log_every_steps: int = 50
     validation_batches: int = 8
+    num_visualization_samples: int = 2
 
     def __post_init__(self) -> None:
         positive = {
@@ -83,20 +79,15 @@ class TrainConfig:
             raise ValueError(f"Loss weights must be nonnegative: {weights}")
         if float(self.contrastive_temperature) <= 0.0:
             raise ValueError("contrastive_temperature must be positive.")
-        if len(self.flow_pair_weights) != 3 or sum(self.flow_pair_weights) <= 0.0:
-            raise ValueError("flow_pair_weights must contain three nonnegative values.")
-        if not 0.0 <= float(self.novel_view_probability) <= 1.0:
-            raise ValueError("novel_view_probability must lie in [0,1].")
-        if self.novel_view_enabled and not any(
-            (
-                self.novel_view_supervise_rgb,
-                self.novel_view_supervise_metric_depth,
-                self.novel_view_supervise_scale_invariant_depth,
-            )
-        ):
-            raise ValueError(
-                "Enabled See3D training requires at least one synthetic supervision loss."
-            )
+        if len(self.flow_pair_weights) != 2 or sum(self.flow_pair_weights) <= 0.0:
+            raise ValueError("flow_pair_weights must contain two nonnegative values.")
+        if min(
+            float(self.novel_view_supported_weight),
+            float(self.novel_view_unsupported_weight),
+        ) < 0.0:
+            raise ValueError("Novel-view support weights must be nonnegative.")
+        if int(self.num_visualization_samples) <= 0:
+            raise ValueError("num_visualization_samples must be positive.")
 
     def learning_rates(self, effective_global_batch: int) -> tuple[float, float]:
         encoder_lr = (

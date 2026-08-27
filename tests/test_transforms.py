@@ -6,8 +6,10 @@ import torch
 
 from dataset.droid.sampling import (
     MotionCropConfig,
+    build_motion_maps,
     sample_uniform_crop_size,
     select_motion_crop,
+    select_motion_crop_from_maps,
 )
 from dataset.droid.transforms import (
     PAD_BOTTOM,
@@ -65,6 +67,20 @@ def test_motion_center_is_highest_feasible_flow_after_size_is_known() -> None:
     assert selected.transform.crop_x + 180 <= 320
     assert selected.transform.crop_y + 180 <= 320
     assert not selected.metadata.low_motion_fallback_used
+
+
+def test_staged_motion_map_and_crop_selection_matches_composed_api() -> None:
+    config = MotionCropConfig(flow_smoothing_kernel=9)
+    flows = torch.zeros(2, 2, 180, 320)
+    flows[:, 0, 40:55, 245:260] = 7.0
+    validity = torch.ones(2, 1, 180, 320, dtype=torch.bool)
+    aggregate, smoothed = build_motion_maps(flows, validity, config)
+    staged = select_motion_crop_from_maps(aggregate, smoothed, 211, config)
+    composed = select_motion_crop(flows, validity, 211, config)
+    assert staged.metadata == composed.metadata
+    assert staged.transform == composed.transform
+    torch.testing.assert_close(staged.aggregate_motion_map, aggregate)
+    torch.testing.assert_close(staged.smoothed_motion_map, smoothed)
 
 
 def test_flow_smoothing_prefers_active_region_over_isolated_noisy_pixel() -> None:

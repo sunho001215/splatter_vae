@@ -37,9 +37,9 @@ def test_metric_and_scale_invariant_depth_losses() -> None:
 
 
 def test_flow_loss_uses_validity_without_semantics() -> None:
-    predicted = torch.zeros(1, 3, 2, 2, 8, 8, requires_grad=True)
+    predicted = torch.zeros(1, 2, 2, 2, 8, 8, requires_grad=True)
     teacher = predicted.detach().clone()
-    auxiliary = torch.ones(1, 3, 2, 1, 8, 8)
+    auxiliary = torch.ones(1, 2, 2, 1, 8, 8)
     loss, metrics = compute_optical_flow_loss(
         predicted, teacher, auxiliary, auxiliary.bool(), auxiliary.bool()
     )

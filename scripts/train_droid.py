@@ -34,7 +34,15 @@ from models.training.distributed import (
     wrap_ddp,
 )
 from models.training.loop import train_droid
+from models.training.online_preprocessing import (
+    OnlinePreprocessingConfig,
+    OnlineTeacherPipeline,
+)
 from models.training.visualization import save_droid_validation_visualization
+from preprocessing.lagernvs.official import LagerNVSDROIDTeacher
+from preprocessing.lagernvs.pose import LagerTargetPoseConfig
+from preprocessing.memfof import MEMFOFDROIDTeacher
+from preprocessing.xlens.official import XLensDROIDTeacher
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,8 +53,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--per-gpu-batch", type=int, default=None)
+    parser.add_argument("--gradient-accumulation", type=int, default=None)
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--workspace-stats", default=None)
+    parser.add_argument("--checkpoint-dir", default=None)
+    parser.add_argument("--visualization-dir", default=None)
+    parser.add_argument("--checkpoint-every-steps", type=int, default=None)
+    parser.add_argument("--validation-every-steps", type=int, default=None)
+    parser.add_argument("--visualization-every-steps", type=int, default=None)
+    parser.add_argument("--scalar-every-steps", type=int, default=None)
+    parser.add_argument("--validation-batches", type=int, default=None)
+    parser.add_argument("--num-visualization-samples", type=int, default=None)
+    parser.add_argument("--wandb-enabled", action="store_true")
+    parser.add_argument("--run-name", default=None)
+    novel_group = parser.add_mutually_exclusive_group()
+    novel_group.add_argument(
+        "--novel-view-enabled",
+        action="store_true",
+        help="Run LagerNVS online for every logical sample.",
+    )
+    novel_group.add_argument(
+        "--novel-view-disabled",
+        action="store_true",
+        help="Completely bypass LagerNVS (MEMFOF and X-Lens remain online).",
+    )
     parser.add_argument(
         "--allow-unvalidated-workspace",
         action="store_true",
@@ -109,36 +139,26 @@ def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
             "robot_base",
         ),
         "calibration.stage": (int(config["calibration"]["stage"]), 0),
-        "novel_view.backend": (str(config["novel_view"]["backend"]), "see3d"),
+        "dataset.droid_root": (
+            str(Path(config["dataset"]["droid_root"]).expanduser().resolve()),
+            "/home/ws/data/droid",
+        ),
+        "novel_view.backend": (str(config["novel_view"]["backend"]), "lagernvs"),
         "depth.teacher": (str(config["depth"]["teacher"]).lower(), "xlens"),
         "depth.inference_resolution": (
             tuple(config["depth"]["inference_resolution"]),
             (320, 180),
         ),
-        "depth.cache_format": (
-            str(config["depth"]["cache_format"]),
-            "hdf5_shards",
+        "flow.backend": (str(config["flow"]["backend"]).lower(), "memfof"),
+        "flow.native_resolution": (bool(config["flow"]["native_resolution"]), True),
+        "flow.iterations": (int(config["flow"]["iterations"]), 2),
+        "novel_view.target_pose.mode": (
+            str(config["novel_view"]["target_pose"]["mode"]),
+            "interpolate_with_bounded_perturbation",
         ),
-        "flow.teacher": (str(config["flow"]["teacher"]).lower(), "waft"),
-        "flow.cache_format": (
-            str(config["flow"]["cache_format"]),
-            "hdf5_shards",
-        ),
-        "novel_view.pose_sampling.mode": (
-            str(config["novel_view"]["pose_sampling"]["mode"]),
-            "interpolate",
-        ),
-        "novel_view.geometric_warp.use_xlens_depth": (
-            bool(config["novel_view"]["geometric_warp"]["use_xlens_depth"]),
-            True,
-        ),
-        "novel_view.geometric_warp.fuse_two_external_views": (
-            bool(config["novel_view"]["geometric_warp"]["fuse_two_external_views"]),
-            True,
-        ),
-        "novel_view.validation.required_before_enable": (
-            bool(config["novel_view"]["validation"]["required_before_enable"]),
-            True,
+        "novel_view.canonical.image_size": (
+            int(config["novel_view"]["canonical"]["image_size"]),
+            256,
         ),
         "optimizer.name": (str(config["optimizer"]["name"]).lower(), "adamw"),
         "optimizer.schedule": (str(config["optimizer"]["schedule"]).lower(), "cosine"),
@@ -159,19 +179,15 @@ def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
             "configured": False,
             "required": True,
         }
-    temporal_strides = tuple(
-        int(value) for value in config["dataset"]["temporal_strides"]
-    )
-    required_flow_gaps = tuple(
-        sorted({gap for stride in temporal_strides for gap in (stride, 2 * stride)})
-    )
-    configured_flow_gaps = tuple(
-        sorted({int(value) for value in config["flow"]["cached_gaps"]})
-    )
-    if configured_flow_gaps != required_flow_gaps:
-        mismatches["flow.cached_gaps"] = {
-            "configured": configured_flow_gaps,
-            "required_from_temporal_strides": required_flow_gaps,
+    forbidden_novel = {
+        key
+        for key in config["novel_view"]
+        if "probability" in key or "warmup" in key
+    }
+    if forbidden_novel:
+        mismatches["novel_view.boolean_only"] = {
+            "configured_forbidden_keys": sorted(forbidden_novel),
+            "required": "enabled Boolean with no stochastic skipping",
         }
     if mismatches:
         raise ValueError(f"Unsupported DROID pipeline configuration: {mismatches}")
@@ -202,10 +218,8 @@ def _dataset_config(config: Mapping[str, Any], split: str) -> DROIDDatasetConfig
         low_motion_threshold=float(crop["low_motion_threshold"]),
         low_motion_fallback=str(crop["low_motion_fallback"]),
     )
-    normalization = preprocessing["rgb_normalization"]
     if str(preprocessing["padding_value"]) != "imagenet_mean":
         raise ValueError("Only neutral ImageNet-mean RGB padding is supported.")
-    mean = tuple(float(value) for value in normalization["mean"])
     return DROIDDatasetConfig(
         droid_root=str(dataset["droid_root"]),
         calibration_manifest=str(dataset["calibration_manifest"]),
@@ -213,11 +227,73 @@ def _dataset_config(config: Mapping[str, Any], split: str) -> DROIDDatasetConfig
         seed=int(dataset.get("seed", 42)),
         temporal=temporal,
         motion_crop=motion_crop,
-        normalize_mean=mean,
-        normalize_std=tuple(float(value) for value in normalization["std"]),
-        rgb_padding_value=tuple(value * 255.0 for value in mean),
-        require_depth_cache=bool(dataset.get("require_xlens_cache", True)),
-        require_flow_cache=bool(dataset.get("require_waft_cache", True)),
+    )
+
+
+def _online_preprocessor(
+    config: Mapping[str, Any], device: torch.device
+) -> OnlineTeacherPipeline:
+    preprocessing = config["preprocessing"]
+    normalization = preprocessing["rgb_normalization"]
+    motion_crop = _dataset_config(config, "train").motion_crop
+    depth = config["depth"]
+    flow = config["flow"]
+    novel = config["novel_view"]
+    memfof = MEMFOFDROIDTeacher(
+        model_id=str(flow["checkpoint"]),
+        revision=str(flow["checkpoint_revision"]),
+        iterations=int(flow["iterations"]),
+        device=device,
+        cache_dir=flow.get("cache_dir"),
+        amp_dtype=None,
+    )
+    xlens = XLensDROIDTeacher(
+        str(depth["official_repo_path"]),
+        str(depth["checkpoint_path"]),
+        architecture_config=depth.get("architecture_config"),
+        device=str(device),
+        amp_dtype=str(depth.get("amp_dtype", "bf16")),
+    )
+    lager = None
+    pose_config = None
+    if bool(novel["enabled"]):
+        dtype_name = str(novel.get("dtype", "bf16")).lower()
+        dtype = torch.bfloat16 if dtype_name == "bf16" else torch.float32
+        lager = LagerNVSDROIDTeacher(
+            novel["official_repo_path"],
+            novel.get("checkpoint_path"),
+            cache_dir=novel.get("cache_dir"),
+            device=device,
+            dtype=dtype,
+            microbatch_size=int(novel["microbatch_size"]),
+            canonical_focal_px=float(novel["canonical"]["focal_px"]),
+        )
+        pose_values = dict(novel["target_pose"])
+        pose_values.pop("mode", None)
+        pose_values.pop("scene_center", None)
+        pose_config = LagerTargetPoseConfig(
+            **_only_dataclass_fields(LagerTargetPoseConfig, pose_values)
+        )
+    configured_center = novel["target_pose"].get("scene_center")
+    scene_center = (
+        tuple(float(value) for value in configured_center)
+        if configured_center is not None
+        else tuple(float(value) for value in config["decoder"]["global_center"])
+    )
+    return OnlineTeacherPipeline(
+        memfof,
+        xlens,
+        OnlinePreprocessingConfig(
+            motion_crop=motion_crop,
+            normalize_mean=tuple(float(value) for value in normalization["mean"]),
+            normalize_std=tuple(float(value) for value in normalization["std"]),
+            rgb_padding_value=tuple(
+                float(value) * 255.0 for value in normalization["mean"]
+            ),
+        ),
+        lagernvs=lager,
+        novel_pose_config=pose_config,
+        scene_center=scene_center,
     )
 
 
@@ -273,8 +349,6 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
     depth = config["depth"]
     flow = config["flow"]
     novel = config["novel_view"]
-    novel_training = novel["training"]
-    novel_supervision = novel["supervision"]
     logging = config["logging"]
     betas = optimizer["betas"]
     return TrainConfig(
@@ -303,7 +377,7 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
         flow_weight=float(flow["weight"]),
         visibility_weight=float(loss["visibility"]),
         gaussian_regularization_weight=float(loss["gaussian_regularization"]),
-        synthetic_view_weight=float(novel_training["loss_weight"]),
+        novel_view_rgb_weight=float(novel["loss"]["weight"]),
         contrastive_temperature=float(config["contrastive"]["temperature"]),
         depth_confidence_threshold=float(depth["confidence_threshold"]),
         scale_invariant_mean_weight=float(depth["scale_invariant_mean_weight"]),
@@ -311,15 +385,8 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
         flow_alpha_threshold=float(flow["alpha_threshold"]),
         flow_smooth_l1_beta=float(flow["smooth_l1_beta"]),
         novel_view_enabled=bool(novel["enabled"]),
-        novel_view_probability=float(novel_training["probability"]),
-        novel_view_warmup_steps=int(novel_training["warmup_steps"]),
-        novel_view_minimum_confidence=float(novel_training["minimum_confidence"]),
-        novel_view_require_cached=bool(novel_training["require_cached"]),
-        novel_view_supervise_rgb=bool(novel_supervision["rgb"]),
-        novel_view_supervise_metric_depth=bool(novel_supervision["metric_depth"]),
-        novel_view_supervise_scale_invariant_depth=bool(
-            novel_supervision["scale_invariant_depth"]
-        ),
+        novel_view_supported_weight=float(novel["loss"]["supported_weight"]),
+        novel_view_unsupported_weight=float(novel["loss"]["unsupported_weight"]),
         seed=int(config["dataset"].get("seed", 42)),
         checkpoint_dir=str(logging["checkpoint_dir"]),
         resume_checkpoint=resume,
@@ -328,6 +395,7 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
         visualization_every_steps=int(logging["visualization_every_steps"]),
         scalar_log_every_steps=int(logging["scalar_every_steps"]),
         validation_batches=int(logging["validation_batches"]),
+        num_visualization_samples=int(logging["num_visualization_samples"]),
     )
 
 
@@ -361,6 +429,7 @@ def _loader(
     if workers > 0:
         kwargs["persistent_workers"] = bool(dataset_cfg["persistent_workers"])
         kwargs["prefetch_factor"] = int(dataset_cfg["prefetch_factor"])
+        kwargs["multiprocessing_context"] = "spawn"
     return DataLoader(**kwargs)
 
 
@@ -373,8 +442,32 @@ def main() -> None:
         config["optimizer"]["max_global_steps"] = int(args.max_steps)
     if args.per_gpu_batch is not None:
         config["dataset"]["per_gpu_logical_batch"] = int(args.per_gpu_batch)
+    if args.gradient_accumulation is not None:
+        config["optimizer"]["gradient_accumulation_steps"] = int(
+            args.gradient_accumulation
+        )
     if args.workers is not None:
         config["dataset"]["workers"] = int(args.workers)
+    logging_overrides = {
+        "checkpoint_dir": args.checkpoint_dir,
+        "visualization_dir": args.visualization_dir,
+        "checkpoint_every_steps": args.checkpoint_every_steps,
+        "validation_every_steps": args.validation_every_steps,
+        "visualization_every_steps": args.visualization_every_steps,
+        "scalar_every_steps": args.scalar_every_steps,
+        "validation_batches": args.validation_batches,
+        "num_visualization_samples": args.num_visualization_samples,
+        "run_name": args.run_name,
+    }
+    for name, value in logging_overrides.items():
+        if value is not None:
+            config["logging"][name] = value
+    if args.wandb_enabled:
+        config["logging"]["wandb_enabled"] = True
+    if args.novel_view_enabled:
+        config["novel_view"]["enabled"] = True
+    if args.novel_view_disabled:
+        config["novel_view"]["enabled"] = False
     if args.workspace_stats is not None:
         statistics = json.loads(Path(args.workspace_stats).read_text(encoding="utf-8"))
         proposal = statistics["proposed_parameters"]
@@ -399,9 +492,11 @@ def main() -> None:
         [
             derived_root,
             dataset_cfg["calibration_manifest"],
-            dataset_cfg["xlens_cache_index"],
-            dataset_cfg["waft_cache_index"],
+            config["depth"]["checkpoint_path"],
+            config["flow"]["cache_dir"],
+            config["novel_view"]["cache_dir"],
             config["logging"]["checkpoint_dir"],
+            config["logging"]["visualization_dir"],
         ],
         droid_root,
     )
@@ -417,18 +512,6 @@ def main() -> None:
             "and the geometry pilot, then mark the selected values validated; use "
             "--allow-unvalidated-workspace only for synthetic development smoke tests."
         )
-    if config["novel_view"]["enabled"]:
-        summary = Path(config["novel_view"]["validation"]["summary_path"])
-        if not summary.is_file():
-            raise RuntimeError(
-                "See3D augmentation cannot be enabled before real-target validation."
-            )
-        validation = json.loads(summary.read_text(encoding="utf-8"))
-        if not bool(validation.get("approved_for_training", False)):
-            raise RuntimeError(
-                "See3D validation summary has not approved augmentation for training."
-            )
-
     context = initialize_distributed()
     try:
         seed_distributed(int(dataset_cfg.get("seed", 42)), context)
@@ -439,27 +522,11 @@ def main() -> None:
         torch.backends.cuda.matmul.allow_tf32 = train_cfg.tf32
         torch.backends.cudnn.allow_tf32 = train_cfg.tf32
         torch.set_float32_matmul_precision("high" if train_cfg.tf32 else "highest")
-        see3d_index = Path(dataset_cfg["see3d_cache_index"])
-        see3d_cache = str(see3d_index) if see3d_index.is_file() else None
-        if (
-            train_cfg.novel_view_enabled
-            and train_cfg.novel_view_require_cached
-            and see3d_cache is None
-        ):
-            raise FileNotFoundError(
-                f"Enabled See3D training requires cache index {see3d_index}."
-            )
         train_dataset = DROIDLogicalDataset(
             _dataset_config(config, "train"),
-            depth_cache=dataset_cfg["xlens_cache_index"],
-            flow_cache=dataset_cfg["waft_cache_index"],
-            see3d_cache=see3d_cache,
         )
         validation_dataset = DROIDLogicalDataset(
             _dataset_config(config, "validation"),
-            depth_cache=dataset_cfg["xlens_cache_index"],
-            flow_cache=dataset_cfg["waft_cache_index"],
-            see3d_cache=see3d_cache,
         )
         train_loader = _loader(
             train_dataset,
@@ -477,6 +544,7 @@ def main() -> None:
         )
         model, splatter = _model_and_renderer(config)
         model.to(context.device)
+        online_preprocessor = _online_preprocessor(config, context.device)
         use_ddp = bool(config["distributed"].get("use_ddp", True))
         if context.world_size > 1 and not use_ddp:
             raise RuntimeError("WORLD_SIZE > 1 requires distributed.use_ddp=true.")
@@ -498,6 +566,25 @@ def main() -> None:
                 name=config["logging"].get("run_name"),
                 config=config,
             )
+        def visualization_callback(step: int, payload: dict[str, Any]) -> None:
+            logging_cfg = config["logging"]
+            paths = save_droid_validation_visualization(
+                logging_cfg["visualization_dir"],
+                step,
+                payload,
+                num_samples=int(logging_cfg["num_visualization_samples"]),
+                depth_range_m=tuple(
+                    float(value) for value in logging_cfg["depth_display_range_m"]
+                ),
+            )
+            if logger is not None:
+                import wandb
+
+                logger.log(
+                    {key: wandb.Image(str(path)) for key, path in paths.items()},
+                    step=step,
+                )
+
         final_state = train_droid(
             model,
             splatter,
@@ -506,14 +593,9 @@ def main() -> None:
             train_cfg,
             context,
             per_gpu_logical_batch=int(dataset_cfg["per_gpu_logical_batch"]),
+            online_preprocessor=online_preprocessor,
             logger=logger,
-            visualization_callback=lambda step, payload: (
-                save_droid_validation_visualization(
-                    Path(dataset_cfg["derived_root"]) / "logs" / "visualizations",
-                    step,
-                    payload,
-                )
-            ),
+            visualization_callback=visualization_callback,
         )
         if context.is_main:
             print(f"Training finished at {final_state}", flush=True)

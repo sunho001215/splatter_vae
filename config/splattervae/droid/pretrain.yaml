@@ -1,11 +1,8 @@
 dataset:
   droid_root: /home/ws/data/droid
   derived_root: /ws/data/ws/droid_splattervae
-  calibration_manifest: /ws/data/ws/droid_splattervae/manifests/calibration.jsonl.gz
-  split_manifest: /ws/data/ws/droid_splattervae/manifests/episode_splits.json
-  xlens_cache_index: /ws/data/ws/droid_splattervae/xlens/depth-index.json
-  waft_cache_index: /ws/data/ws/droid_splattervae/waft/flow-index.json
-  see3d_cache_index: /ws/data/ws/droid_splattervae/see3d/see3d-index.json
+  calibration_manifest: /ws/data/ws/droid_splattervae/manifests/canonical-full/calibration.jsonl.gz
+  split_manifest: /ws/data/ws/droid_splattervae/manifests/canonical-full/episode_splits.json
   validation_fraction: 0.02
   split_seed: 42
   seed: 42
@@ -18,8 +15,6 @@ dataset:
   persistent_workers: true
   pin_memory: true
   drop_last: true
-  require_xlens_cache: true
-  require_waft_cache: true
 
 preprocessing:
   source_width: 320
@@ -99,20 +94,20 @@ decoder:
   swiglu_hidden_dimension: 512
   use_self_attention: true
   conditioning: multi_token_cross_attention
-  # Provisional only: the workspace-statistics command must replace these
-  # before real training. The entrypoint rejects this status by default.
-  workspace_parameter_status: provisional_requires_droid_stats
+  # Derived from 76 calibration-valid real episodes x three frames using
+  # online X-Lens and validated by the 10-step real-DROID optimizer pilot.
+  workspace_parameter_status: validated_from_droid_xlens_stats_and_pilot
   require_validated_workspace_parameters: true
-  global_center: [0.50, 0.00, 0.50]
-  anchor_initial_spread: 0.45
-  parent_displacement_scale: 0.25
-  child_radius: 0.06
+  global_center: [0.6268912475, 0.0371947839, 0.1571336175]
+  anchor_initial_spread: 0.4632105128
+  parent_displacement_scale: 0.3047925174
+  child_radius: 0.0533386905
 
 renderer:
   image_height: 224
   image_width: 224
-  znear: 0.05
-  zfar: 3.0
+  znear: 0.2928879559
+  zfar: 7.3070499287
   white_background: false
   max_sh_degree: 1
   scale_min: [0.001, 0.001, 0.001]
@@ -121,68 +116,67 @@ renderer:
 depth:
   teacher: xlens
   official_repo_path: /home/ws/ws/droid_training/third_party/XLens
-  checkpoint_path: null
+  checkpoint_path: /home/ws/ws/droid_training/checkpoints/xlens/model.safetensors
+  architecture_config: /home/ws/ws/droid_training/third_party/XLens/configs/xlens_vits.yaml
+  amp_dtype: bf16
   inference_resolution: [320, 180]
   confidence_threshold: 0.0
   metric_depth_weight: 0.5
   scale_invariant_depth_weight: 0.25
   scale_invariant_mean_weight: 1.0
-  cache_format: hdf5_shards
-  items_per_shard: 16
 
 flow:
-  teacher: waft
-  official_repo_path: /home/ws/ws/droid_training/dataset/third_party/WAFT
-  checkpoint_path: null
-  depth_checkpoint_path: null
-  config_path: /home/ws/ws/droid_training/dataset/third_party/WAFT/config/a1/tar-c-t.json
-  iterations: null
-  inference_batch_size: 16
-  cached_gaps: [1, 2, 3, 6, 12]
+  backend: memfof
+  official_repo_path: /home/ws/ws/droid_training/third_party/MEMFOF
+  official_repository_revision: a51de9fc59c6fe20ba08e079372c7b583d58a712
+  checkpoint: egorchistov/optical-flow-MEMFOF-Tartan-T-TSKH
+  checkpoint_revision: 6c6c9aa3ad64f93aee8efbc2f7a6e4535814ee96
+  cache_dir: /home/ws/ws/droid_training/checkpoints/huggingface
+  native_resolution: true
+  input_height: 180
+  input_width: 320
+  iterations: 2
+  precision: fp32
   weight: 0.1
-  pair_weights: [0.4, 0.4, 0.2]
+  pair_weights: [0.5, 0.5]
   alpha_threshold: 0.01
   smooth_l1_beta: 1.0
-  cache_format: hdf5_shards
-  items_per_shard: 8
 
 novel_view:
   enabled: false
-  backend: see3d
-  see3d:
-    repo_path: /home/ws/ws/droid_training/third_party/See3D
-    checkpoint_path: null
-    cache_root: /ws/data/ws/droid_splattervae/see3d
-    super_resolution: false
-  pose_sampling:
-    mode: interpolate
-    min_alpha: 0.25
-    max_alpha: 0.75
-  geometric_warp:
-    use_xlens_depth: true
-    fuse_two_external_views: true
-    preserve_observed_pixels: true
-    relative_depth_tolerance: 0.05
-    absolute_depth_tolerance_m: 0.03
-  training:
-    probability: 0.20
-    loss_weight: 0.05
-    warmup_steps: 50000
-    minimum_confidence: 0.50
-    require_cached: true
-    samples_per_episode: 8
-    items_per_shard: 8
-    hallucinated_depth_confidence_scale: 0.25
-  supervision:
-    rgb: true
-    metric_depth: true
-    scale_invariant_depth: true
-  validation:
-    required_before_enable: true
-    summary_path: /ws/data/ws/droid_splattervae/see3d/validation/summary.json
-    maximum_samples: 100
-    motion_threshold_pixels: 3.0
-    dinov2_repository: null
+  backend: lagernvs
+  official_repo_path: /home/ws/ws/droid_training/third_party/LagerNVS
+  official_repository_revision: 665f727aba8298a04ff4c040fd6279a32ef23017
+  checkpoint_id: facebook/lagernvs_dl3dv_2-6_v_256
+  checkpoint_revision: 4026552953a72c5fb037501564dc673dd73c574e
+  checkpoint_path: null
+  cache_dir: /home/ws/ws/droid_training/checkpoints/huggingface
+  dtype: bf16
+  microbatch_size: 4
+  canonical:
+    image_size: 256
+    focal_px: 186.5
+    deterministic: true
+    source_cameras: exterior_only
+  target_pose:
+    mode: interpolate_with_bounded_perturbation
+    alpha_min: 0.15
+    alpha_max: 0.85
+    prefer_scene_centered_arc: true
+    scene_center: null
+    translation_max_baseline_fraction: 0.03
+    rotation_max_degrees: 3.0
+    min_source_coverage: 0.60
+    max_resample_attempts: 4
+    minimum_geometry_distance_m: 0.08
+    minimum_optical_axis_cosine: 0.35
+    coverage_confidence_threshold: 0.0
+    coverage_sample_stride: 2
+    coverage_dilation_kernel: 5
+  loss:
+    weight: 0.05
+    supported_weight: 1.0
+    unsupported_weight: 0.0
 
 loss:
   rgb_l1: 1.0
@@ -219,16 +213,21 @@ logging:
   wandb_entity: null
   run_name: null
   checkpoint_dir: /ws/data/ws/droid_splattervae/logs/checkpoints
+  visualization_dir: /home/ws/ws/droid_training/outputs/visualization
   scalar_every_steps: 50
   validation_every_steps: 2000
   checkpoint_every_steps: 5000
   visualization_every_steps: 5000
   validation_batches: 8
+  num_visualization_samples: 2
+  depth_display_range_m: [0.25, 5.0]
 
 workspace_statistics:
   output_path: /ws/data/ws/droid_splattervae/workspace_stats/workspace_stats.json
   maximum_episodes: 2000
   frames_per_episode: 8
   depth_confidence_threshold: 0.5
+  maximum_axis_intersection_residual_m: 0.35
+  workspace_geometry_radius_m: 1.0
   depth_percentiles: [1.0, 5.0, 50.0, 95.0, 99.0]
   coordinate_percentiles: [1.0, 5.0, 50.0, 95.0, 99.0]

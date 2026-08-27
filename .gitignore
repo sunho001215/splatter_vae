@@ -11,8 +11,6 @@ runs/
 wandb/
 buffer/
 dataset/assets/sea_raft/*.pth
-dataset/assets/waft/*.pth
-dataset/assets/waft/depth-anything-ckpts/*.pth
 .inspection/
 .venv/
 .uv-cache/

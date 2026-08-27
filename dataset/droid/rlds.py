@@ -32,6 +32,29 @@ def _load_tensorflow_stack():
     return tf, tfds
 
 
+def _canonical_read_config(tf: Any, tfds: Any) -> Any:
+    """Return the one canonical TFDS ordering used by DROID manifests.
+
+    DROID is sharded across 2,048 TFRecords.  TFDS otherwise interleaves blocks
+    from many shards, so an ordinal obtained by enumerating the complete split
+    does not identify the same episode as an absolute split slice.  Reading one
+    shard at a time makes the complete-split order identical to TFDS absolute
+    slicing, while explicit deterministic options keep that address stable.
+    """
+
+    options = tf.data.Options()
+    options.deterministic = True
+    return tfds.ReadConfig(
+        options=options,
+        try_autocache=False,
+        interleave_cycle_length=1,
+        interleave_block_length=1,
+        num_parallel_calls_for_interleave_files=1,
+        num_parallel_calls_for_decode=1,
+        skip_prefetch=True,
+    )
+
+
 def find_tfds_builder_directory(droid_root: str | os.PathLike[str]) -> Path:
     root = Path(droid_root).expanduser().resolve()
     if not root.is_dir():
@@ -89,7 +112,11 @@ def scan_rlds_episode_metadata(
     )
     inspected = 0
     for split in selected_splits:
-        dataset = builder.as_dataset(split=split, shuffle_files=False)
+        dataset = builder.as_dataset(
+            split=split,
+            shuffle_files=False,
+            read_config=_canonical_read_config(_tf, tfds),
+        )
         for ordinal, episode in enumerate(dataset):
             metadata = episode["episode_metadata"]
             yield RLDSEpisodeMetadata(
@@ -140,10 +167,11 @@ class EpisodeBackend(Protocol):
 class TFDSRLDSBackend:
     """Process-local random episode access with a small episode LRU.
 
-    Modern TFDS releases expose ``as_data_source`` for true random access. A
-    standards-compliant ``skip/take`` fallback keeps older TFRecord releases
-    usable; the episode-grouped distributed sampler preserves locality so that
-    fallback is not exercised for every frame.
+    DROID manifest ordinals are defined by the canonical, sequential-shard
+    ``as_dataset`` scan above.  TFDS's default parallel shard interleave and
+    ``as_data_source`` do not share the absolute-slice ordering for this
+    release and therefore must not be used to resolve those ordinals.  The
+    episode LRU and grouped sampler amortize materialization.
     """
 
     def __init__(self, droid_root: str | os.PathLike[str], cache_size: int = 2):
@@ -151,12 +179,11 @@ class TFDSRLDSBackend:
         self.builder_dir = str(find_tfds_builder_directory(self.droid_root))
         self.cache_size = max(1, int(cache_size))
         self._builder = None
-        self._sources: dict[str, Any] = {}
         self._cache: OrderedDict[tuple[str, int], Mapping[str, Any]] = OrderedDict()
 
     def __getstate__(self):
         state = dict(self.__dict__)
-        state.update({"_builder": None, "_sources": {}, "_cache": OrderedDict()})
+        state.update({"_builder": None, "_cache": OrderedDict()})
         return state
 
     def _ensure_builder(self):
@@ -167,20 +194,16 @@ class TFDSRLDSBackend:
 
     def _load_raw_episode(self, split: str, ordinal: int) -> Any:
         builder = self._ensure_builder()
-        if split not in self._sources:
-            try:
-                self._sources[split] = builder.as_data_source(split=split)
-            except (AttributeError, NotImplementedError, ValueError):
-                self._sources[split] = None
-        source = self._sources[split]
-        if source is not None:
-            return source[int(ordinal)]
         _tf, tfds = _load_tensorflow_stack()
         # A TFDS absolute slice resolves the target shard and only skips within
         # that shard. Calling ``.skip(ordinal)`` on the whole 95k-episode split
         # would reread all preceding ~1.7 TiB records for late ordinals.
         split_slice = f"{split}[{int(ordinal)}:{int(ordinal) + 1}]"
-        dataset = builder.as_dataset(split=split_slice, shuffle_files=False)
+        dataset = builder.as_dataset(
+            split=split_slice,
+            shuffle_files=False,
+            read_config=_canonical_read_config(_tf, tfds),
+        )
         try:
             return next(iter(tfds.as_numpy(dataset)))
         except StopIteration as exc:

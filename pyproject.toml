@@ -11,7 +11,6 @@ dependencies = [
     "ninja>=1.11",
     "numpy>=1.26,<2.0",
     "scipy>=1.13",
-    "h5py>=3.11",
     "pillow>=10.3",
     "pyyaml>=6.0",
 ]
@@ -26,15 +25,6 @@ teachers = [
     "opencv-python>=4.9",
     "safetensors>=0.4",
     "timm>=1.0",
-]
-see3d = [
-    "accelerate>=0.30",
-    "diffusers==0.27.2",
-    "transformers==4.41.1",
-    "huggingface-hub==0.23.0",
-    "lpips>=0.1.4",
-    "scikit-learn>=1.5",
-    "xformers",
 ]
 logging = ["wandb>=0.17"]
 dev = ["pytest>=8.2"]

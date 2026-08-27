@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 import os
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,7 @@ from models.training.distributed import (
     unwrap_model,
 )
 from models.training.losses import cross_view_info_nce
+from models.training.online_preprocessing import OnlineTeacherPipeline
 from models.training.reconstruction import compute_droid_reconstruction
 from models.training.schedules import (
     cosine_learning_rate,
@@ -182,6 +185,86 @@ def save_checkpoint(
     distributed_barrier()
 
 
+def _decoder_configurations_match(
+    checkpoint_value: object,
+    runtime_value: object,
+    *,
+    relative_tolerance: float = 1e-7,
+    absolute_tolerance: float = 1e-9,
+) -> bool:
+    """Compare decoder metadata while tolerating harmless float serialization.
+
+    Architectural values and mapping keys remain exact. Only real-valued floating
+    parameters receive a tight tolerance so YAML decimal round-trips do not make an
+    otherwise exact checkpoint impossible to resume.
+    """
+    if isinstance(checkpoint_value, bool) or isinstance(runtime_value, bool):
+        return (
+            isinstance(checkpoint_value, bool)
+            and isinstance(runtime_value, bool)
+            and checkpoint_value == runtime_value
+        )
+    if isinstance(checkpoint_value, Integral) or isinstance(runtime_value, Integral):
+        return (
+            isinstance(checkpoint_value, Integral)
+            and isinstance(runtime_value, Integral)
+            and checkpoint_value == runtime_value
+        )
+    if isinstance(checkpoint_value, Real) or isinstance(runtime_value, Real):
+        return (
+            isinstance(checkpoint_value, Real)
+            and isinstance(runtime_value, Real)
+            and math.isclose(
+                float(checkpoint_value),
+                float(runtime_value),
+                rel_tol=relative_tolerance,
+                abs_tol=absolute_tolerance,
+            )
+        )
+    if isinstance(checkpoint_value, Mapping) or isinstance(runtime_value, Mapping):
+        if not (
+            isinstance(checkpoint_value, Mapping)
+            and isinstance(runtime_value, Mapping)
+            and set(checkpoint_value) == set(runtime_value)
+        ):
+            return False
+        return all(
+            _decoder_configurations_match(
+                checkpoint_value[key],
+                runtime_value[key],
+                relative_tolerance=relative_tolerance,
+                absolute_tolerance=absolute_tolerance,
+            )
+            for key in checkpoint_value
+        )
+    sequence_types = (str, bytes, bytearray)
+    if (
+        isinstance(checkpoint_value, Sequence)
+        or isinstance(runtime_value, Sequence)
+    ) and not (
+        isinstance(checkpoint_value, sequence_types)
+        or isinstance(runtime_value, sequence_types)
+    ):
+        if not (
+            isinstance(checkpoint_value, Sequence)
+            and isinstance(runtime_value, Sequence)
+            and len(checkpoint_value) == len(runtime_value)
+        ):
+            return False
+        return all(
+            _decoder_configurations_match(
+                saved_item,
+                runtime_item,
+                relative_tolerance=relative_tolerance,
+                absolute_tolerance=absolute_tolerance,
+            )
+            for saved_item, runtime_item in zip(
+                checkpoint_value, runtime_value, strict=True
+            )
+        )
+    return checkpoint_value == runtime_value
+
+
 def load_checkpoint(
     path: str | os.PathLike[str],
     model: nn.Module,
@@ -196,7 +279,9 @@ def load_checkpoint(
         )
     unwrapped = unwrap_model(model)
     assert isinstance(unwrapped, SplatterVAE)
-    if checkpoint.get("decoder_configuration") != unwrapped.decoder_configuration():
+    if not _decoder_configurations_match(
+        checkpoint.get("decoder_configuration"), unwrapped.decoder_configuration()
+    ):
         raise ValueError(
             "Checkpoint grouped-decoder configuration does not match this run."
         )
@@ -267,6 +352,30 @@ def _crop_diagnostics(batch: Mapping[str, Any]) -> dict[str, torch.Tensor]:
     return values
 
 
+def _novel_pose_diagnostics(batch: Mapping[str, Any]) -> dict[str, torch.Tensor]:
+    metadata = batch.get("novel_pose_metadata")
+    if not isinstance(metadata, Mapping):
+        return {}
+    output: dict[str, torch.Tensor] = {}
+    names = (
+        "alpha",
+        "baseline",
+        "translation_perturbation_magnitude",
+        "rotation_perturbation_degrees",
+        "source_coverage",
+        "rejected_candidates",
+        "fallback_used",
+        "scene_centered_arc_used",
+        "distance_from_camera_a",
+        "distance_from_camera_b",
+    )
+    for name in names:
+        value = metadata.get(name)
+        if torch.is_tensor(value):
+            output[f"novel_pose_{name}"] = value.float().mean()
+    return output
+
+
 def _all_ranks_finite(value: torch.Tensor) -> bool:
     finite = torch.isfinite(value.detach()).to(dtype=torch.int32)
     if dist.is_initialized():
@@ -283,6 +392,7 @@ def train_droid(
     context: DistributedContext,
     *,
     per_gpu_logical_batch: int,
+    online_preprocessor: OnlineTeacherPipeline,
     logger: Any | None = None,
     visualization_callback: Callable[[int, dict[str, Any]], None] | None = None,
 ) -> TrainingState:
@@ -347,7 +457,18 @@ def train_droid(
                 continue
             if state.global_step >= total_steps:
                 break
-            batch = move_to_device(cpu_batch, context.device)
+            raw_batch = move_to_device(cpu_batch, context.device)
+            teacher_seed = (
+                int(config.seed)
+                + 1_000_003 * int(state.global_step)
+                + 65_537 * int(batch_index)
+                + 1009 * int(context.rank)
+            )
+            batch = online_preprocessor(
+                raw_batch,
+                novel_enabled=bool(config.novel_view_enabled),
+                seed=teacher_seed,
+            )
             accumulation = int(config.gradient_accumulation_steps)
             should_step = ((batch_index + 1) % accumulation == 0) or (
                 batch_index + 1 == len(train_loader)
@@ -382,11 +503,7 @@ def train_droid(
                     motion_translation_max=unwrapped.motion_translation_max,
                     background_color=background,
                     return_renders=False,
-                    synthetic_enabled=(
-                        config.novel_view_enabled
-                        and state.global_step >= int(config.novel_view_warmup_steps)
-                        and random.random() < float(config.novel_view_probability)
-                    ),
+                    novel_view_enabled=bool(config.novel_view_enabled),
                 )
                 total_loss = (
                     reconstruction["loss"]
@@ -426,11 +543,9 @@ def train_droid(
                 ].detach(),
                 "train/flow_loss": reconstruction["flow_loss"].detach(),
                 "train/visibility_loss": reconstruction["visibility_loss"].detach(),
-                "train/synthetic_view_loss": reconstruction[
-                    "synthetic_view_loss"
-                ].detach(),
-                "train/synthetic_applied_fraction": reconstruction[
-                    "synthetic_applied_fraction"
+                "train/novel_view_loss": reconstruction["novel_view_loss"].detach(),
+                "train/novel_support_fraction": reconstruction[
+                    "novel_support_fraction"
                 ].detach(),
                 "train/gaussian_parent_x_mean": reconstruction["parent_xyz_x_mean"],
                 "train/gaussian_parent_y_mean": reconstruction["parent_xyz_y_mean"],
@@ -466,6 +581,10 @@ def train_droid(
                     f"train/{key}": value
                     for key, value in _crop_diagnostics(batch).items()
                 },
+                **{
+                    f"train/{key}": value
+                    for key, value in _novel_pose_diagnostics(batch).items()
+                },
             }
             if state.global_step % max(1, int(config.scalar_log_every_steps)) == 0:
                 reduced = reduce_scalar_metrics(scalar_values)
@@ -491,6 +610,7 @@ def train_droid(
                     config,
                     context,
                     background,
+                    online_preprocessor,
                 )
                 if context.is_main:
                     print(

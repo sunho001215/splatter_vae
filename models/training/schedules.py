@@ -23,7 +23,7 @@ def resolve_total_optimizer_steps(
 def resolve_warmup_steps(config: TrainConfig, total_steps: int) -> int:
     requested = max(
         int(config.warmup_steps),
-        int(math.ceil(float(config.warmup_fraction) * int(total_steps))),
+        math.ceil(float(config.warmup_fraction) * int(total_steps)),
     )
     return min(max(0, requested), max(0, int(total_steps) - 1))
 

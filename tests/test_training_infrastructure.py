@@ -13,6 +13,7 @@ from models.training.config import TrainConfig
 from models.training.distributed import DistributedContext
 from models.training.loop import (
     TrainingState,
+    _decoder_configurations_match,
     build_optimizer,
     load_checkpoint,
     save_checkpoint,
@@ -72,11 +73,42 @@ def test_unwrapped_checkpoint_round_trip(tmp_path) -> None:
     assert len(payload["rng_by_rank"]) == 1
 
 
-def test_temporal_strides_and_waft_gaps_stay_aligned() -> None:
+def test_decoder_configuration_accepts_float_round_trip_noise() -> None:
+    saved = _model().decoder_configuration()
+    runtime = copy.deepcopy(saved)
+    runtime["anchor_initial_spread"] = float(saved["anchor_initial_spread"]) + 1e-9
+    runtime["global_center"][2] = float(saved["global_center"][2]) - 1e-9
+    assert _decoder_configurations_match(saved, runtime)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("anchor_initial_spread", 0.5),
+        ("num_groups", 128),
+        ("conditioning", "single_token"),
+    ),
+)
+def test_decoder_configuration_rejects_material_mismatch(field, value) -> None:
+    saved = _model().decoder_configuration()
+    runtime = copy.deepcopy(saved)
+    runtime[field] = value
+    assert not _decoder_configurations_match(saved, runtime)
+
+
+def test_fixed_pipeline_requires_native_two_iteration_memfof() -> None:
     path = Path("config/splattervae/droid/pretrain.yaml")
     config = yaml.safe_load(path.read_text())
     _validate_fixed_pipeline_contract(config)
     mismatched = copy.deepcopy(config)
-    mismatched["dataset"]["temporal_strides"] = [1, 4]
-    with pytest.raises(ValueError, match="flow.cached_gaps"):
+    mismatched["flow"]["iterations"] = 8
+    with pytest.raises(ValueError, match="flow.iterations"):
         _validate_fixed_pipeline_contract(mismatched)
+
+
+def test_lagernvs_configuration_has_no_probability_gate() -> None:
+    path = Path("config/splattervae/droid/pretrain.yaml")
+    config = yaml.safe_load(path.read_text())
+    config["novel_view"]["probability"] = 0.2
+    with pytest.raises(ValueError, match="boolean_only"):
+        _validate_fixed_pipeline_contract(config)

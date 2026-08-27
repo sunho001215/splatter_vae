@@ -1,10 +1,9 @@
-[submodule "dataset/third_party/WAFT"]
-	path = dataset/third_party/WAFT
-	url = https://github.com/princeton-vl/WAFT.git
-	branch = waftv2
 [submodule "third_party/XLens"]
 	path = third_party/XLens
 	url = https://github.com/zhouhengamerica/XLens.git
-[submodule "third_party/See3D"]
-	path = third_party/See3D
-	url = https://github.com/baaivision/See3D.git
+[submodule "third_party/MEMFOF"]
+	path = third_party/MEMFOF
+	url = https://github.com/msu-video-group/memfof.git
+[submodule "third_party/LagerNVS"]
+	path = third_party/LagerNVS
+	url = https://github.com/facebookresearch/lagernvs.git

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 import numpy as np
 import torch
@@ -253,7 +254,7 @@ def transform_depth(values: torch.Tensor, transform: SpatialTransform) -> torch.
     output = apply_spatial_transform(
         values, transform, mode="nearest", padding_value=0.0
     )
-    return output.masked_fill(~image_validity_mask(transform), 0)
+    return output.masked_fill(~image_validity_mask(transform, device=output.device), 0)
 
 
 def transform_confidence(
@@ -262,7 +263,7 @@ def transform_confidence(
     output = apply_spatial_transform(
         values, transform, mode="bilinear", padding_value=0.0
     )
-    return output.masked_fill(~image_validity_mask(transform), 0)
+    return output.masked_fill(~image_validity_mask(transform, device=output.device), 0)
 
 
 def transform_validity(
@@ -287,15 +288,21 @@ def transform_flow(flow: torch.Tensor, transform: SpatialTransform) -> torch.Ten
     ).float()
     output[..., 0, :, :] *= transform.scale_x
     output[..., 1, :, :] *= transform.scale_y
-    output = output.masked_fill(~image_validity_mask(transform), 0.0)
+    output = output.masked_fill(
+        ~image_validity_mask(transform, device=output.device), 0.0
+    )
     return output.to(dtype=flow.dtype)
 
 
 def image_validity_mask(
-    transform: SpatialTransform, leading_shape: tuple[int, ...] = ()
+    transform: SpatialTransform,
+    leading_shape: tuple[int, ...] = (),
+    *,
+    device: torch.device | str | None = None,
 ) -> torch.Tensor:
     source = torch.ones(
         (*leading_shape, 1, transform.source_height, transform.source_width),
         dtype=torch.bool,
+        device=device,
     )
     return transform_validity(source, transform)

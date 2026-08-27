@@ -47,9 +47,6 @@ def prepare_derived_layout(
     names = (
         "calibration",
         "manifests",
-        "xlens",
-        "waft",
-        "see3d",
         "workspace_stats",
         "metadata",
         "logs",

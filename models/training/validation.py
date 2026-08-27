@@ -15,7 +15,20 @@ from models.gaussian.parameterization import (
 from models.training.config import TrainConfig
 from models.training.distributed import DistributedContext, move_to_device
 from models.training.losses import cross_view_info_nce
+from models.training.online_preprocessing import OnlineTeacherPipeline
 from models.training.reconstruction import compute_droid_reconstruction
+
+
+def _detach_to_cpu(value: Any) -> Any:
+    if torch.is_tensor(value):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: _detach_to_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_detach_to_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_detach_to_cpu(item) for item in value)
+    return value
 
 
 @torch.no_grad()
@@ -27,6 +40,7 @@ def evaluate_droid(
     train_config: TrainConfig,
     context: DistributedContext,
     background_color: torch.Tensor,
+    online_preprocessor: OnlineTeacherPipeline,
 ) -> tuple[dict[str, float], dict[str, Any] | None]:
     model.eval()
     local_sums: dict[str, torch.Tensor] = {}
@@ -35,11 +49,21 @@ def evaluate_droid(
     for batch_index, cpu_batch in enumerate(dataloader):
         if batch_index >= int(train_config.validation_batches):
             break
-        batch = move_to_device(cpu_batch, context.device)
+        raw_batch = move_to_device(cpu_batch, context.device)
         devices = [context.local_rank] if context.device.type == "cuda" else []
         with torch.random.fork_rng(devices=devices):
             torch.manual_seed(
                 int(train_config.seed) + 1_000_003 + batch_index + 1009 * context.rank
+            )
+            batch = online_preprocessor(
+                raw_batch,
+                novel_enabled=bool(train_config.novel_view_enabled),
+                seed=(
+                    int(train_config.seed)
+                    + 10_000_019
+                    + batch_index
+                    + 1009 * context.rank
+                ),
             )
             autocast = (
                 torch.autocast("cuda", dtype=torch.bfloat16)
@@ -69,6 +93,7 @@ def evaluate_droid(
                 ),
                 background_color=background_color,
                 return_renders=context.is_main and visualization is None,
+                novel_view_enabled=bool(train_config.novel_view_enabled),
             )
         total = (
             reconstruction["loss"]
@@ -83,6 +108,8 @@ def evaluate_droid(
             "scale_invariant_depth_loss": reconstruction["scale_invariant_depth_loss"],
             "flow_loss": reconstruction["flow_loss"],
             "visibility_loss": reconstruction["visibility_loss"],
+            "novel_view_loss": reconstruction["novel_view_loss"],
+            "novel_support_fraction": reconstruction["novel_support_fraction"],
             **contrast_metrics,
         }
         for name, value in values.items():
@@ -93,9 +120,9 @@ def evaluate_droid(
         local_batches += 1
         if context.is_main and visualization is None:
             visualization = {
-                "batch": cpu_batch,
-                "reconstruction": reconstruction,
-                "prediction": prediction,
+                "batch": _detach_to_cpu(batch),
+                "reconstruction": _detach_to_cpu(reconstruction),
+                "prediction": _detach_to_cpu(prediction),
             }
     count = torch.tensor(float(local_batches), device=context.device)
     if dist.is_initialized():
