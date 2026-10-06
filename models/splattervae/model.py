@@ -63,8 +63,8 @@ class SplatterVAE(nn.Module):
         decoder_depth: int = 2,
         decoder_num_heads: int = 4,
         decoder_mlp_ratio: float = 4.0,
-        decoder_global_center: Sequence[float] = (0.0, 0.5, 0.1),
-        decoder_anchor_init_std: float = 0.15,
+        decoder_global_center: Sequence[float] = (0.0, 0.5, 0.25),
+        decoder_anchor_init_std: Sequence[float] = (0.20, 0.20, 0.05),
         decoder_parent_offset_scale: float = 0.1,
         decoder_child_radius: float = 0.05,
     ):
@@ -123,8 +123,27 @@ class SplatterVAE(nn.Module):
         global_center = torch.tensor(configured_global_center, dtype=torch.float32)
         if global_center.shape != (3,) or not torch.isfinite(global_center).all():
             raise ValueError("decoder_global_center must contain three finite values.")
+        try:
+            configured_anchor_init_std = tuple(
+                float(value) for value in decoder_anchor_init_std
+            )
+        except (TypeError, ValueError):
+            raise ValueError(
+                "decoder_anchor_init_std must contain three finite, non-negative values."
+            ) from None
+        anchor_init_std = torch.tensor(
+            configured_anchor_init_std, dtype=torch.float32
+        )
+        if (
+            anchor_init_std.shape != (3,)
+            or not torch.isfinite(anchor_init_std).all()
+            or bool((anchor_init_std < 0.0).any())
+        ):
+            raise ValueError(
+                "decoder_anchor_init_std must contain three finite, non-negative values."
+            )
         self.decoder_global_center = configured_global_center
-        self.decoder_anchor_init_std = float(decoder_anchor_init_std)
+        self.decoder_anchor_init_std = configured_anchor_init_std
         self.decoder_parent_offset_scale = float(decoder_parent_offset_scale)
         self.decoder_child_radius = float(decoder_child_radius)
         if self.num_parent_tokens != 256 or self.gaussians_per_parent != 8:
@@ -141,8 +160,6 @@ class SplatterVAE(nn.Module):
             raise ValueError("decoder_dim must be positive and divisible by decoder_num_heads.")
         if not math.isfinite(self.decoder_mlp_ratio) or self.decoder_mlp_ratio <= 0.0:
             raise ValueError("decoder_mlp_ratio must be positive.")
-        if not math.isfinite(self.decoder_anchor_init_std) or self.decoder_anchor_init_std <= 0.0:
-            raise ValueError("decoder_anchor_init_std must be positive.")
         if (
             not math.isfinite(self.decoder_parent_offset_scale)
             or self.decoder_parent_offset_scale <= 0.0
@@ -208,10 +225,7 @@ class SplatterVAE(nn.Module):
         nn.init.trunc_normal_(self.state_token, std=0.02)
         nn.init.trunc_normal_(self.temporal_embed, std=0.02)
         with torch.no_grad():
-            nn.init.normal_(
-                self.parent_anchor, mean=0.0, std=self.decoder_anchor_init_std
-            )
-            self.parent_anchor.add_(global_center)
+            self.parent_anchor.normal_().mul_(anchor_init_std).add_(global_center)
         nn.init.trunc_normal_(self.parent_tokens, std=0.02)
         nn.init.trunc_normal_(self.child_identities, std=0.02)
 
@@ -225,7 +239,7 @@ class SplatterVAE(nn.Module):
             "num_heads": self.decoder_num_heads,
             "mlp_ratio": self.decoder_mlp_ratio,
             "global_center": list(self.decoder_global_center),
-            "anchor_init_std": self.decoder_anchor_init_std,
+            "anchor_init_std": list(self.decoder_anchor_init_std),
             "parent_offset_scale": self.decoder_parent_offset_scale,
             "child_radius": self.decoder_child_radius,
         }
@@ -434,9 +448,14 @@ class SplatterVAE(nn.Module):
         anchor_mean = self.parent_anchor.mean(0)
         anchor_std = self.parent_anchor.std(0, unbiased=False)
         configured_center = self.parent_anchor.new_tensor(self.decoder_global_center)
+        configured_std = self.parent_anchor.new_tensor(self.decoder_anchor_init_std)
         return {
             "parent_anchor_mean": tuple(float(value) for value in anchor_mean),
             "parent_anchor_std": tuple(float(value) for value in anchor_std),
+            "configured_anchor_init_std": self.decoder_anchor_init_std,
+            "parent_anchor_std_error": tuple(
+                float(value) for value in (anchor_std - configured_std).abs()
+            ),
             "parent_anchor_center_error": float(
                 torch.linalg.vector_norm(anchor_mean - configured_center)
             ),

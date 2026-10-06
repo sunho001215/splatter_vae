@@ -131,7 +131,7 @@ def _novel_view_orbit_video(
     background: torch.Tensor,
     splatter_cfg: SplatterConfig,
 ) -> wandb.Video:
-    """Render one source-anchored full orbit in one batched RGB-only call."""
+    """Render one source-anchored full orbit in one batched RGB+ED call."""
     sample_pc = {
         key: value[:1] for key, value in rec_out["gaussian_pc_anchor"].items()
     }
@@ -626,8 +626,7 @@ def _reconstruction_panel(
     targets = rec_out["target_images_self"][0, :, view_idx]
     predicted = rec_out["rendered_self"][0, :, view_idx]
     target_masks = rec_out["target_masks_self"][0, :, view_idx]
-    hard_depth = rec_out["rendered_hard_depth_self"][0, :, view_idx]
-    soft_depth = rec_out["rendered_soft_depth_self"][0, :, view_idx]
+    rendered_depth = rec_out["rendered_depth_self"][0, :, view_idx]
     target_depths = rec_out["target_depths_self"]
     items.extend(image.detach().cpu() for image in targets)
     items.extend(image.detach().cpu() for image in predicted)
@@ -642,20 +641,19 @@ def _reconstruction_panel(
             ).detach().cpu()
         )
 
-    for depth_variant in (hard_depth, soft_depth):
-        for time_idx in range(targets.shape[0]):
-            items.append(
-                _depth_rgb(
-                    depth_variant[time_idx],
-                    target_masks[time_idx],
-                    near_plane,
-                    far_plane,
-                ).detach().cpu()
-            )
+    for time_idx in range(targets.shape[0]):
+        items.append(
+            _depth_rgb(
+                rendered_depth[time_idx],
+                target_masks[time_idx],
+                near_plane,
+                far_plane,
+            ).detach().cpu()
+        )
 
     rows = (
         "target RGB / rendered RGB / target Turbo depth / "
-        "hard accumulated Turbo depth / soft accumulated Turbo depth"
+        "rendered expected Turbo depth"
     )
     if use_segmentation_mask:
         predicted_alpha = rec_out["rendered_alpha_self"][0, :, view_idx]
@@ -927,7 +925,6 @@ def _evaluate_batch(
         cfg_train=cfg_train,
         source_indices=source_indices,
         temporal_ramp=ramp,
-        training=False,
         return_renders=return_renders,
         compute_diagnostics=True,
     )
@@ -962,8 +959,7 @@ def _evaluate_batch(
         "val/render/t0": rec_out["render_loss_t0"],
         "val/components/rgb": rec_out["rgb_loss"],
         "val/components/silhouette": rec_out["silhouette_loss"],
-        "val/components/hard_depth": rec_out["hard_depth_loss"],
-        "val/components/soft_depth": rec_out["soft_depth_loss"],
+        "val/components/depth_l1": rec_out["depth_loss"],
         "val/components/visibility": rec_out["visibility_loss"],
         "val/gaussian/mean_opacity": rec_out["mean_valid_gaussian_opacity"],
         "val/gaussian/active_fraction": rec_out["active_gaussian_fraction"],

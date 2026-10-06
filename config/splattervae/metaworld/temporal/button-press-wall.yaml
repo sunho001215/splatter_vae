@@ -41,11 +41,8 @@ model:
   decoder:
     num_parent_tokens: 256
     gaussians_per_parent: 8
-    global_center:
-      - 0.0
-      - 0.5
-      - 0.1
-    anchor_init_std: 0.15
+    global_center: [0.0, 0.5, 0.25]
+    anchor_init_std: [0.20, 0.20, 0.05]
     parent_offset_scale: 0.1
     child_radius: 0.05
     dim: 128
@@ -98,14 +95,7 @@ train:
   rec_weight: 1.0
   ssim_weight: 0.2
   silhouette_weight: 0.0
-  global_depth_weight: 1.0
-  hard_depth_weight: 1.0
-  soft_depth_weight: 1.0
-  hard_depth_opacity: 0.95
-  local_depth_weight: 0.1
-  local_depth_min_patch_size: 8
-  local_depth_max_patch_size: 32
-  local_depth_min_valid_pixels: 16
+  depth_weight: 1.0
   inv_contrastive_weight: 1.0
   inv_consistency_weight: 0.5
   temperature: 0.1

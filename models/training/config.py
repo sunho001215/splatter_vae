@@ -30,14 +30,7 @@ class TrainConfig:
     rec_weight: float = 1.0
     ssim_weight: float = 0.2
     silhouette_weight: float = 0.1
-    global_depth_weight: float = 1.0
-    hard_depth_weight: float = 1.0
-    soft_depth_weight: float = 1.0
-    hard_depth_opacity: float = 0.95
-    local_depth_weight: float = 0.1
-    local_depth_min_patch_size: int = 8
-    local_depth_max_patch_size: int = 32
-    local_depth_min_valid_pixels: int = 16
+    depth_weight: float = 1.0
 
     inv_contrastive_weight: float = 1.0
     inv_consistency_weight: float = 0.5
@@ -57,9 +50,3 @@ class TrainConfig:
 
     def __post_init__(self) -> None:
         self.temporal_anchor = validate_temporal_anchor(self.temporal_anchor)
-        if float(self.hard_depth_weight) < 0.0:
-            raise ValueError("hard_depth_weight must be non-negative.")
-        if float(self.soft_depth_weight) < 0.0:
-            raise ValueError("soft_depth_weight must be non-negative.")
-        if not 0.0 < float(self.hard_depth_opacity) <= 1.0:
-            raise ValueError("hard_depth_opacity must be in (0, 1].")

@@ -32,7 +32,7 @@ CONFIG_FAMILY="cnn"
 # Edit this list to choose one or more random seeds. Each environment is
 # launched once per seed (for example: SEEDS=(42 98 123)).
 SEEDS=(
-  11
+  48
 )
 
 ENVS=(

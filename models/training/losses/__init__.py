@@ -1,4 +1,4 @@
-from .depth import compute_global_local_depth_loss
+from .depth import compute_depth_l1_loss
 from .flow import compute_optical_flow_loss
 from .reconstruction import (
     DYNAMIC_FLOW_SCALE_PIXELS,
@@ -13,7 +13,7 @@ __all__ = [
     "DYNAMIC_FLOW_SCALE_PIXELS",
     "build_target_dynamic_scores",
     "compute_balanced_silhouette_loss",
-    "compute_global_local_depth_loss",
+    "compute_depth_l1_loss",
     "compute_optical_flow_loss",
     "compute_reconstruction_loss",
     "compute_visibility_loss",

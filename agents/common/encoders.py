@@ -132,10 +132,10 @@ class SplatterVAEInvariantEncoder(nn.Module):
             decoder_num_heads=int(decoder_cfg.get("num_heads", 4)),
             decoder_mlp_ratio=float(decoder_cfg.get("mlp_ratio", 4.0)),
             decoder_global_center=decoder_cfg.get(
-                "global_center", [0.0, 0.5, 0.1]
+                "global_center", [0.0, 0.5, 0.25]
             ),
-            decoder_anchor_init_std=float(
-                decoder_cfg.get("anchor_init_std", 0.15)
+            decoder_anchor_init_std=decoder_cfg.get(
+                "anchor_init_std", [0.20, 0.20, 0.05]
             ),
             decoder_parent_offset_scale=float(
                 decoder_cfg.get("parent_offset_scale", 0.1)

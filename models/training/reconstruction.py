@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from typing import Any, Dict
 
 import torch
@@ -15,14 +14,14 @@ from models.gaussian.parameterization import (
     SplatterConfig,
     WorldSpaceGaussianParameterization,
 )
-from models.gaussian.rendering import render_dngaussian_depths, render_rgb
+from models.gaussian.rendering import render_rgb
 from models.splattervae.config import TEMPORAL_WINDOW
 from models.splattervae.model import SplatterVAE
 from models.training.config import TrainConfig
 from models.training.losses import (
     build_target_dynamic_scores,
     compute_balanced_silhouette_loss,
-    compute_global_local_depth_loss,
+    compute_depth_l1_loss,
     compute_optical_flow_loss,
     compute_reconstruction_loss,
     compute_visibility_loss,
@@ -78,14 +77,6 @@ def _stack_gaussian_sequence(
     return {key: torch.stack([pc[key] for pc in pc_sequence], 1).contiguous() for key in keys}
 
 
-def _local_depth_patch_size(cfg: TrainConfig, training: bool) -> int:
-    minimum = int(cfg.local_depth_min_patch_size)
-    maximum = int(cfg.local_depth_max_patch_size)
-    if minimum <= 0 or maximum < minimum:
-        raise ValueError("Invalid local depth patch-size range.")
-    return random.randint(minimum, maximum) if training else int(round((minimum + maximum) / 2.0))
-
-
 def _weighted_mean(values: torch.Tensor, weights: torch.Tensor, time_idx: int) -> torch.Tensor:
     selected_values = values[:, time_idx]
     selected_weights = weights[:, time_idx].to(values.dtype)
@@ -101,39 +92,15 @@ def _resolve_loss_masks(
     return masks if use_segmentation_mask else torch.ones_like(masks)
 
 
-def _depth_loss_components(
-    rendered_depth: torch.Tensor,
-    target_depths: torch.Tensor,
-    target_masks: torch.Tensor,
-    dynamic_scores: torch.Tensor,
-    cfg: TrainConfig,
-    patch_size: int,
-    shape: tuple[int, int, int],
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    components = compute_global_local_depth_loss(
-        rendered_depth.flatten(0, 2),
-        target_depths.flatten(0, 2),
-        target_masks.flatten(0, 2),
-        patch_size=patch_size,
-        min_valid_pixels=int(cfg.local_depth_min_valid_pixels),
-        dynamic_score=dynamic_scores.flatten(0, 2),
-        dynamic_region_weight=float(cfg.dynamic_region_weight),
-        return_per_render=True,
-    )
-    return tuple(component.view(shape) for component in components)
-
-
 def _timestep_render_losses(
     rendered: torch.Tensor,
-    hard_depth: torch.Tensor,
-    soft_depth: torch.Tensor,
+    rendered_depth: torch.Tensor,
     rendered_alpha: torch.Tensor,
     target_images: torch.Tensor,
     target_depths: torch.Tensor,
     target_masks: torch.Tensor,
     dynamic_scores: torch.Tensor,
     cfg: TrainConfig,
-    patch_size: int,
 ) -> list[Dict[str, torch.Tensor]]:
     batch, timesteps, views = rendered.shape[:3]
     flat_rendered = rendered.flatten(0, 2)
@@ -166,34 +133,14 @@ def _timestep_render_losses(
         sil_fg_valid = torch.ones_like(rgb)
         sil_bg_valid = torch.ones_like(rgb)
     shape = (batch, timesteps, views)
-    (
-        hard_global,
-        hard_local,
-        hard_global_valid,
-        hard_local_valid,
-    ) = _depth_loss_components(
-        hard_depth,
-        target_depths,
-        target_masks,
-        dynamic_scores,
-        cfg,
-        patch_size,
-        shape,
+    depth, depth_valid_count = compute_depth_l1_loss(
+        rendered_depth.flatten(0, 2),
+        target_depths.flatten(0, 2),
+        target_masks.flatten(0, 2),
+        return_per_render=True,
     )
-    (
-        soft_global,
-        soft_local,
-        soft_global_valid,
-        soft_local_valid,
-    ) = _depth_loss_components(
-        soft_depth,
-        target_depths,
-        target_masks,
-        dynamic_scores,
-        cfg,
-        patch_size,
-        shape,
-    )
+    depth = depth.view(shape)
+    depth_valid_count = depth_valid_count.view(shape)
     rgb = rgb.view(shape); rgb_weights = rgb_weights.view(shape)
     sil_fg = sil_fg.view(shape); sil_bg = sil_bg.view(shape)
     sil_fg_valid = sil_fg_valid.view(shape); sil_bg_valid = sil_bg_valid.view(shape)
@@ -204,42 +151,17 @@ def _timestep_render_losses(
         sil_fg_t = _weighted_mean(sil_fg, sil_fg_valid, time_idx)
         sil_bg_t = _weighted_mean(sil_bg, sil_bg_valid, time_idx)
         silhouette_t = 0.5 * (sil_fg_t + sil_bg_t)
-        hard_global_t = _weighted_mean(hard_global, hard_global_valid, time_idx)
-        hard_local_t = _weighted_mean(hard_local, hard_local_valid, time_idx)
-        hard_depth_t = hard_global_t + float(cfg.local_depth_weight) * hard_local_t
-        soft_global_t = _weighted_mean(soft_global, soft_global_valid, time_idx)
-        soft_local_t = _weighted_mean(soft_local, soft_local_valid, time_idx)
-        soft_depth_t = soft_global_t + float(cfg.local_depth_weight) * soft_local_t
-        global_t = (
-            float(cfg.hard_depth_weight) * hard_global_t
-            + float(cfg.soft_depth_weight) * soft_global_t
-        )
-        local_t = (
-            float(cfg.hard_depth_weight) * hard_local_t
-            + float(cfg.soft_depth_weight) * soft_local_t
-        )
-        depth_t = (
-            float(cfg.hard_depth_weight) * hard_depth_t
-            + float(cfg.soft_depth_weight) * soft_depth_t
-        )
+        depth_t = _weighted_mean(depth, depth_valid_count, time_idx)
         render_t = (
             float(cfg.rec_weight) * rgb_t
             + float(cfg.silhouette_weight) * silhouette_t
-            + float(cfg.global_depth_weight) * depth_t
+            + float(cfg.depth_weight) * depth_t
         )
         losses.append({
             "rgb_loss": rgb_t,
             "silhouette_foreground_loss": sil_fg_t,
             "silhouette_background_loss": sil_bg_t,
             "silhouette_loss": silhouette_t,
-            "hard_global_depth_loss": hard_global_t,
-            "hard_local_depth_loss": hard_local_t,
-            "hard_depth_loss": hard_depth_t,
-            "soft_global_depth_loss": soft_global_t,
-            "soft_local_depth_loss": soft_local_t,
-            "soft_depth_loss": soft_depth_t,
-            "global_depth_loss": global_t,
-            "local_depth_loss": local_t,
             "depth_loss": depth_t,
             "render_loss": render_t,
         })
@@ -268,11 +190,10 @@ def compute_reconstruction_and_renders(
     cfg_train: TrainConfig,
     source_indices: torch.Tensor,
     temporal_ramp: float,
-    training: bool,
     return_renders: bool = False,
     compute_diagnostics: bool = False,
 ) -> Dict[str, Any]:
-    """Activate predictions and compute batched RGB and DNGaussian depth losses.
+    """Activate predictions and compute batched RGB plus metric ED-L1 losses.
 
     ``source_indices`` selects only which invariant feature was decoded upstream
     and which camera is displayed. No source camera or source mask enters Gaussian
@@ -320,20 +241,12 @@ def compute_reconstruction_and_renders(
         else [anchor_pc]
     )
     stacked_pc = _stack_gaussian_sequence(pc_sequence)
-    rgb_result = render_rgb(
+    rgb_depth_result = render_rgb(
         stacked_pc, w2c_t, intrinsics_t, bg, splatter_cfg
     )
-    rendered = rgb_result["render"]
-    rendered_alpha = rgb_result["alpha"]
-    depth_result = render_dngaussian_depths(
-        stacked_pc,
-        w2c_t,
-        intrinsics_t,
-        splatter_cfg,
-        hard_opacity=float(cfg_train.hard_depth_opacity),
-    )
-    hard_depth = depth_result["hard_depth"]
-    soft_depth = depth_result["soft_depth"]
+    rendered = rgb_depth_result["render"]
+    rendered_depth = rgb_depth_result["depth"]
+    rendered_alpha = rgb_depth_result["alpha"]
     flow_metrics: Dict[str, torch.Tensor] = {}
     if temporal_modeling:
         rendered_flows, flow_coverages, flow_valid_masks, flow_source_alphas = render_translation_flow_sequence(
@@ -357,9 +270,8 @@ def compute_reconstruction_and_renders(
     dynamic_scores = build_target_dynamic_scores(optical_flows)[:, :num_render_timesteps]
     target_images = images_01.float() * target_masks_float
     timestep_losses = _timestep_render_losses(
-        rendered, hard_depth, soft_depth, rendered_alpha,
+        rendered, rendered_depth, rendered_alpha,
         target_images, depths, target_masks, dynamic_scores, cfg_train,
-        _local_depth_patch_size(cfg_train, training),
     )
     visibility_loss, visibility_per_timestep = compute_visibility_loss(
         anchor_pc["xyz"],
@@ -411,8 +323,7 @@ def compute_reconstruction_and_renders(
             "target_depths_self": depths,
             "target_optical_flows": optical_flows.detach(),
             "rendered_self": rendered,
-            "rendered_hard_depth_self": hard_depth,
-            "rendered_soft_depth_self": soft_depth,
+            "rendered_depth_self": rendered_depth,
             "rendered_alpha_self": rendered_alpha,
             "source_indices": source_indices.detach().cpu(),
             "gaussian_pc_anchor": {

@@ -145,8 +145,7 @@ def _core_log_values(
         "train/render/t0": rec_out["render_loss_t0"].item(),
         "train/components/rgb": rec_out["rgb_loss"].item(),
         "train/components/silhouette": rec_out["silhouette_loss"].item(),
-        "train/components/hard_depth": rec_out["hard_depth_loss"].item(),
-        "train/components/soft_depth": rec_out["soft_depth_loss"].item(),
+        "train/components/depth_l1": rec_out["depth_loss"].item(),
         "train/components/visibility": rec_out["visibility_loss"].item(),
         "train/representation/inv_contrastive": representation["inv_contrastive"].item(),
         "train/representation/inv_consistency": representation["inv_consistency"].item(),
@@ -283,7 +282,6 @@ def train_splatter_vae(
                 cfg_train=cfg_train,
                 source_indices=source_indices,
                 temporal_ramp=ramp,
-                training=True,
                 compute_diagnostics=should_log,
             )
             render_loss = rec_out["render_loss_t0"]
