@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+outputs/
+wandb/
+.cache/
+.tools/
+MUJOCO_LOG.TXT
+*.hdf5
+*.pt
+*.tmp
+
+.pytest_tmp/
+
+# Retain numeric evidence for the duplicate local-only validation without publishing duplicate media.
+docs/droid_dense_validation_no_wandb/overlays/
+docs/droid_dense_validation_no_wandb/fused_gt_cloud.npy

@@ -1,0 +1,74 @@
+[project]
+name = "splatter4d"
+version = "0.1.0"
+description = "Dynamic 3D Gaussian pretext for viewpoint-robust state encoders"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "torch==2.10.0",
+    "torchvision==0.25.0",
+    "gsplat",
+    "fused-ssim",
+    "mujoco>=3.4.0",
+    "metaworld>=3.0.0",
+    "gymnasium[mujoco]>=1.2.3",
+    "numpy<2.0.0",
+    "scipy>=1.11",
+    "h5py>=3.15.1",
+    "pyyaml>=6.0.3",
+    "wandb[media]>=0.24.0",
+    "pillow>=10.0",
+    "setuptools>=80.9.0",
+]
+
+[project.optional-dependencies]
+droid = [
+    "tensorflow>=2.18.1",
+    "tensorflow-datasets>=4.9.9",
+    "protobuf>=3.20,<4.0",
+    "huggingface-hub>=0.30",
+]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.uv]
+package = false
+
+[tool.uv.extra-build-dependencies]
+gsplat = ["torch"]
+fused-ssim = ["torch", "torchvision"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
+gsplat = { git = "https://github.com/nerfstudio-project/gsplat.git", rev = "d28ee0c42264a540b8b17388cf793ad31bc20b53" }
+fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim", rev = "a7c48d6dd7ac6dc39a7958c7c4452e0b10418f38" }
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[tool.ruff]
+line-length = 125
+target-version = "py310"
+exclude = ["mujoco_mig_setup.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP"]
+ignore = ["E731", "B905", "B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["s4d"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[[tool.uv.dependency-metadata]]
+name = "gsplat"
+version = "1.5.3"
+requires-dist = ["ninja", "numpy", "jaxtyping", "nvtx", "rich>=12", "torch>=2.0", "typing_extensions; python_version < \"3.8\"", "scipy; extra == \"lidar\"", "Pillow; extra == \"examples\"", "tqdm; extra == \"examples\"", "tyro; extra == \"examples\"", "imageio>=2.37.2; extra == \"examples\"", "black[jupyter]==22.3.0; extra == \"dev\"", "isort==5.10.1; extra == \"dev\"", "pylint==2.13.4; extra == \"dev\"", "pytest; extra == \"dev\"", "pytest-env; extra == \"dev\"", "pytest-xdist==2.5.0; extra == \"dev\"", "Pillow; extra == \"dev\"", "tqdm; extra == \"dev\"", "typeguard>=2.13.3; extra == \"dev\"", "pyyaml>=6.0.1; extra == \"dev\"", "build; extra == \"dev\"", "twine; extra == \"dev\"", "cupy-cuda12x; extra == \"dev\"", "nerfacc>=0.5.3; extra == \"dev\"", "PLAS @ git+https://github.com/fraunhoferhhi/PLAS.git ; extra == \"dev\"", "imageio>=2.37.2; extra == \"dev\"", "torchpq>=0.3.0.6; extra == \"dev\""]
+
+[[tool.uv.dependency-metadata]]
+name = "fused-ssim"
+version = "1.0.0"
+requires-dist = ["torch>=2.0.0"]
