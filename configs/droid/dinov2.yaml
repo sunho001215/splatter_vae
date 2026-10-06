@@ -1,0 +1,13 @@
+model:
+  encoder:
+    backbone: dinov2_vits14
+    image_height: 140
+    image_width: 252
+    patch_size: 14
+    width: 384
+    depth: 12
+    heads: 6
+    use_cls_token: true
+    layerscale_init: 0.00001
+    normalization: imagenet
+    drop_path: 0.0
