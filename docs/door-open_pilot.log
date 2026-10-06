@@ -1,0 +1,22 @@
+[gpu_guard] cuda:0 -> GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+[mujoco_mig_setup] CUDA_VISIBLE_DEVICES = GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
+[mujoco_mig_setup] EGL device 16 matches visible CUDA device 0
+[mujoco_mig_setup] Setting MUJOCO_EGL_DEVICE_ID = 16
+[mujoco_mig_setup] MuJoCo EGL patch applied successfully.
+[gpu_guard] MuJoCo EGL device 16 -> visible CUDA ordinal 0
+GPU mapping [{"index": 0, "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce", "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"}] EGL device 16; free disk bytes 3897390051328
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:34: UserWarning: [33mWARN: A Box observation space maximum and minimum values are equal.[0m
+  logger.warn("A Box observation space maximum and minimum values are equal.")
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
+  logger.warn(f"{pre} is not within the observation space.")
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/metaworld/policies/policy.py:49: UserWarning: Constant(s) may be too high. Environments clip response to [-1, 1]
+  warnings.warn(
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `step()` method is not within the observation space.[0m
+  logger.warn(f"{pre} is not within the observation space.")
+[mujoco_mig_setup] Full EGL device count = 20
+[door-open] episode 1/5 mode=expert_guided len=90 success_step=89 elapsed=4s
+[door-open] episode 2/5 mode=expert_guided len=87 success_step=86 elapsed=6s
+[door-open] episode 3/5 mode=perturb_recover len=188 success_step=78 elapsed=13s
+[door-open] episode 4/5 mode=expert_guided len=101 success_step=100 elapsed=22s
+[door-open] episode 5/5 mode=expert_guided len=125 success_step=124 elapsed=25s
+wrote /home/ws/data/metaworld/splatter4d_v1/door-open_pilot.hdf5 (0.18 GiB) in 27s; episodes=5

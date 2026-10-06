@@ -1,0 +1,46 @@
+{
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "torch": "2.10.0+cu129",
+  "trained": false,
+  "variants": {
+    "scratch": {
+      "state_shape": [
+        1,
+        6144
+      ],
+      "finite": true,
+      "export_features_bitwise_equal": true,
+      "pretrained_checks": {},
+      "artifact": "/home/ws/ws/splatter4d/.cache/scratch_encoder_smoke.pt",
+      "limitations": "untrained slot/temporal/projection parameters; encoder-only smoke, not rendered overfit"
+    },
+    "dinov2": {
+      "state_shape": [
+        1,
+        6144
+      ],
+      "finite": true,
+      "export_features_bitwise_equal": true,
+      "pretrained_checks": {
+        "patch_weights_exact": true,
+        "last_attention_weights_exact": true,
+        "cls_position_retained": true,
+        "spatial_position_shape": [
+          1,
+          180,
+          384
+        ]
+      },
+      "artifact": "/home/ws/ws/splatter4d/.cache/dinov2_encoder_smoke.pt",
+      "limitations": "untrained slot/temporal/projection parameters; encoder-only smoke, not rendered overfit"
+    }
+  },
+  "pretrained_source": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_pretrain.pth",
+  "pretrained_sha256": "b938bf1bc15cd2ec0feacfe3a1bb553fe8ea9ca46a7e1d8d00217f29aef60cd9"
+}

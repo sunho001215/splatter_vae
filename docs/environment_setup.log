@@ -1,0 +1,5 @@
+   Updating https://github.com/nerfstudio-project/gsplat.git (HEAD)
+    Updated https://github.com/nerfstudio-project/gsplat.git (d28ee0c42264a540b8b17388cf793ad31bc20b53)
+  × Failed to download and build `gsplat @
+  │ git+https://github.com/nerfstudio-project/gsplat.git`
+  ╰─▶ Building source distributions for `gsplat` is disabled

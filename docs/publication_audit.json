@@ -1,0 +1,9 @@
+{
+  "scope": "candidate source/config/test/docs text and binary sizes; offline W&B internals excluded by gitignore",
+  "credential_pattern_hits": [],
+  "files_scanned": 365,
+  "candidate_files_over_10MiB": [],
+  "pointworld_license_sha256": "4ff203c3f7997c7fed287a463d733f794934a79cfabb2936008fca0bcc8ad3d6",
+  "dataset_artifact_notice": "PointWorld-derived PNG and NPY artifacts subject to included NVIDIA non-commercial license. No full raw episode arrays or pretrained weights staged.",
+  "limitation": "Pattern scan is not proof that all sensitive content is absent. Dataset metadata in retained reports is publicly released provenance."
+}

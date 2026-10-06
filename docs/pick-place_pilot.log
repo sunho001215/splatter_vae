@@ -1,0 +1,22 @@
+[gpu_guard] cuda:0 -> GPU-d09f0338-71b9-d915-3c7f-e99754a3b639 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+[mujoco_mig_setup] CUDA_VISIBLE_DEVICES = GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+[mujoco_mig_setup] EGL device 17 matches visible CUDA device 0
+[mujoco_mig_setup] Setting MUJOCO_EGL_DEVICE_ID = 17
+[mujoco_mig_setup] MuJoCo EGL patch applied successfully.
+[gpu_guard] MuJoCo EGL device 17 -> visible CUDA ordinal 0
+GPU mapping [{"index": 0, "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639", "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"}] EGL device 17
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:34: UserWarning: [33mWARN: A Box observation space maximum and minimum values are equal.[0m
+  logger.warn("A Box observation space maximum and minimum values are equal.")
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
+  logger.warn(f"{pre} is not within the observation space.")
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `step()` method is not within the observation space.[0m
+  logger.warn(f"{pre} is not within the observation space.")
+/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/metaworld/policies/policy.py:49: UserWarning: Constant(s) may be too high. Environments clip response to [-1, 1]
+  warnings.warn(
+[mujoco_mig_setup] Full EGL device count = 20
+[pick-place] episode 1/5 mode=expert_guided len=55 success_step=54 elapsed=2s
+[pick-place] episode 2/5 mode=expert_guided len=450 success_step=-1 elapsed=15s
+[pick-place] episode 3/5 mode=perturb_recover len=188 success_step=55 elapsed=20s
+[pick-place] episode 4/5 mode=expert_guided len=450 success_step=-1 elapsed=32s
+[pick-place] episode 5/5 mode=expert_guided len=450 success_step=-1 elapsed=47s
+wrote /home/ws/data/metaworld/splatter4d_v1/pick-place_pilot.hdf5 (0.50 GiB) in 49s; episodes=5

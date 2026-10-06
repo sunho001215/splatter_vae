@@ -1,0 +1,28 @@
+s4d/diag/local_log.py:56:19: UP031 Use format specifiers instead of percent format
+s4d/diag/panels.py:68:126: E501 Line too long (130 > 125)
+s4d/losses/motion.py:39:126: E501 Line too long (130 > 125)
+s4d/model/decoder.py:155:126: E501 Line too long (132 > 125)
+s4d/train/evaluate.py:8:21: F401 [*] `pathlib.Path` imported but unused
+s4d/train/evaluate.py:28:28: F401 [*] `s4d.train.loop.MOVING_SCORE` imported but unused
+s4d/train/evaluate.py:55:9: B007 Loop control variable `ep` not used within loop body
+s4d/train/evaluate.py:67:126: E501 Line too long (132 > 125)
+s4d/train/evaluate.py:110:126: E501 Line too long (133 > 125)
+s4d/train/evaluate.py:126:126: E501 Line too long (128 > 125)
+s4d/train/evaluate.py:170:126: E501 Line too long (127 > 125)
+s4d/train/evaluate.py:220:17: B007 Loop control variable `a` not used within loop body
+s4d/train/evaluate.py:227:126: E501 Line too long (135 > 125)
+s4d/train/evaluate.py:269:126: E501 Line too long (128 > 125)
+s4d/train/evaluate.py:288:126: E501 Line too long (137 > 125)
+scripts/collect_metaworld.py:43:126: E501 Line too long (128 > 125)
+scripts/compute_workspace_stats.py:64:126: E501 Line too long (134 > 125)
+scripts/evaluate.py:17:1: I001 [*] Import block is un-sorted or un-formatted
+scripts/export_encoder.py:31:126: E501 Line too long (126 > 125)
+scripts/export_encoder.py:34:126: E501 Line too long (156 > 125)
+scripts/summarize_run.py:71:126: E501 Line too long (127 > 125)
+scripts/train.py:45:126: E501 Line too long (128 > 125)
+scripts/verify_metaworld_tasks.py:14:1: E402 Module level import not at top of file
+scripts/verify_metaworld_tasks.py:15:1: E402 Module level import not at top of file
+scripts/verify_metaworld_tasks.py:17:1: E402 Module level import not at top of file
+scripts/verify_metaworld_tasks.py:18:1: E402 Module level import not at top of file
+Found 26 errors.
+[*] 3 fixable with the `--fix` option (1 hidden fix can be enabled with the `--unsafe-fixes` option).

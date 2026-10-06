@@ -1,0 +1,72 @@
+{
+  "episode": "AUTOLab+0d4edc83+2023-10-21-19h-07m-04s",
+  "scope": "one real matched episode; disjoint intra-episode validation clip",
+  "metrics": {
+    "alignment/dense_cross_camera_median_relative_error": 0.015513284131884575,
+    "alignment/dense_cross_camera_unfiltered_relative_error": 0.02238529920578003,
+    "alignment/scene_depth_median_m": 0.0007565021514892578,
+    "alignment/cross_camera_median_relative_error": 0.015352754853665829,
+    "alignment/cross_camera_unfiltered_relative_error": 0.02643238753080368,
+    "alignment/gripper_heldout_median_m": 0.012207090854644775,
+    "alignment/gripper_fit_median_m": 0.008698582649230957,
+    "alignment/match_rate_selected_sample": 1.0,
+    "alignment/raw_pose_max_error_m": 0.0,
+    "alignment/raw_rotation_max_error_rad": 1.1133671620229251e-07,
+    "alignment/raw_gripper_max_error": 1.4901161193847656e-08,
+    "alignment/initial_rgb_exact_index_matches": 14,
+    "acceptance/selected_episode_match_95pct": 1,
+    "acceptance/cross_camera_3pct": 1,
+    "acceptance/cross_camera_tracks_3pct": 1,
+    "acceptance/visible_scene_track_1cm": 1,
+    "acceptance/heldout_gripper_1p5cm": 1
+  },
+  "acceptance": {
+    "selected_episode_match_95pct": true,
+    "cross_camera_3pct": true,
+    "cross_camera_tracks_3pct": true,
+    "visible_scene_track_1cm": true,
+    "heldout_gripper_1p5cm": true
+  },
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "input_cache_unchanged": true,
+  "native_sample_unchanged": true,
+  "input_sha256": {
+    "manifest.json": "0156baad71971e8543c08234d7f4cecdcac27adbdca56f1256d3521aa269fa5d",
+    "matched_raw_external.npz": "2191d59205962c5b760a4db80ae5a9855b35040aa1264dd0faa080350ef3d462",
+    "scratch.h5": "d6523528850c9d65c8af2d6f0d930c4d25b5b229f4d64711992e51da6a9345e9",
+    "dinov2.h5": "2b8aa68101f802178fda5252bd431ea09278e4bc14070b5aa99a84e92e1425ea"
+  },
+  "local_evidence": [
+    "docs/droid_dense_validation_no_wandb/alignment_report.json",
+    "docs/droid_dense_validation_no_wandb/dense_depth_report.json",
+    "docs/droid_dense_validation_no_wandb/fused_gt_cloud.npy",
+    "docs/droid_dense_validation_no_wandb/coordinate_correction.json",
+    "docs/droid_dense_validation_no_wandb/adapter_verification.json",
+    "docs/droid_dense_validation_no_wandb/loader_validation_workers0.json",
+    "docs/droid_dense_validation_no_wandb/loader_validation_workers2.json",
+    "docs/droid_dense_validation_no_wandb/manifest.json",
+    "docs/droid_dense_validation_no_wandb/overlays/train_0_11.png",
+    "docs/droid_dense_validation_no_wandb/overlays/validation_50_61.png",
+    "docs/droid_dense_validation_no_wandb/overlays/cached_coordinates_scratch.png",
+    "docs/droid_dense_validation_no_wandb/overlays/cached_coordinates_dinov2.png",
+    "docs/droid_dense_validation_no_wandb/overlays/dense_warp_t0_src0.png",
+    "docs/droid_dense_validation_no_wandb/overlays/dense_warp_t0_src1.png",
+    "docs/droid_dense_validation_no_wandb/overlays/dense_warp_t50_src0.png",
+    "docs/droid_dense_validation_no_wandb/overlays/dense_warp_t50_src1.png",
+    "docs/droid_dense_validation_no_wandb/overlays/fused_gt_cloud.png",
+    "docs/droid_dense_validation_no_wandb/overlays/motion_scores.png"
+  ],
+  "wandb": {
+    "enabled": false,
+    "mode": "disabled",
+    "run_url": null,
+    "offline_path": null,
+    "finished": false
+  }
+}

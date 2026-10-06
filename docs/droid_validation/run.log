@@ -1,0 +1,96 @@
+wandb: WARNING `start_method` is deprecated and will be removed in a future version of wandb. This setting is currently non-functional and safely ignored.
+wandb: Tracking run with wandb version 0.25.0
+wandb: W&B syncing is set to `offline` in this directory. Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
+wandb: Run data is saved locally in /home/ws/ws/splatter4d/docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut
+wandb: 
+wandb: Run history:
+wandb:                     acceptance/cross_camera_3pct ▁
+wandb:                 acceptance/heldout_gripper_1p5cm ▁
+wandb:          acceptance/selected_episode_match_95pct ▁
+wandb:               acceptance/visible_scene_track_1cm ▁
+wandb:     alignment/cross_camera_median_relative_error ▁
+wandb: alignment/cross_camera_unfiltered_relative_error ▁
+wandb:                   alignment/gripper_fit_median_m ▁
+wandb:               alignment/gripper_heldout_median_m ▁
+wandb:        alignment/initial_rgb_exact_index_matches ▁
+wandb:             alignment/match_rate_selected_sample ▁
+wandb:                                               +4 ...
+wandb: 
+wandb: Run summary:
+wandb:                     acceptance/cross_camera_3pct 1
+wandb:                 acceptance/heldout_gripper_1p5cm 1
+wandb:          acceptance/selected_episode_match_95pct 1
+wandb:               acceptance/visible_scene_track_1cm 1
+wandb:     alignment/cross_camera_median_relative_error 0.01535
+wandb: alignment/cross_camera_unfiltered_relative_error 0.02643
+wandb:                   alignment/gripper_fit_median_m 0.0087
+wandb:               alignment/gripper_heldout_median_m 0.01221
+wandb:        alignment/initial_rgb_exact_index_matches 14
+wandb:             alignment/match_rate_selected_sample 1
+wandb:                                               +4 ...
+wandb: 
+wandb: You can sync this run to the cloud by running:
+wandb: wandb sync /home/ws/ws/splatter4d/docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut
+wandb: Find logs at: ./docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut/logs
+[gpu_guard] cuda:0 -> GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+{
+  "episode": "AUTOLab+0d4edc83+2023-10-21-19h-07m-04s",
+  "scope": "one real matched episode; disjoint intra-episode validation clip",
+  "metrics": {
+    "alignment/scene_depth_median_m": 0.0007565021514892578,
+    "alignment/cross_camera_median_relative_error": 0.015352754853665829,
+    "alignment/cross_camera_unfiltered_relative_error": 0.02643238753080368,
+    "alignment/gripper_heldout_median_m": 0.012207090854644775,
+    "alignment/gripper_fit_median_m": 0.008698582649230957,
+    "alignment/match_rate_selected_sample": 1.0,
+    "alignment/raw_pose_max_error_m": 0.0,
+    "alignment/raw_rotation_max_error_rad": 1.1133671620229251e-07,
+    "alignment/raw_gripper_max_error": 1.4901161193847656e-08,
+    "alignment/initial_rgb_exact_index_matches": 14,
+    "acceptance/selected_episode_match_95pct": 1,
+    "acceptance/cross_camera_3pct": 1,
+    "acceptance/visible_scene_track_1cm": 1,
+    "acceptance/heldout_gripper_1p5cm": 1
+  },
+  "acceptance": {
+    "selected_episode_match_95pct": true,
+    "cross_camera_3pct": true,
+    "visible_scene_track_1cm": true,
+    "heldout_gripper_1p5cm": true
+  },
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "input_cache_unchanged": true,
+  "input_sha256": {
+    "manifest.json": "0156baad71971e8543c08234d7f4cecdcac27adbdca56f1256d3521aa269fa5d",
+    "matched_raw_external.npz": "2191d59205962c5b760a4db80ae5a9855b35040aa1264dd0faa080350ef3d462",
+    "scratch.h5": "d6523528850c9d65c8af2d6f0d930c4d25b5b229f4d64711992e51da6a9345e9",
+    "dinov2.h5": "2b8aa68101f802178fda5252bd431ea09278e4bc14070b5aa99a84e92e1425ea"
+  },
+  "local_evidence": [
+    "docs/droid_validation/alignment_report.json",
+    "docs/droid_validation/coordinate_correction.json",
+    "docs/droid_validation/adapter_verification.json",
+    "docs/droid_validation/loader_validation_workers0.json",
+    "docs/droid_validation/loader_validation_workers2.json",
+    "docs/droid_validation/manifest.json",
+    "docs/droid_validation/overlays/train_0_11.png",
+    "docs/droid_validation/overlays/validation_50_61.png",
+    "docs/droid_validation/overlays/cached_coordinates_scratch.png",
+    "docs/droid_validation/overlays/cached_coordinates_dinov2.png"
+  ],
+  "wandb": {
+    "enabled": true,
+    "mode": "offline",
+    "run_url": null,
+    "offline_path": "docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut",
+    "finished": true,
+    "run_id": "t3kx41ut",
+    "run_directory": "docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut/files"
+  }
+}

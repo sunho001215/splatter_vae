@@ -1,0 +1,21 @@
+{
+  "recorded_utc": "2026-10-06T16:44:35.969729+00:00",
+  "references": {
+    "hierarchical_splatter": {
+      "head": "c0abf56894761b60c698fcf82b704dd3edaf1343",
+      "status": " M baselines/SinCro/sincro\n?? MUJOCO_LOG.TXT\n?? tests/\n?? uv.lock\n?? visualization_outputs/\n",
+      "head_unchanged": true,
+      "status_unchanged": false
+    },
+    "droid_training": {
+      "head": "2393db944bbaa7854ae5dc1245a9fa971d1b8cd2",
+      "status": "",
+      "head_unchanged": true,
+      "status_unchanged": true
+    }
+  },
+  "helper_identical": true,
+  "all_reference_statuses_unchanged": false,
+  "observed_difference": "Baseline untracked hierarchical_splatter/download_pointworld_all.py is absent. Cause unknown. No restoration or reference write attempted.",
+  "limitation": "Comparison begins at first obtainable baseline. No exhaustive pre-session filesystem snapshot or original DROID before/after count/du proof exists."
+}

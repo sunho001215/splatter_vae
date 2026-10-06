@@ -1,0 +1,684 @@
+{
+  "generated_utc": "2026-10-06T16:07:55.006018+00:00",
+  "scope": "Independent pilot geometry only. Shared workspace-statistics and split-manifest writes were denied.",
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "geometry_parameters": {
+    "windows": 12,
+    "points_per_view": 2048,
+    "seed": 0,
+    "d2_median_threshold_mm": 3.0,
+    "d3_median_threshold_mm": 5.0,
+    "moving_threshold_m": 0.005,
+    "independent_occlusion_slack_m": 0.01
+  },
+  "requested_workspace_parameters": {
+    "samples": 40,
+    "seed": 0
+  },
+  "requested_split_parameters": {
+    "seed": 0,
+    "train_ratio": 0.96
+  },
+  "source_sha256": {
+    "scripts/check_metaworld.py": "8d2215efcb9db1d03ce28e8eb26dcf517248c47d3e4a86d20ae9d38dd5c51982",
+    "s4d/data/metaworld/dataset.py": "b7c4af025cdbe11beb98fb49543a2d4b467d210344ca439b141453138a99a64f"
+  },
+  "source_scripts_changed_during_run": [],
+  "task_order": [
+    "hammer",
+    "pick-place",
+    "door-open",
+    "peg-unplug-side",
+    "stick-push",
+    "peg-insert-side",
+    "shelf-place",
+    "bin-picking"
+  ],
+  "tasks": {
+    "hammer": {
+      "task": "hammer",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/hammer_pilot.hdf5",
+      "source_bytes": 456138215,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/hammer_pilot_checks",
+      "geometry_execution": "Previously verified identical-parameter run, summary reused.",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/hammer_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/hammer_pilot_checks/sanity.png",
+      "d2": {
+        "count": 321715,
+        "median_mm": 0.9608032330619132,
+        "p90_mm": 4.1367229515225645,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 387673,
+        "median_mm": 1.9849982357668865,
+        "p90_mm": 4.492952661465933,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 112891,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 1081795,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 139522,
+        "invalid_target_depth_support": 21463,
+        "target_body_or_boundary_mismatch": 377273,
+        "independent_cloud_occlusion": 221822,
+        "retained": 321715,
+        "not_sampled": 10175
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3390316,
+        "sampled": 442368,
+        "not_sampled": 2947948,
+        "no_other_view_mutual_support": 54695
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "pick-place": {
+      "task": "pick-place",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/pick-place_pilot.hdf5",
+      "source_bytes": 532976549,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/pick_place_pilot_checks",
+      "geometry_execution": "Previously verified identical-parameter run, summary reused.",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/pick_place_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/pick_place_pilot_checks/sanity.png",
+      "d2": {
+        "count": 230257,
+        "median_mm": 0.7733222215619007,
+        "p90_mm": 3.6763592975871164,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 385666,
+        "median_mm": 1.9174682090244604,
+        "p90_mm": 4.116973571144458,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 139899,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 1130510,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 373024,
+        "invalid_target_depth_support": 21798,
+        "target_body_or_boundary_mismatch": 310497,
+        "independent_cloud_occlusion": 194934,
+        "retained": 230257,
+        "not_sampled": 7225
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3388642,
+        "sampled": 442368,
+        "not_sampled": 2946274,
+        "no_other_view_mutual_support": 56702
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "peg-unplug-side": {
+      "task": "peg-unplug-side",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/peg-unplug-side_pilot.hdf5",
+      "source_bytes": 531338628,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/peg-unplug-side_pilot_checks",
+      "geometry_command": [
+        "/home/ws/ws/splatter4d/.venv/bin/python",
+        "-I",
+        "/home/ws/ws/splatter4d/scripts/check_metaworld.py",
+        "--path",
+        "/home/ws/data/metaworld/splatter4d_v1/peg-unplug-side_pilot.hdf5",
+        "--out",
+        "/home/ws/ws/splatter4d/docs/peg-unplug-side_pilot_checks",
+        "--windows",
+        "12",
+        "--points-per-view",
+        "2048",
+        "--seed",
+        "0"
+      ],
+      "geometry_exit_code": 0,
+      "geometry_duration_seconds": 16.6144951810129,
+      "geometry_log": "/home/ws/ws/splatter4d/docs/peg-unplug-side_pilot_checks/check.log",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/peg-unplug-side_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/peg-unplug-side_pilot_checks/sanity.png",
+      "d2": {
+        "count": 195353,
+        "median_mm": 0.7821492724180423,
+        "p90_mm": 4.448904271965716,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 378968,
+        "median_mm": 1.9905372145411775,
+        "p90_mm": 4.353941879208391,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 133378,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 1098390,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 438658,
+        "invalid_target_depth_support": 16395,
+        "target_body_or_boundary_mismatch": 293184,
+        "independent_cloud_occlusion": 154800,
+        "retained": 195353,
+        "not_sampled": 33845
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3380996,
+        "sampled": 442368,
+        "not_sampled": 2938628,
+        "no_other_view_mutual_support": 63400
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "door-open": {
+      "task": "door-open",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/door-open_pilot.hdf5",
+      "source_bytes": 188198621,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/door-open_pilot_checks",
+      "geometry_command": [
+        "/home/ws/ws/splatter4d/.venv/bin/python",
+        "-I",
+        "/home/ws/ws/splatter4d/scripts/check_metaworld.py",
+        "--path",
+        "/home/ws/data/metaworld/splatter4d_v1/door-open_pilot.hdf5",
+        "--out",
+        "/home/ws/ws/splatter4d/docs/door-open_pilot_checks",
+        "--windows",
+        "12",
+        "--points-per-view",
+        "2048",
+        "--seed",
+        "0"
+      ],
+      "geometry_exit_code": 0,
+      "geometry_duration_seconds": 16.866751248948276,
+      "geometry_log": "/home/ws/ws/splatter4d/docs/door-open_pilot_checks/check.log",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/door-open_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/door-open_pilot_checks/sanity.png",
+      "d2": {
+        "count": 338414,
+        "median_mm": 0.970268281057507,
+        "p90_mm": 3.7248970791449403,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 383302,
+        "median_mm": 2.0084307636289886,
+        "p90_mm": 4.413041548963574,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 74280,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 1495150,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 434396,
+        "invalid_target_depth_support": 15923,
+        "target_body_or_boundary_mismatch": 347879,
+        "independent_cloud_occlusion": 358538,
+        "retained": 338414,
+        "not_sampled": 378710
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3439713,
+        "sampled": 442368,
+        "not_sampled": 2997345,
+        "no_other_view_mutual_support": 59066
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "peg-insert-side": {
+      "task": "peg-insert-side",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/peg-insert-side_pilot.hdf5",
+      "source_bytes": 493639825,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/peg-insert-side_pilot_checks",
+      "geometry_command": [
+        "/home/ws/ws/splatter4d/.venv/bin/python",
+        "-I",
+        "/home/ws/ws/splatter4d/scripts/check_metaworld.py",
+        "--path",
+        "/home/ws/data/metaworld/splatter4d_v1/peg-insert-side_pilot.hdf5",
+        "--out",
+        "/home/ws/ws/splatter4d/docs/peg-insert-side_pilot_checks",
+        "--windows",
+        "12",
+        "--points-per-view",
+        "2048",
+        "--seed",
+        "0"
+      ],
+      "geometry_exit_code": 0,
+      "geometry_duration_seconds": 27.102576210163534,
+      "geometry_log": "/home/ws/ws/splatter4d/docs/peg-insert-side_pilot_checks/check.log",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/peg-insert-side_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/peg-insert-side_pilot_checks/sanity.png",
+      "d2": {
+        "count": 283421,
+        "median_mm": 0.8144935175411483,
+        "p90_mm": 3.5362349540267735,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 380063,
+        "median_mm": 1.9907683414223534,
+        "p90_mm": 4.5329234572717585,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 129903,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 1276200,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 357962,
+        "invalid_target_depth_support": 31801,
+        "target_body_or_boundary_mismatch": 378071,
+        "independent_cloud_occlusion": 224945,
+        "retained": 283421,
+        "not_sampled": 47415
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3386072,
+        "sampled": 442368,
+        "not_sampled": 2943704,
+        "no_other_view_mutual_support": 62305
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "stick-push": {
+      "task": "stick-push",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/stick-push_pilot.hdf5",
+      "source_bytes": 552761254,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/stick-push_pilot_checks",
+      "geometry_command": [
+        "/home/ws/ws/splatter4d/.venv/bin/python",
+        "-I",
+        "/home/ws/ws/splatter4d/scripts/check_metaworld.py",
+        "--path",
+        "/home/ws/data/metaworld/splatter4d_v1/stick-push_pilot.hdf5",
+        "--out",
+        "/home/ws/ws/splatter4d/docs/stick-push_pilot_checks",
+        "--windows",
+        "12",
+        "--points-per-view",
+        "2048",
+        "--seed",
+        "0"
+      ],
+      "geometry_exit_code": 0,
+      "geometry_duration_seconds": 27.49828642141074,
+      "geometry_log": "/home/ws/ws/splatter4d/docs/stick-push_pilot_checks/check.log",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/stick-push_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/stick-push_pilot_checks/sanity.png",
+      "d2": {
+        "count": 321892,
+        "median_mm": 0.8705411686353859,
+        "p90_mm": 4.301803245599034,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 380670,
+        "median_mm": 1.998317271409333,
+        "p90_mm": 4.43742919515371,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 137793,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 1505860,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 357614,
+        "invalid_target_depth_support": 34233,
+        "target_body_or_boundary_mismatch": 425723,
+        "independent_cloud_occlusion": 366398,
+        "retained": 321892,
+        "not_sampled": 144070
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3388035,
+        "sampled": 442368,
+        "not_sampled": 2945667,
+        "no_other_view_mutual_support": 61698
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "bin-picking": {
+      "task": "bin-picking",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/bin-picking_pilot.hdf5",
+      "source_bytes": 531677191,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/bin-picking_pilot_checks",
+      "geometry_command": [
+        "/home/ws/ws/splatter4d/.venv/bin/python",
+        "-I",
+        "/home/ws/ws/splatter4d/scripts/check_metaworld.py",
+        "--path",
+        "/home/ws/data/metaworld/splatter4d_v1/bin-picking_pilot.hdf5",
+        "--out",
+        "/home/ws/ws/splatter4d/docs/bin-picking_pilot_checks",
+        "--windows",
+        "12",
+        "--points-per-view",
+        "2048",
+        "--seed",
+        "0"
+      ],
+      "geometry_exit_code": 0,
+      "geometry_duration_seconds": 17.222525950986892,
+      "geometry_log": "/home/ws/ws/splatter4d/docs/bin-picking_pilot_checks/check.log",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/bin-picking_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/bin-picking_pilot_checks/sanity.png",
+      "d2": {
+        "count": 157951,
+        "median_mm": 0.720735670257211,
+        "p90_mm": 3.7235091726406377,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 381770,
+        "median_mm": 2.0394842427443107,
+        "p90_mm": 4.837329332702056,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 131797,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 875625,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 314919,
+        "invalid_target_depth_support": 22312,
+        "target_body_or_boundary_mismatch": 247198,
+        "independent_cloud_occlusion": 133245,
+        "retained": 157951,
+        "not_sampled": 18265
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3386331,
+        "sampled": 442368,
+        "not_sampled": 2943963,
+        "no_other_view_mutual_support": 60598
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    },
+    "shelf-place": {
+      "task": "shelf-place",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/shelf-place_pilot.hdf5",
+      "source_bytes": 330801709,
+      "geometry_directory": "/home/ws/ws/splatter4d/docs/shelf-place_pilot_checks",
+      "geometry_command": [
+        "/home/ws/ws/splatter4d/.venv/bin/python",
+        "-I",
+        "/home/ws/ws/splatter4d/scripts/check_metaworld.py",
+        "--path",
+        "/home/ws/data/metaworld/splatter4d_v1/shelf-place_pilot.hdf5",
+        "--out",
+        "/home/ws/ws/splatter4d/docs/shelf-place_pilot_checks",
+        "--windows",
+        "12",
+        "--points-per-view",
+        "2048",
+        "--seed",
+        "0"
+      ],
+      "geometry_exit_code": 0,
+      "geometry_duration_seconds": 18.325659448746592,
+      "geometry_log": "/home/ws/ws/splatter4d/docs/shelf-place_pilot_checks/check.log",
+      "geometry_report": "/home/ws/ws/splatter4d/docs/shelf-place_pilot_checks/summary.json",
+      "panel": "/home/ws/ws/splatter4d/docs/shelf-place_pilot_checks/sanity.png",
+      "d2": {
+        "count": 104602,
+        "median_mm": 0.9047054170930879,
+        "p90_mm": 6.588005668596299,
+        "threshold_mm": 3.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "d3": {
+        "count": 367787,
+        "median_mm": 1.9621881526055407,
+        "p90_mm": 4.269067143556293,
+        "threshold_mm": 5.0,
+        "passed": true,
+        "status": "pass"
+      },
+      "world_body_zero": {
+        "pixels": 81537,
+        "nonzero_pixels": 0,
+        "passed": true,
+        "status": "pass"
+      },
+      "contract_errors": [],
+      "geometry_passed": true,
+      "windows_checked": 12,
+      "d2_denominators_and_exclusions": {
+        "comparisons": 683550,
+        "nonfinite_or_behind": 0,
+        "outside_interpolation_support": 287073,
+        "invalid_target_depth_support": 10251,
+        "target_body_or_boundary_mismatch": 194296,
+        "independent_cloud_occlusion": 87328,
+        "retained": 104602,
+        "not_sampled": 0
+      },
+      "d3_denominators_and_exclusions": {
+        "all_source_pixels": 3538944,
+        "valid_source_pixels": 3441463,
+        "sampled": 442368,
+        "not_sampled": 2999095,
+        "no_other_view_mutual_support": 74581
+      },
+      "limitations": [
+        "Occlusion uses finite-resolution point clouds, not ground-truth triangle ray casting.",
+        "Surfaces absent from every source view cannot occlude the reconstructed source cloud.",
+        "Four-neighbor same-body support excludes boundaries and thin subpixel surfaces."
+      ],
+      "workspace_stats_status": "blocked_by_permission",
+      "split_manifest_status": "blocked_by_permission",
+      "panel_inspection": {
+        "method": "Viewed saved composite image with the image-reading tool.",
+        "checked": true,
+        "result": "All camera columns, timestep rows, metric labels, and legends are present without clipping.",
+        "raw_body_id_png_count": 18
+      }
+    }
+  },
+  "all_geometry_passed": true,
+  "all_workspace_stats_completed": false,
+  "all_split_manifests_completed": false,
+  "permission_blocker": {
+    "status": "denied",
+    "destinations": [
+      "/home/ws/data/metaworld/splatter4d_v1/workspace_stats",
+      "/home/ws/data/metaworld/splatter4d_v1/splits"
+    ],
+    "message": "Direct user approval naming shared workspace-statistics and episode-manifest writes is required.",
+    "denied_batch_executed": false,
+    "shared_output_writes_attempted_after_denial": false,
+    "existing_statistics": "Previously inspected hammer and pick-place samples=40,seed=0 files remain unchanged."
+  },
+  "retained_d2_comparisons_total": 1953605,
+  "retained_d3_fused_points_total": 3045899,
+  "world_body_tested_pixels_total": 941478,
+  "world_body_nonzero_pixels_total": 0,
+  "interpretation": [
+    "D2 counts temporal-pair/source/target comparisons, not unique physical pixels.",
+    "D3 counts timestep/source-camera points after fusion of other views.",
+    "Per-task medians are reported separately. No median-of-medians aggregate is used.",
+    "Passing pilot geometry does not verify native rasterization, full collection, or training criteria."
+  ],
+  "requested_scope_complete": false
+}

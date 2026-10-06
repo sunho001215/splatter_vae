@@ -1,0 +1,6 @@
+Resolved 1 package in 162ms
+Downloading ruff (9.9MiB)
+ Downloaded ruff
+Prepared 1 package in 211ms
+Installed 1 package in 58ms
+ + ruff==0.16.10

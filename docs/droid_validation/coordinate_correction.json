@@ -1,0 +1,9 @@
+{
+  "active_cache": "root scratch.h5 and dinov2.h5",
+  "initial_failure": "bare python missing; initial edit failed while later shell commands continued",
+  "effect": "initial arrays retained native integer centers and middle-time score used two pairs only",
+  "detection": "focused test suite, before worker training experiments",
+  "fix": "explicit trusted .venv python; native K +.5 before x/y scaling; continuous nearest-center splat; max all three pair norms",
+  "previous_cache_preserved": "/home/ws/data/droid_pointworld_cache_sample/coordinate_v1_do_not_train",
+  "verification": "16 focused CPU tests; all35 real windows both sizes; workers0 and2; source hashes unchanged"
+}

@@ -1,0 +1,159 @@
+{
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "scope": "pilots only; no full task collection",
+  "tasks": {
+    "bin-picking": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/bin-picking_pilot.hdf5",
+      "bytes": 531677191,
+      "episodes": 5,
+      "steps": 1582,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "door-open": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/door-open_pilot.hdf5",
+      "bytes": 188198621,
+      "episodes": 5,
+      "steps": 591,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "hammer": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/hammer_pilot.hdf5",
+      "bytes": 456138215,
+      "episodes": 5,
+      "steps": 1278,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "peg-insert-side": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/peg-insert-side_pilot.hdf5",
+      "bytes": 493639825,
+      "episodes": 5,
+      "steps": 1415,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "peg-unplug-side": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/peg-unplug-side_pilot.hdf5",
+      "bytes": 531338628,
+      "episodes": 5,
+      "steps": 1585,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "pick-place": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/pick-place_pilot.hdf5",
+      "bytes": 532976549,
+      "episodes": 5,
+      "steps": 1593,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "shelf-place": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/shelf-place_pilot.hdf5",
+      "bytes": 330801709,
+      "episodes": 5,
+      "steps": 947,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    },
+    "stick-push": {
+      "path": "/home/ws/data/metaworld/splatter4d_v1/stick-push_pilot.hdf5",
+      "bytes": 552761254,
+      "episodes": 5,
+      "steps": 1572,
+      "episode_keys": [
+        "ep000",
+        "ep001",
+        "ep002",
+        "ep003",
+        "ep004"
+      ],
+      "dt_seconds": 0.0125,
+      "complete": true,
+      "world_frame": "robot_base",
+      "training_cameras": 6,
+      "heldout_cameras": 4
+    }
+  },
+  "pilot_bytes_total": 3617531992,
+  "full_collection_estimate_bytes": 180876599600,
+  "estimate_limitation": "Linear extrapolation of each shuffled five-episode pilot; not a collected full dataset."
+}

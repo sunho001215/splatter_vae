@@ -1,0 +1,6 @@
+{
+  "ruff_check_exit_code": 0,
+  "ruff_format_exit_code": 0,
+  "passed": true,
+  "suite_exit_code": 1
+}

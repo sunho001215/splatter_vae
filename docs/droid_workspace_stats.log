@@ -1,0 +1,82 @@
+[gpu_guard] cuda:0 -> GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+{
+  "scene": {
+    "mean": [
+      0.7519184879392811,
+      -0.0854401038974733,
+      0.16350974519051253
+    ],
+    "std": [
+      0.33441933001107954,
+      0.6725069100753981,
+      0.35994389498686596
+    ],
+    "num_points": 2059191
+  },
+  "dynamic": {
+    "mean": [
+      0.6976161702571387,
+      -0.02890903090777757,
+      0.21004818125768077
+    ],
+    "std": [
+      0.1665765518677582,
+      0.3383606958131325,
+      0.19456457449142606
+    ],
+    "num_points": 77634
+  },
+  "dynamic_fallback_to_scene": false,
+  "depth_percentiles": {
+    "1": 0.26100000739097595,
+    "5": 0.39399999380111694,
+    "50": 0.800000011920929,
+    "95": 1.4859999418258667,
+    "99": 1.7649999856948853
+  },
+  "depth_quantile_sample_points": 200000,
+  "samples": 30,
+  "sample_indices": [
+    14,
+    20,
+    15,
+    19,
+    27,
+    5,
+    11,
+    3,
+    13,
+    23,
+    26,
+    18,
+    29,
+    9,
+    16,
+    25,
+    17,
+    28,
+    7,
+    8,
+    10,
+    6,
+    1,
+    12,
+    0,
+    22,
+    2,
+    4,
+    24,
+    21
+  ],
+  "seed": 0,
+  "standard_deviation": "population, streaming double precision",
+  "source": "/home/ws/data/droid_pointworld_cache_sample",
+  "regime": "droid",
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ]
+}

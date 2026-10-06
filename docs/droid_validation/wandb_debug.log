@@ -1,0 +1,23 @@
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_setup.py:_flush():81] Current SDK version is 0.25.0
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_setup.py:_flush():81] Configure stats pid to 166953
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_init.py:setup_run_log_directory():717] Logging user logs to /home/ws/ws/splatter4d/docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut/logs/debug.log
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_init.py:setup_run_log_directory():718] Logging internal logs to /home/ws/ws/splatter4d/docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut/logs/debug-internal.log
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_init.py:init():844] calling init triggers
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_init.py:init():849] wandb.init called with sweep_config: {}
+config: {'episode': 'AUTOLab+0d4edc83+2023-10-21-19h-07m-04s', 'scope': 'one real matched episode; disjoint intra-episode validation clip', 'source_sha256': {'flow': 'a07623861b8443841509af8189dd30b291669236c721fae44dfc4c02f3a385be', 'depth': 'c1c7e10ce6c546f3d5672ef423ffccb4837a910457824ecd1a0522a799f62aca', 'cameras': '2171abe268d45f31ea06218aef616981e3014ab06a39c2084ab2b3ffa30d717d'}, '_wandb': {}}
+2026-10-07 01:00:41,529 INFO    MainThread:166953 [wandb_init.py:init():892] starting backend
+2026-10-07 01:00:41,802 INFO    MainThread:166953 [wandb_init.py:init():895] sending inform_init request
+2026-10-07 01:00:41,806 INFO    MainThread:166953 [wandb_init.py:init():903] backend started and connected
+2026-10-07 01:00:41,817 INFO    MainThread:166953 [wandb_init.py:init():973] updated telemetry
+2026-10-07 01:00:41,819 INFO    MainThread:166953 [wandb_init.py:init():997] communicating run to backend with 90.0 second timeout
+2026-10-07 01:00:42,108 INFO    MainThread:166953 [wandb_init.py:init():1042] starting run threads in backend
+2026-10-07 01:00:42,302 INFO    MainThread:166953 [wandb_run.py:_console_start():2524] atexit reg
+2026-10-07 01:00:42,302 INFO    MainThread:166953 [wandb_run.py:_redirect():2373] redirect: wrap_raw
+2026-10-07 01:00:42,302 INFO    MainThread:166953 [wandb_run.py:_redirect():2442] Wrapping output streams.
+2026-10-07 01:00:42,302 INFO    MainThread:166953 [wandb_run.py:_redirect():2465] Redirects installed.
+2026-10-07 01:00:42,305 INFO    MainThread:166953 [wandb_init.py:init():1082] run started, returning control to user process
+2026-10-07 01:00:43,097 INFO    MainThread:166953 [wandb_run.py:_finish():2291] finishing run splatter4d/t3kx41ut
+2026-10-07 01:00:43,098 INFO    MainThread:166953 [wandb_run.py:_atexit_cleanup():2490] got exitcode: 0
+2026-10-07 01:00:43,098 INFO    MainThread:166953 [wandb_run.py:_restore():2472] restore
+2026-10-07 01:00:43,098 INFO    MainThread:166953 [wandb_run.py:_restore():2478] restore done

@@ -1,0 +1,20 @@
+  × No solution found when resolving dependencies for split (markers:
+  │ sys_platform == 'linux'):
+  ╰─▶ Because all versions of promise have no usable wheels and
+      tensorflow-datasets>=4.9.9 depends on promise, we can conclude that
+      tensorflow-datasets>=4.9.9 cannot be used.
+      And because only the following versions of tensorflow-datasets are
+      available:
+          tensorflow-datasets<=4.9.9
+          tensorflow-datasets==4.9.10
+      we can conclude that tensorflow-datasets>=4.9.9 cannot be used.
+      And because splatter4d[droid] depends on tensorflow-datasets>=4.9.9
+      and your project requires splatter4d[droid], we can conclude that your
+      project's requirements are unsatisfiable.
+
+      hint: Pre-releases are available for `promise` in the requested
+      range (e.g., 2.2rc1), but pre-releases weren't enabled (try:
+      `--prerelease=allow`)
+
+      hint: Wheels are required for `promise` because building from source is
+      disabled for all packages (i.e., with `--no-build`)

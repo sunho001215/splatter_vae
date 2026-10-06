@@ -1,0 +1,163 @@
+{
+  "date": "2026-10-07",
+  "real_sample": true,
+  "active_cache_root": "/home/ws/data/droid_pointworld_cache_sample",
+  "focused_cpu_tests": {
+    "passed": 16,
+    "failed": 0,
+    "command": "CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce .venv/bin/python -I -m pytest tests/test_droid.py -q"
+  },
+  "ruff": "All checks passed for DROID modules, four new scripts, and tests/test_droid.py",
+  "cache_sha256": {
+    "scratch": "d6523528850c9d65c8af2d6f0d930c4d25b5b229f4d64711992e51da6a9345e9",
+    "dinov2": "2b8aa68101f802178fda5252bd431ea09278e4bc14070b5aa99a84e92e1425ea"
+  },
+  "source_sha256": {
+    "flow": "a07623861b8443841509af8189dd30b291669236c721fae44dfc4c02f3a385be",
+    "depth": "c1c7e10ce6c546f3d5672ef423ffccb4837a910457824ecd1a0522a799f62aca",
+    "cameras": "2171abe268d45f31ea06218aef616981e3014ab06a39c2084ab2b3ffa30d717d"
+  },
+  "contract_validation": {
+    "variants": [
+      "scratch144x256",
+      "dinov2_140x252"
+    ],
+    "train_windows": 30,
+    "validation_windows": 5,
+    "workers": [
+      0,
+      2
+    ],
+    "passed": true
+  },
+  "acceptance": {
+    "selected_episode_match_95pct": true,
+    "cross_camera_3pct": true,
+    "visible_scene_track_1cm": true,
+    "heldout_gripper_1p5cm": true
+  },
+  "overlays_rendered_and_viewed": [
+    "/home/ws/data/droid_pointworld_cache_sample/alignment_overlays/train_0_11.png",
+    "/home/ws/data/droid_pointworld_cache_sample/alignment_overlays/validation_50_61.png",
+    "/home/ws/data/droid_pointworld_cache_sample/alignment_overlays/cached_coordinates_scratch.png",
+    "/home/ws/data/droid_pointworld_cache_sample/alignment_overlays/cached_coordinates_dinov2.png"
+  ],
+  "rgb_initial_frame_nearest_neighbor_checks": {
+    "camera_clip_pairs": 14,
+    "exact_expected_even_raw_index_matches": 14
+  },
+  "loader_workers0": {
+    "workers": 0,
+    "batch_size": 2,
+    "device": "CPU",
+    "variants": {
+      "scratch": {
+        "train": {
+          "samples": 30,
+          "batches": 15,
+          "height": 144,
+          "width": 256,
+          "elapsed_s": 1.1898363949730992,
+          "samples_per_s": 25.213550473616387,
+          "target_pixels": 3164058,
+          "nonzero_motion_pixels": 2940302
+        },
+        "validation": {
+          "samples": 5,
+          "batches": 3,
+          "height": 144,
+          "width": 256,
+          "elapsed_s": 0.19246217980980873,
+          "samples_per_s": 25.97913005527114,
+          "target_pixels": 463916,
+          "nonzero_motion_pixels": 432896
+        }
+      },
+      "dinov2": {
+        "train": {
+          "samples": 30,
+          "batches": 15,
+          "height": 140,
+          "width": 252,
+          "elapsed_s": 1.13654915522784,
+          "samples_per_s": 26.395690729263713,
+          "target_pixels": 3029867,
+          "nonzero_motion_pixels": 2814940
+        },
+        "validation": {
+          "samples": 5,
+          "batches": 3,
+          "height": 140,
+          "width": 252,
+          "elapsed_s": 0.17283620219677687,
+          "samples_per_s": 28.92912443370757,
+          "target_pixels": 444613,
+          "nonzero_motion_pixels": 414883
+        }
+      }
+    }
+  },
+  "loader_workers2": {
+    "workers": 2,
+    "batch_size": 2,
+    "device": "CPU",
+    "variants": {
+      "scratch": {
+        "train": {
+          "samples": 30,
+          "batches": 15,
+          "height": 144,
+          "width": 256,
+          "elapsed_s": 0.7080630687996745,
+          "samples_per_s": 42.36910710631571,
+          "target_pixels": 3164058,
+          "nonzero_motion_pixels": 2940302
+        },
+        "validation": {
+          "samples": 5,
+          "batches": 3,
+          "height": 144,
+          "width": 256,
+          "elapsed_s": 0.29103424306958914,
+          "samples_per_s": 17.18010893585622,
+          "target_pixels": 463916,
+          "nonzero_motion_pixels": 432896
+        }
+      },
+      "dinov2": {
+        "train": {
+          "samples": 30,
+          "batches": 15,
+          "height": 140,
+          "width": 252,
+          "elapsed_s": 0.6871534893289208,
+          "samples_per_s": 43.65836813154834,
+          "target_pixels": 3029867,
+          "nonzero_motion_pixels": 2814940
+        },
+        "validation": {
+          "samples": 5,
+          "batches": 3,
+          "height": 140,
+          "width": 252,
+          "elapsed_s": 0.2933252928778529,
+          "samples_per_s": 17.045921785142852,
+          "target_pixels": 444613,
+          "nonzero_motion_pixels": 414883
+        }
+      }
+    }
+  },
+  "deviations": [
+    "Initial coordinate-v1 caches retained and labeled do_not_train; coordinate_correction.json records diagnosis and correction.",
+    "Only one selected real episode was matched, not a corpus match-rate test.",
+    "Validation is temporally disjoint within the same episode, not independent-task generalization.",
+    "Gripper uses approximate32point geometry and one train-only depth-fitted approach-axis offset, not full URDF geometry.",
+    "No overfit, smoke training, DINO backbone load, or GPU renderer validation performed by this adapter worker."
+  ],
+  "safe_download_script": {
+    "archive_copy_security_test": "passed",
+    "selected_real_files_downloaded_and_hash_verified": true,
+    "full_script_redownload": "not repeated; preserves existing selected sample; network-stream procedure was previously executed"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "pilot_episodes": 5,
+  "pilot_bytes": 456138215,
+  "estimated_eight_task_bytes": 182455286000.0,
+  "free_bytes": 3916642320384,
+  "margin_factor": 2.0,
+  "limitation": "hammer mixture sample estimate; task-specific pilot sizes recorded separately"
+}

@@ -1,0 +1,26 @@
+s4d/data/droid/rlds.py:126:126: E501 Line too long (127 > 125)
+s4d/diag/local_log.py:56:19: UP031 Use format specifiers instead of percent format
+s4d/diag/panels.py:68:126: E501 Line too long (130 > 125)
+s4d/losses/motion.py:39:126: E501 Line too long (130 > 125)
+s4d/model/decoder.py:155:126: E501 Line too long (132 > 125)
+s4d/train/evaluate.py:54:9: B007 Loop control variable `ep` not used within loop body
+s4d/train/evaluate.py:66:126: E501 Line too long (132 > 125)
+s4d/train/evaluate.py:109:126: E501 Line too long (133 > 125)
+s4d/train/evaluate.py:125:126: E501 Line too long (128 > 125)
+s4d/train/evaluate.py:169:126: E501 Line too long (127 > 125)
+s4d/train/evaluate.py:219:17: B007 Loop control variable `a` not used within loop body
+s4d/train/evaluate.py:226:126: E501 Line too long (135 > 125)
+s4d/train/evaluate.py:268:126: E501 Line too long (128 > 125)
+s4d/train/evaluate.py:287:126: E501 Line too long (137 > 125)
+scripts/collect_metaworld.py:43:126: E501 Line too long (128 > 125)
+scripts/compute_workspace_stats.py:64:126: E501 Line too long (134 > 125)
+scripts/export_encoder.py:31:126: E501 Line too long (126 > 125)
+scripts/export_encoder.py:34:126: E501 Line too long (156 > 125)
+scripts/summarize_run.py:71:126: E501 Line too long (127 > 125)
+scripts/train.py:45:126: E501 Line too long (128 > 125)
+scripts/verify_metaworld_tasks.py:14:1: E402 Module level import not at top of file
+scripts/verify_metaworld_tasks.py:15:1: E402 Module level import not at top of file
+scripts/verify_metaworld_tasks.py:17:1: E402 Module level import not at top of file
+scripts/verify_metaworld_tasks.py:18:1: E402 Module level import not at top of file
+Found 27 errors (3 fixed, 24 remaining).
+No fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).

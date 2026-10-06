@@ -1,0 +1,74 @@
+{
+  "offline_run_exit_code": 0,
+  "offline_path": "docs/droid_validation/wandb/offline-run-20261007_010041-t3kx41ut",
+  "run_url": null,
+  "cloud_sync_performed": false,
+  "all_scalar_metrics_recorded_and_equal_to_local_summary": true,
+  "logged_images": 4,
+  "logged_measurement_tables": 1,
+  "artifact_records": [
+    {
+      "name": "run-t3kx41ut-alignmentmeasurements-ESk2ig",
+      "type": "run_table",
+      "paths": [
+        "alignment/measurements.table.json"
+      ],
+      "local_paths": [
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmpzduxpfmg"
+      ]
+    },
+    {
+      "name": "droid-alignment-evidence",
+      "type": "validation",
+      "paths": [
+        "adapter_verification.json",
+        "alignment_report.json",
+        "coordinate_correction.json",
+        "loader_validation_workers0.json",
+        "loader_validation_workers2.json",
+        "manifest.json",
+        "overlays/cached_coordinates_dinov2.png",
+        "overlays/cached_coordinates_scratch.png",
+        "overlays/train_0_11.png",
+        "overlays/validation_50_61.png"
+      ],
+      "local_paths": [
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmp69od3w40",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmpzcupltv9",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmp_ghegema",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmpz6enrqrz",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmpyoxhb0rx",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmp71sab0w8",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmp7oq5ty4k",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmpwz_rvmxn",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmp221qpd58",
+        "/home/ws/ws/splatter4d/.cache/wandb_data/artifacts/staging/tmpwsgdohfs"
+      ]
+    }
+  ],
+  "record_counts": {
+    "header": 1,
+    "run": 1,
+    "environment": 2,
+    "files": 6,
+    "telemetry": 4,
+    "artifact": 2,
+    "summary": 4,
+    "history": 1,
+    "exit": 1
+  },
+  "full_logs_inspected": true,
+  "warnings": [
+    "existing helper start_method deprecated and ignored",
+    "offline backend skips unavailable GraphQL feature configuration and metric glob expansion"
+  ],
+  "no_wandb_mode_exit_code": 0,
+  "no_wandb_mode_metrics_equal": true,
+  "no_wandb_local_summary": ".cache/droid_alignment_no_wandb/summary.json",
+  "all_input_cache_hashes_unchanged": true,
+  "wandb_data_cache_config_temp_locations_inside_repo": true,
+  "representative_corrected_cache_overlays_rendered_and_viewed": [
+    "overlays/cached_coordinates_scratch.png",
+    "overlays/cached_coordinates_dinov2.png"
+  ]
+}

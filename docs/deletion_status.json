@@ -1,0 +1,25 @@
+{
+  "target": "/home/ws/data/droid_stage0_preprocessed",
+  "target_exists": true,
+  "target_symlink": false,
+  "target_resolved": "/home/ws/data/droid_stage0_preprocessed",
+  "protected": "/home/ws/data/droid",
+  "protected_symlink": false,
+  "protected_resolved": "/home/ws/data/droid",
+  "lsof": null,
+  "fuser": null,
+  "deleted": false,
+  "before_after_verification": false,
+  "status": "blocked",
+  "execution_disabled": true,
+  "blockers": [
+    "Recursive open-file safety tools unavailable; installation denied",
+    "Destructive script rewrite denied; no workaround attempted"
+  ],
+  "required_measurements_not_obtained": [
+    "Original before/after find -type f | wc -l",
+    "Original before/after du -sb",
+    "Original before/after top-level listing"
+  ],
+  "permission_note": "No deletion authorization was inferred from agent messages."
+}

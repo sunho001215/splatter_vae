@@ -1,0 +1,550 @@
+{
+  "started_utc": "2026-10-06T16:39:39.565091+00:00",
+  "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
+  "torch": "2.10.0+cu129",
+  "cuda_runtime": "12.9",
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "pytest_args": [
+    "tests",
+    "-q",
+    "--tb=short",
+    "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
+  ],
+  "exit_code": 1,
+  "duration_seconds": 12.656535550951958,
+  "counts": {
+    "passed": 157,
+    "error": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "total": 161,
+  "full_suite_passed": false,
+  "source_sha256": {
+    "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
+    "s4d/config.py": "dd62aa78247973298d63492e027724c8bf28b3e1e8210d0ab011815ca8164f76",
+    "s4d/data/__init__.py": "e30d2c8c6389890795f47724cf897d2d2a6d5cafdc284685d06f0ae2145eae67",
+    "s4d/data/contract.py": "e02bb213ad893de3e4b6c0657a79bc3d20780a470a0292184760ac5860ef0e4f",
+    "s4d/data/droid/__init__.py": "5b67d9ff63f3dd728debc1f5627c15ba5dc581e5bc28cb60f395fce34580747a",
+    "s4d/data/droid/convert.py": "ce23474a9ce3f05f118ad870a9f50bd2e6cc547183668f745c96375171809c0b",
+    "s4d/data/droid/dataset.py": "ad61788f21398f933e7798488f05e355430d5956158e37ffe7cd5f2be08ceffa",
+    "s4d/data/droid/gripper.py": "14e739ca03e495f7843d78befb098b0e6055df2b5318349b0f955bd140bef3a3",
+    "s4d/data/droid/inspect.py": "b62d8f48fee6175466115c96da044e05805e4c29c06de7f1e205572293a883ac",
+    "s4d/data/droid/pointworld.py": "4d9d5f89b48d558c97fb6a00322b53c5844185655689de8ba115ed0f518d0112",
+    "s4d/data/droid/rlds.py": "55fa47e3c560436801a60a8a561ad2f2d7af5adb7f2d7f35b00bd2dca237e36a",
+    "s4d/data/metaworld/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/data/metaworld/cameras.py": "fab5d78a22e05fda42a8c88df8e038bcb6e865983de1386ebf4db8c035a6d321",
+    "s4d/data/metaworld/collect.py": "f1eb373e7413faf4c64de7b133494792e99fdbc736c1ae7b566cf17e9aa0666d",
+    "s4d/data/metaworld/dataset.py": "f51e7278ed40b866eb91828ad49fa3cdcc1adaf592c924e47765a976715d7193",
+    "s4d/diag/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/diag/local_log.py": "c93b3cfd83911139ea67b5ea6e131eb0cdd9c3889c07a23b646f574714a6e9c2",
+    "s4d/diag/panels.py": "99f4eaf62e6acb9de705214c5e0fcc616e478ca4b8712d3e5a19949455c41722",
+    "s4d/diag/pointclouds.py": "37570cb6d6c2b3e12ebe9f1f218402455393fbe584f1da2012384587233f1f18",
+    "s4d/diag/probes.py": "5555b67c8da6d94ef94e7525ceb30eef4772bded04462fcace0e6b1c651699f9",
+    "s4d/diag/tracks.py": "3b0a9a1a2c29d94eb63e0af27f924973c8f4192c65a89af07d336eb9fc6a96bc",
+    "s4d/diag/wandb_log.py": "f2fdd175ff077dedbdcb384013c2f151bfc8e874aef0aa1731fbf1eb1577f690",
+    "s4d/geometry.py": "ed72b3e82278a437ff673a063c75536cac05a000e337353c4870b5f69e025660",
+    "s4d/gpu_guard.py": "f218e2a7770788c504f7118d5143d56dc5aa2834674760ba4b2039a229872c4a",
+    "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
+    "s4d/losses/invariance.py": "6746f4115e6cf88f7056f914f5f881b0aeda990b8def4bfd6f669a8c93481d3b",
+    "s4d/losses/motion.py": "eaa37912d2aa440443d218ea2b6c479389ca74c2cf0b36fd3278b67b4a97cd60",
+    "s4d/losses/regularizers.py": "431cae83a1d13110e2b80043e2b994bc2c26d056fb7f1a9d634e6cd8f97333d3",
+    "s4d/losses/rgb.py": "94da2fabf2631899d34d330bcb121626efa36caba573cd820c445d64ec6deaa9",
+    "s4d/model/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/model/decoder.py": "2a4378f13291e957fd407488a42e3c00986b87a005aa77000042b2d93c647591",
+    "s4d/model/encoder.py": "d339f53a70639eaa33318c39f66da32a78b7120c19ab56843efd1c8133150288",
+    "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
+    "s4d/model/render.py": "4aba0d3f943ab266b1beda537c99647b6ad68673954ec33d0223182345fa62db",
+    "s4d/train/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
+    "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
+    "s4d/train/evaluate.py": "4922cd105f1c6c86d0d7686aec0c1df2a8ef2fb82a4aae43c081407043adfc18",
+    "s4d/train/loop.py": "a03191a5b1c7ec1d422add8ce4bc434113867e053634ac4a0a960749c0ecc35b",
+    "scripts/_bootstrap.py": "6575f5eeb95d13d960ec84c00ef4b3defabbcf477b5e558ac684c4a5bcca4336",
+    "scripts/check_gpu_isolation.py": "8edd19b5e7cdea3a4535e2c8c8d3440bf4a836561ea8b1760c17bfa62b09ba69",
+    "scripts/check_metaworld.py": "8d2215efcb9db1d03ce28e8eb26dcf517248c47d3e4a86d20ae9d38dd5c51982",
+    "scripts/collect_metaworld.py": "279f538c68b13f34822620404c5072426a8a5d93018b523ce3307eecd75bd47d",
+    "scripts/compute_workspace_stats.py": "81c60d335b2fdef5bd577b71fde021277893fc60ce57b171b282b7c36c4c88e3",
+    "scripts/convert_droid_sample.py": "aef03b3ad09ecb9632087f01ebbbaa0ff5790d0223abddef54ce2559f3073e2f",
+    "scripts/delete_stage0_cache.py": "3e0000925efaf7bd440380d7c30db5dbfad46dc08edd32e6ff385572fd32f430",
+    "scripts/download_droid_sample.py": "e2fe74b23865c3f7ea344d916b9883afa457e93916c39bb23a46ae9914bbd40b",
+    "scripts/droid_compare_step0.py": "2a1e9c296b8365ec8ac2679f4fbac7bc2af49ca2e87af8a449aa8293fa00a600",
+    "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
+    "scripts/evaluate.py": "9e9982426731bbb3e418611faa55ab1ea4761d73df33390db1c82a5234066eac",
+    "scripts/export_encoder.py": "0438c74c985a39bcac1d3b0bc138adf75435f4ebab657cb51305837485081eee",
+    "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",
+    "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
+    "scripts/run_tests.py": "a50ea1c89efd7f491a4281b4b25c6a5b756d5e870ab93383efd293b75648f9d9",
+    "scripts/summarize_run.py": "5aef82137b0dc2c710b4344c6566c94a995ddc5d20b83a70de17c5153b080895",
+    "scripts/train.py": "35455087ec0ecba1d5533d18406beca942df09b8926f2c21501972d5e8be9444",
+    "scripts/validate_droid_loader.py": "c6a8810c19daa2d9eec681b2d1b6c493c65012dd38e5734871d91bc9b66d7a53",
+    "scripts/verify_metaworld_tasks.py": "0a6367094af05d83a032f1f05a07e0bcb6b84969dd4ad46360646db17dfc8944",
+    "tests/_ddp_worker.py": "012bed506e407e32d1f1f8df315b463b3f84b5d6fd5dfbfeb4bc124ed55b9879",
+    "tests/conftest.py": "7bae1893a756ee984aea0efd13d475feec96e9aff5fe290504af78ef0c270375",
+    "tests/test_checkpoint.py": "fa7cf13383dfbcf126a5fb425dd5933cfca7648c1c90ec0573026c24f53a9a87",
+    "tests/test_cli.py": "6a9367f2baeab6ca446bb3f75fe3b5853ffa0dcbba4cf9667a24fbf66b854156",
+    "tests/test_contract.py": "2e4d6c4ad3f6b795a6d790e04df981bc4ac802bcc114974dd1700e557f5f6f42",
+    "tests/test_cuda_render.py": "45ae41dcd0b531e2ccf150071ad8fd533285c72f44ef2551345e9c6db9238842",
+    "tests/test_cuda_ssim.py": "a7a8607ebd0ef3822753eadbd3c7ece41117fa3b32891ec6e42d796c739470e2",
+    "tests/test_ddp.py": "0eb74d637ff6cf7d0f718eec126b9a91db7ff94a5d1388baa9b5ab2fe3b65f8b",
+    "tests/test_decoder.py": "0b09421612c1b08048055ede7b59e00270e963715b8c51d8fd3798404ab15a35",
+    "tests/test_depth.py": "46096399b08fc2db664c68faa843cef7bd324e4f60ba5946ed2b7560a9229888",
+    "tests/test_diagnostics.py": "726999c8bbd073d2368446b2f29e874fdf1097ec9c38b7d3a6e1accedbe90474",
+    "tests/test_droid.py": "b7cb4d75f56379b6cf51afece889178fd0245d4f1b5751b0c958e370b6d87723",
+    "tests/test_droid_protocols.py": "4bb28300bde681e1ffb82e1404b375a049202b2d765ed2780ba0a9589507d4c8",
+    "tests/test_encoder.py": "eb1f3f1dd0a9dd6e01fa049a0ddab3c263128fc040a59d00da4a390c3fe8b986",
+    "tests/test_export.py": "97c415e32dcb2b2a42fae57cfc7ff39b9d97f43c68cb2d3ec736bf977eb90004",
+    "tests/test_geometry.py": "bc127b7470cdf9a23485d8a740c519d272f001b33377f9cbb9dda7e5d12819a3",
+    "tests/test_metaworld_checks.py": "22d97a1298e8f8a2f141c82df429570a6d3f3d9022062312215ad5541103dd88",
+    "tests/test_motion.py": "0b59aa14a8af4c55dee408d7652a737bb34ffb0b83a8dd44ad049a05ad2c7299",
+    "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
+    "configs/droid/dinov2.yaml": "81e70b6dd5281dc86585fb3b762ac06ea2389182a72b657a36294c5c00809eab",
+    "configs/droid/overfit.yaml": "787e2cadd559b481be76f0c774c67adb35c7122157bd9d913d236efb7f282df6",
+    "configs/droid/pretrain.yaml": "fa12fa519fc8d19f28496fa3271664c7eaa171ac9fb5123ff0f81eab4fadbb52",
+    "configs/metaworld/ablations/full_100k.yaml": "bfb1ba746cbab20ae23dcc990fcd9a9874412654201fa6c4a1e879436fbc2db4",
+    "configs/metaworld/ablations/k16.yaml": "86a79416c44b35919b85b09681b3448a9f55c6281fbaa510e2ef5ad344fbecea",
+    "configs/metaworld/ablations/k4.yaml": "fa4605efca2745d3dbd6099c52ccd3004dda3e40d9f53b5dc58a43462ac2236e",
+    "configs/metaworld/ablations/misscaled_none.yaml": "c4e8c031d2fac8a087133f83502f51393fe834386dc30353f4ec0960affc0299",
+    "configs/metaworld/ablations/misscaled_scale.yaml": "2772c0f9c08a7ca58b6c2d6e0628bbaac7e09db2da113a4edac6a7c117e349c7",
+    "configs/metaworld/ablations/no_coverage.yaml": "682425cb294d496d85aec8a06d13a8beb9738e4108486a2ad95ec0a3b6ebed4a",
+    "configs/metaworld/ablations/no_motion.yaml": "663c6ec049cb2b631e4f943e457a69d1c8ab08a9ed54c1eb12bfc0acf5955704",
+    "configs/metaworld/ablations/single_frame.yaml": "9c1b2dd0b2b916cbab1e98a78a9030cfa9de1fc2c86264a10ee8713a78d503b2",
+    "configs/metaworld/ablations/single_group.yaml": "332cd3ff14581abb6d1dc910394bcefa04b4c2883aa76b16ad657ec53d8c73fb",
+    "configs/metaworld/base.yaml": "4f4fe737ad6ba9ceee5825e209180589ae572cee7935789f6d54da0b92aa3198",
+    "configs/metaworld/tasks/bin-picking.yaml": "3f2c9093b1a72d1f6a8c70209b58c3b979a3336e2c525a26ebfcbfb55e11a3be",
+    "configs/metaworld/tasks/door-open.yaml": "02b4d9968431711f4c5ef7a67feeaafc00a785cefc4106b84f1ccbec14be3e83",
+    "configs/metaworld/tasks/hammer.yaml": "e3d87e83db7062c6235229cdeb4866ad9aeb8e2ad465994c39a188a61110d4f8",
+    "configs/metaworld/tasks/peg-insert-side.yaml": "d23c88679af317587d794f8a802a68df40a5f0fecd9111a83e575086aa095191",
+    "configs/metaworld/tasks/peg-unplug-side.yaml": "aa8702be947f29bb2c49ef63178b140574c4561373b378235299ae050bf80676",
+    "configs/metaworld/tasks/pick-place.yaml": "652ced04829bcb77b41dac41f050c42dfc016d41e12a83bc3d5618f1d70422a1",
+    "configs/metaworld/tasks/shelf-place.yaml": "41c2c957a9314e2d54f62fb19c8dd23406eabbddc89fc8d53d9f8921a4d89d1d",
+    "configs/metaworld/tasks/stick-push.yaml": "e5a2726068c4798af68557b0ead96df609767f60d911d7d7725aaa2887be1a77"
+  },
+  "executed_functions": {
+    "s4d/config.py": [
+      "<module>",
+      "deep_update",
+      "dump_config",
+      "get",
+      "load_config"
+    ],
+    "s4d/data/__init__.py": [
+      "<genexpr>",
+      "<module>",
+      "writable_path"
+    ],
+    "s4d/data/contract.py": [
+      "<dictcomp>",
+      "<listcomp>",
+      "<module>",
+      "ContractError",
+      "_check",
+      "_check_cameras",
+      "_check_tensor",
+      "collate",
+      "validate_batch"
+    ],
+    "s4d/data/droid/__init__.py": [
+      "<module>"
+    ],
+    "s4d/data/droid/convert.py": [
+      "<module>",
+      "convert_sample",
+      "resize_image"
+    ],
+    "s4d/data/droid/dataset.py": [
+      "<dictcomp>",
+      "<listcomp>",
+      "<module>",
+      "DroidCacheDataset",
+      "__getitem__",
+      "__getstate__",
+      "__init__",
+      "__len__",
+      "close"
+    ],
+    "s4d/data/droid/gripper.py": [
+      "<lambda>",
+      "<listcomp>",
+      "<module>",
+      "calibrate_offset",
+      "gripper_points"
+    ],
+    "s4d/data/droid/inspect.py": [
+      "<module>",
+      "dense_depth_alignment",
+      "dense_depth_warp"
+    ],
+    "s4d/data/droid/pointworld.py": [
+      "<listcomp>",
+      "<module>",
+      "clip_windows",
+      "depth_test",
+      "nearest_timestamps",
+      "nearest_z_winners",
+      "project",
+      "resize_intrinsics",
+      "sparse_targets"
+    ],
+    "s4d/data/droid/rlds.py": [
+      "<dictcomp>",
+      "<listcomp>",
+      "<module>",
+      "save_matched_episode",
+      "scene_suffix",
+      "verify_path",
+      "verify_states"
+    ],
+    "s4d/data/metaworld/__init__.py": [
+      "<module>"
+    ],
+    "s4d/data/metaworld/cameras.py": [
+      "<module>",
+      "opengl_to_opencv_c2w",
+      "orbit_c2w_opengl"
+    ],
+    "s4d/data/metaworld/dataset.py": [
+      "<dictcomp>",
+      "<genexpr>",
+      "<listcomp>",
+      "<module>",
+      "MetaworldWindowDataset",
+      "__getitem__",
+      "__init__",
+      "__len__",
+      "_h5",
+      "disp",
+      "list_episodes",
+      "split_episodes"
+    ],
+    "s4d/diag/__init__.py": [
+      "<module>"
+    ],
+    "s4d/diag/local_log.py": [
+      "<dictcomp>",
+      "<listcomp>",
+      "<module>",
+      "RunLogger",
+      "__init__",
+      "close",
+      "eval_dir",
+      "media",
+      "save_gif",
+      "save_ply",
+      "save_png",
+      "scalars",
+      "text"
+    ],
+    "s4d/diag/panels.py": [
+      "<listcomp>",
+      "<module>",
+      "colorize_depth",
+      "colorize_error",
+      "colorize_gray",
+      "draw_line",
+      "draw_points",
+      "flow_color",
+      "grid",
+      "overlay_patches",
+      "to_uint8",
+      "turbo"
+    ],
+    "s4d/diag/pointclouds.py": [
+      "<listcomp>",
+      "<module>",
+      "cloud_panel",
+      "fused_gt_points",
+      "gaussian_points"
+    ],
+    "s4d/diag/probes.py": [
+      "<module>",
+      "cross_view_retrieval",
+      "fit_and_score",
+      "probe_targets",
+      "r2_score",
+      "retrieval_top1",
+      "ridge_fit",
+      "ridge_predict"
+    ],
+    "s4d/diag/tracks.py": [
+      "<module>",
+      "sample_track_pixels",
+      "track_panel",
+      "trajectories"
+    ],
+    "s4d/diag/wandb_log.py": [
+      "<module>",
+      "image",
+      "init_wandb",
+      "object3d",
+      "table",
+      "video"
+    ],
+    "s4d/geometry.py": [
+      "<module>",
+      "invert_se3",
+      "lift_depth",
+      "pixel_centers",
+      "project",
+      "quat_wxyz_to_matrix",
+      "rigid_body_displacement"
+    ],
+    "s4d/gpu_guard.py": [
+      "<genexpr>",
+      "<listcomp>",
+      "<setcomp>",
+      "_normalize_uuid",
+      "enforce_allowed_gpus",
+      "visible_device_uuids"
+    ],
+    "s4d/losses/__init__.py": [
+      "<module>"
+    ],
+    "s4d/losses/depth.py": [
+      "<module>",
+      "_downsample",
+      "abs_rel",
+      "align_teacher",
+      "depth_gradient_loss",
+      "depth_l1"
+    ],
+    "s4d/losses/invariance.py": [
+      "<module>",
+      "multi_positive_info_nce",
+      "slot_consistency"
+    ],
+    "s4d/losses/motion.py": [
+      "<genexpr>",
+      "<module>",
+      "expected_displacement",
+      "motion_loss",
+      "region_mean"
+    ],
+    "s4d/losses/regularizers.py": [
+      "<module>",
+      "visibility_loss"
+    ],
+    "s4d/losses/rgb.py": [
+      "<module>",
+      "_ssim_map",
+      "coverage_loss",
+      "masked_psnr",
+      "masked_ssim",
+      "pixel_weights",
+      "rgb_loss"
+    ],
+    "s4d/model/__init__.py": [
+      "<module>"
+    ],
+    "s4d/model/decoder.py": [
+      "<dictcomp>",
+      "<genexpr>",
+      "<listcomp>",
+      "<module>",
+      "DecoderBlock",
+      "DecoderConfig",
+      "GaussianDecoder",
+      "GroupConfig",
+      "GroupHeads",
+      "__init__",
+      "forward"
+    ],
+    "s4d/model/encoder.py": [
+      "<genexpr>",
+      "<module>",
+      "Attention",
+      "Block",
+      "Encoder",
+      "EncoderConfig",
+      "LayerScale",
+      "Mlp",
+      "__init__",
+      "_drop",
+      "forward",
+      "grid",
+      "load_encoder",
+      "num_patches",
+      "patch_scores",
+      "policy_state",
+      "sample_tube_mask"
+    ],
+    "s4d/model/gaussians.py": [
+      "<listcomp>",
+      "<module>",
+      "GaussianSet",
+      "detach_geometry",
+      "displacement",
+      "num_gaussians",
+      "xyz_at",
+      "xyz_sequence"
+    ],
+    "s4d/model/render.py": [
+      "<module>",
+      "_expand_attr",
+      "_expand_cams",
+      "render_features",
+      "render_hard_depth",
+      "render_rgbd",
+      "require_prebuilt_renderer"
+    ],
+    "s4d/train/__init__.py": [
+      "<module>"
+    ],
+    "s4d/train/checkpoint.py": [
+      "<module>",
+      "_unwrap",
+      "capture_rng_state",
+      "gather_rng_states",
+      "load_checkpoint",
+      "save_checkpoint"
+    ],
+    "s4d/train/ddp.py": [
+      "<module>",
+      "DistContext",
+      "_AllGatherWithGrad",
+      "all_gather_with_grad",
+      "backward",
+      "barrier",
+      "cleanup",
+      "forward",
+      "is_distributed",
+      "is_main",
+      "rank",
+      "rank_zero_call",
+      "world_size"
+    ],
+    "s4d/train/evaluate.py": [
+      "<lambda>",
+      "<listcomp>",
+      "<module>",
+      "Evaluator",
+      "__init__",
+      "_select_retrieval_windows",
+      "encode_states",
+      "image_plane_flow",
+      "orbit_w2c",
+      "panels"
+    ],
+    "s4d/train/loop.py": [
+      "<dictcomp>",
+      "<module>",
+      "Model",
+      "__init__",
+      "_nanmean",
+      "_per_t",
+      "_rows",
+      "build_model",
+      "forward",
+      "forward_losses",
+      "infinite",
+      "move_batch",
+      "seed_everything",
+      "temporal_ramp"
+    ],
+    "scripts/_bootstrap.py": [
+      "<genexpr>",
+      "guard_gpus",
+      "require_passed_tests"
+    ],
+    "scripts/check_metaworld.py": [
+      "<dictcomp>",
+      "<genexpr>",
+      "<listcomp>",
+      "<module>",
+      "_body_warp",
+      "_rgb",
+      "_select",
+      "_sequential",
+      "_window_indices",
+      "check_dataset",
+      "check_window",
+      "cloud_zbuffer",
+      "metric_summary",
+      "project_points",
+      "retain",
+      "save_panel",
+      "visible_surface"
+    ],
+    "scripts/delete_stage0_cache.py": [
+      "<module>",
+      "main"
+    ],
+    "scripts/download_droid_sample.py": [
+      "<lambda>",
+      "<module>",
+      "copy_member",
+      "sha256"
+    ],
+    "scripts/droid_compare_step0.py": [
+      "<dictcomp>",
+      "<genexpr>",
+      "<listcomp>",
+      "<module>",
+      "argument_parser",
+      "comparison_config",
+      "comparison_result",
+      "partition_indices",
+      "repository_path",
+      "run",
+      "tensor_fingerprint",
+      "write_record"
+    ],
+    "scripts/evaluate.py": [
+      "<module>",
+      "main"
+    ],
+    "scripts/export_encoder.py": [
+      "<module>",
+      "export"
+    ],
+    "scripts/run_tests.py": [
+      "flush",
+      "isatty",
+      "pytest_runtest_logreport",
+      "write"
+    ],
+    "scripts/summarize_run.py": [
+      "<genexpr>",
+      "<listcomp>",
+      "<module>",
+      "latest_eval",
+      "load_metrics",
+      "main",
+      "trend"
+    ],
+    "scripts/train.py": [
+      "<module>",
+      "main"
+    ]
+  },
+  "problems": [
+    {
+      "test": "tests/test_cuda_render.py::test_single_opaque_gaussian_rgb_expected_depth_equals_camera_z",
+      "phase": "setup",
+      "error": "tests/test_cuda_render.py:27: in prebuilt_gsplat_only\n    compiled = importlib.util.module_from_spec(extension_spec)\n<frozen importlib._bootstrap>:571: in module_from_spec\n    ???\n<frozen importlib._bootstrap_external>:1176: in create_module\n    ???\n<frozen importlib._bootstrap>:241: in _call_with_frames_removed\n    ???\nE   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v"
+    },
+    {
+      "test": "tests/test_cuda_render.py::test_constant_world_displacement_survives_feature_splat_normalisation",
+      "phase": "setup",
+      "error": "tests/test_cuda_render.py:27: in prebuilt_gsplat_only\n    compiled = importlib.util.module_from_spec(extension_spec)\n<frozen importlib._bootstrap>:571: in module_from_spec\n    ???\n<frozen importlib._bootstrap_external>:1176: in create_module\n    ???\n<frozen importlib._bootstrap>:241: in _call_with_frames_removed\n    ???\nE   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v"
+    },
+    {
+      "test": "tests/test_cuda_render.py::test_cuda_feature_backward_only_updates_displacement_tensors",
+      "phase": "setup",
+      "error": "tests/test_cuda_render.py:27: in prebuilt_gsplat_only\n    compiled = importlib.util.module_from_spec(extension_spec)\n<frozen importlib._bootstrap>:571: in module_from_spec\n    ???\n<frozen importlib._bootstrap_external>:1176: in create_module\n    ???\n<frozen importlib._bootstrap>:241: in _call_with_frames_removed\n    ???\nE   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v"
+    },
+    {
+      "test": "tests/test_cuda_render.py::test_cuda_hard_depth_backward_only_updates_centers",
+      "phase": "setup",
+      "error": "tests/test_cuda_render.py:27: in prebuilt_gsplat_only\n    compiled = importlib.util.module_from_spec(extension_spec)\n<frozen importlib._bootstrap>:571: in module_from_spec\n    ???\n<frozen importlib._bootstrap_external>:1176: in create_module\n    ???\n<frozen importlib._bootstrap>:241: in _call_with_frames_removed\n    ???\nE   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v"
+    }
+  ],
+  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance."
+}

@@ -1,0 +1,35 @@
+{
+  "project_complete": false,
+  "thresholds_unchanged": true,
+  "criteria": {
+    "R1": "partial",
+    "R2": "blocked",
+    "R3": "not_verified",
+    "R4": "pass_executed_scope",
+    "D1": "partial",
+    "D2": "pass_pilots",
+    "D3": "pass_pilots",
+    "M1": "blocked",
+    "M2": "blocked",
+    "M3": "blocked",
+    "M4": "blocked",
+    "M5": "blocked",
+    "M6": "blocked",
+    "M7": "blocked",
+    "L1": "pass_real_sample",
+    "L2": "pass_selected_sample",
+    "L3": "pass_selected_sample",
+    "L4": "pass_selected_cache",
+    "L5": "blocked",
+    "L6": "blocked"
+  },
+  "tests": {
+    "passed": 157,
+    "error": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "native_rendering_passed": false,
+  "long_run_gate_open": false,
+  "evidence": "docs/RESULTS.md"
+}

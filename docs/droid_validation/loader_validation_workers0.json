@@ -1,0 +1,51 @@
+{
+  "workers": 0,
+  "batch_size": 2,
+  "device": "CPU",
+  "variants": {
+    "scratch": {
+      "train": {
+        "samples": 30,
+        "batches": 15,
+        "height": 144,
+        "width": 256,
+        "elapsed_s": 1.1898363949730992,
+        "samples_per_s": 25.213550473616387,
+        "target_pixels": 3164058,
+        "nonzero_motion_pixels": 2940302
+      },
+      "validation": {
+        "samples": 5,
+        "batches": 3,
+        "height": 144,
+        "width": 256,
+        "elapsed_s": 0.19246217980980873,
+        "samples_per_s": 25.97913005527114,
+        "target_pixels": 463916,
+        "nonzero_motion_pixels": 432896
+      }
+    },
+    "dinov2": {
+      "train": {
+        "samples": 30,
+        "batches": 15,
+        "height": 140,
+        "width": 252,
+        "elapsed_s": 1.13654915522784,
+        "samples_per_s": 26.395690729263713,
+        "target_pixels": 3029867,
+        "nonzero_motion_pixels": 2814940
+      },
+      "validation": {
+        "samples": 5,
+        "batches": 3,
+        "height": 140,
+        "width": 252,
+        "elapsed_s": 0.17283620219677687,
+        "samples_per_s": 28.92912443370757,
+        "target_pixels": 444613,
+        "nonzero_motion_pixels": 414883
+      }
+    }
+  }
+}

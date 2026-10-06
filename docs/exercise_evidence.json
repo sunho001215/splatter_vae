@@ -1,0 +1,487 @@
+{
+  "scope": "parent test call trace plus explicit real-pipeline artifacts; exercise is not native or empirical acceptance",
+  "source_sha256": {
+    "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
+    "s4d/config.py": "dd62aa78247973298d63492e027724c8bf28b3e1e8210d0ab011815ca8164f76",
+    "s4d/data/__init__.py": "e30d2c8c6389890795f47724cf897d2d2a6d5cafdc284685d06f0ae2145eae67",
+    "s4d/data/contract.py": "e02bb213ad893de3e4b6c0657a79bc3d20780a470a0292184760ac5860ef0e4f",
+    "s4d/data/droid/__init__.py": "5b67d9ff63f3dd728debc1f5627c15ba5dc581e5bc28cb60f395fce34580747a",
+    "s4d/data/droid/convert.py": "ce23474a9ce3f05f118ad870a9f50bd2e6cc547183668f745c96375171809c0b",
+    "s4d/data/droid/dataset.py": "ad61788f21398f933e7798488f05e355430d5956158e37ffe7cd5f2be08ceffa",
+    "s4d/data/droid/gripper.py": "14e739ca03e495f7843d78befb098b0e6055df2b5318349b0f955bd140bef3a3",
+    "s4d/data/droid/inspect.py": "b62d8f48fee6175466115c96da044e05805e4c29c06de7f1e205572293a883ac",
+    "s4d/data/droid/pointworld.py": "4d9d5f89b48d558c97fb6a00322b53c5844185655689de8ba115ed0f518d0112",
+    "s4d/data/droid/rlds.py": "55fa47e3c560436801a60a8a561ad2f2d7af5adb7f2d7f35b00bd2dca237e36a",
+    "s4d/data/metaworld/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/data/metaworld/cameras.py": "fab5d78a22e05fda42a8c88df8e038bcb6e865983de1386ebf4db8c035a6d321",
+    "s4d/data/metaworld/collect.py": "f1eb373e7413faf4c64de7b133494792e99fdbc736c1ae7b566cf17e9aa0666d",
+    "s4d/data/metaworld/dataset.py": "f51e7278ed40b866eb91828ad49fa3cdcc1adaf592c924e47765a976715d7193",
+    "s4d/diag/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/diag/local_log.py": "c93b3cfd83911139ea67b5ea6e131eb0cdd9c3889c07a23b646f574714a6e9c2",
+    "s4d/diag/panels.py": "99f4eaf62e6acb9de705214c5e0fcc616e478ca4b8712d3e5a19949455c41722",
+    "s4d/diag/pointclouds.py": "37570cb6d6c2b3e12ebe9f1f218402455393fbe584f1da2012384587233f1f18",
+    "s4d/diag/probes.py": "5555b67c8da6d94ef94e7525ceb30eef4772bded04462fcace0e6b1c651699f9",
+    "s4d/diag/tracks.py": "3b0a9a1a2c29d94eb63e0af27f924973c8f4192c65a89af07d336eb9fc6a96bc",
+    "s4d/diag/wandb_log.py": "f2fdd175ff077dedbdcb384013c2f151bfc8e874aef0aa1731fbf1eb1577f690",
+    "s4d/geometry.py": "ed72b3e82278a437ff673a063c75536cac05a000e337353c4870b5f69e025660",
+    "s4d/gpu_guard.py": "f218e2a7770788c504f7118d5143d56dc5aa2834674760ba4b2039a229872c4a",
+    "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
+    "s4d/losses/invariance.py": "6746f4115e6cf88f7056f914f5f881b0aeda990b8def4bfd6f669a8c93481d3b",
+    "s4d/losses/motion.py": "eaa37912d2aa440443d218ea2b6c479389ca74c2cf0b36fd3278b67b4a97cd60",
+    "s4d/losses/regularizers.py": "431cae83a1d13110e2b80043e2b994bc2c26d056fb7f1a9d634e6cd8f97333d3",
+    "s4d/losses/rgb.py": "94da2fabf2631899d34d330bcb121626efa36caba573cd820c445d64ec6deaa9",
+    "s4d/model/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/model/decoder.py": "2a4378f13291e957fd407488a42e3c00986b87a005aa77000042b2d93c647591",
+    "s4d/model/encoder.py": "d339f53a70639eaa33318c39f66da32a78b7120c19ab56843efd1c8133150288",
+    "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
+    "s4d/model/render.py": "4aba0d3f943ab266b1beda537c99647b6ad68673954ec33d0223182345fa62db",
+    "s4d/train/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
+    "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
+    "s4d/train/evaluate.py": "4922cd105f1c6c86d0d7686aec0c1df2a8ef2fb82a4aae43c081407043adfc18",
+    "s4d/train/loop.py": "a03191a5b1c7ec1d422add8ce4bc434113867e053634ac4a0a960749c0ecc35b"
+  },
+  "modules": {
+    "s4d/config.py": {
+      "test_functions": [
+        "<module>",
+        "deep_update",
+        "dump_config",
+        "get",
+        "load_config"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/contract.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<listcomp>",
+        "<module>",
+        "ContractError",
+        "_check",
+        "_check_cameras",
+        "_check_tensor",
+        "collate",
+        "validate_batch"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/droid/convert.py": {
+      "test_functions": [
+        "<module>",
+        "convert_sample",
+        "resize_image"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/droid/dataset.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<listcomp>",
+        "<module>",
+        "DroidCacheDataset",
+        "__getitem__",
+        "__getstate__",
+        "__init__",
+        "__len__",
+        "close"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/droid/gripper.py": {
+      "test_functions": [
+        "<lambda>",
+        "<listcomp>",
+        "<module>",
+        "calibrate_offset",
+        "gripper_points"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/droid/inspect.py": {
+      "test_functions": [
+        "<module>",
+        "dense_depth_alignment",
+        "dense_depth_warp"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/droid/pointworld.py": {
+      "test_functions": [
+        "<listcomp>",
+        "<module>",
+        "clip_windows",
+        "depth_test",
+        "nearest_timestamps",
+        "nearest_z_winners",
+        "project",
+        "resize_intrinsics",
+        "sparse_targets"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/droid/rlds.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<listcomp>",
+        "<module>",
+        "save_matched_episode",
+        "scene_suffix",
+        "verify_path",
+        "verify_states"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/metaworld/cameras.py": {
+      "test_functions": [
+        "<module>",
+        "opengl_to_opencv_c2w",
+        "orbit_c2w_opengl"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/data/metaworld/collect.py": {
+      "test_functions": [],
+      "real_pipeline_evidence": [
+        "docs/data_inventory.json",
+        "docs/hammer_pilot.log",
+        "docs/task_verification/summary.json"
+      ]
+    },
+    "s4d/data/metaworld/dataset.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<genexpr>",
+        "<listcomp>",
+        "<module>",
+        "MetaworldWindowDataset",
+        "__getitem__",
+        "__init__",
+        "__len__",
+        "_h5",
+        "disp",
+        "list_episodes",
+        "split_episodes"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/diag/local_log.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<listcomp>",
+        "<module>",
+        "RunLogger",
+        "__init__",
+        "close",
+        "eval_dir",
+        "media",
+        "save_gif",
+        "save_ply",
+        "save_png",
+        "scalars",
+        "text"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/diag/panels.py": {
+      "test_functions": [
+        "<listcomp>",
+        "<module>",
+        "colorize_depth",
+        "colorize_error",
+        "colorize_gray",
+        "draw_line",
+        "draw_points",
+        "flow_color",
+        "grid",
+        "overlay_patches",
+        "to_uint8",
+        "turbo"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/diag/pointclouds.py": {
+      "test_functions": [
+        "<listcomp>",
+        "<module>",
+        "cloud_panel",
+        "fused_gt_points",
+        "gaussian_points"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/diag/probes.py": {
+      "test_functions": [
+        "<module>",
+        "cross_view_retrieval",
+        "fit_and_score",
+        "probe_targets",
+        "r2_score",
+        "retrieval_top1",
+        "ridge_fit",
+        "ridge_predict"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/diag/tracks.py": {
+      "test_functions": [
+        "<module>",
+        "sample_track_pixels",
+        "track_panel",
+        "trajectories"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/diag/wandb_log.py": {
+      "test_functions": [
+        "<module>",
+        "image",
+        "init_wandb",
+        "object3d",
+        "table",
+        "video"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/geometry.py": {
+      "test_functions": [
+        "<module>",
+        "invert_se3",
+        "lift_depth",
+        "pixel_centers",
+        "project",
+        "quat_wxyz_to_matrix",
+        "rigid_body_displacement"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/gpu_guard.py": {
+      "test_functions": [
+        "<genexpr>",
+        "<listcomp>",
+        "<setcomp>",
+        "_normalize_uuid",
+        "enforce_allowed_gpus",
+        "visible_device_uuids"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/losses/depth.py": {
+      "test_functions": [
+        "<module>",
+        "_downsample",
+        "abs_rel",
+        "align_teacher",
+        "depth_gradient_loss",
+        "depth_l1"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/losses/invariance.py": {
+      "test_functions": [
+        "<module>",
+        "multi_positive_info_nce",
+        "slot_consistency"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/losses/motion.py": {
+      "test_functions": [
+        "<genexpr>",
+        "<module>",
+        "expected_displacement",
+        "motion_loss",
+        "region_mean"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/losses/regularizers.py": {
+      "test_functions": [
+        "<module>",
+        "visibility_loss"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/losses/rgb.py": {
+      "test_functions": [
+        "<module>",
+        "_ssim_map",
+        "coverage_loss",
+        "masked_psnr",
+        "masked_ssim",
+        "pixel_weights",
+        "rgb_loss"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/model/decoder.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<genexpr>",
+        "<listcomp>",
+        "<module>",
+        "DecoderBlock",
+        "DecoderConfig",
+        "GaussianDecoder",
+        "GroupConfig",
+        "GroupHeads",
+        "__init__",
+        "forward"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/model/encoder.py": {
+      "test_functions": [
+        "<genexpr>",
+        "<module>",
+        "Attention",
+        "Block",
+        "Encoder",
+        "EncoderConfig",
+        "LayerScale",
+        "Mlp",
+        "__init__",
+        "_drop",
+        "forward",
+        "grid",
+        "load_encoder",
+        "num_patches",
+        "patch_scores",
+        "policy_state",
+        "sample_tube_mask"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/model/gaussians.py": {
+      "test_functions": [
+        "<listcomp>",
+        "<module>",
+        "GaussianSet",
+        "detach_geometry",
+        "displacement",
+        "num_gaussians",
+        "xyz_at",
+        "xyz_sequence"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/model/render.py": {
+      "test_functions": [
+        "<module>",
+        "_expand_attr",
+        "_expand_cams",
+        "render_features",
+        "render_hard_depth",
+        "render_rgbd",
+        "require_prebuilt_renderer"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/train/checkpoint.py": {
+      "test_functions": [
+        "<module>",
+        "_unwrap",
+        "capture_rng_state",
+        "gather_rng_states",
+        "load_checkpoint",
+        "save_checkpoint"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/train/ddp.py": {
+      "test_functions": [
+        "<module>",
+        "DistContext",
+        "_AllGatherWithGrad",
+        "all_gather_with_grad",
+        "backward",
+        "barrier",
+        "cleanup",
+        "forward",
+        "is_distributed",
+        "is_main",
+        "rank",
+        "rank_zero_call",
+        "world_size"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/train/evaluate.py": {
+      "test_functions": [
+        "<lambda>",
+        "<listcomp>",
+        "<module>",
+        "Evaluator",
+        "__init__",
+        "_select_retrieval_windows",
+        "encode_states",
+        "image_plane_flow",
+        "orbit_w2c",
+        "panels"
+      ],
+      "real_pipeline_evidence": []
+    },
+    "s4d/train/loop.py": {
+      "test_functions": [
+        "<dictcomp>",
+        "<module>",
+        "Model",
+        "__init__",
+        "_nanmean",
+        "_per_t",
+        "_rows",
+        "build_model",
+        "forward",
+        "forward_losses",
+        "infinite",
+        "move_batch",
+        "seed_everything",
+        "temporal_ramp"
+      ],
+      "real_pipeline_evidence": []
+    }
+  },
+  "all_implementation_modules_exercised": true,
+  "scripts_real_pipeline_evidence": {
+    "scripts/check_gpu_isolation.py": [
+      "docs/gpu_isolation.json"
+    ],
+    "scripts/collect_metaworld.py": [
+      "docs/data_inventory.json"
+    ],
+    "scripts/compute_workspace_stats.py": [
+      "docs/hammer_workspace_stats.log",
+      "docs/pick_place_workspace_stats.log",
+      "docs/droid_workspace_stats.log"
+    ],
+    "scripts/convert_droid_sample.py": [
+      "docs/droid_dense_validation/manifest.json",
+      "docs/droid_dense_validation/adapter_verification.json"
+    ],
+    "scripts/droid_validate_alignment.py": [
+      "docs/droid_dense_validation/summary.json"
+    ],
+    "scripts/inspect_droid_sample.py": [
+      "docs/droid_validation/alignment_report.json"
+    ],
+    "scripts/validate_droid_loader.py": [
+      "docs/droid_dense_validation/loader_validation_workers0.json",
+      "docs/droid_dense_validation/loader_validation_workers2.json"
+    ],
+    "scripts/verify_metaworld_tasks.py": [
+      "docs/task_verification/summary.json"
+    ]
+  },
+  "blocked_actual_runs": [
+    "scripts/train.py",
+    "scripts/evaluate.py",
+    "scripts/droid_compare_step0.py"
+  ],
+  "test_only_cli_scope": [
+    "scripts/summarize_run.py tested with synthetic logs",
+    "scripts/export_encoder.py tested with untrained weights",
+    "scripts/delete_stage0_cache.py exercises safe abort only",
+    "scripts/download_droid_sample.py archive-copy helper safety tested; real original acquisition documented separately"
+  ]
+}

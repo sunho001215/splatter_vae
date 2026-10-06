@@ -1,0 +1,28 @@
+[gpu_guard] cuda:0 -> GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+{
+  "task": "door-open",
+  "windows_checked": 12,
+  "d2": {
+    "count": 338414,
+    "median_mm": 0.970268281057507,
+    "p90_mm": 3.7248970791449403,
+    "threshold_mm": 3.0,
+    "passed": true,
+    "status": "pass"
+  },
+  "d3": {
+    "count": 383302,
+    "median_mm": 2.0084307636289886,
+    "p90_mm": 4.413041548963574,
+    "threshold_mm": 5.0,
+    "passed": true,
+    "status": "pass"
+  },
+  "world_body_zero": {
+    "pixels": 74280,
+    "nonzero_pixels": 0,
+    "passed": true,
+    "status": "pass"
+  },
+  "passed": true
+}

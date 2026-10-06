@@ -1,0 +1,4 @@
+{
+  "torch": "2.13.0+cu129",
+  "error": "/home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZN5torch8autograd10deleteNodeEPNS0_4NodeE"
+}

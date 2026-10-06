@@ -1,0 +1,92 @@
+[gpu_guard] cuda:0 -> GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition)
+{
+  "scene": {
+    "mean": [
+      0.005097756979147906,
+      0.6071712836664304,
+      0.0040862503964598845
+    ],
+    "std": [
+      0.5061102754633927,
+      0.41310575738567956,
+      0.21312790685598584
+    ],
+    "num_points": 3775364
+  },
+  "dynamic": {
+    "mean": [
+      0.05259877419652114,
+      0.5969633382073446,
+      0.33957168344934724
+    ],
+    "std": [
+      0.10886299068393282,
+      0.09472892396756101,
+      0.09989494739406606
+    ],
+    "num_points": 280686
+  },
+  "dynamic_fallback_to_scene": false,
+  "depth_percentiles": {
+    "1": 0.5094000101089478,
+    "5": 0.6107000112533569,
+    "50": 0.9285999536514282,
+    "95": 1.4900999069213867,
+    "99": 3.831899881362915
+  },
+  "depth_quantile_sample_points": 200000,
+  "samples": 40,
+  "sample_indices": [
+    1264,
+    722,
+    829,
+    811,
+    1141,
+    120,
+    24,
+    1292,
+    1089,
+    395,
+    60,
+    957,
+    33,
+    262,
+    749,
+    1434,
+    110,
+    50,
+    133,
+    635,
+    896,
+    1276,
+    1078,
+    1197,
+    586,
+    411,
+    825,
+    743,
+    1346,
+    996,
+    1386,
+    257,
+    1211,
+    805,
+    4,
+    449,
+    451,
+    1245,
+    933,
+    935
+  ],
+  "seed": 0,
+  "standard_deviation": "population, streaming double precision",
+  "source": "/home/ws/data/metaworld/splatter4d_v1/pick-place_pilot.hdf5",
+  "regime": "metaworld",
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ]
+}

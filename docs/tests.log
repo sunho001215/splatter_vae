@@ -1,0 +1,50 @@
+....................................................EEEE................ [ 44%]
+........................................................................ [ 89%]
+.................                                                        [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_single_opaque_gaussian_rgb_expected_depth_equals_camera_z _
+tests/test_cuda_render.py:27: in prebuilt_gsplat_only
+    compiled = importlib.util.module_from_spec(extension_spec)
+<frozen importlib._bootstrap>:571: in module_from_spec
+    ???
+<frozen importlib._bootstrap_external>:1176: in create_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
+_ ERROR at setup of test_constant_world_displacement_survives_feature_splat_normalisation _
+tests/test_cuda_render.py:27: in prebuilt_gsplat_only
+    compiled = importlib.util.module_from_spec(extension_spec)
+<frozen importlib._bootstrap>:571: in module_from_spec
+    ???
+<frozen importlib._bootstrap_external>:1176: in create_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
+_ ERROR at setup of test_cuda_feature_backward_only_updates_displacement_tensors _
+tests/test_cuda_render.py:27: in prebuilt_gsplat_only
+    compiled = importlib.util.module_from_spec(extension_spec)
+<frozen importlib._bootstrap>:571: in module_from_spec
+    ???
+<frozen importlib._bootstrap_external>:1176: in create_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
+_____ ERROR at setup of test_cuda_hard_depth_backward_only_updates_centers _____
+tests/test_cuda_render.py:27: in prebuilt_gsplat_only
+    compiled = importlib.util.module_from_spec(extension_spec)
+<frozen importlib._bootstrap>:571: in module_from_spec
+    ???
+<frozen importlib._bootstrap_external>:1176: in create_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
+=========================== short test summary info ============================
+ERROR tests/test_cuda_render.py::test_single_opaque_gaussian_rgb_expected_depth_equals_camera_z
+ERROR tests/test_cuda_render.py::test_constant_world_displacement_survives_feature_splat_normalisation
+ERROR tests/test_cuda_render.py::test_cuda_feature_backward_only_updates_displacement_tensors
+ERROR tests/test_cuda_render.py::test_cuda_hard_depth_backward_only_updates_centers
+157 passed, 4 errors in 12.11s

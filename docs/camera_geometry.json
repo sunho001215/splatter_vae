@@ -1,0 +1,132 @@
+{
+  "base_candidates": [
+    [
+      "base",
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      "pedestal_feet",
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      "pedestal",
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      "right_arm_base_link",
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ]
+  ],
+  "cameras": [
+    {
+      "name": "train0",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "train1",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "train2",
+      "position_error_m": 2.9802322387695312e-08,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "train3",
+      "position_error_m": 2.9802322387695312e-08,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "train4",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "train5",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "eval0",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "eval1",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "eval2",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    },
+    {
+      "name": "eval3",
+      "position_error_m": 0.0,
+      "forward_error": 0.0,
+      "up_error": 0.0,
+      "fovy": 45.0
+    }
+  ]
+}
