@@ -1,0 +1,2 @@
+# Full model schedule shared by ablations. Temporal ramp remains the required 20k steps.
+train: {steps: 100000}

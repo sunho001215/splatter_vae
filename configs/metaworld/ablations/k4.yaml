@@ -1,0 +1,1 @@
+model: {encoder: {num_slots: 4}}

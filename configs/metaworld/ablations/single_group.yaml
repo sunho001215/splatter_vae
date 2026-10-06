@@ -1,0 +1,2 @@
+# (c) one Gaussian group with the same total count (1024 parents x 8), all carrying motion
+model: {decoder: {single_group: true}}

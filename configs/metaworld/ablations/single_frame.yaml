@@ -1,0 +1,3 @@
+# (e) T=1: the encoder sees only t0; no motion head output, no temporal losses
+model: {single_frame: true, encoder: {num_frames: 1}}
+loss: {motion: 0.0}

@@ -1,0 +1,2 @@
+# Teacher depth has independent per-image factors in [0.7,1.4]; scale alignment.
+loss: {teacher_scale_jitter: [0.7, 1.4], depth_align: scale}

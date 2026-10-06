@@ -1,0 +1,2 @@
+data: {task: pick-place}
+model: {anchor_stats: /home/ws/data/metaworld/splatter4d_v1/workspace_stats/pick-place.json}

@@ -1,0 +1,2 @@
+# (f-none) same jitter, no alignment
+loss: {teacher_scale_jitter: [0.7, 1.4], depth_align: none}

@@ -1,0 +1,2 @@
+# (d) no 3D motion loss
+loss: {motion: 0.0}
