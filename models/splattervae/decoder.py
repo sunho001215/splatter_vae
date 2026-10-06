@@ -26,9 +26,21 @@ class MultiHeadCrossAttention(nn.Module):
         self.key_value = nn.Linear(self.dimension, 2 * self.dimension, bias=qkv_bias)
         self.output = nn.Linear(self.dimension, self.dimension)
 
-    def forward(self, queries: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        queries: torch.Tensor,
+        memory: torch.Tensor,
+        memory_validity: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch, query_count, _ = queries.shape
         memory_count = memory.shape[1]
+        if memory_validity is not None:
+            if memory_validity.shape != (batch, memory_count):
+                raise ValueError(
+                    "Cross-attention memory validity must match (batch,memory_tokens)."
+                )
+            if not memory_validity.any(dim=1).all():
+                raise ValueError("Every decoder memory sequence needs a valid token.")
         query = (
             self.query(queries)
             .view(batch, query_count, self.num_heads, self.head_dimension)
@@ -40,7 +52,15 @@ class MultiHeadCrossAttention(nn.Module):
             .permute(2, 0, 3, 1, 4)
             .unbind(0)
         )
-        attended = F.scaled_dot_product_attention(query, key, value, is_causal=False)
+        attended = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=(
+                None if memory_validity is None else memory_validity[:, None, None, :]
+            ),
+            is_causal=False,
+        )
         attended = attended.transpose(1, 2).reshape(batch, query_count, self.dimension)
         return self.output(attended)
 
@@ -69,12 +89,19 @@ class GaussianSlotBlock(nn.Module):
         self.feedforward = SwishGLU(dimension, hidden_dimension)
         self.feedforward_scale = LayerScale(dimension, layerscale_initial_value)
 
-    def forward(self, slots: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        slots: torch.Tensor,
+        memory: torch.Tensor,
+        memory_validity: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         if self.use_self_attention:
             slots = slots + self.self_scale(self.self_attention(self.self_norm(slots)))
         slots = slots + self.cross_scale(
             self.cross_attention(
-                self.cross_query_norm(slots), self.cross_memory_norm(memory)
+                self.cross_query_norm(slots),
+                self.cross_memory_norm(memory),
+                memory_validity,
             )
         )
         return slots + self.feedforward_scale(
@@ -197,13 +224,24 @@ class GaussianSlotDecoder(nn.Module):
             "conditioning": "multi_token_cross_attention",
         }
 
-    def forward(self, encoder_tokens: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(
+        self,
+        encoder_tokens: torch.Tensor,
+        memory_validity: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
         if encoder_tokens.dim() != 3:
             raise ValueError(
                 f"Gaussian decoder expects multiple encoder tokens (B,M,D), got {tuple(encoder_tokens.shape)}."
             )
         if encoder_tokens.shape[1] < 2:
             raise ValueError("Gaussian decoder refuses single-token conditioning.")
+        if (
+            memory_validity is not None
+            and memory_validity.shape != encoder_tokens.shape[:2]
+        ):
+            raise ValueError(
+                "Gaussian decoder memory validity does not match encoder tokens."
+            )
         memory = self.memory_projection(encoder_tokens)
         groups = (
             self.slot_queries.to(memory.dtype)
@@ -211,7 +249,7 @@ class GaussianSlotDecoder(nn.Module):
             .expand(memory.shape[0], -1, -1)
         )
         for block in self.blocks:
-            groups = block(groups, memory)
+            groups = block(groups, memory, memory_validity)
         groups = self.output_norm(groups)
         parent_displacements = self.parent_displacement_scale * torch.tanh(
             self.parent_position_head(groups)

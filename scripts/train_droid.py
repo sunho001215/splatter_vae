@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
@@ -11,13 +12,20 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 
-from dataset.droid.dataset import DROIDDatasetConfig, DROIDLogicalDataset, droid_collate
-from dataset.droid.safety import assert_paths_outside_source, validate_derived_root
-from dataset.droid.sampling import (
-    EpisodeGroupedDistributedSampler,
-    MotionCropConfig,
-    TemporalSamplingConfig,
+from dataset.droid.codecs import NumericCodecConfig
+from dataset.droid.dataset import (
+    DROIDDatasetConfig,
+    DROIDPreprocessedDataset,
+    droid_collate,
 )
+from dataset.droid.preprocessed_manifest import (
+    RETAINED_RAW_STRIDE,
+    TEMPORAL_GAP_RAW,
+    TEMPORAL_WINDOW,
+    load_stage0_manifest,
+)
+from dataset.droid.safety import assert_paths_outside_source, validate_derived_root
+from dataset.droid.sampling import EpisodeGroupedDistributedSampler, MotionCropConfig
 from models.gaussian.parameterization import (
     SplatterConfig,
     SplatterDataConfig,
@@ -34,22 +42,41 @@ from models.training.distributed import (
     wrap_ddp,
 )
 from models.training.loop import train_droid
-from models.training.online_preprocessing import (
-    OnlinePreprocessingConfig,
-    OnlineTeacherPipeline,
-)
 from models.training.visualization import save_droid_validation_visualization
-from preprocessing.lagernvs.official import LagerNVSDROIDTeacher
-from preprocessing.lagernvs.pose import LagerTargetPoseConfig
-from preprocessing.memfof import MEMFOFDROIDTeacher
-from preprocessing.xlens.official import XLensDROIDTeacher
+
+FOUNDATION_MODULE_PREFIXES = (
+    "depth_anything_3",
+    "megaflow",
+    "preprocessing.da3",
+    "preprocessing.megaflow",
+    "preprocessing.lagernvs.official",
+)
+
+
+def loaded_foundation_modules() -> list[str]:
+    return sorted(
+        name
+        for name in sys.modules
+        if any(
+            name == prefix or name.startswith(prefix + ".")
+            for prefix in FOUNDATION_MODULE_PREFIXES
+        )
+    )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Pretrain the DROID temporal ViT-S representation."
+        description=(
+            "Train the DROID temporal ViT-S representation exclusively from the "
+            "offline Stage-0 indexed dataset."
+        )
     )
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--preprocessed-root",
+        default=None,
+        help="Override dataset.preprocessed_root (for example, for a pilot cache).",
+    )
     parser.add_argument("--resume", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--per-gpu-batch", type=int, default=None)
@@ -66,26 +93,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-visualization-samples", type=int, default=None)
     parser.add_argument("--wandb-enabled", action="store_true")
     parser.add_argument("--run-name", default=None)
-    novel_group = parser.add_mutually_exclusive_group()
-    novel_group.add_argument(
-        "--novel-view-enabled",
-        action="store_true",
-        help="Run LagerNVS online for every logical sample.",
-    )
-    novel_group.add_argument(
-        "--novel-view-disabled",
-        action="store_true",
-        help="Completely bypass LagerNVS (MEMFOF and X-Lens remain online).",
-    )
     parser.add_argument(
         "--allow-unvalidated-workspace",
         action="store_true",
-        help="Development smoke tests only; real training should use computed DROID workspace statistics.",
+        help=(
+            "Development smoke tests only; production training requires workspace "
+            "bounds validated from cached DA3 depth."
+        ),
     )
     return parser.parse_args()
 
 
-def _only_dataclass_fields(cls, values: Mapping[str, Any]) -> dict[str, Any]:
+def _only_dataclass_fields(cls: type, values: Mapping[str, Any]) -> dict[str, Any]:
     allowed = {item.name for item in fields(cls)}
     unknown = set(values) - allowed
     if unknown:
@@ -94,10 +113,40 @@ def _only_dataclass_fields(cls, values: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
-    """Fail fast instead of silently ignoring architecture-sensitive YAML keys."""
+    """Reject stale/ambiguous settings instead of changing Stage-0 semantics."""
+
+    dataset = config["dataset"]
     preprocessing = config["preprocessing"]
     crop = preprocessing["crop"]
+    masking = config["masking"]
+    depth = config["depth"]
+    flow = config["flow"]
+    novel = config["novel_view"]
     expected = {
+        "dataset.source_root": (
+            str(Path(dataset["source_root"]).expanduser().resolve()),
+            "/home/ws/data/droid",
+        ),
+        "dataset.preprocessed_root": (
+            str(Path(dataset["preprocessed_root"]).expanduser().resolve()),
+            "/home/ws/data/droid_stage0_preprocessed",
+        ),
+        "dataset.eligibility": (
+            str(dataset["eligibility"]),
+            "canonical_stage0_calibration_valid_only",
+        ),
+        "dataset.retained_raw_stride": (
+            int(dataset["retained_raw_stride"]),
+            RETAINED_RAW_STRIDE,
+        ),
+        "dataset.temporal_gap_raw": (
+            int(dataset["temporal_gap_raw"]),
+            TEMPORAL_GAP_RAW,
+        ),
+        "dataset.temporal_window": (
+            int(dataset["temporal_window"]),
+            TEMPORAL_WINDOW,
+        ),
         "preprocessing.source_width": (int(preprocessing["source_width"]), 320),
         "preprocessing.source_height": (int(preprocessing["source_height"]), 180),
         "preprocessing.padded_size": (int(preprocessing["padded_size"]), 320),
@@ -114,18 +163,58 @@ def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
         ),
         "preprocessing.crop.center_mode": (
             str(crop["center_mode"]),
-            "optical_flow_argmax",
+            "middle_frame_forward_megaflow_argmax",
+        ),
+        "preprocessing.crop.flow_alignment": (
+            str(crop["flow_alignment"]),
+            "forward_splat_f01_to_t1_then_max_f12",
+        ),
+        "preprocessing.crop.flow_aggregation": (
+            str(crop["flow_aggregation"]),
+            "max",
         ),
         "preprocessing.crop.low_motion_fallback": (
             str(crop["low_motion_fallback"]),
             "image_center",
         ),
-        "vit.normalization": (str(config["vit"]["normalization"]).lower(), "rmsnorm"),
+        "depth.source": (str(depth["source"]), "cached_da3"),
+        "depth.encoding": (str(depth["encoding"]), "uint16_mm"),
+        "depth.invalid_value": (int(depth["invalid_value"]), 0),
+        "depth.resolution": (tuple(depth["resolution"]), (180, 320)),
+        "flow.source": (str(flow["source"]), "cached_megaflow"),
+        "flow.gap_raw_timesteps": (
+            int(flow["gap_raw_timesteps"]),
+            TEMPORAL_GAP_RAW,
+        ),
+        "flow.resolution": (tuple(flow["resolution"]), (180, 320)),
+        "flow.encoding": (str(flow["encoding"]), "int16_fixed_1_over_64"),
+        "flow.invalid_sentinel": (int(flow["invalid_sentinel"]), -32768),
+        "novel_view.source": (str(novel["source"]), "cached_lagernvs"),
+        "novel_view.enabled": (bool(novel["enabled"]), True),
+        "novel_view.targets_per_timestep": (
+            int(novel["targets_per_timestep"]),
+            4,
+        ),
+        "novel_view.canonical_size": (int(novel["canonical_size"]), 256),
+        "masking.ratio": (float(masking["ratio"]), 0.60),
+        "masking.validity_aware": (bool(masking["validity_aware"]), True),
+        "masking.tube_mask": (bool(masking["tube_mask"]), True),
+        "masking.motion_visible_fraction": (
+            float(masking["motion_visible_fraction"]),
+            0.50,
+        ),
+        "vit.normalization": (
+            str(config["vit"]["normalization"]).lower(),
+            "rmsnorm",
+        ),
         "vit.initialize_from": (
             str(config["vit"]["initialize_from"]).lower(),
             "scratch",
         ),
-        "model.temporal_anchor": (str(config["model"]["temporal_anchor"]), "current"),
+        "model.temporal_anchor": (
+            str(config["model"]["temporal_anchor"]),
+            "current",
+        ),
         "contrastive.distributed_negatives": (
             bool(config["contrastive"]["distributed_negatives"]),
             True,
@@ -134,77 +223,84 @@ def _validate_fixed_pipeline_contract(config: Mapping[str, Any]) -> None:
             str(config["decoder"]["conditioning"]),
             "multi_token_cross_attention",
         ),
-        "calibration.world_frame": (
-            str(config["calibration"]["world_frame"]),
-            "robot_base",
-        ),
-        "calibration.stage": (int(config["calibration"]["stage"]), 0),
-        "dataset.droid_root": (
-            str(Path(config["dataset"]["droid_root"]).expanduser().resolve()),
-            "/home/ws/data/droid",
-        ),
-        "novel_view.backend": (str(config["novel_view"]["backend"]), "lagernvs"),
-        "depth.teacher": (str(config["depth"]["teacher"]).lower(), "xlens"),
-        "depth.inference_resolution": (
-            tuple(config["depth"]["inference_resolution"]),
-            (320, 180),
-        ),
-        "flow.backend": (str(config["flow"]["backend"]).lower(), "memfof"),
-        "flow.native_resolution": (bool(config["flow"]["native_resolution"]), True),
-        "flow.iterations": (int(config["flow"]["iterations"]), 2),
-        "novel_view.target_pose.mode": (
-            str(config["novel_view"]["target_pose"]["mode"]),
-            "interpolate_with_bounded_perturbation",
-        ),
-        "novel_view.canonical.image_size": (
-            int(config["novel_view"]["canonical"]["image_size"]),
-            256,
-        ),
         "optimizer.name": (str(config["optimizer"]["name"]).lower(), "adamw"),
-        "optimizer.schedule": (str(config["optimizer"]["schedule"]).lower(), "cosine"),
-        "distributed.backend": (str(config["distributed"]["backend"]).lower(), "nccl"),
+        "optimizer.schedule": (
+            str(config["optimizer"]["schedule"]).lower(),
+            "cosine",
+        ),
+        "distributed.backend": (
+            str(config["distributed"]["backend"]).lower(),
+            "nccl",
+        ),
     }
     mismatches = {
         name: {"configured": configured, "required": required}
         for name, (configured, required) in expected.items()
         if configured != required
     }
-    if int(crop["min_size"]) != 180 or int(crop["max_size"]) != 320:
+    if (int(crop["min_size"]), int(crop["max_size"])) != (180, 320):
         mismatches["preprocessing.crop.size_interval"] = {
             "configured": (crop["min_size"], crop["max_size"]),
             "required": (180, 320),
         }
-    if not bool(config["calibration"]["use_exterior_cameras_only"]):
-        mismatches["calibration.use_exterior_cameras_only"] = {
-            "configured": False,
-            "required": True,
+    forbidden_fragments = ("xlens", "memfof", "online_teacher", "temporal_prob")
+    serialized = json.dumps(config, sort_keys=True).lower()
+    stale = [fragment for fragment in forbidden_fragments if fragment in serialized]
+    if stale:
+        mismatches["obsolete_configuration"] = {
+            "configured": stale,
+            "required": "no online/X-Lens/MEMFOF/random-stride settings",
         }
-    forbidden_novel = {
-        key
-        for key in config["novel_view"]
-        if "probability" in key or "warmup" in key
+    forbidden_runtime_keys = {
+        "flow": sorted(
+            set(flow)
+            & {
+                "backend",
+                "iterations",
+                "precision",
+                "official_repo_path",
+                "cache_dir",
+            }
+        ),
+        "depth": sorted(
+            set(depth)
+            & {
+                "teacher",
+                "amp_dtype",
+                "checkpoint_path",
+                "official_repo_path",
+                "confidence_threshold",
+            }
+        ),
+        "novel_view": sorted(
+            set(novel)
+            & {
+                "backend",
+                "dtype",
+                "microbatch_size",
+                "probability",
+                "warmup_steps",
+                "cache_dir",
+                "official_repo_path",
+            }
+        ),
     }
-    if forbidden_novel:
-        mismatches["novel_view.boolean_only"] = {
-            "configured_forbidden_keys": sorted(forbidden_novel),
-            "required": "enabled Boolean with no stochastic skipping",
+    forbidden_runtime_keys = {
+        section: keys for section, keys in forbidden_runtime_keys.items() if keys
+    }
+    if forbidden_runtime_keys:
+        mismatches["offline_only_configuration"] = {
+            "configured": forbidden_runtime_keys,
+            "required": "cached sources with no training-time inference controls",
         }
     if mismatches:
-        raise ValueError(f"Unsupported DROID pipeline configuration: {mismatches}")
+        raise ValueError(f"Unsupported DROID cached pipeline configuration: {mismatches}")
 
 
-def _dataset_config(config: Mapping[str, Any], split: str) -> DROIDDatasetConfig:
-    dataset = config["dataset"]
+def _motion_crop_config(config: Mapping[str, Any]) -> MotionCropConfig:
     preprocessing = config["preprocessing"]
-    temporal = TemporalSamplingConfig(
-        strides=tuple(int(value) for value in dataset["temporal_strides"]),
-        probabilities=tuple(
-            float(value) for value in dataset["temporal_probabilities"]
-        ),
-        validation_stride=int(dataset["validation_stride"]),
-    )
     crop = preprocessing["crop"]
-    motion_crop = MotionCropConfig(
+    return MotionCropConfig(
         min_size=int(crop["min_size"]),
         max_size=int(crop["max_size"]),
         size_sampling=str(crop["size_sampling"]),
@@ -212,88 +308,29 @@ def _dataset_config(config: Mapping[str, Any], split: str) -> DROIDDatasetConfig
         pad_top=int(preprocessing["pad_top"]),
         pad_bottom=int(preprocessing["pad_bottom"]),
         output_size=int(preprocessing["output_size"]),
-        center_mode=str(crop["center_mode"]),
+        center_mode="optical_flow_argmax",
         flow_aggregation=str(crop["flow_aggregation"]),
         flow_smoothing_kernel=int(crop["flow_smoothing_kernel"]),
         low_motion_threshold=float(crop["low_motion_threshold"]),
         low_motion_fallback=str(crop["low_motion_fallback"]),
     )
-    if str(preprocessing["padding_value"]) != "imagenet_mean":
-        raise ValueError("Only neutral ImageNet-mean RGB padding is supported.")
+
+
+def _dataset_config(config: Mapping[str, Any], split: str) -> DROIDDatasetConfig:
+    dataset = config["dataset"]
+    numeric = config["storage"]["numeric"]
     return DROIDDatasetConfig(
-        droid_root=str(dataset["droid_root"]),
-        calibration_manifest=str(dataset["calibration_manifest"]),
+        preprocessed_root=str(dataset["preprocessed_root"]),
         split=split,
         seed=int(dataset.get("seed", 42)),
-        temporal=temporal,
-        motion_crop=motion_crop,
-    )
-
-
-def _online_preprocessor(
-    config: Mapping[str, Any], device: torch.device
-) -> OnlineTeacherPipeline:
-    preprocessing = config["preprocessing"]
-    normalization = preprocessing["rgb_normalization"]
-    motion_crop = _dataset_config(config, "train").motion_crop
-    depth = config["depth"]
-    flow = config["flow"]
-    novel = config["novel_view"]
-    memfof = MEMFOFDROIDTeacher(
-        model_id=str(flow["checkpoint"]),
-        revision=str(flow["checkpoint_revision"]),
-        iterations=int(flow["iterations"]),
-        device=device,
-        cache_dir=flow.get("cache_dir"),
-        amp_dtype=None,
-    )
-    xlens = XLensDROIDTeacher(
-        str(depth["official_repo_path"]),
-        str(depth["checkpoint_path"]),
-        architecture_config=depth.get("architecture_config"),
-        device=str(device),
-        amp_dtype=str(depth.get("amp_dtype", "bf16")),
-    )
-    lager = None
-    pose_config = None
-    if bool(novel["enabled"]):
-        dtype_name = str(novel.get("dtype", "bf16")).lower()
-        dtype = torch.bfloat16 if dtype_name == "bf16" else torch.float32
-        lager = LagerNVSDROIDTeacher(
-            novel["official_repo_path"],
-            novel.get("checkpoint_path"),
-            cache_dir=novel.get("cache_dir"),
-            device=device,
-            dtype=dtype,
-            microbatch_size=int(novel["microbatch_size"]),
-            canonical_focal_px=float(novel["canonical"]["focal_px"]),
-        )
-        pose_values = dict(novel["target_pose"])
-        pose_values.pop("mode", None)
-        pose_values.pop("scene_center", None)
-        pose_config = LagerTargetPoseConfig(
-            **_only_dataclass_fields(LagerTargetPoseConfig, pose_values)
-        )
-    configured_center = novel["target_pose"].get("scene_center")
-    scene_center = (
-        tuple(float(value) for value in configured_center)
-        if configured_center is not None
-        else tuple(float(value) for value in config["decoder"]["global_center"])
-    )
-    return OnlineTeacherPipeline(
-        memfof,
-        xlens,
-        OnlinePreprocessingConfig(
-            motion_crop=motion_crop,
-            normalize_mean=tuple(float(value) for value in normalization["mean"]),
-            normalize_std=tuple(float(value) for value in normalization["std"]),
-            rgb_padding_value=tuple(
-                float(value) * 255.0 for value in normalization["mean"]
-            ),
+        motion_crop=_motion_crop_config(config),
+        reader_cache_size=int(dataset.get("reader_cache_size", 8)),
+        verify_member_checksums=bool(dataset.get("verify_member_checksums", False)),
+        numeric=NumericCodecConfig(
+            cname=str(numeric["codec"]),
+            compression_level=int(numeric["compression_level"]),
+            shuffle=str(numeric["shuffle"]),
         ),
-        lagernvs=lager,
-        novel_pose_config=pose_config,
-        scene_center=scene_center,
     )
 
 
@@ -311,8 +348,6 @@ def _model_and_renderer(
         "require_validated_workspace_parameters",
     ):
         decoder_values.pop(key, None)
-    model_cfg = config["model"]
-    contrastive = config["contrastive"]
     renderer_cfg = config["renderer"]
     splatter = SplatterConfig(
         data=SplatterDataConfig(
@@ -328,14 +363,17 @@ def _model_and_renderer(
             scale_max=tuple(float(value) for value in renderer_cfg["scale_max"]),
         ),
     )
+    model_cfg = config["model"]
+    masking = config["masking"]
+    contrastive = config["contrastive"]
     model = SplatterVAE(
         vit_config=vit,
         gaussian_parameters_per_gaussian=gaussian_params_per_gaussian(
             splatter.model.max_sh_degree
         ),
         decoder_config=decoder_values,
-        masking_ratio=float(model_cfg["masking_ratio"]),
-        motion_visible_fraction=float(model_cfg["motion_visible_fraction"]),
+        masking_ratio=float(masking["ratio"]),
+        motion_visible_fraction=float(masking["motion_visible_fraction"]),
         projector_hidden_dimension=int(contrastive["projector_hidden_dimension"]),
         projector_output_dimension=int(contrastive["projector_output_dimension"]),
         motion_translation_max=float(model_cfg["motion_translation_max_m"]),
@@ -353,9 +391,11 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
     betas = optimizer["betas"]
     return TrainConfig(
         num_epochs=int(optimizer["num_epochs"]),
-        max_global_steps=None
-        if optimizer["max_global_steps"] is None
-        else int(optimizer["max_global_steps"]),
+        max_global_steps=(
+            None
+            if optimizer["max_global_steps"] is None
+            else int(optimizer["max_global_steps"])
+        ),
         reference_lr=float(optimizer["reference_lr"]),
         reference_batch_size=int(optimizer["reference_batch_size"]),
         decoder_lr_multiplier=float(optimizer["decoder_lr_multiplier"]),
@@ -379,12 +419,11 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
         gaussian_regularization_weight=float(loss["gaussian_regularization"]),
         novel_view_rgb_weight=float(novel["loss"]["weight"]),
         contrastive_temperature=float(config["contrastive"]["temperature"]),
-        depth_confidence_threshold=float(depth["confidence_threshold"]),
         scale_invariant_mean_weight=float(depth["scale_invariant_mean_weight"]),
         flow_pair_weights=tuple(float(value) for value in flow["pair_weights"]),
         flow_alpha_threshold=float(flow["alpha_threshold"]),
         flow_smooth_l1_beta=float(flow["smooth_l1_beta"]),
-        novel_view_enabled=bool(novel["enabled"]),
+        novel_view_enabled=True,
         novel_view_supported_weight=float(novel["loss"]["supported_weight"]),
         novel_view_unsupported_weight=float(novel["loss"]["unsupported_weight"]),
         seed=int(config["dataset"].get("seed", 42)),
@@ -400,7 +439,7 @@ def _train_config(config: Mapping[str, Any], resume: str | None) -> TrainConfig:
 
 
 def _loader(
-    dataset: DROIDLogicalDataset,
+    dataset: DROIDPreprocessedDataset,
     config: Mapping[str, Any],
     *,
     rank: int,
@@ -433,11 +472,69 @@ def _loader(
     return DataLoader(**kwargs)
 
 
+def _apply_workspace_statistics(
+    config: dict[str, Any], statistics_path: str
+) -> None:
+    statistics = json.loads(Path(statistics_path).read_text(encoding="utf-8"))
+    if statistics.get("depth_source") != "cached_da3":
+        raise ValueError("Workspace statistics must be computed from cached DA3 depth.")
+    proposal = statistics["proposed_parameters"]
+    config["decoder"].update(
+        {
+            "global_center": proposal["global_center"],
+            "anchor_initial_spread": proposal["anchor_initial_spread"],
+            "parent_displacement_scale": proposal["parent_displacement_scale"],
+            "child_radius": proposal["child_radius"],
+            "workspace_parameter_status": str(
+                statistics.get(
+                    "workspace_parameter_status", "computed_from_cached_da3"
+                )
+            ),
+        }
+    )
+    config["renderer"].update(
+        {"znear": proposal["znear"], "zfar": proposal["zfar"]}
+    )
+
+
+def _validate_cached_manifest(config: Mapping[str, Any]) -> dict[str, Any]:
+    dataset = config["dataset"]
+    root = Path(dataset["preprocessed_root"]).expanduser().resolve()
+    manifest = load_stage0_manifest(root)
+    checks = {
+        "source_root": str(Path(dataset["source_root"]).expanduser().resolve()),
+        "eligibility": str(dataset["eligibility"]),
+        "retained_raw_stride": int(dataset["retained_raw_stride"]),
+        "temporal_gap_raw": int(dataset["temporal_gap_raw"]),
+        "temporal_window": int(dataset["temporal_window"]),
+    }
+    mismatch = {
+        key: {"configured": value, "manifest": manifest.get(key)}
+        for key, value in checks.items()
+        if manifest.get(key) != value
+    }
+    if mismatch:
+        raise ValueError(
+            f"Cached Stage-0 manifest does not match training config: {mismatch}"
+        )
+    return manifest
+
+
 def main() -> None:
     args = parse_args()
+    imported_teachers = loaded_foundation_modules()
+    if imported_teachers:
+        raise RuntimeError(
+            "Cached DROID training imported foundation-model modules: "
+            f"{imported_teachers}"
+        )
     config_path = Path(args.config).expanduser().resolve()
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config: dict[str, Any] = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     _validate_fixed_pipeline_contract(config)
+    if args.preprocessed_root is not None:
+        config["dataset"]["preprocessed_root"] = str(
+            Path(args.preprocessed_root).expanduser().resolve()
+        )
     if args.max_steps is not None:
         config["optimizer"]["max_global_steps"] = int(args.max_steps)
     if args.per_gpu_batch is not None:
@@ -464,69 +561,62 @@ def main() -> None:
             config["logging"][name] = value
     if args.wandb_enabled:
         config["logging"]["wandb_enabled"] = True
-    if args.novel_view_enabled:
-        config["novel_view"]["enabled"] = True
-    if args.novel_view_disabled:
-        config["novel_view"]["enabled"] = False
     if args.workspace_stats is not None:
-        statistics = json.loads(Path(args.workspace_stats).read_text(encoding="utf-8"))
-        proposal = statistics["proposed_parameters"]
-        config["decoder"].update(
-            {
-                "global_center": proposal["global_center"],
-                "anchor_initial_spread": proposal["anchor_initial_spread"],
-                "parent_displacement_scale": proposal["parent_displacement_scale"],
-                "child_radius": proposal["child_radius"],
-                "workspace_parameter_status": "computed_from_droid_xlens_stats_requires_training_pilot",
-            }
-        )
-        config["renderer"].update(
-            {"znear": proposal["znear"], "zfar": proposal["zfar"]}
-        )
+        _apply_workspace_statistics(config, args.workspace_stats)
+
     dataset_cfg = config["dataset"]
-    droid_root = Path(dataset_cfg["droid_root"]).expanduser().resolve()
-    if not droid_root.is_dir():
-        raise FileNotFoundError(f"DROID RLDS source is not mounted at {droid_root}.")
-    derived_root = validate_derived_root(dataset_cfg["derived_root"], droid_root)
+    source_root = Path(dataset_cfg["source_root"]).expanduser().resolve()
+    preprocessed_root = validate_derived_root(
+        dataset_cfg["preprocessed_root"], source_root
+    )
     assert_paths_outside_source(
-        [
-            derived_root,
-            dataset_cfg["calibration_manifest"],
-            config["depth"]["checkpoint_path"],
-            config["flow"]["cache_dir"],
-            config["novel_view"]["cache_dir"],
+        (
+            preprocessed_root,
             config["logging"]["checkpoint_dir"],
             config["logging"]["visualization_dir"],
-        ],
-        droid_root,
+        ),
+        source_root,
     )
+    manifest = _validate_cached_manifest(config)
     decoder = config["decoder"]
     if (
-        decoder.get("require_validated_workspace_parameters", True)
+        bool(decoder.get("require_validated_workspace_parameters", True))
         and decoder.get("workspace_parameter_status")
-        != "validated_from_droid_xlens_stats_and_pilot"
+        != "validated_from_cached_da3_pilot"
         and not args.allow_unvalidated_workspace
     ):
         raise RuntimeError(
-            "DROID workspace parameters are still provisional. Run compute_droid_workspace_stats.py "
-            "and the geometry pilot, then mark the selected values validated; use "
-            "--allow-unvalidated-workspace only for synthetic development smoke tests."
+            "DROID workspace parameters are not yet validated from cached DA3 depth. "
+            "Run the cached workspace-statistics and geometry pilot first; use "
+            "--allow-unvalidated-workspace only for development smoke tests."
         )
+
     context = initialize_distributed()
     try:
         seed_distributed(int(dataset_cfg.get("seed", 42)), context)
-        diagnostics = cuda_device_diagnostics(context)
         if context.is_main:
-            print(json.dumps({"gpu": diagnostics}, indent=2), flush=True)
+            print(
+                json.dumps(
+                    {
+                        "gpu": cuda_device_diagnostics(context),
+                        "cached_dataset": {
+                            "root": str(preprocessed_root),
+                            "schema_signature": manifest["schema_signature"],
+                            "counts": manifest["counts"],
+                        },
+                        "foundation_models_loaded": loaded_foundation_modules(),
+                    },
+                    indent=2,
+                ),
+                flush=True,
+            )
         train_cfg = _train_config(config, args.resume)
         torch.backends.cuda.matmul.allow_tf32 = train_cfg.tf32
         torch.backends.cudnn.allow_tf32 = train_cfg.tf32
         torch.set_float32_matmul_precision("high" if train_cfg.tf32 else "highest")
-        train_dataset = DROIDLogicalDataset(
-            _dataset_config(config, "train"),
-        )
-        validation_dataset = DROIDLogicalDataset(
-            _dataset_config(config, "validation"),
+        train_dataset = DROIDPreprocessedDataset(_dataset_config(config, "train"))
+        validation_dataset = DROIDPreprocessedDataset(
+            _dataset_config(config, "validation")
         )
         train_loader = _loader(
             train_dataset,
@@ -544,7 +634,6 @@ def main() -> None:
         )
         model, splatter = _model_and_renderer(config)
         model.to(context.device)
-        online_preprocessor = _online_preprocessor(config, context.device)
         use_ddp = bool(config["distributed"].get("use_ddp", True))
         if context.world_size > 1 and not use_ddp:
             raise RuntimeError("WORLD_SIZE > 1 requires distributed.use_ddp=true.")
@@ -566,6 +655,7 @@ def main() -> None:
                 name=config["logging"].get("run_name"),
                 config=config,
             )
+
         def visualization_callback(step: int, payload: dict[str, Any]) -> None:
             logging_cfg = config["logging"]
             paths = save_droid_validation_visualization(
@@ -593,7 +683,6 @@ def main() -> None:
             train_cfg,
             context,
             per_gpu_logical_batch=int(dataset_cfg["per_gpu_logical_batch"]),
-            online_preprocessor=online_preprocessor,
             logger=logger,
             visualization_callback=visualization_callback,
         )

@@ -10,7 +10,7 @@ from models.gaussian.geometry import project_gaussian_centers
 from models.gaussian.motion import (
     activate_motion_parameters,
     construct_chronological_gaussian_sequence,
-    render_middle_frame_translation_flow,
+    render_translation_flow_sequence,
 )
 from models.gaussian.parameterization import (
     ACTIVE_GAUSSIAN_OPACITY_THRESHOLD,
@@ -22,9 +22,9 @@ from models.training.config import TrainConfig
 from models.training.losses import (
     compute_optical_flow_loss,
     compute_visibility_loss,
-    confidence_weighted_metric_depth_l1,
     gaussian_regularization,
     masked_rgb_reconstruction_losses,
+    metric_depth_l1,
     scale_invariant_log_depth_loss,
 )
 
@@ -97,12 +97,10 @@ def compute_droid_reconstruction(
         ),
     )
 
-    confidence = batch["target_depth_confidence"].float()
     depth_validity = (
         batch["target_depth_validity"].bool()
         & image_validity
         & render["depth_validity"].bool()
-        & (confidence >= float(train_config.depth_confidence_threshold))
     )
     calibration_validity = batch["calibration_validity"].bool()
     while calibration_validity.dim() < depth_validity.dim():
@@ -110,10 +108,9 @@ def compute_droid_reconstruction(
     depth_validity = depth_validity & calibration_validity
     metric_depth, depth_metrics = run_stage(
         "metric_depth_loss",
-        lambda: confidence_weighted_metric_depth_l1(
+        lambda: metric_depth_l1(
             render["expected_depth"],
             batch["target_depth"],
-            confidence,
             depth_validity,
         ),
     )
@@ -122,23 +119,23 @@ def compute_droid_reconstruction(
         lambda: scale_invariant_log_depth_loss(
             render["expected_depth"],
             batch["target_depth"],
-            confidence,
             depth_validity,
             mean_weight=float(train_config.scale_invariant_mean_weight),
         ),
     )
 
+    rendered_flow_sequence = run_stage(
+        "gaussian_flow_render",
+        lambda: render_translation_flow_sequence(
+            anchor_pc,
+            w2c,
+            intrinsics,
+            splatter_config,
+            temporal_anchor="current",
+        ),
+    )
     predicted_flow, flow_coverage, predicted_flow_validity, flow_alpha = (
-        run_stage(
-            "gaussian_flow_render",
-            lambda: render_middle_frame_translation_flow(
-                anchor_pc,
-                w2c,
-                intrinsics,
-                splatter_config,
-                temporal_anchor="current",
-            ),
-        )
+        value[:, :2] for value in rendered_flow_sequence
     )
     flow_loss, flow_metrics = run_stage(
         "flow_loss",
@@ -148,7 +145,6 @@ def compute_droid_reconstruction(
             flow_coverage,
             predicted_flow_validity,
             batch["target_flow_validity"],
-            batch.get("target_flow_confidence"),
             pair_weights=train_config.flow_pair_weights,
             alpha_threshold=float(train_config.flow_alpha_threshold),
             smooth_l1_beta=float(train_config.flow_smooth_l1_beta),
@@ -192,7 +188,7 @@ def compute_droid_reconstruction(
         missing_novel = [name for name in required_novel if name not in batch]
         if missing_novel:
             raise KeyError(
-                "Enabled LagerNVS supervision is missing online fields "
+                "Enabled cached LagerNVS supervision is missing fields "
                 f"{missing_novel}."
             )
         novel_config = replace(
@@ -206,14 +202,14 @@ def compute_droid_reconstruction(
         novel_render = run_stage(
             "virtual_camera_render",
             lambda: render_rgb_expected_depth(
-                anchor_pc,
-                batch["novel_w2c"].float()[:, None],
-                batch["novel_K"].float()[:, None],
+                temporal_pc,
+                batch["novel_w2c"].float(),
+                batch["novel_K"].float(),
                 background_color,
                 novel_config,
             ),
         )
-        support = batch["novel_support_mask"].bool()[:, None]
+        support = batch["novel_support_mask"].bool()
         pixel_weights = torch.where(
             support,
             support.new_full(
@@ -231,7 +227,7 @@ def compute_droid_reconstruction(
             "novel_view_loss",
             lambda: masked_rgb_reconstruction_losses(
                 novel_render["rgb"],
-                batch["novel_rgb"].float()[:, None],
+                batch["novel_rgb"].float(),
                 pixel_weights,
             ),
         )

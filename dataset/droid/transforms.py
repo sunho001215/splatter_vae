@@ -257,15 +257,6 @@ def transform_depth(values: torch.Tensor, transform: SpatialTransform) -> torch.
     return output.masked_fill(~image_validity_mask(transform, device=output.device), 0)
 
 
-def transform_confidence(
-    values: torch.Tensor, transform: SpatialTransform
-) -> torch.Tensor:
-    output = apply_spatial_transform(
-        values, transform, mode="bilinear", padding_value=0.0
-    )
-    return output.masked_fill(~image_validity_mask(transform, device=output.device), 0)
-
-
 def transform_validity(
     values: torch.Tensor, transform: SpatialTransform
 ) -> torch.Tensor:

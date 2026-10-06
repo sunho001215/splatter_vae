@@ -63,7 +63,7 @@ def backproject_z_depth_to_world(
     K: np.ndarray,
     c2w: np.ndarray,
 ) -> np.ndarray:
-    """Back-project X-Lens z-depth using OpenCV pixel-center conventions."""
+    """Back-project metric z-depth using OpenCV pixel-center conventions."""
     z = np.asarray(depth, dtype=np.float64)
     camera = np.asarray(K, dtype=np.float64)
     transform = np.asarray(c2w, dtype=np.float64)

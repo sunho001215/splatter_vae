@@ -76,7 +76,9 @@ def _model() -> tuple[SplatterVAE, SplatterConfig]:
 def _batch(device: torch.device) -> dict[str, torch.Tensor]:
     batch, times, cameras, size = 1, 3, 2, 224
     histories = torch.randn(batch, 2, times, 3, size, size, device=device)
-    representation_flows = torch.zeros(batch, 2, 2, 2, size, size, device=device)
+    representation_middle_motion = torch.zeros(
+        batch, 2, 1, size, size, device=device
+    )
     representation_validity = torch.ones(
         batch, 2, times, 1, size, size, dtype=torch.bool, device=device
     )
@@ -90,20 +92,19 @@ def _batch(device: torch.device) -> dict[str, torch.Tensor]:
     target_shape = (batch, times, cameras, 1, size, size)
     return {
         "representation_histories": histories,
-        "representation_flows": representation_flows,
+        "representation_middle_motion": representation_middle_motion,
         "representation_validity": representation_validity,
         "target_rgb": torch.rand(batch, times, cameras, 3, size, size, device=device),
         "target_image_validity": torch.ones(
             target_shape, dtype=torch.bool, device=device
         ),
         "target_depth": torch.ones(target_shape, device=device),
-        "target_depth_confidence": torch.ones(target_shape, device=device),
         "target_depth_validity": torch.ones(
             target_shape, dtype=torch.bool, device=device
         ),
-        "target_flow": torch.zeros(batch, 3, cameras, 2, size, size, device=device),
+        "target_flow": torch.zeros(batch, 2, cameras, 2, size, size, device=device),
         "target_flow_validity": torch.ones(
-            batch, 3, cameras, 1, size, size, dtype=torch.bool, device=device
+            batch, 2, cameras, 1, size, size, dtype=torch.bool, device=device
         ),
         "target_K": K.view(1, 1, 1, 3, 3)
         .expand(batch, times, cameras, -1, -1)
@@ -111,7 +112,6 @@ def _batch(device: torch.device) -> dict[str, torch.Tensor]:
         "target_c2w": c2w,
         "target_w2c": w2c,
         "calibration_validity": torch.ones(batch, dtype=torch.bool, device=device),
-        "synthetic_available": torch.zeros(batch, dtype=torch.bool, device=device),
     }
 
 
@@ -129,7 +129,7 @@ def main() -> None:
         with torch.autocast("cuda", dtype=torch.bfloat16):
             encoded = model.encode_pretraining(
                 batch["representation_histories"][:, 0],
-                batch["representation_flows"][:, 0],
+                batch["representation_middle_motion"][:, 0],
                 batch["representation_validity"][:, 0],
             )
             encoder_probe = (
@@ -162,7 +162,7 @@ def main() -> None:
         with torch.autocast("cuda", dtype=torch.bfloat16):
             prediction = model(
                 batch["representation_histories"],
-                batch["representation_flows"],
+                batch["representation_middle_motion"],
                 batch["representation_validity"],
             )
             contrastive, _contrast_metrics = cross_view_info_nce(

@@ -49,13 +49,16 @@ def resolve_lagernvs_checkpoint(
 
 
 def _install_xformers_sdpa_fallback() -> None:
-    try:
-        import xformers.ops
+    """Install the audited native-SDPA implementation before upstream import.
 
-        return
-    except ImportError:
-        pass
-
+    The pinned xFormers wheel imports successfully on Blackwell (SM 12.0), but
+    its selected FlashAttention kernel aborts with ``CUDA invalid argument``.
+    Import success is therefore not a sufficient capability check.  LagerNVS
+    only consumes ``xformers.ops.memory_efficient_attention`` from this module,
+    so expose the same B,L,H,D contract through PyTorch SDPA deterministically.
+    This also keeps the preprocessing backend independent of whichever optional
+    xFormers wheel happens to be installed in the isolated environment.
+    """
     xformers = types.ModuleType("xformers")
     ops = types.ModuleType("xformers.ops")
 
@@ -154,9 +157,7 @@ class LagerNVSDROIDTeacher(nn.Module):
         if int(microbatch_size) <= 0:
             raise ValueError("LagerNVS teacher microbatch must be positive.")
         repository_path = Path(repository).expanduser().resolve()
-        checkpoint_path = resolve_lagernvs_checkpoint(
-            checkpoint, cache_dir=cache_dir
-        )
+        checkpoint_path = resolve_lagernvs_checkpoint(checkpoint, cache_dir=cache_dir)
         model = _construct_official_model(repository_path)
         payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         state = payload.get("model", payload) if isinstance(payload, dict) else payload
@@ -199,16 +200,13 @@ class LagerNVSDROIDTeacher(nn.Module):
             batch,
             4,
             4,
+            4,
         ):
             raise ValueError("LagerNVS source/target c2w shapes are invalid.")
         source_images = raw_source_images.to(self.device, non_blocking=True)
         source_K = source_K.to(self.device, dtype=torch.float32, non_blocking=True)
-        source_c2w = source_c2w.to(
-            self.device, dtype=torch.float32, non_blocking=True
-        )
-        target_c2w = target_c2w.to(
-            self.device, dtype=torch.float32, non_blocking=True
-        )
+        source_c2w = source_c2w.to(self.device, dtype=torch.float32, non_blocking=True)
+        target_c2w = target_c2w.to(self.device, dtype=torch.float32, non_blocking=True)
         canonical_images, canonical_source_K, source_validity = (
             canonicalize_droid_views(
                 source_images,
@@ -216,16 +214,16 @@ class LagerNVSDROIDTeacher(nn.Module):
                 focal_px=self.canonical_focal_px,
             )
         )
-        target_K = canonical_source_K[:, 0].clone()
-        all_K = torch.cat((canonical_source_K, target_K[:, None]), dim=1)
-        all_c2w = torch.cat((source_c2w, target_c2w[:, None]), dim=1)
+        target_K = canonical_source_K[:, :1].expand(-1, 4, -1, -1).clone()
+        all_K = torch.cat((canonical_source_K, target_K), dim=1)
+        all_c2w = torch.cat((source_c2w, target_c2w), dim=1)
         normalized_c2w, camera_scale, scene_scale_ratio = normalize_lagernvs_poses(
             all_c2w, num_conditioning_views=2
         )
         tokens = camera_tokens(normalized_c2w, all_K, camera_scale)
         target_rays = plucker_rays(
-            normalized_c2w[:, 2:3],
-            all_K[:, 2:3],
+            normalized_c2w[:, 2:],
+            all_K[:, 2:],
             LAGERNVS_IMAGE_SIZE,
             LAGERNVS_IMAGE_SIZE,
         )
@@ -254,7 +252,14 @@ class LagerNVSDROIDTeacher(nn.Module):
     def infer_prepared(
         self, prepared: dict[str, torch.Tensor]
     ) -> dict[str, torch.Tensor]:
-        """Run the frozen posed DL3DV model on canonical prepared inputs."""
+        """Encode each source pair once, then render its four targets.
+
+        Upstream's interactive path explicitly exposes the reconstructor and
+        renderer for this use case.  Rendering each target separately preserves
+        the exact official single-target numerical path (important in BF16),
+        while avoiding four redundant passes through the much larger VGGT
+        source reconstructor.
+        """
 
         canonical_images = prepared["canonical_source_rgb"]
         rays = prepared["rays"]
@@ -268,18 +273,25 @@ class LagerNVSDROIDTeacher(nn.Module):
         )
         for start in range(0, batch, self.microbatch_size):
             stop = min(start + self.microbatch_size, batch)
-            target_zeros = torch.zeros_like(canonical_images[start:stop, :1])
-            model_images = torch.cat(
-                (canonical_images[start:stop], target_zeros), dim=1
-            )
             with autocast:
-                output = self.model(
-                    model_images,
-                    rays[start:stop],
-                    tokens[start:stop],
-                    num_cond_views=2,
+                reconstruction = self.model.reconstructor(
+                    canonical_images[start:stop],
+                    tokens[start:stop, :2],
                 )
-            generated.append(output[:, 2].float())
+                reconstruction = reconstruction.flatten(1, 2)
+                rendered = [
+                    self.model.renderer(
+                        reconstruction,
+                        rays[start:stop, 2 + target_index : 3 + target_index],
+                    )
+                    for target_index in range(4)
+                ]
+            output = torch.cat(rendered, dim=1)
+            if output.shape[1] != 4:
+                raise RuntimeError(
+                    f"Official LagerNVS returned {output.shape[1]} targets; expected four."
+                )
+            generated.append(output.float())
         output = dict(prepared)
         output.pop("rays")
         output["generated_rgb"] = torch.cat(generated, dim=0)
@@ -293,7 +305,7 @@ class LagerNVSDROIDTeacher(nn.Module):
         source_c2w: torch.Tensor,
         target_c2w: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """Render every logical target; no probability or sample skipping exists."""
+        """Render four targets while reconstructing the two sources exactly once."""
 
         return self.infer_prepared(
             self.prepare_inputs(
@@ -303,3 +315,24 @@ class LagerNVSDROIDTeacher(nn.Module):
                 target_c2w,
             )
         )
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "repository": "facebookresearch/lagernvs",
+            "repository_revision": LAGERNVS_REPOSITORY_REVISION,
+            "model_id": LAGERNVS_CHECKPOINT_ID,
+            "checkpoint_revision": LAGERNVS_CHECKPOINT_REVISION,
+            "checkpoint_filename": LAGERNVS_CHECKPOINT_FILENAME,
+            "checkpoint_path": self.checkpoint_path,
+            "architecture": "EncDec_VitB8",
+            "conditioning_views": 2,
+            "targets_per_inference": 4,
+            "source_reconstructor_calls_per_timestep": 1,
+            "target_renderer_calls_per_timestep": 4,
+            "canonical_resolution": [LAGERNVS_IMAGE_SIZE, LAGERNVS_IMAGE_SIZE],
+            "canonical_focal_px": self.canonical_focal_px,
+            "dtype": str(self.teacher_dtype).removeprefix("torch."),
+            "microbatch_size": self.microbatch_size,
+            "attention_backend": "pytorch_sdpa",
+            "camera_convention": "opencv_c2w_input_normalized_to_first_source",
+        }

@@ -77,7 +77,9 @@ def resample_pinhole_images(
     output_width: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if images.shape[:-3] != source_K.shape[:-2] or images.shape[-3] <= 0:
-        raise ValueError("Images and pinhole cameras must share their leading dimensions.")
+        raise ValueError(
+            "Images and pinhole cameras must share their leading dimensions."
+        )
     source_height, source_width = images.shape[-2:]
     channels = int(images.shape[-3])
     grid, inside = _resampling_grid(
@@ -99,9 +101,7 @@ def resample_pinhole_images(
         align_corners=False,
     )
     validity = F.grid_sample(
-        torch.ones(
-            flat.shape[0], 1, source_height, source_width, device=flat.device
-        ),
+        torch.ones(flat.shape[0], 1, source_height, source_width, device=flat.device),
         grid.reshape(-1, output_height, output_width, 2),
         mode="bilinear",
         padding_mode="zeros",
@@ -153,8 +153,8 @@ def normalize_lagernvs_poses(
     scene_scale = CAMERA_SCALE_MULTIPLIER * source_radius.amax(dim=1).clamp_min(1.0e-6)
     normalized = relative.clone()
     normalized[..., :3, 3] /= scene_scale[:, None, None]
-    camera_scale = normalized[:, :num_conditioning_views, :3, 3].norm(dim=-1).amax(
-        dim=1
+    camera_scale = (
+        normalized[:, :num_conditioning_views, :3, 3].norm(dim=-1).amax(dim=1)
     )
     scene_scale_ratio = relative[..., :3, 3].norm(dim=-1).amax(dim=1) / scene_scale
     return normalized, camera_scale, scene_scale_ratio
@@ -242,7 +242,9 @@ def camera_tokens(
     return torch.cat((pose, scales), dim=-1)
 
 
-def plucker_rays(c2w: torch.Tensor, K: torch.Tensor, height: int, width: int) -> torch.Tensor:
+def plucker_rays(
+    c2w: torch.Tensor, K: torch.Tensor, height: int, width: int
+) -> torch.Tensor:
     if c2w.shape[:-2] != K.shape[:-2]:
         raise ValueError("Plucker camera poses and intrinsics must align.")
     leading = c2w.shape[:-2]

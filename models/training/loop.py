@@ -32,7 +32,6 @@ from models.training.distributed import (
     unwrap_model,
 )
 from models.training.losses import cross_view_info_nce
-from models.training.online_preprocessing import OnlineTeacherPipeline
 from models.training.reconstruction import compute_droid_reconstruction
 from models.training.schedules import (
     cosine_learning_rate,
@@ -239,8 +238,7 @@ def _decoder_configurations_match(
         )
     sequence_types = (str, bytes, bytearray)
     if (
-        isinstance(checkpoint_value, Sequence)
-        or isinstance(runtime_value, Sequence)
+        isinstance(checkpoint_value, Sequence) or isinstance(runtime_value, Sequence)
     ) and not (
         isinstance(checkpoint_value, sequence_types)
         or isinstance(runtime_value, sequence_types)
@@ -337,17 +335,15 @@ def _crop_diagnostics(batch: Mapping[str, Any]) -> dict[str, torch.Tensor]:
         "crop_real_pixel_fraction": metadata["real_pixel_fraction"].float().mean(),
         "crop_flow_peak_mean": metadata["flow_peak_value"].float().mean(),
         "crop_selected_flow_mean": metadata["selected_crop_flow_mean"].float().mean(),
-        "crop_low_motion_fallback_fraction": metadata[
-            "low_motion_fallback_used"
-        ].float().mean(),
+        "crop_low_motion_fallback_fraction": metadata["low_motion_fallback_used"]
+        .float()
+        .mean(),
     }
     # Eight fixed bins make the intended uniform [180,320] distribution easy
     # to audit in console/W&B scalars without sending a framework-specific object.
     edges = torch.linspace(180.0, 321.0, 9, device=logical_sizes.device)
     for index in range(8):
-        in_bin = (logical_sizes >= edges[index]) & (
-            logical_sizes < edges[index + 1]
-        )
+        in_bin = (logical_sizes >= edges[index]) & (logical_sizes < edges[index + 1])
         values[f"crop_size_histogram_bin_{index}"] = in_bin.float().mean()
     return values
 
@@ -363,8 +359,12 @@ def _novel_pose_diagnostics(batch: Mapping[str, Any]) -> dict[str, torch.Tensor]
         "translation_perturbation_magnitude",
         "rotation_perturbation_degrees",
         "source_coverage",
+        "minimum_source_coverage_threshold",
+        "minimum_geometry_distance_threshold",
         "rejected_candidates",
         "fallback_used",
+        "safety_translation_limit_escalated",
+        "safety_thresholds_relaxed",
         "scene_centered_arc_used",
         "distance_from_camera_a",
         "distance_from_camera_b",
@@ -392,7 +392,6 @@ def train_droid(
     context: DistributedContext,
     *,
     per_gpu_logical_batch: int,
-    online_preprocessor: OnlineTeacherPipeline,
     logger: Any | None = None,
     visualization_callback: Callable[[int, dict[str, Any]], None] | None = None,
 ) -> TrainingState:
@@ -457,18 +456,7 @@ def train_droid(
                 continue
             if state.global_step >= total_steps:
                 break
-            raw_batch = move_to_device(cpu_batch, context.device)
-            teacher_seed = (
-                int(config.seed)
-                + 1_000_003 * int(state.global_step)
-                + 65_537 * int(batch_index)
-                + 1009 * int(context.rank)
-            )
-            batch = online_preprocessor(
-                raw_batch,
-                novel_enabled=bool(config.novel_view_enabled),
-                seed=teacher_seed,
-            )
+            batch = move_to_device(cpu_batch, context.device)
             accumulation = int(config.gradient_accumulation_steps)
             should_step = ((batch_index + 1) % accumulation == 0) or (
                 batch_index + 1 == len(train_loader)
@@ -487,7 +475,7 @@ def train_droid(
                 with autocast:
                     prediction = model(
                         batch["representation_histories"],
-                        batch["representation_flows"],
+                        batch["representation_middle_motion"],
                         batch["representation_validity"],
                     )
                     contrastive, contrast_metrics = cross_view_info_nce(
@@ -610,7 +598,6 @@ def train_droid(
                     config,
                     context,
                     background,
-                    online_preprocessor,
                 )
                 if context.is_main:
                     print(

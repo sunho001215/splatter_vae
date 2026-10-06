@@ -9,7 +9,7 @@ from preprocessing.workspace import (
 )
 
 
-def test_backproject_xlens_z_depth_into_robot_base() -> None:
+def test_backproject_metric_z_depth_into_robot_base() -> None:
     depth = np.ones((2, 2), np.float32) * 2.0
     K = np.array([[2.0, 0.0, 0.5], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]])
     c2w = np.eye(4)

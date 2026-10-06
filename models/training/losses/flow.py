@@ -12,22 +12,21 @@ def compute_optical_flow_loss(
     rendered_coverage: torch.Tensor,
     predicted_validity: torch.Tensor,
     target_validity: torch.Tensor,
-    target_confidence: torch.Tensor | None = None,
     *,
     pair_weights: Sequence[float] = (0.5, 0.5),
     alpha_threshold: float = 0.01,
     smooth_l1_beta: float = 1.0,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Compare middle-frame Gaussian flow to frozen MEMFOF predictions."""
+    """Compare Gaussian forward 01/12 fields to cached MegaFlow."""
     if predicted_flows.shape != target_flows.shape:
-        raise ValueError("Predicted and MEMFOF flow tensors must have identical shapes.")
+        raise ValueError("Predicted and cached MegaFlow tensors must have identical shapes.")
     if (
         predicted_flows.dim() != 6
         or predicted_flows.shape[1] != 2
         or predicted_flows.shape[3] != 2
     ):
         raise ValueError(
-            "Flow must have shape (B,2,A,2,H,W) for middle->previous/next."
+            "Flow must have shape (B,2,A,2,H,W) for forward 01/12."
         )
     auxiliary_shape = (*predicted_flows.shape[:3], 1, *predicted_flows.shape[-2:])
     for name, value in (
@@ -39,12 +38,8 @@ def compute_optical_flow_loss(
             raise ValueError(
                 f"Expected {name} as {auxiliary_shape}, got {tuple(value.shape)}."
             )
-    if target_confidence is not None and target_confidence.shape != auxiliary_shape:
-        raise ValueError(
-            f"Expected target_confidence as {auxiliary_shape}, got {tuple(target_confidence.shape)}."
-        )
     if len(pair_weights) != 2 or sum(float(value) for value in pair_weights) <= 0.0:
-        raise ValueError("Exactly two nonnegative MEMFOF direction weights are required.")
+        raise ValueError("Exactly two nonnegative MegaFlow pair weights are required.")
     prediction = predicted_flows.float()
     teacher = target_flows.detach().float()
     coverage = rendered_coverage.detach().float().clamp(0.0, 1.0)
@@ -55,12 +50,7 @@ def compute_optical_flow_loss(
         & torch.isfinite(teacher).all(dim=3, keepdim=True)
         & (coverage > float(alpha_threshold))
     )
-    teacher_confidence = (
-        torch.ones_like(coverage)
-        if target_confidence is None
-        else target_confidence.detach().float().clamp(0.0, 1.0)
-    )
-    weights = coverage * teacher_confidence * valid.to(coverage.dtype)
+    weights = coverage * valid.to(coverage.dtype)
     safe_prediction = torch.nan_to_num(prediction, nan=0.0, posinf=0.0, neginf=0.0)
     safe_teacher = torch.nan_to_num(teacher, nan=0.0, posinf=0.0, neginf=0.0)
     component = F.smooth_l1_loss(
@@ -69,7 +59,7 @@ def compute_optical_flow_loss(
     endpoint = (safe_prediction - safe_teacher).square().sum(dim=3, keepdim=True).sqrt()
     pair_losses = []
     metrics: dict[str, torch.Tensor] = {}
-    for pair, name in enumerate(("middle_to_previous", "middle_to_next")):
+    for pair, name in enumerate(("t0_to_t1", "t1_to_t2")):
         pair_weight = weights[:, pair]
         denominator = pair_weight.sum().clamp_min(1.0)
         pair_losses.append((component[:, pair] * pair_weight).sum() / denominator)
@@ -82,7 +72,4 @@ def compute_optical_flow_loss(
     normalized_weights = normalized_weights / normalized_weights.sum()
     loss = (torch.stack(pair_losses) * normalized_weights).sum()
     metrics["flow_valid_fraction"] = valid.float().mean().detach()
-    metrics["flow_mean_confidence"] = (
-        (teacher_confidence * valid).sum() / valid.float().sum().clamp_min(1.0)
-    ).detach()
     return loss, metrics

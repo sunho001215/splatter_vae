@@ -15,7 +15,6 @@ from models.gaussian.parameterization import (
 from models.training.config import TrainConfig
 from models.training.distributed import DistributedContext, move_to_device
 from models.training.losses import cross_view_info_nce
-from models.training.online_preprocessing import OnlineTeacherPipeline
 from models.training.reconstruction import compute_droid_reconstruction
 
 
@@ -40,7 +39,6 @@ def evaluate_droid(
     train_config: TrainConfig,
     context: DistributedContext,
     background_color: torch.Tensor,
-    online_preprocessor: OnlineTeacherPipeline,
 ) -> tuple[dict[str, float], dict[str, Any] | None]:
     model.eval()
     local_sums: dict[str, torch.Tensor] = {}
@@ -49,21 +47,11 @@ def evaluate_droid(
     for batch_index, cpu_batch in enumerate(dataloader):
         if batch_index >= int(train_config.validation_batches):
             break
-        raw_batch = move_to_device(cpu_batch, context.device)
+        batch = move_to_device(cpu_batch, context.device)
         devices = [context.local_rank] if context.device.type == "cuda" else []
         with torch.random.fork_rng(devices=devices):
             torch.manual_seed(
                 int(train_config.seed) + 1_000_003 + batch_index + 1009 * context.rank
-            )
-            batch = online_preprocessor(
-                raw_batch,
-                novel_enabled=bool(train_config.novel_view_enabled),
-                seed=(
-                    int(train_config.seed)
-                    + 10_000_019
-                    + batch_index
-                    + 1009 * context.rank
-                ),
             )
             autocast = (
                 torch.autocast("cuda", dtype=torch.bfloat16)
@@ -73,7 +61,7 @@ def evaluate_droid(
             with autocast:
                 prediction = model(
                     batch["representation_histories"],
-                    batch["representation_flows"],
+                    batch["representation_middle_motion"],
                     batch["representation_validity"],
                 )
                 contrastive, contrast_metrics = cross_view_info_nce(

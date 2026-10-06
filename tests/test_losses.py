@@ -5,9 +5,9 @@ import torch
 from models.gaussian.motion import construct_chronological_gaussian_sequence
 from models.training.losses import (
     compute_optical_flow_loss,
-    confidence_weighted_metric_depth_l1,
     cross_view_info_nce,
     masked_rgb_reconstruction_losses,
+    metric_depth_l1,
     scale_invariant_log_depth_loss,
 )
 
@@ -25,12 +25,9 @@ def test_rgb_reconstruction_ignores_padding() -> None:
 def test_metric_and_scale_invariant_depth_losses() -> None:
     target = torch.linspace(0.5, 2.0, 64).view(1, 1, 8, 8)
     predicted = target * 1.7
-    confidence = torch.ones_like(target)
     validity = torch.ones_like(target, dtype=torch.bool)
-    metric, metrics = confidence_weighted_metric_depth_l1(
-        predicted, target, confidence, validity
-    )
-    si = scale_invariant_log_depth_loss(predicted, target, confidence, validity)
+    metric, metrics = metric_depth_l1(predicted, target, validity)
+    si = scale_invariant_log_depth_loss(predicted, target, validity)
     assert metric.item() > 0.0
     assert metrics["depth_valid_fraction"].item() == 1.0
     assert si.item() < 0.002

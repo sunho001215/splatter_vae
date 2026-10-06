@@ -8,8 +8,6 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
-from preprocessing.lagernvs.camera import lager_to_display_plane
-
 
 def _uint8_rgb(value: torch.Tensor) -> np.ndarray:
     tensor = value.detach().float().cpu()
@@ -17,7 +15,19 @@ def _uint8_rgb(value: torch.Tensor) -> np.ndarray:
         raise ValueError("RGB visualization tensors must have three channels.")
     if tensor.max() <= 1.0 + 1.0e-6:
         tensor = tensor * 255.0
-    return tensor.clamp(0.0, 255.0).movedim(-3, -1).numpy().round().astype(np.uint8)
+    return (
+        tensor.clamp(0.0, 255.0)
+        .movedim(-3, -1)
+        .numpy()
+        .round()
+        .astype(np.uint8)
+    )
+
+
+def _mask_rgb(value: torch.Tensor | np.ndarray) -> np.ndarray:
+    array = np.asarray(value.detach().cpu() if torch.is_tensor(value) else value)
+    array = np.squeeze(array).astype(bool)
+    return np.repeat((array.astype(np.uint8) * 255)[..., None], 3, axis=-1)
 
 
 def _colorize_scalar(
@@ -29,7 +39,9 @@ def _colorize_scalar(
 ) -> np.ndarray:
     array = np.asarray(value.detach().float().cpu() if torch.is_tensor(value) else value)
     array = np.squeeze(array).astype(np.float32)
-    normalized = np.clip((array - float(minimum)) / max(float(maximum - minimum), 1e-8), 0, 1)
+    normalized = np.clip(
+        (array - float(minimum)) / max(float(maximum - minimum), 1.0e-8), 0, 1
+    )
     red = np.clip(1.5 - np.abs(4.0 * normalized - 3.0), 0.0, 1.0)
     green = np.clip(1.5 - np.abs(4.0 * normalized - 2.0), 0.0, 1.0)
     blue = np.clip(1.5 - np.abs(4.0 * normalized - 1.0), 0.0, 1.0)
@@ -42,7 +54,11 @@ def _colorize_scalar(
     return (rgb * 255.0).round().astype(np.uint8)
 
 
-def _flow_rgb(flow: torch.Tensor, maximum: float = 64.0) -> np.ndarray:
+def _flow_rgb(
+    flow: torch.Tensor,
+    validity: torch.Tensor | None = None,
+    maximum: float = 64.0,
+) -> np.ndarray:
     value = flow.detach().float().cpu().numpy()
     x, y = value[0], value[1]
     hue = (np.arctan2(y, x) + np.pi) / (2.0 * np.pi)
@@ -66,6 +82,9 @@ def _flow_rgb(flow: torch.Tensor, maximum: float = 64.0) -> np.ndarray:
         mask = index == sector_index
         for channel, values in enumerate(channels):
             rgb[..., channel][mask] = values[mask]
+    if validity is not None:
+        valid = np.squeeze(validity.detach().cpu().numpy()).astype(bool)
+        rgb[~valid] = 0.0
     return (rgb * 255.0).round().astype(np.uint8)
 
 
@@ -73,7 +92,7 @@ def _save_grid(
     path: Path,
     panels: list[tuple[str, np.ndarray]],
     *,
-    columns: int = 3,
+    columns: int,
 ) -> Path:
     if not panels:
         raise ValueError("A visualization grid requires at least one panel.")
@@ -122,8 +141,16 @@ def _padded_crop_overlay(
         outline=color,
         width=3,
     )
-    draw.line((center_x - 7, center_y, center_x + 7, center_y), fill=(0, 255, 80), width=2)
-    draw.line((center_x, center_y - 7, center_x, center_y + 7), fill=(0, 255, 80), width=2)
+    draw.line(
+        (center_x - 7, center_y, center_x + 7, center_y),
+        fill=(0, 255, 80),
+        width=2,
+    )
+    draw.line(
+        (center_x, center_y - 7, center_x, center_y + 7),
+        fill=(0, 255, 80),
+        width=2,
+    )
     return np.asarray(image)
 
 
@@ -146,27 +173,15 @@ def _write_point_cloud(path: Path, xyz: np.ndarray, opacity: np.ndarray) -> None
             )
 
 
-def _lager_display(
-    image: torch.Tensor, K: torch.Tensor, *, threshold: bool = False
-) -> tuple[np.ndarray, np.ndarray]:
-    display, _display_K, validity = lager_to_display_plane(image.float(), K.float())
-    if threshold:
-        output = (display[0] >= 0.5).numpy().astype(np.uint8) * 255
-        return np.repeat(output[..., None], 3, axis=-1), validity[0].numpy()
-    return _uint8_rgb(display), validity[0].numpy()
-
-
-def _tensor_metadata(metadata: dict[str, Any], sample: int) -> dict[str, Any]:
-    output: dict[str, Any] = {}
-    for key, value in metadata.items():
-        if torch.is_tensor(value):
-            selected = value[sample]
-            output[key] = selected.tolist() if selected.dim() else selected.item()
-        elif isinstance(value, list):
-            output[key] = value[sample] if len(value) > sample else value
-        else:
-            output[key] = value
-    return output
+def _jsonable(value: Any) -> Any:
+    if torch.is_tensor(value):
+        selected = value.detach().cpu()
+        return selected.item() if selected.dim() == 0 else selected.tolist()
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
 
 
 def save_droid_validation_visualization(
@@ -177,7 +192,7 @@ def save_droid_validation_visualization(
     num_samples: int = 2,
     depth_range_m: tuple[float, float] = (0.25, 5.0),
 ) -> dict[str, Path]:
-    """Save deterministic validation panels while reusing online teacher outputs."""
+    """Render diagnostics from cached Stage-0 fields without invoking teachers."""
 
     root = Path(output_root)
     batch = payload["batch"]
@@ -189,46 +204,64 @@ def save_droid_validation_visualization(
         sample_name = f"sample-{sample:02d}"
         raw = batch["raw_histories"][sample]
         input_panels = [
-            (f"Cam {camera} t{time} raw 320x180", _uint8_rgb(raw[camera, time]))
+            (f"Cam {camera} t{time} cached RGB", _uint8_rgb(raw[camera, time]))
             for camera in range(2)
             for time in range(3)
         ]
-        input_path = root / "input" / f"step-{step:08d}-{sample_name}.jpg"
         paths[f"val/input/{sample_name}"] = _save_grid(
-            input_path, input_panels, columns=3
+            root / "input" / f"step-{step:08d}-{sample_name}.jpg",
+            input_panels,
+            columns=3,
         )
 
         flow_panels: list[tuple[str, np.ndarray]] = []
+        native_flow = batch["native_megaflow_flow"][sample]
+        native_validity = batch["native_megaflow_validity"][sample]
         for camera in range(2):
-            native_flow = batch["native_memfof_flow"][sample, camera]
-            for direction, name in enumerate(("middle->previous", "middle->next")):
-                magnitude = torch.linalg.vector_norm(native_flow[direction].float(), dim=0)
+            for pair, name in enumerate(("t0->t1", "t1->t2")):
+                flow = native_flow[pair, camera]
+                valid = native_validity[pair, camera]
                 flow_panels.extend(
-                    [
-                        (f"Cam {camera} {name} MEMFOF", _flow_rgb(native_flow[direction])),
+                    (
+                        (
+                            f"Cam {camera} cached MegaFlow {name}",
+                            _flow_rgb(flow, valid),
+                        ),
                         (
                             f"Cam {camera} {name} magnitude",
-                            _colorize_scalar(magnitude, minimum=0.0, maximum=64.0),
+                            _colorize_scalar(
+                                torch.linalg.vector_norm(flow.float(), dim=0),
+                                minimum=0.0,
+                                maximum=64.0,
+                                validity=valid,
+                            ),
                         ),
-                    ]
+                    )
                 )
-            aggregate = batch["aggregate_motion"][sample, camera]
-            smoothed = batch["smoothed_motion"][sample, camera]
             flow_panels.extend(
-                [
+                (
                     (
-                        f"Cam {camera} aggregate max",
-                        _colorize_scalar(aggregate, minimum=0.0, maximum=64.0),
+                        f"Cam {camera} middle-grid aggregate",
+                        _colorize_scalar(
+                            batch["aggregate_motion"][sample, camera],
+                            minimum=0.0,
+                            maximum=64.0,
+                        ),
                     ),
                     (
-                        f"Cam {camera} smoothed motion",
-                        _colorize_scalar(smoothed, minimum=0.0, maximum=64.0),
+                        f"Cam {camera} smoothed crop score",
+                        _colorize_scalar(
+                            batch["smoothed_motion"][sample, camera],
+                            minimum=0.0,
+                            maximum=64.0,
+                        ),
                     ),
-                ]
+                )
             )
-        memfof_path = root / "memfof" / f"step-{step:08d}-{sample_name}.jpg"
-        paths[f"val/memfof/{sample_name}"] = _save_grid(
-            memfof_path, flow_panels, columns=4
+        paths[f"val/megaflow/{sample_name}"] = _save_grid(
+            root / "megaflow" / f"step-{step:08d}-{sample_name}.jpg",
+            flow_panels,
+            columns=4,
         )
 
         crop = batch["crop_metadata"]
@@ -257,159 +290,194 @@ def save_droid_validation_visualization(
                         ),
                     )
                 )
-            crop_panels.append(
+            crop_panels.extend(
                 (
-                    f"Cam {camera} final encoder crop 224x224",
-                    _uint8_rgb(batch["target_rgb"][sample, 2, camera]),
+                    (
+                        f"Cam {camera} cropped middle RGB",
+                        _uint8_rgb(batch["target_rgb"][sample, 1, camera]),
+                    ),
+                    (
+                        f"Cam {camera} geometric validity",
+                        _mask_rgb(
+                            batch["target_image_validity"][sample, 1, camera]
+                        ),
+                    ),
                 )
             )
-        crop_path = root / "crop" / f"step-{step:08d}-{sample_name}.jpg"
-        paths[f"val/crop/{sample_name}"] = _save_grid(crop_path, crop_panels, columns=4)
+        paths[f"val/crop/{sample_name}"] = _save_grid(
+            root / "crop" / f"step-{step:08d}-{sample_name}.jpg",
+            crop_panels,
+            columns=5,
+        )
 
-        depth_panels: list[tuple[str, np.ndarray]] = []
         for camera in range(2):
-            teacher_depth = batch["target_depth"][sample, 2, camera, 0]
-            teacher_valid = batch["target_depth_validity"][sample, 2, camera, 0]
-            rendered_depth = reconstruction["rendered_expected_depth"][sample, 2, camera, 0]
-            rendered_valid = reconstruction["rendered_alpha"][sample, 2, camera, 0] > 0.01
-            error = (rendered_depth - teacher_depth).abs()
-            depth_panels.extend(
-                [
-                    (f"Cam {camera} crop RGB", _uint8_rgb(batch["target_rgb"][sample, 2, camera])),
-                    (
-                        f"Cam {camera} X-Lens metric depth",
-                        _colorize_scalar(
-                            teacher_depth,
-                            minimum=depth_range_m[0],
-                            maximum=depth_range_m[1],
-                            validity=teacher_valid,
-                        ),
-                    ),
-                    (
-                        f"Cam {camera} X-Lens confidence",
-                        _colorize_scalar(
-                            batch["target_depth_confidence"][sample, 2, camera, 0],
-                            minimum=0.0,
-                            maximum=24.0,
-                            validity=teacher_valid,
-                        ),
-                    ),
-                    (
-                        f"Cam {camera} X-Lens validity",
-                        teacher_valid.numpy().astype(np.uint8) * 255,
-                    ),
-                    (
-                        f"Cam {camera} GS expected depth",
-                        _colorize_scalar(
-                            rendered_depth,
-                            minimum=depth_range_m[0],
-                            maximum=depth_range_m[1],
-                            validity=rendered_valid,
-                        ),
-                    ),
-                    (
-                        f"Cam {camera} absolute depth error",
-                        _colorize_scalar(
-                            error,
-                            minimum=0.0,
-                            maximum=1.0,
-                            validity=teacher_valid & rendered_valid,
-                        ),
-                    ),
+            depth_panels: list[tuple[str, np.ndarray]] = []
+            reconstruction_panels: list[tuple[str, np.ndarray]] = []
+            for time in range(3):
+                teacher_depth = batch["target_depth"][sample, time, camera, 0]
+                teacher_valid = batch["target_depth_validity"][
+                    sample, time, camera, 0
                 ]
-            )
-        depth_path = root / "depth" / f"step-{step:08d}-{sample_name}.jpg"
-        paths[f"val/xlens/{sample_name}"] = _save_grid(depth_path, depth_panels, columns=3)
-
-        reconstruction_panels: list[tuple[str, np.ndarray]] = []
-        for camera in range(2):
-            target_rgb = batch["target_rgb"][sample, 2, camera]
-            rendered_rgb = reconstruction["rendered_rgb"][sample, 2, camera]
-            rgb_error = (rendered_rgb - target_rgb).abs().mean(dim=0)
-            for direction, direction_name in enumerate(("backward", "forward")):
-                teacher_flow = batch["target_flow"][sample, direction, camera]
-                rendered_flow = reconstruction["rendered_flow"][sample, direction, camera]
-                flow_error = torch.linalg.vector_norm(
-                    rendered_flow - teacher_flow, dim=0
+                rendered_depth = reconstruction["rendered_expected_depth"][
+                    sample, time, camera, 0
+                ]
+                rendered_valid = (
+                    reconstruction["rendered_alpha"][sample, time, camera, 0] > 0.01
                 )
-                reconstruction_panels.extend(
-                    [
-                        (f"Cam {camera} MEMFOF {direction_name}", _flow_rgb(teacher_flow)),
-                        (f"Cam {camera} GS flow {direction_name}", _flow_rgb(rendered_flow)),
+                depth_panels.extend(
+                    (
                         (
-                            f"Cam {camera} flow EPE {direction_name}",
-                            _colorize_scalar(flow_error, minimum=0.0, maximum=32.0),
+                            f"t{time} cached DA3",
+                            _colorize_scalar(
+                                teacher_depth,
+                                minimum=depth_range_m[0],
+                                maximum=depth_range_m[1],
+                                validity=teacher_valid,
+                            ),
                         ),
-                    ]
+                        (
+                            f"t{time} GS expected depth",
+                            _colorize_scalar(
+                                rendered_depth,
+                                minimum=depth_range_m[0],
+                                maximum=depth_range_m[1],
+                                validity=rendered_valid,
+                            ),
+                        ),
+                        (
+                            f"t{time} absolute depth error",
+                            _colorize_scalar(
+                                (rendered_depth - teacher_depth).abs(),
+                                minimum=0.0,
+                                maximum=1.0,
+                                validity=teacher_valid & rendered_valid,
+                            ),
+                        ),
+                    )
                 )
-            reconstruction_panels.extend(
-                [
-                    (f"Cam {camera} target RGB", _uint8_rgb(target_rgb)),
-                    (f"Cam {camera} GS RGB", _uint8_rgb(rendered_rgb)),
-                    (
-                        f"Cam {camera} RGB absolute error",
-                        _colorize_scalar(rgb_error, minimum=0.0, maximum=0.5),
-                    ),
-                    (
-                        f"Cam {camera} alpha / visibility",
-                        (reconstruction["rendered_alpha"][sample, 2, camera, 0].numpy() * 255)
-                        .clip(0, 255)
-                        .astype(np.uint8),
-                    ),
+                target_rgb = batch["target_rgb"][sample, time, camera]
+                rendered_rgb = reconstruction["rendered_rgb"][
+                    sample, time, camera
                 ]
+                reconstruction_panels.extend(
+                    (
+                        (f"t{time} real RGB", _uint8_rgb(target_rgb)),
+                        (f"t{time} GS RGB", _uint8_rgb(rendered_rgb)),
+                        (
+                            f"t{time} RGB error",
+                            _colorize_scalar(
+                                (rendered_rgb - target_rgb).abs().mean(dim=0),
+                                minimum=0.0,
+                                maximum=0.5,
+                            ),
+                        ),
+                    )
+                )
+            paths[f"val/da3/{sample_name}/cam-{camera}"] = _save_grid(
+                root
+                / "da3"
+                / f"step-{step:08d}-{sample_name}-cam-{camera}.jpg",
+                depth_panels,
+                columns=3,
             )
-        reconstruction_path = (
-            root / "reconstruction" / f"step-{step:08d}-{sample_name}.jpg"
-        )
-        paths[f"val/reconstruction/{sample_name}"] = _save_grid(
-            reconstruction_path, reconstruction_panels, columns=4
-        )
+            paths[f"val/reconstruction/{sample_name}/cam-{camera}"] = _save_grid(
+                root
+                / "reconstruction"
+                / f"step-{step:08d}-{sample_name}-cam-{camera}.jpg",
+                reconstruction_panels,
+                columns=3,
+            )
+
+            rendered_flow_panels: list[tuple[str, np.ndarray]] = []
+            for pair, name in enumerate(("t0->t1", "t1->t2")):
+                target = batch["target_flow"][sample, pair, camera]
+                target_valid = batch["target_flow_validity"][
+                    sample, pair, camera
+                ]
+                rendered = reconstruction["rendered_flow"][
+                    sample, pair, camera
+                ]
+                rendered_flow_panels.extend(
+                    (
+                        (f"{name} cached MegaFlow", _flow_rgb(target, target_valid)),
+                        (f"{name} GS flow", _flow_rgb(rendered)),
+                        (
+                            f"{name} endpoint error",
+                            _colorize_scalar(
+                                torch.linalg.vector_norm(rendered - target, dim=0),
+                                minimum=0.0,
+                                maximum=32.0,
+                                validity=target_valid,
+                            ),
+                        ),
+                        (f"{name} usable pixels", _mask_rgb(target_valid)),
+                    )
+                )
+            paths[f"val/flow_render/{sample_name}/cam-{camera}"] = _save_grid(
+                root
+                / "flow_render"
+                / f"step-{step:08d}-{sample_name}-cam-{camera}.jpg",
+                rendered_flow_panels,
+                columns=4,
+            )
 
         if "novel_rgb" in batch and "novel_rendered_rgb" in reconstruction:
-            canonical_K = batch["novel_K"][sample]
-            teacher_canonical = batch["novel_rgb"][sample]
-            rendered_canonical = reconstruction["novel_rendered_rgb"][sample, 0]
-            canonical_error = (teacher_canonical - rendered_canonical).abs()
-            support = batch["novel_support_mask"][sample].float()
-            teacher_display, _ = _lager_display(teacher_canonical, canonical_K)
-            rendered_display, _ = _lager_display(rendered_canonical, canonical_K)
-            error_display, _ = _lager_display(canonical_error, canonical_K)
-            support_display, _ = _lager_display(support, canonical_K, threshold=True)
-            pose_metadata = _tensor_metadata(batch["novel_pose_metadata"], sample)
-            title = (
-                f"alpha={pose_metadata.get('alpha', 0):.3f} "
-                f"coverage={pose_metadata.get('source_coverage', 0):.3f} "
-                f"jitter={pose_metadata.get('translation_perturbation_magnitude', 0):.3f}m/"
-                f"{pose_metadata.get('rotation_perturbation_degrees', 0):.2f}deg"
-            )
-            lager_panels = [
-                ("Source Cam A canonical", _uint8_rgb(batch["novel_source_rgb"][sample, 0])),
-                ("Source Cam B canonical", _uint8_rgb(batch["novel_source_rgb"][sample, 1])),
-                (f"LagerNVS canonical 256 ({title})", _uint8_rgb(teacher_canonical)),
-                ("GS canonical novel render", _uint8_rgb(rendered_canonical)),
-                ("Canonical RGB absolute error", _uint8_rgb(canonical_error)),
-                ("Canonical source-support mask", support[0].numpy().astype(np.uint8) * 255),
-                ("LagerNVS natural 320x180", teacher_display),
-                ("GS natural 320x180", rendered_display),
-                ("RGB error natural 320x180", error_display),
-                ("Support natural 320x180", support_display),
-            ]
-            lager_path = root / "lagernvs" / f"step-{step:08d}-{sample_name}.jpg"
-            paths[f"val/lagernvs/{sample_name}"] = _save_grid(
-                lager_path, lager_panels, columns=3
-            )
+            for time in range(3):
+                lager_panels: list[tuple[str, np.ndarray]] = []
+                for view in range(4):
+                    teacher = batch["novel_rgb"][sample, time, view]
+                    rendered = reconstruction["novel_rendered_rgb"][
+                        sample, time, view
+                    ]
+                    support = batch["novel_support_mask"][sample, time, view]
+                    alpha = float(
+                        batch["novel_pose_metadata"]["alpha"][
+                            sample, time, view
+                        ]
+                    )
+                    lager_panels.extend(
+                        (
+                            (
+                                f"view {view} Lager target alpha={alpha:.3f}",
+                                _uint8_rgb(teacher),
+                            ),
+                            (f"view {view} GS render", _uint8_rgb(rendered)),
+                            (
+                                f"view {view} RGB error",
+                                _colorize_scalar(
+                                    (teacher - rendered).abs().mean(dim=0),
+                                    minimum=0.0,
+                                    maximum=0.5,
+                                ),
+                            ),
+                            (f"view {view} support", _mask_rgb(support)),
+                        )
+                    )
+                paths[f"val/lagernvs/{sample_name}/t{time}"] = _save_grid(
+                    root
+                    / "lagernvs"
+                    / f"step-{step:08d}-{sample_name}-t{time}.jpg",
+                    lager_panels,
+                    columns=4,
+                )
             metadata_path = (
-                root / "lagernvs" / f"step-{step:08d}-{sample_name}-pose.json"
+                root / "lagernvs" / f"step-{step:08d}-{sample_name}-poses.json"
             )
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
-            metadata_path.write_text(json.dumps(pose_metadata, indent=2), encoding="utf-8")
+            pose_metadata = {
+                key: value[sample]
+                for key, value in batch["novel_pose_metadata"].items()
+            }
+            metadata_path.write_text(
+                json.dumps(_jsonable(pose_metadata), indent=2) + "\n",
+                encoding="utf-8",
+            )
 
         if sample == 0:
             sequence = reconstruction["gaussian_pc_sequence"]
             opacity = reconstruction["gaussian_pc_anchor"]["opacity"][0].numpy()
             geometry_root = root / "geometry" / f"step-{step:08d}"
-            # The only full static cloud is chronological t0.  t1/t2 are retained
-            # solely in the compact tracking artifact below.
+            # Full static cloud remains t0-only. Motion is retained separately.
             _write_point_cloud(
                 geometry_root / "gaussians_t0_robot_base.ply",
                 sequence[0]["xyz"][0].numpy(),
@@ -420,14 +488,18 @@ def save_droid_validation_visualization(
             np.savez_compressed(
                 tracking_root / "t0_to_t1_to_t2_gaussian_tracking.npz",
                 xyz=np.stack([state["xyz"][0].numpy() for state in sequence]),
-                delta_xyz_01=reconstruction["gaussian_pc_anchor"]["delta_xyz_01"][0].numpy(),
-                delta_xyz_12=reconstruction["gaussian_pc_anchor"]["delta_xyz_12"][0].numpy(),
+                delta_xyz_01=reconstruction["gaussian_pc_anchor"][
+                    "delta_xyz_01"
+                ][0].numpy(),
+                delta_xyz_12=reconstruction["gaussian_pc_anchor"][
+                    "delta_xyz_12"
+                ][0].numpy(),
             )
-            camera_values: dict[str, np.ndarray] = {
-                "source_c2w": batch["raw_c2w"][0].numpy(),
-            }
-            if "novel_c2w" in batch:
-                camera_values["virtual_c2w"] = batch["novel_c2w"][0].numpy()
-                camera_values["interpolated_base_c2w"] = batch["novel_base_c2w"][0].numpy()
-            np.savez_compressed(geometry_root / "camera_frames_t0.npz", **camera_values)
+            geometry_root.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(
+                geometry_root / "camera_frames_t0.npz",
+                real_exterior_c2w=batch["target_c2w"][0, 0].numpy(),
+                lager_target_c2w=batch["novel_c2w"][0, 0].numpy(),
+                robot_base_frame=np.eye(4, dtype=np.float32),
+            )
     return paths

@@ -7,7 +7,22 @@ from collections.abc import Iterable
 from pathlib import Path
 
 DEFAULT_DROID_ROOT = Path("/home/ws/data/droid")
-DEFAULT_DERIVED_ROOT = Path("/ws/data/ws/droid_splattervae")
+DEFAULT_DERIVED_ROOT = Path("/home/ws/data/droid_stage0_preprocessed")
+
+
+def assert_no_preprocessing_quality_hold(root: str | os.PathLike[str]) -> None:
+    """An unresolved incident supersedes a historical passing pilot.
+
+    Presence is fail-closed, including malformed reports. After a validated
+    resolution, archive the incident marker rather than deleting its evidence.
+    Read-only diagnostics and state inspection intentionally remain available.
+    """
+    hold = Path(root) / "reports" / "preprocessing_quality_hold.json"
+    if hold.exists() or hold.is_symlink():
+        raise RuntimeError(
+            f"Preprocessing quality hold is active: {hold}. "
+            "Do not resume or bypass the pilot gate until the incident is resolved."
+        )
 
 
 def resolved(path: str | os.PathLike[str]) -> Path:
@@ -107,8 +122,28 @@ def write_source_fingerprint(
     )
     payload = source_tree_fingerprint(droid_root, include_content=include_content)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temporary = output.with_suffix(output.suffix + ".partial")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, output)
     return payload
+
+
+def assert_source_fingerprint_unchanged(
+    expected: dict[str, object], actual: dict[str, object]
+) -> None:
+    """Fail closed when a read-only source-tree inventory has changed."""
+
+    keys = ("root", "mode", "file_count", "total_bytes", "sha256")
+    differences = {
+        key: {"expected": expected.get(key), "actual": actual.get(key)}
+        for key in keys
+        if expected.get(key) != actual.get(key)
+    }
+    if differences:
+        raise RuntimeError(
+            "The read-only DROID source-tree fingerprint changed: "
+            + json.dumps(differences, sort_keys=True)
+        )
 
 
 def assert_paths_outside_source(

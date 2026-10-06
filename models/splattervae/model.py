@@ -70,12 +70,12 @@ class SplatterVAE(nn.Module):
     def encode_pretraining(
         self,
         histories: torch.Tensor,
-        optical_flows: torch.Tensor,
+        middle_frame_motion: torch.Tensor,
         image_validity: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         output = self.encoder(
             histories,
-            optical_flows=optical_flows,
+            motion_maps=middle_frame_motion,
             image_validity=image_validity,
             apply_mask=True,
         )
@@ -83,14 +83,16 @@ class SplatterVAE(nn.Module):
         return output
 
     def predict_gaussian_parameters(
-        self, encoder_tokens: torch.Tensor
+        self,
+        encoder_tokens: torch.Tensor,
+        memory_validity: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        return self.gaussian_decoder(encoder_tokens)
+        return self.gaussian_decoder(encoder_tokens, memory_validity)
 
     def forward(
         self,
         representation_histories: torch.Tensor,
-        representation_flows: torch.Tensor,
+        representation_middle_motion: torch.Tensor,
         representation_validity: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
         if (
@@ -102,14 +104,17 @@ class SplatterVAE(nn.Module):
             )
         batch = representation_histories.shape[0]
         histories = representation_histories.flatten(0, 1)
-        flows = representation_flows.flatten(0, 1)
+        motion = representation_middle_motion.flatten(0, 1)
         validity = (
             None
             if representation_validity is None
             else representation_validity.flatten(0, 1)
         )
-        encoded = self.encode_pretraining(histories, flows, validity)
-        gaussian = self.predict_gaussian_parameters(encoded["decoder_tokens"][0::2])
+        encoded = self.encode_pretraining(histories, motion, validity)
+        gaussian = self.predict_gaussian_parameters(
+            encoded["decoder_tokens"][0::2],
+            encoded["decoder_token_validity"][0::2],
+        )
         output = {
             "cls_tokens_by_view": encoded["cls_token"].view(batch, 2, -1),
             "projected_cls_by_view": encoded["projected_cls"].view(batch, 2, -1),
@@ -117,14 +122,25 @@ class SplatterVAE(nn.Module):
                 batch, 2, encoded["current_patch_tokens"].shape[1], -1
             ),
             "patch_masks_by_view": encoded["patch_mask"].view(batch, 2, -1),
+            "patch_validity_by_view": encoded["patch_validity"].view(batch, 2, -1),
+            "num_visible_patches_by_view": encoded["num_visible_patches"].view(
+                batch, 2
+            ),
             "visible_patch_ids_by_view": encoded["visible_patch_ids"].view(
+                batch, 2, -1
+            ),
+            "visible_patch_validity_by_view": encoded["visible_patch_validity"].view(
                 batch, 2, -1
             ),
         }
         output.update(gaussian)
         return output
 
-    def inference_features(self, histories: torch.Tensor) -> dict[str, torch.Tensor]:
+    def inference_features(
+        self,
+        histories: torch.Tensor,
+        image_validity: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
         """Return raw reusable encoder features; projector and masking are excluded."""
         context = (
             torch.autocast(device_type="cuda", dtype=torch.bfloat16)
@@ -132,7 +148,7 @@ class SplatterVAE(nn.Module):
             else nullcontext()
         )
         with context:
-            output = self.encoder.inference_features(histories)
+            output = self.encoder.inference_features(histories, image_validity)
         patch_tokens = output["patch_tokens"]
         if patch_tokens.shape[1:] != (196, 384):
             raise RuntimeError(
@@ -141,6 +157,7 @@ class SplatterVAE(nn.Module):
         return {
             "cls_token": output["cls_token"].float(),
             "patch_tokens": patch_tokens.float(),
+            "patch_validity": output["patch_validity"],
         }
 
     def decoder_configuration(self) -> dict[str, object]:

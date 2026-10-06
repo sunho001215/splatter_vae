@@ -90,8 +90,21 @@ class MultiHeadSelfAttention(nn.Module):
         self.attention_dropout = float(attention_dropout)
         self.projection_dropout = nn.Dropout(float(projection_dropout))
 
-    def forward(self, values: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        values: torch.Tensor,
+        token_validity: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch, tokens, dimension = values.shape
+        if token_validity is not None:
+            if token_validity.shape != (batch, tokens):
+                raise ValueError(
+                    f"Attention validity {tuple(token_validity.shape)} does not match {(batch, tokens)}."
+                )
+            if not token_validity[:, 0].all() or not token_validity.any(dim=1).all():
+                raise ValueError(
+                    "Every attention sequence must contain a valid CLS token."
+                )
         qkv = (
             self.qkv(values)
             .view(batch, tokens, 3, self.num_heads, self.head_dimension)
@@ -102,6 +115,9 @@ class MultiHeadSelfAttention(nn.Module):
             query,
             key,
             value,
+            attn_mask=(
+                None if token_validity is None else token_validity[:, None, None, :]
+            ),
             dropout_p=self.attention_dropout if self.training else 0.0,
             is_causal=False,
         )
@@ -138,13 +154,22 @@ class TransformerBlock(nn.Module):
         self.feedforward_scale = LayerScale(dimension, layerscale_initial_value)
         self.feedforward_drop_path = DropPath(drop_path)
 
-    def forward(self, values: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        values: torch.Tensor,
+        token_validity: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         values = values + self.attention_drop_path(
-            self.attention_scale(self.attention(self.attention_norm(values)))
+            self.attention_scale(
+                self.attention(self.attention_norm(values), token_validity)
+            )
         )
-        return values + self.feedforward_drop_path(
+        values = values + self.feedforward_drop_path(
             self.feedforward_scale(self.feedforward(self.feedforward_norm(values)))
         )
+        if token_validity is not None:
+            values = values.masked_fill(~token_validity[..., None], 0.0)
+        return values
 
 
 @dataclass(frozen=True)
@@ -264,16 +289,13 @@ class TemporalViTEncoder(nn.Module):
     def embed_dimension(self) -> int:
         return self.config.embed_dimension
 
-    def flow_patch_scores(self, flows: torch.Tensor) -> torch.Tensor:
-        if flows.dim() != 5 or flows.shape[2] != 2:
+    def motion_patch_scores(self, motion: torch.Tensor) -> torch.Tensor:
+        if motion.dim() != 4 or motion.shape[1] != 1:
             raise ValueError(
-                f"Expected temporal flows as (B,pairs,2,H,W), got {tuple(flows.shape)}."
+                f"Expected middle-frame motion as (B,1,H,W), got {tuple(motion.shape)}."
             )
-        magnitude = torch.linalg.vector_norm(flows.float(), dim=2).amax(
-            dim=1, keepdim=True
-        )
         pooled = F.max_pool2d(
-            magnitude,
+            torch.nan_to_num(motion.float(), nan=0.0, posinf=0.0, neginf=0.0),
             kernel_size=self.config.patch_size,
             stride=self.config.patch_size,
         )
@@ -309,56 +331,67 @@ class TemporalViTEncoder(nn.Module):
         self,
         scores: torch.Tensor,
         valid_patches: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch, patch_count = scores.shape
-        keep_count = max(1, round(patch_count * (1.0 - self.masking_ratio)))
-        motion_count = min(
-            keep_count, round(keep_count * self.motion_visible_fraction)
-        )
-        uniform_count = keep_count - motion_count
-        ranked_scores = torch.nan_to_num(
-            scores.detach().float(),
-            nan=float("-inf"),
-            posinf=1.0e9,
-            neginf=float("-inf"),
-        ).masked_fill(~valid_patches, float("-inf"))
-        motion_ids = (
-            ranked_scores.topk(motion_count, dim=-1, sorted=False).indices
-            if motion_count
-            else torch.empty(batch, 0, dtype=torch.long, device=scores.device)
-        )
-        available = valid_patches.clone()
-        if motion_count:
-            available.scatter_(1, motion_ids, False)
-        random_priority = torch.rand(
-            batch, patch_count, device=scores.device
-        ).masked_fill(~available, float("-inf"))
-        available_count = available.sum(dim=1)
-        if bool((available_count < uniform_count).any()):
-            # This can only occur for unusually small geometric validity masks.
-            fallback = torch.ones_like(available)
-            if motion_count:
-                fallback.scatter_(1, motion_ids, False)
-            random_priority = torch.where(
-                available,
-                random_priority,
-                torch.rand_like(random_priority).masked_fill(~fallback, float("-inf")),
+        valid_counts = valid_patches.sum(dim=1)
+        if bool((valid_counts == 0).any()):
+            raise ValueError(
+                "Every sample must contain at least one geometrically valid patch."
             )
-        uniform_ids = (
-            random_priority.topk(uniform_count, dim=-1, sorted=False).indices
-            if uniform_count
-            else torch.empty(batch, 0, dtype=torch.long, device=scores.device)
+        keep_counts = torch.clamp(
+            torch.round(valid_counts.float() * (1.0 - self.masking_ratio)).long(),
+            min=1,
         )
-        visible_ids = torch.cat((motion_ids, uniform_ids), dim=1).sort(dim=1).values
-        mask = torch.ones(batch, patch_count, dtype=torch.bool, device=scores.device)
-        mask.scatter_(1, visible_ids, False)
-        return visible_ids, mask
+        maximum_keep = int(keep_counts.max().item())
+        visible_ids = torch.full(
+            (batch, maximum_keep), -1, dtype=torch.long, device=scores.device
+        )
+        visible_validity = torch.zeros(
+            batch, maximum_keep, dtype=torch.bool, device=scores.device
+        )
+        ssl_mask = torch.zeros(
+            batch, patch_count, dtype=torch.bool, device=scores.device
+        )
+        for sample in range(batch):
+            keep = int(keep_counts[sample])
+            valid_ids = torch.nonzero(valid_patches[sample], as_tuple=False).flatten()
+            valid_scores = torch.nan_to_num(
+                scores[sample, valid_ids].detach().float(),
+                nan=0.0,
+                posinf=1.0e9,
+                neginf=0.0,
+            )
+            motion_is_degenerate = float(valid_scores.amax().item()) <= 1.0e-8
+            motion_count = (
+                0
+                if motion_is_degenerate
+                else min(keep, round(keep * self.motion_visible_fraction))
+            )
+            if motion_count:
+                motion_local = valid_scores.topk(motion_count, sorted=False).indices
+                motion_ids = valid_ids[motion_local]
+            else:
+                motion_ids = valid_ids.new_empty(0)
+            available = valid_patches[sample].clone()
+            if motion_ids.numel():
+                available[motion_ids] = False
+            random_count = keep - int(motion_ids.numel())
+            priorities = torch.rand(patch_count, device=scores.device).masked_fill(
+                ~available, float("-inf")
+            )
+            random_ids = priorities.topk(random_count, sorted=False).indices
+            selected = torch.cat((motion_ids, random_ids)).sort().values
+            visible_ids[sample, :keep] = selected
+            visible_validity[sample, :keep] = True
+            ssl_mask[sample] = valid_patches[sample]
+            ssl_mask[sample, selected] = False
+        return visible_ids, visible_validity, ssl_mask, keep_counts
 
     def forward(
         self,
         histories: torch.Tensor,
         *,
-        optical_flows: torch.Tensor | None = None,
+        motion_maps: torch.Tensor | None = None,
         image_validity: torch.Tensor | None = None,
         apply_mask: bool,
     ) -> dict[str, torch.Tensor]:
@@ -388,31 +421,54 @@ class TemporalViTEncoder(nn.Module):
             + self.temporal_embedding.to(patches.dtype)
         )
         if apply_mask:
-            if optical_flows is None:
-                raise ValueError("Masked pretraining requires MEMFOF optical flow.")
-            scores = self.flow_patch_scores(optical_flows)
-            visible_ids, mask = self._sample_visible_patch_ids(
-                scores, self._patch_validity(image_validity, batch)
+            if motion_maps is None:
+                raise ValueError(
+                    "Masked pretraining requires cached middle-frame motion."
+                )
+            patch_validity = self._patch_validity(image_validity, batch)
+            scores = self.motion_patch_scores(motion_maps)
+            visible_ids, visible_validity, mask, keep_counts = (
+                self._sample_visible_patch_ids(scores, patch_validity)
             )
         else:
-            visible_ids = torch.arange(
-                self.num_patches, device=histories.device
-            ).expand(batch, -1)
-            mask = torch.zeros(
-                batch, self.num_patches, dtype=torch.bool, device=histories.device
+            patch_validity = self._patch_validity(image_validity, batch)
+            keep_counts = patch_validity.sum(dim=1)
+            maximum_keep = int(keep_counts.max().item())
+            visible_ids = torch.full(
+                (batch, maximum_keep), -1, dtype=torch.long, device=histories.device
             )
-        gather_index = visible_ids[:, None, :, None].expand(
+            visible_validity = torch.zeros(
+                batch, maximum_keep, dtype=torch.bool, device=histories.device
+            )
+            for sample in range(batch):
+                selected = torch.nonzero(
+                    patch_validity[sample], as_tuple=False
+                ).flatten()
+                visible_ids[sample, : selected.numel()] = selected
+                visible_validity[sample, : selected.numel()] = True
+            mask = torch.zeros_like(patch_validity)
+        safe_visible_ids = visible_ids.clamp_min(0)
+        gather_index = safe_visible_ids[:, None, :, None].expand(
             batch, timesteps, visible_ids.shape[1], self.embed_dimension
         )
         visible = torch.gather(patches, dim=2, index=gather_index)
+        visible = visible.masked_fill(~visible_validity[:, None, :, None], 0.0)
         visible_per_frame = visible.shape[2]
         visible = visible.flatten(1, 2)
         cls = self.cls_token.to(visible.dtype).expand(batch, -1, -1)
         cls = cls + self.cls_position.to(visible.dtype)
         tokens = self.position_dropout(torch.cat((cls, visible), dim=1))
+        token_validity = torch.cat(
+            (
+                torch.ones(batch, 1, dtype=torch.bool, device=histories.device),
+                visible_validity[:, None].expand(-1, timesteps, -1).reshape(batch, -1),
+            ),
+            dim=1,
+        )
         for block in self.blocks:
-            tokens = block(tokens)
+            tokens = block(tokens, token_validity)
         tokens = self.norm(tokens)
+        tokens = tokens.masked_fill(~token_validity[..., None], 0.0)
         current_start = 1 + (timesteps - 1) * visible_per_frame
         current = tokens[:, current_start : current_start + visible_per_frame]
         return {
@@ -420,21 +476,35 @@ class TemporalViTEncoder(nn.Module):
             "current_patch_tokens": current.contiguous(),
             "decoder_tokens": tokens.contiguous(),
             "visible_patch_ids": visible_ids.contiguous(),
+            "visible_patch_validity": visible_validity.contiguous(),
+            "decoder_token_validity": token_validity.contiguous(),
             "patch_mask": mask.contiguous(),
+            "patch_validity": patch_validity.contiguous(),
+            "num_visible_patches": keep_counts.contiguous(),
         }
 
-    def inference_features(self, histories: torch.Tensor) -> dict[str, torch.Tensor]:
+    def inference_features(
+        self,
+        histories: torch.Tensor,
+        image_validity: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
         """Reusable encoder-only API with masking and pretraining heads removed."""
-        output = self.forward(histories, apply_mask=False)
-        patches = output["current_patch_tokens"]
-        if patches.shape[1:] != (self.num_patches, self.embed_dimension):
-            raise RuntimeError(
-                "Encoder inference must retain the complete current-frame patch grid; "
-                f"got {tuple(patches.shape)}."
-            )
+        output = self.forward(
+            histories, image_validity=image_validity, apply_mask=False
+        )
+        selected = output["current_patch_tokens"]
+        patches = selected.new_zeros(
+            histories.shape[0], self.num_patches, self.embed_dimension
+        )
+        for sample in range(histories.shape[0]):
+            count = int(output["num_visible_patches"][sample])
+            patches[sample, output["visible_patch_ids"][sample, :count]] = selected[
+                sample, :count
+            ]
         return {
             "cls_token": output["cls_token"],
             "patch_tokens": patches,
+            "patch_validity": output["patch_validity"],
         }
 
 

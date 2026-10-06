@@ -32,18 +32,17 @@ class TrainConfig:
     novel_view_rgb_weight: float = 0.05
 
     contrastive_temperature: float = 0.1
-    depth_confidence_threshold: float = 0.0
     scale_invariant_mean_weight: float = 1.0
     flow_pair_weights: tuple[float, float] = (0.5, 0.5)
     flow_alpha_threshold: float = 0.01
     flow_smooth_l1_beta: float = 1.0
 
-    novel_view_enabled: bool = False
+    novel_view_enabled: bool = True
     novel_view_supported_weight: float = 1.0
     novel_view_unsupported_weight: float = 0.0
 
     seed: int = 42
-    checkpoint_dir: str = "/ws/data/ws/droid_splattervae/logs/checkpoints"
+    checkpoint_dir: str = "/home/ws/ws/droid_training/outputs/cached_stage0_checkpoints"
     resume_checkpoint: str | None = None
     validation_every_steps: int = 2_000
     checkpoint_every_steps: int = 5_000
@@ -81,10 +80,13 @@ class TrainConfig:
             raise ValueError("contrastive_temperature must be positive.")
         if len(self.flow_pair_weights) != 2 or sum(self.flow_pair_weights) <= 0.0:
             raise ValueError("flow_pair_weights must contain two nonnegative values.")
-        if min(
-            float(self.novel_view_supported_weight),
-            float(self.novel_view_unsupported_weight),
-        ) < 0.0:
+        if (
+            min(
+                float(self.novel_view_supported_weight),
+                float(self.novel_view_unsupported_weight),
+            )
+            < 0.0
+        ):
             raise ValueError("Novel-view support weights must be nonnegative.")
         if int(self.num_visualization_samples) <= 0:
             raise ValueError("num_visualization_samples must be positive.")

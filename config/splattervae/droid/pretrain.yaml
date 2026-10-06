@@ -1,20 +1,36 @@
 dataset:
-  droid_root: /home/ws/data/droid
-  derived_root: /ws/data/ws/droid_splattervae
+  source_root: /home/ws/data/droid
+  preprocessed_root: /home/ws/data/droid_stage0_preprocessed
   calibration_manifest: /ws/data/ws/droid_splattervae/manifests/canonical-full/calibration.jsonl.gz
-  split_manifest: /ws/data/ws/droid_splattervae/manifests/canonical-full/episode_splits.json
-  validation_fraction: 0.02
-  split_seed: 42
-  seed: 42
-  temporal_strides: [1, 3, 6]
-  temporal_probabilities: [0.40, 0.35, 0.25]
-  validation_stride: 3
+  eligibility: canonical_stage0_calibration_valid_only
+  retained_raw_stride: 3
+  temporal_gap_raw: 6
+  temporal_window: 3
+  exterior_cameras: 2
   per_gpu_logical_batch: 8
   workers: 8
   prefetch_factor: 2
   persistent_workers: true
   pin_memory: true
   drop_last: true
+  reader_cache_size: 8
+  verify_member_checksums: false
+  seed: 42
+
+storage:
+  container: indexed_uncompressed_tar
+  target_retained_timesteps_per_shard: 4096
+  jpeg:
+    format: jpeg
+    quality: 95
+    chroma_subsampling: "4:4:4"
+    optimize: false
+    progressive: false
+  numeric:
+    container: blosc
+    codec: zstd
+    compression_level: 3
+    shuffle: bitshuffle
 
 preprocessing:
   source_width: 320
@@ -31,29 +47,106 @@ preprocessing:
     min_size: 180
     max_size: 320
     size_sampling: uniform
-    center_mode: optical_flow_argmax
+    center_mode: middle_frame_forward_megaflow_argmax
+    flow_alignment: forward_splat_f01_to_t1_then_max_f12
     flow_aggregation: max
     flow_smoothing_kernel: 15
     low_motion_threshold: 1.0e-4
     low_motion_fallback: image_center
 
 calibration:
-  official_repository: KarlP/droid
-  official_revision: main
-  use_exterior_cameras_only: true
+  eligibility_stage: 0
+  exterior_cameras_only: true
   world_frame: robot_base
-  stage: 0
-  thresholds:
-    rotation_orthonormal_atol: 0.02
-    rotation_determinant_atol: 0.02
-    maximum_translation_m: 5.0
-    minimum_exterior_baseline_m: 0.05
-    maximum_exterior_baseline_m: 3.0
-    principal_point_margin_fraction: 0.25
-    direct_relative_max_rotation_deg: 20.0
-    direct_relative_max_translation_m: 0.35
-    direction_minimum_samples: 100
-    direction_maximum_samples: 25000
+  intrinsics_convention: opencv_pixel_center
+  stored_extrinsics: [c2w, w2c]
+
+depth:
+  source: cached_da3
+  repository: ByteDance-Seed/Depth-Anything-3
+  repository_revision: 3d835ec1a5802d64a8b8b15f817a1ab54809bfe4
+  model_id: depth-anything/DA3NESTED-GIANT-LARGE-1.1
+  checkpoint_revision: b2359bdf726fb44ef62acca04d629dcf158053e7
+  synchronized_views_per_inference: 2
+  resolution: [180, 320]
+  encoding: uint16_mm
+  invalid_value: 0
+  meters_per_unit: 0.001
+  metric_depth_weight: 0.5
+  scale_invariant_depth_weight: 0.25
+  scale_invariant_mean_weight: 1.0
+
+flow:
+  source: cached_megaflow
+  repository: cvg/megaflow
+  repository_revision: ee5b61813db0a76ac0db9034899aade72a0d230c
+  model_id: megaflow-flow
+  checkpoint_repository: Kristen-Z/MegaFlow
+  checkpoint_revision: b4c5c33800b8fa88e047d2eb70ae74b0feca606d
+  gap_raw_timesteps: 6
+  direction: forward_only
+  resolution: [180, 320]
+  encoding: int16_fixed_1_over_64
+  fixed_point_scale: 64
+  invalid_sentinel: -32768
+  weight: 0.1
+  pair_weights: [0.5, 0.5]
+  alpha_threshold: 0.01
+  smooth_l1_beta: 1.0
+
+novel_view:
+  enabled: true
+  source: cached_lagernvs
+  repository: facebookresearch/lagernvs
+  repository_revision: 665f727aba8298a04ff4c040fd6279a32ef23017
+  model_id: facebook/lagernvs_dl3dv_2-6_v_256
+  checkpoint_revision: 4026552953a72c5fb037501564dc673dd73c574e
+  targets_per_timestep: 4
+  canonical_size: 256
+  canonical_focal_px: 186.5
+  target_distribution:
+    cam_a_alpha_bands: [[0.15, 0.25], [0.25, 0.35]]
+    mirror_about_one_half: true
+    excluded_center: [0.35, 0.65]
+    deterministic_per_episode_timestep: true
+  target_pose:
+    mode: interpolate_with_bounded_perturbation
+    prefer_scene_centered_arc: true
+    translation_max_baseline_fraction: 0.03
+    exceptional_safety_translation_max_baseline_fraction: 0.05
+    exceptional_translation_keeps_strict_geometry_gates: true
+    last_resort_safety_thresholds_explicitly_flagged: true
+    rotation_max_degrees: 3.0
+    minimum_geometry_distance_m: 0.08
+    exceptional_minimum_geometry_distance_m: 0.05
+    source_clearance_reference_fraction: 0.80
+    minimum_source_calibrated_clearance_m: 0.02
+    geometry_clearance_quantile: 0.01
+    minimum_optical_axis_cosine: 0.35
+    min_source_coverage: 0.60
+    exceptional_min_source_coverage: 0.40
+    coverage_sample_stride: 2
+    coverage_dilation_kernel: 7
+    max_resample_attempts: 4
+    alpha_safety_grid_candidates: 17
+  support_mask:
+    stored: true
+    encoding: bitpacked
+  loss:
+    reduction: mean_over_batch_time_targets_and_supported_pixels
+    weight: 0.05
+    supported_weight: 1.0
+    unsupported_weight: 0.0
+
+masking:
+  ratio: 0.60
+  validity_aware: true
+  fully_padded_patches_invalid: true
+  partially_valid_patches_valid: true
+  tube_mask: true
+  motion_visible_fraction: 0.50
+  variable_keep_count: true
+  batch_token_padding: true
 
 vit:
   image_size: 224
@@ -74,8 +167,6 @@ vit:
 
 model:
   temporal_anchor: current
-  masking_ratio: 0.60
-  motion_visible_fraction: 0.50
   motion_translation_max_m: 0.25
 
 contrastive:
@@ -94,89 +185,24 @@ decoder:
   swiglu_hidden_dimension: 512
   use_self_attention: true
   conditioning: multi_token_cross_attention
-  # Derived from 76 calibration-valid real episodes x three frames using
-  # online X-Lens and validated by the 10-step real-DROID optimizer pilot.
-  workspace_parameter_status: validated_from_droid_xlens_stats_and_pilot
+  # Validated on the representative schema-2 cached-DA3 pilot. Recompute over
+  # the completed cache before the long representation-training run.
+  workspace_parameter_status: validated_from_cached_da3_pilot
   require_validated_workspace_parameters: true
-  global_center: [0.6268912475, 0.0371947839, 0.1571336175]
-  anchor_initial_spread: 0.4632105128
-  parent_displacement_scale: 0.3047925174
-  child_radius: 0.0533386905
+  global_center: [0.6023508516, 0.1065550001, 0.0717650620]
+  anchor_initial_spread: 0.3912640560
+  parent_displacement_scale: 0.2574517488
+  child_radius: 0.0450540560
 
 renderer:
   image_height: 224
   image_width: 224
-  znear: 0.2928879559
-  zfar: 7.3070499287
+  znear: 0.0775000006
+  zfar: 3.9768001556
   white_background: false
   max_sh_degree: 1
   scale_min: [0.001, 0.001, 0.001]
   scale_max: [0.08, 0.08, 0.08]
-
-depth:
-  teacher: xlens
-  official_repo_path: /home/ws/ws/droid_training/third_party/XLens
-  checkpoint_path: /home/ws/ws/droid_training/checkpoints/xlens/model.safetensors
-  architecture_config: /home/ws/ws/droid_training/third_party/XLens/configs/xlens_vits.yaml
-  amp_dtype: bf16
-  inference_resolution: [320, 180]
-  confidence_threshold: 0.0
-  metric_depth_weight: 0.5
-  scale_invariant_depth_weight: 0.25
-  scale_invariant_mean_weight: 1.0
-
-flow:
-  backend: memfof
-  official_repo_path: /home/ws/ws/droid_training/third_party/MEMFOF
-  official_repository_revision: a51de9fc59c6fe20ba08e079372c7b583d58a712
-  checkpoint: egorchistov/optical-flow-MEMFOF-Tartan-T-TSKH
-  checkpoint_revision: 6c6c9aa3ad64f93aee8efbc2f7a6e4535814ee96
-  cache_dir: /home/ws/ws/droid_training/checkpoints/huggingface
-  native_resolution: true
-  input_height: 180
-  input_width: 320
-  iterations: 2
-  precision: fp32
-  weight: 0.1
-  pair_weights: [0.5, 0.5]
-  alpha_threshold: 0.01
-  smooth_l1_beta: 1.0
-
-novel_view:
-  enabled: false
-  backend: lagernvs
-  official_repo_path: /home/ws/ws/droid_training/third_party/LagerNVS
-  official_repository_revision: 665f727aba8298a04ff4c040fd6279a32ef23017
-  checkpoint_id: facebook/lagernvs_dl3dv_2-6_v_256
-  checkpoint_revision: 4026552953a72c5fb037501564dc673dd73c574e
-  checkpoint_path: null
-  cache_dir: /home/ws/ws/droid_training/checkpoints/huggingface
-  dtype: bf16
-  microbatch_size: 4
-  canonical:
-    image_size: 256
-    focal_px: 186.5
-    deterministic: true
-    source_cameras: exterior_only
-  target_pose:
-    mode: interpolate_with_bounded_perturbation
-    alpha_min: 0.15
-    alpha_max: 0.85
-    prefer_scene_centered_arc: true
-    scene_center: null
-    translation_max_baseline_fraction: 0.03
-    rotation_max_degrees: 3.0
-    min_source_coverage: 0.60
-    max_resample_attempts: 4
-    minimum_geometry_distance_m: 0.08
-    minimum_optical_axis_cosine: 0.35
-    coverage_confidence_threshold: 0.0
-    coverage_sample_stride: 2
-    coverage_dilation_kernel: 5
-  loss:
-    weight: 0.05
-    supported_weight: 1.0
-    unsupported_weight: 0.0
 
 loss:
   rgb_l1: 1.0
@@ -212,7 +238,7 @@ logging:
   wandb_project: splattervae-droid
   wandb_entity: null
   run_name: null
-  checkpoint_dir: /ws/data/ws/droid_splattervae/logs/checkpoints
+  checkpoint_dir: /home/ws/ws/droid_training/outputs/cached_stage0_checkpoints
   visualization_dir: /home/ws/ws/droid_training/outputs/visualization
   scalar_every_steps: 50
   validation_every_steps: 2000
@@ -220,13 +246,13 @@ logging:
   visualization_every_steps: 5000
   validation_batches: 8
   num_visualization_samples: 2
-  depth_display_range_m: [0.25, 5.0]
+  depth_display_range_m: [0.10, 4.0]
 
 workspace_statistics:
-  output_path: /ws/data/ws/droid_splattervae/workspace_stats/workspace_stats.json
+  source: cached_da3
+  output_path: /home/ws/data/droid_stage0_preprocessed/metadata/workspace_stats.json
   maximum_episodes: 2000
   frames_per_episode: 8
-  depth_confidence_threshold: 0.5
   maximum_axis_intersection_residual_m: 0.35
   workspace_geometry_radius_m: 1.0
   depth_percentiles: [1.0, 5.0, 50.0, 95.0, 99.0]

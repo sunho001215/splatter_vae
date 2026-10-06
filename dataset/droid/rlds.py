@@ -243,6 +243,15 @@ class TFDSRLDSBackend:
                             [step[optional] for step in step_list]
                         )
             for optional in (
+                "language_instruction",
+                "language_instruction_2",
+                "language_instruction_3",
+            ):
+                if optional in step_list[0]:
+                    steps[optional] = np.asarray(
+                        [step[optional] for step in step_list]
+                    )
+            for optional in (
                 "cartesian_position",
                 "gripper_position",
                 "joint_position",
@@ -264,6 +273,13 @@ class TFDSRLDSBackend:
         for optional in ("action", "action_dict"):
             if optional in steps:
                 output[optional] = steps[optional]
+        for optional in (
+            "language_instruction",
+            "language_instruction_2",
+            "language_instruction_3",
+        ):
+            if optional in steps:
+                output[optional] = np.asarray(steps[optional])
         for optional in ("cartesian_position", "gripper_position", "joint_position"):
             if optional in observation:
                 output[optional] = np.asarray(observation[optional])

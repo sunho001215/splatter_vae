@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 import torch
@@ -18,27 +17,6 @@ from .transforms import (
     SpatialTransform,
     motion_crop_transform,
 )
-
-
-@dataclass(frozen=True)
-class TemporalSamplingConfig:
-    strides: tuple[int, ...] = (1, 3, 6)
-    probabilities: tuple[float, ...] = (0.40, 0.35, 0.25)
-    validation_stride: int = 3
-
-    def __post_init__(self) -> None:
-        if not self.strides or len(self.strides) != len(self.probabilities):
-            raise ValueError(
-                "Temporal strides and probabilities must be non-empty and aligned."
-            )
-        if any(int(value) <= 0 for value in self.strides):
-            raise ValueError("Temporal strides must be positive.")
-        if any(float(value) < 0 for value in self.probabilities):
-            raise ValueError("Temporal probabilities must be non-negative.")
-        if abs(sum(self.probabilities) - 1.0) > 1.0e-6:
-            raise ValueError("Temporal probabilities must sum to one.")
-        if self.validation_stride not in self.strides:
-            raise ValueError("Validation stride must be one of the configured strides.")
 
 
 @dataclass(frozen=True)
@@ -63,8 +41,8 @@ class MotionCropConfig:
             raise ValueError("DROID crop-size sampling must be uniform.")
         if self.center_mode != "optical_flow_argmax":
             raise ValueError("DROID crop centers must use the optical-flow argmax.")
-        if self.flow_aggregation not in ("max", "mean", "sum"):
-            raise ValueError("Flow aggregation must be max, mean, or sum.")
+        if self.flow_aggregation != "max":
+            raise ValueError("Aligned F01/F12 motion maps must use max aggregation.")
         if self.low_motion_fallback != "image_center":
             raise ValueError("The only degenerate low-motion fallback is image_center.")
         if self.min_size <= 0 or self.max_size < self.min_size:
@@ -103,69 +81,106 @@ class MotionCropSelection:
     smoothed_motion_map: torch.Tensor
 
 
-def history_indices(current_timestep: int, stride: int) -> tuple[int, int, int]:
-    current = int(current_timestep)
-    step = int(stride)
-    if step <= 0:
-        raise ValueError("Temporal stride must be positive.")
-    indices = (current - 2 * step, current - step, current)
-    if indices[0] < 0:
-        raise ValueError(
-            f"Current timestep {current} has insufficient history for stride {step}."
-        )
-    return indices
-
-
-def sample_temporal_stride(
-    valid_strides: Sequence[int],
-    config: TemporalSamplingConfig,
-    rng: random.Random,
-) -> int:
-    valid = {int(value) for value in valid_strides}
-    choices = [stride for stride in config.strides if stride in valid]
-    if not choices:
-        raise ValueError("No configured temporal stride is valid for this timestep.")
-    weights = [config.probabilities[config.strides.index(stride)] for stride in choices]
-    total = sum(weights)
-    return int(
-        rng.choices(choices, weights=[value / total for value in weights], k=1)[0]
-    )
-
-
 def sample_uniform_crop_size(config: MotionCropConfig, rng: random.Random) -> int:
     """Sample every integer in [min_size,max_size] with equal probability."""
     return int(rng.randint(int(config.min_size), int(config.max_size)))
 
 
-def aggregate_flow_magnitude(
-    flows: torch.Tensor,
+def forward_splat_flow_magnitude(
+    flow: torch.Tensor,
     validity: torch.Tensor | None = None,
     *,
-    aggregation: str = "max",
+    fill_holes: bool = True,
 ) -> torch.Tensor:
-    """Aggregate MEMFOF backward/forward flow on the native 180x320 grid."""
-    if flows.dim() != 4 or flows.shape[1] != 2:
-        raise ValueError(f"Expected flow (pairs,2,H,W), got {tuple(flows.shape)}.")
-    if tuple(flows.shape[-2:]) != (RLDS_HEIGHT, RLDS_WIDTH):
-        raise ValueError("Flow crop selection requires the original RLDS grid.")
-    magnitude = torch.linalg.vector_norm(flows.float(), dim=1)
-    magnitude = torch.nan_to_num(magnitude, nan=0.0, posinf=0.0, neginf=0.0)
+    """Move a forward-flow magnitude from its source grid to its target grid.
+
+    Nearest-pixel max splatting preserves thin high-motion structures without
+    averaging them into the background. A single 3x3 max fill closes obvious
+    rasterization holes before the later configured motion smoothing.
+    """
+
+    if flow.shape != (2, RLDS_HEIGHT, RLDS_WIDTH):
+        raise ValueError(
+            f"Expected one native flow (2,180,320), got {tuple(flow.shape)}."
+        )
+    finite = torch.isfinite(flow).all(dim=0)
     if validity is not None:
         mask = validity.bool()
-        if mask.dim() == 4 and mask.shape[1] == 1:
-            mask = mask[:, 0]
-        if mask.shape != magnitude.shape:
-            raise ValueError(
-                f"Flow validity {tuple(mask.shape)} does not match {tuple(magnitude.shape)}."
-            )
-        magnitude = magnitude.masked_fill(~mask, 0.0)
-    if aggregation == "max":
-        return magnitude.amax(dim=0)
-    if aggregation == "mean":
-        return magnitude.mean(dim=0)
-    if aggregation == "sum":
-        return magnitude.sum(dim=0)
-    raise ValueError(f"Unknown flow aggregation {aggregation!r}.")
+        if mask.shape == (1, RLDS_HEIGHT, RLDS_WIDTH):
+            mask = mask[0]
+        if mask.shape != (RLDS_HEIGHT, RLDS_WIDTH):
+            raise ValueError("Forward-splat validity must be (1,180,320) or (180,320).")
+        finite &= mask
+    y, x = torch.meshgrid(
+        torch.arange(RLDS_HEIGHT, device=flow.device),
+        torch.arange(RLDS_WIDTH, device=flow.device),
+        indexing="ij",
+    )
+    destination_x = torch.round(x.float() + flow[0].float()).long()
+    destination_y = torch.round(y.float() + flow[1].float()).long()
+    usable = (
+        finite
+        & (destination_x >= 0)
+        & (destination_x < RLDS_WIDTH)
+        & (destination_y >= 0)
+        & (destination_y < RLDS_HEIGHT)
+    )
+    output = torch.zeros(
+        RLDS_HEIGHT * RLDS_WIDTH, device=flow.device, dtype=torch.float32
+    )
+    if usable.any():
+        linear = destination_y[usable] * RLDS_WIDTH + destination_x[usable]
+        magnitude = torch.linalg.vector_norm(flow.float(), dim=0)[usable]
+        output.scatter_reduce_(0, linear, magnitude, reduce="amax", include_self=True)
+    output = output.reshape(RLDS_HEIGHT, RLDS_WIDTH)
+    if fill_holes and usable.any():
+        occupancy = torch.zeros_like(output, dtype=torch.bool)
+        occupancy.reshape(-1).scatter_(0, linear, True)
+        neighborhood = F.max_pool2d(output[None, None], 3, 1, 1)[0, 0]
+        neighbor_occupancy = F.max_pool2d(occupancy[None, None].float(), 3, 1, 1)[
+            0, 0
+        ].bool()
+        output = torch.where(~occupancy & neighbor_occupancy, neighborhood, output)
+    return output
+
+
+def middle_frame_motion_map(
+    flow_01: torch.Tensor,
+    validity_01: torch.Tensor | None,
+    flow_12: torch.Tensor,
+    validity_12: torch.Tensor | None,
+) -> torch.Tensor:
+    """Combine F01 and F12 only after moving F01 onto the t1 source grid."""
+
+    warped_01 = forward_splat_flow_magnitude(flow_01, validity_01)
+    if flow_12.shape != (2, RLDS_HEIGHT, RLDS_WIDTH):
+        raise ValueError("F12 must use the native (2,180,320) middle-frame grid.")
+    direct_12 = torch.nan_to_num(
+        torch.linalg.vector_norm(flow_12.float(), dim=0),
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0,
+    )
+    if validity_12 is not None:
+        valid_12 = validity_12.bool()
+        if valid_12.shape == (1, RLDS_HEIGHT, RLDS_WIDTH):
+            valid_12 = valid_12[0]
+        if valid_12.shape != (RLDS_HEIGHT, RLDS_WIDTH):
+            raise ValueError("F12 validity must be (1,180,320) or (180,320).")
+        direct_12 = direct_12.masked_fill(~valid_12, 0.0)
+    return torch.maximum(warped_01, direct_12)
+
+
+def build_middle_frame_motion_maps(
+    flow_01: torch.Tensor,
+    validity_01: torch.Tensor | None,
+    flow_12: torch.Tensor,
+    validity_12: torch.Tensor | None,
+    config: MotionCropConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    native = middle_frame_motion_map(flow_01, validity_01, flow_12, validity_12)
+    padded = _pad_motion_map(native, config)
+    return padded, smooth_motion_map(padded, config.flow_smoothing_kernel)
 
 
 def _pad_motion_map(score: torch.Tensor, config: MotionCropConfig) -> torch.Tensor:
@@ -193,7 +208,9 @@ def _real_pixel_fraction(transform: SpatialTransform) -> float:
     source_bottom = transform.pad_top + transform.source_height
     crop_top = transform.crop_y
     crop_bottom = transform.crop_y + transform.crop_size
-    vertical_overlap = max(0, min(source_bottom, crop_bottom) - max(source_top, crop_top))
+    vertical_overlap = max(
+        0, min(source_bottom, crop_bottom) - max(source_top, crop_top)
+    )
     source_left = transform.pad_left
     source_right = transform.pad_left + transform.source_width
     crop_left = transform.crop_x
@@ -202,26 +219,6 @@ def _real_pixel_fraction(transform: SpatialTransform) -> float:
         0, min(source_right, crop_right) - max(source_left, crop_left)
     )
     return float(vertical_overlap * horizontal_overlap) / float(transform.crop_size**2)
-
-
-def build_motion_maps(
-    flows: torch.Tensor,
-    validity: torch.Tensor | None,
-    config: MotionCropConfig,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Aggregate, pad, and smooth MEMFOF motion before crop selection.
-
-    Keeping this stage separate makes the online profiler able to distinguish
-    flow post-processing from the small feasible-argmax crop-selection step.
-    Both returned maps use the padded ``320 x 320`` image grid.
-    """
-
-    aggregate = aggregate_flow_magnitude(
-        flows, validity, aggregation=config.flow_aggregation
-    )
-    padded = _pad_motion_map(aggregate, config)
-    smoothed = smooth_motion_map(padded, config.flow_smoothing_kernel)
-    return padded, smoothed
 
 
 def select_motion_crop_from_maps(
@@ -247,9 +244,7 @@ def select_motion_crop_from_maps(
     half_right = size - half_left
     minimum = half_left
     maximum = config.padded_size - half_right
-    feasible = smoothed_motion_map[
-        minimum : maximum + 1, minimum : maximum + 1
-    ]
+    feasible = smoothed_motion_map[minimum : maximum + 1, minimum : maximum + 1]
     if feasible.numel() == 0:
         raise RuntimeError("No feasible center exists for the sampled crop size.")
     flat_index = int(feasible.reshape(-1).argmax().item())
@@ -294,30 +289,8 @@ def select_motion_crop_from_maps(
     )
 
 
-def select_motion_crop(
-    flows: torch.Tensor,
-    validity: torch.Tensor | None,
-    crop_size: int,
-    config: MotionCropConfig,
-) -> MotionCropSelection:
-    """Select the deterministic highest-flow feasible center for one camera."""
-    aggregate, smoothed = build_motion_maps(flows, validity, config)
-    return select_motion_crop_from_maps(aggregate, smoothed, crop_size, config)
-
-
-def randomize_camera_order(rng: random.Random) -> tuple[int, int]:
-    return (0, 1) if rng.random() < 0.5 else (1, 0)
-
-
 class EpisodeGroupedDistributedSampler(DistributedSampler):
-    """DistributedSampler that keeps shuffled frame indices grouped by episode.
-
-    DROID TFDS episodes are expensive to materialize. The ordinary shuffled
-    sampler scatters adjacent requests across the entire dataset and defeats
-    each worker's episode cache. This variant still gives every rank the same
-    sample count, supports ``set_epoch``, and pads/drops exactly like
-    ``DistributedSampler``, while making episode decoding sequential at scale.
-    """
+    """Keep windows grouped by episode so indexed-shard reads retain locality."""
 
     def __iter__(self):
         ranges = getattr(self.dataset, "episode_index_ranges", None)

@@ -1,9 +1,9 @@
-[submodule "third_party/XLens"]
-	path = third_party/XLens
-	url = https://github.com/zhouhengamerica/XLens.git
-[submodule "third_party/MEMFOF"]
-	path = third_party/MEMFOF
-	url = https://github.com/msu-video-group/memfof.git
 [submodule "third_party/LagerNVS"]
 	path = third_party/LagerNVS
 	url = https://github.com/facebookresearch/lagernvs.git
+[submodule "third_party/Depth-Anything-3"]
+	path = third_party/Depth-Anything-3
+	url = https://github.com/ByteDance-Seed/Depth-Anything-3.git
+[submodule "third_party/MegaFlow"]
+	path = third_party/MegaFlow
+	url = https://github.com/cvg/megaflow.git

@@ -13,6 +13,7 @@ buffer/
 dataset/assets/sea_raft/*.pth
 .inspection/
 .venv/
+.preprocessing-envs/
 .uv-cache/
 .pytest_tmp/
 .pytest_cache/

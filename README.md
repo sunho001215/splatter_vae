@@ -1,504 +1,342 @@
-# SplatterVAE DROID pretraining
+# SplatterVAE DROID Stage-0 pretraining
 
-This `DROID` branch implements online-teacher pretraining for a reusable
-three-frame ViT-S/16 representation. It preserves the Dynamic3D Gaussian
-decoder and visualization foundations while replacing task-specific/offline
-teacher paths with:
+Full preprocessing is currently **on quality hold**. RGB, DA3, and MegaFlow
+have 791 completion markers each, but DA3 metric quality is under investigation;
+LagerNVS has 15 completed shards and final composition has not started.
+See [the 2026-09-07 incident report](docs/droid-stage0-quality-incident-2026-09-07.md).
+The earlier pilot approval does not resolve this incident. The launcher and
+direct stage workers fail closed while
+`reports/preprocessing_quality_hold.json` exists under the dataset root.
+Only archive that marker after an explicitly reviewed and validated resolution;
+do not bypass it or relax the pose thresholds to resume.
 
-- online X-Lens metric depth;
-- online MEMFOF `MEMFOF-Tartan-T-TSKH` flow at native DROID resolution with
-  exactly two refinement iterations;
-- optional online LagerNVS posed novel-view supervision, run for every logical
-  sample whenever the Boolean `novel_view.enabled` flag is true.
+The `DROID` branch trains the temporal ViT-S and Dynamic3D Gaussian decoder
+only from an offline, self-contained Stage-0 cache. Normal training performs
+indexed shard reads, motion-aware transforms, model forward/rendering, losses,
+and backward; it does not import or execute a foundation model.
 
-The DROID source is always read-only. Neural teacher predictions are never
-persistently cached.
-
-## Pipeline
-
-```text
-raw DROID RGB [B,2 cameras,3 times,3,180,320]
-  |
-  +-- MEMFOF, native 180x320, iters=2
-  |     -> middle-to-previous and middle-to-next flow
-  |     -> max magnitude, smoothing, feasible argmax
-  |     -> one motion-centered Uniform{180,...,320} crop per camera
-  |     -> same crop across t0/t1/t2 -> 224x224 ViT input
-  |
-  +-- X-Lens, online frozen teacher
-  |     -> metric depth, confidence, validity
-  |     -> same 224x224 geometric transform for real-view losses
-  |     -> raw-grid geometry for workspace and target coverage
-  |
-  +-- LagerNVS branch (when enabled), before the random ViT crop
-        -> raw current exterior A/B views
-        -> deterministic canonical 256x256 cameras
-        -> arc interpolation + bounded perturbation + X-Lens coverage check
-        -> LagerNVS RGB and GS render compared directly at 256x256
-```
-
-The flow-centered 224x224 crop is never used as LagerNVS conditioning. The two
-camera pipelines intentionally branch at raw 320x180 RGB.
-
-## Data and write-safety contract
-
-Run development only from:
+The original DROID release is strictly read-only:
 
 ```text
-/home/ws/ws/droid_training
+source RLDS:       /home/ws/data/droid
+derived Stage-0:   /home/ws/data/droid_stage0_preprocessed
+code:              /home/ws/ws/droid_training
 ```
 
-Storage domains are separate:
+Every output entry point rejects a destination inside the source tree.
+Dynamic3D remains the rendering/visualization base and is not modified by the
+offline data workflow.
+
+## Cached pipeline contract
+
+Only episodes marked valid by the canonical Stage-0 calibration manifest are
+eligible. The exact full manifest currently contains:
 
 ```text
-code:          /home/ws/ws/droid_training
-DROID source:  /home/ws/data/droid/               strictly read-only
-derived data:  /ws/data/ws/droid_splattervae/     configurable
-project output:/home/ws/ws/droid_training/outputs/
+eligible episodes       33,195
+raw timesteps         9,502,985
+raw exterior frames  19,005,970
+retained timesteps    3,178,786
+training windows      3,046,082
+deterministic shards        791
 ```
 
-`/ws/data/ws/droid/` was the previously supplied, incorrect dataset path. It is
-not used by config, validation, preprocessing, training, or smoke commands.
+One record is stored for each raw timestamp `0,3,6,...`; temporal windows are
+references into that timeline, never duplicated payloads. A training history
+uses retained indices `[i,i+2,i+4]`, corresponding to raw timestamps
+`[t,t+6,t+12]`.
 
-Every output entrypoint rejects paths inside or containing the DROID source.
-Real-data validators fingerprint the source before and after execution. The
-audited metadata fingerprint is:
+Each retained record contains:
+
+- two native `320x180` real-camera JPEGs;
+- two `uint16` millimeter DA3 depth maps (`0` is invalid);
+- two native `180x320` forward MegaFlow fields for `t -> t+6`, when present;
+- four canonical `256x256` LagerNVS JPEGs and target-camera metadata;
+- real-camera intrinsics and `c2w`/`w2c`, compact support masks, and record
+  metadata.
+
+Depth and flow arrays use bitshuffle + Zstd level 3 in individually indexed
+payloads. Flow is signed int16 fixed point at `1/64` pixel and reserves
+`-32768` for invalid values. RGB modalities both use deterministic JPEG Q95,
+4:4:4 chroma, non-progressive encoding. TAR streams are uncompressed and have
+sidecar random-access indexes and checksums.
+
+New Lager records also store the selected pose-safety tier, its coverage and
+clearance thresholds, and whether the bounded translation limit was escalated.
+The small set of already-complete schema-2 shards predates exceptional tiers;
+the reader deterministically interprets those records as ordinary strict-tier
+poses.
+
+## Offline teachers
+
+The three teachers run only in preprocessing and have isolated Python 3.12,
+PyTorch 2.8/CUDA 12.8 environments under `.preprocessing-envs`:
 
 ```text
-files:  2,051
-bytes:  1,866,281,754,039
-SHA256: 6f90d6f97e73d36e0243d89fe6e26621c05670c299294ee3759b0ed370d99ad3
+DA3 repository       ByteDance-Seed/Depth-Anything-3
+DA3 commit           3d835ec1a5802d64a8b8b15f817a1ab54809bfe4
+DA3 model            depth-anything/DA3NESTED-GIANT-LARGE-1.1
+DA3 revision         b2359bdf726fb44ef62acca04d629dcf158053e7
+
+MegaFlow repository  cvg/megaflow
+MegaFlow commit      ee5b61813db0a76ac0db9034899aade72a0d230c
+MegaFlow model       megaflow-flow (Kristen-Z/MegaFlow)
+MegaFlow revision    b4c5c33800b8fa88e047d2eb70ae74b0feca606d
+
+LagerNVS repository  facebookresearch/lagernvs
+LagerNVS commit      665f727aba8298a04ff4c040fd6279a32ef23017
+LagerNVS model       facebook/lagernvs_dl3dv_2-6_v_256
+LagerNVS revision    4026552953a72c5fb037501564dc673dd73c574e
 ```
 
-The source exposes TFDS/RLDS builder `1.0.1`, one `train` split, 95,658
-episodes, and 2,048 TFRecord shards. Each step has synchronized
-`exterior_image_1_left`, `exterior_image_2_left`, and `wrist_image_left` uint8
-RGB at `H x W x C = 180 x 320 x 3`. Initial geometry training uses only the two
-calibrated exterior cameras.
+DA3 receives the synchronized exterior-camera pair at one timestamp and uses
+the calibrated posed two-view metric path. MegaFlow stores only forward
+`t -> t+6` flow and reconstructs all fields through the two retained phases.
+LagerNVS encodes the two source images once and renders four targets from the
+shared reconstruction. Target alphas are symmetric: two lie in
+`[0.15,0.35]`, two in `[0.65,0.85]`, and the center band is excluded. Poses
+use SLERP/scene-centered interpolation, ordinary perturbations bounded by
+`0.03` baseline and `3` degrees, DA3 geometry clearance, coverage checks, and
+deterministic resampling. If all ordinary candidates are exhausted, an
+explicitly flagged bounded tier permits at most `0.05` baseline translation;
+the final flagged safety tier permits no less than `0.40` source coverage and
+uses a source-calibrated robust-clearance floor. That floor is 80% of the
+alpha-interpolated clearance of the two known-physical source cameras, clipped
+to `[0.02,0.05] m`; this avoids demanding more clearance than the real camera
+rig itself has while retaining a hard 2 cm collision floor. Rotation remains
+bounded by `3` degrees in every tier. The exact tier contract and signature are stored in
+`metadata/lagernvs-pose-safety-contract.json`.
 
-## Calibration audit
+Worker provenance files record the complete package inventory, source commit,
+model/checkpoint revision, device, and encoding contract. See
+`preprocessing/environments/README.md` for environment details.
 
-The full canonical Stage-0 manifest is configured at:
+## Training transforms and masks
 
-```text
-/ws/data/ws/droid_splattervae/manifests/canonical-full/calibration.jsonl.gz
-```
+For each physical camera, cached `F01` magnitude is forward-splatted onto the
+middle-frame grid and combined with `F12`. The crop center is the maximum of
+the smoothed aggregate inside the feasible region; zero motion uses the fixed
+image center. A square size is sampled uniformly from `[180,320]` after
+adding 70 pixels of vertical padding on both sides. The same crop is applied to
+all three real RGB/depth/flow grids and intrinsics, then resized to `224x224`;
+flow vectors are scaled with the resize. Lager targets remain in their
+canonical `256x256` camera domain.
 
-Full-release results:
+Vertical padding is not content. Patch validity is derived from real-pixel
+coverage: zero-coverage patches are invalid, while partially covered boundary
+patches remain valid. Sixty percent tube masking is computed relative to each
+sample's valid patch count. Half of the visible patches are motion-prioritized
+and half random, all from valid positions. Variable visible-token counts are
+padded only at batch collation, and explicit attention masks prevent dummy
+tokens from affecting CLS, valid patch tokens, or Gaussian cross-attention.
 
-```text
-episodes inspected                 95,658
-official-path matches              73,361
-Stage-0 valid                      33,195
-rejected                           62,463
-train / validation                 32,905 / 290
-insufficient exterior geometry     36,010
-official-path match failed         22,034
-invalid intrinsics                  1,518
-missing intrinsics                  1,156
-direct/relative disagreement        1,111
-```
+Inference disables SSL masking, returns `cls_token [B,384]`, scatters current
+tokens into `patch_tokens [B,196,384]`, and returns
+`patch_validity [B,196]`. The decoder produces `256 x 8 = 2,048` Gaussians.
 
-Official 1280x720 intrinsics are transformed exactly to the RLDS 320x180 grid.
-`cam2base` is interpreted as `T_base<-camera`; robot base is the world frame.
-
-## Motion-centered preprocessing
-
-For every logical sample, one integer crop size is sampled uniformly from the
-closed interval `[180,320]`. There is no global/local mixture and no random
-spatial center.
-
-For each physical camera independently:
-
-1. Run MEMFOF on `[t0,t1,t2]` at 180x320.
-2. Compute backward and forward flow magnitudes on the middle-frame grid.
-3. Aggregate with `max`, pad the motion map by 70 pixels above and below, and
-   smooth with a 15x15 average kernel.
-4. Restrict candidate centers to those that keep the sampled square inside the
-   320x320 canvas.
-5. Select the exact feasible argmax. Only an effectively zero map uses the
-   deterministic `(160,160)` fallback.
-6. Apply this one crop to all three frames and every aligned modality.
-7. Resize to 224x224. RGB uses bicubic interpolation; depth, confidence,
-   validity, and flow use modality-appropriate transforms.
-
-The original camera intrinsic `(fx,fy,cx,cy)` becomes, for crop origin
-`(x0,y0)` and `scale=224/crop_size`:
-
-```text
-fx' = fx * scale
-fy' = fy * scale
-cx' = (cx - x0) * scale
-cy' = (cy + 70 - y0) * scale
-```
-
-Spatially resized optical-flow vectors are also multiplied by `scale`. Padded
-pixels are invalid for RGB, metric-depth, SI-depth, and flow losses. No semantic
-segmentation input or mask exists.
-
-The deterministic 100,000-draw audit observed the complete integer interval,
-a mean of 249.982 versus the expected 250.0, and no endpoint mixture.
-
-## Teachers and checkpoints
-
-### X-Lens
-
-The manually supplied checkpoint was moved from `/home/ws/model.safetensors`
-to:
-
-```text
-/home/ws/ws/droid_training/checkpoints/xlens/model.safetensors
-```
-
-It is 148 MiB and has SHA256:
-
-```text
-266a0340b53e5cb996cc613a1b0c5966b5bcaeee1ec7c4431e4fc6e7d1e58a0c
-```
-
-The safetensors state dictionary is strictly compatible with the pinned
-official ViT-S X-Lens configuration. The teacher is frozen, `eval()`, and runs
-under inference mode with BF16 autocast.
-
-### MEMFOF
-
-Pinned sources and weights:
-
-```text
-repository commit: a51de9fc59c6fe20ba08e079372c7b583d58a712
-model ID:          egorchistov/optical-flow-MEMFOF-Tartan-T-TSKH
-model revision:    6c6c9aa3ad64f93aee8efbc2f7a6e4535814ee96
-input:             [B,3,3,180,320] per camera
-directions:        middle -> previous, middle -> next
-iterations:        exactly 2
-precision:         FP32
-```
-
-The pinned implementation needs one narrowly scoped correlation-pyramid fix at
-native 180x320: it avoids an unused zero-size post-final downsample while
-leaving every constructed correlation level unchanged.
-
-Important quality finding: tensor shape, direction order, iteration count, and
-crop argmax behavior pass, but the real-DROID teacher quality audit does not.
-Mean flow magnitude was 33.51 px and p95 was 69.51 px on near-static
-sequences; zero-flow photometric L1 was 0.0062-0.0064 while the official MEMFOF
-warp error was 0.181-0.231. Identical frames produced 31.04 px mean and 67.14 px
-p95 flow. The machine-readable smoke result therefore marks
-`failed_real_photometric_sanity`. Do not interpret the mandated checkpoint and
-two-iteration setting as validated supervision quality.
-
-### LagerNVS
-
-Pinned configuration:
-
-```text
-repository commit: 665f727aba8298a04ff4c040fd6279a32ef23017
-checkpoint ID:      facebook/lagernvs_dl3dv_2-6_v_256
-checkpoint revision:4026552953a72c5fb037501564dc673dd73c574e
-posed image size:   256x256
-```
-
-The checkpoint is Hugging Face gated. An accepted license and `HF_TOKEN` are
-required. Without that token, inference validation and LagerNVS-ON profiling
-produce an explicit blocked summary rather than silently skipping samples.
-
-The target sampler uses the two exterior cameras, quaternion SLERP, and
-scene-centered camera-center arc interpolation when stable. Defaults are:
-
-```text
-alpha                         Uniform(0.15,0.85)
-translation perturbation     <= 0.03 source baseline
-rotation perturbation        <= 3 degrees, no roll axis
-minimum source coverage      0.60
-resample attempts            4
-fallback                     conservative unperturbed midpoint
-```
-
-On 152 real X-Lens-backed targets across eight episodes, scene-centered arc was
-used for every target, coverage was 0.8918 minimum and 0.9522 mean, no candidate
-was rejected, and no fallback was needed. Translation and rotation maxima were
-0.02977 baseline and 2.9948 degrees. These findings support the conservative
-defaults; they do not substitute for actual LagerNVS image-quality validation.
-
-## Representation and losses
-
-- ViT-S/16 at 224x224: 384 dimensions, 12 blocks, 6 heads, RMSNorm, SwiGLU,
-  approximately ViT-S parameter scale.
-- Three-frame joint temporal attention with 60% tube masking.
-- Output CLS `[B,384]` and current-frame patches `[B,196,384]`.
-- Cross-view InfoNCE between synchronized exterior-camera histories.
-- 256 parent/group queries, eight children per group, 2,048 dynamic Gaussians.
-- Real RGB L1 + SSIM, X-Lens metric L1 + SI depth, MEMFOF flow/dynamics,
-  visibility, and segmentation-independent Gaussian regularization.
-- When enabled, visibility-aware LagerNVS RGB supervision at canonical 256x256
-  with supported/unsupported pixel weights 1.0/0.0.
-
-There is no segmentation, representation-consistency loss, SSL/EMA teacher,
-action-conditioned future-latent prediction, or PointWorld path.
-
-Encoder-only inference is independent of pretraining heads:
-
-```python
-features = model.inference_features(history)  # [B,3,3,224,224]
-cls_token = features["cls_token"]             # [B,384]
-patch_tokens = features["patch_tokens"]       # [B,196,384]
-```
-
-## Environment setup
+## Setup
 
 ```bash
 cd /home/ws/ws/droid_training
 git submodule update --init --recursive
 uv venv --python 3.10 .venv
 uv sync --all-extras
-export PATH=/home/ws/ws/droid_training/.venv/bin:$PATH
-export PYTHONPATH=/home/ws/ws/droid_training
+export PATH="$PWD/.venv/bin:$PATH"
+export PYTHONPATH="$PWD"
+
+# Isolated offline-teacher environments.
+./scripts/create_droid_preprocessing_envs.sh
 ```
 
-For a fresh checkout containing the manually placed X-Lens checkpoint:
+All CUDA commands must expose only these devices:
 
 ```bash
-mkdir -p /home/ws/ws/droid_training/checkpoints/xlens
-mv /home/ws/model.safetensors \
-  /home/ws/ws/droid_training/checkpoints/xlens/model.safetensors
-sha256sum /home/ws/ws/droid_training/checkpoints/xlens/model.safetensors
+GPU4=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
+GPU5=GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+GPU6=GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b
 ```
 
-Checkpoint/model-cache directories are gitignored; do not commit model weights.
+## Manifest, pilot, and quality gates
 
-Every GPU command must expose only the authorized GPU:
+Rebuild the exact full manifest without reading image payloads:
 
 ```bash
-export CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
-.venv/bin/python -c 'import torch; print(torch.cuda.device_count(), torch.cuda.current_device(), torch.cuda.get_device_name(0))'
+.venv/bin/python -m scripts.preprocess_droid_stage0 manifest \
+  --root /home/ws/data/droid_stage0_preprocessed \
+  --droid-root /home/ws/data/droid --mode full \
+  --target-retained-per-shard 4096 \
+  --jpeg-quality 95 --jpeg-subsampling 4:4:4 --zstd-level 3
 ```
 
-Inside applications the device is always `cuda:0`.
-
-## Calibration, loader, and workspace commands
+Create and run a representative pilot (safe to rerun):
 
 ```bash
-CFG=config/splattervae/droid/pretrain.yaml
+.venv/bin/python -m scripts.preprocess_droid_stage0 manifest \
+  --root /home/ws/data/droid_stage0_preprocessed/pilot \
+  --droid-root /home/ws/data/droid --mode pilot --pilot-episodes 12 \
+  --target-retained-per-shard 256 \
+  --jpeg-quality 95 --jpeg-subsampling 4:4:4 --zstd-level 3
 
-# Build the full official post-hoc calibration manifest read-only against RLDS.
-.venv/bin/python scripts/prepare_droid_calibration.py --config "$CFG"
-
-# Real loader/schema check, including spawned workers.
-.venv/bin/python scripts/validate_droid_loader.py \
-  --config "$CFG" --split validation --workers 2 --samples 4
-
-# Reproduce the audited 76-episode, three-frame online X-Lens workspace sample.
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  .venv/bin/python scripts/compute_droid_workspace_stats.py \
-  --config "$CFG" \
-  --maximum-episodes 76 \
-  --frames-per-episode 3 \
-  --teacher-frame-batch 3 \
-  --output outputs/teacher_validation/xlens/workspace_stats_76x3.json
+CUDA_VISIBLE_DEVICES="$GPU4,$GPU5,$GPU6" \
+  .venv/bin/python -m scripts.preprocess_droid_stage0 run \
+  --root /home/ws/data/droid_stage0_preprocessed/pilot \
+  --droid-root /home/ws/data/droid --workers 3 \
+  --allow-missing-pilot-gate --integrity full
 ```
 
-The selected real-X-Lens workspace parameters are:
-
-```text
-global_center             [0.626891, 0.037195, 0.157134] m
-anchor spread              0.463211 m
-parent displacement scale  0.304793 m
-child radius               0.053339 m
-znear / zfar               0.292888 / 7.307050 m
-```
-
-They are checked into YAML with status
-`validated_from_droid_xlens_stats_and_pilot` and were stable in a ten-step real
-optimizer pilot.
-
-## Teacher and geometry validation commands
+Audit quality, codecs, capacity, loader throughput, workspace scale, and the
+real cached training step:
 
 ```bash
-CFG=config/splattervae/droid/pretrain.yaml
-WS=outputs/teacher_validation/xlens/workspace_stats_76x3.json
-GPU=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
+.venv/bin/python -m scripts.audit_droid_stage0_pilot \
+  --root /home/ws/data/droid_stage0_preprocessed/pilot
 
-# Real X-Lens + MEMFOF + crop + K/flow/depth + forward/backward/render smoke.
-CUDA_VISIBLE_DEVICES="$GPU" .venv/bin/python \
-  scripts/smoke_test_real_droid_gpu.py \
-  --config "$CFG" --workspace-stats "$WS" --samples 2 \
-  --output-root outputs/teacher_validation/online_smoke_final
+CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python \
+  -m scripts.benchmark_droid_stage0 \
+  --pilot-root /home/ws/data/droid_stage0_preprocessed/pilot \
+  --full-root /home/ws/data/droid_stage0_preprocessed
 
-# Real target-pose distribution and X-Lens coverage, no Lager checkpoint needed.
-CUDA_VISIBLE_DEVICES="$GPU" .venv/bin/python \
-  scripts/validate_lagernvs_target_poses.py \
-  --config "$CFG" --workspace-stats "$WS" \
-  --samples 8 --draws-per-sample 16 \
-  --output-root outputs/teacher_validation/lagernvs/target_pose_distribution
-
-# Actual official LagerNVS inference; writes a blocked summary if access is gated.
-CUDA_VISIBLE_DEVICES="$GPU" .venv/bin/python \
-  scripts/validate_lagernvs_droid.py \
-  --config "$CFG" --workspace-stats "$WS" --samples 4 \
-  --output-root outputs/teacher_validation/lagernvs/inference
-```
-
-After accepting the LagerNVS model terms, expose `HF_TOKEN` in the shell before
-the last command. Do not place Hugging Face caches in the DROID source.
-
-## Training, W&B validation, and resume
-
-LagerNVS OFF:
-
-```bash
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  torchrun --standalone --nproc_per_node=1 scripts/train_droid.py \
+.venv/bin/python -m scripts.compute_droid_workspace_stats \
   --config config/splattervae/droid/pretrain.yaml \
-  --novel-view-disabled
+  --preprocessed-root /home/ws/data/droid_stage0_preprocessed/pilot \
+  --maximum-episodes 12 --frames-per-episode 8 \
+  --output /home/ws/data/droid_stage0_preprocessed/pilot/reports/workspace_stats_da3.json
+
+CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python \
+  -m scripts.profile_droid_cached \
+  --config config/splattervae/droid/pretrain.yaml \
+  --preprocessed-root /home/ws/data/droid_stage0_preprocessed/pilot \
+  --iterations 20 --warmup 3 --batch-size 1 --workers 4
+
+# Run only after manually inspecting every codec/DA3/flow/Lager panel.
+.venv/bin/python -m scripts.build_droid_pilot_gate \
+  --pilot-root /home/ws/data/droid_stage0_preprocessed/pilot \
+  --jpeg-quality 95 --visual-quality-reviewed
 ```
 
-LagerNVS ON every iteration and every logical sample:
+The current representative pilot has 12 episodes, 1,201 retained timestamps,
+1,153 windows, and six shards. Full payload integrity and all automatic teacher
+quality gates pass. Its empirical projection is approximately 1.030 TB final,
+1.015 TB peak staging, and 2.463 TB required after recovery and 20% safety
+overhead. Capacity is always recalculated from current free space before a full
+launch.
+
+## Full resumable preprocessing
+
+After any pose-sampler recovery change, audit every remaining shard from
+cached DA3 geometry before launching LagerNVS. Run one process per authorized
+GPU with worker IDs 0, 1, and 2 (shown here for worker 0; substitute the other
+UUID/ID pairs):
 
 ```bash
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  torchrun --standalone --nproc_per_node=1 scripts/train_droid.py \
-  --config config/splattervae/droid/pretrain.yaml \
-  --novel-view-enabled
+CUDA_VISIBLE_DEVICES="$GPU4" PYTHONPATH=. .venv/bin/python \
+  scripts/audit_lagernvs_pose_safety.py \
+  --root /home/ws/data/droid_stage0_preprocessed \
+  --worker-id 0 --worker-count 3 --device cuda:0 \
+  --skip-completed-lager
 ```
 
-One-step deterministic offline-W&B validation:
+Every passing shard report is bound to both the dataset signature and the full
+pose-sampler contract signature, so stale reports are recomputed on resume.
+
+Preview the exact worker/stage commands:
 
 ```bash
-WANDB_MODE=offline \
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  torchrun --standalone --nproc_per_node=1 scripts/train_droid.py \
-  --config config/splattervae/droid/pretrain.yaml \
-  --novel-view-disabled --wandb-enabled --run-name droid-validation \
-  --max-steps 1 --per-gpu-batch 1 --gradient-accumulation 1 --workers 0 \
-  --validation-every-steps 1 --visualization-every-steps 1 \
-  --checkpoint-every-steps 1 --validation-batches 1 \
-  --num-visualization-samples 1 \
-  --checkpoint-dir outputs/wandb_validation/checkpoints \
-  --visualization-dir outputs/wandb_validation/visualization
+CUDA_VISIBLE_DEVICES="$GPU4,$GPU5,$GPU6" \
+  .venv/bin/python -m scripts.preprocess_droid_stage0 run \
+  --root /home/ws/data/droid_stage0_preprocessed \
+  --droid-root /home/ws/data/droid --workers 3 \
+  --stages lagernvs compose \
+  --pilot-gate /home/ws/data/droid_stage0_preprocessed/pilot/reports/pilot_gate.json \
+  --require-lagernvs-pose-audit \
+  --integrity full --dry-run
 ```
 
-Short real-DROID pilot:
+Launch, or resume, with the same command after removing `--dry-run`.
+Shard assignment is deterministic (`shard_id mod 3`), completed shards are
+checksum-verified and skipped, incomplete output uses `*.partial`, and each
+worker writes a disjoint shard set. Inspect state without modifying it:
 
 ```bash
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  torchrun --standalone --nproc_per_node=1 scripts/train_droid.py \
-  --config config/splattervae/droid/pretrain.yaml \
-  --novel-view-disabled --max-steps 10 --per-gpu-batch 1 \
-  --gradient-accumulation 1 --workers 2 \
-  --validation-every-steps 5 --visualization-every-steps 5 \
-  --checkpoint-every-steps 5 --validation-batches 1 \
-  --checkpoint-dir outputs/pilot_corrected/checkpoints \
-  --visualization-dir outputs/pilot_corrected/visualization
+.venv/bin/python -m scripts.preprocess_droid_stage0 status \
+  --root /home/ws/data/droid_stage0_preprocessed \
+  --droid-root /home/ws/data/droid
 ```
 
-Resume from the corrected step-10 checkpoint:
+The multi-day command must be launched persistently with stdout/stderr, PID,
+start time, GPU assignment, schema signature, command, and final exit status
+recorded. The orchestrator also writes one-minute, per-stage utilization and
+memory telemetry for exactly the three authorized GPU UUIDs. A healthy process
+is inspected at most once every six hours.
+
+## Integrity and loader checks
+
+The integrity scan checks recorded translation/rotation against the actual pose
+matrices. On its distributed random/evenly spaced sample, it independently
+reconstructs source and target clearances from cached DA3 depth and calibrated
+cameras using NumPy. The report records how many timestamps received this
+geometry check; metadata consistency alone is not treated as geometry evidence.
 
 ```bash
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  torchrun --standalone --nproc_per_node=1 scripts/train_droid.py \
+.venv/bin/python -m scripts.check_droid_stage0_integrity \
+  --root /home/ws/data/droid_stage0_preprocessed \
+  --random-samples 512 --loader-windows 512 \
+  --full-payload-scan --decode-all-jpegs --finalize
+
+.venv/bin/python -m scripts.validate_droid_loader \
   --config config/splattervae/droid/pretrain.yaml \
-  --novel-view-disabled --resume \
-  outputs/pilot_corrected/checkpoints/step-00000010.pt
+  --preprocessed-root /home/ws/data/droid_stage0_preprocessed \
+  --split validation --workers 4 --samples 512
 ```
 
-## Checkpoint analysis
+## Cached training, DDP, and resume
 
-Evaluate every meaningful existing checkpoint on the same deterministic real
-DROID batch:
+Single GPU:
 
 ```bash
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  .venv/bin/python scripts/analyze_droid_checkpoints.py \
-  --config config/splattervae/droid/pretrain.yaml \
-  --checkpoint-dir outputs/pilot/checkpoints \
-  --checkpoint-dir outputs/pilot_corrected/checkpoints \
-  --checkpoint-dir outputs/resume_validation/checkpoints \
-  --validation-samples 2 \
-  --output-root outputs/checkpoint_analysis
+CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -m scripts.train_droid \
+  --config config/splattervae/droid/pretrain.yaml
 ```
 
-Outputs are `metrics.csv`, `summary.json`, `plots/`, and `qualitative/`.
-Current selections are step 11 for RGB and dynamics, step 5 for depth and
-overall, and step 1 for representation only because every short checkpoint has
-the same collapse warning: positive and negative cosine similarities are both
-1.0. Novel-view checkpoint metrics remain unavailable until LagerNVS inference
-is authorized.
-
-## End-to-end profiling
-
-The profiler uses CUDA events and synchronization, separates cold load from
-steady state, clears allocator caches between batch points, records allocated
-and reserved memory, and profiles target interpolation, perturbation, coverage,
-and resampling control separately.
+Three-GPU DDP:
 
 ```bash
-CUDA_VISIBLE_DEVICES=GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce \
-  .venv/bin/python scripts/profile_droid_end_to_end.py \
+CUDA_VISIBLE_DEVICES="$GPU4,$GPU5,$GPU6" \
+  .venv/bin/torchrun --standalone --nnodes=1 --nproc-per-node=3 \
+  -m scripts.train_droid --config config/splattervae/droid/pretrain.yaml
+```
+
+Resume either topology from a saved checkpoint:
+
+```bash
+CUDA_VISIBLE_DEVICES="$GPU4" .venv/bin/python -m scripts.train_droid \
   --config config/splattervae/droid/pretrain.yaml \
-  --mode both \
-  --batch-sizes 1,2,4,8,16,32,64,128,160,192,256 \
-  --offload-batch-size 64 \
-  --warmup-iterations 2 --iterations 5 \
-  --quiet \
-  --output-root outputs/profiling/final
+  --resume /absolute/path/to/step-XXXXXXXX.pt
 ```
 
-`--mode both` always profiles trainable-only and MEMFOF+X-Lens all-resident.
-It additionally profiles LagerNVS ON-every-iteration when the gated checkpoint
-loads; otherwise `profile.json` records the exact blocker. The sequential
-offload experiment moves frozen models between CPU and GPU without reloading
-weights from disk.
-
-## Visualization
-
-The existing Dynamic3D visualization remains the base. Rank 0 writes/logs a
-small fixed validation subset only at configured intervals, reusing teacher
-outputs from the validation forward pass. Namespaces include:
-
-```text
-val/input/          original t0/t1/t2 at 320x180
-val/memfof/         backward/forward flow, magnitude, aggregate/smoothed motion
-val/crop/           padded canvas, rectangle, center, crop size, 224 crop
-val/xlens/          metric depth, confidence/validity, GS depth and error
-val/reconstruction/ real RGB/depth/flow renders and errors
-val/lagernvs/       source views, target metadata, Lager/GS/error/support
-val/geometry/       t0 full cloud and camera-frame NPZ
-val/tracking/       t0->t1->t2 Gaussian trajectories
-```
-
-Square 224/256 images are mapped to a natural 320x180 display camera with
-intrinsic-aware resampling and a validity mask; they are never naively
-stretched. Full static point-cloud output is t0 only, while temporal tracking
-remains t0->t1->t2. The inherited backend reliably writes camera matrices and
-point clouds but does not render camera frustums itself.
+For an offline W&B visualization smoke, add `WANDB_MODE=offline`,
+`--wandb-enabled`, validation/visualization intervals of one, and explicit
+checkpoint/visualization directories. Validation reads cached teacher outputs;
+it never reruns a teacher. Panels include real timelines, both cached flow
+pairs and the aligned middle-frame aggregate, crop/padding validity, cached DA3
+versus rendered depth, RGB reconstructions, compact four-view Lager panels,
+t0-only Gaussian clouds, and t0-to-t1-to-t2 tracking.
 
 ## Tests
 
 ```bash
-.venv/bin/ruff check --select F,B,I,RUF022 \
-  --exclude third_party \
+.venv/bin/ruff check --select F,B,I,RUF022 --exclude third_party \
   dataset models preprocessing scripts tests
 .venv/bin/pytest -q
-.venv/bin/python -m compileall -q \
-  dataset models preprocessing scripts tests
+.venv/bin/python -m compileall -q dataset models preprocessing scripts tests
+git diff --check
 ```
 
-The tests cover dataset safety, RLDS schema, calibration, temporal sampling,
-padding/cropping, uniform crop sizes, flow argmax/fallback, temporal and
-cross-camera crop behavior, exact K/depth/flow/validity transforms, flow-vector
-scaling, Lager camera conventions, quaternion SLERP, coverage, bounded target
-sampling, model contracts, losses, DDP, checkpointing, and visualization
+Tests cover Stage-0 selection/indexing, codecs and sentinel behavior, atomic
+restart-safe shards, target alpha/pose safety, validity-aware tube masking,
+variable-token attention isolation, downstream shapes, finite reconstruction
+and loss gradients, cached-only imports, checkpoint resume, and distributed
 infrastructure.
 
-## Output organization
-
-```text
-outputs/checkpoint_analysis/
-outputs/profiling/
-outputs/teacher_validation/xlens/
-outputs/teacher_validation/memfof/
-outputs/teacher_validation/lagernvs/
-outputs/visualization/{input,crop,depth,reconstruction,lagernvs,geometry,tracking}/
-```
-
-Nothing in these workflows writes under `/home/ws/data/droid/`.
+Nothing in these workflows creates or modifies a file under
+`/home/ws/data/droid`.
