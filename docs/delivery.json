@@ -1,0 +1,32 @@
+{
+  "status": "implementation_and_validation_evidence_pushed",
+  "research_project_complete": false,
+  "repository": "https://github.com/sunho001215/splatter_vae",
+  "branch": "splatter4d",
+  "branch_url": "https://github.com/sunho001215/splatter_vae/tree/splatter4d",
+  "root_commit": "76b49fd0c10c969a27445bb37c847612f2508404",
+  "source_and_evidence_commit": "4544e3cfd3ce2e95e2032587458122a5fd4321fb",
+  "verified_remote_source_and_evidence_commit": "4544e3cfd3ce2e95e2032587458122a5fd4321fb",
+  "initial_push_succeeded": true,
+  "working_tree_clean_after_initial_push": true,
+  "logical_commits": [
+    {"commit": "76b49fd", "scope": "isolated foundation and assumptions"},
+    {"commit": "7b7b72b", "scope": "RGB state representation and Gaussian losses"},
+    {"commit": "6d4e9e0", "scope": "training, diagnostics, distributed tests and export"},
+    {"commit": "6e90063", "scope": "Meta-World collection and geometry validation"},
+    {"commit": "c4633d8", "scope": "real DROID adapters, dense validation and licensing"},
+    {"commit": "4544e3c", "scope": "measured evidence and honest acceptance blockers"}
+  ],
+  "receipt_note": "This receipt is a separate documentation-only commit after the verified source/evidence push. The final branch HEAD also contains this receipt.",
+  "test_result": {"passed": 157, "errors": 4, "failed_assertions": 0, "skipped": 0, "exit_code": 1},
+  "ruff_check_and_format_passed": true,
+  "full_test_suite_passed": false,
+  "remaining_blockers": [
+    "Native gsplat binary is incompatible with PyTorch; source/JIT builds remain disabled after permission denials",
+    "Full Meta-World data, missing workspace statistics and split manifests are not completed",
+    "Rendered training, overfits, timing, ablations, NCCL smoke and trained exports have not run",
+    "Obsolete cache deletion remains blocked and its required original-data invariance proof is absent",
+    "A baseline untracked hierarchical reference file is absent; its cause remains unknown"
+  ],
+  "results": "docs/RESULTS.md"
+}
