@@ -100,6 +100,7 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-07 18:45 | 5.0 TB |
 | 2026-10-07 19:02 | 5.0 TB (after timing-cnn-c1 finished; deleted runs/timing-cnn-c1/replay/, 0.98 GB) |
 | 2026-10-07 19:55 | 4.9 TB (timing runs finished; their replays are kept: no final evaluation) |
+| 2026-10-08 06:30 | 4.9 TB (stage0-drm-cnn-hammer-s2000 completed with final eval at 1M; deleted its replay/, 46 GB) |
 
 ## Next actions
 1. M2 iteration 3 -> record M2 outcome (RESULTS.md if still failing after three iterations).
