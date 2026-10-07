@@ -1,4 +1,56 @@
-# Results and acceptance record
+# Results
+
+Final numbers only; each links to its run. Thresholds are never relaxed. Process notes: `docs/EXPERIMENT_LOG.md`.
+
+## Meta-World campaign (2026-10-07 onward)
+
+### Phase A — runtime (R1)
+| Check | Result | Evidence |
+|---|---|---|
+| Standalone environment, gsplat/fused-ssim built for sm_120 | pass | `docs/runtime_versions.json` |
+| Native rasterization, GPU 4 and GPU 5 | pass (finite; gradients for all attributes) | `docs/native_render/*.json` |
+| Full test suite | 199 passed, 0 failed, 0 errors, 0 skipped | `docs/tests.json` |
+| GPU isolation (CUDA and EGL per UUID) | pass | `docs/gpu_isolation.json` |
+| 50-step rendered training, GPU 4 then GPU 5 | pass (finite losses, nonzero gradients) | `outputs/smoke50-gpu4`, `outputs/smoke50-gpu5` |
+
+### Phase B — data (D1-D3)
+| Task | Size | Train / val episodes | D2 median (<= 3 mm) | D3 median (<= 5 mm) | Evidence |
+|---|---|---|---|---|---|
+| door-open | 15.6 GB | 240 / 10 | 0.91 mm | 1.97 mm | `docs/data_checks/door-open/` |
+| hammer | 19.9 GB | 240 / 10 | 1.00 mm | 1.97 mm | `docs/data_checks/hammer/` |
+| peg-unplug-side | 23.2 GB | 240 / 10 | 0.90 mm | 1.97 mm | `docs/data_checks/peg-unplug-side/` |
+| stick-push | 20.8 GB | 240 / 10 | 0.98 mm | 1.99 mm | `docs/data_checks/stick-push/` |
+| pick-place | 17.3 GB | 240 / 10 | 0.89 mm | 1.91 mm | `docs/data_checks/pick-place/` |
+| peg-insert-side | 22.6 GB | 240 / 10 | 0.86 mm | 2.00 mm | `docs/data_checks/peg-insert-side/` |
+| shelf-place | 22.2 GB | 240 / 10 | 0.89 mm | 1.98 mm | `docs/data_checks/shelf-place/` |
+| bin-picking | 20.7 GB | 240 / 10 | 0.88 mm | 2.04 mm | `docs/data_checks/bin-picking/` |
+
+World-body motion is exactly zero on every task. Data: `/home/ws/data/metaworld/splatter4d_v1/`.
+
+### M2 — overfit gate (FAIL after three diagnosed iterations)
+Hammer episode ep001, one episode, evaluated on the same episode; thresholds: train-view PSNR >= 32 dB and moving
+relative EPE (0->2) <= 0.15 within 3k steps.
+
+| Iteration | Change (gate only) | Steps | PSNR s2 / s6 | Rel. EPE 0->2 s2 / s6 | Run |
+|---|---|---|---|---|---|
+| 1 | warm-up 300 (original 20k temporal ramp) | 3k | 23.9 / 24.1 | 0.79 / 0.51 | `runs/pretrain/gate-m2-hammer` |
+| 2 | + ramp 300, constant LR | 3k | 24.5 / 24.4 | 0.69 / 0.54 | `runs/pretrain/gate-m2-hammer-it2` |
+| 3a | + LR x4 (2e-3) | 3k | 25.5 / 25.1 | 0.79 / 0.60 | `runs/pretrain/gate-m2-hammer-it3a` |
+| 3b | iteration 2 for 12k steps | 3k / 12k | 24.0 / 24.1 at 3k; 26.1 / 25.9 at 12k | 0.66 / 0.45 at 3k; 0.37 / 0.25 at 12k | `runs/pretrain/gate-m2-hammer-it3b` |
+
+Evidence for the diagnosis: the Gaussian budget is not the limit — free Gaussians fitted directly to the same frame
+reach 39.6 dB with the method's 8,192 Gaussians (`runs/diag/capacity-8192/capacity.json`). Neither the temporal
+ramp, the LR floor nor the LR magnitude explains the gap, and four times the gate length still misses both
+thresholds (PSNR +0.3 dB per 1k steps at 12k; relative EPE flattening at 0.25-0.37). The dynamic alpha share on
+moving pixels reaches 0.88 (M7 threshold 0.7). Conclusion: with the specified decoder and loss weights the model
+fits a single episode slowly; M2 is recorded as failed and the plan continues (full pretraining and the Stage 1
+improvement loop).
+
+---
+
+# Earlier record: implementation phase (before this campaign)
+
+## Results and acceptance record (implementation phase)
 
 Updated 2026-10-07. **The requested research project is not complete.** Shared architecture, adapters, diagnostics and protocols are implemented. Real pilot geometry and DROID alignment passed. Actual Gaussian rendering is blocked by a PyTorch/native-extension binary mismatch. No rendered training, overfit, timing, research evaluation or trained export ran. Required deletion and exact reference preservation are also not verified.
 

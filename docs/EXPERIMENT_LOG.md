@@ -139,3 +139,17 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   optimisation speed?; (b) LR 5e-4 for 12k steps — are the thresholds reachable at all, and when? Full 200k
   pretraining of the unchanged base config started in parallel on both development tasks
   (`runs/pretrain/s1-pretrain-{hammer,pick-place}-base`).
+
+## 2026-10-07 — G3: M2 gate, iteration 3 (fail); M2 closed
+
+- **Runs.** (a) LR 2e-3 constant, 3k steps (`runs/pretrain/gate-m2-hammer-it3a`): PSNR 25.5 / 25.1, rel. EPE 0.79 /
+  0.60. (b) iteration-2 settings for 12k steps (`runs/pretrain/gate-m2-hammer-it3b`): at 3k 24.0 / 24.1 and 0.66 /
+  0.45; at 12k 26.1 / 25.9 and 0.37 / 0.25; dynamic alpha share 0.88.
+- **Conclusion.** Learning rate gives ~1 dB at 3k but no motion gain; four times the gate length still misses both
+  thresholds, with PSNR rising ~0.3 dB per 1k steps and motion error flattening. Capacity is sufficient (G1), so
+  the decoder fits slowly with the specified architecture and losses. M2 is recorded as FAIL in `docs/RESULTS.md`
+  after three diagnosed iterations; iteration stops on M2 and the plan continues.
+- **Pointers for the Stage 1 improvement loop** (development tasks only): motion supervision is weak relative to
+  rendering (motion loss ~1e-3 vs render ~0.2; moving pixels are a few percent of valid pixels and the motion loss is
+  averaged over all valid pixels); the scene renders blurry at 3k steps, so decoder learning speed (width/depth,
+  per-group learning rates) and the motion weight are the first levers to test against full-training metrics.
