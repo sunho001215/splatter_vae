@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -62,10 +63,18 @@ def main() -> None:
     ap.add_argument("--run", required=True)
     ap.add_argument("--checkpoint", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--wait", action="store_true", help="wait until --checkpoint exists (scheduler job before RL)")
     args = ap.parse_args()
     run_dir = Path(args.run)
     out = Path(args.out) if args.out else run_dir / "encoder.pt"
-    print(f"exported {export(run_dir, Path(args.checkpoint) if args.checkpoint else None, out)}")
+    checkpoint = Path(args.checkpoint) if args.checkpoint else None
+    if args.wait:
+        if checkpoint is None:
+            raise ValueError("--wait needs --checkpoint")
+        while not checkpoint.is_file():  # written atomically (tmp + rename) by the training run
+            print(f"waiting for {checkpoint}", flush=True)  # keeps the heartbeat's activity check current
+            time.sleep(600)
+    print(f"exported {export(run_dir, checkpoint, out)}")
 
 
 if __name__ == "__main__":

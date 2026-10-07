@@ -61,3 +61,47 @@ def test_encoder_loader_rejects_non_export_payload(tmp_path):
     torch.save({"encoder": {}}, path)
     with pytest.raises(ValueError, match="encoder-only export"):
         load_encoder(path)
+
+
+def test_export_waits_for_a_checkpoint_that_appears_later(tmp_path, monkeypatch, capsys):
+    import shutil
+    import sys
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    exporter = importlib.import_module("scripts.export_encoder")
+    encoder_cfg = EncoderConfig(image_height=32, image_width=32, patch_size=8, width=16, depth=1, heads=4, slot_dim=12)
+    decoder_cfg = DecoderConfig(
+        slot_dim=12,
+        dim=16,
+        depth=2,
+        heads=4,
+        scene=GroupConfig(3, 2, 0.15, 0.06, 0.001, 0.08),
+        dynamic=GroupConfig(2, 2, 0.4, 0.04, 0.0005, 0.03),
+    )
+    decoder_dict = asdict(decoder_cfg)
+    decoder_dict.pop("slot_dim")
+    config = {"model": {"encoder": asdict(encoder_cfg), "decoder": decoder_dict}, "data": {"strides": [2, 4, 6]}}
+    model = build_model(config)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1)
+    dump_config(config, tmp_path / "config.yaml")
+    staged = save_checkpoint(
+        tmp_path / "staged" / "step_0000100.pt", 100, model.encoder, model.decoder, optimizer, scheduler, config
+    )
+    target = tmp_path / "checkpoints" / "step_0000100.pt"
+    target.parent.mkdir()
+    sleeps = []
+
+    def fake_sleep(seconds):  # the training run writes the checkpoint while the exporter waits
+        sleeps.append(seconds)
+        shutil.copyfile(staged, target)
+
+    monkeypatch.setattr(exporter.time, "sleep", fake_sleep)
+    out = tmp_path / "encoder.pt"
+    monkeypatch.setattr(
+        sys, "argv", ["export_encoder.py", "--run", str(tmp_path), "--checkpoint", str(target), "--out", str(out), "--wait"]
+    )
+    exporter.main()
+    assert sleeps == [600] and "waiting for" in capsys.readouterr().out
+    payload = torch.load(out, map_location="cpu", weights_only=True)
+    assert payload["step"] == 100 and payload["frame_strides"] == [2, 4, 6]

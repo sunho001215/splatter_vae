@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T18:11:10.274174+00:00",
+  "started_utc": "2026-10-07T20:09:58.062798+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,14 +17,14 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 151.531725527253,
+  "duration_seconds": 254.157494709827,
   "counts": {
-    "passed": 202,
+    "passed": 203,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 202,
+  "total": 203,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -106,7 +106,7 @@
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
     "scripts/eval_rl.py": "f857800f42c3eaea83944077c266b9ea09813984d68dad5e2ef5dd13f1dc03db",
     "scripts/evaluate.py": "e3f5c8cf60e5044fd7b0f0ede40e9fdbf8e1f4f601c5f9e8a4e5d5b793181546",
-    "scripts/export_encoder.py": "956f9a24b0ef264098d3f3e6a56898dc6ed853dd11672fdfb13a36548bf115fa",
+    "scripts/export_encoder.py": "752e54f0e0eccbf0ced150ce45ab3b38a5350780e37a36f10eb2fa9459e6edb4",
     "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",
     "scripts/heartbeat.py": "678c11fdccec5c1c1ed580a76c237845fb117b6b68dc90de5b6cc5dcdc6d7264",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
@@ -139,7 +139,7 @@
     "tests/test_droid.py": "b7cb4d75f56379b6cf51afece889178fd0245d4f1b5751b0c958e370b6d87723",
     "tests/test_droid_protocols.py": "4bb28300bde681e1ffb82e1404b375a049202b2d765ed2780ba0a9589507d4c8",
     "tests/test_encoder.py": "eb1f3f1dd0a9dd6e01fa049a0ddab3c263128fc040a59d00da4a390c3fe8b986",
-    "tests/test_export.py": "97c415e32dcb2b2a42fae57cfc7ff39b9d97f43c68cb2d3ec736bf977eb90004",
+    "tests/test_export.py": "619707a8c7748143df0ee8e9723baac00f3e35ff3969e8039d5881c792798a56",
     "tests/test_geometry.py": "bc127b7470cdf9a23485d8a740c519d272f001b33377f9cbb9dda7e5d12819a3",
     "tests/test_jobs.py": "57bbef578cf1f5e66d364abb2828c64fa479e0fd23ef7046c5d76945f909ede2",
     "tests/test_metaworld_checks.py": "d32fa21a9fc0a4a28a21ac564d5850bc58710ae4aa0e9d9debb278c6d3757c34",
@@ -836,7 +836,8 @@
     ],
     "scripts/export_encoder.py": [
       "<module>",
-      "export"
+      "export",
+      "main"
     ],
     "scripts/heartbeat.py": [
       "<listcomp>",
