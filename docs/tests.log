@@ -1,50 +1,19 @@
-....................................................EEEE................ [ 44%]
-........................................................................ [ 89%]
-.................                                                        [100%]
-==================================== ERRORS ====================================
-_ ERROR at setup of test_single_opaque_gaussian_rgb_expected_depth_equals_camera_z _
-tests/test_cuda_render.py:27: in prebuilt_gsplat_only
-    compiled = importlib.util.module_from_spec(extension_spec)
-<frozen importlib._bootstrap>:571: in module_from_spec
-    ???
-<frozen importlib._bootstrap_external>:1176: in create_module
-    ???
-<frozen importlib._bootstrap>:241: in _call_with_frames_removed
-    ???
-E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
-_ ERROR at setup of test_constant_world_displacement_survives_feature_splat_normalisation _
-tests/test_cuda_render.py:27: in prebuilt_gsplat_only
-    compiled = importlib.util.module_from_spec(extension_spec)
-<frozen importlib._bootstrap>:571: in module_from_spec
-    ???
-<frozen importlib._bootstrap_external>:1176: in create_module
-    ???
-<frozen importlib._bootstrap>:241: in _call_with_frames_removed
-    ???
-E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
-_ ERROR at setup of test_cuda_feature_backward_only_updates_displacement_tensors _
-tests/test_cuda_render.py:27: in prebuilt_gsplat_only
-    compiled = importlib.util.module_from_spec(extension_spec)
-<frozen importlib._bootstrap>:571: in module_from_spec
-    ???
-<frozen importlib._bootstrap_external>:1176: in create_module
-    ???
-<frozen importlib._bootstrap>:241: in _call_with_frames_removed
-    ???
-E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
-_____ ERROR at setup of test_cuda_hard_depth_backward_only_updates_centers _____
-tests/test_cuda_render.py:27: in prebuilt_gsplat_only
-    compiled = importlib.util.module_from_spec(extension_spec)
-<frozen importlib._bootstrap>:571: in module_from_spec
-    ???
-<frozen importlib._bootstrap_external>:1176: in create_module
-    ???
-<frozen importlib._bootstrap>:241: in _call_with_frames_removed
-    ???
-E   ImportError: /home/ws/ws/hierarchical_splatter/.venv/lib/python3.10/site-packages/gsplat/csrc.so: undefined symbol: _ZNK2at10TensorBase14const_data_ptrIaEEPKT_v
-=========================== short test summary info ============================
-ERROR tests/test_cuda_render.py::test_single_opaque_gaussian_rgb_expected_depth_equals_camera_z
-ERROR tests/test_cuda_render.py::test_constant_world_displacement_survives_feature_splat_normalisation
-ERROR tests/test_cuda_render.py::test_cuda_feature_backward_only_updates_displacement_tensors
-ERROR tests/test_cuda_render.py::test_cuda_hard_depth_backward_only_updates_centers
-157 passed, 4 errors in 12.11s
+[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 38%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m [ 77%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                              [100%][0m
+[33m=============================== warnings summary ===============================[0m
+tests/test_rl.py: 63 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.pin_memory() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:46.)
+    return data.pin_memory(device)
+
+tests/test_rl.py: 63 warnings
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/utils/data/_utils/pin_memory.py:57: DeprecationWarning: The argument 'device' of Tensor.is_pinned() is deprecated. Please do not pass this argument. (Triggered internally at /pytorch/aten/src/ATen/native/Memory.cpp:31.)
+    return data.pin_memory(device)
+
+tests/test_rl.py::test_exploitation_target_and_expectile_match_the_official_code_on_a_fixed_batch
+  /home/ws/ws/splatter4d/s4d/rl/agent.py:309: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+  Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+    return {"predictor_loss": float(predictor_loss)}
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[33m[32m187 passed[0m, [33m[1m127 warnings[0m[33m in 56.22s[0m[0m

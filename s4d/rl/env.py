@@ -156,7 +156,17 @@ class MetaWorldCameraEnv:
         return np.asarray(state_obs, dtype=np.float32).reshape(-1)[self.proprio_indices].copy()
 
     def reset(self, path: list[FreeCamera], seed: int | None = None) -> tuple[np.ndarray, np.ndarray]:
-        """Reference reset seeds are ``seed + reset_count``; evaluation passes explicit episode seeds."""
+        """Training: reference behaviour. Evaluation: pass an explicit episode seed.
+
+        Meta-World 3.0 ignores the ``reset`` seed, and the MT1 task wrapper re-freezes the random vector on every
+        reset, so an episode uses one of the 50 MT1 configurations fixed by the construction seed, drawn from the
+        env RNG in reset order; the hand also starts from wherever the previous episode left it. With an explicit
+        seed the env RNG is reseeded (it selects the configuration) and the simulator data is reset to the model
+        defaults first, so the start state depends only on (construction seed, episode seed).
+        """
+        if seed is not None:
+            self.env.unwrapped.seed(int(seed))
+            self._mujoco.mj_resetData(self.model, self.data)
         state_obs, _ = self.env.reset(seed=self.base_seed + self.reset_count if seed is None else int(seed))
         self.reset_count += 1
         self.path, self.render_count, self.episode_step = list(path), 0, 0

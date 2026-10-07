@@ -102,3 +102,13 @@ def test_slot_gradients_flow_through_film_and_cross_attention():
     assert slots.grad.abs().sum() > 0
     assert decoder.film[0].weight.grad is not None
     assert decoder.blocks[0].cross_attn.in_proj_weight.grad is not None
+
+
+def test_anchor_statistics_apply_to_a_cuda_decoder():
+    decoder = GaussianDecoder(_config()).cuda()
+    stats = {name: {"mean": [0.1, 0.6, 0.2], "std": [1e-6, 1e-6, 1e-6]} for name in ("scene", "dynamic")}
+    decoder.set_anchor_statistics(stats)
+    for head in decoder.groups:
+        assert head.anchors.is_cuda
+        expected = torch.tensor([0.1, 0.6, 0.2], device="cuda").expand_as(head.anchors)
+        torch.testing.assert_close(head.anchors, expected, atol=1e-4, rtol=0)

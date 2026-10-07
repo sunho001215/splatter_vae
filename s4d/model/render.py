@@ -103,6 +103,10 @@ def render_rgbd(
     return {"rgb": rendered[..., :3, :, :], "depth": rendered[..., 3:4, :, :], "alpha": alpha.movedim(-1, -3)}
 
 
+# GSPLAT_NUM_CHANNELS of the pinned gsplat build (gsplat/cuda/csrc/Config.h, revision d28ee0c).
+COMPILED_CHANNELS = (1, 2, 3, 4, 5, 6, 8, 9, 16, 17, 21, 23, 24, 32, 33, 64, 65, 128, 129, 256, 257, 512, 513)
+
+
 def render_features(
     gs: GaussianSet,
     xyz_states: torch.Tensor,
@@ -121,12 +125,15 @@ def render_features(
     B, S, N, F = features.shape
     V = w2c.shape[1]
     viewmats, Ks = _expand_cams(w2c, K, S)
+    # The compiled kernels support a fixed set of channel counts (gsplat Config.h); zero channels are exact padding.
+    padded = next(c for c in COMPILED_CHANNELS if c >= F)
+    colors = torch.nn.functional.pad(features.float(), (0, padded - F)).contiguous()
     rendered, alpha, _ = _rasterize(
         means=xyz_states.float().contiguous(),
         quats=_expand_attr(gs.quats, S),
         scales=_expand_attr(gs.scales, S),
         opacities=_expand_attr(gs.opacity, S),
-        colors=features.float().contiguous(),
+        colors=colors,
         viewmats=viewmats,
         Ks=Ks,
         width=width,
@@ -135,10 +142,10 @@ def render_features(
         far_plane=far,
         packed=False,
         sh_degree=None,
-        backgrounds=torch.zeros(B, S, V, F, device=features.device),
+        backgrounds=torch.zeros(B, S, V, padded, device=features.device),
         render_mode="RGB",
     )
-    return {"features": rendered.movedim(-1, -3), "alpha": alpha.movedim(-1, -3)}
+    return {"features": rendered[..., :F].movedim(-1, -3), "alpha": alpha.movedim(-1, -3)}
 
 
 def render_hard_depth(

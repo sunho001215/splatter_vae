@@ -151,7 +151,8 @@ class GaussianDecoder(nn.Module):
         names = ["scene"] if self.cfg.single_group else ["scene", "dynamic"]
         for head, name in zip(self.groups, names):
             s = stats[name]
-            mean, std = torch.tensor(s["mean"], dtype=torch.float32), torch.tensor(s["std"], dtype=torch.float32)
+            like = {"dtype": torch.float32, "device": head.anchors.device}
+            mean, std = torch.tensor(s["mean"], **like), torch.tensor(s["std"], **like)
             head.anchors.copy_(torch.randn_like(head.anchors) * std + mean)
 
     def forward(self, slots: torch.Tensor) -> GaussianSet:

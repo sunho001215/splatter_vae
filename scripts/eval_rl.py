@@ -51,7 +51,8 @@ def main() -> None:
         time.sleep(args.poll_seconds)
     cfg = yaml.safe_load((run_dir / "config.yaml").read_text())
     device = torch.device("cuda")
-    pool = EnvPool(cfg["task"], args.workers, args.envs_per_worker, env_kwargs(cfg))
+    # Reference evaluation env seed: run seed + 1 (its 50 MT1 configurations differ from training's).
+    pool = EnvPool(cfg["task"], int(cfg["seed"]) + 1, args.workers, args.envs_per_worker, env_kwargs(cfg))
     agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
     out = run_dir / "eval.jsonl"

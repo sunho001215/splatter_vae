@@ -44,13 +44,16 @@ def fill(replay: Replay, episodes: int, length: int, start: int = 0) -> int:
 
 
 def check_batch(batch, nstep: int = 3) -> None:
+    """Frames hold ``value % 256``; proprio and actions hold the exact float value of the same state."""
     obs, proprio, action, reward, discount, next_obs, next_proprio = (np.asarray(x) for x in batch)
     frames = obs.reshape(len(obs), 3, 3, 4, 4)[:, :, 0, 0, 0].astype(int)
     nxt = next_obs.reshape(len(obs), 3, 3, 4, 4)[:, :, 0, 0, 0].astype(int)
-    assert np.all(nxt[:, -1] - frames[:, -1] == nstep), "next state is n steps later in the same episode"
-    assert np.all(np.diff(frames, axis=1) >= 0) and np.all(frames[:, -1] - frames[:, 0] <= 2), "padded, never crosses"
-    assert np.all(proprio[:, 0] == frames[:, -1]) and np.all(next_proprio[:, 0] == nxt[:, -1])
-    assert np.all(action[:, 0] == frames[:, -1] + 1), "action leaves the sampled state"
+    now, later = proprio[:, 0].astype(int), next_proprio[:, 0].astype(int)
+    assert np.all(frames[:, -1] == now % 256) and np.all(nxt[:, -1] == later % 256), "atoms match their states"
+    assert np.all(later - now == nstep), "next state is n steps later in the same episode"
+    back = [tuple(row) for row in (frames[:, -1:] - frames) % 256]  # frames looked back, oldest first
+    assert set(back) <= {(2, 1, 0), (1, 1, 0), (0, 0, 0)}, "padded with the first frame, never crosses an episode"
+    assert np.all(action[:, 0] == now + 1), "action leaves the sampled state"
     full = discount[:, 0] > 0
     assert np.allclose(reward[full, 0], 1 + GAMMA + GAMMA**2) and np.allclose(discount[full, 0], GAMMA**3)
 
@@ -343,6 +346,7 @@ def test_env_frames_match_collector_rig_in_one_uuid_subprocess():
         "trajectory_moves": True,
         "reset_varies_objects": True,
         "pool_matches_single_env": True,
+        "seeded_reset_history_free": True,
     }
 
 

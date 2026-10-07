@@ -1,10 +1,10 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-07 17:05
+Last updated: 2026-10-07 18:15
 
 ## Current phase
-**Phase A — runtime.** `uv sync --extra dev` (authorized) is running: fused-ssim built from source, gsplat compiling
-for sm_120 against torch 2.10.0+cu129 with CUDA 12.9 nvcc.
+**Phase A complete (2026-10-07 18:15).** Standalone env, native gsplat on sm_120, full suite 187/187, GPU isolation,
+50-step rendered runs on GPU 4 and GPU 5 all pass (EXPERIMENT_LOG E0). Next: Phase B data collection.
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task. It exits on the first poll

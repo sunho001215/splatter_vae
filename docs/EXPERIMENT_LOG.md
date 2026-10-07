@@ -65,3 +65,38 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   overlap. The released code has no sparse-reward wrapper (the vendored hammer env returns the dense v2 reward).
   Expected differences from the paper: 6 random training cameras instead of one fixed camera, 128x128 instead of
   84x84, 125- instead of 250-agent-step episodes, Meta-World v3 instead of v2.
+
+## 2026-10-07 — E0 result: Phase A gates pass
+
+- **Build.** `uv sync --extra dev` (authorized) built gsplat (d28ee0c) and fused-ssim (a7c48d6) from source for sm_120
+  only, in a uv build env pinned to the runtime torch 2.10.0+cu129 (CUDA 12.9 = nvcc 12.9); 97 min, of which one
+  translation unit took ~60 min. `reference_runtime.pth` is gone; the venv is standalone. Versions:
+  `docs/runtime_versions.json`.
+- **Native rasterization.** `scripts/check_native_render.py` on GPU 4 and GPU 5: finite, alpha max 0.9999, gradients
+  for all five Gaussian attributes (`docs/native_render/*.json`). A first attempt reported a zero rotation gradient
+  because the check used isotropic Gaussians; the check was fixed (anisotropic, random rotations), not the renderer.
+- **Bugs found by the first native runs.** (1) `set_anchor_statistics` built mean/std on the CPU for a CUDA decoder;
+  fixed, regression test added. (2) The motion splat has 7 channels, which the gsplat build does not compile
+  (`GSPLAT_NUM_CHANNELS` has 1-6, 8, 9, ...); features are now zero-padded to the next compiled count and sliced back
+  (exact; native test compares with per-part renders).
+- **Tests.** Full suite on GPU 4: 187 passed, 0 failed, 0 errors, 0 skipped (`docs/tests.json`).
+- **Isolation.** `scripts/check_gpu_isolation.py`: the GPU 4 child appears only on GPU 4 (EGL device 16), the GPU 5
+  child only on GPU 5 (EGL device 17); `CUDA_VISIBLE_DEVICES=0` and unset are rejected (`docs/gpu_isolation.json`).
+- **50-step rendered training** on `hammer_pilot.hdf5`, GPU 4 then GPU 5 (`outputs/smoke50-gpu{4,5}`): all losses
+  finite, total loss 4.116 -> 4.083, encoder/decoder gradient norms 0.130/0.992, 0.12 s/step, 3.2 GB; the two GPUs
+  give bit-identical metrics from the same seed. Validation reported at strides 2 and 6.
+
+## 2026-10-07 — E5: Meta-World 3.0 reset semantics (finding; affects evaluation determinism)
+
+- **Finding.** `SawyerXYZEnv.reset` ignores its `seed` argument, and the MT1 `RandomTaskSelectWrapper` calls
+  `set_task` on every reset, which re-freezes the random vector (`_freeze_rand_vec = True`), so setting
+  `_freeze_rand_vec = False` (reference code, ours) has no effect after the first reset. Each episode therefore uses
+  one of the 50 MT1 object/goal configurations fixed by the construction seed, drawn from the env RNG in reset order,
+  and the hand starts from wherever the previous episode left it. The reference collector and RL envs behave the
+  same way, so the collected data (seed 0, 250 episodes over 50 configurations) and the RL training envs match the
+  reference protocol.
+- **Change (evaluation only).** For explicit evaluation episode seeds, `MetaWorldCameraEnv.reset` reseeds the env RNG
+  (which selects the configuration) and resets the MuJoCo data to the model defaults first. Start states are now a
+  function of (construction seed, episode seed) only: verified bit-identical between a fresh and a used env on
+  hammer, pick-place, shelf-place and bin-picking, and between the worker pool and a single env (test). Evaluation
+  envs use the reference evaluation construction seed, run seed + 1, whose 50 configurations differ from training's.

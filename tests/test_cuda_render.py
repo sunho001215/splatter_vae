@@ -111,3 +111,20 @@ def test_cuda_hard_depth_backward_only_updates_centers():
     assert gs.xyz.grad is not None and torch.isfinite(gs.xyz.grad).all() and gs.xyz.grad.abs().sum() > 0
     for attr in ("scales", "quats", "opacity", "rgb", "delta01", "delta12"):
         assert getattr(gs, attr).grad is None, attr
+
+
+def test_seven_channel_motion_features_match_per_part_renders_and_backpropagate():
+    """The motion splat has 7 channels (not compiled in gsplat); padding must be exact."""
+    gs = _gaussians(count=2)
+    w2c, K = _cameras()
+    geometry = gs.detach_geometry()
+    xyz = gs.xyz.detach()[:, None]
+    features = torch.randn(1, 1, 2, 7, device="cuda", requires_grad=True)
+    full = render_features(geometry, xyz, features, w2c, K, 32, 32, 0.05, 5.0)
+    assert full["features"].shape == (1, 1, 1, 7, 32, 32)
+    for lo, hi in ((0, 3), (3, 6), (6, 7)):
+        part = render_features(geometry, xyz, features[..., lo:hi], w2c, K, 32, 32, 0.05, 5.0)
+        torch.testing.assert_close(full["features"][:, :, :, lo:hi], part["features"], atol=1e-6, rtol=1e-5)
+        torch.testing.assert_close(full["alpha"], part["alpha"])
+    full["features"].sum().backward()
+    assert features.grad is not None and bool((features.grad != 0).all())

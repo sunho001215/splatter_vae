@@ -12,13 +12,13 @@ import multiprocessing as mp
 import numpy as np
 
 
-def _worker(conn, task: str, count: int, env_kwargs: dict) -> None:
+def _worker(conn, task: str, seed: int, count: int, env_kwargs: dict) -> None:
     from _bootstrap import guard_mujoco  # scripts/ is on the inherited sys.path
 
     guard_mujoco()
     from s4d.rl.env import MetaWorldCameraEnv
 
-    envs = [MetaWorldCameraEnv(task, 0, **env_kwargs) for _ in range(count)]
+    envs = [MetaWorldCameraEnv(task, seed, **env_kwargs) for _ in range(count)]
     conn.send("ready")
     while True:
         command, payload = conn.recv()
@@ -41,13 +41,14 @@ def _worker(conn, task: str, count: int, env_kwargs: dict) -> None:
 
 
 class EnvPool:
-    def __init__(self, task: str, workers: int, envs_per_worker: int, env_kwargs: dict):
+    def __init__(self, task: str, seed: int, workers: int, envs_per_worker: int, env_kwargs: dict):
+        """All environments share the construction ``seed`` (it fixes the 50 MT1 configurations)."""
         ctx = mp.get_context("spawn")
         self.per_worker = int(envs_per_worker)
         self.conns, self.procs = [], []
         for _ in range(int(workers)):
             parent, child = ctx.Pipe()
-            proc = ctx.Process(target=_worker, args=(child, task, self.per_worker, env_kwargs), daemon=True)
+            proc = ctx.Process(target=_worker, args=(child, task, int(seed), self.per_worker, env_kwargs), daemon=True)
             proc.start()
             self.conns.append(parent)
             self.procs.append(proc)

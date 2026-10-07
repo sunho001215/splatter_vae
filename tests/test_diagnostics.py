@@ -257,7 +257,9 @@ def test_complete_shared_loss_backward_with_explicit_synthetic_rasterizer(batch,
     assert not feature_call["scales"].requires_grad
     assert not feature_call["quats"].requires_grad
     assert not feature_call["opacities"].requires_grad
-    assert feature_call["colors"].shape[-1] == 7 and feature_call["colors"].shape[1] == 3
+    # 7 motion channels, zero-padded to 8 because gsplat is compiled without a 7-channel kernel.
+    assert feature_call["colors"].shape[-1] == 8 and feature_call["colors"].shape[1] == 3
+    assert bool((feature_call["colors"][..., 7] == 0).all())
 
     # The T=1 ablation removes every temporal loss contribution without unused parameters.
     calls.clear()

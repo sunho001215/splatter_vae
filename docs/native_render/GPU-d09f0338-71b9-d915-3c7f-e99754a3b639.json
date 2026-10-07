@@ -1,0 +1,28 @@
+{
+ "gpu_mapping": [
+  {
+   "index": 0,
+   "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+   "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+  }
+ ],
+ "binary": "/home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/gsplat/csrc.so",
+ "torch": "2.10.0+cu129",
+ "device_capability": [
+  12,
+  0
+ ],
+ "seconds_first_call": 0.3387305736541748,
+ "alpha_max": 0.9998999834060669,
+ "covered_fraction": 0.18414306640625,
+ "median_depth_where_opaque": 1.6873787641525269,
+ "all_finite": true,
+ "grad_abs_mean": {
+  "xyz": 0.00011033318878617138,
+  "scales": 0.0002789848076645285,
+  "quats": 3.724063617482898e-06,
+  "opacity": 1.3191812286095228e-05,
+  "rgb": 1.4939663742552511e-05
+ },
+ "passed": true
+}
