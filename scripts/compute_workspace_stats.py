@@ -20,9 +20,10 @@ from s4d.geometry import lift_depth  # noqa: E402
 
 def dataset_for(regime: str, path: Path):
     if regime == "metaworld":
-        from s4d.data.metaworld.dataset import MetaworldWindowDataset, list_episodes
+        from s4d.data.metaworld.dataset import TRAIN_STRIDES, MetaworldWindowDataset, list_episodes
 
-        return MetaworldWindowDataset(path, list_episodes(path), strides=(9,), fixed_stride=9)
+        # The largest training stride gives the most moving pixels for the dynamic-group anchors.
+        return MetaworldWindowDataset(path, list_episodes(path), strides=(max(TRAIN_STRIDES),))
     from s4d.data.droid.dataset import DroidCacheDataset
 
     return DroidCacheDataset(path, split="train")

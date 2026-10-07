@@ -45,7 +45,7 @@ def main() -> None:
     device = torch.device("cuda", 0)
     model = build_model(cfg).to(device)
     step = load_checkpoint(ckpt, model.encoder, model.decoder, restore_rng=False)
-    _, val_loader, probe_loader, n_train = build_data(cfg)
+    _, val_loaders, probe_loaders, n_train = build_data(cfg)
     wandb_run = init_wandb(
         cfg,
         f"{cfg['run']['name']}-eval",
@@ -54,9 +54,10 @@ def main() -> None:
         run_dir=run_dir,
     )
     logger = RunLogger(run_dir, wandb_run)
-    logger.text(f"evaluating {ckpt} (step {step}) on {len(val_loader.dataset)} validation windows; GPUs {GPU_MAPPING}")
+    windows = {stride: len(loader.dataset) for stride, loader in val_loaders.items()}
+    logger.text(f"evaluating {ckpt} (step {step}) on validation windows per stride {windows}; GPUs {GPU_MAPPING}")
     try:
-        summary = Evaluator(cfg, val_loader, probe_loader, logger, device, n_train)(model, step, full=True)
+        summary = Evaluator(cfg, val_loaders, probe_loaders, logger, device, n_train)(model, step, full=True)
         print(json.dumps(summary, indent=1))
     finally:
         logger.close()

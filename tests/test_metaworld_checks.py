@@ -27,7 +27,7 @@ def _write_fixture(path, *, moving=True, bad_depth=False, disjoint_bodies=False)
         body[:, 1, H // 2 :, :] = 2
     xpos = np.zeros((T, 3, 3), dtype=np.float32)
     if moving:
-        xpos[:, 1, 0] = np.arange(T) / 96.0  # One source pixel of lateral motion at stride 3.
+        xpos[:, 1, 0] = np.arange(T) / 96.0  # 1/3 source pixel of lateral motion per simulator step.
     quat = np.zeros((T, 3, 4), dtype=np.float32)
     quat[..., 0] = 1
     with h5py.File(path, "w") as file:

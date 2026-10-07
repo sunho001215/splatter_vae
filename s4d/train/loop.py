@@ -359,7 +359,7 @@ def infinite(loader: DataLoader, start_step: int = 0):
 
 
 def train(
-    cfg: dict, run_dir: Path, train_dataset, val_loader, ctx: ddp.DistContext, logger, evaluate_fn, resume: str | None = None
+    cfg: dict, run_dir: Path, train_dataset, ctx: ddp.DistContext, logger, evaluate_fn, resume: str | None = None
 ) -> None:
     """Main loop. ``logger`` has .scalars(step, dict) and .text(msg); ``evaluate_fn(model, step)`` runs eval."""
     seed = int(get(cfg, "train.seed", 0))

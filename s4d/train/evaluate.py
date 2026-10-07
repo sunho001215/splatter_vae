@@ -80,8 +80,22 @@ def image_plane_flow(
 
 
 class Evaluator:
-    def __init__(self, cfg: dict, val_loader, probe_loader, logger: RunLogger, device: torch.device, n_train_cams: int):
-        self.cfg, self.val_loader, self.probe_loader = cfg, val_loader, probe_loader
+    """Validation metrics, retrieval, probes and panels, computed separately for every validation stride.
+
+    ``val_loaders`` and ``probe_loaders`` map a frame stride (simulator steps) to a loader. Every metric is
+    reported once per stride with the suffix ``@s<stride>``; panels go to ``eval/step_*/s<stride>/``.
+    """
+
+    def __init__(
+        self,
+        cfg: dict,
+        val_loaders: dict,
+        probe_loaders: dict | None,
+        logger: RunLogger,
+        device: torch.device,
+        n_train_cams: int,
+    ):
+        self.cfg, self.val_loaders, self.probe_loaders = cfg, dict(val_loaders), dict(probe_loaders or {})
         self.logger, self.device, self.n_train = logger, device, n_train_cams
         self.max_batches = int(get(cfg, "eval.max_batches", 8))
         self.probe_every = int(get(cfg, "eval.probe_every", 10000))
@@ -90,13 +104,35 @@ class Evaluator:
     # ------------------------------------------------------------------------------------ main
     @torch.no_grad()
     def __call__(self, model: Model, step: int, full: bool = False) -> dict:
+        summary: dict = {}
+        num_batches = {}
+        for stride, loader in self.val_loaders.items():
+            part, num_batches[stride] = self.evaluate_stride(model, step, full, int(stride), loader)
+            summary.update({f"{k}@s{stride}": v for k, v in part.items()})
+        out_dir = self.logger.eval_dir(step)
+        (out_dir / "summary.json").write_text(json.dumps({"step": step, "num_batches": num_batches, **summary}, indent=1))
+        self.logger.scalars(
+            step, {f"val/{k.split('/', 1)[-1]}": v for k, v in summary.items() if isinstance(v, (int, float))}
+        )
+        for stride in self.val_loaders:
+            self.logger.text(
+                f"eval step {step} stride {stride}: psnr {summary.get(f'metric/psnr@s{stride}', float('nan')):.2f} "
+                f"heldout {summary.get(f'metric/psnr_heldout@s{stride}', float('nan')):.2f} rel_epe02 "
+                f"{summary.get(f'metric/rel_epe_02@s{stride}', float('nan')):.3f} retrieval "
+                f"{summary.get(f'metric/retrieval_top1_train@s{stride}', float('nan')):.3f}"
+            )
+        return summary
+
+    @torch.no_grad()
+    def evaluate_stride(self, model: Model, step: int, full: bool, stride: int, loader) -> tuple[dict, int]:
         model.eval()
+        probe_loader = self.probe_loaders.get(stride)
         sums: dict[str, float] = defaultdict(float)
         count = 0
         counts = defaultdict(int)
         states, eval_states, episodes, t0s, probe_states, strides = [], [], [], [], [], []
         first = None
-        for i, raw in enumerate(self.val_loader):
+        for i, raw in enumerate(loader):
             if not full and i >= self.max_batches:
                 break
             batch = move_batch(raw, self.device)
@@ -175,43 +211,27 @@ class Evaluator:
         summary = {k: v / counts[k] for k, v in sums.items()}
         all_states = torch.cat(states)  # (M,V,D)
         all_eval = torch.cat(eval_states) if eval_states else all_states[:, :0]
-        if full or (self.probe_every > 0 and step % self.probe_every == 0):
-            summary.update(self.retrieval(model))
+        periodic = full or (self.probe_every > 0 and step % self.probe_every == 0)
+        if periodic:
+            summary.update(self.retrieval(model, stride))
         summary.update({f"metric/{k}_val": float(v) for k, v in state_statistics(all_states).items()})
-        if (
-            self.probe_loader is not None
-            and probe_states
-            and (full or (self.probe_every > 0 and step % self.probe_every == 0))
-        ):
-            summary.update(
-                {
-                    f"metric/{k}": v
-                    for k, v in self.probes(model, all_states, all_eval, torch.cat(probe_states), torch.cat(strides)).items()
-                }
-            )
+        if probe_loader is not None and probe_states and periodic:
+            probe = self.probes(model, probe_loader, all_states, all_eval, torch.cat(probe_states), torch.cat(strides))
+            summary.update({f"metric/{k}": v for k, v in probe.items()})
         if first is not None:
-            self.panels(model, first, step, summary)
-        out_dir = self.logger.eval_dir(step)
-        (out_dir / "summary.json").write_text(json.dumps({"step": step, "num_batches": count, **summary}, indent=1))
-        self.logger.scalars(step, {f"val/{k.split('/', 1)[-1]}": v for k, v in summary.items()})
-        self.logger.text(
-            f"eval step {step}: psnr {summary.get('metric/psnr', float('nan')):.2f} heldout "
-            f"{summary.get('metric/psnr_heldout', float('nan')):.2f} rel_epe02 "
-            f"{summary.get('metric/rel_epe_02', float('nan')):.3f} retrieval "
-            f"{summary.get('metric/retrieval_top1_train', float('nan')):.3f}"
-        )
+            self.panels(model, first, step, summary, tag=f"s{stride}")
         model.train()
-        return summary
+        return summary, count
 
     @torch.no_grad()
-    def retrieval(self, model: Model) -> dict:
+    def retrieval(self, model: Model, stride: int) -> dict:
         if get(self.cfg, "data.regime") != "metaworld":
             return {"metric/retrieval_protocol_available": False}
         from s4d.data.metaworld.dataset import MetaworldWindowDataset, list_episodes
 
         path = Path(get(self.cfg, "data.root")) / f"{get(self.cfg, 'data.task')}.hdf5"
         episodes = get(self.cfg, "data.episodes") or list_episodes(path)
-        ds = MetaworldWindowDataset(path, episodes, strides=(9,), fixed_stride=9, with_eval=True)
+        ds = MetaworldWindowDataset(path, episodes, strides=(stride,), with_eval=True)
         indices = _select_retrieval_windows([x[0] for x in ds.samples], [x[1] for x in ds.samples])
         result = {
             "metric/retrieval_distinct_episodes": len(indices),
@@ -237,13 +257,14 @@ class Evaluator:
     def probes(
         self,
         model: Model,
+        probe_loader,
         val_states: torch.Tensor,
         val_eval_states: torch.Tensor,
         val_probe: torch.Tensor,
         val_stride: torch.Tensor,
     ) -> dict[str, float]:
         xs, ys = [], []
-        for i, raw in enumerate(self.probe_loader):
+        for i, raw in enumerate(probe_loader):
             if i >= int(get(self.cfg, "eval.probe_batches", 24)):
                 break
             batch = move_batch(raw, self.device)
@@ -272,9 +293,10 @@ class Evaluator:
 
     # ------------------------------------------------------------------------------------ panels
     @torch.no_grad()
-    def panels(self, model: Model, first, step: int, summary: dict) -> None:
+    def panels(self, model: Model, first, step: int, summary: dict, tag: str = "") -> None:
         batch, out, gs, heldout, psnr_b = first
-        out_dir = self.logger.eval_dir(step)
+        out_dir = self.logger.eval_dir(step) / tag
+        out_dir.mkdir(parents=True, exist_ok=True)
         b, src = 0, int(out["source"][0])
         T, V = batch["images"].shape[1:3]
         H, Wd = batch["images"].shape[-2:]
@@ -478,4 +500,4 @@ class Evaluator:
             )
         (out_dir / "samples.json").write_text(json.dumps(local_rows, indent=2))
         media["table/samples"] = W.table(["episode", "t0", "stride", "psnr", "render_t0"], rows)
-        self.logger.media(step, media)
+        self.logger.media(step, {f"{tag}/{k}" if tag else k: v for k, v in media.items()})

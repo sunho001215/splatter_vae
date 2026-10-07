@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 from scipy.spatial import cKDTree  # noqa: E402
 
 from s4d.data.contract import PAIRS, collate, validate_batch  # noqa: E402
-from s4d.data.metaworld.dataset import MetaworldWindowDataset, list_episodes  # noqa: E402
+from s4d.data.metaworld.dataset import TRAIN_STRIDES, MetaworldWindowDataset, list_episodes  # noqa: E402
 from s4d.geometry import lift_depth, quat_wxyz_to_matrix  # noqa: E402
 
 MOVING_M = 0.005
@@ -407,7 +407,7 @@ def check_dataset(path, out, windows=12, points_per_view=2048, seed=0):
     if windows < 1 or points_per_view < 1:
         raise ValueError("windows and points_per_view must be positive")
     out.mkdir(parents=True, exist_ok=True)
-    dataset = MetaworldWindowDataset(path, list_episodes(path), strides=(3, 6, 9), with_eval=True)
+    dataset = MetaworldWindowDataset(path, list_episodes(path), strides=TRAIN_STRIDES, with_eval=True)
     rng = np.random.default_rng(seed)
     records, errors, d2, d3 = [], [], [], []
     report = {

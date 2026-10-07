@@ -1,0 +1,3 @@
+# RL ablation "no InfoNCE": reconstruction only. Both explicit cross-view alignment terms are removed
+# (multi-positive InfoNCE and per-slot cosine consistency); the visibility regularizer stays.
+loss: {invariance: 0.0, consistency: 0.0}

@@ -19,8 +19,10 @@ from s4d.data import METAWORLD_ROOT, writable_path
 from s4d.data.contract import MOTION_SCORE_SCALE_M, PAIRS, T_WINDOW
 from s4d.geometry import lift_depth, rigid_body_displacement
 
-TRAIN_STRIDES = (3, 6, 9)
-VAL_STRIDE = 9
+# Frame strides in simulator steps. RL observations are 2 simulator steps apart (action repeat 2),
+# which lies inside the pretraining distribution; validation reports the RL spacing and the largest stride.
+TRAIN_STRIDES = (2, 4, 6)
+VAL_STRIDES = (2, 6)
 PROBE_DIM = 11  # hand xyz, gripper opening, object-1 xyz, object-1 quaternion (wxyz)
 
 
@@ -57,14 +59,14 @@ class MetaworldWindowDataset(Dataset):
         path: str | Path,
         episodes: list[str],
         strides=TRAIN_STRIDES,
-        fixed_stride: int | None = None,
         with_eval: bool = False,
         seed: int = 0,
     ):
+        """One sample per (episode, start frame, stride). Start frames are kept only where *every* stride fits,
+        so each sample's stride is exactly uniform over ``strides``."""
         self.path = str(path)
         self.episodes = list(episodes)
         self.strides = tuple(int(s) for s in strides)
-        self.fixed_stride = fixed_stride
         self.with_eval = with_eval
         self._file: h5py.File | None = None
         with h5py.File(self.path, "r") as f:
@@ -83,12 +85,8 @@ class MetaworldWindowDataset(Dataset):
             self.samples: list[tuple[str, int, tuple[int, ...]]] = []
             for ep in self.episodes:
                 length = int(f["episodes"][ep].attrs["length"])
-                for t0 in range(length):
-                    valid = tuple(s for s in self.strides if t0 + (T_WINDOW - 1) * s < length)
-                    if fixed_stride is not None:
-                        valid = tuple(s for s in valid if s == fixed_stride)
-                    if valid:
-                        self.samples.extend((ep, t0, (s,)) for s in valid)
+                for t0 in range(length - (T_WINDOW - 1) * max(self.strides)):
+                    self.samples.extend((ep, t0, (s,)) for s in self.strides)
         if not self.samples:
             raise ValueError(f"no temporal windows in {self.path} for episodes {self.episodes[:3]}...")
 

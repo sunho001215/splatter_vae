@@ -173,14 +173,14 @@ def test_all_evaluator_panels_with_explicit_synthetic_renderer(batch, tmp_path, 
         "pairs": ((0, 1, 0), (1, 2, 1), (0, 2, 0)),
     }
     logger = RunLogger(tmp_path)
-    evaluator = E.Evaluator(cfg, [], None, logger, torch.device("cpu"), 2)
+    evaluator = E.Evaluator(cfg, {}, None, logger, torch.device("cpu"), 2)
     monkeypatch.setattr(E, "render_rgbd", _synthetic_render)
     monkeypatch.setattr(E, "encode_states", lambda m, x: torch.zeros(x.shape[0], x.shape[2], 2, 8))
     W.init_wandb({}, "synthetic", "splatter4d-metaworld", enabled=False, run_dir=tmp_path)
     summary = {}
-    evaluator.panels(model, (batch, out, gs, None, torch.ones(2, 3, 2)), 0, summary)
+    evaluator.panels(model, (batch, out, gs, None, torch.ones(2, 3, 2)), 0, summary, tag="s2")
     logger.close()
-    output = tmp_path / "eval/step_0000000"
+    output = tmp_path / "eval/step_0000000/s2"
     for name in (
         "recon_cam0.png",
         "motion.png",
@@ -281,6 +281,6 @@ def test_deletion_entrypoint_is_disabled_and_never_touches_data(monkeypatch):
 def test_table_thumbnails_have_local_paths(batch, tmp_path, monkeypatch):
     # Reuse the complete synthetic media exercise and verify each mirrored table thumbnail.
     test_all_evaluator_panels_with_explicit_synthetic_renderer(batch, tmp_path, monkeypatch)
-    output = tmp_path / "eval/step_0000000"
+    output = tmp_path / "eval/step_0000000/s2"
     rows = json.loads((output / "samples.json").read_text())
     assert all((output / row["render_t0"]).exists() for row in rows)

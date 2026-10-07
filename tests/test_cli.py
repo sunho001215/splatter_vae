@@ -31,20 +31,30 @@ def test_summarizer_reports_missing_nonfinite_strict_collapse_and_trends(tmp_pat
     (eval_dir / "summary.json").write_text(
         json.dumps(
             {
-                "metric/active_fraction_scene": 0.1,
-                "metric/active_fraction_dynamic": 0.11,
-                "metric/psnr": 28,
-                "metric/psnr_moving": float("nan"),
+                "metric/active_fraction_scene@s2": 0.1,
+                "metric/active_fraction_scene@s6": 0.1,
+                "metric/active_fraction_dynamic@s2": 0.11,
+                "metric/active_fraction_dynamic@s6": 0.12,
+                "metric/psnr@s2": 28,
+                "metric/psnr@s6": 27,
+                "metric/psnr_moving@s2": float("nan"),
+                "metric/psnr_moving@s6": float("nan"),
             }
         )
     )
     monkeypatch.setattr(sys, "argv", ["summarize_run.py", str(tmp_path)])
     summary.main()
     output = capsys.readouterr().out
-    assert "FAIL" in next(line for line in output.splitlines() if "M1 active fraction scene" in line)
-    assert "PASS" in next(line for line in output.splitlines() if "M1 active fraction dynamic" in line)
-    assert "unavailable" in next(line for line in output.splitlines() if "M3 PSNR moving" in line)
-    assert "missing" in next(line for line in output.splitlines() if "M3 PSNR held-out" in line)
+
+    def row(label):
+        return next(line for line in output.splitlines() if label in line)
+
+    assert "@s2" in output and "@s6" in output
+    assert row("M1 active fraction scene").count("FAIL") == 2
+    assert row("M1 active fraction dynamic").count("PASS") == 2
+    assert "PASS" in row("M3 PSNR train") and "FAIL" in row("M3 PSNR train"), "strides are judged separately"
+    assert row("M3 PSNR moving").count("unavailable") == 2
+    assert row("M3 PSNR held-out").count("missing") == 2
     assert "collapse" in output and "non-finite" in output and "rising" in output
     assert summary.trend([], "loss/total") == "n/a"
 

@@ -3,8 +3,8 @@ data:
   root: /home/ws/data/metaworld/splatter4d_v1
   task: hammer            # overridden by tasks/*.yaml
   train_ratio: 0.96
-  strides: [3, 6, 9]
-  val_stride: 9
+  strides: [2, 4, 6]      # simulator steps between frames, uniform per sample; RL spacing is 2
+  val_strides: [2, 6]     # metrics reported separately: RL spacing and largest pretraining stride
   episodes: null          # explicit episode list (overfit gate)
 
 model:

@@ -104,18 +104,23 @@ def main() -> None:
     path, summary = latest_eval(run_dir)
     if path:
         print(f"\nlatest evaluation: {path}")
-        print(f"  {'criterion':48s} {'value':>10s}  status")
+        # Every validation stride (simulator steps between frames) is reported separately: key@s<stride>.
+        suffixes = sorted({k.rsplit("@", 1)[1] for k in summary if "@s" in k}, key=lambda x: int(x[1:])) or [""]
+        print(f"  {'criterion':48s} " + " ".join(f"{('@' + x if x else 'value'):>13s}" for x in suffixes))
         for key, thr, higher, label in CRITERIA:
-            if key not in summary:
-                print(f"  {label:48s} {'missing':>10s}  -")
-                continue
-            v = summary[key]
-            if not math.isfinite(v):
-                print(f"  {label:48s} {'unavailable':>10s}  -")
-                continue
-            strict = key in ("metric/active_fraction_scene", "metric/active_fraction_dynamic")
-            ok = (v > thr if strict else v >= thr) if higher else (v <= thr)
-            print(f"  {label:48s} {v:10.4f}  {'PASS' if ok else 'FAIL'}")
+            cells = []
+            for suffix in suffixes:
+                v = summary.get(f"{key}@{suffix}" if suffix else key)
+                if v is None:
+                    cells.append(f"{'missing':>13s}")
+                    continue
+                if not math.isfinite(v):
+                    cells.append(f"{'unavailable':>13s}")
+                    continue
+                strict = key in ("metric/active_fraction_scene", "metric/active_fraction_dynamic")
+                ok = (v > thr if strict else v >= thr) if higher else (v <= thr)
+                cells.append(f"{v:8.4f} {'PASS' if ok else 'FAIL'}")
+            print(f"  {label:48s} " + " ".join(cells))
     else:
         warnings.append("no evaluation summary found")
     print("\nwarnings:" if warnings else "\nwarnings: none")

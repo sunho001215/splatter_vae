@@ -43,8 +43,8 @@ def batch():
         "meta": {
             "task": ["hammer", "hammer"],
             "episode": ["ep000", "ep001"],
-            "t_indices": [(0, 3, 6), (0, 6, 12)],
-            "stride": [3, 6],
+            "t_indices": [(0, 2, 4), (0, 4, 8)],
+            "stride": [2, 4],
         },
     }
 

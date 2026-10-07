@@ -41,7 +41,11 @@ def fixed_windows(dataset, indices):
 
 
 def build_data(cfg: dict):
-    """Return (train_dataset, val_loader, probe_loader, n_train_cams) for the configured regime."""
+    """Return (train_dataset, val_loaders, probe_loaders, n_train_cams).
+
+    ``val_loaders`` and ``probe_loaders`` map a frame stride (simulator steps) to a loader; the
+    evaluator reports every metric separately per stride.
+    """
     from torch.utils.data import DataLoader  # noqa: PLC0415
 
     from s4d.data.contract import collate  # noqa: PLC0415
@@ -49,6 +53,18 @@ def build_data(cfg: dict):
     regime = get(cfg, "data.regime", "metaworld")
     workers = int(get(cfg, "train.num_workers", 8))
     bs = int(get(cfg, "train.batch_size", 16))
+
+    def loader(dataset, shuffle: bool):
+        return DataLoader(
+            dataset,
+            batch_size=bs,
+            shuffle=shuffle,
+            num_workers=workers // 2,
+            collate_fn=collate,
+            pin_memory=True,
+            drop_last=shuffle,
+        )
+
     if regime == "metaworld":
         from s4d.data.metaworld.dataset import MetaworldWindowDataset, split_episodes  # noqa: PLC0415
 
@@ -60,11 +76,13 @@ def build_data(cfg: dict):
             train_eps, val_eps = split_episodes(
                 path, float(get(cfg, "data.train_ratio", 0.96)), int(get(cfg, "train.seed", 0))
             )
-        strides = tuple(get(cfg, "data.strides", (3, 6, 9)))
-        val_stride = int(get(cfg, "data.val_stride", 9))
+        strides = tuple(int(s) for s in get(cfg, "data.strides"))
+        val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
         train_ds = MetaworldWindowDataset(path, train_eps, strides=strides, seed=int(get(cfg, "train.seed", 0)))
-        val_ds = MetaworldWindowDataset(path, val_eps, strides=(val_stride,), fixed_stride=val_stride, with_eval=True)
-        probe_ds = MetaworldWindowDataset(path, train_eps, strides=(val_stride,), fixed_stride=val_stride, with_eval=False)
+        val_loaders = {
+            s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True), False) for s in val_strides
+        }
+        probe_loaders = {s: loader(MetaworldWindowDataset(path, train_eps, strides=(s,)), True) for s in val_strides}
         n_train_cams = len(train_ds.train_cams)
     elif regime == "droid":
         from s4d.data.droid.dataset import DroidCacheDataset  # noqa: PLC0415
@@ -76,30 +94,14 @@ def build_data(cfg: dict):
         }
         train_ds = DroidCacheDataset(root, split="train", **size)
         val_ds = DroidCacheDataset(root, split="validation", with_eval=True, **size)
-        probe_ds = None
         n_train_cams = 2
         indices = get(cfg, "data.fixed_window_indices")
         if indices is not None:
             train_ds = val_ds = fixed_windows(train_ds, indices)
+        val_loaders, probe_loaders = {3: loader(val_ds, False)}, {}  # canonical DROID windows use stride 3
     else:
         raise ValueError(f"unsupported data regime {regime!r}")
-    val_loader = DataLoader(
-        val_ds, batch_size=bs, shuffle=False, num_workers=workers // 2, collate_fn=collate, pin_memory=True
-    )
-    probe_loader = (
-        DataLoader(
-            probe_ds,
-            batch_size=bs,
-            shuffle=True,
-            num_workers=workers // 2,
-            collate_fn=collate,
-            pin_memory=True,
-            drop_last=True,
-        )
-        if probe_ds is not None
-        else None
-    )
-    return train_ds, val_loader, probe_loader, n_train_cams
+    return train_ds, val_loaders, probe_loaders, n_train_cams
 
 
 def main() -> None:
@@ -142,9 +144,9 @@ def main() -> None:
         logger.text(f"torch {torch.__version__}; config {args.config} overrides {args.set}")
     try:
         require_prebuilt_renderer()
-        train_ds, val_loader, probe_loader, n_train_cams = build_data(cfg)
-        evaluator = Evaluator(cfg, val_loader, probe_loader, logger, ctx.device, n_train_cams) if ctx.is_main else None
-        train(cfg, run_dir, train_ds, val_loader, ctx, logger, evaluator, resume=resume)
+        train_ds, val_loaders, probe_loaders, n_train_cams = build_data(cfg)
+        evaluator = Evaluator(cfg, val_loaders, probe_loaders, logger, ctx.device, n_train_cams) if ctx.is_main else None
+        train(cfg, run_dir, train_ds, ctx, logger, evaluator, resume=resume)
         if ctx.is_main:
             (run_dir / "completion.json").write_text(json.dumps({"status": "completed", "steps": get(cfg, "train.steps")}))
     except BaseException as exc:
