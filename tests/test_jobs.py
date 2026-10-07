@@ -96,6 +96,9 @@ def test_detached_launch_success_restart_once_then_fail(tmp_path):
         limits,
     )
     registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    (tmp_path / "HOLD").touch()
+    assert jobs.tick(queue, registry, runs, usage={}) == [] and not registry.exists(), "HOLD launches nothing"
+    (tmp_path / "HOLD").unlink()
     state = wait_for(
         queue,
         registry,

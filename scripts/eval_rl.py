@@ -40,8 +40,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--train-job", required=True, help="scheduler id of the training job")
-    ap.add_argument("--workers", type=int, default=12)
-    ap.add_argument("--envs-per-worker", type=int, default=10)
+    # Every environment holds a MuJoCo EGL renderer (~0.18 GB of GPU memory), so the pool is kept small, opened
+    # only while snapshots are pending, and closed when idle. 48 environments run the 240 episodes in 5 waves.
+    ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--envs-per-worker", type=int, default=8)
+    ap.add_argument("--cpu-threads", type=int, default=8)
     ap.add_argument("--poll-seconds", type=float, default=30.0)
     args = ap.parse_args()
     run_dir = Path(args.run_dir).resolve()
@@ -54,9 +57,8 @@ def main() -> None:
         require_passed_tests()
     device = torch.device("cuda")
     torch.backends.cudnn.benchmark = True  # as in the official train_mw.py
-    torch.set_num_threads(int(cfg["train"]["cpu_threads"]))
-    # Reference evaluation env seed: run seed + 1 (its 50 MT1 configurations differ from training's).
-    pool = EnvPool(cfg["task"], int(cfg["seed"]) + 1, args.workers, args.envs_per_worker, env_kwargs(cfg))
+    torch.set_num_threads(args.cpu_threads)
+    pool = None
     agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
     out = run_dir / "eval.jsonl"
@@ -80,6 +82,9 @@ def main() -> None:
             )
             if not pending and (trained or failed):
                 break
+            if pending and pool is None:
+                # Reference evaluation env seed: run seed + 1 (its 50 MT1 configurations differ from training's).
+                pool = EnvPool(cfg["task"], int(cfg["seed"]) + 1, args.workers, args.envs_per_worker, env_kwargs(cfg))
             for path in pending:
                 snapshot = torch.load(path, map_location=device, weights_only=True)
                 agent.encoder.load_state_dict(snapshot["policy"]["encoder"])
@@ -93,9 +98,13 @@ def main() -> None:
                 if wandb_run is not None:
                     wandb_run.log({f"eval/{k}": v for k, v in record.items() if k != "time"}, step=step)
             if not pending:
+                if pool is not None:  # release the renderers while waiting for the next snapshot
+                    pool.close()
+                    pool = None
                 time.sleep(args.poll_seconds)
     finally:
-        pool.close()
+        if pool is not None:
+            pool.close()
         if wandb_run is not None:
             wandb_run.finish()
 

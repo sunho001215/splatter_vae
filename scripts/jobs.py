@@ -10,7 +10,8 @@
 eligible jobs detached (``setsid nohup``) with exactly one allowed UUID in ``CUDA_VISIBLE_DEVICES``.
 Logs go to ``runs/<id>/console.log`` and the exit status to ``runs/<id>/exit_code``. A job whose
 process dies or exits non-zero is relaunched once (job scripts resume from their latest checkpoint);
-a second failure marks it ``failed`` for diagnosis. ``daemon`` repeats ``tick`` until stopped.
+a second failure marks it ``failed`` for diagnosis. ``daemon`` repeats ``tick`` until stopped. While
+``experiments/HOLD`` exists (sources being edited or tested), exits are still recorded but nothing is launched.
 """
 
 from __future__ import annotations
@@ -216,6 +217,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage) -> list[str]:
     foreign = {uuid for uuid, procs in usage.items() if any(session_id(pid) not in sessions for pid, _ in procs)}
     for uuid in foreign:
         messages.append(f"foreign processes on {uuid}: {usage[uuid]}; not launching there")
+    if (queue_path.parent / "HOLD").exists():  # code is being edited or tested: reconcile only, launch nothing
+        return messages
     for job in eligible(list(jobs.values()), state):
         gpu = choose_gpu(job, queue["limits"], running, foreign)
         if gpu is None:

@@ -34,6 +34,13 @@ def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
     }.items():
         monkeypatch.setattr(watch, name, value)
     gpu = watch.ALLOWED[0]
+    smi = {"out": f"{watch.ALLOWED[0]}, 1000, 97887\n{watch.ALLOWED[1]}, 2000, 97887\nGPU-other, 97000, 97887\n"}
+
+    class FakeRun:
+        def __init__(self, *args, **kwargs):
+            self.stdout = smi["out"]
+
+    monkeypatch.setattr(watch.subprocess, "run", FakeRun)  # hermetic: the real GPUs may be busy
     rows = [
         {"event": "launched", "id": "a", "pid": 1, "gpu": gpu, "attempt": 1},
         {"event": "exited", "id": "a", "code": 0},
@@ -62,6 +69,9 @@ def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
     assert "line=Traceback" in events[1]
     watch.save_state(state)
     assert watch.poll(watch.load_state()) == []
+    smi["out"] = f"{watch.ALLOWED[1]}, 91000, 97887\n"  # 93% of memory on an authorized GPU
+    state = watch.load_state()
+    assert [e.split()[0] for e in watch.poll(state)] == ["GPU_MEMORY_HIGH"] and watch.poll(state) == []
 
 
 def test_watcher_internal_error_prints_marker(tmp_path):
