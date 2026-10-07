@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 00:20
+Last updated: 2026-10-08 00:57
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -44,6 +44,9 @@ Last updated: 2026-10-08 00:20
 - 00:08: HEARTBEAT_OK, but Stage 0 had slowed to 5 steps/s (page-cache thrashing from pretraining loaders). Loader
   workers reduced to 12/8; each pretraining run restarts after its next checkpoint (hammer base and it1-hammer done at
   00:13; pick-place base at 50k, it1-pick-place and it2-hammer at 10k, it2-pick-place at 20k pending). See log entry.
+
+- 00:57: all six pretraining runs restarted from their checkpoints with 12/8 loader workers (no steps lost);
+  available RAM 76 -> ~160 GB; Stage 0 back to ~25 steps/s.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
