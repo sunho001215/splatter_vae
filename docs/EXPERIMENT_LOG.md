@@ -269,3 +269,29 @@ Runs: `runs/stage0-drm-cnn-hammer-s2000`, `runs/stage0-drm-cnn-shelf-place-s2000
 - **Use of these runs.** Code and protocol changed after launch only in evaluation-side robustness (reset seeding fixed
   before launch; renderer sharing, memory and resume fixes later), not in the training loop or protocol, so both remain
   valid Stage 4 CNN seed-2000 runs (re-check before Stage 4).
+
+## 2026-10-08 — Second OOM cascade; RAM-aware admission in the scheduler
+
+- **Incident (08:11-08:36).** Other tenants' anonymous memory reached ~324 GB (ours 32 GB); the kernel OOM killer
+  killed five of our pretraining runs (exit 137): it1-pick-place (08:11), it1-hammer, both base runs and it2-pick-place
+  (08:35). The scheduler relaunched the first two straight into the same pressure.
+- **Fix.** Jobs declare `ram_gb` (pretraining 20, RL 4-6, evaluators 6, exports 1); `scripts/jobs.py` launches a job only
+  if host `MemAvailable` minus its `ram_gb` stays above `host_ram_reserve_gb` (40), so relaunches wait for memory
+  instead of being killed again. Base pretraining runs have priority 0 and come back first; `max_restarts` 6 for
+  pretraining so host-pressure kills do not exhaust the crash budget. Test: `test_launches_wait_for_host_ram`;
+  suite 204/204. The it1 runs (just resumed from 70k) were stopped to give the base runs the memory.
+- **State at 08:45.** Hammer base relaunched (from 110k); pick-place base, it1 x2 and it2-pick-place wait for RAM;
+  it2-hammer kept running.
+
+## 2026-10-08 — Base-encoder DrM proxy (100k pretraining, 200k agent steps, seeds 1000/1001): reference for iterations
+
+| Task | Seed | Train cameras final / last-5 / AUC | Held-out last-5 | Trajectories last-5 | Peak train |
+|---|---|---|---|---|---|
+| hammer | 1000 | 0.13 / 0.13 / 0.15 | 0.03 | 0.24 | 0.44 |
+| hammer | 1001 | 0.29 / 0.26 / 0.18 | 0.06 | 0.17 | 0.43 |
+| pick-place | 1000 | 0.01 / ~0.01 / ~0.01 | ~0.01 | - | 0.03 |
+| pick-place | 1001 | 0.00 / ~0.00 / ~0.00 | ~0.01 | - | 0.02 |
+
+hammer learns quickly (0.4 near 80-100k agent steps vs 0.02 for the Stage 0 CNN at 100k; different seed, informal) but
+then degrades; held-out success is low but above the CNN's (0.03-0.09 vs 0.00 at 200k). pick-place is not learned
+within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,1001}`.

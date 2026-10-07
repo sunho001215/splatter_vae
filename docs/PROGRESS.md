@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 08:12
+Last updated: 2026-10-08 08:48
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -89,6 +89,9 @@ Last updated: 2026-10-08 08:12
   near 100k then decline); base pick-place s1001 done (0.0), s1000 finishing. Queued iteration proxies: exports wait
   for the iterations' 100k checkpoints (~3 h), then 8 DrM proxy runs + evaluators on GPU 5. RAM available 93 GB.
 
+- 08:45: OOM cascade from other tenants (5 pretraining runs killed). Scheduler now admits jobs only when host RAM
+  allows (`ram_gb` + 40 GB reserve). Hammer base relaunched; pick-place base, it1 x2, it2-pick-place waiting for RAM.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
@@ -115,6 +118,7 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-08 07:35 | 5.0 TB (s1-proxy-base-hammer-s1001 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-08 07:45 | 5.0 TB (s1-proxy-base-hammer-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-08 08:08 | 5.0 TB (s1-proxy-base-pick-place-s1001 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
+| 2026-10-08 08:47 | 5.0 TB (s1-proxy-base-pick-place-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 
 ## Next actions
 1. M2 iteration 3 -> record M2 outcome (RESULTS.md if still failing after three iterations).
