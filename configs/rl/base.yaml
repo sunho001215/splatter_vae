@@ -1,10 +1,9 @@
 # DrQ-v2 Meta-World protocol of the reference repository (agents/drqv2/config/*/<task>.yaml, commit c0abf56).
-# See docs/RL_PROTOCOL.md. Only the evaluation block is new (held-out cameras and trajectories).
+# See docs/RL_PROTOCOL.md. The per-task exploration schedule comes from configs/rl/tasks.yaml.
 seed: 0
 env:
   image_size: 128
   frame_stack: 3
-  frame_gap: 1            # agent steps between stacked frames; splatter4d derives it from its pretraining stride
   action_repeat: 2
   max_episode_steps: 250  # simulator steps
   proprio_indices: [0, 1, 2, 3]
@@ -13,7 +12,7 @@ agent:
   feature_dim: 256
   hidden_dim: 1024
   critic_target_tau: 0.01
-  stddev_schedule: linear(1.0,0.1,150000)
+  stddev_schedule: null   # per task, from configs/rl/tasks.yaml (agent steps)
   stddev_clip: 0.3
 train:
   num_train_steps: 1000000  # agent steps (each = action_repeat simulator steps)
@@ -23,14 +22,12 @@ train:
   update_every_steps: 2
   nstep: 3
   discount: 0.99
-  replay_num_workers: 1
+  replay_num_workers: 2    # disk (pixel) replay only; RAM replay samples in-process
   log_every_steps: 1000
   checkpoint_every_steps: 50000
   rolling_window: 10
-  keep_replay: false
 eval:
   every_steps: 10000
-  pool_size: 10
   episodes_per_train_camera: 20   # reference: 120 episodes split over the 6 training cameras
   episodes_per_heldout_camera: 20
   episodes_per_trajectory: 20     # reference evaluate_camera_trajectory.py default

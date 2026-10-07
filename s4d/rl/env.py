@@ -4,9 +4,8 @@ Images are rendered with the same free cameras, field of view and resolution as 
 (``s4d.data.metaworld.cameras``). A camera *path* is a list of free-camera poses indexed by render call:
 a fixed camera is a one-pose path, and the reference lateral/circular perturbation trajectories loop.
 
-``frame_gap`` spaces the frames handed to the encoder: the stack holds agent steps ``t-2g, t-g, t``.
-The reference protocol uses ``g=1``; the splatter4d encoder uses the gap matching its pretraining
-stride (see ``docs/RL_PROTOCOL.md``).
+Every method receives the reference DrQ-v2 observation: the last 3 rendered frames, one per agent step,
+so consecutive frames are ``action_repeat`` = 2 simulator steps apart. Pretraining strides include 2.
 """
 
 from __future__ import annotations
@@ -84,26 +83,10 @@ def trajectory_path(
     raise ValueError(f"unknown trajectory {kind!r}")
 
 
-def matching_frame_gap(strides, num_frames: int, action_repeat: int) -> int:
-    """Agent-step gap whose simulator stride is a pretraining stride, closest to the median stride.
-
-    Pretraining windows use simulator-step strides (Meta-World: 3, 6, 9). One agent step is
-    ``action_repeat`` simulator steps, so only strides divisible by it are reproducible online.
-    """
-    if num_frames == 1:
-        return 1
-    if not strides:
-        raise ValueError("the encoder export does not record its pretraining frame strides")
-    usable = [int(s) for s in strides if int(s) % action_repeat == 0]
-    if not usable:
-        raise ValueError(f"no pretraining stride {list(strides)} is a multiple of action_repeat={action_repeat}")
-    median = sorted(int(s) for s in strides)[len(strides) // 2]
-    return min(usable, key=lambda s: (abs(s - median), s)) // action_repeat
-
-
-def stack_indices(frame_stack: int, frame_gap: int) -> list[int]:
-    """Indices into a history of length ``(frame_stack-1)*frame_gap+1`` (oldest first)."""
-    return [k * frame_gap for k in range(frame_stack)]
+def check_pretraining_spacing(strides, num_frames: int, action_repeat: int) -> None:
+    """The RL frame spacing (``action_repeat`` simulator steps) must be a pretraining stride of the encoder."""
+    if num_frames > 1 and action_repeat not in [int(s) for s in strides or ()]:
+        raise ValueError(f"RL frames are {action_repeat} simulator steps apart, outside pretraining strides {strides}")
 
 
 class MetaWorldCameraEnv:
@@ -116,7 +99,6 @@ class MetaWorldCameraEnv:
         *,
         image_size: int,
         frame_stack: int,
-        frame_gap: int,
         action_repeat: int,
         max_episode_steps: int,
         proprio_indices=(0, 1, 2, 3),
@@ -133,10 +115,10 @@ class MetaWorldCameraEnv:
         self.model, self.data = base.model, base.data
         self.model.vis.global_.fovy = FOVY_DEG
         self.renderer = mujoco.Renderer(self.model, height=image_size, width=image_size)
-        self.frame_stack, self.frame_gap = int(frame_stack), int(frame_gap)
+        self.frame_stack = int(frame_stack)
         self.action_repeat, self.max_episode_steps = int(action_repeat), int(max_episode_steps)
         self.proprio_indices = list(proprio_indices)
-        self.history: deque[np.ndarray] = deque(maxlen=(self.frame_stack - 1) * self.frame_gap + 1)
+        self.history: deque[np.ndarray] = deque(maxlen=self.frame_stack)
         self.action_space = self.env.action_space
         self.action_space.seed(seed + 23456)
         self.base_seed, self.reset_count = int(seed), 0
@@ -168,14 +150,14 @@ class MetaWorldCameraEnv:
         return self.history[-1].copy()
 
     def stacked(self) -> np.ndarray:
-        frames = list(self.history)
-        return np.concatenate([frames[i] for i in stack_indices(self.frame_stack, self.frame_gap)], axis=0)
+        return np.concatenate(list(self.history), axis=0)
 
     def _proprio(self, state_obs) -> np.ndarray:
         return np.asarray(state_obs, dtype=np.float32).reshape(-1)[self.proprio_indices].copy()
 
-    def reset(self, path: list[FreeCamera]) -> tuple[np.ndarray, np.ndarray]:
-        state_obs, _ = self.env.reset(seed=self.base_seed + self.reset_count)
+    def reset(self, path: list[FreeCamera], seed: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """Reference reset seeds are ``seed + reset_count``; evaluation passes explicit episode seeds."""
+        state_obs, _ = self.env.reset(seed=self.base_seed + self.reset_count if seed is None else int(seed))
         self.reset_count += 1
         self.path, self.render_count, self.episode_step = list(path), 0, 0
         self.history.clear()
@@ -200,6 +182,11 @@ class MetaWorldCameraEnv:
     def close(self) -> None:
         self.renderer.close()
         self.env.close()
+
+
+def env_kwargs(cfg: dict) -> dict:
+    """Constructor arguments of ``MetaWorldCameraEnv`` from a resolved RL config."""
+    return {k: cfg["env"][k] for k in ("image_size", "frame_stack", "action_repeat", "max_episode_steps", "proprio_indices")}
 
 
 class TrainCameraSampler:

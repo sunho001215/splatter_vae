@@ -1,255 +1,249 @@
-"""Disk-backed DrQ-v2 replay, ported unchanged in behaviour from the reference ``agents/drqv2/replay_buffer.py``.
+"""DrQ-v2 replay with one storage layout and two backings, chosen by encoder type.
 
-Each row stores one environment state atom: one RGB frame (3,H,W), one per-frame feature, or one
-stack-level feature. Frame stacks and n-step returns are reconstructed at sample time.
+Each row holds one environment *state atom* plus the transition that leaves it:
+- frozen encoders (splatter4d, SinCro, ReViWo): the fp16 latent computed once per environment step,
+  kept in RAM (``directory=None``); no images are stored;
+- pixel encoders (CNN): one uint8 RGB frame per state, in a preallocated disk memmap under
+  ``runs/<id>/replay/`` that DataLoader workers read; frame stacks are rebuilt by index.
+
+Stacks and n-step returns are reconstructed at sample time exactly as in the reference
+``agents/drqv2/replay_buffer.py``: frames before the episode start repeat the first frame, and a sample
+never crosses an episode boundary or an overwritten slot.
 """
 
 from __future__ import annotations
 
-import random
-import time
 from pathlib import Path
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, IterableDataset
 
-_FILES = {
-    "obs": "obs.memmap",
-    "proprio": "proprio.memmap",
-    "action": "action.memmap",
-    "reward": "reward.memmap",
-    "discount": "discount.memmap",
-    "done": "done.memmap",
-    "state_id": "state_id.memmap",
-    "transition_id": "transition_id.memmap",
-    "episode_id": "episode_id.memmap",
-    "episode_step": "episode_step.memmap",
-    "meta": "meta.memmap",
-}
-_NEXT_STATE_ID, _NUM_TRANSITIONS, _NEXT_EPISODE_ID = 0, 1, 2
+FIELDS = ("atom", "proprio", "action", "reward", "discount", "state_id", "transition_id", "episode_id", "episode_step")
+NEXT_STATE_ID, NUM_TRANSITIONS, NEXT_EPISODE_ID = 0, 1, 2
 
 
-class _Layout:
-    """Shared memmap layout of storage (writer) and sampler (reader)."""
-
-    def __init__(self, replay_dir, obs_shape, obs_dtype, proprio_shape, action_shape, max_size, frame_stack, nstep):
-        self.replay_dir = Path(replay_dir)
-        self.obs_shape = tuple(obs_shape)
-        self.obs_dtype = np.dtype(obs_dtype)
-        self.proprio_shape = tuple(proprio_shape)
-        self.action_shape = tuple(action_shape)
-        self.max_size = int(max_size)
-        self.frame_stack = int(frame_stack)
-        self.nstep = int(nstep)
+class Replay:
+    def __init__(
+        self,
+        directory: Path | None,
+        atom_shape: tuple[int, ...],
+        atom_dtype,
+        proprio_dim: int,
+        action_dim: int,
+        max_size: int,
+        frame_stack: int,
+        nstep: int,
+        mode: str = "w+",
+        snapshot_dir: Path | None = None,
+    ):
+        self.directory = None if directory is None else Path(directory)
+        self.snapshot_dir = None if snapshot_dir is None else Path(snapshot_dir)
+        self.atom_shape, self.atom_dtype = tuple(atom_shape), np.dtype(atom_dtype)
+        self.proprio_dim, self.action_dim = int(proprio_dim), int(action_dim)
+        self.max_size, self.frame_stack, self.nstep = int(max_size), int(frame_stack), int(nstep)
         self.capacity = self.max_size + self.frame_stack + self.nstep + 1
-
-    def open_arrays(self, mode: str) -> None:
         c = self.capacity
         specs = {
-            "obs": (self.obs_dtype, (c, *self.obs_shape)),
-            "proprio": (np.float32, (c, *self.proprio_shape)),
-            "action": (np.float32, (c, *self.action_shape)),
-            "reward": (np.float32, (c, 1)),
-            "discount": (np.float32, (c, 1)),
-            "done": (np.bool_, (c, 1)),
+            "atom": (self.atom_dtype, (c, *self.atom_shape)),
+            "proprio": (np.float32, (c, self.proprio_dim)),
+            "action": (np.float32, (c, self.action_dim)),
+            "reward": (np.float32, (c,)),
+            "discount": (np.float32, (c,)),
             "state_id": (np.int64, (c,)),
             "transition_id": (np.int64, (c,)),
             "episode_id": (np.int64, (c,)),
             "episode_step": (np.int64, (c,)),
             "meta": (np.int64, (3,)),
         }
+        fresh = mode == "w+"
+        if self.directory is not None:
+            self.directory.mkdir(parents=True, exist_ok=True)
         for name, (dtype, shape) in specs.items():
-            setattr(
-                self, f"_{name}", np.memmap(self.replay_dir / _FILES[name], dtype=np.dtype(dtype), mode=mode, shape=shape)
-            )
-
-    def slot(self, state_id: int) -> int:
-        return int(state_id % self.capacity)
-
-    def __len__(self) -> int:
-        return int(min(int(self._meta[_NUM_TRANSITIONS]), self.max_size))
-
-
-class MemmapReplayBufferStorage(_Layout):
-    """Ring replay writer. ``reset=False`` reopens an existing buffer when resuming a crashed run."""
-
-    def __init__(
-        self, replay_dir, obs_shape, obs_dtype, proprio_shape, action_shape, max_size, frame_stack, nstep, reset=True
-    ):
-        super().__init__(replay_dir, obs_shape, obs_dtype, proprio_shape, action_shape, max_size, frame_stack, nstep)
-        self.replay_dir.mkdir(parents=True, exist_ok=True)
-        self._current_state_id: int | None = None
-        if reset:
-            for name in _FILES.values():
-                (self.replay_dir / name).unlink(missing_ok=True)
-        self.open_arrays("w+" if reset else "r+")
-        if reset:
-            for name in ("_state_id", "_transition_id", "_episode_id", "_episode_step"):
+            if self.directory is None:
+                array = np.zeros(shape, dtype=dtype)
+            else:
+                array = np.memmap(self.directory / f"{name}.memmap", dtype=dtype, mode=mode, shape=shape)
+            setattr(self, name, array)
+        if fresh:
+            for name in ("state_id", "transition_id", "episode_id", "episode_step"):
                 getattr(self, name)[:] = -1
-            self._meta[:] = 0
-            self._flush_metadata()
+            self.meta[:] = 0
+        self.current: int | None = None
 
-    def _flush_metadata(self) -> None:
-        for name in ("_state_id", "_transition_id", "_episode_id", "_episode_step", "_meta"):
-            getattr(self, name).flush()
-
-    def _write_state(self, obs, proprio, episode_id: int, episode_step: int) -> int:
-        state_id = int(self._meta[_NEXT_STATE_ID])
-        slot = self.slot(state_id)
-        self._obs[slot] = np.asarray(obs, dtype=self.obs_dtype)
-        self._proprio[slot] = np.asarray(proprio, dtype=np.float32)
-        self._state_id[slot] = state_id
-        self._episode_id[slot] = int(episode_id)
-        self._episode_step[slot] = int(episode_step)
-        self._meta[_NEXT_STATE_ID] = state_id + 1
-        return state_id
-
-    def add_initial(self, obs, proprio) -> None:
-        episode_id = int(self._meta[_NEXT_EPISODE_ID])
-        self._current_state_id = self._write_state(obs, proprio, episode_id=episode_id, episode_step=0)
-        self._flush_metadata()
-
-    def add(self, action, reward: float, discount: float, next_obs, next_proprio, done: bool) -> None:
-        if self._current_state_id is None:
-            raise RuntimeError("add_initial must be called before add.")
-        current_id = int(self._current_state_id)
-        slot = self.slot(current_id)
-        episode_id = int(self._episode_id[slot])
-        episode_step = int(self._episode_step[slot])
-        self._action[slot] = np.asarray(action, dtype=np.float32)
-        self._reward[slot] = np.asarray([reward], dtype=np.float32)
-        self._discount[slot] = np.asarray([discount], dtype=np.float32)
-        self._done[slot] = np.asarray([done], dtype=np.bool_)
-        self._transition_id[slot] = current_id
-        next_id = self._write_state(next_obs, next_proprio, episode_id=episode_id, episode_step=episode_step + 1)
-        self._meta[_NUM_TRANSITIONS] = int(self._meta[_NUM_TRANSITIONS]) + 1
-        if done:
-            self._meta[_NEXT_EPISODE_ID] = episode_id + 1
-            self._current_state_id = None
-        else:
-            self._current_state_id = next_id
-        self._flush_metadata()
-
-    def resume(self) -> None:
-        """Start a fresh episode id after reopening, so samples never splice two run segments."""
-        self._meta[_NEXT_EPISODE_ID] = int(self._episode_id.max()) + 1
-        self._current_state_id = None
-        self._flush_metadata()
-
-
-class MemmapReplayBuffer(_Layout, IterableDataset):
-    """Memmap-backed sampler that reconstructs frame stacks and n-step returns at sample time."""
-
-    def __init__(
-        self, replay_dir, obs_shape, obs_dtype, proprio_shape, action_shape, max_size, frame_stack, nstep, discount
-    ):
-        _Layout.__init__(self, replay_dir, obs_shape, obs_dtype, proprio_shape, action_shape, max_size, frame_stack, nstep)
-        IterableDataset.__init__(self)
-        self.discount_gamma = float(discount)
-        self._opened = False
-
-    def _open(self) -> None:
-        if not self._opened:
-            self.open_arrays("r")
-            self._opened = True
-
+    # ------------------------------------------------------------------ writing
     def __len__(self) -> int:
-        return _Layout.__len__(self) if self._opened else 0
+        return int(min(int(self.meta[NUM_TRANSITIONS]), self.max_size))
 
-    def _has_state(self, sid: int) -> bool:
-        return int(self._state_id[self.slot(sid)]) == int(sid)
+    def nbytes(self) -> int:
+        return sum(getattr(self, name).nbytes for name in (*FIELDS, "meta"))
 
-    def _has_transition(self, sid: int) -> bool:
-        return int(self._transition_id[self.slot(sid)]) == int(sid)
+    def _write_state(self, atom, proprio, episode_id: int, episode_step: int) -> int:
+        sid = int(self.meta[NEXT_STATE_ID])
+        slot = sid % self.capacity
+        self.atom[slot] = atom
+        self.proprio[slot] = proprio
+        self.state_id[slot], self.episode_id[slot], self.episode_step[slot] = sid, episode_id, episode_step
+        self.transition_id[slot] = -1
+        self.meta[NEXT_STATE_ID] = sid + 1
+        return sid
 
-    def _episode(self, sid: int) -> int:
-        return int(self._episode_id[self.slot(sid)])
+    def add_initial(self, atom, proprio) -> None:
+        self.current = self._write_state(atom, proprio, int(self.meta[NEXT_EPISODE_ID]), 0)
 
-    def _valid_start(self, sid: int, next_state_id: int) -> bool:
-        if not self._has_state(sid) or not self._has_state(sid + self.nstep):
-            return False
-        episode = self._episode(sid)
-        if self._episode(sid + self.nstep) != episode:
-            return False
+    def add(self, action, reward: float, discount: float, next_atom, next_proprio, done: bool) -> None:
+        if self.current is None:
+            raise RuntimeError("add_initial must be called before add")
+        slot = self.current % self.capacity
+        episode, step = int(self.episode_id[slot]), int(self.episode_step[slot])
+        self.action[slot], self.reward[slot], self.discount[slot] = action, reward, discount
+        nxt = self._write_state(next_atom, next_proprio, episode, step + 1)
+        self.transition_id[slot] = self.current  # published last: the transition is now complete
+        self.meta[NUM_TRANSITIONS] += 1
+        if done:
+            self.meta[NEXT_EPISODE_ID] = episode + 1
+            self.current = None
+        else:
+            self.current = nxt
+
+    def checkpoint(self) -> np.ndarray:
+        """Persist the buffer for crash resume and return its counters (stored in the agent checkpoint).
+
+        Disk buffers are flushed in place. RAM buffers are snapshotted to ``snapshot_dir`` (no images:
+        frozen-encoder buffers hold latents only).
+        """
+        if self.directory is not None:
+            for name in (*FIELDS, "meta"):
+                getattr(self, name).flush()
+        else:
+            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+            tmp = self.snapshot_dir / "ram_snapshot.tmp.npz"
+            np.savez(tmp, **{name: getattr(self, name) for name in (*FIELDS, "meta")})
+            tmp.replace(self.snapshot_dir / "ram_snapshot.npz")
+        return np.array(self.meta)
+
+    def restore(self, meta: np.ndarray) -> None:
+        """Return to a checkpoint: load the RAM snapshot or drop disk rows written after it; start a new episode."""
+        if self.directory is None:
+            with np.load(self.snapshot_dir / "ram_snapshot.npz") as saved:
+                for name in (*FIELDS, "meta"):
+                    getattr(self, name)[:] = saved[name]
+        self.meta[:] = meta
+        stale = self.state_id >= int(meta[NEXT_STATE_ID])
+        for name in ("state_id", "transition_id", "episode_id", "episode_step"):
+            getattr(self, name)[stale] = -1
+        self.transition_id[self.transition_id >= int(meta[NEXT_STATE_ID]) - 1] = -1  # the in-progress transition
+        self.meta[NEXT_EPISODE_ID] = int(self.episode_id.max()) + 1
+        self.current = None
+
+    # ------------------------------------------------------------------ sampling
+    def _valid(self, sid: np.ndarray, next_state_id: int) -> np.ndarray:
+        """Vectorised reference ``_valid_start``: sid..sid+n are live states of one episode with live transitions."""
+        ok = sid + self.nstep < next_state_id
+        episode = self.episode_id[sid % self.capacity]
+        for offset in range(self.nstep + 1):
+            slots = (sid + offset) % self.capacity
+            ok &= (self.state_id[slots] == sid + offset) & (self.episode_id[slots] == episode)
+            if offset < self.nstep:
+                ok &= self.transition_id[slots] == sid + offset
+        return ok
+
+    def _stack(self, sid: np.ndarray) -> np.ndarray:
+        steps = self.episode_step[sid % self.capacity]
+        offsets = np.arange(self.frame_stack - 1, -1, -1)
+        ids = sid[:, None] - np.minimum(offsets[None, :], steps[:, None])
+        if (self.state_id[ids % self.capacity] != ids).any():
+            raise RuntimeError("a stacked state was overwritten while sampling")
+        atoms = self.atom[ids % self.capacity]  # (B, frame_stack, *atom_shape)
+        if self.frame_stack == 1:
+            return atoms[:, 0]
+        if len(self.atom_shape) == 3 and self.atom_shape[0] == 3:  # RGB frames -> channel stack
+            return atoms.reshape(len(sid), 3 * self.frame_stack, *self.atom_shape[1:])
+        return atoms
+
+    def sample(self, batch_size: int, rng: np.random.Generator, gamma: float):
+        next_state_id = int(self.meta[NEXT_STATE_ID])
+        low = max(0, next_state_id - self.max_size)
+        high = next_state_id - self.nstep
+        if high <= low:
+            raise RuntimeError("not enough transitions to sample")
+        chosen = np.empty(0, dtype=np.int64)
+        for _ in range(1000):
+            candidates = rng.integers(low, high, size=2 * batch_size)
+            chosen = np.concatenate([chosen, candidates[self._valid(candidates, next_state_id)]])
+            if len(chosen) >= batch_size:
+                break
+        else:
+            raise RuntimeError("could not find valid replay samples")
+        sid = chosen[:batch_size]
+        reward = np.zeros(batch_size, dtype=np.float32)
+        discount = np.ones(batch_size, dtype=np.float32)
         for offset in range(self.nstep):
-            if not self._has_transition(sid + offset) or self._episode(sid + offset) != episode:
-                return False
-        return sid + self.nstep < next_state_id
-
-    def _sample_start_id(self) -> int:
-        while True:
-            next_state_id = int(self._meta[_NEXT_STATE_ID])
-            if min(int(self._meta[_NUM_TRANSITIONS]), self.max_size) >= self.nstep:
-                low, high = max(0, next_state_id - self.max_size), next_state_id - self.nstep
-                if high > low:
-                    for _ in range(1024):
-                        sid = random.randrange(low, high)
-                        if self._valid_start(sid, next_state_id):
-                            return sid
-            time.sleep(0.05)
-
-    def _read_obs(self, sid: int) -> np.ndarray:
-        if not self._has_state(sid):
-            raise RuntimeError(f"State {sid} has been overwritten.")
-        return np.asarray(self._obs[self.slot(sid)])
-
-    def _stack_state(self, sid: int) -> np.ndarray:
-        episode_step = int(self._episode_step[self.slot(sid)])
-        obs = [self._read_obs(sid - min(offset, episode_step)) for offset in range(self.frame_stack - 1, -1, -1)]
-        if len(self.obs_shape) == 3 and self.obs_shape[0] == 3:
-            return np.concatenate(obs, axis=0)
-        return np.stack(obs, axis=0)
-
-    def sample(self):
-        self._open()
-        sid = self._sample_start_id()
+            slots = (sid + offset) % self.capacity
+            reward += discount * self.reward[slots]
+            discount *= self.discount[slots] * gamma
         nid = sid + self.nstep
-        reward = np.zeros((1,), dtype=np.float32)
-        discount = np.ones((1,), dtype=np.float32)
-        for offset in range(self.nstep):
-            slot = self.slot(sid + offset)
-            reward += discount * np.asarray(self._reward[slot])
-            discount *= np.asarray(self._discount[slot]) * self.discount_gamma
         return (
-            self._stack_state(sid).copy(),
-            np.array(self._proprio[self.slot(sid)]),
-            np.array(self._action[self.slot(sid)]),
-            reward,
-            discount,
-            self._stack_state(nid).copy(),
-            np.array(self._proprio[self.slot(nid)]),
+            self._stack(sid),
+            self.proprio[sid % self.capacity],
+            self.action[sid % self.capacity],
+            reward[:, None],
+            discount[:, None],
+            self._stack(nid),
+            self.proprio[nid % self.capacity],
         )
 
+
+class _DiskReader(IterableDataset):
+    """DataLoader worker view of a disk buffer: reopens the memmaps read-only and yields whole batches."""
+
+    def __init__(self, replay: Replay, batch_size: int, gamma: float):
+        super().__init__()
+        self.args = (
+            replay.directory,
+            replay.atom_shape,
+            replay.atom_dtype,
+            replay.proprio_dim,
+            replay.action_dim,
+            replay.max_size,
+            replay.frame_stack,
+            replay.nstep,
+        )
+        self.batch_size, self.gamma = batch_size, gamma
+
     def __iter__(self):
+        info = torch.utils.data.get_worker_info()
+        rng = np.random.default_rng(None if info is None else info.seed % 2**32)
+        reader = Replay(*self.args, mode="r")  # MAP_SHARED: sees the writer's rows through the page cache
         while True:
-            yield self.sample()
+            yield tuple(torch.from_numpy(np.ascontiguousarray(x)) for x in reader.sample(self.batch_size, rng, self.gamma))
 
 
-def _seed_worker(_worker_id: int) -> None:
-    seed = torch.initial_seed() % (2**32)
-    np.random.seed(seed)
-    random.seed(seed)
+class _RamReader:
+    """In-process sampler for RAM buffers (frozen-encoder latents)."""
+
+    def __init__(self, replay: Replay, batch_size: int, gamma: float, seed: int):
+        self.replay, self.batch_size, self.gamma, self.rng = replay, batch_size, gamma, np.random.default_rng(seed)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return tuple(
+            torch.from_numpy(np.ascontiguousarray(x)) for x in self.replay.sample(self.batch_size, self.rng, self.gamma)
+        )
 
 
-def make_replay_loader(storage: MemmapReplayBufferStorage, batch_size: int, num_workers: int, discount: float):
-    dataset = MemmapReplayBuffer(
-        storage.replay_dir,
-        storage.obs_shape,
-        storage.obs_dtype,
-        storage.proprio_shape,
-        storage.action_shape,
-        storage.max_size,
-        storage.frame_stack,
-        storage.nstep,
-        discount,
-    )
+def replay_iterator(replay: Replay, batch_size: int, gamma: float, num_workers: int, seed: int):
+    """Batches of (obs, proprio, action, reward, discount, next_obs, next_proprio) tensors."""
+    if replay.directory is None:
+        return _RamReader(replay, batch_size, gamma, seed)
     loader = DataLoader(
-        dataset,
-        batch_size=int(batch_size),
+        _DiskReader(replay, batch_size, gamma),
+        batch_size=None,
         num_workers=int(num_workers),
         pin_memory=torch.cuda.is_available(),
-        worker_init_fn=_seed_worker,
         persistent_workers=int(num_workers) > 0,
+        prefetch_factor=4 if int(num_workers) > 0 else None,
     )
-    return loader, dataset
+    return iter(loader)
