@@ -18,7 +18,8 @@ def _worker(conn, task: str, seed: int, count: int, env_kwargs: dict) -> None:
     guard_mujoco()
     from s4d.rl.env import MetaWorldCameraEnv
 
-    envs = [MetaWorldCameraEnv(task, seed, **env_kwargs) for _ in range(count)]
+    first = MetaWorldCameraEnv(task, seed, **env_kwargs)  # one renderer per worker process (GPU memory)
+    envs = [first] + [MetaWorldCameraEnv(task, seed, renderer=first.renderer, **env_kwargs) for _ in range(count - 1)]
     conn.send("ready")
     while True:
         command, payload = conn.recv()
@@ -34,7 +35,7 @@ def _worker(conn, task: str, seed: int, count: int, env_kwargs: dict) -> None:
                 out.append((obs, proprio, reward, done, info["success"]))
             conn.send(out)
         else:
-            for env in envs:
+            for env in reversed(envs):  # the owner of the shared renderer closes last
                 env.close()
             conn.send("closed")
             return

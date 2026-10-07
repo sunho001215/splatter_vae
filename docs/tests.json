@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T09:56:35.327555+00:00",
+  "started_utc": "2026-10-07T10:07:34.451650+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,7 +17,7 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 95.94789838418365,
+  "duration_seconds": 109.38230059668422,
   "counts": {
     "passed": 189,
     "error": 0,
@@ -65,11 +65,11 @@
     "s4d/rl/__init__.py": "3a4dfbe72092286ae5b7c3f85e520c425de1e5384177c392eda936967964c01e",
     "s4d/rl/agent.py": "6791e32c1b3332167bcb98b0c659f26ee6de31327958dbe4a6db2187cf0e464a",
     "s4d/rl/encoders.py": "1cd996e96e8a9a4f2c1b6371b20ebb0ceb012f67462ebf462c2d6955dad3463e",
-    "s4d/rl/env.py": "c21793f7f011a69112487c38a684fcc9adbfdf161cf0e49586c04fad14a3004e",
+    "s4d/rl/env.py": "16a51854c5b053147eca485a83e1281b793e72d16da9c1ea1eef91d30585fd29",
     "s4d/rl/evaluate.py": "7e879d034fcda6884ea508d40c0fac9f278ce922196f954c6bd92a2c352174a8",
     "s4d/rl/protocol.py": "5c558ee6e46e5b49e23e6bc9b970351064298e8382913ab05c11c818ee141e1d",
     "s4d/rl/replay.py": "7a0fbe89f579fb59d38962db95de956d90164b594db2d2804c5ca212fd545c25",
-    "s4d/rl/vecenv.py": "85a0dfc1850ff0cb76657147e296300d7b28b7798857de58c67deef662b1416c",
+    "s4d/rl/vecenv.py": "d16289ed7bd9837fa3ca234c1f87a11f2b2c8a42fb8b080fcb305094a0d6a075",
     "s4d/train/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
     "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
@@ -86,7 +86,7 @@
     "scripts/download_droid_sample.py": "e2fe74b23865c3f7ea344d916b9883afa457e93916c39bb23a46ae9914bbd40b",
     "scripts/droid_compare_step0.py": "2a1e9c296b8365ec8ac2679f4fbac7bc2af49ca2e87af8a449aa8293fa00a600",
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
-    "scripts/eval_rl.py": "85039bd4d1c681cb0cc1631be7547ba5844dd6a627295aaabe190b90352fbdc3",
+    "scripts/eval_rl.py": "f857800f42c3eaea83944077c266b9ea09813984d68dad5e2ef5dd13f1dc03db",
     "scripts/evaluate.py": "e3f5c8cf60e5044fd7b0f0ede40e9fdbf8e1f4f601c5f9e8a4e5d5b793181546",
     "scripts/export_encoder.py": "956f9a24b0ef264098d3f3e6a56898dc6ed853dd11672fdfb13a36548bf115fa",
     "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",

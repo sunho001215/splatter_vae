@@ -40,8 +40,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--train-job", required=True, help="scheduler id of the training job")
-    # Every environment holds a MuJoCo EGL renderer (~0.18 GB of GPU memory), so the pool is kept small, opened
-    # only while snapshots are pending, and closed when idle. 48 environments run the 240 episodes in 5 waves.
+    # Each worker process holds one MuJoCo renderer (~0.44 GB of GPU memory) shared by its environments; the pool
+    # is opened only while snapshots are pending and closed when idle. 48 environments: 240 episodes in 5 waves.
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--envs-per-worker", type=int, default=8)
     ap.add_argument("--cpu-threads", type=int, default=8)

@@ -8,4 +8,4 @@ tests/test_rl.py::test_exploitation_target_and_expectile_match_the_official_code
     assert float(agent.update_predictor(obs, proprio, action)["predictor_loss"]) == pytest.approx(float(loss), rel=1e-6)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-[33m[32m189 passed[0m, [33m[1m1 warning[0m[33m in 95.42s (0:01:35)[0m[0m
+[33m[32m189 passed[0m, [33m[1m1 warning[0m[33m in 108.93s (0:01:48)[0m[0m

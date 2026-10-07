@@ -40,6 +40,7 @@ RL algorithm: DrM (official code @ 989732d6) for every RL run (E4).
 |---|---|
 | 2026-10-07 17:00 | 5578 GB |
 | 2026-10-07 18:45 | 5.0 TB |
+| 2026-10-07 19:02 | 5.0 TB (after timing-cnn-c1 finished; deleted runs/timing-cnn-c1/replay/, 0.98 GB) |
 
 ## Next actions
 1. Collections finish -> splits, workspace stats, D2/D3 geometry checks and sanity panels run as dependent jobs.

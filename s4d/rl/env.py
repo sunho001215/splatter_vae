@@ -102,7 +102,11 @@ class MetaWorldCameraEnv:
         action_repeat: int,
         max_episode_steps: int,
         proprio_indices=(0, 1, 2, 3),
+        renderer=None,
     ):
+        """``renderer``: share another environment's MuJoCo renderer (same task). Each renderer holds its own copy of
+        the scene textures (~0.44 GB of GPU memory); poses come from this env's ``MjData``, so shared rendering is
+        pixel-identical up to the renderer's own +/-1 intensity noise (checked on all eight tasks)."""
         import gymnasium as gym
         import metaworld  # noqa: F401  (registers Meta-World/MT1)
         import mujoco
@@ -114,7 +118,8 @@ class MetaWorldCameraEnv:
             base._freeze_rand_vec = False
         self.model, self.data = base.model, base.data
         self.model.vis.global_.fovy = FOVY_DEG
-        self.renderer = mujoco.Renderer(self.model, height=image_size, width=image_size)
+        self.owns_renderer = renderer is None
+        self.renderer = mujoco.Renderer(self.model, height=image_size, width=image_size) if renderer is None else renderer
         self.frame_stack = int(frame_stack)
         self.action_repeat, self.max_episode_steps = int(action_repeat), int(max_episode_steps)
         self.proprio_indices = list(proprio_indices)
@@ -190,7 +195,8 @@ class MetaWorldCameraEnv:
         return self.stacked(), self._proprio(state_obs), total_reward, done, {"success": success}
 
     def close(self) -> None:
-        self.renderer.close()
+        if self.owns_renderer:
+            self.renderer.close()
         self.env.close()
 
 
