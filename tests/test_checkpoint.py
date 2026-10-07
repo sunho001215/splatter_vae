@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import DataLoader, DistributedSampler
 
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
-from s4d.train.loop import infinite
+from s4d.train.loop import ResumableDistributedSampler, infinite
 
 
 def _modules():
@@ -94,9 +94,18 @@ def test_checkpoint_rejects_rank_without_saved_rng_state(tmp_path, invalid_rank)
         load_checkpoint(checkpoint, encoder, decoder, rank=invalid_rank)
 
 
-def _loader(rank=0, world=1):
-    dataset = list(range(19))
-    sampler = DistributedSampler(dataset, num_replicas=world, rank=rank, shuffle=True, seed=37, drop_last=True)
+class _Counting(list):
+    loads = 0
+
+    def __getitem__(self, index):
+        type(self).loads += 1
+        return super().__getitem__(index)
+
+
+def _loader(rank=0, world=1, resumable=False):
+    dataset = _Counting(range(19))
+    kind = ResumableDistributedSampler if resumable else DistributedSampler
+    sampler = kind(dataset, num_replicas=world, rank=rank, shuffle=True, seed=37, drop_last=True)
     return DataLoader(
         dataset, batch_size=2, sampler=sampler, drop_last=True, generator=torch.Generator().manual_seed(37), num_workers=0
     )
@@ -111,6 +120,20 @@ def test_sampler_resume_replays_epoch_and_skips_exact_batch_prefix():
             resumed = infinite(loader, start_step=start)
             actual = [next(resumed).tolist() for _ in range(5)]
             assert actual == expected[start : start + 5], (rank, world, start)
+            assert loader.sampler.epoch == (start + 4) // len(loader)
+
+
+def test_resumable_sampler_matches_replay_without_loading_the_skipped_prefix():
+    for rank, world in ((0, 1), (0, 2), (1, 2)):
+        baseline = infinite(_loader(rank, world))
+        expected = [next(baseline).tolist() for _ in range(30)]
+        for start in (0, 1, 4, 9, 15, 22):
+            loader = _loader(rank, world, resumable=True)
+            _Counting.loads = 0
+            resumed = infinite(loader, start_step=start)
+            actual = [next(resumed).tolist() for _ in range(5)]
+            assert actual == expected[start : start + 5], (rank, world, start)
+            assert _Counting.loads == 5 * 2, "only the yielded batches are loaded"
             assert loader.sampler.epoch == (start + 4) // len(loader)
 
 

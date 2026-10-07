@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T17:31:21.230307+00:00",
+  "started_utc": "2026-10-07T18:11:10.274174+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,14 +17,14 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 372.8650634284131,
+  "duration_seconds": 151.531725527253,
   "counts": {
-    "passed": 201,
+    "passed": 202,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 201,
+  "total": 202,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -90,7 +90,7 @@
     "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
     "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
     "s4d/train/evaluate.py": "580669fd4223b42b876abac3934c6f1a6b6cc62191a6d17305843d06aba2c1ec",
-    "s4d/train/loop.py": "17985569ac085af45031a8f62b94e1a968c3217a721ddbb4528785f0bab950b4",
+    "s4d/train/loop.py": "39a9e865a8675eec2ef09b5b9a8f1fa2e09bcbd116cbf760c2828ee6ad431eb5",
     "s4d/train/workers.py": "10d24b41be48aa1f9230ad176848638167fa7cabf4f6906365897a84732a4a08",
     "scripts/_bootstrap.py": "6575f5eeb95d13d960ec84c00ef4b3defabbcf477b5e558ac684c4a5bcca4336",
     "scripts/check_gpu_isolation.py": "8edd19b5e7cdea3a4535e2c8c8d3440bf4a836561ea8b1760c17bfa62b09ba69",
@@ -127,7 +127,7 @@
     "tests/_rl_env_worker.py": "66dc773d9f80965641c0c29a1a8a99b7f5cdd8a2e675b50d18a8e2a7e34f7c94",
     "tests/conftest.py": "5e4ad64889562368cb0919e4f2188e984e3a490df5945285db97f2d889fe3b0b",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
-    "tests/test_checkpoint.py": "fa7cf13383dfbcf126a5fb425dd5933cfca7648c1c90ec0573026c24f53a9a87",
+    "tests/test_checkpoint.py": "eb136245edb00ea4e64481c5601fc86eb5d7ee2d5445762962d64f427ef741be",
     "tests/test_cli.py": "7432a1a5ed8787bdd03f312c0bad896483e4ea9d7c05635ccbcaaa80e3686dbd",
     "tests/test_contract.py": "2e4d6c4ad3f6b795a6d790e04df981bc4ac802bcc114974dd1700e557f5f6f42",
     "tests/test_cuda_render.py": "aa6f526023238449d51e7d54aabef6753885f9a92f8136a8a319d4b65c9c5107",
@@ -764,7 +764,9 @@
       "<dictcomp>",
       "<module>",
       "Model",
+      "ResumableDistributedSampler",
       "__init__",
+      "__iter__",
       "_nanmean",
       "_per_t",
       "_rows",

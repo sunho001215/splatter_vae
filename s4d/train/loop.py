@@ -325,8 +325,19 @@ def grad_norms(model: Model) -> dict[str, float]:
     return out
 
 
+class ResumableDistributedSampler(DistributedSampler):
+    """DistributedSampler that can skip the first ``skip`` indices of its next epoch without loading them."""
+
+    skip = 0
+
+    def __iter__(self):
+        indices = list(super().__iter__())
+        skip, self.skip = self.skip, 0
+        return iter(indices[skip:])
+
+
 def make_train_loader(dataset, cfg: dict, ctx: ddp.DistContext, seed: int) -> DataLoader:
-    sampler = DistributedSampler(
+    sampler = ResumableDistributedSampler(
         dataset, num_replicas=ctx.world_size, rank=ctx.rank, shuffle=True, seed=seed, drop_last=True
     )
     workers = int(get(cfg, "train.num_workers", 8))
@@ -346,12 +357,19 @@ def make_train_loader(dataset, cfg: dict, ctx: ddp.DistContext, seed: int) -> Da
 
 
 def infinite(loader: DataLoader, start_step: int = 0):
+    """Endless batches, resuming at global step ``start_step`` of the deterministic epoch order.
+
+    With a ``ResumableDistributedSampler`` the already-trained prefix of the epoch is skipped at the index level, so
+    no sample is loaded for it (resuming late in an epoch used to load and discard thousands of batches).
+    """
     if len(loader) == 0:
         raise ValueError("training dataset is smaller than one full batch")
     epoch, skip = divmod(start_step, len(loader))
     while True:
         if isinstance(loader.sampler, DistributedSampler):
             loader.sampler.set_epoch(epoch)
+        if skip and isinstance(loader.sampler, ResumableDistributedSampler):
+            loader.sampler.skip, skip = skip * loader.batch_size, 0
         for i, batch in enumerate(fork_safe_iter(loader)):
             if i >= skip:
                 yield batch
