@@ -27,6 +27,7 @@ from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_hard_depth, render_rgbd
 from s4d.train import ddp
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
+from s4d.train.workers import fork_safe_iter
 
 MOVING_SCORE = 0.5
 STATIC_SCORE = 0.05
@@ -351,7 +352,7 @@ def infinite(loader: DataLoader, start_step: int = 0):
     while True:
         if isinstance(loader.sampler, DistributedSampler):
             loader.sampler.set_epoch(epoch)
-        for i, batch in enumerate(loader):
+        for i, batch in enumerate(fork_safe_iter(loader)):
             if i >= skip:
                 yield batch
         skip = 0

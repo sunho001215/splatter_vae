@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T12:08:57.988934+00:00",
+  "started_utc": "2026-10-07T13:47:05.194022+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,14 +17,14 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 148.94182477612048,
+  "duration_seconds": 154.92881389614195,
   "counts": {
-    "passed": 199,
+    "passed": 200,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 199,
+  "total": 200,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -89,8 +89,9 @@
     "s4d/train/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
     "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
-    "s4d/train/evaluate.py": "db1cd08e52a76542bc87b6e8205851944194a4e3112f61a5f52fcd0185f470b6",
-    "s4d/train/loop.py": "77403f10d32d1bcb939d494e4dfc9d3eb95d4e4fa5edad9f2d4fef16f9ce7276",
+    "s4d/train/evaluate.py": "580669fd4223b42b876abac3934c6f1a6b6cc62191a6d17305843d06aba2c1ec",
+    "s4d/train/loop.py": "17985569ac085af45031a8f62b94e1a968c3217a721ddbb4528785f0bab950b4",
+    "s4d/train/workers.py": "10d24b41be48aa1f9230ad176848638167fa7cabf4f6906365897a84732a4a08",
     "scripts/_bootstrap.py": "6575f5eeb95d13d960ec84c00ef4b3defabbcf477b5e558ac684c4a5bcca4336",
     "scripts/check_gpu_isolation.py": "8edd19b5e7cdea3a4535e2c8c8d3440bf4a836561ea8b1760c17bfa62b09ba69",
     "scripts/check_metaworld.py": "cdce89b3b209730f8190c1bba34dea9262c8dd4fb90c4b21d278cf30f9021a1e",
@@ -147,6 +148,7 @@
     "tests/test_rl.py": "314b47ad1e4071f7af8b1a3c5be870f70e8c46df07ed86e18894e6678d565f51",
     "tests/test_rl_cli.py": "dfe33af7121f2d9d42cbf06ad65adbe768b68c3761b18e7de8f3033e49462761",
     "tests/test_watch.py": "c181728b203e7638e48da11e15516531549fc3c703a03fb5c1aa3f755e3eed56",
+    "tests/test_workers.py": "b49241832c24db15d45a7f997e38b55b10d4fdb01261ce265c5fe342a1c76447",
     "configs/baselines/reviwo/bin-picking.yaml": "8e0b6b94a2a68d952c4a1f8149d926e94a69164e917aac8ab12fed44d15d5567",
     "configs/baselines/reviwo/door-open.yaml": "ecf4863c883c2b6a9b7169df83f01f64210c9f09ce4c168d5a9cd53ba98fa507",
     "configs/baselines/reviwo/hammer.yaml": "34cae891290fb9a76a928bf6becb539737701d31cef4fa68ce6ed6d69be38bbd",
@@ -773,6 +775,10 @@
       "move_batch",
       "seed_everything",
       "temporal_ramp"
+    ],
+    "s4d/train/workers.py": [
+      "<module>",
+      "fork_safe_iter"
     ],
     "scripts/_bootstrap.py": [
       "<genexpr>",

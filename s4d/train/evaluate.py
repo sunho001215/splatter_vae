@@ -28,6 +28,7 @@ from s4d.model.encoder import sample_tube_mask
 from s4d.model.gaussians import GaussianSet
 from s4d.model.render import render_rgbd
 from s4d.train.loop import Model, forward_losses, move_batch
+from s4d.train.workers import fork_safe_iter
 
 RETRIEVAL_STATES = 64
 
@@ -132,7 +133,7 @@ class Evaluator:
         counts = defaultdict(int)
         states, eval_states, episodes, t0s, probe_states, strides = [], [], [], [], [], []
         first = None
-        for i, raw in enumerate(loader):
+        for i, raw in enumerate(fork_safe_iter(loader)):
             if not full and i >= self.max_batches:
                 break
             batch = move_batch(raw, self.device)
@@ -264,7 +265,7 @@ class Evaluator:
         val_stride: torch.Tensor,
     ) -> dict[str, float]:
         xs, ys = [], []
-        for i, raw in enumerate(probe_loader):
+        for i, raw in enumerate(fork_safe_iter(probe_loader)):
             if i >= int(get(self.cfg, "eval.probe_batches", 24)):
                 break
             batch = move_batch(raw, self.device)

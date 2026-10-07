@@ -162,3 +162,19 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
 - **S1** `loss.motion` 5 -> 20 (motion supervision weak in the gate). **S2** `loss.lambda_dyn` 1 -> 4 (moving object
   under-rendered). **S3** `model.decoder.dim` 128 -> 256 (decoder learning speed). Runs:
   `runs/pretrain/screen-{s1-motion20,s2-lambdadyn4,s3-decdim256}`.
+
+## 2026-10-07 — Fix: forked DataLoader workers aborting during evaluation
+
+- **Incident.** `screen-s1-motion20` failed in its step-6000 evaluation: three evaluation-loader workers aborted with
+  `CUDA error: initialization error` thrown from `c10::TensorImpl::~TensorImpl -> c10::cuda::ExchangeDevice`, i.e. a
+  CUDA tensor was destroyed inside a forked worker (CUDA cannot be used in a child forked after CUDA init). The
+  scheduler restarted the job once; it resumed from the step-6000 checkpoint and completed.
+- **Cause (from the stack trace).** Evaluation loaders fork new workers at every evaluation, after the model is on the
+  GPU. A forked worker inherits the parent's uncollected cyclic garbage; when the worker's garbage collector runs, it
+  can free CUDA tensors it inherited. A minimal reproduction (cyclic garbage holding CUDA and pinned tensors, workers
+  calling `gc.collect()`) did not crash, so the exact object could not be pinned down.
+- **Fix.** `s4d/train/workers.fork_safe_iter`: the parent runs `gc.collect()` and `gc.freeze()` while the workers are
+  forked and `gc.unfreeze()` afterwards, so workers never collect inherited objects. Used for the training loader,
+  validation loaders and probe loaders. Test: `tests/test_workers.py` (mechanics). Suite 200/200.
+- **Exposure.** The two running base pretraining runs started with the old code; if they hit this, the scheduler
+  resumes them from their last checkpoint (every 10k steps) with the fixed code.
