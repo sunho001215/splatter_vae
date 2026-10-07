@@ -1,0 +1,7 @@
+# Frozen splatter4d encoder; cached flattened state feeds a small projection head (reference splattervae config).
+vision:
+  encoder_type: splatter4d
+  export_path: null   # set on the command line: vision.export_path=<encoder.pt>
+agent:
+  feature_dim: 256
+  augment_pixels: false

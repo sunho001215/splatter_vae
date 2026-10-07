@@ -1,0 +1,5 @@
+# Reference agents/drqv2/config/cnn: end-to-end DrQ-v2 ConvNet with random-shift augmentation.
+vision:
+  encoder_type: convnet
+agent:
+  feature_dim: 50

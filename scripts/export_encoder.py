@@ -44,6 +44,8 @@ def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
         "encoder_config": asdict(encoder.cfg),
         "state_dict": encoder.state_dict(),
         "step": step,
+        # Simulator-step spacing of the pretraining frames; the RL side matches its frame gap to one of these.
+        "frame_strides": cfg["data"].get("strides"),
         "source_checkpoint": str(ckpt),
         "run_name": cfg.get("run", {}).get("name"),
     }
