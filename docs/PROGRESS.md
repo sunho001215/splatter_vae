@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-07 20:13
+Last updated: 2026-10-07 21:20
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -24,6 +24,11 @@ Last updated: 2026-10-07 20:13
 - 20:13: HEARTBEAT_OK — 8 running jobs active (last activity < 3 min), watcher and scheduler alive, 5375 GB free.
   hammer pretraining at 5k/200k (0.175 s/step), pick-place at 2.9k (0.34 s/step), gate arms at 2.0k (3a) / 1.3k (3b).
 
+- 21:20: HEARTBEAT_OK — 7 running jobs. Two Stage 0 evaluations took ~20 min (20:40-21:03) while another test run
+  shared GPU 5; back to ~80-100 s and catching up. Heartbeat now counts eval companions' writes in the training run
+  (they looked idle 25+ min). Progress: hammer pretraining 24k/200k (PSNR 23.7, retrieval 0.73 at 20k), pick-place
+  12k/200k, gate 3b at 7k (PSNR 25.4, rel EPE 0.38 s2), Stage 0 at 230k (hammer train-camera success 0.23).
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
@@ -31,7 +36,6 @@ Last updated: 2026-10-07 20:13
 | stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
 | s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
 | s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
-| gate-m2-hammer-it3a (LR x4, 3k) | GPU 4 | running | runs/pretrain/gate-m2-hammer-it3a/log.txt | splatter4d-metaworld |
 | gate-m2-hammer-it3b (12k steps) | GPU 5 | running | runs/pretrain/gate-m2-hammer-it3b/log.txt | splatter4d-metaworld |
 
 Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-*`, `timing2-*`), gate it1/it2.
