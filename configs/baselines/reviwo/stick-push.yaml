@@ -1,0 +1,84 @@
+# ReViWo pretraining on stick-push: reference config baselines/ReViWo/config/metaworld/stick-push.yaml (sunho001215/splatter_vae @ c0abf56)
+# with every hyperparameter unchanged. Changed: dataset path, W&B project, data_interface (saved split
+# manifest); output-location keys dropped (runs/pretrain/<name>). See docs/BASELINES.md.
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/stick-push.hdf5
+  batch_size: 8
+  num_workers: 8
+  pin_memory: true
+  train_ratio: 0.96
+  seed: 42
+  num_episodes: null
+  max_frames_per_demo: null
+  min_time_gap: 25
+  camera_num: 6
+reviwo:
+  img_size: 128
+  patch_size: 16
+  fusion_style: plus
+  use_latent_vq: true
+  is_latent_ae: false
+  use_view_vq: true
+  is_view_ae: false
+  view_encoder:
+    block_size: 256
+    vocab_size: 512
+    n_tokens_per_frame: 256
+    n_layer: 8
+    n_head: 8
+    n_embed: 128
+    dropout: 0.1
+    bias: false
+    mask_rate: 0
+  latent_encoder:
+    block_size: 256
+    vocab_size: 512
+    n_tokens_per_frame: 256
+    n_layer: 8
+    n_head: 8
+    n_embed: 128
+    dropout: 0.1
+    bias: false
+    mask_rate: 0
+  decoder:
+    block_size: 256
+    vocab_size: 512
+    n_tokens_per_frame: 256
+    n_layer: 8
+    n_head: 8
+    n_embed: 128
+    dropout: 0.1
+    bias: false
+    mask_rate: 0
+  view_codebook:
+    embed_dim: 16
+    n_embed: 64
+    beta: 0.25
+  latent_codebook:
+    embed_dim: 16
+    n_embed: 512
+    beta: 0.25
+train:
+  num_epochs: 1000
+  max_global_steps: 100001
+  lr: 0.0003
+  device: cuda:0
+  loss_form: Weighted_MSE
+  vq_coef: 0.25
+  shuffled_v_coef: 2.0
+  shuffled_l_coef: 2.0
+  shuffled_vl_coef: 2.0
+  latent_consistency_coef: 0.5
+  view_consistency_coef: 0.1
+  latent_contrastive_coef: 0.5
+  view_contrastive_coef: 0.1
+  temperature: 0.25
+  lower_bound: 0.9
+  eval_every: 1000
+  save_every: 5000
+  log_every: 50
+  camera_num: 6
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/stick-push_seed0.json

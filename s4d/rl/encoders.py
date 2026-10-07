@@ -131,7 +131,75 @@ class SmallPostEncoderMLPHead(nn.Module):
         return self.net(x.flatten(1)).contiguous()
 
 
-BACKBONES = {"convnet": ConvNet, "splatter4d": Splatter4DStateEncoder}
+class SinCroStateEncoder(nn.Module):
+    """Frozen SinCro encoder (reference ``SinCroSceneEncoder``): fused state of the newest step of a history.
+
+    With one camera at RL time, the two reference views are the primary view repeated, as in the reference wrapper.
+    The upstream encoder keeps its positional encodings in plain tensors and a ``device`` attribute; they are
+    registered as non-persistent buffers and kept in sync so the module moves with ``.to(device)``.
+    """
+
+    is_trainable = False
+    returns_sequence_state = True
+
+    def __init__(self, cfg: dict[str, Any]):
+        super().__init__()
+        from s4d.baselines.sincro.encoder import load_export
+
+        payload, self.encoder = load_export(cfg["vision"]["export_path"])
+        model_cfg = payload["model_cfg"]
+        self.time_interval, self.num_ref_views = int(model_cfg["time_interval"]), int(model_cfg["num_ref_views"])
+        self.frame_spacing = int(payload["frame_spacing"])
+        for name in ("pos_embed", "decoder_pos_embed", "cls_pos_embed"):
+            tensor = getattr(self.encoder, name)
+            delattr(self.encoder, name)
+            self.encoder.register_buffer(name, tensor, persistent=False)
+
+    def _apply(self, fn, recurse=True):
+        super()._apply(fn, recurse)
+        self.encoder.device = self.encoder.pos_embed.device
+        return self
+
+    def forward(self, frames: torch.Tensor) -> torch.Tensor:
+        """frames: (B,T,3,H,W) float in [0,1], oldest first -> (B, decoder_output_dim)."""
+        from einops import rearrange
+
+        b, t = frames.shape[:2]
+        if t != self.time_interval:
+            raise ValueError(f"SinCro expects T == time_interval == {self.time_interval}, got {t}")
+        primary = frames.permute(0, 1, 3, 4, 2).contiguous()  # (B,T,H,W,3)
+        latent, mask, ids_restore = self.encoder.SinCro_image_encoder(primary, mask_ratio=0.0, T=t, is_ref=False)
+        refs = primary.repeat(self.num_ref_views, 1, 1, 1, 1)
+        ref_latent, _, _ = self.encoder.SinCro_image_encoder(refs, mask_ratio=0.0, T=t, is_ref=True)
+        ref_latent = rearrange(ref_latent[:, 1:, :], "b (t hw) d -> b t hw d", t=t)[:, -1]
+        ref_latent = rearrange(ref_latent, "(v b) hw d -> b (v hw) d", v=self.num_ref_views, b=b)
+        latent, _, _ = self.encoder.SinCro_state_encoder(latent, ref_latent, mask, ids_restore)
+        return latent.view(b, t, -1)[:, -1].contiguous()
+
+
+class ReViWoFrameEncoder(nn.Module):
+    """Frozen ReViWo encoder (reference ``ReViWoInvariantEncoder``): view-invariant latent code of one frame."""
+
+    is_trainable = False
+
+    def __init__(self, cfg: dict[str, Any]):
+        super().__init__()
+        from s4d.baselines.reviwo.model import load_export
+
+        _, self.model = load_export(cfg["vision"]["export_path"])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (N,3,H,W) float in [0,1] -> (N, tokens * code_dim)."""
+        _, _, z_l, _, _ = self.model.encode(x * 2.0 - 1.0)
+        return z_l.flatten(1).contiguous()
+
+
+BACKBONES = {
+    "convnet": ConvNet,
+    "splatter4d": Splatter4DStateEncoder,
+    "sincro": SinCroStateEncoder,
+    "reviwo": ReViWoFrameEncoder,
+}
 
 
 class VisionEncoderAdapter(nn.Module):

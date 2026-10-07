@@ -28,4 +28,9 @@ def resolve_config(task: str, encoder: str, seed: int, overrides: list[str]) -> 
         check_pretraining_spacing(
             export["frame_strides"], int(export["encoder_config"]["num_frames"]), int(cfg["env"]["action_repeat"])
         )
+    elif cfg["vision"]["encoder_type"] == "sincro":  # SinCro was pretrained on one fixed frame spacing
+        export = torch.load(cfg["vision"]["export_path"], map_location="cpu", weights_only=True)
+        check_pretraining_spacing(
+            [export["frame_spacing"]], int(export["model_cfg"]["time_interval"]), int(cfg["env"]["action_repeat"])
+        )
     return cfg

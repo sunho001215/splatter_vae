@@ -19,6 +19,8 @@ dependencies = [
     "wandb[media]>=0.24.0",
     "pillow>=10.0",
     "setuptools>=80.9.0",
+    "einops==0.8.1",         # SinCro and ReViWo baselines
+    "scikit-learn==1.6.1",   # ReViWo k-means codebook initialisation
 ]
 
 [project.optional-dependencies]
@@ -57,7 +59,20 @@ explicit = true
 [tool.ruff]
 line-length = 125
 target-version = "py310"
-exclude = ["mujoco_mig_setup.py"]
+# Vendored upstream code is kept byte-for-byte (see docs/BASELINES.md), so it is neither linted nor reformatted.
+exclude = [
+    "mujoco_mig_setup.py",
+    "s4d/baselines/sincro/vit_block.py",
+    "s4d/baselines/sincro/mae_encoder.py",
+    "s4d/baselines/sincro/nerf_helpers.py",
+    "s4d/baselines/sincro/nerf.py",
+    "s4d/baselines/reviwo/stransformer.py",
+    "s4d/baselines/reviwo/configs.py",
+    "s4d/baselines/reviwo/multiview_vae.py",
+    "s4d/baselines/reviwo/utils.py",
+    "s4d/baselines/sincro/training.py",
+    "s4d/baselines/reviwo/training.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "I", "UP"]

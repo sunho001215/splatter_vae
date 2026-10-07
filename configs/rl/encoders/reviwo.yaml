@@ -1,0 +1,7 @@
+# Frozen ReViWo encoder (reference agents/drqv2/config/reviwo): per-frame view-invariant latent -> FrameMLPStackHead,
+# feature_dim 256, no image augmentation.
+vision:
+  encoder_type: reviwo
+  export_path: null   # set on the command line: vision.export_path=<runs/pretrain/<name>/encoder.pt>
+agent:
+  feature_dim: 256
