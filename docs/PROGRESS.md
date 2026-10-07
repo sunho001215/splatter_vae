@@ -9,6 +9,9 @@ Last updated: 2026-10-07 20:13
   M2 overfit gate failed iterations 1 and 2 (G1, G2); iteration 3 (two arms) running.
 - **Stage 0** running: DrM + CNN, seed 2000, hammer and shelf-place.
 - **Stage 1** started: baseline pretraining (200k steps) on hammer and pick-place.
+- **Stage 4 prep** done: SinCro and ReViWo ported (merge 67f5984, `docs/BASELINES.md`); suite 199/199. Measured cost
+  under load: SinCro 0.53 s/step (500k reference steps ~74 h/task), ReViWo 0.58 s/step (100k steps ~16 h/task).
+  SinCro's budget needs the user's decision before Stage 4 (raised in the Stage 1 report).
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
