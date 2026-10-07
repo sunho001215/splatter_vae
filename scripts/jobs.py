@@ -89,7 +89,8 @@ def pid_alive(pid: int) -> bool:
 
 def session_id(pid: int) -> int | None:
     try:
-        return int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[4])
+        # Fields after the command name: state, ppid, pgrp, session, ...
+        return int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[3])
     except (FileNotFoundError, IndexError, ValueError):
         return None
 

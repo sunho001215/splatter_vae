@@ -59,12 +59,12 @@ def dormant_ratio(model: nn.Module, *inputs, percentage: float = 0.025) -> float
     finally:
         for handle in handles:
             handle.remove()
-    total = dormant = 0
+    total, dormant = 0, 0
     for module, out in outputs:
         mean_output = out.abs().mean(0)
-        dormant += int((mean_output < mean_output.mean() * percentage).sum())
+        dormant = dormant + (mean_output < mean_output.mean() * percentage).sum()  # stays on device: one sync below
         total += module.weight.shape[0]
-    return dormant / total
+    return int(dormant) / total
 
 
 def perturb(net: nn.Module, optimizer: torch.optim.Optimizer, factor: float) -> None:
@@ -306,7 +306,7 @@ class DrMAgent:
         self.predictor_opt.zero_grad(set_to_none=True)
         predictor_loss.backward()
         self.predictor_opt.step()
-        return {"predictor_loss": float(predictor_loss)}
+        return {"predictor_loss": predictor_loss.detach()}
 
     def critic_target_value(self, next_obs, next_proprio, reward, discount, step: int) -> torch.Tensor:
         """Official blended target: lambda * V(s') + (1 - lambda) * min(Q'_1, Q'_2)(s', a'), a' ~ pi(s')."""
@@ -329,10 +329,10 @@ class DrMAgent:
         if self.encoder_opt is not None:
             self.encoder_opt.step()
         return {
-            "critic_target_q": float(target_q.mean()),
-            "critic_q1": float(q1.mean()),
-            "critic_q2": float(q2.mean()),
-            "critic_loss": float(critic_loss),
+            "critic_target_q": target_q.mean().detach(),
+            "critic_q1": q1.mean().detach(),
+            "critic_q2": q2.mean().detach(),
+            "critic_loss": critic_loss.detach(),
         }
 
     def update_actor(self, obs, proprio, step) -> dict[str, float]:
@@ -343,12 +343,14 @@ class DrMAgent:
         actor_loss.backward()
         self.actor_opt.step()
         return {
-            "actor_loss": float(actor_loss),
-            "actor_logprob": float(dist.log_prob(action).sum(-1).mean()),
-            "actor_ent": float(dist.entropy().sum(dim=-1).mean()),
+            "actor_loss": actor_loss.detach(),
+            "actor_logprob": dist.log_prob(action).sum(-1).mean().detach(),
+            "actor_ent": dist.entropy().sum(dim=-1).mean().detach(),
         }
 
-    def update(self, replay_iter, step: int) -> dict[str, float]:
+    def update(self, replay_iter, step: int, log: bool = True) -> dict[str, float]:
+        """One DrM update. With ``log=False`` only the quantities the algorithm itself needs are synchronised
+        to the host (the actor dormant ratio and a perturbation event); diagnostics are computed when logging."""
         metrics: dict[str, float] = {}
         if step % self.dormant_perturb_interval == 0:
             metrics["perturb_factor"] = self.perturb()
@@ -372,18 +374,22 @@ class DrMAgent:
         self.dormant_ratio = dormant_ratio(self.actor, obs.detach(), proprio, 0, percentage=self.dormant_threshold)
         if self.awaken_step is None and self.dormant_ratio < self.target_dormant_ratio:
             self.awaken_step = step
-        metrics.update(
-            batch_reward=float(reward.mean()),
-            actor_dormant_ratio=self.dormant_ratio,
-            critic_dormant_ratio=dormant_ratio(
-                self.critic, obs.detach(), proprio, action, percentage=self.dormant_threshold
-            ),
-            stddev=self.stddev(step),
-            target_lambda=self.target_lambda,
-            awakened=float(self.awaken_step is not None),
-        )
-        metrics.update(self.update_predictor(obs.detach(), proprio, action))
-        metrics.update(self.update_critic(obs, proprio, action, reward, discount, next_obs, next_proprio, step))
-        metrics.update(self.update_actor(obs.detach(), proprio, step))
+        if log:
+            metrics.update(
+                batch_reward=float(reward.mean()),
+                actor_dormant_ratio=self.dormant_ratio,
+                critic_dormant_ratio=dormant_ratio(
+                    self.critic, obs.detach(), proprio, action, percentage=self.dormant_threshold
+                ),
+                stddev=self.stddev(step),
+                target_lambda=self.target_lambda,
+                awakened=float(self.awaken_step is not None),
+            )
+        losses = {}
+        losses.update(self.update_predictor(obs.detach(), proprio, action))
+        losses.update(self.update_critic(obs, proprio, action, reward, discount, next_obs, next_proprio, step))
+        losses.update(self.update_actor(obs.detach(), proprio, step))
         soft_update_params(self.critic, self.critic_target, self.critic_target_tau)
+        if log:
+            metrics.update({k: float(v) for k, v in losses.items()})
         return metrics

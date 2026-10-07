@@ -45,7 +45,9 @@ def fill(replay: Replay, episodes: int, length: int, start: int = 0) -> int:
 
 def check_batch(batch, nstep: int = 3) -> None:
     """Frames hold ``value % 256``; proprio and actions hold the exact float value of the same state."""
-    obs, proprio, action, reward, discount, next_obs, next_proprio = (np.asarray(x) for x in batch)
+    obs, proprio, action, reward, discount, next_obs, next_proprio = (
+        np.asarray(x.cpu()) if torch.is_tensor(x) else np.asarray(x) for x in batch
+    )
     frames = obs.reshape(len(obs), 3, 3, 4, 4)[:, :, 0, 0, 0].astype(int)
     nxt = next_obs.reshape(len(obs), 3, 3, 4, 4)[:, :, 0, 0, 0].astype(int)
     now, later = proprio[:, 0].astype(int), next_proprio[:, 0].astype(int)
@@ -65,7 +67,7 @@ def test_replay_semantics_both_backings(tmp_path, backing):
     fill(replay, episodes=3, length=6)
     assert len(replay) == 18
     check_batch(replay.sample(256, np.random.default_rng(0), GAMMA))
-    batches = replay_iterator(replay, 64, GAMMA, num_workers=1 if backing == "disk" else 0, seed=0)
+    batches = replay_iterator(replay, 64, GAMMA, seed=0, device=torch.device("cuda"))
     check_batch(next(batches))
 
 
@@ -214,7 +216,7 @@ def test_exploitation_target_and_expectile_match_the_official_code_on_a_fixed_ba
         explore = torch.min(*agent.critic_target(nxt, proprio, torch.zeros(32, 4)))
     assert agent.target_lambda == 0.5 and not torch.allclose(explore, agent.value_predictor(nxt, proprio))
     loss = official.predictor_loss(agent, obs, proprio, action)
-    assert agent.update_predictor(obs, proprio, action)["predictor_loss"] == pytest.approx(float(loss), rel=1e-6)
+    assert float(agent.update_predictor(obs, proprio, action)["predictor_loss"]) == pytest.approx(float(loss), rel=1e-6)
 
 
 @pytest.mark.parametrize("encoder", ["convnet", "splatter4d"])
@@ -224,7 +226,7 @@ def test_end_to_end_updates_with_perturbation_for_every_encoder_type(tmp_path, e
     torch.manual_seed(0)
     agent = DrMAgent(tiny_cfg(encoder, export, dormant_perturb_interval=4), 4, 4, device)
     if encoder == "convnet":
-        batches = replay_iterator(pixel_replay(tmp_path), 16, 0.97, num_workers=1, seed=0)
+        batches = replay_iterator(pixel_replay(tmp_path), 16, 0.97, seed=0, device=device)
     else:
         latents = Replay(None, agent.encoder.replay_atom_shape, np.float16, 4, 4, 1000, 1, 10)
         rng = np.random.default_rng(0)
@@ -235,7 +237,7 @@ def test_end_to_end_updates_with_perturbation_for_every_encoder_type(tmp_path, e
                 frame_stack = rng.integers(0, 255, (1, 9, 32, 32), dtype=np.uint8)
                 latent = policy_inputs(agent, frame_stack)[0].cpu().numpy()
                 latents.add(rng.uniform(-1, 1, 4), rng.normal(), 1.0, latent, rng.normal(size=4), t == 11)
-        batches = replay_iterator(latents, 16, 0.97, num_workers=0, seed=0)
+        batches = replay_iterator(latents, 16, 0.97, seed=0, device=device)
     frozen = {k: v.clone() for k, v in agent.encoder.backbone.state_dict().items()}
     actor = [p.clone() for p in agent.actor.parameters()]
     perturbed = []

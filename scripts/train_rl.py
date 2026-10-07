@@ -89,6 +89,8 @@ def main() -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     device = torch.device("cuda")
+    torch.backends.cudnn.benchmark = True  # as in the official train_mw.py
+    torch.set_num_threads(int(tcfg["cpu_threads"]))  # bounded, so concurrent runs do not oversubscribe the CPUs
     env = MetaWorldCameraEnv(cfg["task"], seed, **env_kwargs(cfg))
     atexit.register(env.close)  # release EGL before interpreter teardown, also when the run crashes
     agent = DrMAgent(cfg, env.action_dim, env.proprio_dim, device)
@@ -175,10 +177,8 @@ def main() -> None:
             and step % int(tcfg["update_every_steps"]) == 0
         ):
             if batches is None:
-                batches = replay_iterator(
-                    replay, tcfg["batch_size"], tcfg["discount"], tcfg["replay_num_workers"], seed + start_step
-                )
-            metrics = agent.update(batches, step)
+                batches = replay_iterator(replay, tcfg["batch_size"], tcfg["discount"], seed + start_step, device)
+            metrics = agent.update(batches, step, log=step % int(tcfg["log_every_steps"]) == 0)
             timers["update"] += time.time() - t1
             if "perturb_factor" in metrics:
                 event = {"event": "perturbed", "step": step, "factor": metrics["perturb_factor"], "time": time.time()}

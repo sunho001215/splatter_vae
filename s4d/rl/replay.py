@@ -4,7 +4,7 @@ Each row holds one environment *state atom* plus the transition that leaves it:
 - frozen encoders (splatter4d, SinCro, ReViWo): the fp16 latent computed once per environment step,
   kept in RAM (``directory=None``); no images are stored;
 - pixel encoders (CNN): one uint8 RGB frame per state, in a preallocated disk memmap under
-  ``runs/<id>/replay/`` that DataLoader workers read; frame stacks are rebuilt by index.
+  ``runs/<id>/replay/``; frame stacks are rebuilt by index by a background prefetch thread.
 
 Stacks and n-step returns are reconstructed at sample time as in the reference repository's
 ``agents/drqv2/replay_buffer.py``: frames before the episode start repeat the first frame, and a sample never
@@ -13,12 +13,13 @@ crosses an episode boundary or an overwritten slot.
 
 from __future__ import annotations
 
+import queue
+import threading
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, IterableDataset
 
 
 class NotEnoughData(RuntimeError):
@@ -154,20 +155,25 @@ class Replay:
                 ok &= self.transition_id[slots] == sid + offset
         return ok
 
-    def _stack(self, sid: np.ndarray) -> np.ndarray:
+    def stack_ids(self, sid: np.ndarray) -> np.ndarray:
+        """(B, frame_stack) state ids of each stack, oldest first; earlier frames repeat the episode's first frame."""
         steps = self.episode_step[sid % self.capacity]
         offsets = np.arange(self.frame_stack - 1, -1, -1)
         ids = sid[:, None] - np.minimum(offsets[None, :], steps[:, None])
         if (self.state_id[ids % self.capacity] != ids).any():
             raise RuntimeError("a stacked state was overwritten while sampling")
-        atoms = self.atom[ids % self.capacity]  # (B, frame_stack, *atom_shape)
+        return ids
+
+    def _stack(self, sid: np.ndarray) -> np.ndarray:
+        atoms = self.atom[self.stack_ids(sid) % self.capacity]  # (B, frame_stack, *atom_shape)
         if self.frame_stack == 1:
             return atoms[:, 0]
         if len(self.atom_shape) == 3 and self.atom_shape[0] == 3:  # RGB frames -> channel stack
             return atoms.reshape(len(sid), 3 * self.frame_stack, *self.atom_shape[1:])
         return atoms
 
-    def sample(self, batch_size: int, rng: np.random.Generator, gamma: float):
+    def sample_indices(self, batch_size: int, rng: np.random.Generator, gamma: float):
+        """Valid start state ids, n-step discounted rewards and bootstrap discounts (reference sampling rules)."""
         next_state_id = int(self.meta[NEXT_STATE_ID])
         low = max(0, next_state_id - self.max_size)
         high = next_state_id - self.nstep
@@ -188,46 +194,108 @@ class Replay:
             slots = (sid + offset) % self.capacity
             reward += discount * self.reward[slots]
             discount *= self.discount[slots] * gamma
+        return sid, reward[:, None], discount[:, None]
+
+    def sample(self, batch_size: int, rng: np.random.Generator, gamma: float):
+        sid, reward, discount = self.sample_indices(batch_size, rng, gamma)
         nid = sid + self.nstep
         return (
             self._stack(sid),
             self.proprio[sid % self.capacity],
             self.action[sid % self.capacity],
-            reward[:, None],
-            discount[:, None],
+            reward,
+            discount,
             self._stack(nid),
             self.proprio[nid % self.capacity],
         )
 
 
-class _DiskReader(IterableDataset):
-    """DataLoader worker view of a disk buffer: reopens the memmaps read-only and yields whole batches."""
+class _DiskPrefetcher:
+    """Background-thread sampler for disk (pixel) buffers.
 
-    def __init__(self, replay: Replay, batch_size: int, gamma: float):
-        super().__init__()
-        self.args = (
-            replay.directory,
-            replay.atom_shape,
-            replay.atom_dtype,
-            replay.proprio_dim,
-            replay.action_dim,
-            replay.max_size,
-            replay.frame_stack,
-            replay.nstep,
-        )
-        self.batch_size, self.gamma = batch_size, gamma
+    Frame stacks are gathered straight from the memmap (a torch view of the same pages) with multi-threaded
+    ``index_select`` into reused pinned buffers, then copied to the GPU asynchronously, so sampling overlaps the
+    update. Reusing pre-faulted pinned buffers avoids the per-batch allocation that dominates naive gathering.
+    """
 
-    def __iter__(self):
-        info = torch.utils.data.get_worker_info()
-        rng = np.random.default_rng(None if info is None else info.seed % 2**32)
-        reader = Replay(*self.args, mode="r")  # MAP_SHARED: sees the writer's rows through the page cache
+    SLOTS = 3
+
+    def __init__(self, replay: Replay, batch_size: int, gamma: float, seed: int, device: torch.device):
+        self.replay, self.batch_size, self.gamma, self.device = replay, batch_size, gamma, device
+        self.rng = np.random.default_rng(seed)
+        self.view = torch.from_numpy(np.asarray(replay.atom)).view(replay.capacity, -1)
+        frame = self.view.shape[1]
+        rows = batch_size * replay.frame_stack
+        pin = device.type == "cuda"
+
+        def buffer(*shape, dtype):
+            return torch.empty(shape, dtype=dtype).pin_memory() if pin else torch.empty(shape, dtype=dtype)
+
+        self.slots = [
+            {
+                "obs": buffer(rows, frame, dtype=torch.uint8),
+                "next_obs": buffer(rows, frame, dtype=torch.uint8),
+                "proprio": buffer(batch_size, replay.proprio_dim, dtype=torch.float32),
+                "next_proprio": buffer(batch_size, replay.proprio_dim, dtype=torch.float32),
+                "action": buffer(batch_size, replay.action_dim, dtype=torch.float32),
+                "reward": buffer(batch_size, 1, dtype=torch.float32),
+                "discount": buffer(batch_size, 1, dtype=torch.float32),
+            }
+            for _ in range(self.SLOTS)
+        ]
+        self.copied = [torch.cuda.Event() if pin else None for _ in range(self.SLOTS)]
+        self.free: queue.Queue = queue.Queue()
+        self.ready: queue.Queue = queue.Queue()
+        for k in range(self.SLOTS):
+            self.free.put(k)
+        threading.Thread(target=self._run, daemon=True, name="replay-prefetch").start()
+
+    def _fill(self, slot: dict) -> None:
+        r = self.replay
         while True:
             try:
-                batch = reader.sample(self.batch_size, rng, self.gamma)
-            except NotEnoughData:  # workers prefetch ahead of the writer; wait as the reference sampler does
+                sid, reward, discount = r.sample_indices(self.batch_size, self.rng, self.gamma)
+                break
+            except NotEnoughData:  # the sampler may start before the writer has a valid n-step window
                 time.sleep(0.05)
-                continue
-            yield tuple(torch.from_numpy(np.ascontiguousarray(x)) for x in batch)
+        nid = sid + r.nstep
+        for key, ids in (("obs", r.stack_ids(sid)), ("next_obs", r.stack_ids(nid))):
+            torch.index_select(self.view, 0, torch.from_numpy((ids % r.capacity).ravel()), out=slot[key])
+        slot["proprio"].numpy()[:] = r.proprio[sid % r.capacity]
+        slot["next_proprio"].numpy()[:] = r.proprio[nid % r.capacity]
+        slot["action"].numpy()[:] = r.action[sid % r.capacity]
+        slot["reward"].numpy()[:] = reward
+        slot["discount"].numpy()[:] = discount
+
+    def _run(self) -> None:
+        while True:
+            k = self.free.get()
+            if self.copied[k] is not None:
+                self.copied[k].synchronize()  # the previous host-to-device copy from this slot has finished
+            try:
+                self._fill(self.slots[k])
+            except Exception as exc:  # noqa: BLE001  (surfaced in the training thread)
+                self.ready.put(exc)
+                return
+            self.ready.put(k)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        k = self.ready.get()
+        if isinstance(k, Exception):
+            raise k
+        slot, r = self.slots[k], self.replay
+        stack_shape = (self.batch_size, r.frame_stack * r.atom_shape[0], *r.atom_shape[1:])
+        out = tuple(
+            slot[key].view(stack_shape if "obs" in key else slot[key].shape).to(self.device, non_blocking=True)
+            for key in ("obs", "proprio", "action", "reward", "discount", "next_obs", "next_proprio")
+        )
+        if self.copied[k] is not None:
+            self.copied[k].record()
+        self.free.put(k)
+        return out
 
 
 class _RamReader:
@@ -245,16 +313,8 @@ class _RamReader:
         )
 
 
-def replay_iterator(replay: Replay, batch_size: int, gamma: float, num_workers: int, seed: int):
+def replay_iterator(replay: Replay, batch_size: int, gamma: float, seed: int, device: torch.device):
     """Batches of (obs, proprio, action, reward, discount, next_obs, next_proprio) tensors."""
     if replay.directory is None:
         return _RamReader(replay, batch_size, gamma, seed)
-    loader = DataLoader(
-        _DiskReader(replay, batch_size, gamma),
-        batch_size=None,
-        num_workers=int(num_workers),
-        pin_memory=torch.cuda.is_available(),
-        persistent_workers=int(num_workers) > 0,
-        prefetch_factor=4 if int(num_workers) > 0 else None,
-    )
-    return iter(loader)
+    return _DiskPrefetcher(replay, batch_size, gamma, seed, device)

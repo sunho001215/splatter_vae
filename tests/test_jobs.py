@@ -40,6 +40,11 @@ def test_queue_validation_and_registry_replay(tmp_path):
     assert jobs.read_registry(registry)["a"] == {**state["a"], "status": "pending", "attempts": 0}
 
 
+def test_session_id_matches_the_kernel():
+    assert jobs.session_id(os.getpid()) == os.getsid(os.getpid())
+    assert jobs.session_id(2**22 + 12345) is None
+
+
 def test_eligibility_priority_dependencies_and_admission():
     queue = [
         {"id": "late", "priority": 2},

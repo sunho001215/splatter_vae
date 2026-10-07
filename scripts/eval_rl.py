@@ -53,6 +53,8 @@ def main() -> None:
     if int(cfg["train"]["num_train_steps"]) > 1000:  # same exemption for short diagnostics as train_rl.py
         require_passed_tests()
     device = torch.device("cuda")
+    torch.backends.cudnn.benchmark = True  # as in the official train_mw.py
+    torch.set_num_threads(int(cfg["train"]["cpu_threads"]))
     # Reference evaluation env seed: run seed + 1 (its 50 MT1 configurations differ from training's).
     pool = EnvPool(cfg["task"], int(cfg["seed"]) + 1, args.workers, args.envs_per_worker, env_kwargs(cfg))
     agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
