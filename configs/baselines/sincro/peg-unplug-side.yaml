@@ -1,0 +1,69 @@
+# SinCro pretraining on peg-unplug-side: reference config baselines/SinCro/config/metaworld/peg-unplug-side.yaml (sunho001215/splatter_vae @ c0abf56)
+# with every hyperparameter unchanged. Changed: dataset path, W&B project, data_interface (saved split
+# manifest; frames 2 simulator steps apart = RL observation spacing); output-location keys dropped (runs/pretrain/<name>). See docs/BASELINES.md.
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/peg-unplug-side.hdf5
+  num_views: 6
+  sequence_length: 3
+  max_episodes: null
+  max_frames_per_demo: 3000
+  temporal_stride: 3
+  num_workers: 8
+  pin_memory: true
+  batch_size: 8
+  train_ratio: 0.96
+model:
+  img_size: 128
+  netdepth: 8
+  netwidth: 256
+  netdepth_fine: 8
+  netwidth_fine: 256
+  N_rand: 2048
+  N_samples: 64
+  N_importance: 128
+  multires: 10
+  multires_views: 4
+  i_embed: 0
+  use_viewdirs: true
+  raw_noise_std: 0.0
+  white_bkgd: false
+  perturb: 1.0
+  lindisp: false
+  patch_size: 16
+  embed_dim: 256
+  vit_depth: 4
+  vit_num_heads: 4
+  vit_mlp_dim: 1024
+  decoder_depth: 2
+  decoder_num_heads: 2
+  decoder_mlp_dim: 1024
+  decoder_output_dim: 256
+  time_interval: 3
+  mask_ratio: 0.75
+  num_views: 6
+  num_ref_views: 2
+  near: 0.1
+  far: 2.5
+  chunk: 32768
+  netchunk: 65536
+  enc_contrastive_margin: 0.2
+  precrop_iters: 2000
+  precrop_frac: 0.5
+train:
+  num_epochs: 50
+  max_global_steps: 500001
+  lrate: 0.0005
+  lrate_decay: 500
+  device: cuda
+  eval_every: 1000
+  save_every: 30000
+  i_print: 100
+  i_img: 500
+  seed: 42
+  val_random_sample: true
+  val_vis_nrow: 6
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/peg-unplug-side_seed0.json
+  frame_spacing: 2
