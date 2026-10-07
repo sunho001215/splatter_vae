@@ -103,7 +103,7 @@ def tiny_cfg(encoder_type="convnet", export_path=None, **agent):
 
     base = yaml.safe_load((REPO / "configs/rl/base.yaml").read_text())
     return {
-        "env": {"frame_stack": 3, "image_height": 32, "image_width": 32},
+        "env": {"frame_stack": 3, "image_size": 32},
         "vision": {"encoder_type": encoder_type, "export_path": export_path},
         "agent": {**base["agent"], "feature_dim": 8, "hidden_dim": 16, **agent},
     }

@@ -32,7 +32,7 @@ class ConvNet(nn.Module):
     def __init__(self, cfg: dict[str, Any]):
         super().__init__()
         frame_stack = int(cfg["env"]["frame_stack"])
-        h, w = int(cfg["env"]["image_height"]), int(cfg["env"]["image_width"])
+        h = w = int(cfg["env"]["image_size"])  # square frames (RandomShiftsAug requires H == W)
         self.convnet = nn.Sequential(
             nn.Conv2d(3 * frame_stack, 32, 3, stride=2),
             nn.ReLU(inplace=True),
@@ -141,7 +141,7 @@ class VisionEncoderAdapter(nn.Module):
         super().__init__()
         self.vision_key = str(cfg["vision"]["encoder_type"])
         self.frame_stack = int(cfg["env"]["frame_stack"])
-        h, w = int(cfg["env"]["image_height"]), int(cfg["env"]["image_width"])
+        h = w = int(cfg["env"]["image_size"])  # square frames (RandomShiftsAug requires H == W)
         self.backbone = BACKBONES[self.vision_key](cfg)
         self.backbone_trainable = bool(self.backbone.is_trainable)
         self.stack_feature = bool(getattr(self.backbone, "returns_sequence_state", False))

@@ -9,6 +9,7 @@ its checkpointed contents.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import random
@@ -19,7 +20,7 @@ from collections import deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _bootstrap import REPO, guard_gpus, guard_mujoco  # noqa: E402
+from _bootstrap import REPO, guard_gpus, guard_mujoco, require_passed_tests  # noqa: E402
 
 GPU_MAPPING = guard_gpus()
 EGL_DEVICE = guard_mujoco()
@@ -34,6 +35,8 @@ from s4d.rl.env import MetaWorldCameraEnv, TrainCameraSampler, env_kwargs  # noq
 from s4d.rl.evaluate import policy_inputs  # noqa: E402
 from s4d.rl.protocol import resolve_config  # noqa: E402
 from s4d.rl.replay import Replay, replay_iterator  # noqa: E402
+
+SHORT_RUN_STEPS = 1000
 
 
 def git_commit() -> str:
@@ -71,6 +74,8 @@ def main() -> None:
     if REPO.resolve() not in run_dir.parents:
         raise ValueError("RL run directories must be inside the repository")
     cfg = resolve_config(args.task, args.encoder, args.seed, args.set)
+    if int(cfg["train"]["num_train_steps"]) > SHORT_RUN_STEPS:  # short diagnostics (like 5-episode pilots) are exempt
+        require_passed_tests()
     ckpt_dir, snap_dir = run_dir / "checkpoints", run_dir / "snapshots"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     snap_dir.mkdir(exist_ok=True)
@@ -85,6 +90,7 @@ def main() -> None:
     torch.manual_seed(seed)
     device = torch.device("cuda")
     env = MetaWorldCameraEnv(cfg["task"], seed, **env_kwargs(cfg))
+    atexit.register(env.close)  # release EGL before interpreter teardown, also when the run crashes
     agent = DrMAgent(cfg, env.action_dim, env.proprio_dim, device)
     enc = agent.encoder
     disk = enc.backbone_trainable  # pixels on disk for end-to-end encoders, latents in RAM for frozen ones
@@ -105,7 +111,9 @@ def main() -> None:
     rolling_success, rolling_return = deque(maxlen=window), deque(maxlen=window)
     start_step, episode = 1, 0
     if resume:
-        state = torch.load(latest, map_location=device, weights_only=False)  # own checkpoint (RNG payload)
+        # Own checkpoint (RNG payload). Load on the CPU: RNG states must stay CPU byte tensors, and
+        # load_state_dict moves weights and optimizer state to their parameters' device.
+        state = torch.load(latest, map_location="cpu", weights_only=False)
         agent.load_state_dict(state["agent"])
         replay.restore(state["replay_meta"])
         start_step, episode = int(state["step"]) + 1, int(state["episode"])
@@ -118,7 +126,7 @@ def main() -> None:
         torch.set_rng_state(state["torch_rng"])
         torch.cuda.set_rng_state(state["cuda_rng"])
         append_jsonl(run_dir / "events.jsonl", {"event": "resumed", "step": start_step - 1, "time": time.time()})
-    batches = replay_iterator(replay, tcfg["batch_size"], tcfg["discount"], tcfg["replay_num_workers"], seed + start_step)
+    batches = None  # created at the first update, as in the reference loop
 
     wandb_run = init_wandb(cfg, run_dir.name, cfg["wandb"]["project"], bool(cfg["wandb"]["enabled"]), run_dir)
 
@@ -166,6 +174,10 @@ def main() -> None:
             and len(replay) >= int(tcfg["batch_size"])
             and step % int(tcfg["update_every_steps"]) == 0
         ):
+            if batches is None:
+                batches = replay_iterator(
+                    replay, tcfg["batch_size"], tcfg["discount"], tcfg["replay_num_workers"], seed + start_step
+                )
             metrics = agent.update(batches, step)
             timers["update"] += time.time() - t1
             if "perturb_factor" in metrics:
@@ -222,7 +234,6 @@ def main() -> None:
 
     final = {"completed": True, "steps": total, "episodes": episode, "timers": timers, "rss_gb": rss_gb()}
     (run_dir / "final.json").write_text(json.dumps(final, indent=1))
-    env.close()
     if wandb_run is not None:
         wandb_run.finish()
 

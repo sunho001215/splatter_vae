@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _bootstrap import REPO, guard_gpus, guard_mujoco  # noqa: E402
+from _bootstrap import REPO, guard_gpus, guard_mujoco, require_passed_tests  # noqa: E402
 
 GPU_MAPPING = guard_gpus()
 EGL_DEVICE = guard_mujoco()
@@ -50,6 +50,8 @@ def main() -> None:
     while not (run_dir / "config.yaml").is_file():
         time.sleep(args.poll_seconds)
     cfg = yaml.safe_load((run_dir / "config.yaml").read_text())
+    if int(cfg["train"]["num_train_steps"]) > 1000:  # same exemption for short diagnostics as train_rl.py
+        require_passed_tests()
     device = torch.device("cuda")
     # Reference evaluation env seed: run seed + 1 (its 50 MT1 configurations differ from training's).
     pool = EnvPool(cfg["task"], int(cfg["seed"]) + 1, args.workers, args.envs_per_worker, env_kwargs(cfg))

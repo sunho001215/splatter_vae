@@ -35,7 +35,7 @@ QUEUE = REPO / "experiments/queue.yaml"
 REGISTRY = REPO / "experiments/registry.jsonl"
 RUNS = REPO / "runs"
 PYTHON = REPO / ".venv/bin/python"
-GUARD_CALL = re.compile(r"^(\w+\s*=\s*)?guard_gpus\(\)\s*$", re.MULTILINE)  # module-level call
+GUARD_CALL = re.compile(r"^(\w+\s*=\s*)?(guard_gpus|enforce_allowed_gpus)\(\)\s*$", re.MULTILINE)  # module level
 DONE, FAILED, RUNNING, PENDING = "done", "failed", "running", "pending"
 
 

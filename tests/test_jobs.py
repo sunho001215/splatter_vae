@@ -60,6 +60,7 @@ def test_eligibility_priority_dependencies_and_admission():
 def test_only_guarded_repository_scripts_launch(tmp_path):
     assert jobs.check_guarded("scripts/train_rl.py").name == "train_rl.py"
     assert jobs.check_guarded("scripts/train.py").name == "train.py"
+    assert jobs.check_guarded("scripts/check_metaworld.py").name == "check_metaworld.py"  # enforce_allowed_gpus()
     with pytest.raises(ValueError, match="GPU guard"):
         jobs.check_guarded("scripts/jobs.py")
     with pytest.raises(ValueError, match="inside the repository"):

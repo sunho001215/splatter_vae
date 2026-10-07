@@ -13,11 +13,17 @@ crosses an episode boundary or an overwritten slot.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, IterableDataset
+
+
+class NotEnoughData(RuntimeError):
+    """Raised by ``sample`` until the buffer holds a valid n-step window."""
+
 
 FIELDS = ("atom", "proprio", "action", "reward", "discount", "state_id", "transition_id", "episode_id", "episode_step")
 NEXT_STATE_ID, NUM_TRANSITIONS, NEXT_EPISODE_ID = 0, 1, 2
@@ -166,7 +172,7 @@ class Replay:
         low = max(0, next_state_id - self.max_size)
         high = next_state_id - self.nstep
         if high <= low:
-            raise RuntimeError("not enough transitions to sample")
+            raise NotEnoughData("not enough transitions to sample")
         chosen = np.empty(0, dtype=np.int64)
         for _ in range(1000):
             candidates = rng.integers(low, high, size=2 * batch_size)
@@ -174,7 +180,7 @@ class Replay:
             if len(chosen) >= batch_size:
                 break
         else:
-            raise RuntimeError("could not find valid replay samples")
+            raise NotEnoughData("could not find valid replay samples")
         sid = chosen[:batch_size]
         reward = np.zeros(batch_size, dtype=np.float32)
         discount = np.ones(batch_size, dtype=np.float32)
@@ -216,7 +222,12 @@ class _DiskReader(IterableDataset):
         rng = np.random.default_rng(None if info is None else info.seed % 2**32)
         reader = Replay(*self.args, mode="r")  # MAP_SHARED: sees the writer's rows through the page cache
         while True:
-            yield tuple(torch.from_numpy(np.ascontiguousarray(x)) for x in reader.sample(self.batch_size, rng, self.gamma))
+            try:
+                batch = reader.sample(self.batch_size, rng, self.gamma)
+            except NotEnoughData:  # workers prefetch ahead of the writer; wait as the reference sampler does
+                time.sleep(0.05)
+                continue
+            yield tuple(torch.from_numpy(np.ascontiguousarray(x)) for x in batch)
 
 
 class _RamReader:
