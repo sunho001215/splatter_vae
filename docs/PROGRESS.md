@@ -7,7 +7,7 @@ Last updated: 2026-10-08 06:10
 - **Phase C** in progress: RL timing done (CNN GPU-bound ~80 steps/s/GPU; frozen ~190 steps/s/GPU with 8 runs);
   pretraining 0.22 s/step at 8 loader workers (loader-bound; 32 workers now); `docs/COMPUTE_PLAN.md` written.
   M2 overfit gate FAILED after three diagnosed iterations (G1-G3; recorded in RESULTS.md).
-- **Stage 0** running: DrM + CNN, seed 2000, hammer and shelf-place.
+- **Stage 0** done: DrM + CNN hammer 0.70 train-camera / 0.02 held-out success at 1M; shelf-place 0 (no reward ever: sparse v3 reward). See EXPERIMENT_LOG.
 - **Stage 1** started: baseline pretraining (200k steps) on hammer and pick-place.
 - **Stage 4 prep** done: SinCro and ReViWo ported (merge 67f5984, `docs/BASELINES.md`); suite 199/199. Measured cost
   under load: SinCro 0.53 s/step (500k reference steps ~74 h/task), ReViWo 0.58 s/step (100k steps ~16 h/task).

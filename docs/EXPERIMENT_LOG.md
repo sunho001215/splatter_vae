@@ -241,3 +241,31 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   batch stream is identical (`tests/test_checkpoint.py::test_resumable_sampler_matches_replay_without_loading_the_skipped_prefix`);
   suite 202/202. Pick-place base restarted onto it (first step 1 min after relaunch). Host memory recovered to ~300 GB
   available at 03:16, so the four iteration runs were released from `hold-memory` and resumed from 30k.
+
+## 2026-10-08 — Stage 0 result: DrM + CNN sanity (seed 2000, 1M agent steps, full evaluation protocol)
+
+Runs: `runs/stage0-drm-cnn-hammer-s2000`, `runs/stage0-drm-cnn-shelf-place-s2000` (W&B `splatter4d-rl`).
+
+| Task | Train cameras final / last-5 mean / AUC | Held-out cameras last-5 | Trajectories last-5 | Dormant ratio (10k -> 1M) |
+|---|---|---|---|---|
+| hammer | 0.70 / 0.65 / 0.34 | 0.02 | 0.60 | 0.13 -> 0.01 (awake at 10k) |
+| shelf-place | 0.00 / 0.00 / 0.00 | 0.00 | 0.00 | 0.68 -> 0.22 (awake at 103k) |
+
+- **hammer learns.** Training-camera success rises steadily (0.02 at 100k, 0.20 at 200k, 0.45 at 600k, 0.70 at 1M) with
+  returns 150 -> 1430; per camera (last 5): train0 1.00, train2 1.00, train1 0.83, train5 0.66, train3 0.41, train4 0.00
+  (train4 is the lowest camera, theta 30 deg). Held-out cameras stay at 0.0-0.05: the end-to-end CNN does not transfer to
+  unseen viewpoints, which is the gap the campaign targets. DrM behaves as designed: dormant ratio falls below 0.2 at 10k
+  (awake exploration), stays ~0.01, perturbation factor 0.95 at every 100k.
+- **Comparison with the DrM paper.** The paper's hammer (2M frames = 1M agent steps, one fixed corner camera, 84x84,
+  250-agent-step episodes, a "sparse" variant not in the released code) reaches ~95%. Our 0.65-0.70 on six random
+  training cameras with 125-agent-step episodes is lower, as expected from the harder protocol; on the best two cameras
+  it reaches 1.00. The pipeline (env, replay, DrM updates, evaluation) works.
+- **shelf-place never receives reward.** Return is exactly 0.0 for every training and evaluation episode over 1M steps.
+  Checked directly: the Meta-World v3 shelf-place reward is 0 until the object is grasped and lifted (in-place term zeroed
+  while the block is on the table); random actions give return 0.0 over a full episode, the scripted expert 1180
+  (`hammer` random 266 for contrast). So shelf-place is a sparse-reward, hard-exploration task here; the DrM CNN did not
+  discover a lift in 1M steps (dormant ratio stays 0.2-0.7, perturbation factor 0.2-0.33). This is a property of the
+  task, not a pipeline bug; it will likely be 0 for every method unless the representation makes the object salient.
+- **Use of these runs.** Code and protocol changed after launch only in evaluation-side robustness (reset seeding fixed
+  before launch; renderer sharing, memory and resume fixes later), not in the training loop or protocol, so both remain
+  valid Stage 4 CNN seed-2000 runs (re-check before Stage 4).
