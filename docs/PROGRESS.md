@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 02:40
+Last updated: 2026-10-08 02:58
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -60,6 +60,10 @@ Last updated: 2026-10-08 02:40
   terminated; scheduler now kills leftover session processes. Iterations pausing at 30k; base runs resume from
   70k / 60k with 8 workers once all four are paused (scheduler HOLD until then).
 
+- 02:55: all four iteration runs paused at their 30k checkpoints (held behind `hold-memory`); base runs resumed at
+  02:53 from 70k (hammer) and 60k (pick-place) with 8 loader workers. Available RAM 76 GB; resume the iterations when
+  it stays above ~120 GB.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
@@ -67,8 +71,8 @@ Last updated: 2026-10-08 02:40
 | stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
 | s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
 | s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
-| s1-it1-decdim256-{hammer,pick-place} (iteration 1, 200k schedule, compared at 100k) | GPU 4 | running | runs/pretrain/s1-it1-*/log.txt | splatter4d-metaworld |
-| s1-it2-lambdadyn4-{hammer,pick-place} (iteration 2) | GPU 4 | running | runs/pretrain/s1-it2-*/log.txt | splatter4d-metaworld |
+| s1-it1-decdim256-{hammer,pick-place} (iteration 1, 200k schedule, compared at 100k) | GPU 4 | paused at 30k (memory) | runs/pretrain/s1-it1-*/log.txt | splatter4d-metaworld |
+| s1-it2-lambdadyn4-{hammer,pick-place} (iteration 2) | GPU 4 | paused at 30k (memory) | runs/pretrain/s1-it2-*/log.txt | splatter4d-metaworld |
 
 Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-*`, `timing2-*`), gate it1/it2.
 
