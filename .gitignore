@@ -17,3 +17,13 @@ MUJOCO_LOG.TXT
 # Retain numeric evidence for the duplicate local-only validation without publishing duplicate media.
 docs/droid_dense_validation_no_wandb/overlays/
 docs/droid_dense_validation_no_wandb/fused_gt_cloud.npy
+
+# Campaign runs: commit small logs and summaries only, never checkpoints, replay buffers or W&B directories.
+runs/**/checkpoints/
+runs/**/replay/
+runs/**/wandb/
+*.memmap
+*.pth
+*.tar
+experiments/*.lock
+experiments/daemon.pid
