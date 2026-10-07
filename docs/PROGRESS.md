@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 03:20
+Last updated: 2026-10-08 04:12
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -66,6 +66,12 @@ Last updated: 2026-10-08 03:20
 
 - 03:18: resume fast-forward fixed (index-level skip); pick-place base restarted onto it. Available RAM ~300 GB
   (other tenants released memory) -> iterations released and resumed from 30k. 10 jobs running.
+
+- 04:10: HEARTBEAT_OK — 10 jobs, 189 GB RAM available. Eval spikes investigated: 9 per evaluator since 20:40, mostly
+  simultaneous on both (e.g. 03:44-04:05), i.e. a shared external cause: every job inherits nice 5 from the agent
+  shell, so CPU-bound eval workers yield to other tenants under host load (load 110-230). Not reniced (that would
+  compete with other users); evaluators catch up, results unaffected. Stage 0 at 782k / 752k (~2.5 h left);
+  base pretraining 81k / 70k (100k export in ~2-3 h); iterations at 37.5k.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
