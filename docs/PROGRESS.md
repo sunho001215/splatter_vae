@@ -32,6 +32,10 @@ Last updated: 2026-10-07 22:08
 - 22:08: HEARTBEAT_OK — 9 running jobs active, watcher and scheduler alive, 5352 GB free. Screens at ~1.4k/6k
   (no difference from the reference yet); hammer base 39k/200k (0.26 s/step while sharing GPU 4 with the screens).
 
+- 22:15 GPU 5 process audit: all 29 GPU processes belong to active registered jobs (Stage 0 train 864132/864134,
+  their eval companions 1018246/1018247 with 12 spawned render workers each, pick-place pretraining 1255925); no
+  orphans, no collectors, no foreign processes.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
