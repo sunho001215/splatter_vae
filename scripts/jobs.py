@@ -21,6 +21,7 @@ import fcntl
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -198,6 +199,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage) -> list[str]:
             continue
         record({"event": "exited", "id": job_id, "code": code}, registry)
         messages.append(f"{job_id} exited with {code}")
+        # Children outlive a killed job (e.g. DataLoader workers after an OOM kill of their parent) and keep memory
+        # and GPU contexts; the job's process group is its session, so terminate whatever is left of it.
+        try:
+            os.killpg(job_state["pid"], signal.SIGTERM)
+            messages.append(f"{job_id}: terminated leftover processes of its session")
+        except ProcessLookupError:
+            pass
     state = read_registry(registry)
     for job_id, job_state in state.items():
         if job_state["status"] == "crashed":

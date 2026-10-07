@@ -83,6 +83,30 @@ def wait_for(queue, registry, runs, predicate, timeout=180):
     raise TimeoutError(json.dumps(state))
 
 
+def test_exit_terminates_leftover_processes_of_the_job_session(tmp_path):
+    import subprocess as sp
+
+    # A session leader that exits while a child keeps running, like an OOM-killed trainer and its loader workers.
+    leader = sp.Popen(["setsid", "bash", "-c", "sleep 300 & echo $! > child.pid; exit 9"], cwd=tmp_path)
+    leader.wait()
+    child = int((tmp_path / "child.pid").read_text())
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    queue = write_queue(
+        tmp_path / "q.yaml",
+        [{"id": "job", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "max_restarts": 0}],
+    )
+    jobs.record({"event": "launched", "id": "job", "pid": leader.pid, "gpu": GPU4, "attempt": 1}, registry)
+    (runs / "job").mkdir(parents=True)
+    (runs / "job" / "exit_code").write_text("9")
+    (tmp_path / "HOLD").touch()
+    messages = jobs.tick(queue, registry, runs, usage={})
+    assert any("terminated leftover" in m for m in messages)
+    deadline = time.time() + 10
+    while jobs.pid_alive(child) and time.time() < deadline:
+        time.sleep(0.2)
+    assert not jobs.pid_alive(child)
+
+
 def test_detached_launch_success_restart_once_then_fail(tmp_path):
     uuid = os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]
     limits = {uuid: {"max_jobs": 2, "max_mem_gb": 10}}

@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 02:12
+Last updated: 2026-10-08 02:40
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -55,6 +55,10 @@ Last updated: 2026-10-08 02:12
 
 - 02:10: HEARTBEAT_OK, but available RAM 25 GB from other tenants' growth (~290 GB anon not ours); Stage 0 hammer at
   1.8 steps/s. Pausing the 4 iteration runs at their 30k checkpoints (held behind `hold-memory` in the queue).
+
+- 02:27: host OOM killer killed both base pretraining runs (other tenants' memory). Orphaned loader workers
+  terminated; scheduler now kills leftover session processes. Iterations pausing at 30k; base runs resume from
+  70k / 60k with 8 workers once all four are paused (scheduler HOLD until then).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |

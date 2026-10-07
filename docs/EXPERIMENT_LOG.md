@@ -217,3 +217,16 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   so no steps are lost: the queue holds them behind a placeholder dependency `hold-memory`; `max_restarts` raised to 3
   to keep one restart for a genuine crash after resuming. Base pretraining (needed for Stage 1) and Stage 0 (tier 1)
   keep running. Resume the iterations when available RAM stays above ~120 GB.
+
+## 2026-10-08 — OOM kills of both base pretraining runs; scheduler now cleans up killed sessions
+
+- **Incident (02:27).** Host memory ran out (available 9 GB; other tenants ~290 GB anonymous memory). The kernel
+  OOM killer SIGKILLed both base pretraining mains (exit 137): hammer at 79.65k (last checkpoint 70k), pick-place at
+  ~68k (last checkpoint 60k). Their DataLoader workers survived as orphans (17 processes, ~17 GB RAM) and kept the
+  dead parents' GPU contexts (4.4 GB per GPU) alive; terminated with SIGTERM (they were ours).
+- **Fix.** `scripts/jobs.py` now terminates the remaining process group (= session) of any job whose exit it records,
+  so no child of a killed job survives it. Test: `test_exit_terminates_leftover_processes_of_the_job_session`.
+  Suite 201/201. Daemon restarted on the new code.
+- **Recovery.** Scheduler held; the four iteration runs pause at their 30k checkpoints (no steps lost); then the base
+  runs resume from 70k / 60k with 8 loader workers each (`max_restarts` 3: this OOM kill, one deliberate restart, one
+  for a genuine crash). Steps lost to the OOM kill: 9.65k (hammer), ~8k (pick-place).
