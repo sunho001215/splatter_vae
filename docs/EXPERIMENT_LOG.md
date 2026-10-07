@@ -45,3 +45,23 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
 - **Deviation.** The reference used `linear(1.0,0.1,150000)` for every task; the four reference tasks now differ from
   it (door-open and peg-unplug-side decay faster, hammer and stick-push slower).
 - **Evidence.** `tests/test_rl.py::test_every_task_resolves_to_its_difficulty_schedule_for_every_method`.
+
+## 2026-10-07 — E4: DrM replaces DrQ-v2 for every RL run (user decision; supersedes E2, E3)
+
+- **Change.** DrM ported from the official code (github.com/XuGW-Kevin/DrM @ `989732d6`, `agents/drm_mw.py`,
+  `utils.py`, Meta-World configs as applied by `train_mw.py`): dormant ratio, shrink-and-perturb every 100k agent
+  steps, awake exploration (`linear(1.0,0.1,500000)` after awakening), expectile-0.9 value network and lambda-0.5
+  blended target, n-step 10 and discount 0.97 (the official loader's effective values), continuation 1.0 at the time
+  limit, 2,000 uniform warm-up steps. The difficulty-dependent DrQ-v2 schedules of E3 are removed; no campaign task
+  has an official per-task override. Frozen encoders: only actor, critic, critic target and value are perturbed.
+  Environment, observation (with proprio) and evaluation stay the shared reference protocol.
+- **Paper vs code.** The official code differs from the paper's Table 1 (n-step 3, discount 0.99,
+  `linear(1.0,0.1,300000)`, max perturb 0.9, dormant-dependent lambda). The code is followed; both are recorded in
+  `docs/RL_PROTOCOL.md`.
+- **Evidence.** Tests in `tests/test_rl.py` compare dormant ratio, perturbation, target and expectile loss with
+  verbatim copies of the official functions (`tests/_drm_official.py`); not yet run (environment still building).
+- **Paper comparison available for Stage 0.** The paper's Meta-World figure covers assembly, stick-pull,
+  pick-place-wall, disassemble (dense) and coffee-push, soccer, sweep-into, hammer ("sparse"); hammer is the only
+  overlap. The released code has no sparse-reward wrapper (the vendored hammer env returns the dense v2 reward).
+  Expected differences from the paper: 6 random training cameras instead of one fixed camera, 128x128 instead of
+  84x84, 125- instead of 250-agent-step episodes, Meta-World v3 instead of v2.

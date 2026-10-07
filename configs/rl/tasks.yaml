@@ -1,20 +1,12 @@
-# Per-task DrQ-v2 exploration schedule, used identically by every method (ours, CNN, SinCro, ReViWo, ablations).
-# Unit: agent steps, the reference training-loop counter (agents/drqv2/train_drqv2_metaworld.py: one
-# `for step` iteration = one env.step = action_repeat 2 simulator steps, passed to schedule(stddev_schedule, step)).
-# Difficulty: Seo et al., "Masked World Models for Visual Control" (CoRL 2022, arXiv:2206.14244), Appendix F,
-# verified from the paper text on 2026-10-07.
-# Deviation from the reference, decided by the user: the reference uses linear(1.0,0.1,150000) for every task.
-schedules:
-  easy: linear(1.0,0.1,100000)
-  medium: linear(1.0,0.1,250000)
-  hard: linear(1.0,0.1,500000)
-  very hard: linear(1.0,0.1,500000)
-tasks:
-  door-open: easy
-  peg-unplug-side: easy
-  hammer: medium
-  peg-insert-side: medium
-  bin-picking: medium
-  pick-place: hard
-  stick-push: very hard
-  shelf-place: very hard
+# Per-task settings, identical for every method. DrM hyperparameters come from configs/rl/base.yaml.
+# The official DrM code sets per-task overrides only for Meta-World sweep-into (max_perturb_factor 0.9,
+# target_lambda 0.6); none of the eight campaign tasks has an official per-task setting, so `drm_overrides`
+# is empty for all of them. Difficulty (reporting only): Seo et al., MWM (CoRL 2022), Appendix F.
+door-open:       {difficulty: easy,      drm_overrides: {}}
+peg-unplug-side: {difficulty: easy,      drm_overrides: {}}
+hammer:          {difficulty: medium,    drm_overrides: {}}
+peg-insert-side: {difficulty: medium,    drm_overrides: {}}
+bin-picking:     {difficulty: medium,    drm_overrides: {}}
+pick-place:      {difficulty: hard,      drm_overrides: {}}
+stick-push:      {difficulty: very hard, drm_overrides: {}}
+shelf-place:     {difficulty: very hard, drm_overrides: {}}

@@ -1,10 +1,10 @@
-"""Single-camera Meta-World environment for DrQ-v2, ported from the reference ``MetaWorldSingleCameraEnv``.
+"""Single-camera Meta-World environment for RL, ported from the reference ``MetaWorldSingleCameraEnv``.
 
 Images are rendered with the same free cameras, field of view and resolution as the pretraining data
 (``s4d.data.metaworld.cameras``). A camera *path* is a list of free-camera poses indexed by render call:
 a fixed camera is a one-pose path, and the reference lateral/circular perturbation trajectories loop.
 
-Every method receives the reference DrQ-v2 observation: the last 3 rendered frames, one per agent step,
+Every method receives the reference observation: the last 3 rendered frames, one per agent step,
 so consecutive frames are ``action_repeat`` = 2 simulator steps apart. Pretraining strides include 2.
 """
 

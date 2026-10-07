@@ -1,4 +1,4 @@
-"""DrQ-v2 training on one Meta-World task with one encoder, following the reference training loop.
+"""DrM training on one Meta-World task with one encoder (official DrM loop on the shared reference protocol).
 
 Launch through ``scripts/jobs.py`` with exactly one allowed GPU UUID. Evaluation runs in a companion job
 (``scripts/eval_rl.py``) on the policy snapshots written here every ``eval.every_steps`` agent steps.
@@ -29,7 +29,7 @@ import torch  # noqa: E402
 
 from s4d.config import dump_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.rl.agent import DrQv2Agent  # noqa: E402
+from s4d.rl.agent import DrMAgent  # noqa: E402
 from s4d.rl.env import MetaWorldCameraEnv, TrainCameraSampler, env_kwargs  # noqa: E402
 from s4d.rl.evaluate import policy_inputs  # noqa: E402
 from s4d.rl.protocol import resolve_config  # noqa: E402
@@ -85,7 +85,7 @@ def main() -> None:
     torch.manual_seed(seed)
     device = torch.device("cuda")
     env = MetaWorldCameraEnv(cfg["task"], seed, **env_kwargs(cfg))
-    agent = DrQv2Agent(cfg, env.action_dim, env.proprio_dim, device)
+    agent = DrMAgent(cfg, env.action_dim, env.proprio_dim, device)
     enc = agent.encoder
     disk = enc.backbone_trainable  # pixels on disk for end-to-end encoders, latents in RAM for frozen ones
     replay = Replay(
@@ -143,13 +143,12 @@ def main() -> None:
     total = int(tcfg["num_train_steps"])
     for step in range(start_step, total + 1):
         t0 = time.time()
-        if step <= int(tcfg["seed_steps"]):
-            action = env.action_space.sample().astype(np.float32)
-        else:
-            action = agent.act(policy_obs, proprio[None], step=step, eval_mode=False)[0].astype(np.float32)
+        # Uniform actions before num_expl_steps happen inside DrMAgent.act, as in the official agent.
+        action = agent.act(policy_obs, proprio[None], step=step, eval_mode=False)[0].astype(np.float32)
         obs, proprio, reward, done, info = env.step(action)
         policy_obs = policy_inputs(agent, obs[None])
-        replay.add(action, reward, 0.0 if done else 1.0, to_atom(policy_obs, env.latest_frame()), proprio, done)
+        continuation = float(tcfg["time_limit_continuation"]) if done else 1.0  # Meta-World only truncates
+        replay.add(action, reward, continuation, to_atom(policy_obs, env.latest_frame()), proprio, done)
         episode_return += reward
         episode_success = max(episode_success, info["success"])
         if done:
@@ -163,12 +162,17 @@ def main() -> None:
         t1 = time.time()
         timers["act_env"] += t1 - t0
         if (
-            step > int(tcfg["seed_steps"])
+            step >= int(tcfg["num_seed_steps"])
             and len(replay) >= int(tcfg["batch_size"])
             and step % int(tcfg["update_every_steps"]) == 0
         ):
             metrics = agent.update(batches, step)
             timers["update"] += time.time() - t1
+            if "perturb_factor" in metrics:
+                event = {"event": "perturbed", "step": step, "factor": metrics["perturb_factor"], "time": time.time()}
+                append_jsonl(run_dir / "events.jsonl", event)
+                if wandb_run is not None:
+                    wandb_run.log({"train/perturb_event": 1.0, "train/perturb_factor": metrics["perturb_factor"]}, step=step)
         interval_steps += 1
 
         if step % int(tcfg["log_every_steps"]) == 0:

@@ -1,4 +1,4 @@
-"""DrQ-v2 replay with one storage layout and two backings, chosen by encoder type.
+"""DrM replay with one storage layout and two backings, chosen by encoder type.
 
 Each row holds one environment *state atom* plus the transition that leaves it:
 - frozen encoders (splatter4d, SinCro, ReViWo): the fp16 latent computed once per environment step,
@@ -6,9 +6,9 @@ Each row holds one environment *state atom* plus the transition that leaves it:
 - pixel encoders (CNN): one uint8 RGB frame per state, in a preallocated disk memmap under
   ``runs/<id>/replay/`` that DataLoader workers read; frame stacks are rebuilt by index.
 
-Stacks and n-step returns are reconstructed at sample time exactly as in the reference
-``agents/drqv2/replay_buffer.py``: frames before the episode start repeat the first frame, and a sample
-never crosses an episode boundary or an overwritten slot.
+Stacks and n-step returns are reconstructed at sample time as in the reference repository's
+``agents/drqv2/replay_buffer.py``: frames before the episode start repeat the first frame, and a sample never
+crosses an episode boundary or an overwritten slot.
 """
 
 from __future__ import annotations

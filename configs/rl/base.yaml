@@ -1,27 +1,40 @@
-# DrQ-v2 Meta-World protocol of the reference repository (agents/drqv2/config/*/<task>.yaml, commit c0abf56).
-# See docs/RL_PROTOCOL.md. The per-task exploration schedule comes from configs/rl/tasks.yaml.
+# DrM on Meta-World. Algorithm hyperparameters: official code (github.com/XuGW-Kevin/DrM @ 989732d,
+# cfgs/config.yaml + cfgs/task/metaworld.yaml + cfgs/agent/drm_mw.yaml, as actually applied by train_mw.py).
+# Environment, observation and evaluation: the shared reference protocol. See docs/RL_PROTOCOL.md.
+algorithm: drm
 seed: 0
 env:
   image_size: 128
   frame_stack: 3
   action_repeat: 2
-  max_episode_steps: 250  # simulator steps
+  max_episode_steps: 250  # simulator steps (reference protocol)
   proprio_indices: [0, 1, 2, 3]
 agent:
   lr: 1.0e-4
-  feature_dim: 256
+  feature_dim: 50
   hidden_dim: 1024
   critic_target_tau: 0.01
-  stddev_schedule: null   # per task, from configs/rl/tasks.yaml (agent steps)
+  dormant_threshold: 0.025
+  target_dormant_ratio: 0.2
+  target_lambda: 0.5
+  dormant_temp: 10
+  dormant_perturb_interval: 100000   # agent steps (official update() counter)
+  min_perturb_factor: 0.2
+  max_perturb_factor: 0.95
+  perturb_rate: 2
+  num_expl_steps: 2000               # agent steps of uniform actions
+  stddev_schedule: linear(1.0,0.1,500000)  # agent steps since awakening (stddev_type: awake)
   stddev_clip: 0.3
+  expectile: 0.9
 train:
-  num_train_steps: 1000000  # agent steps (each = action_repeat simulator steps)
-  seed_steps: 4000
+  num_train_steps: 1000000  # agent steps = 2M frames, the x-axis of the paper's Meta-World figure
+  num_seed_steps: 2000      # official num_seed_frames 4000 / action_repeat 2
   batch_size: 256
   replay_size: 1000000
   update_every_steps: 2
-  nstep: 3
-  discount: 0.99
+  nstep: 10         # official replay loader: floor(nstep 3 + nstep_alpha 7); its annealing is never applied
+  discount: 0.97    # official replay loader: 0.997 - discount_alpha 0.02 - discount_beta 0.007
+  time_limit_continuation: 1.0  # official: discount 1.0 at the time limit (bootstrap through truncation)
   replay_num_workers: 2    # disk (pixel) replay only; RAM replay samples in-process
   log_every_steps: 1000
   checkpoint_every_steps: 50000

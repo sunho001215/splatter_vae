@@ -1,6 +1,6 @@
 """Policy-side vision encoders and projection heads, ported from the reference ``agents/common``.
 
-``ConvNet`` is the end-to-end DrQ-v2 encoder (CNN baseline). Frozen pretrained encoders cache
+``ConvNet`` is the end-to-end DrM/DrQ-v2 convolutional encoder (CNN baseline). Frozen pretrained encoders cache
 features in replay and feed a small trainable projection head, exactly as in the reference.
 """
 
@@ -25,7 +25,7 @@ def weight_init(m: nn.Module) -> None:
 
 
 class ConvNet(nn.Module):
-    """Official DrQ-v2 encoder: stacked frames as channels, no internal augmentation."""
+    """Official DrM ``Encoder`` (identical to DrQ-v2): stacked frames as channels, no internal augmentation."""
 
     is_trainable = True
 

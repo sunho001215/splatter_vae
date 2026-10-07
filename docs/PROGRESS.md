@@ -18,7 +18,7 @@ for sm_120 against torch 2.10.0+cu129 with CUDA 12.9 nvcc.
 
 ## Decisions applied (see docs/EXPERIMENT_LOG.md)
 - E1: pretraining strides {2,4,6} uniform; validation at strides 2 and 6; RL uses the reference spacing for all methods.
-- E3: difficulty-dependent exploration schedules (easy 100k, medium 250k, hard and very hard 500k agent steps).
+- E4: DrM (official code @ 989732d6) replaces DrQ-v2 for every RL run; E3 schedules removed.
 - Replay: RAM latents for frozen encoders, disk memmap frames for CNN; evaluation in a companion job per run.
 
 ## Job table
@@ -36,3 +36,4 @@ for sm_120 against torch 2.10.0+cu129 with CUDA 12.9 nvcc.
    GPU isolation check, 50-step rendered pretraining on GPU 4 then GPU 5, runtime_versions.json.
 2. Commit and push the Phase A milestone; start the scheduler daemon.
 3. Phase B collection of all eight tasks through the scheduler.
+4. Stage 0: DrM + CNN, seed 2000, hammer and shelf-place (compare hammer with the DrM paper).

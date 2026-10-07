@@ -24,7 +24,7 @@ import yaml  # noqa: E402
 from jobs import read_registry  # noqa: E402  (scripts/ is on sys.path)
 
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.rl.agent import DrQv2Agent  # noqa: E402
+from s4d.rl.agent import DrMAgent  # noqa: E402
 from s4d.rl.env import env_kwargs  # noqa: E402
 from s4d.rl.evaluate import evaluation_suite  # noqa: E402
 from s4d.rl.vecenv import EnvPool  # noqa: E402
@@ -52,7 +52,7 @@ def main() -> None:
     cfg = yaml.safe_load((run_dir / "config.yaml").read_text())
     device = torch.device("cuda")
     pool = EnvPool(cfg["task"], args.workers, args.envs_per_worker, env_kwargs(cfg))
-    agent = DrQv2Agent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
+    agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
     out = run_dir / "eval.jsonl"
     wandb_run = init_wandb(

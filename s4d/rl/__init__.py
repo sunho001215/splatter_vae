@@ -1,1 +1,1 @@
-"""DrQ-v2 RL on Meta-World, ported from the reference repository (commit c0abf56, agents/drqv2)."""
+"""DrM RL on Meta-World: official DrM algorithm on the reference repository's environment and evaluation protocol."""
