@@ -1,38 +1,38 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-07 (campaign start)
+Last updated: 2026-10-07 17:05
 
 ## Current phase
-**Phase A — unblock the runtime.** Nothing else may run until Phase A gates pass.
+**Phase A — runtime.** `uv sync --extra dev` (authorized) is running: fused-ssim built from source, gsplat compiling
+for sm_120 against torch 2.10.0+cu129 with CUDA 12.9 nvcc.
 
-## Facts discovered at campaign start
-- `/home/ws/ws/hierarchical_splatter` and `/home/ws/ws/droid_training` no longer exist on disk.
-  The reference code is read from git commit `c0abf56` (`origin/Dynamic3D`, identical to the recorded
-  reference HEAD) extracted read-only into `.cache/reference/Dynamic3D` (gitignored).
-  SinCro and ReViWo were git submodules; their sources must be fetched separately.
-- The old venv only contained ruff plus `reference_runtime.pth`, which pointed at the deleted reference venv.
-- Hardware: 384 CPU cores, 503 GB RAM, 5.1 TB free on `/home/ws`, CUDA 12.9 nvcc, GPUs 4/5 idle.
-- `docs/SPEC.md` is missing; the original spec text is available to the agent from the previous session transcript.
-- `CLAUDE.md` with the standing rules is missing from the repo; auto mode blocked the agent from creating it.
+## Event handling
+- Event watcher: `python3 -I scripts/watch_events.py --once` as a background task. It exits on the first poll
+  with events, waking the agent; the agent handles the events and restarts it. The cursor
+  `experiments/watch_state.json` prevents lost or repeated events.
+- Heartbeat: user `/loop` as session cron job `af519ff6`, every hour at :47 (replaces cron `806ed702`); each firing
+  checks this file and the registry, runs `python3 -I scripts/heartbeat.py`, and fixes anything stuck.
+  Auto-expires after 7 days; re-create it before then.
+- 17:10 heartbeat: OK (watcher alive, no jobs yet, gsplat compiling, 5577 GB free).
+- Build stall watcher: background loop writing `runs/setup/build_watch.log` every 5 minutes.
 
-## Blocker (needs the user)
-The Phase A environment build (`uv sync --extra dev`, which compiles gsplat and fused-ssim from source for sm_120)
-was denied by the Claude Code auto-mode classifier. Every later phase needs this environment: the venv currently
-has no torch, MuJoCo or Meta-World. See the final message of the session for the exact command.
-
-## Work done without the runtime (untested until the environment exists)
-- DrQ-v2 port: `s4d/rl/{replay,encoders,agent,env,evaluate}.py`, `scripts/train_rl.py`, `configs/rl/`.
-- Scheduler: `scripts/jobs.py` (queue `experiments/queue.yaml`, registry `experiments/registry.jsonl`).
-- Tests: `tests/test_rl.py`, `tests/test_jobs.py` (+ subprocess workers).
-- Protocol: `docs/RL_PROTOCOL.md`. Baseline sources fetched to `.cache/reference/{sincro,ReViWo}` at the pinned commits.
-- Encoder export now records the pretraining frame strides.
+## Decisions applied (see docs/EXPERIMENT_LOG.md)
+- E1: pretraining strides {2,4,6} uniform; validation at strides 2 and 6; RL uses the reference spacing for all methods.
+- E3: difficulty-dependent exploration schedules (easy 100k, medium 250k, hard and very hard 500k agent steps).
+- Replay: RAM latents for frozen encoders, disk memmap frames for CNN; evaluation in a companion job per run.
 
 ## Job table
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
-| (none yet) | | | | |
+| (none yet; scheduler daemon starts after Phase A) | | | | |
+
+## Disk
+| time | free on /home/ws |
+|---|---|
+| 2026-10-07 17:00 | 5578 GB |
 
 ## Next actions
-1. Standalone uv environment with gsplat and fused-ssim built from source for sm_120 (blocked: needs permission).
-2. Full test suite with zero errors; GPU isolation check on both UUIDs; 50-step rendered pilot run on GPU 4 then GPU 5.
-3. Phase B data collection.
+1. Build finishes -> native gsplat rasterization on each GPU, full test suite (0 errors / 0 failures),
+   GPU isolation check, 50-step rendered pretraining on GPU 4 then GPU 5, runtime_versions.json.
+2. Commit and push the Phase A milestone; start the scheduler daemon.
+3. Phase B collection of all eight tasks through the scheduler.
