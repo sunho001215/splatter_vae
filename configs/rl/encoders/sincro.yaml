@@ -1,0 +1,7 @@
+# Frozen SinCro encoder (reference agents/drqv2/config/sincro): fused stack-level state -> SmallPostEncoderMLPHead,
+# feature_dim 256, no image augmentation.
+vision:
+  encoder_type: sincro
+  export_path: null   # set on the command line: vision.export_path=<runs/pretrain/<name>/encoder.pt>
+agent:
+  feature_dim: 256
