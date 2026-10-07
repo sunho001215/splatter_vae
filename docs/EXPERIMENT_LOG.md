@@ -230,3 +230,14 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
 - **Recovery.** Scheduler held; the four iteration runs pause at their 30k checkpoints (no steps lost); then the base
   runs resume from 70k / 60k with 8 loader workers each (`max_restarts` 3: this OOM kill, one deliberate restart, one
   for a genuine crash). Steps lost to the OOM kill: 9.65k (hammer), ~8k (pick-place).
+
+## 2026-10-08 — Fix: resuming loaded the whole trained prefix of the epoch
+
+- **Symptom.** After the 02:53 relaunches, hammer base logged its first step 14 min after resuming at 70k and
+  pick-place base none in 20 min (loader workers at 100% CPU).
+- **Cause.** `infinite()` resumed by iterating the DataLoader and discarding the already-trained batches of the
+  current epoch (up to ~3,700 batches = ~60k windows of motion computation).
+- **Fix.** `ResumableDistributedSampler` drops those indices before batching, so nothing is loaded for them and the
+  batch stream is identical (`tests/test_checkpoint.py::test_resumable_sampler_matches_replay_without_loading_the_skipped_prefix`);
+  suite 202/202. Pick-place base restarted onto it (first step 1 min after relaunch). Host memory recovered to ~300 GB
+  available at 03:16, so the four iteration runs were released from `hold-memory` and resumed from 30k.
