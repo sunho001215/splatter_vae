@@ -1,0 +1,7 @@
+# M2 overfit gate (layer on base.yaml + tasks/hammer.yaml): one training episode, 3k steps, evaluated on the same
+# episode at strides 2 and 6. Pass: train-view PSNR >= 32 dB and moving relative EPE <= 0.15 (unchanged thresholds).
+# The optimizer warm-up (10k by default) is shortened for the gate only, so the 3k-step gate trains at full rate.
+# The temporal ramp keeps its original 20k steps; if it prevents the gate, a gate-only shortened ramp is recorded.
+data: {episodes: [ep001]}   # hammer, expert-guided, successful at step 115 of 116
+train: {steps: 3000, warmup_steps: 300, eval_every: 500, save_every: 3000, eval_at_start: false}
+eval: {probe_every: 0, max_batches: 4}

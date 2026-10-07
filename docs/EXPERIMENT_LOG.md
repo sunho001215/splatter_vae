@@ -100,3 +100,30 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   function of (construction seed, episode seed) only: verified bit-identical between a fresh and a used env on
   hammer, pick-place, shelf-place and bin-picking, and between the worker pool and a single env (test). Evaluation
   envs use the reference evaluation construction seed, run seed + 1, whose 50 configurations differ from training's.
+
+## 2026-10-07 — Phase B result: full Meta-World data
+
+- **Collection.** Eight scheduler jobs (one UUID each, EGL device 16 on GPU 4, 17 on GPU 5), 250 episodes per task
+  with the reference mixture, 26-60 min per task, 162 GB in total (`/home/ws/data/metaworld/splatter4d_v1/`).
+- **Splits.** Deterministic seed-0 manifests, 240 training / 10 validation episodes per task (`splits/`).
+- **Workspace statistics.** Recomputed for all eight tasks at stride 6 (largest training stride) (`workspace_stats/`).
+- **Geometry (D2/D3), unchanged thresholds 3 mm / 5 mm.** All eight pass; D2 median 0.86-1.00 mm, D3 median
+  1.91-2.04 mm, world-body motion exactly zero (`docs/data_checks/<task>/`). Sanity panels at strides 2: RGB, depth,
+  body ids and motion score per training camera.
+
+## 2026-10-07 — G1: M2 overfit gate, iteration 1 (fail) and diagnosis
+
+- **Run.** `runs/pretrain/gate-m2-hammer` (hammer ep001, one episode, 3k steps, batch 16, warm-up shortened to 300
+  for the gate only, original 20k temporal ramp, cosine LR to 1e-5 at 3k).
+- **Result (thresholds unchanged).** Train-view PSNR 23.9 dB (s2) / 24.1 dB (s6), target >= 32: FAIL. Moving relative
+  EPE 0->2 0.79 (s2) / 0.51 (s6), target <= 0.15: FAIL. Depth AbsRel 0.029; dynamic alpha share on moving pixels 0.72.
+- **Diagnosis.** (1) The temporal ramp multiplies both the t1/t2 render terms and the motion loss
+  (`loss.py`: `ramp * motion * m_loss`); at 3k steps the ramp is 0.15, so motion supervision was mostly off. Panels
+  show predicted motion on the arm only, the hammer barely rendered. (2) PSNR was still rising ~0.45 dB per 300 steps
+  when the cosine schedule reached its floor. (3) Capacity is not the limit: free Gaussians fitted directly to the
+  same frame reach 39.6 dB with the method's 8,192 Gaussians, 44.5 dB with 32,768 (`runs/diag/capacity-*`;
+  `scripts/diag_capacity.py`). Held-out cameras reach only ~15 dB even for these direct fits of one frame from six
+  views, so held-out PSNR is not informative in a one-episode gate.
+- **Decision.** Iteration 2 (gate only): ramp shortened to 300 steps (allowed by the user for the gate) and constant
+  LR after warm-up (`train.min_lr = lr`). Loader workers raised to 32 (resource only: the window loader is CPU-bound,
+  ~76 ms per window).

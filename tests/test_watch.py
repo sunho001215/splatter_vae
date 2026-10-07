@@ -73,6 +73,14 @@ def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
     state = watch.load_state()
     assert [e.split()[0] for e in watch.poll(state)] == ["GPU_MEMORY_HIGH"] and watch.poll(state) == []
 
+    class SlowRun:
+        def __init__(self, *args, **kwargs):
+            raise watch.subprocess.TimeoutExpired("nvidia-smi", 60)
+
+    monkeypatch.setattr(watch.subprocess, "run", SlowRun)  # a hung nvidia-smi is skipped, not fatal
+    assert [watch.poll(state) for _ in range(4)] == [[]] * 4
+    assert [e.split()[0] for e in watch.poll(state)] == ["GPU_QUERY_FAILING"] and watch.poll(state) == []
+
 
 def test_watcher_internal_error_prints_marker(tmp_path):
     env = {**os.environ, "PATH": str(tmp_path)}  # no nvidia-smi on PATH -> internal error

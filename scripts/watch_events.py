@@ -11,6 +11,7 @@ running jobs, nvidia-smi memory of the two authorized GPUs, and free disk on /ho
     EVENT BUILD_FINISHED log=<path>  |  EVENT BUILD_FAILED code=<exit> log=<path>
     EVENT GPU_MEMORY_HIGH gpu=<uuid> used_gb=<x> total_gb=<y>
     EVENT DISK_LOW free_gb=<x>
+    EVENT GPU_QUERY_FAILING consecutive=5 reason=<exception>
 
 A cursor (``experiments/watch_state.json``) records what has been reported, so restarting never repeats or
 drops an event. ``--once`` exits after the first poll that produced events (used as a wake-up). Any internal
@@ -126,13 +127,21 @@ def build_events(state: dict) -> list[str]:
 
 
 def gpu_events(state: dict) -> list[str]:
-    out = subprocess.run(
-        ["nvidia-smi", "--query-gpu=uuid,memory.used,memory.total", "--format=csv,noheader,nounits"],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-    ).stdout
+    """A slow nvidia-smi under heavy load skips this check; only 5 consecutive failures become an event."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=uuid,memory.used,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        ).stdout
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+        state["gpu_query_failures"] = state.get("gpu_query_failures", 0) + 1
+        if state["gpu_query_failures"] == 5:
+            return [f"GPU_QUERY_FAILING consecutive=5 reason={type(exc).__name__}"]
+        return []
+    state["gpu_query_failures"] = 0
     events = []
     for line in out.splitlines():
         uuid, used, total = (part.strip() for part in line.split(","))
