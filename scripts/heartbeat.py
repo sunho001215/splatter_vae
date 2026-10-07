@@ -48,6 +48,9 @@ def newest_activity(job_id: str) -> float:
     run = REPO / "runs" / job_id
     times = [(run / name).stat().st_mtime for name in ACTIVITY if (run / name).exists()]
     times += [p.stat().st_mtime for p in run.glob("**/checkpoints/latest.pt")]
+    if job_id.endswith("-eval"):  # evaluation companions write into their training run directory
+        trained = REPO / "runs" / job_id.removesuffix("-eval")
+        times += [p.stat().st_mtime for p in (trained / "eval.jsonl", trained / "snapshots") if p.exists()]
     return max(times, default=0.0)
 
 

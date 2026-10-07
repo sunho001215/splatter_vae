@@ -110,12 +110,18 @@ def test_heartbeat_flags_stale_running_jobs_and_dead_watcher(tmp_path, monkeypat
     (tmp_path / "runs/stale/console.log").write_text("x")
     old = time.time() - 3 * 3600
     os.utime(tmp_path / "runs/stale/console.log", (old, old))
-    rows = [{"event": "launched", "id": job, "pid": os.getpid(), "gpu": "g", "attempt": 1} for job in ("fresh", "stale")]
+    (tmp_path / "runs/fresh-eval").mkdir()
+    (tmp_path / "runs/fresh-eval/console.log").write_text("x")
+    os.utime(tmp_path / "runs/fresh-eval/console.log", (old, old))
+    (tmp_path / "runs/fresh/eval.jsonl").write_text("{}")  # the companion writes here
+    jobs = ("fresh", "stale", "fresh-eval")
+    rows = [{"event": "launched", "id": job, "pid": os.getpid(), "gpu": "g", "attempt": 1} for job in jobs]
     (tmp_path / "experiments/registry.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     monkeypatch.setattr(sys, "argv", ["heartbeat.py"])
     with pytest.raises(SystemExit) as exit_:
         beat.main()
     assert exit_.value.code == 1
     output = capsys.readouterr().out
-    assert "OK    job fresh" in output and "STUCK job stale" in output and "DEAD  watcher" in output
+    assert "OK    job fresh " in output and "STUCK job stale" in output and "DEAD  watcher" in output
+    assert "OK    job fresh-eval" in output, "an evaluation companion is active through its run's eval.jsonl"
     assert "HEARTBEAT_PROBLEM 2" in output

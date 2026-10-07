@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T11:57:19.870261+00:00",
+  "started_utc": "2026-10-07T12:08:57.988934+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,7 +17,7 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 157.8780987560749,
+  "duration_seconds": 148.94182477612048,
   "counts": {
     "passed": 199,
     "error": 0,
@@ -107,7 +107,7 @@
     "scripts/evaluate.py": "e3f5c8cf60e5044fd7b0f0ede40e9fdbf8e1f4f601c5f9e8a4e5d5b793181546",
     "scripts/export_encoder.py": "956f9a24b0ef264098d3f3e6a56898dc6ed853dd11672fdfb13a36548bf115fa",
     "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",
-    "scripts/heartbeat.py": "fd92590c928b5fcb2ff4e063b8471b125f8bb82776a0932e8d255d9c32cc11ed",
+    "scripts/heartbeat.py": "678c11fdccec5c1c1ed580a76c237845fb117b6b68dc90de5b6cc5dcdc6d7264",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
     "scripts/jobs.py": "1ca3e75eeb5f4a0694f7374c049b236078f9fcb4d4d7a00c0b8914b3778d863c",
     "scripts/run_tests.py": "a50ea1c89efd7f491a4281b4b25c6a5b756d5e870ab93383efd293b75648f9d9",
@@ -146,7 +146,7 @@
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
     "tests/test_rl.py": "314b47ad1e4071f7af8b1a3c5be870f70e8c46df07ed86e18894e6678d565f51",
     "tests/test_rl_cli.py": "dfe33af7121f2d9d42cbf06ad65adbe768b68c3761b18e7de8f3033e49462761",
-    "tests/test_watch.py": "e431bfdcb8db511883d88a84748bf1706ac16cf9136bdfd3882bfae69c2cb7f6",
+    "tests/test_watch.py": "c181728b203e7638e48da11e15516531549fc3c703a03fb5c1aa3f755e3eed56",
     "configs/baselines/reviwo/bin-picking.yaml": "8e0b6b94a2a68d952c4a1f8149d926e94a69164e917aac8ab12fed44d15d5567",
     "configs/baselines/reviwo/door-open.yaml": "ecf4863c883c2b6a9b7169df83f01f64210c9f09ce4c168d5a9cd53ba98fa507",
     "configs/baselines/reviwo/hammer.yaml": "34cae891290fb9a76a928bf6becb539737701d31cef4fa68ce6ed6d69be38bbd",
