@@ -178,3 +178,16 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   validation loaders and probe loaders. Test: `tests/test_workers.py` (mechanics). Suite 200/200.
 - **Exposure.** The two running base pretraining runs started with the old code; if they hit this, the scheduler
   resumes them from their last checkpoint (every 10k steps) with the fixed code.
+
+## 2026-10-07 — Screen results and Stage 1 improvement iterations 1-2
+
+- **Screens at 6k** (vs reference PSNR 25.15 / 24.86, moving PSNR 23.70 / 22.07, rel. EPE 0.48 / 0.40, dyn 0.84):
+  S2 `lambda_dyn` 4: 25.97 / 25.78, 24.40 / 23.20, 0.41 / 0.32, dyn 0.91 / 0.93 — better on every metric.
+  S3 decoder dim 256: 26.94 / 26.56, 23.99 / 22.60, 0.42 / 0.35, dyn 0.86 — largest PSNR gain, motion better.
+  S1 motion weight 20 (5k; its 6k evaluation crashed, see fork fix): 25.14 / 25.43, rel. EPE 0.61 / 0.32 — mixed.
+- **Hypotheses promoted (counted iterations).** Iteration 1 (H1): decoder dim 128 -> 256 speeds decoder learning and
+  raises PSNR without hurting motion. Iteration 2 (H2): `lambda_dyn` 1 -> 4 concentrates the render loss on moving
+  pixels and improves moving PSNR, motion and the dynamic share. Both run on hammer and pick-place with the base
+  200k schedule (`runs/pretrain/s1-it1-decdim256-*`, `runs/pretrain/s1-it2-lambdadyn4-*`) and are compared with the
+  base runs at the same step (100k), so the LR schedule is identical; then each 100k encoder gets the DrM proxy
+  (2 seeds, 200k agent steps, both tasks). Iteration 3 combines them if both help.

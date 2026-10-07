@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-07 22:08
+Last updated: 2026-10-07 22:56
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -43,7 +43,8 @@ Last updated: 2026-10-07 22:08
 | stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
 | s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
 | s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
-| screen-s1-motion20 / -s2-lambdadyn4 / -s3-decdim256 (6k, gate setup) | GPU 4 | running | runs/pretrain/screen-*/log.txt | splatter4d-metaworld |
+| s1-it1-decdim256-{hammer,pick-place} (iteration 1, 200k schedule, compared at 100k) | GPU 4 | running | runs/pretrain/s1-it1-*/log.txt | splatter4d-metaworld |
+| s1-it2-lambdadyn4-{hammer,pick-place} (iteration 2) | GPU 4 | running | runs/pretrain/s1-it2-*/log.txt | splatter4d-metaworld |
 
 Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-*`, `timing2-*`), gate it1/it2.
 
