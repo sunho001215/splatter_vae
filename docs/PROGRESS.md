@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 07:10
+Last updated: 2026-10-08 08:12
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -85,6 +85,10 @@ Last updated: 2026-10-08 07:10
   0.04 (seeds 1000 / 1001); for reference the Stage 0 CNN had 0.02 / 0.00 at 100k (different seed; informal).
   Pick-place proxies at ~50k: 0.0 so far.
 
+- 08:08: HEARTBEAT_OK — 8 jobs + 4 export jobs. Base hammer proxies done (final train-camera 0.13 / 0.29, peak 0.44
+  near 100k then decline); base pick-place s1001 done (0.0), s1000 finishing. Queued iteration proxies: exports wait
+  for the iterations' 100k checkpoints (~3 h), then 8 DrM proxy runs + evaluators on GPU 5. RAM available 93 GB.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
@@ -92,7 +96,8 @@ Last updated: 2026-10-08 07:10
 | stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
 | s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
 | s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
-| export-s1-base-{hammer,pick-place}-100k -> s1-proxy-base-{task}-s{1000,1001} (+ -eval) | GPU 5 | waiting for 100k checkpoints | runs/<id>/console.log | splatter4d-rl |
+| export-s1-base-* -> s1-proxy-base-{task}-s{1000,1001} | GPU 5 | hammer done; pick-place s1001 done, s1000 finishing |
+| export-s1-it{1,2}-*-100k -> s1-proxy-it{1,2}-*-{task}-s{1000,1001} | GPU 5 | waiting for 100k checkpoints | runs/<id>/console.log | splatter4d-rl |
 | s1-it1-decdim256-{hammer,pick-place} (iteration 1, 200k schedule, compared at 100k) | GPU 4 | running (resumed 03:17 from 30k) | runs/pretrain/s1-it1-*/log.txt | splatter4d-metaworld |
 | s1-it2-lambdadyn4-{hammer,pick-place} (iteration 2) | GPU 4 | running (resumed 03:17 from 30k) | runs/pretrain/s1-it2-*/log.txt | splatter4d-metaworld |
 
@@ -109,6 +114,7 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-08 06:50 | 4.9 TB (stage0-drm-cnn-shelf-place-s2000 completed with final eval at 1M; deleted its replay/, 46 GB) |
 | 2026-10-08 07:35 | 5.0 TB (s1-proxy-base-hammer-s1001 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-08 07:45 | 5.0 TB (s1-proxy-base-hammer-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
+| 2026-10-08 08:08 | 5.0 TB (s1-proxy-base-pick-place-s1001 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 
 ## Next actions
 1. M2 iteration 3 -> record M2 outcome (RESULTS.md if still failing after three iterations).
