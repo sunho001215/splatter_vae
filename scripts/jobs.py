@@ -3,8 +3,9 @@
 ``experiments/queue.yaml`` lists jobs::
 
     limits:   {<gpu uuid>: {max_jobs: 6, max_mem_gb: 90}, ...}
+    host_ram_reserve_gb: 40      # keep this much host RAM available after a launch (the host is shared)
     jobs:
-      - {id: pt-hammer, script: scripts/train.py, args: [...], gpu: any, mem_gb: 20, priority: 1, deps: []}
+      - {id: pt-hammer, script: scripts/train.py, args: [...], gpu: any, mem_gb: 20, ram_gb: 20, priority: 1, deps: []}
 
 ``tick`` reconciles running jobs with ``experiments/registry.jsonl`` (append-only events) and launches
 eligible jobs detached (``setsid nohup``) with exactly one allowed UUID in ``CUDA_VISIBLE_DEVICES``.
@@ -174,15 +175,24 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS) -> int:
     return proc.pid
 
 
-def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None) -> list[str]:
+def host_available_gb() -> float:
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        if line.startswith("MemAvailable:"):
+            return int(line.split()[1]) / 2**20
+    return 0.0
+
+
+def tick(
+    queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None, available_gb: float | None = None
+) -> list[str]:
     """One reconcile-and-launch pass, serialized by a lock so concurrent ticks never double-launch."""
     registry.parent.mkdir(parents=True, exist_ok=True)
     with open(registry.with_suffix(".lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _tick(queue_path, registry, runs, usage)
+        return _tick(queue_path, registry, runs, usage, available_gb)
 
 
-def _tick(queue_path: Path, registry: Path, runs: Path, usage) -> list[str]:
+def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb) -> list[str]:
     queue = load_queue(queue_path)
     jobs = {job["id"]: job for job in queue.get("jobs", [])}
     state = read_registry(registry)
@@ -227,10 +237,20 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage) -> list[str]:
         messages.append(f"foreign processes on {uuid}: {usage[uuid]}; not launching there")
     if (queue_path.parent / "HOLD").exists():  # code is being edited or tested: reconcile only, launch nothing
         return messages
+    available = host_available_gb() if available_gb is None else available_gb
+    reserve = float(queue.get("host_ram_reserve_gb", 0))
     for job in eligible(list(jobs.values()), state):
         gpu = choose_gpu(job, queue["limits"], running, foreign)
         if gpu is None:
             continue
+        # The host is shared: launch only if the job's RAM fits next to what other tenants use right now.
+        need = float(job.get("ram_gb", 0))
+        if available - need < reserve:
+            messages.append(
+                f"{job['id']}: waiting for host RAM ({available:.0f} GB available, needs {need:.0f} + {reserve:.0f})"
+            )
+            continue
+        available -= need
         attempt = state.get(job["id"], {}).get("attempts", 0) + 1
         pid = launch(job, gpu, attempt, runs)
         record({"event": "launched", "id": job["id"], "pid": pid, "gpu": gpu, "attempt": attempt}, registry)

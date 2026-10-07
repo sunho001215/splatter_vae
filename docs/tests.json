@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T20:09:58.062798+00:00",
+  "started_utc": "2026-10-07T23:38:38.742050+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,14 +17,14 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 254.157494709827,
+  "duration_seconds": 246.1243287869729,
   "counts": {
-    "passed": 203,
+    "passed": 204,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 203,
+  "total": 204,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -110,7 +110,7 @@
     "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",
     "scripts/heartbeat.py": "678c11fdccec5c1c1ed580a76c237845fb117b6b68dc90de5b6cc5dcdc6d7264",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
-    "scripts/jobs.py": "a2e3b6e71c6d72f1aa26ea17c72a541e8e14a49d9752bd6bed15fa0c06cbe14e",
+    "scripts/jobs.py": "d4de2557d1508b58e43a33e0badda8d756405f9a96eabaf9e7079d246ae694ef",
     "scripts/run_tests.py": "a50ea1c89efd7f491a4281b4b25c6a5b756d5e870ab93383efd293b75648f9d9",
     "scripts/split_metaworld.py": "df6df73b8ad5fa6c2d130ca9c855ba31f64d09ed92b25f6c15d5d07cd33f511d",
     "scripts/summarize_run.py": "530fe7a4cad17e777baef6c92a85a663950fa6f2a4919a3b15ffa3bb47b1a7a4",
@@ -141,7 +141,7 @@
     "tests/test_encoder.py": "eb1f3f1dd0a9dd6e01fa049a0ddab3c263128fc040a59d00da4a390c3fe8b986",
     "tests/test_export.py": "619707a8c7748143df0ee8e9723baac00f3e35ff3969e8039d5881c792798a56",
     "tests/test_geometry.py": "bc127b7470cdf9a23485d8a740c519d272f001b33377f9cbb9dda7e5d12819a3",
-    "tests/test_jobs.py": "57bbef578cf1f5e66d364abb2828c64fa479e0fd23ef7046c5d76945f909ede2",
+    "tests/test_jobs.py": "42b744b606dc177e5c835f0c53dd143505cbf16db623072c6555438ba43024dd",
     "tests/test_metaworld_checks.py": "d32fa21a9fc0a4a28a21ac564d5850bc58710ae4aa0e9d9debb278c6d3757c34",
     "tests/test_motion.py": "0b59aa14a8af4c55dee408d7652a737bb34ffb0b83a8dd44ad049a05ad2c7299",
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
@@ -858,6 +858,7 @@
       "check_guarded",
       "choose_gpu",
       "eligible",
+      "host_available_gb",
       "launch",
       "load_queue",
       "pid_alive",

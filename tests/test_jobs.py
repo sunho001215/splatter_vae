@@ -62,6 +62,26 @@ def test_eligibility_priority_dependencies_and_admission():
         jobs.choose_gpu({"id": "x", "gpu": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b", "mem_gb": 1}, LIMITS, [], set())
 
 
+def test_launches_wait_for_host_ram(tmp_path):
+    uuid = GPU4
+    queue = tmp_path / "q.yaml"
+    queue.write_text(
+        yaml.safe_dump(
+            {
+                "limits": LIMITS,
+                "host_ram_reserve_gb": 40,
+                "jobs": [
+                    {"id": "big", "script": "tests/_job_worker.py", "args": [0], "gpu": uuid, "mem_gb": 1, "ram_gb": 30},
+                ],
+            }
+        )
+    )
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    messages = jobs.tick(queue, registry, runs, usage={}, available_gb=60.0)
+    assert any("waiting for host RAM" in m for m in messages) and not registry.exists()
+    assert jobs.host_available_gb() > 0
+
+
 def test_only_guarded_repository_scripts_launch(tmp_path):
     assert jobs.check_guarded("scripts/train_rl.py").name == "train_rl.py"
     assert jobs.check_guarded("scripts/train.py").name == "train.py"
