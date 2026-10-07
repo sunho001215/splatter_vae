@@ -191,3 +191,19 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   200k schedule (`runs/pretrain/s1-it1-decdim256-*`, `runs/pretrain/s1-it2-lambdadyn4-*`) and are compared with the
   base runs at the same step (100k), so the LR schedule is identical; then each 100k encoder gets the DrM proxy
   (2 seeds, 200k agent steps, both tasks). Iteration 3 combines them if both help.
+
+## 2026-10-08 — Fix: pretraining loaders starved Stage 0 of page cache
+
+- **Symptom.** Stage 0 DrM + CNN throughput fell from 29 to 5 agent steps/s between 23:00 and 23:50 (update time
+  19 -> 107 s per 1k steps) while GPU 5 utilisation dropped to 37%; `vmstat` showed 1.7 GB/s of block reads.
+- **Cause.** Six concurrent pretraining runs used 32 (base) or 16 (iterations) loader workers with prefetch factor 4:
+  ~2.25 GB of resident memory per worker plus up to 128 prefetched 127 MB batches per run in shared memory
+  (~118 GB system-wide shared memory from our loaders). The page cache left for files was smaller than the working
+  set (the CNN replay memmaps plus the HDF5 data), so replay pages were evicted and re-read at every sample.
+- **Fix (no code change).** Loader workers lowered to 12 (base runs) and 8 (iteration runs); the measured window cost
+  (~1.2 core-seconds per batch) needs about 7 workers at 0.18 s/step. Each run is stopped right after its next
+  checkpoint and evaluation (`.cache/tmp/restart_after_ckpt.sh`, log `runs/setup/memory_fix_restarts.log`) and the
+  scheduler resumes it from that checkpoint; no training steps are lost and the data order is unchanged (the sampler
+  runs in the main process). `max_restarts` raised to 2 for these jobs so the usual one restart after a genuine crash
+  remains. After the first two restarts available RAM rose from 76 to 123 GB.
+- **Rule for later launches.** At most ~12 loader workers per pretraining run when RL runs share the host.
