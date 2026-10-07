@@ -70,6 +70,8 @@ exclude = [
     "s4d/baselines/reviwo/configs.py",
     "s4d/baselines/reviwo/multiview_vae.py",
     "s4d/baselines/reviwo/utils.py",
+    "s4d/baselines/sincro/training.py",
+    "s4d/baselines/reviwo/training.py",
 ]
 
 [tool.ruff.lint]
