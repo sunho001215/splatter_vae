@@ -1,39 +1,33 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-07 18:45
+Last updated: 2026-10-07 20:05
 
 ## Current phase
-**Phase B (data collection) running; Phase C RL timing running.** Phase A complete (EXPERIMENT_LOG E0).
-RL algorithm: DrM (official code @ 989732d6) for every RL run (E4).
+- **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
+- **Phase C** in progress: RL timing done (CNN GPU-bound ~80 steps/s/GPU; frozen ~190 steps/s/GPU with 8 runs);
+  pretraining 0.22 s/step at 8 loader workers (loader-bound; 32 workers now); `docs/COMPUTE_PLAN.md` written.
+  M2 overfit gate failed iterations 1 and 2 (G1, G2); iteration 3 (two arms) running.
+- **Stage 0** running: DrM + CNN, seed 2000, hammer and shelf-place.
+- **Stage 1** started: baseline pretraining (200k steps) on hammer and pick-place.
 
 ## Event handling
-- Event watcher: `python3 -I scripts/watch_events.py --once` as a background task; exits on the first poll with
-  events (wake-up), then re-armed. Cursor: `experiments/watch_state.json`.
-- Hourly check: user `/loop`, session cron job `af519ff6` at :47 (expires after 7 days; re-create before then).
-- Scheduler daemon: `scripts/jobs.py daemon --interval 30` (pid in `experiments/daemon.pid`, log
-  `experiments/daemon.log`), restarted 18:34 after fixing its session-id check.
+- Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
+- Hourly check: user `/loop`, session cron job `af519ff6` at :47 (expires after 7 days).
+- Scheduler daemon: `scripts/jobs.py daemon --interval 30` (pid `experiments/daemon.pid`, log `experiments/daemon.log`).
+  `touch experiments/HOLD` while editing or testing sources (every file in `s4d/ scripts/ tests/ configs/` is
+  fingerprinted by the test gate); remove it after the suite passes.
 
-## Decisions applied (see docs/EXPERIMENT_LOG.md)
-- E1: pretraining strides {2,4,6} uniform; validation at strides 2 and 6; RL uses the reference spacing for all methods.
-- E4: DrM replaces DrQ-v2 for every RL run; no per-task overrides for the campaign tasks.
-- E5: seeded evaluation resets are history-free (Meta-World 3.0 ignores reset seeds).
-- Replay: RAM fp16 latents for frozen encoders; disk memmap frames for CNN with a prefetch thread.
-
-## Job table
+## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
-| collect-door-open | GPU 4 | running (230/250) | runs/collect-door-open/console.log | - |
-| collect-hammer | GPU 5 | running (218/250) | runs/collect-hammer/console.log | - |
-| collect-peg-unplug-side | GPU 4 | running (158/250) | runs/collect-peg-unplug-side/console.log | - |
-| collect-stick-push | GPU 5 | running (202/250) | runs/collect-stick-push/console.log | - |
-| collect-pick-place | GPU 4 | running (216/250) | runs/collect-pick-place/console.log | - |
-| collect-peg-insert-side | GPU 5 | running (190/250) | runs/collect-peg-insert-side/console.log | - |
-| collect-shelf-place | GPU 4 | running (173/250) | runs/collect-shelf-place/console.log | - |
-| collect-bin-picking | GPU 5 | running (203/250) | runs/collect-bin-picking/console.log | - |
-| split-/stats-/check-<task> (24) | any | pending (after each collection) | runs/<id>/console.log | - |
-| timing-cnn-c1 | GPU 4 | running (old code; 22 fps) | runs/timing-cnn-c1/console.log | disabled |
-| timing-cnn-c1-eval | GPU 4 | pending (eval throughput) | runs/timing-cnn-c1-eval/console.log | disabled |
-| timing2-cnn-c1, -c4-{0..3}, -c8-{0..7} | GPU 4 | pending (concurrency on new code) | runs/<id>/console.log | disabled |
+| stage0-drm-cnn-hammer-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-hammer-s2000/console.log | splatter4d-rl / stage0-drm-cnn-hammer-s2000 |
+| stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
+| s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
+| s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
+| gate-m2-hammer-it3a (LR x4, 3k) | GPU 4 | running | runs/pretrain/gate-m2-hammer-it3a/log.txt | splatter4d-metaworld |
+| gate-m2-hammer-it3b (12k steps) | GPU 5 | running | runs/pretrain/gate-m2-hammer-it3b/log.txt | splatter4d-metaworld |
+
+Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-*`, `timing2-*`), gate it1/it2.
 
 ## Disk
 | time | free on /home/ws |
@@ -41,9 +35,10 @@ RL algorithm: DrM (official code @ 989732d6) for every RL run (E4).
 | 2026-10-07 17:00 | 5578 GB |
 | 2026-10-07 18:45 | 5.0 TB |
 | 2026-10-07 19:02 | 5.0 TB (after timing-cnn-c1 finished; deleted runs/timing-cnn-c1/replay/, 0.98 GB) |
+| 2026-10-07 19:55 | 4.9 TB (timing runs finished; their replays are kept: no final evaluation) |
 
 ## Next actions
-1. Collections finish -> splits, workspace stats, D2/D3 geometry checks and sanity panels run as dependent jobs.
-2. Timing results -> docs/COMPUTE_PLAN.md (per-GPU concurrency, GPU-hours per run).
-3. Phase C pretraining gates on hammer: M2 overfit (one episode, 3k steps), 500-step timing.
-4. Stage 0: DrM + CNN, seed 2000, hammer and shelf-place (compare hammer with the DrM paper).
+1. M2 iteration 3 -> record M2 outcome (RESULTS.md if still failing after three iterations).
+2. Stage 1 pretraining -> M3-M7 at checkpoints; export encoders; DrM RL with seeds 1000-1002 on hammer and pick-place.
+3. Stage 0 -> compare hammer with the DrM paper; record in EXPERIMENT_LOG.
+4. Report to the user at the end of Stage 1.

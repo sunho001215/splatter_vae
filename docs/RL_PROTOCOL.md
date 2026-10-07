@@ -132,4 +132,27 @@ seeds (rliable-style), with training cameras, held-out cameras and trajectories 
 
 ## Measurements
 
-Filled in from Phase C timing runs.
+Replay and throughput (GPU 4/5, RTX PRO 6000; details in `docs/COMPUTE_PLAN.md`):
+
+| Item | CNN (disk memmap frames) | Frozen splatter4d (RAM fp16 latents) |
+|---|---|---|
+| Replay size at 1M transitions | 46 GB on disk (one 3x128x128 uint8 frame per state, sparse until written) | 0.54 GB in RAM (256-d fp16 latent + proprio/action/reward) |
+| Process RAM | 3.2 GB (plus page cache of the memmap) | 2.2 GB |
+| Batch of 256 stacks | 15.5 ms gather into reused pinned buffers in a prefetch thread, hidden by the update | < 1 ms (numpy gather of latents) |
+| Update | 30 ms (GPU-bound conv backward) | ~10-20 ms (latency-bound small kernels) |
+| Agent steps per second | 52 alone; 80 in total per GPU (the GPU saturates) | 39 alone; ~190 in total per GPU with 8 runs |
+
+Design choices backed by these numbers:
+- **Disk replay sampling uses a prefetch thread, not DataLoader workers.** With DataLoader workers the batch cost was
+  161 ms (2 workers), 66 ms (6 workers) and 105 ms (12 workers): every batch allocates and page-faults fresh 75 MB
+  shared/pinned buffers, and the pin-memory copy is serial. Gathering with multi-threaded `index_select` straight
+  from the memmap into reused pinned buffers costs 15.5 ms and overlaps the GPU update, so sampling no longer
+  appears in the update time (31.8 ms with sampling vs 30.1 ms without).
+- **Frozen encoders sample in-process from RAM.** Latents are tiny, so no worker processes are needed, and the
+  latent replay of a 1M-step run fits in 0.54 GB.
+- **Updates synchronise only what DrM needs** (the actor dormant ratio, used by the exploration rule, and
+  perturbation events); diagnostics such as losses and the critic dormant ratio are converted only at logging steps.
+  This cut the CNN update from 48 ms to 30 ms without changing any computation.
+- **Evaluation pools share one renderer per worker.** Each MuJoCo renderer holds its own copy of the scene textures
+  (~0.44 GB); sharing it across a worker's environments is pixel-identical up to the renderer's own +/-1 intensity
+  noise on all eight tasks. Pools (6 workers x 8 envs) are opened only while snapshots are pending.

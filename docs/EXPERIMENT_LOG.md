@@ -127,3 +127,15 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
 - **Decision.** Iteration 2 (gate only): ramp shortened to 300 steps (allowed by the user for the gate) and constant
   LR after warm-up (`train.min_lr = lr`). Loader workers raised to 32 (resource only: the window loader is CPU-bound,
   ~76 ms per window).
+
+## 2026-10-07 — G2: M2 gate, iteration 2 (fail)
+
+- **Run.** `runs/pretrain/gate-m2-hammer-it2` (ramp 300 steps, constant LR 5e-4 after warm-up; otherwise as G1).
+- **Result.** PSNR 24.5 (s2) / 24.4 (s6); moving relative EPE 0->2 0.69 (s2) / 0.54 (s6); dynamic alpha share 0.76.
+  FAIL on both thresholds; small gains over G1, so the ramp and the LR floor were not the main limitation.
+- **Checked.** Negative displacements survive the feature splat (native tests with signed features), so motion is not
+  clipped by the renderer; zero motion would give relative EPE 1.0, so motion is learned, slowly.
+- **Decision.** Iteration 3 (last for M2) with two gate-only arms: (a) LR x4 (2e-3) for 3k steps — is it
+  optimisation speed?; (b) LR 5e-4 for 12k steps — are the thresholds reachable at all, and when? Full 200k
+  pretraining of the unchanged base config started in parallel on both development tasks
+  (`runs/pretrain/s1-pretrain-{hammer,pick-place}-base`).
