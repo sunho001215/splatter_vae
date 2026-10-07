@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-07T11:52:18.479802+00:00",
+  "started_utc": "2026-10-07T11:57:19.870261+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,7 +17,7 @@
     "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 179.59788477187976,
+  "duration_seconds": 157.8780987560749,
   "counts": {
     "passed": 199,
     "error": 0,
@@ -146,7 +146,7 @@
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
     "tests/test_rl.py": "314b47ad1e4071f7af8b1a3c5be870f70e8c46df07ed86e18894e6678d565f51",
     "tests/test_rl_cli.py": "dfe33af7121f2d9d42cbf06ad65adbe768b68c3761b18e7de8f3033e49462761",
-    "tests/test_watch.py": "bc67e1b4c4581a35cf042d1773f3a779e1a51ac8c5f594b0d255efc8725062ba",
+    "tests/test_watch.py": "e431bfdcb8db511883d88a84748bf1706ac16cf9136bdfd3882bfae69c2cb7f6",
     "configs/baselines/reviwo/bin-picking.yaml": "8e0b6b94a2a68d952c4a1f8149d926e94a69164e917aac8ab12fed44d15d5567",
     "configs/baselines/reviwo/door-open.yaml": "ecf4863c883c2b6a9b7169df83f01f64210c9f09ce4c168d5a9cd53ba98fa507",
     "configs/baselines/reviwo/hammer.yaml": "34cae891290fb9a76a928bf6becb539737701d31cef4fa68ce6ed6d69be38bbd",

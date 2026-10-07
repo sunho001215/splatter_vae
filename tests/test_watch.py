@@ -83,9 +83,15 @@ def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
 
 
 def test_watcher_internal_error_prints_marker(tmp_path):
+    # Run a copy whose REPO is tmp_path, so the live experiments/ state, pid file and beacon are never touched.
+    (tmp_path / "scripts").mkdir()
+    script = tmp_path / "scripts" / "watch_events.py"
+    script.write_text((REPO / "scripts/watch_events.py").read_text())
+    (tmp_path / "experiments").mkdir()
+    (tmp_path / "experiments" / "watch_state.json").write_text('{"build_reported": true}')
     env = {**os.environ, "PATH": str(tmp_path)}  # no nvidia-smi on PATH -> internal error
     result = subprocess.run(
-        [sys.executable, "-I", str(REPO / "scripts/watch_events.py"), "--once"],
+        [sys.executable, "-I", str(script), "--once"],
         capture_output=True,
         text=True,
         env=env,
