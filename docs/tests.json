@@ -1,12 +1,12 @@
 {
-  "started_utc": "2026-10-07T11:40:51.009607+00:00",
+  "started_utc": "2026-10-07T11:52:18.479802+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
   "gpu_mapping": [
     {
       "index": 0,
-      "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
       "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
     }
   ],
@@ -14,10 +14,10 @@
     "tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.claude/worktrees/agent-ac74b8cb20bdf8c7f/docs/tests.junit.xml"
+    "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 226.1368654728867,
+  "duration_seconds": 179.59788477187976,
   "counts": {
     "passed": 199,
     "error": 0,

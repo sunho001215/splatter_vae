@@ -31,3 +31,4 @@ experiments/watch_state.json
 experiments/watcher.alive
 experiments/watcher.pid
 experiments/HOLD
+.claude/

@@ -10,6 +10,8 @@ that rule bends, and why.
 |---|---|---|
 | SinCro model code | github.com/sunho001215/sincro (MIT, © 2025 Seungyeon Yoo) | `5c7c06d373233e7bc7d7c240fdc27b212e2535f4` |
 | ReViWo model code | github.com/lafmdp/ReViWo (**no license stated**) | `ac0c24958c83366dbdceebfb1db9f9111fce56a0` |
+
+The ReViWo repository states no license: the vendored code is used for this internal research comparison only and must not be redistributed without the authors' permission.
 | Reference trainers, configs, RL wrappers | sunho001215/splatter_vae, `baselines/{SinCro,ReViWo}/`, `agents/common/encoders.py` | `c0abf56` |
 
 Vendored files, all verbatim except for their imports; each file's header names its source file:
@@ -73,7 +75,8 @@ full validation render on the vendored code.
      camera z = −1) has median 0.93 m and p99 3.67 m. With far=1, **39.5 % of pixels lie behind the far plane**; with
      far=2.5, 2.7 % do (distant background).
    - Upstream's own Meta-World settings were `near=0.02258, far=3.0`. We keep the reference config's 0.1/2.5.
-   - **Decision for the parent:** keep 0.1/2.5 (current), or use upstream's far=3.0 (2.0 % beyond).
+   - **Decision (2026-10-07):** keep the reference config's 0.1/2.5 m. These are the original reference
+     hyperparameters; the reference trainer only failed to pass them to `render()`.
 2. **SinCro frames are 2 simulator steps apart.** The reference used consecutive frames. This matches the RL
    observation (3 frames, `action_repeat` 2), as decided by the user. `frame_spacing` is part of the config's
    `data_interface`, is written into the export, and is checked against `env.action_repeat` when an RL config is
