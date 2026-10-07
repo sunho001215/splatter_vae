@@ -207,3 +207,13 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   runs in the main process). `max_restarts` raised to 2 for these jobs so the usual one restart after a genuine crash
   remains. After the first two restarts available RAM rose from 76 to 123 GB.
 - **Rule for later launches.** At most ~12 loader workers per pretraining run when RL runs share the host.
+
+## 2026-10-08 — External memory pressure: improvement iterations paused
+
+- **Observation (02:08).** Available RAM fell to 25 GB (free 3 GB) and Stage 0 hammer dropped to 1.8 steps/s. Our own
+  processes hold ~68 GB anonymous memory and <= 52 GB shared memory; host-wide anonymous memory is 362 GB, so ~290 GB
+  belongs to other tenants of the shared host (not visible from this container; untouched). Load average 233.
+- **Decision.** Pause the four iteration runs (lowest priority of the running work) right after their 30k checkpoints
+  so no steps are lost: the queue holds them behind a placeholder dependency `hold-memory`; `max_restarts` raised to 3
+  to keep one restart for a genuine crash after resuming. Base pretraining (needed for Stage 1) and Stage 0 (tier 1)
+  keep running. Resume the iterations when available RAM stays above ~120 GB.

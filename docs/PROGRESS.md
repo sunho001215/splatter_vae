@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 01:10
+Last updated: 2026-10-08 02:12
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -52,6 +52,9 @@ Last updated: 2026-10-08 01:10
   553k). A second simultaneous ~20 min Stage 0 evaluation spike (both ended 01:04; first one 21:03) — evaluators
   caught up within one snapshot each time; watching for a third occurrence before investigating further.
   Pretraining: hammer base 67k, pick-place base 55k, iterations 16-20k (all ~0.4 s/step).
+
+- 02:10: HEARTBEAT_OK, but available RAM 25 GB from other tenants' growth (~290 GB anon not ours); Stage 0 hammer at
+  1.8 steps/s. Pausing the 4 iteration runs at their 30k checkpoints (held behind `hold-memory` in the queue).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
