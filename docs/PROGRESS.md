@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-07 22:56
+Last updated: 2026-10-07 23:12
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -35,6 +35,11 @@ Last updated: 2026-10-07 22:56
 - 22:15 GPU 5 process audit: all 29 GPU processes belong to active registered jobs (Stage 0 train 864132/864134,
   their eval companions 1018246/1018247 with 12 spawned render workers each, pick-place pretraining 1255925); no
   orphans, no collectors, no foreign processes.
+
+- 23:10: HEARTBEAT_PROBLEM 1 — the watcher had been dead for 25 min because I did not re-arm it after the
+  `screen-s1-motion20` completion event; restarted (the registry cursor replays missed events). 10 running jobs OK.
+  GPU 4 at 98% with 5 pretraining jobs (~0.4 s/step each); available RAM 90 GB (loader shared memory) — no further
+  memory-heavy launches until some finish. Stage 0 at ~430k/1M (~6 h left).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
