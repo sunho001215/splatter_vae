@@ -47,12 +47,16 @@ def reference_cameras(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
 
 
 class _EpisodeFile(Dataset):
-    def __init__(self, path: str | Path, episodes: list[str]):
-        self.path, self.episodes = str(path), list(episodes)
+    """Reference caps: the first ``max_episodes`` episodes, the first ``max_frames_per_demo`` frames of each."""
+
+    def __init__(self, path: str | Path, episodes: list[str], max_episodes: int | None, max_frames_per_demo: int | None):
+        self.path, self.episodes = str(path), list(episodes)[:max_episodes]
         self._file: h5py.File | None = None
         with h5py.File(self.path, "r") as f:
             self.num_train_cams = int(f["cameras"]["is_train"][:].astype(bool).sum())
             self.lengths = {ep: int(f["episodes"][ep].attrs["length"]) for ep in self.episodes}
+        if max_frames_per_demo is not None:
+            self.lengths = {ep: min(length, int(max_frames_per_demo)) for ep, length in self.lengths.items()}
 
     def __getstate__(self):
         state = dict(self.__dict__)
@@ -76,8 +80,10 @@ class SinCroWindows(_EpisodeFile):
         temporal_stride: int = 3,
         frame_spacing: int = 2,
         num_views: int = 6,
+        max_episodes: int | None = None,
+        max_frames_per_demo: int | None = None,
     ):
-        super().__init__(path, episodes)
+        super().__init__(path, episodes, max_episodes, max_frames_per_demo)
         if num_views > self.num_train_cams:
             raise ValueError(f"num_views={num_views} exceeds the {self.num_train_cams} training cameras")
         self.sequence_length, self.frame_spacing, self.num_views = sequence_length, frame_spacing, num_views
@@ -107,8 +113,15 @@ class SinCroWindows(_EpisodeFile):
 class ReViWoStates(_EpisodeFile):
     """Reference ``MetaWorldMultiViewAllCamerasHDF5Dataset``: every timestep, all training cameras, in [-1, 1]."""
 
-    def __init__(self, path: str | Path, episodes: list[str], num_views: int = 6):
-        super().__init__(path, episodes)
+    def __init__(
+        self,
+        path: str | Path,
+        episodes: list[str],
+        num_views: int = 6,
+        max_episodes: int | None = None,
+        max_frames_per_demo: int | None = None,
+    ):
+        super().__init__(path, episodes, max_episodes, max_frames_per_demo)
         if num_views > self.num_train_cams:
             raise ValueError(f"num_views={num_views} exceeds the {self.num_train_cams} training cameras")
         self.num_views = num_views

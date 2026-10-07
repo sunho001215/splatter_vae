@@ -118,9 +118,12 @@ def main() -> None:
         "temporal_stride": ds_cfg.temporal_stride,
         "frame_spacing": frame_spacing,
         "num_views": ds_cfg.num_views,
+        "max_frames_per_demo": ds_cfg.max_frames_per_demo,
     }
-    train_set = SinCroWindows(ds_cfg.hdf5_path, split_episodes(interface["split_manifest"], "train"), **window_args)
-    val_set = SinCroWindows(ds_cfg.hdf5_path, split_episodes(interface["split_manifest"], "validation"), **window_args)
+    manifest = interface["split_manifest"]
+    train_episodes = split_episodes(manifest, "train")
+    train_set = SinCroWindows(ds_cfg.hdf5_path, train_episodes, max_episodes=ds_cfg.max_episodes, **window_args)
+    val_set = SinCroWindows(ds_cfg.hdf5_path, split_episodes(manifest, "validation"), **window_args)
     loader = DataLoader(
         train_set,
         batch_size=ds_cfg.batch_size,

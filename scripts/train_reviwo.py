@@ -65,8 +65,12 @@ def main() -> None:
     device = torch.device(cfg_train.device)
 
     num_views = int(ds_cfg.get("camera_num", 6))
-    train_set = ReViWoStates(ds_cfg["hdf5_path"], split_episodes(interface["split_manifest"], "train"), num_views)
-    valid_set = ReViWoStates(ds_cfg["hdf5_path"], split_episodes(interface["split_manifest"], "validation"), num_views)
+    max_frames = ds_cfg.get("max_frames_per_demo")
+    manifest = interface["split_manifest"]
+    train_set = ReViWoStates(
+        ds_cfg["hdf5_path"], split_episodes(manifest, "train"), num_views, ds_cfg.get("num_episodes"), max_frames
+    )
+    valid_set = ReViWoStates(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), num_views, None, max_frames)
     workers = int(ds_cfg.get("num_workers", 8))
     loader_args = {
         "batch_size": int(ds_cfg.get("batch_size", 128)),

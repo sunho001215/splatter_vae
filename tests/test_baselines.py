@@ -102,7 +102,11 @@ def test_sincro_windows_shapes_range_and_two_step_spacing(tmp_path):
     assert 0.0 <= float(sample["images"].min()) and float(sample["images"].max()) <= 1.0
     frames = (sample["images"][:, 0, 0, 0, 0] * 255).round().int().tolist()
     assert frames == [3, 5, 7], "window start 3, frames 2 simulator steps apart"
-    assert all((ds[i]["images"][-1, 0, 0, 0, 0] * 255).round() < 12 + 20 for i in range(len(ds)))
+    for i in range(len(ds)):  # windows never cross episodes (episode e stores 20e + t)
+        first, last = ((ds[i]["images"][[0, -1], 0, 0, 0, 0] * 255).round().int() % 20).tolist()
+        assert last - first == 4 and last < 12
+    capped = SinCroWindows(path, train, max_episodes=1, max_frames_per_demo=8)
+    assert [s for _, s in capped.indices] == [0, 3] and {ep for ep, _ in capped.indices} == {"ep000"}
 
 
 def test_reviwo_states_shapes_and_range(tmp_path):
@@ -112,6 +116,7 @@ def test_reviwo_states_shapes_and_range(tmp_path):
     sample = ds[5]["images"]
     assert sample.shape == (6, 3, SIZE, SIZE)
     assert torch.allclose(sample, torch.full_like(sample, (40 + 5) / 255 * 2 - 1))
+    assert len(ReViWoStates(path, split_episodes(manifest, "train"), max_frames_per_demo=5)) == 2 * 5
 
 
 def project_opencv(K: np.ndarray, w2c: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
