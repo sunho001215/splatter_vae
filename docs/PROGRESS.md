@@ -6,7 +6,7 @@ Last updated: 2026-10-07 21:20
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
 - **Phase C** in progress: RL timing done (CNN GPU-bound ~80 steps/s/GPU; frozen ~190 steps/s/GPU with 8 runs);
   pretraining 0.22 s/step at 8 loader workers (loader-bound; 32 workers now); `docs/COMPUTE_PLAN.md` written.
-  M2 overfit gate failed iterations 1 and 2 (G1, G2); iteration 3 (two arms) running.
+  M2 overfit gate FAILED after three diagnosed iterations (G1-G3; recorded in RESULTS.md).
 - **Stage 0** running: DrM + CNN, seed 2000, hammer and shelf-place.
 - **Stage 1** started: baseline pretraining (200k steps) on hammer and pick-place.
 - **Stage 4 prep** done: SinCro and ReViWo ported (merge 67f5984, `docs/BASELINES.md`); suite 199/199. Measured cost
@@ -36,7 +36,7 @@ Last updated: 2026-10-07 21:20
 | stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
 | s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
 | s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
-| gate-m2-hammer-it3b (12k steps) | GPU 5 | running | runs/pretrain/gate-m2-hammer-it3b/log.txt | splatter4d-metaworld |
+| screen-s1-motion20 / -s2-lambdadyn4 / -s3-decdim256 (6k, gate setup) | GPU 4 | running | runs/pretrain/screen-*/log.txt | splatter4d-metaworld |
 
 Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-*`, `timing2-*`), gate it1/it2.
 

@@ -153,3 +153,12 @@ Each entry: hypothesis, change, evidence runs, result, decision. Never edit past
   rendering (motion loss ~1e-3 vs render ~0.2; moving pixels are a few percent of valid pixels and the motion loss is
   averaged over all valid pixels); the scene renders blurry at 3k steps, so decoder learning speed (width/depth,
   per-group learning rates) and the motion weight are the first levers to test against full-training metrics.
+
+## 2026-10-07 — Screens for the Stage 1 improvement loop (diagnostics, not counted as iterations)
+
+- **Purpose.** Cheap single-change tests on the one-episode gate setup (iteration-2 settings, 6k steps), compared with
+  `gate-m2-hammer-it3b` at 6k (PSNR 25.15 / 24.86, moving PSNR 23.70 / 22.07, rel. EPE 0.48 / 0.40). Only changes that
+  help here are promoted to a counted improvement iteration (100k pretraining on both development tasks + DrM proxy).
+- **S1** `loss.motion` 5 -> 20 (motion supervision weak in the gate). **S2** `loss.lambda_dyn` 1 -> 4 (moving object
+  under-rendered). **S3** `model.decoder.dim` 128 -> 256 (decoder learning speed). Runs:
+  `runs/pretrain/screen-{s1-motion20,s2-lambdadyn4,s3-decdim256}`.
