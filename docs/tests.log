@@ -16,4 +16,4 @@ tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_fork
     assert not any(isinstance(o, dict) and "tensor" in o and o.get("self") is o for o in gc.get_objects())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-[33m[32m204 passed[0m, [33m[1m3 warnings[0m[33m in 245.05s (0:04:05)[0m[0m
+[33m[32m204 passed[0m, [33m[1m3 warnings[0m[33m in 184.80s (0:03:04)[0m[0m

@@ -124,7 +124,8 @@ def test_exit_terminates_leftover_processes_of_the_job_session(tmp_path):
     deadline = time.time() + 10
     while jobs.pid_alive(child) and time.time() < deadline:
         time.sleep(0.2)
-    assert not jobs.pid_alive(child)
+    status = Path(f"/proc/{child}/status")
+    assert not jobs.pid_alive(child), status.read_text()[:400] if status.exists() else "gone"
 
 
 def test_detached_launch_success_restart_once_then_fail(tmp_path):
@@ -133,7 +134,7 @@ def test_detached_launch_success_restart_once_then_fail(tmp_path):
     queue = write_queue(
         tmp_path / "q.yaml",
         [
-            {"id": "ok", "script": "tests/_job_worker.py", "args": [0], "gpu": uuid, "mem_gb": 1},
+            {"id": "ok", "script": "tests/_job_worker.py", "args": [0, 300], "gpu": uuid, "mem_gb": 1, "oom_score_adj": 300},
             {"id": "bad", "script": "tests/_job_worker.py", "args": [7], "gpu": uuid, "mem_gb": 1},
             {"id": "after-ok", "script": "tests/_job_worker.py", "args": [0], "gpu": "any", "mem_gb": 1, "deps": ["ok"]},
         ],

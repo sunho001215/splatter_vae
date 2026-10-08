@@ -86,8 +86,10 @@ def pid_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    stat = Path(f"/proc/{pid}/stat")
-    return stat.is_file() and stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    try:  # the process may exit between the signal check and this read
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except (FileNotFoundError, ProcessLookupError):  # reading /proc of an exiting process can fail with ESRCH
+        return False
 
 
 def session_id(pid: int) -> int | None:
@@ -158,7 +160,12 @@ def launch(job: dict, gpu: str, attempt: int, runs: Path = RUNS) -> int:
     (run_dir / "exit_code").unlink(missing_ok=True)
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": gpu, "MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl"}
     env.pop("MUJOCO_EGL_DEVICE_ID", None)
-    wrapper = '"$@"; echo $? > "$S4D_EXIT_FILE"'
+    # oom_score_adj (inherited by every child) makes low-priority jobs the kernel's first OOM victims when other
+    # tenants exhaust host memory; it only ever raises our own processes' likelihood of being chosen.
+    adj = int(job.get("oom_score_adj", 0))
+    if not 0 <= adj <= 1000:
+        raise ValueError(f"job {job['id']}: oom_score_adj must be in [0, 1000]")
+    wrapper = f'echo {adj} > /proc/self/oom_score_adj; "$@"; echo $? > "$S4D_EXIT_FILE"'
     env["S4D_EXIT_FILE"] = str(run_dir / "exit_code")
     argv = [str(PYTHON), "-I", str(script), *map(str, job.get("args", []))]
     with open(run_dir / "console.log", "a") as log:

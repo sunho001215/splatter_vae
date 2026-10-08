@@ -40,8 +40,10 @@ def alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    stat = Path(f"/proc/{pid}/stat")
-    return stat.is_file() and stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    try:  # the process may exit between the signal check and this read
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except (FileNotFoundError, ProcessLookupError):  # reading /proc of an exiting process can fail with ESRCH
+        return False
 
 
 def newest_activity(job_id: str) -> float:
