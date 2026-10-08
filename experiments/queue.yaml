@@ -3316,4 +3316,552 @@ jobs:
   max_restarts: 0
   stage: 3
   ram_gb: 4
+- id: export-s1-base300k-hammer-100k
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/s1-pretrain-hammer-base300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base300k/checkpoints/step_0100000.pt
+  - --out
+  - runs/exports/s1-base300k-hammer-100k.pt
+  - --wait
+  gpu: any
+  mem_gb: 1
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 1
+  oom_score_adj: 0
+- id: fulleval-s1-base300k-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1-base300k-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base300k/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-100k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: s1-proxy-base300k-100k-hammer-s1000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1000'
+  - --run-dir
+  - runs/s1-proxy-base300k-100k-hammer-s1000
+  - --set
+  - train.num_train_steps=400000
+  - vision.export_path=runs/exports/s1-base300k-hammer-100k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-100k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-100k-hammer-s1000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-100k-hammer-s1000
+  - --train-job
+  - s1-proxy-base300k-100k-hammer-s1000
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-100k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: s1-proxy-base300k-100k-hammer-s1001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1001'
+  - --run-dir
+  - runs/s1-proxy-base300k-100k-hammer-s1001
+  - --set
+  - train.num_train_steps=400000
+  - vision.export_path=runs/exports/s1-base300k-hammer-100k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-100k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-100k-hammer-s1001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-100k-hammer-s1001
+  - --train-job
+  - s1-proxy-base300k-100k-hammer-s1001
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-100k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: export-s1-base300k-hammer-200k
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/s1-pretrain-hammer-base300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base300k/checkpoints/step_0200000.pt
+  - --out
+  - runs/exports/s1-base300k-hammer-200k.pt
+  - --wait
+  gpu: any
+  mem_gb: 1
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 1
+  oom_score_adj: 0
+- id: fulleval-s1-base300k-hammer-200k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1-base300k-hammer-200k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base300k/checkpoints/step_0200000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-200k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: s1-proxy-base300k-200k-hammer-s1000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1000'
+  - --run-dir
+  - runs/s1-proxy-base300k-200k-hammer-s1000
+  - --set
+  - train.num_train_steps=400000
+  - vision.export_path=runs/exports/s1-base300k-hammer-200k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-200k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-200k-hammer-s1000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-200k-hammer-s1000
+  - --train-job
+  - s1-proxy-base300k-200k-hammer-s1000
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-200k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: s1-proxy-base300k-200k-hammer-s1001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1001'
+  - --run-dir
+  - runs/s1-proxy-base300k-200k-hammer-s1001
+  - --set
+  - train.num_train_steps=400000
+  - vision.export_path=runs/exports/s1-base300k-hammer-200k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-200k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-200k-hammer-s1001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-200k-hammer-s1001
+  - --train-job
+  - s1-proxy-base300k-200k-hammer-s1001
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-200k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: export-s1-base300k-hammer-300k
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/s1-pretrain-hammer-base300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base300k/checkpoints/step_0300000.pt
+  - --out
+  - runs/exports/s1-base300k-hammer-300k.pt
+  - --wait
+  gpu: any
+  mem_gb: 1
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 1
+  oom_score_adj: 0
+- id: fulleval-s1-base300k-hammer-300k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1-base300k-hammer-300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base300k/checkpoints/step_0300000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-300k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: s1-proxy-base300k-300k-hammer-s1000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1000'
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-hammer-s1000
+  - --set
+  - train.num_train_steps=400000
+  - vision.export_path=runs/exports/s1-base300k-hammer-300k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-300k-hammer-s1000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-hammer-s1000
+  - --train-job
+  - s1-proxy-base300k-300k-hammer-s1000
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: s1-proxy-base300k-300k-hammer-s1001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1001'
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-hammer-s1001
+  - --set
+  - train.num_train_steps=400000
+  - vision.export_path=runs/exports/s1-base300k-hammer-300k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-300k-hammer-s1001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-hammer-s1001
+  - --train-job
+  - s1-proxy-base300k-300k-hammer-s1001
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-hammer-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: export-s1-base300k-pick-place-100k
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/s1-pretrain-pick-place-base300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base300k/checkpoints/step_0100000.pt
+  - --out
+  - runs/exports/s1-base300k-pick-place-100k.pt
+  - --wait
+  gpu: any
+  mem_gb: 1
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 1
+  oom_score_adj: 0
+- id: fulleval-s1-base300k-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1-base300k-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base300k/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-100k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: export-s1-base300k-pick-place-200k
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/s1-pretrain-pick-place-base300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base300k/checkpoints/step_0200000.pt
+  - --out
+  - runs/exports/s1-base300k-pick-place-200k.pt
+  - --wait
+  gpu: any
+  mem_gb: 1
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 1
+  oom_score_adj: 0
+- id: fulleval-s1-base300k-pick-place-200k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1-base300k-pick-place-200k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base300k/checkpoints/step_0200000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-200k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: export-s1-base300k-pick-place-300k
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/s1-pretrain-pick-place-base300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base300k/checkpoints/step_0300000.pt
+  - --out
+  - runs/exports/s1-base300k-pick-place-300k.pt
+  - --wait
+  gpu: any
+  mem_gb: 1
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 1
+  oom_score_adj: 0
+- id: fulleval-s1-base300k-pick-place-300k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1-base300k-pick-place-300k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base300k/checkpoints/step_0300000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-300k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: s1-proxy-base300k-300k-pick-place-s1000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1000'
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-pick-place-s1000
+  - --set
+  - train.num_train_steps=200000
+  - vision.export_path=runs/exports/s1-base300k-pick-place-300k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-300k-pick-place-s1000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-pick-place-s1000
+  - --train-job
+  - s1-proxy-base300k-300k-pick-place-s1000
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
+- id: s1-proxy-base300k-300k-pick-place-s1001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1001'
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-pick-place-s1001
+  - --set
+  - train.num_train_steps=200000
+  - vision.export_path=runs/exports/s1-base300k-pick-place-300k.pt
+  gpu: any
+  mem_gb: 2
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 300
+- id: s1-proxy-base300k-300k-pick-place-s1001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s1-proxy-base300k-300k-pick-place-s1001
+  - --train-job
+  - s1-proxy-base300k-300k-pick-place-s1001
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  gpu: any
+  mem_gb: 3
+  priority: 2
+  deps:
+  - export-s1-base300k-pick-place-300k
+  max_restarts: 1
+  stage: 1
+  ram_gb: 6
+  oom_score_adj: 400
 host_ram_reserve_gb: 60
