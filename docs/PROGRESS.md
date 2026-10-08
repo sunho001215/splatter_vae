@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 09:22
+Last updated: 2026-10-08 09:23
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -94,6 +94,9 @@ Last updated: 2026-10-08 09:22
 
 - 09:20: more OOM kills (it1-pick-place, it2-hammer). OOM priorities added (iterations most killable). Running: both
   base runs, it1-hammer; waiting for RAM: it1-pick-place, it2-hammer, it2-pick-place (79 GB available, need 80).
+
+- 09:21: HEARTBEAT_OK — running: base hammer 116k, base pick-place 115k, it1-hammer 75k (0.22-0.25 s/step) + 4 export
+  waiters; waiting for host RAM (78 GB available, 80 needed): it1-pick-place (70k ckpt), it2-hammer (70k), it2-pick-place (70k).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
