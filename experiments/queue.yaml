@@ -3225,4 +3225,95 @@ jobs:
   stage: 1
   ram_gb: 20
   oom_score_adj: 0
+- id: pilot-coffee-push
+  script: scripts/collect_metaworld.py
+  args:
+  - --task
+  - coffee-push
+  - --output
+  - /home/ws/data/metaworld/splatter4d_v1/coffee-push_pilot.hdf5
+  - --episodes
+  - '5'
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+  mem_gb: 2
+  priority: 0
+  deps: []
+  max_restarts: 0
+  stage: 3
+  ram_gb: 4
+  oom_score_adj: 0
+- id: collect-coffee-push
+  script: scripts/collect_metaworld.py
+  args:
+  - --task
+  - coffee-push
+  - --output
+  - /home/ws/data/metaworld/splatter4d_v1/coffee-push.hdf5
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+  mem_gb: 2
+  priority: 0
+  deps:
+  - pilot-coffee-push
+  max_restarts: 0
+  stage: 3
+  ram_gb: 6
+  oom_score_adj: 0
+- id: split-coffee-push
+  script: scripts/split_metaworld.py
+  args:
+  - --path
+  - /home/ws/data/metaworld/splatter4d_v1/coffee-push.hdf5
+  gpu: any
+  mem_gb: 1
+  priority: 0
+  deps:
+  - collect-coffee-push
+  max_restarts: 0
+  stage: 3
+  ram_gb: 2
+- id: stats-coffee-push
+  script: scripts/compute_workspace_stats.py
+  args:
+  - --regime
+  - metaworld
+  - --path
+  - /home/ws/data/metaworld/splatter4d_v1/coffee-push.hdf5
+  - --out
+  - /home/ws/data/metaworld/splatter4d_v1/workspace_stats/coffee-push.json
+  gpu: any
+  mem_gb: 2
+  priority: 0
+  deps:
+  - collect-coffee-push
+  max_restarts: 0
+  stage: 3
+  ram_gb: 4
+- id: check-coffee-push
+  script: scripts/check_metaworld.py
+  args:
+  - --path
+  - /home/ws/data/metaworld/splatter4d_v1/coffee-push.hdf5
+  - --out
+  - /home/ws/ws/splatter4d/docs/data_checks/coffee-push
+  gpu: any
+  mem_gb: 2
+  priority: 0
+  deps:
+  - collect-coffee-push
+  max_restarts: 0
+  stage: 3
+  ram_gb: 4
+- id: heldout-sets-coffee-push
+  script: scripts/render_heldout_sets.py
+  args:
+  - --task
+  - coffee-push
+  gpu: any
+  mem_gb: 1
+  priority: 0
+  deps:
+  - split-coffee-push
+  max_restarts: 0
+  stage: 3
+  ram_gb: 4
 host_ram_reserve_gb: 60

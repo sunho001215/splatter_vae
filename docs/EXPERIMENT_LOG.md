@@ -681,3 +681,18 @@ coffee-push and drawer-open (0.29 and 0.44 at 75k), in ranking order.
   base runs). If item 2 changes the configuration, A200/A300 are redone for the new configuration and these runs are
   context only. Exports, full-split evaluations and hammer proxies at 100k/200k/300k are queued as the run progresses.
 - drawer-open final: training-camera success 1.00 at 300k (0.76-1.00 from 150k on): fails criterion (ii) (too easy).
+
+## 2026-10-08 — Item 3c decided: coffee-push replaces shelf-place
+
+| Reserve task (DrM + CNN, seed 2000) | Training-camera success at 300k | Range over the run | (i) random return > 0 | (ii) 0 < success < ~0.7 | (iii) 3D/motion content |
+|---|---|---|---|---|---|
+| plate-slide | 0.89 | 0.19-1.00 | yes (160.8) | no (too easy) | puck slides 0.29 m |
+| assembly | 0.00 | 0.00 | yes (111.8) | no (never succeeds) | peg lifted, 0.27 m |
+| coffee-push | **0.18** | 0.10-0.42 | **yes (10.6)** | **yes** | **mug pushed 0.22 m, visible in 6/6 cameras** |
+| drawer-open | 1.00 | 0.08-1.00 | yes (316.5) | no (too easy) | drawer slides 0.20 m |
+
+- coffee-push is the only candidate meeting all three criteria. The verification gate passed (20/20 scripted
+  successes, object visible in >= 4 of 6 cameras at every sampled step). Data pipeline queued with the same recipe as
+  the other tasks: 5-episode pilot, 250-episode collection, split, workspace statistics, D2/D3 checks, held-out sets.
+- Recorded in `docs/RL_PROTOCOL.md` ("Campaign tasks and the shelf-place replacement"), with shelf-place as an appendix
+  note on sparse-reward tasks. Task, baseline and RL configs for coffee-push follow with the next code merge.

@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 21:09
+Last updated: 2026-10-08 21:46
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -207,6 +207,10 @@ Last updated: 2026-10-08 21:09
   Item 2 screens: crop 48.0k / 40.4k, synth 27.3k / 27.1k, self-render 40.4k / 40.2k. 3b: coffee-push 0.42 at 250k,
   drawer-open 0.94 at 275k (300k within ~30 min). Base hammer 192k/200k; base300k runs 10.0k / 10.3k.
 
+- 21:38: item 3c decided — coffee-push replaces shelf-place (CNN 0.18 at 300k; plate-slide 0.89 and drawer-open 1.00
+  too easy, assembly 0.00). Verification gate passed (20/20); pilot -> collection -> split / stats / D2-D3 checks ->
+  held-out sets queued.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
@@ -247,6 +251,7 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-08 19:06 | 4.9 TB (s1-proxy-it2-lambdadyn4-hammer-s1000 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 | 2026-10-08 19:10 | 4.9 TB (s1-proxy-it2-lambdadyn4-hammer-s1001 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 | 2026-10-08 21:30 | 4.9 TB (s3b-cnn-drawer-open-s2000 completed with final eval at 300k; deleted its replay/, ~14 GB) |
+| 2026-10-08 21:38 | 4.9 TB (s3b-cnn-coffee-push-s2000 completed with final eval at 300k; deleted its replay/, ~14 GB) |
 
 ## Next actions
 1. ~12:30: iterations reach 100k -> exports -> DrM proxies (seeds 1000/1001, 200k agent steps); compare with base at

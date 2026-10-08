@@ -40,9 +40,27 @@ the user's instruction, the code is followed where it disagrees with the paper.
 | Perturb interval | 100,000 agent steps | 200,000 frames (same) |
 
 Per-task settings: the official code overrides only Meta-World `sweep-into` (max perturb factor 0.9, lambda 0.6),
-which is not a campaign task. All eight campaign tasks use the defaults (`configs/rl/tasks.yaml`,
+which is not a campaign task (it was screened as a reserve task). All eight campaign tasks use the defaults (`configs/rl/tasks.yaml`,
 `drm_overrides: {}`). Units: every step count is in agent steps (one `env.step` = action repeat 2 simulator steps),
 the counter the official agent receives.
+
+## Campaign tasks and the shelf-place replacement (review item 3, 2026-10-08)
+
+The eight campaign tasks are door-open, peg-unplug-side, hammer, peg-insert-side, bin-picking, pick-place, stick-push
+and **coffee-push** (MWM Appendix F: medium), which replaces shelf-place for Stages 3 and 4.
+
+- **Why shelf-place is replaced.** Under this protocol its v3 reward is zero until the block is lifted: random-policy
+  return 0, expert return ~1180, and DrM + CNN (Stage 0, 1M agent steps) never received a non-zero reward, so it
+  measures exploration luck rather than representation quality.
+- **How coffee-push was chosen** (pre-registered in `docs/EXPERIMENT_LOG.md`, items 3a-3c). Seven reserve tasks were
+  screened (random and scripted-expert returns, expert success >= 80 %, object visible in >= 4 of 6 training cameras);
+  push-back failed (expert 0.64). DrM + CNN (seed 2000, 300k agent steps, light evaluation) then ran in ranking order:
+  plate-slide 0.89 and drawer-open 1.00 at 300k (too easy), assembly 0.00 (no success), coffee-push 0.18 (range
+  0.10-0.42 over the run): dense reward (random return 10.6 > 0), success above 0 and below ~0.7, and the mug is pushed
+  0.22 m across the table in view of all six training cameras.
+- **Appendix note: sparse-reward tasks.** shelf-place is kept out of the comparison because a zero reward until the
+  sub-goal is reached makes outcomes depend on whether exploration ever reaches it, not on the observation encoder.
+  Its Stage 0 run (DrM + CNN, seed 2000) and its data remain available.
 
 ## Shared protocol (reference repository)
 
