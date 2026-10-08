@@ -655,3 +655,4 @@ assembly (DrM + CNN, seed 2000, 300k agent steps, light evaluation): training-ca
 (25k-300k) while the return rises (125 -> 1250; scripted expert ~1800): no success above 0 at 300k, so it fails
 criterion (ii). plate-slide is far above the ~0.7 ceiling (0.89-1.00 from 150k). The choice continues with
 coffee-push and drawer-open (0.29 and 0.44 at 75k), in ranking order.
+- plate-slide final: training-camera success 0.89 at 300k (0.85-1.00 from 125k on): fails criterion (ii) (too easy).
