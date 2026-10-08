@@ -638,3 +638,13 @@ jobs `runs/fulleval2-screen-*-6k`. Rule (fixed before the runs): better on >= 3 
 
 The two seeds differ by 0.38 in last-5 success, so two-seed proxy comparisons can only resolve large effects; the
 0.10 threshold of the amended length rule is below this spread. Iteration 1 and 2 proxies are still running.
+
+## 2026-10-08 — Item 5: iteration 1 hammer proxies at 400k (consistent with its rejection)
+
+| Encoder (100k) | Last-5 train cameras (s1000 / s1001 / mean) | Last-5 held-out | Last-5 trajectories | Peak | Recovery 150k / 250k |
+|---|---|---|---|---|---|
+| base | 0.23 / 0.61 / 0.42 | 0.07 | 0.31 | 0.61 | +0.06 / -0.06 |
+| iteration 1 (decoder dim 256) | 0.20 / 0.21 / 0.21 | 0.04 | 0.16 | 0.42 | -0.06 / -0.28 |
+
+Iteration 1 is below base on every RL quantity, in line with its pretraining metrics; it stays rejected. Iteration 2
+proxies are at ~230k of 400k.
