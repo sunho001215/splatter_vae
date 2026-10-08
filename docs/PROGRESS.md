@@ -101,6 +101,11 @@ Last updated: 2026-10-08 09:23
 - 09:23: host RAM freed up (~104 GB available); the scheduler readmitted it1-pick-place (attempt 6, resumes from
   70k) and it2-hammer (attempt 4, from 70k) on GPU 4. it2-pick-place still waits (64 GB available after the launches).
 
+- 09:28: it2-pick-place readmitted on GPU 4 (attempt 4, from 70k). GPU 4 then ran five pretraining jobs at 98%
+  utilisation (0.32-0.35 s/step) while GPU 5 ran one (0.30 s/step), so its queue entry was pinned to GPU 5 and the job
+  was stopped (SIGTERM to its own session) one minute after resuming; relaunched on GPU 5 at 09:30 (attempt 5, from
+  the same 70k checkpoint).
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
