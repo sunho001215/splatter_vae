@@ -57,7 +57,7 @@ loss:
   teacher_scale_jitter: null
 
 train:
-  steps: 200000
+  steps: 300000           # default length (user, 2026-10-08); final value fixed before method-frozen-v1
   batch_size: 16
   lr: 5.0e-4
   min_lr: 1.0e-5

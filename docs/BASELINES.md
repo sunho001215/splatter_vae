@@ -125,6 +125,14 @@ full validation render on the vendored code.
    - `max_episodes`/`num_episodes` (null) and `max_frames_per_demo` (3000 / null) are implemented, but never bind on
      Meta-World's ≤ 500-step episodes.
    - `i_img`, `val_vis_nrow` and `val_random_sample` are SinCro display options.
+9. **SinCro pretrains for exactly 300 000 steps on every task (user decision, 2026-10-08).**
+   - The reference config sets `max_global_steps: 500001`; the configs now set `300000`. The loop runs while
+     `global_step < max_global_steps`, so this is exactly 300 000 optimizer updates, and the last checkpoint and
+     export are written at step 300 000 (`save_every` 30 000 divides it). The vendored `TrainConfig` default is
+     300 001, so the new length matches the reference code's own default to within one step.
+   - Everything else is unchanged, including `lrate_decay: 500`: the learning rate still follows
+     5e-4 × 0.1^(step / 500 000), so it ends at 5e-4 × 0.1^0.6 ≈ 1.26e-4 rather than 5e-5.
+   - ReViWo keeps its reference length (`max_global_steps: 100001`) and all other hyperparameters.
 
 ## Data interface (`s4d/baselines/data.py`)
 
@@ -148,13 +156,14 @@ bin-picking.
 - The reference has configs for the first four. All its task configs are identical except for names and paths, so
   the other four use hammer's.
 - `configs/baselines/{sincro,reviwo}/<task>.yaml` change only the dataset path, the W&B project and the
-  `data_interface` block, and drop the output-location keys.
+  `data_interface` block, and drop the output-location keys; SinCro's also set `max_global_steps: 300000`
+  (deviation 9).
 
 **SinCro**
 
 | Group | Values |
 |---|---|
-| Steps and batch | 500 001 steps, batch 8 windows × 3 steps × 6 views, `N_rand` 2048 rays/step |
+| Steps and batch | **300 000 steps** (reference 500 001; deviation 9), batch 8 windows × 3 steps × 6 views, `N_rand` 2048 rays/step |
 | Optimizer | Adam, lr 5e-4 decayed ×0.1 per 500k steps |
 | NeRF | 8×256 coarse + fine, 64 + 128 samples, `multires` 10/4, `use_viewdirs` |
 | Encoder | ViT on 128² with patch 16, embed 256, depth 4, 4 heads, MLP 1024 |
@@ -183,7 +192,7 @@ dedicated-GPU times should be lower. Step time is the mean over steps 10–40; s
 
 | | s/step | Peak GPU memory (allocated) | Full run (reference steps) | 8 tasks |
 |---|---|---|---|---|
-| SinCro | 0.53 | 7.8 GB | 500 001 steps ≈ 74 h, plus validation 500 × 6.2 s ≈ 0.9 h | ≈ 25 GPU-days |
+| SinCro | 0.53 | 7.8 GB | 500 001 steps ≈ 74 h, plus validation 500 × 6.2 s ≈ 0.9 h; **as run: 300 000 steps ≈ 44 h + 0.5 h** | ≈ 25 GPU-days at 500k; **≈ 15 GPU-days at 300k** |
 | ReViWo | 0.58 | 1.7 GB | 100 001 steps ≈ 16 h | ≈ 5.4 GPU-days |
 
 - **ReViWo is compute-bound.** Data loading takes 0.014 s/batch. The reference loss launches many small kernels;

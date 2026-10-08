@@ -105,6 +105,16 @@ Encoders are pretrained with strides {2, 4, 6} simulator steps, uniform per samp
 the pretraining distribution. `train_rl.py` refuses a splatter4d export whose recorded strides exclude 2. The T=1
 ablation encoder receives only the newest frame.
 
+## Pretraining length of the frozen encoders
+
+| Encoder | Pretraining steps | Notes |
+|---|---|---|
+| splatter4d (ours) | default 300 000; final value chosen on hammer and pick-place before `method-frozen-v1` | warmup 10k + cosine decay to `train.steps`; the chosen value is used for all 8 tasks and every ablation of our method (rule and evidence: `docs/EXPERIMENT_LOG.md`, "Pretraining length") |
+| SinCro | exactly 300 000 on every task | user decision; reference 500 001; other reference hyperparameters unchanged (`docs/BASELINES.md`, deviation 9) |
+| ReViWo | 100 001 (reference) | reference hyperparameters unchanged |
+
+The DrM agent and the RL protocol do not depend on the pretraining length; the export records the step it came from.
+
 ## Evaluation process and seeds
 
 `train_rl.py` saves a policy snapshot (encoder adapter + actor) every 10,000 agent steps; the companion job

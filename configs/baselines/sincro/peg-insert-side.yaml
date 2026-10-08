@@ -51,7 +51,7 @@ model:
   precrop_frac: 0.5
 train:
   num_epochs: 50
-  max_global_steps: 500001
+  max_global_steps: 300000   # exactly 300k updates (user, 2026-10-08); reference 500001
   lrate: 0.0005
   lrate_decay: 500
   device: cuda

@@ -307,3 +307,46 @@ within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,10
   intermittent scheduler test failure). Suite 204/204.
 - **Plan.** Iterations are readmitted one at a time as memory allows; if host memory stays this tight, iterations 1
   and 2 run sequentially (both tasks each) instead of together.
+
+## 2026-10-08 — Pretraining length: user update; pre-registered decision rule for our method
+
+- **User decision (2026-10-08, ~09:40).** SinCro pretrains for exactly 300k steps on every task (configs:
+  `max_global_steps: 300000`, i.e. exactly 300 000 updates; all other reference hyperparameters unchanged, including
+  `lrate_decay: 500`; `docs/BASELINES.md` deviation 9). ReViWo keeps its reference length (100 001) and
+  hyperparameters. Our method: 300k is the default (`configs/metaworld/base.yaml: train.steps: 300000`); the final
+  value is chosen here from development-task evidence only (hammer, pick-place), fixed before `method-frozen-v1`, and
+  used for all 8 tasks and every ablation of our method.
+- **Running jobs keep their schedule.** `train.py` resumes with the command-line configs, so the six running
+  200k-schedule runs (base and iterations 1-2) now pin `train.steps=200000` in `experiments/queue.yaml`; a restart
+  cannot silently change their cosine schedule. `configs/metaworld/ablations/full_100k.yaml` (an old DROID-plan
+  schedule) is marked unused.
+- **Why annealed endpoints.** The LR follows warmup + cosine decay to `train.steps`, so an intermediate checkpoint of
+  a 300k run is not a converged 200k encoder. The length study therefore compares the *annealed* endpoint of a 200k
+  schedule (A200) with the annealed endpoint of a 300k schedule (A300) of the same configuration. The 300k run's
+  intermediate checkpoints (100k, 200k) are reported as curve-shape context.
+- **Noise calibration (from the base runs at 95k-120k, before any 300k data).** Per-evaluation noise with the
+  in-training validation (8 batches) is large: moving-pixel PSNR changes by 0.2-1.0 dB between consecutive
+  evaluations, relative EPE by 0.03-0.05, retrieval by 0.005-0.01, and held-out-camera probe R² by 0.1-0.8.
+  Comparisons therefore use `scripts/evaluate.py` (full validation split, all windows, probes) on each compared
+  checkpoint, not single in-training evaluations. Also visible already: held-out-camera PSNR is flat at ~14.9 dB,
+  held-out retrieval is near chance (0.04 vs 1/64) and held-out probe R² is negative, while training cameras give
+  retrieval 0.83-0.90 and probe R² 0.93-0.97 (position) / 0.67-0.77 (velocity). Generalisation to held-out cameras is
+  the weak point and will be reported in the Stage 1 diagnostics.
+- **Plan.**
+  1. Method configuration C = outcome of the iteration comparison at 100k (base, it1, it2 or a combination).
+  2. A200: base and the winning iteration already run 200k schedules and continue to 200k; a new combination would
+     also get a 200k-schedule run.
+  3. A300: C with the default 300k schedule on hammer and pick-place, launched as soon as C is chosen.
+  4. Exports at 100k/200k/300k of the 300k run and at A200; DrM proxies (seeds 1000/1001, 200k agent steps, full
+     evaluation protocol) on each; full-split `scripts/evaluate.py` on each.
+- **Pre-registered rule (A300 vs A200, same configuration).** Ten comparisons per task (stride 2 and 6 for each):
+  moving-pixel PSNR (better if > 0.3 dB higher), held-out-camera PSNR (> 0.2 dB), relative EPE 0->2 (> 0.03 lower),
+  training-camera retrieval top-1 (> 0.02), training-camera hand-velocity probe R² (> 0.03); held-out retrieval and
+  held-out probes are reported but not counted (near chance / negative R², see above). RL: last-5 mean
+  training-camera success averaged over the two proxy seeds; a difference counts only above 0.10.
+  - **200k (shorter)** if A300 wins at most 4 of the 20 comparisons, or loses more than it wins, and A300's RL proxy
+    is not better than A200's by more than 0.10 on either task.
+  - **400k (longer)** if A300 wins at least 12 of 20 comparisons, at least 4 on each task, and its RL proxy is not
+    worse than A200's by more than 0.10 on either task. The development encoders are then retrained at 400k.
+  - **300k (default)** otherwise.
+  - The decision, the 20 comparisons and the proxy table will be appended here before `method-frozen-v1`.

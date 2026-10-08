@@ -1,2 +1,2 @@
-# Full model schedule shared by ablations. Temporal ramp remains the required 20k steps.
+# 100k schedule from the earlier DROID ablation plan; not used in the Meta-World campaign, whose ablations use the method's pretraining length.
 train: {steps: 100000}

@@ -919,6 +919,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.steps=200000
   - train.num_workers=8
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
   mem_gb: 12
@@ -939,6 +940,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.steps=200000
   - train.num_workers=8
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 12
@@ -1088,6 +1090,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.steps=200000
   - train.num_workers=8
   - model.decoder.dim=256
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
@@ -1111,6 +1114,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.steps=200000
   - train.num_workers=8
   - model.decoder.dim=256
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
@@ -1134,6 +1138,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.steps=200000
   - train.num_workers=8
   - loss.lambda_dyn=4.0
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
@@ -1157,6 +1162,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.steps=200000
   - train.num_workers=8
   - loss.lambda_dyn=4.0
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639

@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 09:23
+Last updated: 2026-10-08 10:15
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -8,10 +8,16 @@ Last updated: 2026-10-08 09:23
   pretraining 0.22 s/step at 8 loader workers (loader-bound; 32 workers now); `docs/COMPUTE_PLAN.md` written.
   M2 overfit gate FAILED after three diagnosed iterations (G1-G3; recorded in RESULTS.md).
 - **Stage 0** done: DrM + CNN hammer 0.70 train-camera / 0.02 held-out success at 1M; shelf-place 0 (no reward ever: sparse v3 reward). See EXPERIMENT_LOG.
-- **Stage 1** started: baseline pretraining (200k steps) on hammer and pick-place.
+- **Stage 1** in progress: base pretraining (200k schedule) on hammer and pick-place at ~120k; improvement iterations
+  1 (decoder dim 256) and 2 (lambda_dyn 4) at 70-77k of their 200k schedules, compared with base at 100k.
+- **Pretraining length (user update, 2026-10-08).** Ours: default 300k; the final length (200k/300k/400k) is chosen on
+  hammer and pick-place by the pre-registered rule in EXPERIMENT_LOG ("Pretraining length") and fixed before
+  `method-frozen-v1`, for all 8 tasks and all ablations. SinCro: exactly 300k steps on every task. ReViWo: reference
+  100 001 steps. Configs updated (`base.yaml` train.steps 300000; SinCro `max_global_steps: 300000`); the six running
+  200k-schedule jobs pin `train.steps=200000` in the queue. Suite 204/204 on the new configs.
 - **Stage 4 prep** done: SinCro and ReViWo ported (merge 67f5984, `docs/BASELINES.md`); suite 199/199. Measured cost
-  under load: SinCro 0.53 s/step (500k reference steps ~74 h/task), ReViWo 0.58 s/step (100k steps ~16 h/task).
-  SinCro's budget needs the user's decision before Stage 4 (raised in the Stage 1 report).
+  under load: SinCro 0.53 s/step (300k steps ~45 h/task, ~15 GPU-days for 8 tasks), ReViWo 0.58 s/step (100k steps
+  ~16 h/task). SinCro's budget is settled by the user's 300k decision.
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
@@ -135,7 +141,10 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-08 08:47 | 5.0 TB (s1-proxy-base-pick-place-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 
 ## Next actions
-1. M2 iteration 3 -> record M2 outcome (RESULTS.md if still failing after three iterations).
-2. Stage 1 pretraining -> M3-M7 at checkpoints; export encoders; DrM RL with seeds 1000-1002 on hammer and pick-place.
-3. Stage 0 -> compare hammer with the DrM paper; record in EXPERIMENT_LOG.
-4. Report to the user at the end of Stage 1.
+1. ~12:30: iterations reach 100k -> exports -> DrM proxies (seeds 1000/1001, 200k agent steps); compare with base at
+   100k (pretraining metrics at strides 2 and 6 + proxies) -> choose the method configuration C; stop iteration runs
+   that do not help (the winner continues to 200k as its A200).
+2. Launch C with the default 300k schedule on hammer and pick-place (A300); exports at 100k/200k/300k.
+3. ~16:00: base runs reach 200k -> export -> DrM proxies; full-split `scripts/evaluate.py` on the A200 endpoints.
+4. Length decision by the pre-registered rule (A200 vs A300) -> EXPERIMENT_LOG; then Stage 1 final DrM RL at L with
+   seeds 1000-1002 (1M steps) and the Stage 1 report to the user.
