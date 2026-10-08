@@ -569,3 +569,15 @@ Means of strides 2 and 6; jobs `runs/fulleval2-s1-{base,it1-decdim256,it2-lambda
   hammer training-camera PSNR drops 0.4 dB, and the pick-place velocity probe on the trajectory set is lower.
 - **Decision pending** the hammer RL proxies at 400k (item 5: last-5 mean and recovery at 150k/250k), which arbitrate
   between the base configuration and iteration 2; iteration 1 is not carried into any combination.
+
+## 2026-10-08 — Iteration 1 runs ended at their latest checkpoints; S1 not promoted
+
+- **Iteration 1 stopped (13:54).** With iteration 1 rejected at 100k (entry above) it cannot become the method
+  configuration, so its runs were ended at their latest checkpoints (hammer 110k, pick-place 100k) through
+  `train.stop_step` in the queue and SIGTERM to their own sessions; both resumed and exited 0 at the stop step. This
+  frees GPU time under heavy contention (the item 2 screens ran at 0.8 s/step). The user's "running jobs continue" was
+  respected while integrating the review; this is a later decision on a rejected configuration. Iteration 2 continues
+  (its decision waits for the 400k hammer proxies), as do the base runs.
+- **S1 (motion weight 20) vs the fresh gate reference at 6k** (item 4 rule, means of strides 2/6): PSNR -0.99 dB,
+  moving PSNR -0.62 dB (both worse beyond the margin), relative EPE 0.00, CD-centers -1 cm, CD-motion dynamic -1 cm:
+  not promoted. Gate reference at 6k: PSNR 25.81 / 25.89, moving PSNR 23.11 / 21.99, relative EPE 0.51 / 0.32.

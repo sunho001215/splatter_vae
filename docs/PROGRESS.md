@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 13:08
+Last updated: 2026-10-08 13:58
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -160,6 +160,9 @@ Last updated: 2026-10-08 13:08
 - 13:07: HEARTBEAT_OK — 36 running jobs active, watcher and scheduler alive, 5350 GB free, 200 GB RAM available.
   No exits since 12:41: the six full-split evaluations (base, it1, it2 at 100k) have finished stride 2 and are on
   stride 6 (GPU contention); gate screens 4d/4e wait for GPU 4's declared-memory budget (81 of 90 GB).
+
+- 13:54: iteration-1 runs ended at 110k / 100k (rejected configuration; `train.stop_step` + SIGTERM, both exited 0).
+  Gate reference done (6k); S1 not promoted. Item 2 screens crop x2 and synth-hammer running (0.8 s/step under load).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |

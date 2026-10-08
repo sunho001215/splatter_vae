@@ -1090,6 +1090,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.stop_step=110000
   - train.steps=200000
   - train.num_workers=8
   - model.decoder.dim=256
@@ -1114,6 +1115,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.stop_step=100000
   - train.steps=200000
   - train.num_workers=8
   - model.decoder.dim=256
