@@ -715,3 +715,11 @@ Full split, strides 2 / 6; jobs `runs/fulleval2-s1-base-*-100k` and `runs/fullev
   viewpoint, retrieval, probe or geometry metrics; hammer motion error gets slightly worse. The representation metrics
   have largely plateaued by 100k under this configuration. A300 (300k schedule) will show whether a longer schedule
   changes that; the pre-registered rule compares A300 with A200.
+
+## 2026-10-09 — coffee-push data collected and checked
+
+- Collection: 250 episodes (same mixture and seed recipe as the other tasks), 16.9 GiB, 3.0 h
+  (`/home/ws/data/metaworld/splatter4d_v1/coffee-push.hdf5`); split 240 / 10 (`splits/coffee-push_seed0.json`).
+- D2 / D3 (`docs/data_checks/coffee-push/summary.json`, same script and unchanged thresholds): D2 median 1.00 mm, D3
+  median 1.93 mm (p90 4.10 mm < 5 mm), world-body motion exactly zero: all pass, in line with the other tasks
+  (hammer: 1.00 / 1.97 mm). Workspace statistics and the near/trajectory held-out sets are running.
