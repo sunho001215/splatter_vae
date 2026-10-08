@@ -324,11 +324,13 @@ within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,10
   a 300k run is not a converged 200k encoder. The length study therefore compares the *annealed* endpoint of a 200k
   schedule (A200) with the annealed endpoint of a 300k schedule (A300) of the same configuration. The 300k run's
   intermediate checkpoints (100k, 200k) are reported as curve-shape context.
-- **Noise calibration (from the base runs at 95k-120k, before any 300k data).** Per-evaluation noise with the
-  in-training validation (8 batches) is large: moving-pixel PSNR changes by 0.2-1.0 dB between consecutive
-  evaluations, relative EPE by 0.03-0.05, retrieval by 0.005-0.01, and held-out-camera probe R² by 0.1-0.8.
-  Comparisons therefore use `scripts/evaluate.py` (full validation split, all windows, probes) on each compared
-  checkpoint, not single in-training evaluations. Also visible already: held-out-camera PSNR is flat at ~14.9 dB,
+- **Calibration (from the base runs at 95k-120k, before any 300k data).** The in-training validation reads the first
+  8 batches of an unshuffled loader, i.e. always the same 128 windows from the start of the validation split. Between
+  consecutive evaluations moving-pixel PSNR changes by 0.2-1.0 dB, relative EPE by 0.03-0.05, retrieval by
+  0.005-0.01 and held-out-camera probe R² by 0.1-0.8 (model fluctuation on a fixed subset), and the subset is not
+  representative: on the full split hammer's relative EPE at 100k is 0.69, not the 0.47 of the in-training subset.
+  Comparisons therefore use `scripts/evaluate.py` (full validation split, ~2000 windows per stride, probes; 4.5 min
+  per checkpoint) on each compared checkpoint, not in-training evaluations. Also visible already: held-out-camera PSNR is flat at ~14.9 dB,
   held-out retrieval is near chance (0.04 vs 1/64) and held-out probe R² is negative, while training cameras give
   retrieval 0.83-0.90 and probe R² 0.93-0.97 (position) / 0.67-0.77 (velocity). Generalisation to held-out cameras is
   the weak point and will be reported in the Stage 1 diagnostics.
