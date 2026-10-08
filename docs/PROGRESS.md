@@ -120,6 +120,12 @@ Last updated: 2026-10-08 10:18
   scheduler alive, 5400 GB free, 217 GB RAM available. Base 126k/200k (0.27 s/step, 200k at ~15:45); it1-hammer 85k,
   it1-pick-place 79k, it2-hammer 80k, it2-pick-place 80k (100k at ~11:45-12:15). Nothing stuck.
 
+- 10:20: full-split evaluations of the base encoders at 100k done (4.5 min each; ~2000 windows per stride). hammer /
+  pick-place at s2: moving PSNR 25.1 / 16.2 dB, held-out PSNR 14.8 / 14.6, rel. EPE 0->2 0.69 / 0.98, train-camera
+  retrieval 0.83 / 0.95, hand-velocity probe R² 0.64 / 0.26. The in-training validation (first 8 batches) is biased,
+  not just noisy: it gave rel. EPE 0.47 for hammer at 100k vs 0.69 on the full split. Iteration and length
+  comparisons use the full split only.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
