@@ -696,3 +696,22 @@ coffee-push and drawer-open (0.29 and 0.44 at 75k), in ranking order.
   the other tasks: 5-episode pilot, 250-episode collection, split, workspace statistics, D2/D3 checks, held-out sets.
 - Recorded in `docs/RL_PROTOCOL.md` ("Campaign tasks and the shelf-place replacement"), with shelf-place as an appendix
   note on sparse-reward tasks. Task, baseline and RL configs for coffee-push follow with the next code merge.
+
+## 2026-10-08 — Length study: A200 (base, annealed 200k) vs the same run at 100k
+
+Full split, strides 2 / 6; jobs `runs/fulleval2-s1-base-*-100k` and `runs/fulleval-s1-base-*-200k`.
+
+| Metric | hammer 100k -> 200k | pick-place 100k -> 200k |
+|---|---|---|
+| PSNR training cameras | 25.88 / 25.85 -> 26.08 / 26.03 | 24.17 / 24.14 -> 24.63 / 24.55 |
+| PSNR moving pixels | 25.10 / 22.75 -> 25.76 / 23.18 | 16.19 / 17.86 -> 16.42 / 18.21 |
+| PSNR trajectory set | 20.75 / 20.77 -> 20.64 / 20.68 | 20.33 / 20.35 -> 20.49 / 20.49 |
+| Relative EPE 0->2 | 0.69 / 0.65 -> 0.80 / 0.69 | 0.98 / 0.88 -> 1.00 / 0.83 |
+| Retrieval train / near / trajectory (s2) | 0.89 / 0.50 / 0.31 -> 0.89 / 0.49 / 0.30 | 0.77 / 0.52 / 0.35 -> 0.76 / 0.52 / 0.33 |
+| Hand-velocity R² train / trajectory (s2) | 0.58 / 0.22 -> 0.58 / 0.07 | 0.21 / -0.23 -> 0.33 / -0.03 |
+| CD-render trajectory p2g p90 (m) | 0.074 -> 0.074 | 0.057 -> 0.058 |
+
+- Doubling the training (to the end of the 200k schedule) adds 0.2-0.5 dB of training-camera PSNR and nothing on the
+  viewpoint, retrieval, probe or geometry metrics; hammer motion error gets slightly worse. The representation metrics
+  have largely plateaued by 100k under this configuration. A300 (300k schedule) will show whether a longer schedule
+  changes that; the pre-registered rule compares A300 with A200.
