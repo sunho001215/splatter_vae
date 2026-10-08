@@ -1,0 +1,11 @@
+{
+  "rule": "random success ascending, then 3D object displacement descending; among tasks passing 3a",
+  "ranking": [
+    "plate-slide",
+    "assembly",
+    "coffee-push",
+    "drawer-open",
+    "lever-pull",
+    "sweep-into"
+  ]
+}
