@@ -680,3 +680,4 @@ coffee-push and drawer-open (0.29 and 0.44 at 75k), in ranking order.
   `s1-pretrain-{hammer,pick-place}-base300k` (configs/metaworld/base.yaml, `train.steps=300000`, everything else as the
   base runs). If item 2 changes the configuration, A200/A300 are redone for the new configuration and these runs are
   context only. Exports, full-split evaluations and hammer proxies at 100k/200k/300k are queued as the run progresses.
+- drawer-open final: training-camera success 1.00 at 300k (0.76-1.00 from 150k on): fails criterion (ii) (too easy).
