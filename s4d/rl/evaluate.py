@@ -20,10 +20,18 @@ def policy_inputs(agent, stacked) -> torch.Tensor:
 
 
 def evaluation_groups(cfg: dict) -> dict[str, tuple[list, int]]:
-    groups = {name: (path, int(cfg["episodes_per_train_camera"])) for name, path in TRAIN_PATHS.items()}
+    """Camera groups and episode counts. ``train_episodes_total`` (light evaluation, task screening only) spreads a
+    total over the training cameras instead of ``episodes_per_train_camera``; groups with zero episodes are skipped."""
+    total = cfg.get("train_episodes_total")
+    if total:
+        base, extra = divmod(int(total), len(TRAIN_PATHS))
+        train = {name: base + (i < extra) for i, name in enumerate(TRAIN_PATHS)}
+    else:
+        train = {name: int(cfg["episodes_per_train_camera"]) for name in TRAIN_PATHS}
+    groups = {name: (path, train[name]) for name, path in TRAIN_PATHS.items()}
     groups |= {name: (path, int(cfg["episodes_per_heldout_camera"])) for name, path in HELDOUT_PATHS.items()}
     groups |= {f"traj_{k}": (trajectory_path(k), int(cfg["episodes_per_trajectory"])) for k in ("lateral", "circular")}
-    return groups
+    return {name: group for name, group in groups.items() if group[1] > 0}
 
 
 def episode_seeds(run_seed: int, eval_index: int, count: int) -> list[int]:
@@ -44,7 +52,12 @@ def evaluation_suite(pool, agent, step: int, eval_index: int, run_seed: int, cfg
         idx = [i for i, n in enumerate(names) if n == name]
         metrics[f"{name}_success"] = float(np.mean([successes[i] for i in idx]))
         metrics[f"{name}_return"] = float(np.mean([returns[i] for i in idx]))
-    metrics["train_cameras_success"] = float(np.mean([metrics[f"{n}_success"] for n in TRAIN_PATHS]))
-    metrics["heldout_cameras_success"] = float(np.mean([metrics[f"{n}_success"] for n in HELDOUT_PATHS]))
-    metrics["trajectories_success"] = float(np.mean([metrics[f"traj_{k}_success"] for k in ("lateral", "circular")]))
+    for key, names in (
+        ("train_cameras_success", list(TRAIN_PATHS)),
+        ("heldout_cameras_success", list(HELDOUT_PATHS)),
+        ("trajectories_success", ["traj_lateral", "traj_circular"]),
+    ):
+        present = [metrics[f"{n}_success"] for n in names if n in groups]
+        if present:
+            metrics[key] = float(np.mean(present))
     return metrics

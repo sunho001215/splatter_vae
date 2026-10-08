@@ -314,6 +314,11 @@ def test_schedule_spacing_guard_and_eval_protocol():
     )
     assert len(groups) == 12 and sum(n for _, n in groups.values()) == 240
     assert sum(groups[f"train{i}"][1] for i in range(6)) == 120
+    light = evaluation_groups(
+        {"episodes_per_train_camera": 20, "episodes_per_heldout_camera": 0, "episodes_per_trajectory": 0,
+         "train_episodes_total": 20}
+    )
+    assert sorted(light) == [f"train{i}" for i in range(6)] and [n for _, n in light.values()] == [4, 4, 3, 3, 3, 3]
     assert episode_seeds(3, 4, 5) == episode_seeds(3, 4, 5) != episode_seeds(3, 5, 5)
 
 
