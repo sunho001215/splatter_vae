@@ -3179,4 +3179,50 @@ jobs:
   stage: 3
   ram_gb: 6
   oom_score_adj: 400
+- id: s1-pretrain-hammer-base300k
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s1-pretrain-hammer-base300k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.num_workers=8
+  gpu: any
+  mem_gb: 7
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 0
+- id: s1-pretrain-pick-place-base300k
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s1-pretrain-pick-place-base300k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.num_workers=8
+  gpu: any
+  mem_gb: 7
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 0
 host_ram_reserve_gb: 60

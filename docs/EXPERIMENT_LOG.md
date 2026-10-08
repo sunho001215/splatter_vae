@@ -671,3 +671,12 @@ coffee-push and drawer-open (0.29 and 0.44 at 75k), in ranking order.
 - The iteration-2 runs were ended at their latest checkpoints (hammer 130k, pick-place 140k) with `train.stop_step`,
   as for iteration 1; only the base runs continue to 200k (the A200 point of the length study for C = base).
 - Counted iterations used so far: 2 of 8 (both rejected).
+
+## 2026-10-08 — Length study: A300 for the base configuration started (19:50)
+
+- Base pick-place reached 200k (A200; its full evaluation, export and proxies are queued); base hammer follows.
+- With iterations 1-2 not adopted, the method configuration is base unless an item 2 viewpoint screen is adopted
+  (decision ~15 h away; the 2d thresholds are strict). To keep the length study moving, A300 for base starts now:
+  `s1-pretrain-{hammer,pick-place}-base300k` (configs/metaworld/base.yaml, `train.steps=300000`, everything else as the
+  base runs). If item 2 changes the configuration, A200/A300 are redone for the new configuration and these runs are
+  context only. Exports, full-split evaluations and hammer proxies at 100k/200k/300k are queued as the run progresses.
