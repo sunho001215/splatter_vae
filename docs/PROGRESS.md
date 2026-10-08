@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 12:16
+Last updated: 2026-10-08 12:43
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -141,6 +141,15 @@ Last updated: 2026-10-08 12:16
 - 11:07: HEARTBEAT_OK — 12 running jobs (6 pretraining, 6 export waiters), watcher and scheduler alive, 5378 GB
   free, 166 GB RAM available. Base hammer 135k / pick-place 140k (200k at ~17:00 / ~16:00); it2-pick-place 95k and
   it1-hammer 94k (100k at ~11:30-11:40), it2-hammer 89k and it1-pick-place 88k (~12:10). Nothing stuck.
+
+- 12:19-12:43: review code merged twice (d3f7364, ac02dd0; suites 222/222 and 223/223). The second merge vectorises
+  the oracle and synthetic-view splatting (a per-window loop made a full evaluation ~45 min; now ~13 min). Launched:
+  3b DrM + CNN on plate-slide and assembly (light evaluation), full-split evaluations with the new metrics (base,
+  it1, it2 at 100k; S1 at 6k), gate screens g-ref and 4a-4c. Declared GPU memory set to measured values (pretraining
+  ~4.5 GB actual, declared 7; evaluations 5; CNN 5; frozen RL 2; evaluators 3) and slots raised to 20 per GPU, because
+  the inflated declarations (12 per pretraining run) blocked GPU 4 at 1 GB of real use per 3 declared. Pending proxies
+  (item 5) moved to priority 3, after the screens, as the review orders. Both GPUs run at ~95 %, so everything is
+  slower (CNN ~14 agent steps/s).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |

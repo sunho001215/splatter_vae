@@ -1,9 +1,9 @@
 limits:
   GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce:
-    max_jobs: 16
+    max_jobs: 20
     max_mem_gb: 90
   GPU-d09f0338-71b9-d915-3c7f-e99754a3b639:
-    max_jobs: 16
+    max_jobs: 20
     max_mem_gb: 90
 jobs:
 - id: collect-door-open
@@ -922,7 +922,7 @@ jobs:
   - train.steps=200000
   - train.num_workers=8
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
-  mem_gb: 12
+  mem_gb: 7
   priority: 0
   max_restarts: 6
   stage: 1
@@ -943,7 +943,7 @@ jobs:
   - train.steps=200000
   - train.num_workers=8
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
-  mem_gb: 12
+  mem_gb: 7
   priority: 0
   max_restarts: 6
   stage: 1
@@ -1094,7 +1094,7 @@ jobs:
   - train.num_workers=8
   - model.decoder.dim=256
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
-  mem_gb: 12
+  mem_gb: 7
   priority: 1
   max_restarts: 6
   stage: 1
@@ -1118,7 +1118,7 @@ jobs:
   - train.num_workers=8
   - model.decoder.dim=256
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
-  mem_gb: 12
+  mem_gb: 7
   priority: 1
   max_restarts: 6
   stage: 1
@@ -1142,7 +1142,7 @@ jobs:
   - train.num_workers=8
   - loss.lambda_dyn=4.0
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
-  mem_gb: 12
+  mem_gb: 7
   priority: 1
   max_restarts: 6
   stage: 1
@@ -1166,7 +1166,7 @@ jobs:
   - train.num_workers=8
   - loss.lambda_dyn=4.0
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
-  mem_gb: 12
+  mem_gb: 7
   priority: 1
   max_restarts: 6
   stage: 1
@@ -1511,7 +1511,7 @@ jobs:
   - vision.export_path=runs/exports/s1-it1-decdim256-pick-place-100k.pt
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it1-decdim256-pick-place-100k
   max_restarts: 1
@@ -1531,7 +1531,7 @@ jobs:
   - '8'
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it1-decdim256-pick-place-100k
   max_restarts: 1
@@ -1554,7 +1554,7 @@ jobs:
   - vision.export_path=runs/exports/s1-it1-decdim256-pick-place-100k.pt
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it1-decdim256-pick-place-100k
   max_restarts: 1
@@ -1574,7 +1574,7 @@ jobs:
   - '8'
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it1-decdim256-pick-place-100k
   max_restarts: 1
@@ -1613,7 +1613,7 @@ jobs:
   - vision.export_path=runs/exports/s1-it2-lambdadyn4-hammer-100k.pt
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it2-lambdadyn4-hammer-100k
   max_restarts: 1
@@ -1633,7 +1633,7 @@ jobs:
   - '8'
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it2-lambdadyn4-hammer-100k
   max_restarts: 1
@@ -1656,7 +1656,7 @@ jobs:
   - vision.export_path=runs/exports/s1-it2-lambdadyn4-hammer-100k.pt
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it2-lambdadyn4-hammer-100k
   max_restarts: 1
@@ -1676,7 +1676,7 @@ jobs:
   - '8'
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-it2-lambdadyn4-hammer-100k
   max_restarts: 1
@@ -1824,7 +1824,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-it2-lambdadyn4-hammer/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 6
+  mem_gb: 5
   priority: 1
   deps:
   - export-s1-it2-lambdadyn4-hammer-100k
@@ -1855,7 +1855,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-it1-decdim256-pick-place/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 6
+  mem_gb: 5
   priority: 1
   deps:
   - export-s1-it1-decdim256-pick-place-100k
@@ -1903,7 +1903,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-pretrain-hammer-base/checkpoints/step_0200000.pt
   gpu: any
-  mem_gb: 6
+  mem_gb: 5
   priority: 1
   deps:
   - s1-pretrain-hammer-base
@@ -1927,7 +1927,7 @@ jobs:
   - vision.export_path=runs/exports/s1-base-hammer-200k.pt
   gpu: any
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-hammer-200k
   max_restarts: 1
@@ -1947,7 +1947,7 @@ jobs:
   - '8'
   gpu: any
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-hammer-200k
   max_restarts: 1
@@ -1970,7 +1970,7 @@ jobs:
   - vision.export_path=runs/exports/s1-base-hammer-200k.pt
   gpu: any
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-hammer-200k
   max_restarts: 1
@@ -1990,7 +1990,7 @@ jobs:
   - '8'
   gpu: any
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-hammer-200k
   max_restarts: 1
@@ -2021,7 +2021,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-pretrain-pick-place-base/checkpoints/step_0200000.pt
   gpu: any
-  mem_gb: 6
+  mem_gb: 5
   priority: 1
   deps:
   - s1-pretrain-pick-place-base
@@ -2045,7 +2045,7 @@ jobs:
   - vision.export_path=runs/exports/s1-base-pick-place-200k.pt
   gpu: any
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-pick-place-200k
   max_restarts: 1
@@ -2065,7 +2065,7 @@ jobs:
   - '8'
   gpu: any
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-pick-place-200k
   max_restarts: 1
@@ -2088,7 +2088,7 @@ jobs:
   - vision.export_path=runs/exports/s1-base-pick-place-200k.pt
   gpu: any
   mem_gb: 2
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-pick-place-200k
   max_restarts: 1
@@ -2108,7 +2108,7 @@ jobs:
   - '8'
   gpu: any
   mem_gb: 3
-  priority: 1
+  priority: 3
   deps:
   - export-s1-base-pick-place-200k
   max_restarts: 1
@@ -2330,7 +2330,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-pretrain-pick-place-base/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 0
   deps:
   - heldout-sets-pick-place
@@ -2346,7 +2346,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-pretrain-hammer-base/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 0
   deps:
   - heldout-sets-hammer
@@ -2372,7 +2372,7 @@ jobs:
   - eval.episodes_per_heldout_camera=0
   - eval.episodes_per_trajectory=0
   gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
-  mem_gb: 4
+  mem_gb: 5
   priority: 0
   deps: []
   max_restarts: 1
@@ -2416,7 +2416,7 @@ jobs:
   - eval.episodes_per_heldout_camera=0
   - eval.episodes_per_trajectory=0
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
-  mem_gb: 4
+  mem_gb: 5
   priority: 0
   deps: []
   max_restarts: 1
@@ -2450,7 +2450,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-it1-decdim256-hammer/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 0
   deps:
   - export-s1-it1-decdim256-hammer-100k
@@ -2466,13 +2466,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-it1-decdim256-pick-place/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 0
   deps:
   - export-s1-it1-decdim256-pick-place-100k
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: fulleval2-s1-it2-lambdadyn4-hammer-100k
   script: scripts/evaluate.py
@@ -2482,13 +2482,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-it2-lambdadyn4-hammer/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 0
   deps:
   - export-s1-it2-lambdadyn4-hammer-100k
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: fulleval2-s1-it2-lambdadyn4-pick-place-100k
   script: scripts/evaluate.py
@@ -2498,7 +2498,7 @@ jobs:
   - --checkpoint
   - runs/pretrain/s1-it2-lambdadyn4-pick-place/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 0
   deps:
   - export-s1-it2-lambdadyn4-pick-place-100k
@@ -2522,17 +2522,17 @@ jobs:
   - --set
   - loss.ramp_steps=300
   - train.min_lr=5.0e-4
-  - train.num_workers=12
+  - train.num_workers=4
   - train.steps=6000
   - train.eval_every=1000
   - train.save_every=6000
   gpu: any
-  mem_gb: 12
+  mem_gb: 10
   priority: 1
   deps: []
   max_restarts: 1
   stage: 1
-  ram_gb: 20
+  ram_gb: 10
   oom_score_adj: 500
 - id: fulleval2-screen-g-ref-6k
   script: scripts/evaluate.py
@@ -2542,13 +2542,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/screen-g-ref/checkpoints/step_0006000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 1
   deps:
   - screen-g-ref
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: screen-g4a-declr3-dec4x256
   script: scripts/train.py
@@ -2566,7 +2566,7 @@ jobs:
   - --set
   - loss.ramp_steps=300
   - train.min_lr=5.0e-4
-  - train.num_workers=12
+  - train.num_workers=4
   - train.steps=6000
   - train.eval_every=1000
   - train.save_every=6000
@@ -2574,12 +2574,12 @@ jobs:
   - model.decoder.dim=256
   - train.decoder_lr_mult=3.0
   gpu: any
-  mem_gb: 12
+  mem_gb: 10
   priority: 1
   deps: []
   max_restarts: 1
   stage: 1
-  ram_gb: 20
+  ram_gb: 10
   oom_score_adj: 500
 - id: fulleval2-screen-g4a-declr3-dec4x256-6k
   script: scripts/evaluate.py
@@ -2589,13 +2589,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/screen-g4a-declr3-dec4x256/checkpoints/step_0006000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 1
   deps:
   - screen-g4a-declr3-dec4x256
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: screen-g4b-k4-statecat
   script: scripts/train.py
@@ -2613,19 +2613,19 @@ jobs:
   - --set
   - loss.ramp_steps=300
   - train.min_lr=5.0e-4
-  - train.num_workers=12
+  - train.num_workers=4
   - train.steps=6000
   - train.eval_every=1000
   - train.save_every=6000
   - model.encoder.num_slots=4
   - model.decoder.state_concat=true
   gpu: any
-  mem_gb: 12
+  mem_gb: 10
   priority: 1
   deps: []
   max_restarts: 1
   stage: 1
-  ram_gb: 20
+  ram_gb: 10
   oom_score_adj: 500
 - id: fulleval2-screen-g4b-k4-statecat-6k
   script: scripts/evaluate.py
@@ -2635,13 +2635,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/screen-g4b-k4-statecat/checkpoints/step_0006000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 1
   deps:
   - screen-g4b-k4-statecat
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: screen-g4c-adaln-fourier
   script: scripts/train.py
@@ -2659,19 +2659,19 @@ jobs:
   - --set
   - loss.ramp_steps=300
   - train.min_lr=5.0e-4
-  - train.num_workers=12
+  - train.num_workers=4
   - train.steps=6000
   - train.eval_every=1000
   - train.save_every=6000
   - model.decoder.conditioning=adaln_zero
   - model.decoder.anchor_fourier=6
   gpu: any
-  mem_gb: 12
+  mem_gb: 10
   priority: 1
   deps: []
   max_restarts: 1
   stage: 1
-  ram_gb: 20
+  ram_gb: 10
   oom_score_adj: 500
 - id: fulleval2-screen-g4c-adaln-fourier-6k
   script: scripts/evaluate.py
@@ -2681,13 +2681,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/screen-g4c-adaln-fourier/checkpoints/step_0006000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 1
   deps:
   - screen-g4c-adaln-fourier
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: screen-g4d-hardx3
   script: scripts/train.py
@@ -2705,18 +2705,18 @@ jobs:
   - --set
   - loss.ramp_steps=300
   - train.min_lr=5.0e-4
-  - train.num_workers=12
+  - train.num_workers=4
   - train.steps=6000
   - train.eval_every=1000
   - train.save_every=6000
   - 'loss.depth_hard_boost={factor: 3.0, fraction: 0.2}'
   gpu: any
-  mem_gb: 12
+  mem_gb: 10
   priority: 1
   deps: []
   max_restarts: 1
   stage: 1
-  ram_gb: 20
+  ram_gb: 10
   oom_score_adj: 500
 - id: fulleval2-screen-g4d-hardx3-6k
   script: scripts/evaluate.py
@@ -2726,13 +2726,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/screen-g4d-hardx3/checkpoints/step_0006000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 1
   deps:
   - screen-g4d-hardx3
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: screen-g4e-motionnorm
   script: scripts/train.py
@@ -2750,18 +2750,18 @@ jobs:
   - --set
   - loss.ramp_steps=300
   - train.min_lr=5.0e-4
-  - train.num_workers=12
+  - train.num_workers=4
   - train.steps=6000
   - train.eval_every=1000
   - train.save_every=6000
   - loss.motion_norm=moving
   gpu: any
-  mem_gb: 12
+  mem_gb: 10
   priority: 1
   deps: []
   max_restarts: 1
   stage: 1
-  ram_gb: 20
+  ram_gb: 10
   oom_score_adj: 500
 - id: fulleval2-screen-g4e-motionnorm-6k
   script: scripts/evaluate.py
@@ -2771,13 +2771,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/screen-g4e-motionnorm/checkpoints/step_0006000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 1
   deps:
   - screen-g4e-motionnorm
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: fulleval2-screen-s1-motion20-6k
   script: scripts/evaluate.py
@@ -2812,7 +2812,7 @@ jobs:
   - train.num_workers=8
   - 'aug.crop={prob: 0.5, scale: [0.8, 1.0], ratio: [0.95, 1.05]}'
   gpu: any
-  mem_gb: 14
+  mem_gb: 10
   priority: 2
   deps: []
   max_restarts: 6
@@ -2827,13 +2827,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s2-screen-crop-hammer/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 2
   deps:
   - s2-screen-crop-hammer
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: s2-screen-crop-pick-place
   script: scripts/train.py
@@ -2853,7 +2853,7 @@ jobs:
   - train.num_workers=8
   - 'aug.crop={prob: 0.5, scale: [0.8, 1.0], ratio: [0.95, 1.05]}'
   gpu: any
-  mem_gb: 14
+  mem_gb: 10
   priority: 2
   deps: []
   max_restarts: 6
@@ -2868,13 +2868,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s2-screen-crop-pick-place/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 2
   deps:
   - s2-screen-crop-pick-place
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: s2-screen-synth-hammer
   script: scripts/train.py
@@ -2895,7 +2895,7 @@ jobs:
   - aug.synth_views=2
   - aug.synth_render=true
   gpu: any
-  mem_gb: 14
+  mem_gb: 10
   priority: 2
   deps: []
   max_restarts: 6
@@ -2910,13 +2910,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s2-screen-synth-hammer/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 2
   deps:
   - s2-screen-synth-hammer
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: s2-screen-synth-pick-place
   script: scripts/train.py
@@ -2937,7 +2937,7 @@ jobs:
   - aug.synth_views=2
   - aug.synth_render=true
   gpu: any
-  mem_gb: 14
+  mem_gb: 10
   priority: 2
   deps: []
   max_restarts: 6
@@ -2952,13 +2952,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s2-screen-synth-pick-place/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 2
   deps:
   - s2-screen-synth-pick-place
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: s2-screen-selfrender-hammer
   script: scripts/train.py
@@ -2978,7 +2978,7 @@ jobs:
   - train.num_workers=8
   - loss.self_render=0.5
   gpu: any
-  mem_gb: 14
+  mem_gb: 10
   priority: 2
   deps: []
   max_restarts: 6
@@ -2993,13 +2993,13 @@ jobs:
   - --checkpoint
   - runs/pretrain/s2-screen-selfrender-hammer/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 2
   deps:
   - s2-screen-selfrender-hammer
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 - id: s2-screen-selfrender-pick-place
   script: scripts/train.py
@@ -3019,7 +3019,7 @@ jobs:
   - train.num_workers=8
   - loss.self_render=0.5
   gpu: any
-  mem_gb: 14
+  mem_gb: 10
   priority: 2
   deps: []
   max_restarts: 6
@@ -3034,12 +3034,12 @@ jobs:
   - --checkpoint
   - runs/pretrain/s2-screen-selfrender-pick-place/checkpoints/step_0100000.pt
   gpu: any
-  mem_gb: 8
+  mem_gb: 5
   priority: 2
   deps:
   - s2-screen-selfrender-pick-place
   max_restarts: 0
   stage: 1
-  ram_gb: 20
+  ram_gb: 12
   oom_score_adj: 300
 host_ram_reserve_gb: 60
