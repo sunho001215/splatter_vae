@@ -737,3 +737,21 @@ Full split, strides 2 / 6; jobs `runs/fulleval2-s1-base-*-100k` and `runs/fullev
 The 200k encoder is indistinguishable from the 100k one on RL (mean 0.40 vs 0.42, both inside the 0.38 seed
 spread), matching the flat representation metrics between 100k and 200k. A200's hammer RL value for the length rule
 is 0.40 (last-5 mean at 400k). pick-place A200 proxies: 0.003 (not counted).
+
+## 2026-10-09 — Item 2a result: crop augmentation rejected by the 2d rule
+
+Full split at 100k (base 200k schedule, `train.stop_step=100000`) vs the base run at 100k; means of strides 2 / 6.
+
+| Metric | hammer base -> crop | pick-place base -> crop | 2d threshold |
+|---|---|---|---|
+| Retrieval trajectory set | 0.33 -> 0.37 (+0.04) | 0.36 -> 0.35 (-0.01) | >= +0.10 |
+| Hand-position R² trajectory | 0.49 -> 0.82 (+0.33) | 0.68 -> 0.78 (+0.09) | >= +0.10 |
+| Hand-velocity R² trajectory | 0.22 -> 0.29 (+0.07) | -0.16 -> 0.01 (+0.17) | >= +0.10 |
+| Moving-pixel PSNR | 23.93 -> 23.96 | 17.02 -> 17.44 | >= -0.5 dB |
+| CD-render trajectory, symmetric p90 | 4.7 -> 4.5 cm | 3.8 -> 4.4 cm (+15 %) | <= +5 % |
+
+- Rejected: the retrieval criterion fails on both tasks and pick-place also fails hand-position R² and CD-render.
+- Context (not used for the decision): crop strongly improves position decoding from trajectory-set cameras on hammer
+  (+0.33 R²) and velocity on pick-place, but lowers retrieval among the training cameras (hammer 0.89 -> 0.75, pick-
+  place 0.78 -> 0.75): with crop, states of the same scene from different training cameras are less alike, while
+  linear position/velocity content becomes more viewpoint-robust.
