@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 21:46
+Last updated: 2026-10-08 22:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -210,6 +210,11 @@ Last updated: 2026-10-08 21:46
 - 21:38: item 3c decided — coffee-push replaces shelf-place (CNN 0.18 at 300k; plate-slide 0.89 and drawer-open 1.00
   too easy, assembly 0.00). Verification gate passed (20/20); pilot -> collection -> split / stats / D2-D3 checks ->
   held-out sets queued.
+
+- 22:07: HEARTBEAT_OK — 11 running jobs active, watcher and scheduler alive, 5350 GB free, 123 GB RAM available.
+  Base hammer pretraining done (200k; A200 for both tasks); its full evaluation and export running, 400k hammer
+  proxies follow. Item 2 screens: crop 56.2k / 49.4k, synth 33.8k / 33.5k, self-render 47.9k / 47.8k (0.27-0.47
+  s/step). base300k runs 18.5k / 18.8k. coffee-push collection 24/250 episodes (~2.5 h total).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
