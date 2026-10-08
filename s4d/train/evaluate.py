@@ -291,6 +291,8 @@ class Evaluator:
             for i in _spread_windows([x[0] for x in dataset.samples], [x[1] for x in dataset.samples])
             if dataset.samples[i][0] in dataset.heldout
         ]
+        if not indices:  # e.g. the one-episode gate evaluates a training episode, which has no near/trajectory views
+            return {}
         groups: dict[str, list] = defaultdict(list)
         for batch in DataLoader(Subset(dataset, indices), batch_size=8, collate_fn=collate):
             groups["train"].append(encode_states(model, batch["images"].to(self.device)).flatten(2).cpu())

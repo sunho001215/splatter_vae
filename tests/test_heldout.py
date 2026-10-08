@@ -219,6 +219,7 @@ def _synthetic_render(gs, xyz, w2c, K, height, width, near, far):
 def test_evaluator_reports_sets_oracle_chamfer_retrieval_and_probes(tmp_path, monkeypatch):
     main = write_main(tmp_path / "plane.hdf5")
     held = write_heldout(tmp_path / "held.hdf5", episodes=("ep000", "ep001"))
+    held_one = write_heldout(tmp_path / "held_one.hdf5", episodes=("ep000",))
     model = _model()
     cfg = load_config([REPO / "configs/metaworld/base.yaml"])
     cfg["wandb"]["enabled"] = False
@@ -250,7 +251,6 @@ def test_evaluator_reports_sets_oracle_chamfer_retrieval_and_probes(tmp_path, mo
     monkeypatch.setattr(E.Evaluator, "panels", lambda *a, **k: None)
     logger = RunLogger(tmp_path / "run")
     summary = E.Evaluator(cfg, loaders, probes, logger, torch.device("cpu"), 2)(model, 0, full=True)
-    logger.close()
     for name in ("near", "traj", "heldout"):
         assert f"metric/psnr_{name}@s2" in summary and f"metric/psnr_{name}_covered@s2" in summary
         assert 0.0 < summary[f"metric/oracle_coverage_{name}@s2"] <= 1.0
@@ -266,3 +266,11 @@ def test_evaluator_reports_sets_oracle_chamfer_retrieval_and_probes(tmp_path, mo
         for name in ("traincams", "heldout", "near", "traj"):
             assert f"metric/r2_{target}_val_{name}@s2" in summary
     assert summary["metric/retrieval_val_windows@s2"] > 0
+    # episodes without near/trajectory views (the one-episode gate) keep the extrapolation set and skip the rest
+    gate = MetaworldWindowDataset(main, ["ep001"], strides=(2,), with_eval=True, heldout=held_one)
+    gate_summary = E.Evaluator(cfg, {2: DataLoader(gate, batch_size=4, collate_fn=collate)}, None, logger, torch.device("cpu"), 2)(
+        model, 0, full=True
+    )
+    assert "metric/psnr_heldout@s2" in gate_summary and "metric/psnr_near@s2" not in gate_summary
+    assert "metric/retrieval_top1_near_val@s2" not in gate_summary and "metric/cd_centers_p2g_mean@s2" in gate_summary
+    logger.close()
