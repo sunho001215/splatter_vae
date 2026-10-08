@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 12:45
+Last updated: 2026-10-08 13:08
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -156,6 +156,10 @@ Last updated: 2026-10-08 12:45
   (base hammer 149k, pick-place 159k; it1/it2 102-115k past their 100k comparison point); evaluations end within
   ~30 min. Two old-named evaluations (fulleval-s1-it2-hammer, fulleval-s1-it1-pick-place) launched with the merged
   code and duplicate their fulleval2 twins; left to finish (~20 min of GPU).
+
+- 13:07: HEARTBEAT_OK — 36 running jobs active, watcher and scheduler alive, 5350 GB free, 200 GB RAM available.
+  No exits since 12:41: the six full-split evaluations (base, it1, it2 at 100k) have finished stride 2 and are on
+  stride 6 (GPU contention); gate screens 4d/4e wait for GPU 4's declared-memory budget (81 of 90 GB).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
