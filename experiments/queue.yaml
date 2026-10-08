@@ -3089,4 +3089,92 @@ jobs:
   stage: 1
   ram_gb: 12
   oom_score_adj: 300
+- id: s3b-cnn-coffee-push-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - cnn
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s3b-cnn-coffee-push-s2000
+  - --set
+  - train.num_train_steps=300000
+  - eval.every_steps=25000
+  - eval.train_episodes_total=20
+  - eval.episodes_per_heldout_camera=0
+  - eval.episodes_per_trajectory=0
+  gpu: any
+  mem_gb: 5
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 8
+  oom_score_adj: 300
+- id: s3b-cnn-coffee-push-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s3b-cnn-coffee-push-s2000
+  - --train-job
+  - s3b-cnn-coffee-push-s2000
+  - --workers
+  - '2'
+  - --envs-per-worker
+  - '10'
+  gpu: any
+  mem_gb: 3
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 6
+  oom_score_adj: 400
+- id: s3b-cnn-drawer-open-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - drawer-open
+  - --encoder
+  - cnn
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s3b-cnn-drawer-open-s2000
+  - --set
+  - train.num_train_steps=300000
+  - eval.every_steps=25000
+  - eval.train_episodes_total=20
+  - eval.episodes_per_heldout_camera=0
+  - eval.episodes_per_trajectory=0
+  gpu: any
+  mem_gb: 5
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 8
+  oom_score_adj: 300
+- id: s3b-cnn-drawer-open-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s3b-cnn-drawer-open-s2000
+  - --train-job
+  - s3b-cnn-drawer-open-s2000
+  - --workers
+  - '2'
+  - --envs-per-worker
+  - '10'
+  gpu: any
+  mem_gb: 3
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 6
+  oom_score_adj: 400
 host_ram_reserve_gb: 60

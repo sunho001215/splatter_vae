@@ -604,3 +604,10 @@ jobs `runs/fulleval2-screen-*-6k`. Rule (fixed before the runs): better on >= 3 
 - Every change lowered PSNR by 0.7-1.3 dB against the fresh reference, so the run-to-run spread at 6k matters for
   reading these margins. A second-seed reference (`screen-g-ref-seed1`, `train.seed=1`) is queued to measure it; it is
   context only and does not change the decisions above.
+
+## 2026-10-08 — Item 3b interim (16:07): next two candidates started early
+
+- plate-slide (CNN, seed 2000): training-camera success 0.65 at 100k and 0.89 at 150k, above the ~0.7 ceiling of
+  criterion (ii); assembly: 0.00 at 150k. If neither qualifies at 300k, the pre-registered ranking continues with
+  coffee-push and drawer-open; both are started now (same protocol) so that the 3c decision is not delayed. The
+  decision itself still uses the 300k results of the runs in ranking order.
