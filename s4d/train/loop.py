@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
@@ -26,6 +27,7 @@ from s4d.model.encoder import Encoder, EncoderConfig
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_hard_depth, render_rgbd
 from s4d.train import ddp
+from s4d.train.augment import coverage_visible, jitter_cameras, random_resized_crop, synthesize_views
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
 from s4d.train.workers import fork_safe_iter
 
@@ -114,10 +116,34 @@ def forward_losses(
     single_frame = bool(get(cfg, "model.single_frame", False))
     if single_frame:
         enc_in, score_in = enc_in[:, :1], score_in[:, :1]
+    # review item 2 (training only; all off by default): crop the encoder input, synthesise near views, self-render
+    training = model.training
+    aug = get(cfg, "aug", None) or {}
+    crop = aug.get("crop") if training else None
+    if crop:
+        enc_in, score_in = random_resized_crop(
+            enc_in, score_in, float(crop.get("prob", 0.5)), tuple(crop.get("scale", (0.8, 1.0))), tuple(crop.get("ratio", (0.95, 1.05)))
+        )
     if source is None:
         source = torch.randint(V, (B,), device=device)
-    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bool(get(cfg, "train.bf16", True))):
+    bf16 = bool(get(cfg, "train.bf16", True))
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
         slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio)
+    encoder = getattr(model, "module", model).encoder
+    n_syn = int(aug.get("synth_views", 0)) if training else 0
+    syn = None
+    if n_syn:
+        syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
+        syn = synthesize_views(batch, syn_cams, near, far)
+        frames = enc_in.shape[1]
+        syn_in = syn["images"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 3, H, W)[:, :frames]
+        ratio = encoder.cfg.mask_ratio if mask_ratio is None else mask_ratio
+        keep = max(1, min(encoder.cfg.num_patches, int(round(encoder.cfg.num_patches * (1.0 - ratio)))))
+        syn_cov = syn["covered"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 1, H, W)[:, :frames]
+        syn_visible = coverage_visible(syn_cov, encoder.cfg.patch_size, keep)
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
+            syn_slots = encoder.forward_visible(syn_in, syn_visible)["slots"]
+        syn_slots = syn_slots.float().view(B, n_syn, *syn_slots.shape[1:])
     gs = GaussianSet(
         gs.xyz.float(),
         gs.scales.float(),
@@ -156,14 +182,29 @@ def forward_losses(
     hard = render_hard_depth(gs, xyz_seq, w2c, K, H, W, near, far)
     hard_valid = valid
     dhard = depth_l1(_rows(hard["depth"]), aligned, hard_valid, weights)
+    hard_weight = float(loss_cfg.get("depth_hard", 0.5))
+    boost = loss_cfg.get("depth_hard_boost")  # review item 4d: {factor, fraction} of train.steps
+    if boost and step < float(boost.get("fraction", 0.2)) * int(get(cfg, "train.steps", 200000)):
+        hard_weight *= float(boost.get("factor", 3.0))
     render_t = (
         float(loss_cfg.get("rgb", 1.0)) * _per_t(rgb_l, B, T, V)
         + float(loss_cfg.get("coverage", 0.1)) * _per_t(cov_l, B, T, V)
         + float(loss_cfg.get("depth_l1", 1.0)) * _per_t(dl1, B, T, V)
         + float(loss_cfg.get("depth_grad", 0.5)) * _per_t(dgrad, B, T, V)
-        + float(loss_cfg.get("depth_hard", 0.5)) * _per_t(dhard, B, T, V)
+        + hard_weight * _per_t(dhard, B, T, V)
     )
     render_loss = (render_t[0] + ramp * (render_t[1] + render_t[2])) / (1.0 + 2.0 * ramp)
+    extra_losses = {}
+    if syn is not None and aug.get("synth_render", False):  # synthetic views as render targets on covered pixels
+        rs = render_rgbd(gs, xyz_seq, syn_cams["w2c"], syn_cams["K"], H, W, near, far)
+        cov_rows = _rows(syn["covered"]).float()
+        cov_w = cov_rows / cov_rows.mean(dim=(1, 2, 3), keepdim=True).clamp_min(1e-6)
+        syn_rgb = rgb_loss(_rows(rs["rgb"]), _rows(syn["images"]), cov_w, float(loss_cfg.get("ssim_weight", 0.2)))
+        syn_depth = depth_l1(_rows(rs["depth"]), _rows(syn["depth"]), cov_rows > 0, torch.ones_like(cov_rows))
+        syn_t = float(loss_cfg.get("rgb", 1.0)) * _per_t(syn_rgb, B, T, n_syn) + float(
+            loss_cfg.get("depth_l1", 1.0)
+        ) * _per_t(syn_depth, B, T, n_syn)
+        extra_losses["synth_render"] = (syn_t[0] + ramp * (syn_t[1] + syn_t[2])) / (1.0 + 2.0 * ramp)
 
     # ---- 3D motion -------------------------------------------------------------------------------
     is_dyn = (gs.group == DYNAMIC_GROUP).float()[None, :, None].expand(B, -1, 1)
@@ -178,7 +219,12 @@ def forward_losses(
     coverage = torch.stack((cov[:, 0], cov[:, 1], cov[:, 0]), 1)
     pred_disp = expected_displacement(pred_feat, coverage)
     m_loss, m_metrics = motion_loss(
-        pred_disp, coverage, batch["motion3d"], batch["motion_weight"], float(loss_cfg.get("motion_huber", 0.01))
+        pred_disp,
+        coverage,
+        batch["motion3d"],
+        batch["motion_weight"],
+        float(loss_cfg.get("motion_huber", 0.01)),
+        normalization=str(loss_cfg.get("motion_norm", "valid")),
     )
     dyn_share_map = (feats[:, :, :, 6:7] / cov.clamp_min(1e-6)).detach()
     moving0 = score > MOVING_SCORE
@@ -187,11 +233,23 @@ def forward_losses(
     dyn_share = torch.where(moving_count > 0, dyn_share, dyn_share.new_tensor(float("nan")))
 
     # ---- invariance + visibility -------------------------------------------------------------
+    inv_slots = slots if syn is None else torch.cat((slots, syn_slots), 1)  # synthetic views are extra positives
     slots_mean = slots.mean(2)
     nce, nce_metrics = multi_positive_info_nce(
-        slots_mean, float(loss_cfg.get("temperature", 0.1)), distributed=model.training
+        inv_slots.mean(2), float(loss_cfg.get("temperature", 0.1)), distributed=model.training
     )
-    cons = slot_consistency(slots)
+    cons = slot_consistency(inv_slots)
+    self_w = float(loss_cfg.get("self_render", 0.0)) if training else 0.0
+    if self_w > 0:  # review item 2c: re-encode renders of the decoded scene from jittered cameras
+        sr_cams = jitter_cameras(B, 2, batch["K"][:, 0], H, W)
+        with torch.no_grad():  # stop-gradient on the decoder path
+            sr = render_rgbd(gs, xyz_seq, sr_cams["w2c"], sr_cams["K"], H, W, near, far)["rgb"].clamp(0, 1)
+        sr_in = sr.permute(0, 2, 1, 3, 4, 5).reshape(B * 2, T, 3, H, W)[:, : enc_in.shape[1]]
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
+            sr_slots = encoder(sr_in, None, mask_ratio=mask_ratio)["slots"]
+        sr_slots = F.normalize(sr_slots.float().view(B, 2, *sr_slots.shape[1:]), dim=-1)
+        target = F.normalize(slots[torch.arange(B, device=device), source].detach(), dim=-1)  # (B,K,D)
+        extra_losses["self_render"] = (1.0 - (sr_slots * target[:, None]).sum(-1)).mean()
     vis_t = visibility_loss(xyz_seq, w2c, K, H, W, near, far)
     vis = (vis_t[0] + ramp * (vis_t[1] + vis_t[2])) / (1.0 + 2.0 * ramp)
     total = (
@@ -201,6 +259,10 @@ def forward_losses(
         + float(loss_cfg.get("consistency", 0.5)) * cons
         + float(loss_cfg.get("visibility", 1.0)) * vis
     )
+    if "synth_render" in extra_losses:
+        total = total + float(aug.get("synth_render_weight", 1.0)) * extra_losses["synth_render"]
+    if "self_render" in extra_losses:
+        total = total + self_w * extra_losses["self_render"]
 
     # ---- metrics -------------------------------------------------------------------------------
     with torch.no_grad():
@@ -261,6 +323,7 @@ def forward_losses(
         **{f"depth_grad_t{t}": v.detach() for t, v in enumerate(_per_t(dgrad, B, T, V))},
         **{f"depth_hard_t{t}": v.detach() for t, v in enumerate(_per_t(dhard, B, T, V))},
         **{f"visibility_t{t}": v.detach() for t, v in enumerate(vis_t)},
+        **{k: v.detach() for k, v in extra_losses.items()},
     }
     out = {"total": total, "losses": losses, "metrics": metrics, "slots": slots, "source": source, "gs": gs}
     if return_renders:
@@ -282,21 +345,23 @@ def forward_losses(
 
 # ------------------------------------------------------------------------------------------ training
 def build_optimizer(model: nn.Module, cfg: dict):
-    decay, no_decay = [], []
+    """AdamW with decay/no-decay groups; ``train.decoder_lr_mult`` != 1 (review item 4a) splits them by module and
+    scales the decoder groups' learning rate (the schedule multiplies every group alike)."""
+    lr = float(get(cfg, "train.lr", 5e-4))
+    mult = float(get(cfg, "train.decoder_lr_mult", 1.0))
+    groups: dict[tuple[bool, bool], list] = {}
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
-        (no_decay if p.ndim <= 1 or name.endswith("anchors") or "token" in name or "embed" in name else decay).append(p)
-    lr = float(get(cfg, "train.lr", 5e-4))
-    opt = torch.optim.AdamW(
-        [
-            {"params": decay, "weight_decay": float(get(cfg, "train.weight_decay", 0.01))},
-            {"params": no_decay, "weight_decay": 0.0},
-        ],
-        lr=lr,
-        betas=(0.9, 0.95),
-        fused=True,
-    )
+        no_decay = p.ndim <= 1 or name.endswith("anchors") or "token" in name or "embed" in name
+        groups.setdefault((mult != 1.0 and name.startswith("decoder."), no_decay), []).append(p)
+    wd = float(get(cfg, "train.weight_decay", 0.01))
+    param_groups = [
+        {"params": groups[key], "weight_decay": 0.0 if key[1] else wd, "lr": lr * (mult if key[0] else 1.0)}
+        for key in ((False, False), (False, True), (True, False), (True, True))
+        if key in groups
+    ]
+    opt = torch.optim.AdamW(param_groups, lr=lr, betas=(0.9, 0.95), fused=True)
     total, warmup = int(get(cfg, "train.steps", 200000)), int(get(cfg, "train.warmup_steps", 10000))
     min_ratio = float(get(cfg, "train.min_lr", 1e-5)) / lr
 
@@ -400,6 +465,8 @@ def train(
     loader = make_train_loader(train_dataset, cfg, ctx, seed)
     batches = infinite(loader, start_step=step)
     total_steps = int(get(cfg, "train.steps", 200000))
+    stop = get(cfg, "train.stop_step", None)  # screens: the LR schedule of train.steps, stopped early
+    end_step = min(total_steps, int(stop)) if stop else total_steps
     log_every, eval_every = int(get(cfg, "train.log_every", 50)), int(get(cfg, "train.eval_every", 5000))
     save_every, clip = int(get(cfg, "train.save_every", 10000)), float(get(cfg, "train.grad_clip", 1.0))
     ckpt_dir = run_dir / "checkpoints"
@@ -419,7 +486,7 @@ def train(
     t_last = time.time()
     data_time = 0.0
     last_log_step = step
-    while step < total_steps:
+    while step < end_step:
         t0 = time.time()
         batch = move_batch(next(batches), device)
         data_time += time.time() - t0
@@ -463,7 +530,7 @@ def train(
                     f"{scalars['train/step_time']:.3f}s/it"
                 )
                 t_last, data_time, last_log_step = now, 0.0, step
-        if step % save_every == 0 or step == total_steps:
+        if step % save_every == 0 or step == end_step:
             rng_by_rank = gather_rng_states()
             if ctx.is_main:
                 save_checkpoint(
@@ -477,7 +544,7 @@ def train(
                     rng_by_rank=rng_by_rank,
                 )
             ddp.barrier()
-        if step % eval_every == 0 or step == total_steps:
+        if step % eval_every == 0 or step == end_step:
             run_evaluation()
             model.train()
             t_last = time.time()
