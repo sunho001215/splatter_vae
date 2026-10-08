@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 12:43
+Last updated: 2026-10-08 12:45
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -150,6 +150,12 @@ Last updated: 2026-10-08 12:43
   the inflated declarations (12 per pretraining run) blocked GPU 4 at 1 GB of real use per 3 declared. Pending proxies
   (item 5) moved to priority 3, after the screens, as the review orders. Both GPUs run at ~95 %, so everything is
   slower (CNN ~14 agent steps/s).
+
+- 12:43: HEARTBEAT_OK — 36 running jobs active, watcher and scheduler alive, 5350 GB free, 96 GB RAM available.
+  Contention: with 6 evaluations, 4 gate screens and 2 CNN runs added, pretraining slowed from ~0.3 to 0.6-0.8 s/step
+  (base hammer 149k, pick-place 159k; it1/it2 102-115k past their 100k comparison point); evaluations end within
+  ~30 min. Two old-named evaluations (fulleval-s1-it2-hammer, fulleval-s1-it1-pick-place) launched with the merged
+  code and duplicate their fulleval2 twins; left to finish (~20 min of GPU).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
