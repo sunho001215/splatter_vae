@@ -723,3 +723,6 @@ Full split, strides 2 / 6; jobs `runs/fulleval2-s1-base-*-100k` and `runs/fullev
 - D2 / D3 (`docs/data_checks/coffee-push/summary.json`, same script and unchanged thresholds): D2 median 1.00 mm, D3
   median 1.93 mm (p90 4.10 mm < 5 mm), world-body motion exactly zero: all pass, in line with the other tasks
   (hammer: 1.00 / 1.97 mm). Workspace statistics and the near/trajectory held-out sets are running.
+- 2026-10-09 01:28: coffee-push held-out sets rendered after the target-site replay fix (merge db5f6c8): all 10
+  validation episodes replay with max |rgb| difference 0 on the training cameras; 2.0 GiB. coffee-push is ready for
+  Stage 3/4 (data, split, statistics, D2/D3, held-out sets, task and baseline configs).
