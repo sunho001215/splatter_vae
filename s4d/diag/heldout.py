@@ -94,6 +94,70 @@ def splat_depth(
     return rgb.view(V, height, width, 3).permute(0, 3, 1, 2), covered.view(V, 1, height, width), depth_map
 
 
+def splat_batched(
+    points: torch.Tensor,
+    colors: torch.Tensor,
+    valid: torch.Tensor,
+    K: torch.Tensor,
+    w2c: torch.Tensor,
+    height: int,
+    width: int,
+    near: float,
+    chunk: int = 8,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``splat_depth`` for G independent clouds at once: points/colors (G,N,3), valid (G,N), K (G,V,3,3), w2c (G,V,4,4)
+    -> rgb (G,V,3,H,W), covered (G,V,1,H,W), depth (G,V,1,H,W). Each cloud is splatted only into its own V cameras."""
+    G, N = points.shape[:2]
+    V = K.shape[1]
+    rgbs, covers, depths = [], [], []
+    for g0 in range(0, G, chunk):
+        p, c, ok = points[g0 : g0 + chunk], colors[g0 : g0 + chunk], valid[g0 : g0 + chunk]
+        Gc = len(p)
+        uv, z = project(p[:, None].expand(Gc, V, N, 3), K[g0 : g0 + Gc], w2c[g0 : g0 + Gc])  # (Gc,V,N,2), (Gc,V,N)
+        u, v = torch.floor(uv[..., 0]).long(), torch.floor(uv[..., 1]).long()
+        keep = ok[:, None] & (z > near) & (u >= 0) & (u < width) & (v >= 0) & (v < height)
+        view = torch.arange(Gc * V, device=p.device).view(Gc, V, 1)
+        index = ((view * height + v) * width + u)[keep]
+        depth = z[keep]
+        color = c[:, None].expand(Gc, V, N, 3)[keep]
+        zbuf = torch.full((Gc * V * height * width,), float("inf"), device=p.device)
+        zbuf.scatter_reduce_(0, index, depth, reduce="amin")
+        front = depth <= zbuf[index]
+        rgb = torch.zeros(Gc * V * height * width, 3, device=p.device)
+        rgb[index[front]] = color[front].float()
+        covered = torch.isfinite(zbuf)
+        rgbs.append(rgb.view(Gc, V, height, width, 3).permute(0, 1, 4, 2, 3))
+        covers.append(covered.view(Gc, V, 1, height, width))
+        depths.append(torch.where(covered, zbuf, torch.zeros_like(zbuf)).view(Gc, V, 1, height, width))
+    return torch.cat(rgbs), torch.cat(covers), torch.cat(depths)
+
+
+def fused_training_clouds(batch: dict, far: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Per (sample, time): the training cameras' GT pixels lifted to the world. Returns points and colours (B*T,V*H*W,3)
+    and valid (B*T,V*H*W) for 0 < depth <= far."""
+    depth = batch["depth"][:, :, :, 0]  # (B,T,V,H,W)
+    B, T, V, H, W = depth.shape
+    xyz = lift_depth(depth, batch["K"][:, None].expand(B, T, V, 3, 3), batch["c2w"][:, None].expand(B, T, V, 4, 4))
+    colors = batch["images"].float().permute(0, 1, 2, 4, 5, 3) / 255.0
+    valid = (depth > 0) & (depth <= far)
+    return xyz.reshape(B * T, -1, 3), colors.reshape(B * T, -1, 3), valid.reshape(B * T, -1)
+
+
+def oracle_batch(batch: dict, prefix: str, near: float, far: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """Oracle views of every (sample, time) into the cameras of ``prefix``: rgb (B*T*V,3,H,W), covered (B*T*V,1,H,W),
+    in the (b, t, v) order of ``tensor.flatten(0, 2)``."""
+    B, T = batch["depth"].shape[:2]
+    H, W = batch["depth"].shape[-2:]
+    points, colors, valid = fused_training_clouds(batch, far)
+    K, w2c = batch[f"{prefix}_K"], batch[f"{prefix}_w2c"]
+    V = K.shape[1]
+    rgb, covered, _ = splat_batched(
+        points, colors, valid, K[:, None].expand(B, T, V, 3, 3).reshape(B * T, V, 3, 3),
+        w2c[:, None].expand(B, T, V, 4, 4).reshape(B * T, V, 4, 4), H, W, near
+    )
+    return rgb.flatten(0, 1), covered.flatten(0, 1)
+
+
 def oracle_views(batch: dict, b: int, t: int, prefix: str, near: float, far: float):
     """Fuse the training cameras' GT depth+RGB at time t of sample b and splat it into the cameras of ``prefix``.
 

@@ -17,7 +17,7 @@ from s4d.data.metaworld.cameras import LOOKAT, RADIUS, opengl_to_opencv_c2w, orb
 from s4d.diag import panels as P
 from s4d.diag import wandb_log as W
 from s4d.diag.local_log import RunLogger
-from s4d.diag.heldout import chamfer_metrics, oracle_views, render_chamfer
+from s4d.diag.heldout import chamfer_metrics, oracle_batch, render_chamfer
 from s4d.diag.pointclouds import cloud_panel, fused_gt_points, gaussian_points
 from s4d.diag.probes import cross_view_retrieval, fit_and_score, probe_targets
 from s4d.diag.tracks import sample_track_pixels, track_panel
@@ -265,14 +265,7 @@ class Evaluator:
     def oracle_metrics(self, batch: dict, prefix: str, name: str, rendered: torch.Tensor, target: torch.Tensor) -> dict:
         """Oracle sanity (training-camera GT fused and splatted into the held-out cameras) and the model's held-out
         PSNR on the pixels the oracle covers. ``rendered``/``target`` are (B*T*V,3,H,W) in [0,1]."""
-        B, T = batch["images"].shape[:2]
-        rgbs, covers = [], []
-        for b in range(B):
-            for t in range(T):
-                rgb, covered = oracle_views(batch, b, t, prefix, self.near, self.far)
-                rgbs.append(rgb)
-                covers.append(covered)
-        oracle, covered = torch.cat(rgbs), torch.cat(covers)  # same (b,t,v) order as flatten(0, 2)
+        oracle, covered = oracle_batch(batch, prefix, self.near, self.far)  # same (b,t,v) order as flatten(0, 2)
         return {
             f"metric/oracle_coverage_{name}": covered.float().mean(),
             f"metric/oracle_psnr_covered_{name}": masked_psnr(oracle, target, covered).nanmean(),
