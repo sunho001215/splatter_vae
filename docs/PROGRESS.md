@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 00:09
+Last updated: 2026-10-09 01:11
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -224,6 +224,13 @@ Last updated: 2026-10-09 00:09
   available. Item 2 screens: crop 73.0k / 70.6k, synth 51.0k / 50.6k, self-render 63.3k / 63.3k (0.31-0.45 s/step;
   crop reaches 100k ~03:00, synth ~06:30). base300k 35.1k / 35.2k. base-200k hammer proxies 230k / 232k (0.49 / 0.36
   at 220k). coffee-push collection 191/250 (done ~01:15).
+
+- 01:09: HEARTBEAT_OK — 12 running jobs active, watcher and scheduler alive, 5332 GB free, 144 GB RAM available.
+  coffee-push data done (250 episodes, D2/D3 pass, stats done); its held-out render failed the replay check (target
+  marker sites not in qpos) — fixed in the worktree (exact replay on coffee-push, other 8 tasks unchanged), suite
+  running there, then merge and re-render. The watcher was down 01:00-01:07 (not re-armed after one event; replayed
+  the missed events on restart). Item 2 screens: crop 82.0k / 82.9k, synth 60.1k / 60.0k, self-render 71.4k / 71.4k.
+  base300k 44.4k / 44.7k; base-200k hammer proxies 360k / 365k.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
