@@ -67,7 +67,10 @@ def build_model(cfg: dict) -> Model:
     dec = dict(get(cfg, "model.decoder", {}))
     scene = GroupConfig(**dec.pop("scene"))
     dynamic = GroupConfig(**dec.pop("dynamic"))
-    decoder_cfg = DecoderConfig(slot_dim=encoder_cfg.slot_dim, scene=scene, dynamic=dynamic, **dec)
+    dec.pop("num_slots", None)  # always the encoder's K
+    decoder_cfg = DecoderConfig(
+        slot_dim=encoder_cfg.slot_dim, num_slots=encoder_cfg.num_slots, scene=scene, dynamic=dynamic, **dec
+    )
     return Model(Encoder(encoder_cfg), GaussianDecoder(decoder_cfg))
 
 

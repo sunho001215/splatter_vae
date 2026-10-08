@@ -65,8 +65,17 @@ def splat(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Z-buffered one-pixel splat of coloured points into V cameras.
 
-    points (N,3), colors (N,3), K (V,3,3), w2c (V,4,4) -> rgb (V,3,H,W) and covered (V,1,H,W) bool.
+    points (N,3), colors (N,3), K (V,3,3), w2c (V,4,4) -> rgb (V,3,H,W) and covered (V,1,H,W) bool
+    (``splat_depth`` also returns the z-buffer depth).
     """
+    rgb, covered, _ = splat_depth(points, colors, K, w2c, height, width, near)
+    return rgb, covered
+
+
+def splat_depth(
+    points: torch.Tensor, colors: torch.Tensor, K: torch.Tensor, w2c: torch.Tensor, height: int, width: int, near: float
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``splat`` plus the camera-z depth of the front point per pixel (V,1,H,W), 0 where uncovered."""
     V = len(K)
     uv, z = project(points[None].expand(V, -1, -1), K, w2c)  # (V,N,2), (V,N)
     u, v = torch.floor(uv[..., 0]).long(), torch.floor(uv[..., 1]).long()
@@ -81,7 +90,8 @@ def splat(
     rgb = torch.zeros(V * height * width, 3, device=points.device)
     rgb[index[front]] = color[front].float()
     covered = torch.isfinite(zbuf)
-    return rgb.view(V, height, width, 3).permute(0, 3, 1, 2), covered.view(V, 1, height, width)
+    depth_map = torch.where(covered, zbuf, torch.zeros_like(zbuf)).view(V, 1, height, width)
+    return rgb.view(V, height, width, 3).permute(0, 3, 1, 2), covered.view(V, 1, height, width), depth_map
 
 
 def oracle_views(batch: dict, b: int, t: int, prefix: str, near: float, far: float):
