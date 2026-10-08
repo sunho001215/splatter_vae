@@ -66,19 +66,27 @@ def _set_state(scene: MetaworldScene, episode: h5py.Group, t: int) -> None:
     scene.data.qpos[:] = episode["qpos"][t]
     scene.data.qvel[:] = episode["qvel"][t]
     mujoco.mj_forward(scene.model, scene.data)
+    # Meta-World re-positions its target sites in ``data`` after every step (``_target_site_config``), overriding the
+    # body-attached positions that ``mj_forward`` computes; the stored frames show them there.
+    env = scene.env.unwrapped
+    for name, pos in env._target_site_config:
+        env._set_pos_site(name, np.asarray(pos))
 
 
 def _set_goal(scene: MetaworldScene, episode: h5py.Group) -> None:
-    """A goal marker attached to the world body is a site whose position is not part of qpos; Meta-World reports it in
-    the last three observation entries, constant within an episode. Goal sites on other bodies move with qpos.
-    ``replay_check`` verifies the result either way."""
-    site = mujoco.mj_name2id(scene.model, mujoco.mjtObj.mjOBJ_SITE, "goal")
-    if site < 0 or scene.model.site_bodyid[site] != 0:
-        return
-    goal = np.asarray(episode["obs"][:, -3:])
+    """Restore the episode's goal, which is not part of qpos: Meta-World reports it in the last three observation entries
+    (constant within an episode). It sets the env's target (used by ``_target_site_config``, see ``_set_state``) and every
+    world-attached marker site named ``*goal`` (pick-place ``goal``, coffee-push ``mug_goal``), as the tasks' resets do.
+    Markers on other bodies move with qpos. ``replay_check`` verifies the result against the stored frames."""
+    goal = np.asarray(episode["obs"][:, -3:], dtype=np.float64)
     if not np.allclose(goal, goal[0], atol=1e-6):
         raise ValueError("goal position changes within the episode")
-    scene.model.site_pos[site] = goal[0]
+    scene.env.unwrapped._target_pos = goal[0].copy()
+    model = scene.model
+    for site in range(model.nsite):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_SITE, site) or ""
+        if name.endswith("goal") and model.site_bodyid[site] == 0:
+            model.site_pos[site] = goal[0]
 
 
 def replay_check(scene: MetaworldScene, episode: h5py.Group, train_cams: np.ndarray) -> dict:

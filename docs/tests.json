@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-08T03:32:58.291823+00:00",
+  "started_utc": "2026-10-08T16:08:51.785621+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,7 +17,7 @@
     "--junitxml=/home/ws/ws/splatter4d/.worktrees/review/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 217.57835988607258,
+  "duration_seconds": 224.43320151790977,
   "counts": {
     "passed": 223,
     "error": 0,
@@ -59,7 +59,7 @@
     "s4d/data/metaworld/collect.py": "f1eb373e7413faf4c64de7b133494792e99fdbc736c1ae7b566cf17e9aa0666d",
     "s4d/data/metaworld/dataset.py": "2df65d7f77c5049c26599d8c861d76bce718c434ce5cffb372651b400c22cf54",
     "s4d/data/metaworld/heldout.py": "a06afefa84db4a2b85dfe41ae7ecfb378b7b1df1fdc034740fd1e2c580525aae",
-    "s4d/data/metaworld/heldout_render.py": "fac5dadf0d5fa9dde4091372f43b5885b9d4c28d8da64ffe33e9144c851558f3",
+    "s4d/data/metaworld/heldout_render.py": "eaefcb17788addce4ea2617373b42fe508f5b231aace4e6b7270e259c4f83a18",
     "s4d/diag/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/diag/heldout.py": "2846b728cca9fee8efa3da3feb170d8e0abe52270a03ab04889dd92d66240abb",
     "s4d/diag/local_log.py": "c93b3cfd83911139ea67b5ea6e131eb0cdd9c3889c07a23b646f574714a6e9c2",
@@ -159,6 +159,7 @@
     "tests/test_watch.py": "c181728b203e7638e48da11e15516531549fc3c703a03fb5c1aa3f755e3eed56",
     "tests/test_workers.py": "b49241832c24db15d45a7f997e38b55b10d4fdb01261ce265c5fe342a1c76447",
     "configs/baselines/reviwo/bin-picking.yaml": "8e0b6b94a2a68d952c4a1f8149d926e94a69164e917aac8ab12fed44d15d5567",
+    "configs/baselines/reviwo/coffee-push.yaml": "ab59e913e0781cd25c6eb005930c6af135d12c5039a557f70e547d01740ad82e",
     "configs/baselines/reviwo/door-open.yaml": "ecf4863c883c2b6a9b7169df83f01f64210c9f09ce4c168d5a9cd53ba98fa507",
     "configs/baselines/reviwo/hammer.yaml": "34cae891290fb9a76a928bf6becb539737701d31cef4fa68ce6ed6d69be38bbd",
     "configs/baselines/reviwo/peg-insert-side.yaml": "cb7099f41d7033df6af19e0dbcb1384c667481f271b042cd9cd16542a61afdd4",
@@ -167,6 +168,7 @@
     "configs/baselines/reviwo/shelf-place.yaml": "b8c2d6b3ff165a2471e08ff4c33be8eb7519be55706111d30f28e12cf8c7ff7a",
     "configs/baselines/reviwo/stick-push.yaml": "f35f8dafc75ab03940756fd1d095f0336621552899650aebfeca7d1d2776cc54",
     "configs/baselines/sincro/bin-picking.yaml": "e07ab8938f55857449e03709dabef2be498ad2fbb42648e6428ee6c6ff7cc397",
+    "configs/baselines/sincro/coffee-push.yaml": "45a6e2f3e449dc6fd6f56bb92e88e8bfd0f9f5c678058955c00d9d382cb7ca33",
     "configs/baselines/sincro/door-open.yaml": "518c7987646025264bec9ee040409a13e0edf8b42e5ec8eb2b43cf3cea6476af",
     "configs/baselines/sincro/hammer.yaml": "eef28d7eb87dbfedb7b1c4b094f5a20dd999b4c3c37ccc5f22a16283091fc7f8",
     "configs/baselines/sincro/peg-insert-side.yaml": "92e884691efbaa8a3dc334c3ce41df22b3cc6cede6d774ed3dae9a8a8f1e7464",
@@ -190,6 +192,7 @@
     "configs/metaworld/base.yaml": "8c72acb2a8bbf36531b151ae5c98cf29389f50bc34713deab1b6bba3a81c8949",
     "configs/metaworld/gates/overfit_m2.yaml": "4c55afebf6361bf35e156259101bf9a1683e5633301a9201d82e3bfb1f9a895a",
     "configs/metaworld/tasks/bin-picking.yaml": "3f2c9093b1a72d1f6a8c70209b58c3b979a3336e2c525a26ebfcbfb55e11a3be",
+    "configs/metaworld/tasks/coffee-push.yaml": "7cf468aba450937588f558323285a4ca15c74a0b80a398baeff111022dd716f3",
     "configs/metaworld/tasks/door-open.yaml": "02b4d9968431711f4c5ef7a67feeaafc00a785cefc4106b84f1ccbec14be3e83",
     "configs/metaworld/tasks/hammer.yaml": "e3d87e83db7062c6235229cdeb4866ad9aeb8e2ad465994c39a188a61110d4f8",
     "configs/metaworld/tasks/peg-insert-side.yaml": "d23c88679af317587d794f8a802a68df40a5f0fecd9111a83e575086aa095191",
