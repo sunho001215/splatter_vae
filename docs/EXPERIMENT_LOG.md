@@ -352,3 +352,141 @@ within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,10
     worse than A200's by more than 0.10 on either task. The development encoders are then retrained at 400k.
   - **300k (default)** otherwise.
   - The decision, the 20 comparisons and the proxy table will be appended here before `method-frozen-v1`.
+
+## 2026-10-08 — Mid-campaign review (user, ~11:40): constraints and launch order
+
+- **Constraints restated by the user.** Six fixed training cameras, no camera-randomised data (viewpoint robustness
+  must come from the training method); no dataset-derived scene initialisation in the decoder; dips after DrM
+  perturbations are expected (no perturbation ablations); no frozen DINOv2 baseline in this regime. Hard rules
+  unchanged. Running jobs continue; new work enters the queue in the order 1a-1c -> 3a/3b -> 2a-2c and 4a-4e screens
+  (interleaved as RAM allows) -> item 5 -> counted iterations.
+- **Open question raised with the user.** The decoder's anchors are initialised from per-task workspace statistics
+  (`model.anchor_stats`: mean and std of all valid GT depth points of the task, `scripts/compute_workspace_stats.py`).
+  This is a coarse Gaussian prior over the workspace, not per-scene geometry, but it is computed from the dataset.
+  Kept unchanged until the user decides, because changing it would invalidate every running encoder.
+
+## 2026-10-08 — Item 1 (review): near-view held-out sets, oracle sanity, Chamfer metrics
+
+- **1a camera sets.** Each held-out camera perturbs one training camera (orbit about `LOOKAT`, radius 1.0):
+  azimuth +/- 10 deg, elevation +/- 6 deg, radius +/- 5 %, then a lateral shift of the camera centre along its right
+  vector of up to 0.12 m with the camera re-aimed at `LOOKAT` (exactly how `s4d/rl/env.trajectory_path("lateral")`
+  moves the RL camera). All four offsets are drawn independently and uniformly. "trajectory" uses the full ranges
+  (identical to the RL trajectory ranges); "near" uses half. Two cameras per training camera and set (12 per set),
+  drawn once from fixed seeds and stored with the data. The 4 old far cameras are the "extrapolation" set (metric
+  names `*_heldout` keep their meaning), reported for context only.
+- **Ground truth.** `scripts/render_heldout_sets.py` replays the stored `qpos`/`qvel` of every validation episode
+  (`splits/<task>_seed0.json`, 10 episodes; no new episodes) and renders RGB and metric depth for the 24 new cameras
+  into `/home/ws/data/metaworld/splatter4d_v1/heldout_sets/<task>.hdf5`. Replay fidelity is checked by re-rendering
+  the six training cameras and comparing with the stored frames; the file records the result and the script fails
+  if they differ beyond renderer noise.
+- **1b oracle.** Per validation window and time: the six training cameras' GT depth is lifted and fused (with GT
+  colours) and z-buffer splatted (1 pixel) into every held-out camera. Reported per set: coverage (fraction of
+  pixels hit) and PSNR on covered pixels. The model's held-out PSNR is reported unmasked and on the oracle-covered
+  mask (`psnr_<set>`, `psnr_<set>_covered`).
+- **1c Chamfer (metres, each direction separately; mean, p50, p90 per window, averaged over windows).** GT clouds are
+  cropped to camera depth <= render far plane (3.0 m) and voxel-downsampled at 5 mm. Computed on the first window of
+  every validation batch (about 125 windows per stride in a full evaluation).
+  - CD-centers: Gaussian centres with opacity > 0.3 at t0 vs the fused GT cloud of all available cameras at t0
+    (6 training + 4 extrapolation + 24 near/trajectory cameras for validation episodes); and dynamic-group centres
+    vs GT points with motion score > 0.5 (training cameras, where GT motion exists).
+  - CD-render: per trajectory-set camera, points lifted from the rendered expected depth (alpha > 0.5) vs points
+    lifted from that camera's GT depth.
+  - CD-motion: centres displaced by the predicted 0->2 motion vs GT points (training cameras, t0) displaced by the GT
+    0->2 motion; all points and the dynamic subset (dynamic group vs motion score > 0.5).
+  - "pred->gt" measures floaters, "gt->pred" missing surfaces; tails (p90) show floaters.
+- **Retrieval and probes on near/trajectory.** The new sets exist for validation episodes only, so retrieval uses 64
+  validation windows (evenly spaced within the 10 validation episodes) with the existing pairwise protocol
+  (held-out camera query vs each training camera's states), reported for train, extrapolation, near and trajectory
+  cameras on the same 64 windows (`retrieval_top1_<set>_val`). Probes (fitted on training-episode states as before)
+  are scored on validation windows seen from each set (`r2_<target>_val_<set>`).
+- **Where.** `scripts/evaluate.py` (full split) computes all of it; in-training evaluations stay unchanged
+  (`eval.heldout_sets` off) to keep them cheap.
+- **Pre-registered length rule, amendment A (before any A300-vs-A200 data exists).** The far-camera PSNR leaves the
+  counted set (extrapolation is context only). Counted per task and stride (10, so 40 in total): training-camera
+  moving-pixel PSNR (> 0.3 dB), trajectory-set PSNR unmasked (> 0.2 dB), relative EPE 0->2 (> 0.03 lower),
+  training-camera retrieval (> 0.02), training-camera hand-velocity R² (> 0.03), CD-render on the trajectory set
+  (mean of the two directions' p90, > 10 % lower), near-set retrieval (> 0.02), trajectory-set retrieval (> 0.02),
+  trajectory-set hand-position R² (> 0.03), trajectory-set hand-velocity R² (> 0.03). Thresholds scale with the
+  count: 200k if A300 wins at most 8 of 40 (or loses more than it wins); 400k if it wins at least 24 of 40 with at
+  least 8 per task; otherwise 300k. The RL part is amended under item 5.
+
+## 2026-10-08 — Item 2 (review): viewpoint robustness within the fixed six cameras — screens and rule
+
+- **Screens** (single change each, hammer and pick-place, base configuration, base 200k LR schedule stopped at 100k
+  with the new `train.stop_step`, so the comparison with the base run at 100k is at the same LR; full-split
+  evaluation with the item-1 metrics). Precedents: depth-plus-reprojection augmentation (VISTA's baseline; Mirage, which
+  notes the limit to small pose changes) and novel-view rendering from a feed-forward 3DGS reconstruction for
+  augmentation (GenSplat, 2026). Ours use GT depth and stay inside the near/trajectory ranges of 1a.
+  - **2a crop** (`aug.crop`): with probability 0.5 no crop, otherwise a random resized crop with scale [0.8, 1.0] and
+    aspect ratio [0.95, 1.05] back to 128x128, the same crop for the three frames of a view; encoder input (and the
+    motion-score map that only steers the tube mask) only; render targets untouched; no other augmentation; never
+    at RL time.
+  - **2b privileged near-view synthesis** (`aug.synth_views: 2`): per sample, two cameras drawn from the trajectory
+    ranges around random training cameras; the six training cameras' GT depth+RGB at each time is fused and
+    z-buffer splatted into them. Patches with < 90 % coverage in any of the three frames get the lowest tube-mask
+    priority, so holes are masked tokens whenever enough covered patches exist. The views join InfoNCE (as positives)
+    and slot consistency, and are extra render targets on covered pixels (RGB and depth). The decoder still decodes
+    from a training camera. Regime-consistent: the same works with PointWorld depth in DROID.
+  - **2c self-rendered view consistency** (`loss.self_render: 0.5`): the decoded scene is rendered at t0..t2 into two
+    jittered cameras (same ranges); the renders are detached (stop-gradient on the decoder path) and encoded with
+    the training tube mask; loss = 1 - cosine between their slot state and the (detached) source-view state.
+- **2d decision rule (per screen, fixed before the runs).** Adopt if, on both development tasks (mean of strides 2
+  and 6, full split, at 100k vs base at 100k): trajectory-set retrieval >= +0.10, trajectory-set hand-position R²
+  >= +0.10 and trajectory-set hand-velocity R² >= +0.10; training-camera moving-pixel PSNR not lower by more than
+  0.5 dB; CD-render (trajectory, symmetric p90) not higher by more than 5 % (evaluation tolerance). Winners are
+  combined in one counted iteration (100k pretraining on both tasks + RL proxies of item 5).
+
+## 2026-10-08 — Item 3 (review): replace shelf-place before Stages 3/4
+
+- **3a screen** (`scripts/screen_tasks.py`; candidates sweep-into, coffee-push, lever-pull, assembly, push-back,
+  drawer-open, plate-slide) under the campaign protocol: 125 agent steps, action repeat 2, Meta-World v3 reward summed
+  per agent step, MT1 configurations seeded as in RL evaluation. Per task: 50 random-policy episodes (uniform actions:
+  return distribution, success); 50 scripted-expert episodes (the Meta-World policy queried at every agent step, its
+  action repeated, as an agent would act: return and success, required >= 80 %); object visibility in the six
+  training cameras (object position from the observation projected into each camera every 5 agent steps of the expert
+  episodes; visible when inside the image and within 2 cm of the rendered depth there; a camera counts if the object
+  is visible in >= 50 % of checks; required >= 4 of 6).
+- **Ranking for 3b (fixed now).** Among candidates passing 3a with random-policy mean return > 0: lowest
+  random-policy success first (a task a random policy solves is too easy), ties broken by larger 3D object
+  displacement in the expert episodes. The top 2 get DrM + CNN, seed 2000, 300k agent steps, light evaluation (every
+  25k agent steps, 20 episodes over the training cameras).
+- **3c choice (fixed now).** Requires (i) random-policy return > 0, (ii) CNN training-camera success at 300k above 0
+  and below ~0.7, (iii) clear 3D/motion content. If both qualify: larger 3D object displacement, then success closer
+  to 0.35. Then: collection (same recipe as the other tasks), split, workspace statistics, D2/D3, held-out sets;
+  `docs/RL_PROTOCOL.md` records the replacement and the reason; shelf-place moves to an appendix note on sparse-reward
+  tasks. If sweep-into is chosen, the official DrM per-task override (max_perturb_factor 0.9, target_lambda 0.6)
+  applies to every method.
+
+## 2026-10-08 — Item 4 (review): scene-general screens on the one-episode gate (diagnostics only)
+
+- **Setup.** Gate configuration with iteration-2 settings (hammer ep001, ramp 300, constant LR after a 300-step
+  warm-up, 6k steps, checkpoint at 6k), each compared at 6k with a fresh reference run of the same settings
+  (`gate-it3b` only kept a 12k checkpoint, and the new metrics need the 6k model). S1 (motion weight 20) is re-evaluated
+  from its existing 6k checkpoint. All evaluations: `scripts/evaluate.py` on the gate episode, strides 2 and 6.
+- **Screens.** 4a decoder LR x3 (`train.decoder_lr_mult: 3`) with 4 decoder blocks at dim 256; 4b K = 4 slots with
+  the full state concatenated to every parent token before the first block (`model.decoder.state_concat`), FiLM and
+  per-block cross-attention kept; 4c AdaLN-zero conditioning (DiT-style shift/scale/gate per block, gates initialised
+  at zero) instead of FiLM, plus Fourier features of each parent's anchor position added to its token; 4d hard-depth
+  weight x3 for the first 20 % of training (`loss.depth_hard_boost`); 4e motion loss normalised over moving pixels:
+  sum over pixels with motion_weight > 0 of w * Huber(pred - target) / max(sum w, 1 % of valid pixels) with
+  w = 1 + |target| / 3 cm, plus a static term (weight 0.1) averaged over pixels with zero target motion
+  (`loss.motion_norm: moving`), compared with the current all-pixel average and with S1.
+- **Promotion rule (fixed now).** Metrics: PSNR, moving-pixel PSNR, relative EPE 0->2, CD-centers (symmetric p90),
+  CD-motion (dynamic subset, symmetric p90), means of strides 2 and 6. Promote to a counted iteration if better than
+  the reference on at least 3 of the 5 by margins of 0.5 dB / 0.5 dB / 0.03 / 10 % / 10 % and not worse on any by
+  more than the same margin.
+
+## 2026-10-08 — Item 5 (review): RL proxies to 400k on hammer; pick-place not counted
+
+- **5a.** Every compared encoder gets hammer proxies of 400k agent steps (seeds 1000/1001, full evaluation protocol),
+  so recovery after the perturbations at 100k and 200k is visible. Done for the queued iteration-1/2 and base-200k
+  hammer proxies (edited before launch); the base-100k hammer proxies (200k steps, replays already deleted) are rerun
+  at 400k as `s1-proxy400-base-hammer-s{1000,1001}`. Decision quantities: last-5 mean training-camera success at 400k
+  (mean of two seeds) and recovery = success at 150k minus the best success at or before 100k, and success at 250k
+  minus the best at or before 200k.
+- **5b, amendment B to the pre-registered length rule (before any A300-vs-A200 data).** pick-place proxies are
+  reported but not counted (no method learns it within 200k). The RL condition becomes: hammer only, last-5 mean at
+  400k; 200k requires A300 not better than A200 by more than 0.10; 400k requires A300 not worse than A200 by more
+  than 0.10. Recovery is reported alongside. With amendment A, the full rule is: 200k if A300 wins at most 8 of the 40
+  representation comparisons (or loses more than it wins) and the hammer RL condition for 200k holds; 400k if it
+  wins at least 24 of 40 (at least 8 per task) and the hammer RL condition for 400k holds; otherwise 300k.
