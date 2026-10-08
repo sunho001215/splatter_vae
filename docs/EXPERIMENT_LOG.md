@@ -625,3 +625,16 @@ jobs `runs/fulleval2-screen-*-6k`. Rule (fixed before the runs): better on >= 3 
 - The item 4 decisions stand as pre-registered (nothing promoted). The honest reading is that the one-episode gate at
   6k cannot resolve effects of this size: none of 4b-4e is shown to be worse or better; only 4a (divergence) is a
   clear negative. Gate screens should use several seeds or be replaced by full-split 100k screens in future.
+
+## 2026-10-08 — Item 5: base encoder (100k) hammer proxies at 400k agent steps
+
+`analysis/review_rules.py proxies s1-proxy400-base-hammer` (seeds 1000 / 1001):
+
+| Seed | Last-5 train cameras | Last-5 held-out | Last-5 trajectories | Peak train | Recovery 150k | Recovery 250k |
+|---|---|---|---|---|---|---|
+| 1000 | 0.23 | 0.10 | 0.24 | 0.49 | -0.02 | -0.20 |
+| 1001 | 0.61 | 0.04 | 0.39 | 0.73 | +0.13 | +0.08 |
+| mean | 0.42 | 0.07 | 0.31 | 0.61 | +0.06 | -0.06 |
+
+The two seeds differ by 0.38 in last-5 success, so two-seed proxy comparisons can only resolve large effects; the
+0.10 threshold of the amended length rule is below this spread. Iteration 1 and 2 proxies are still running.

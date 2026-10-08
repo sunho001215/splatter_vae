@@ -5,6 +5,7 @@ Analysis only (not used by any job). Reads ``runs/<job>/eval/step_*/summary.json
     python analysis/review_rules.py item2 <screen-name>          # e.g. crop -> s2-screen-crop-{hammer,pick-place}
     python analysis/review_rules.py item4 <screen-name>          # e.g. g4a-declr3-dec4x256 vs g-ref
     python analysis/review_rules.py table <job> [<job> ...]       # metrics side by side
+    python analysis/review_rules.py proxies <run-prefix>          # item 5: last-5 mean and recovery, seeds 1000/1001
 """
 
 from __future__ import annotations
@@ -103,6 +104,40 @@ def table(jobs: list[str]) -> None:
         print(row)
 
 
-if __name__ == "__main__":
+def main() -> None:
     command, *rest = sys.argv[1:]
-    {"item2": lambda: item2(rest[0]), "item4": lambda: item4(rest[0]), "table": lambda: table(rest)}[command]()
+    commands = {"item2": lambda: item2(rest[0]), "item4": lambda: item4(rest[0]), "table": lambda: table(rest),
+                "proxies": lambda: proxies(rest[0])}
+    commands[command]()
+
+
+def proxy(run: str) -> dict:
+    """Item 5 quantities of one RL proxy run: last-5 mean training-camera success at the end, and recovery after the
+    perturbations at 100k / 200k (success at 150k / 250k minus the best success at or before 100k / 200k)."""
+    rows = [json.loads(line) for line in (REPO / "runs" / run / "eval.jsonl").read_text().splitlines()]
+    by_step = {int(r["step"]): r for r in rows}
+    tr = {s: float(r["train_cameras_success"]) for s, r in by_step.items()}
+    steps = sorted(tr)
+    out = {
+        "final_step": steps[-1],
+        "last5_train": sum(tr[s] for s in steps[-5:]) / 5,
+        "last5_heldout": sum(float(by_step[s].get("heldout_cameras_success", math.nan)) for s in steps[-5:]) / 5,
+        "last5_traj": sum(float(by_step[s].get("trajectories_success", math.nan)) for s in steps[-5:]) / 5,
+        "peak_train": max(tr.values()),
+    }
+    for at, before in ((150000, 100000), (250000, 200000)):
+        if at in tr:
+            out[f"recovery_{at // 1000}k"] = tr[at] - max(tr[s] for s in steps if s <= before)
+    return out
+
+
+def proxies(prefix: str, seeds=(1000, 1001)) -> None:
+    rows = {seed: proxy(f"{prefix}-s{seed}") for seed in seeds}
+    for seed, r in rows.items():
+        print(seed, json.dumps({k: round(v, 3) if isinstance(v, float) else v for k, v in r.items()}))
+    keys = rows[seeds[0]].keys()
+    print("mean", json.dumps({k: round(sum(r[k] for r in rows.values()) / len(rows), 3) for k in keys if k != "final_step"}))
+
+
+if __name__ == "__main__":
+    main()
