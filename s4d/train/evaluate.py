@@ -17,6 +17,7 @@ from s4d.data.metaworld.cameras import LOOKAT, RADIUS, opengl_to_opencv_c2w, orb
 from s4d.diag import panels as P
 from s4d.diag import wandb_log as W
 from s4d.diag.local_log import RunLogger
+from s4d.diag.heldout import chamfer_metrics, oracle_views, render_chamfer
 from s4d.diag.pointclouds import cloud_panel, fused_gt_points, gaussian_points
 from s4d.diag.probes import cross_view_retrieval, fit_and_score, probe_targets
 from s4d.diag.tracks import sample_track_pixels, track_panel
@@ -31,6 +32,9 @@ from s4d.train.loop import Model, forward_losses, move_batch
 from s4d.train.workers import fork_safe_iter
 
 RETRIEVAL_STATES = 64
+# Held-out camera groups: "eval" = the four far cameras ("extrapolation", metric name "heldout", context only);
+# "near" / "traj" = near-view sets within half / the full RL trajectory ranges (validation episodes only).
+HELDOUT_GROUPS = {"eval": "heldout", "near": "near", "traj": "traj"}
 
 
 def encode_states(model: Model, images_u8: torch.Tensor) -> torch.Tensor:
@@ -56,6 +60,21 @@ def _select_retrieval_windows(episodes: list[str], t0s: list[int], n: int = RETR
     for indices in by_ep.values():
         indices.sort(key=lambda i: t0s[i])
         chosen.append(indices[len(indices) // 2])
+    return chosen[:n]
+
+
+def _spread_windows(episodes: list[str], t0s: list[int], n: int = RETRIEVAL_STATES) -> list[int]:
+    """n windows spread evenly over time within every episode, taken round-robin across episodes."""
+    by_ep: dict[str, list[int]] = defaultdict(list)
+    for i, episode in enumerate(episodes):
+        by_ep[episode].append(i)
+    per = -(-n // max(1, len(by_ep)))
+    columns = []
+    for indices in by_ep.values():
+        indices.sort(key=lambda i: t0s[i])
+        picks = np.unique(np.linspace(0, len(indices) - 1, min(per, len(indices))).round().astype(int))
+        columns.append([indices[k] for k in picks])
+    chosen = [col[r] for r in range(per) for col in columns if r < len(col)]
     return chosen[:n]
 
 
@@ -99,6 +118,7 @@ class Evaluator:
         self.cfg, self.val_loaders, self.probe_loaders = cfg, dict(val_loaders), dict(probe_loaders or {})
         self.logger, self.device, self.n_train = logger, device, n_train_cams
         self.max_batches = int(get(cfg, "eval.max_batches", 8))
+        self.heldout_diag = bool(get(cfg, "eval.heldout_sets", False))
         self.probe_every = int(get(cfg, "eval.probe_every", 10000))
         self.near, self.far = float(cfg["render"]["near"]), float(cfg["render"]["far"])
 
@@ -131,7 +151,9 @@ class Evaluator:
         sums: dict[str, float] = defaultdict(float)
         count = 0
         counts = defaultdict(int)
-        states, eval_states, episodes, t0s, probe_states, strides = [], [], [], [], [], []
+        states, episodes, t0s, probe_states, strides = [], [], [], [], []
+        group_states: dict[str, list] = defaultdict(list)
+        window_rows: list[dict] = []
         first = None
         for i, raw in enumerate(fork_safe_iter(loader)):
             if not full and i >= self.max_batches:
@@ -153,23 +175,33 @@ class Evaluator:
                 **{f"loss/{k}": v for k, v in out["losses"].items()},
                 **{f"metric/{k}": v for k, v in out["metrics"].items()},
             }
-            if "eval_images" in batch:
-                heldout = render_rgbd(
+            for prefix, name in HELDOUT_GROUPS.items():
+                if f"{prefix}_images" not in batch:
+                    continue
+                rendered = render_rgbd(
                     gs,
                     gs.xyz_sequence(),
-                    batch["eval_w2c"],
-                    batch["eval_K"],
+                    batch[f"{prefix}_w2c"],
+                    batch[f"{prefix}_K"],
                     *batch["images"].shape[-2:],
                     self.near,
                     self.far,
                 )
-                Hp = heldout["rgb"].flatten(0, 2)
-                psnr_ho = masked_psnr(
-                    Hp, batch["eval_images"].float().flatten(0, 2) / 255, torch.ones_like(Hp[:, :1], dtype=torch.bool)
-                )
-                ev_depth = batch["eval_depth"].flatten(0, 2)
-                absrel_ho = abs_rel(heldout["depth"].flatten(0, 2), ev_depth, ev_depth > 0)
-                metrics.update({"metric/psnr_heldout": psnr_ho.nanmean(), "metric/depth_absrel_heldout": absrel_ho.mean()})
+                if prefix == "eval":
+                    heldout = rendered
+                Hp = rendered["rgb"].flatten(0, 2)
+                target = batch[f"{prefix}_images"].float().flatten(0, 2) / 255
+                psnr_ho = masked_psnr(Hp, target, torch.ones_like(Hp[:, :1], dtype=torch.bool))
+                ho_depth = batch[f"{prefix}_depth"].flatten(0, 2)
+                absrel_ho = abs_rel(rendered["depth"].flatten(0, 2), ho_depth, ho_depth > 0)
+                metrics.update({f"metric/psnr_{name}": psnr_ho.nanmean(), f"metric/depth_absrel_{name}": absrel_ho.mean()})
+                if self.heldout_diag:
+                    metrics.update(self.oracle_metrics(batch, prefix, name, Hp, target))
+                    if prefix == "traj":
+                        window_rows.append(render_chamfer(rendered, batch, 0, prefix, self.far))
+                group_states[name].append(_cpu(encode_states(model, batch[f"{prefix}_images"]).flatten(2)))
+            if self.heldout_diag:
+                window_rows.append(chamfer_metrics(batch, gs, 0, self.far))
             for k, v in metrics.items():
                 val = float(v)
                 if math.isfinite(val):
@@ -188,8 +220,6 @@ class Evaluator:
                     counts[k] += denominator
             count += 1
             states.append(_cpu(out["slots"].flatten(2)))
-            if "eval_images" in batch:
-                eval_states.append(_cpu(encode_states(model, batch["eval_images"]).flatten(2)))
             episodes.extend(batch["meta"]["episode"])
             t0s.extend(int(t[0]) for t in batch["meta"]["t_indices"])
             if "probe_state" in batch:
@@ -210,19 +240,73 @@ class Evaluator:
         if not states:
             raise ValueError("validation loader is empty")
         summary = {k: v / counts[k] for k, v in sums.items()}
+        if window_rows:
+            keys = sorted({k for row in window_rows for k in row})
+            summary.update(
+                {f"metric/{k}": float(torch.tensor([row.get(k, float("nan")) for row in window_rows]).nanmean()) for k in keys}
+            )
+            summary["metric/cd_windows"] = float(sum("cd_centers_p2g_mean" in row for row in window_rows))
         all_states = torch.cat(states)  # (M,V,D)
-        all_eval = torch.cat(eval_states) if eval_states else all_states[:, :0]
+        held = {name: torch.cat(rows) for name, rows in group_states.items() if rows}
         periodic = full or (self.probe_every > 0 and step % self.probe_every == 0)
         if periodic:
             summary.update(self.retrieval(model, stride))
+            if self.heldout_diag:
+                summary.update(self.retrieval_sets(model, stride, loader))
         summary.update({f"metric/{k}_val": float(v) for k, v in state_statistics(all_states).items()})
         if probe_loader is not None and probe_states and periodic:
-            probe = self.probes(model, probe_loader, all_states, all_eval, torch.cat(probe_states), torch.cat(strides))
+            probe = self.probes(model, probe_loader, all_states, held, torch.cat(probe_states), torch.cat(strides))
             summary.update({f"metric/{k}": v for k, v in probe.items()})
         if first is not None:
             self.panels(model, first, step, summary, tag=f"s{stride}")
         model.train()
         return summary, count
+
+    def oracle_metrics(self, batch: dict, prefix: str, name: str, rendered: torch.Tensor, target: torch.Tensor) -> dict:
+        """Oracle sanity (training-camera GT fused and splatted into the held-out cameras) and the model's held-out
+        PSNR on the pixels the oracle covers. ``rendered``/``target`` are (B*T*V,3,H,W) in [0,1]."""
+        B, T = batch["images"].shape[:2]
+        rgbs, covers = [], []
+        for b in range(B):
+            for t in range(T):
+                rgb, covered = oracle_views(batch, b, t, prefix, self.near, self.far)
+                rgbs.append(rgb)
+                covers.append(covered)
+        oracle, covered = torch.cat(rgbs), torch.cat(covers)  # same (b,t,v) order as flatten(0, 2)
+        return {
+            f"metric/oracle_coverage_{name}": covered.float().mean(),
+            f"metric/oracle_psnr_covered_{name}": masked_psnr(oracle, target, covered).nanmean(),
+            f"metric/psnr_{name}_covered": masked_psnr(rendered, target, covered).nanmean(),
+        }
+
+    @torch.no_grad()
+    def retrieval_sets(self, model: Model, stride: int, loader) -> dict:
+        """Retrieval on 64 validation windows (evenly spaced in time within each validation episode) for the training,
+        far (heldout), near and trajectory cameras; query held-out camera vs every training camera, as ``retrieval``."""
+        dataset = loader.dataset.dataset if isinstance(loader.dataset, Subset) else loader.dataset
+        if getattr(dataset, "heldout", None) is None:
+            return {}
+        indices = [
+            i
+            for i in _spread_windows([x[0] for x in dataset.samples], [x[1] for x in dataset.samples])
+            if dataset.samples[i][0] in dataset.heldout
+        ]
+        if not indices:  # e.g. the one-episode gate evaluates a training episode, which has no near/trajectory views
+            return {}
+        groups: dict[str, list] = defaultdict(list)
+        for batch in DataLoader(Subset(dataset, indices), batch_size=8, collate_fn=collate):
+            groups["train"].append(encode_states(model, batch["images"].to(self.device)).flatten(2).cpu())
+            for prefix, name in HELDOUT_GROUPS.items():
+                groups[name].append(encode_states(model, batch[f"{prefix}_images"].to(self.device)).flatten(2).cpu())
+        train = torch.cat(groups.pop("train"))
+        result = {
+            "metric/retrieval_top1_train_val": cross_view_retrieval(train, self.n_train)["retrieval_top1_train"],
+            "metric/retrieval_val_windows": float(len(train)),
+        }
+        for name, rows in groups.items():
+            states = torch.cat((train, torch.cat(rows)), dim=1)
+            result[f"metric/retrieval_top1_{name}_val"] = cross_view_retrieval(states, self.n_train)["retrieval_top1_heldout"]
+        return result
 
     @torch.no_grad()
     def retrieval(self, model: Model, stride: int) -> dict:
@@ -260,7 +344,7 @@ class Evaluator:
         model: Model,
         probe_loader,
         val_states: torch.Tensor,
-        val_eval_states: torch.Tensor,
+        val_held_states: dict[str, torch.Tensor],
         val_probe: torch.Tensor,
         val_stride: torch.Tensor,
     ) -> dict[str, float]:
@@ -281,15 +365,14 @@ class Evaluator:
         train_y = {k: torch.cat([y[k] for y in ys]) for k in ys[0]}
         val_t = probe_targets(val_probe, val_stride)
         M, V, D = val_states.shape
-        Ve = val_eval_states.shape[1]
         sets = {
             "val_traincams": (val_states.reshape(M * V, D), {k: v.repeat_interleave(V, 0) for k, v in val_t.items()}),
         }
-        if Ve:
-            sets["val_heldout"] = (
-                val_eval_states.reshape(M * Ve, D),
-                {k: v.repeat_interleave(Ve, 0) for k, v in val_t.items()},
-            )
+        for name, held in val_held_states.items():
+            if len(held) != M:  # held-out views exist only for some windows (never mixed within one evaluation)
+                continue
+            Ve = held.shape[1]
+            sets[f"val_{name}"] = (held.reshape(M * Ve, D), {k: v.repeat_interleave(Ve, 0) for k, v in val_t.items()})
         return fit_and_score(train_x, train_y, sets)
 
     # ------------------------------------------------------------------------------------ panels

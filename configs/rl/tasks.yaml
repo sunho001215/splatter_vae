@@ -10,3 +10,12 @@ bin-picking:     {difficulty: medium,    drm_overrides: {}}
 pick-place:      {difficulty: hard,      drm_overrides: {}}
 stick-push:      {difficulty: very hard, drm_overrides: {}}
 shelf-place:     {difficulty: very hard, drm_overrides: {}}
+# Reserve tasks screened to replace shelf-place (review item 3; docs/EXPERIMENT_LOG.md). Difficulty as in MWM
+# Appendix F (reporting only). sweep-into carries the official DrM per-task override, applied to every method.
+sweep-into:      {difficulty: medium,    drm_overrides: {max_perturb_factor: 0.9, target_lambda: 0.6}}
+coffee-push:     {difficulty: medium,    drm_overrides: {}}
+lever-pull:      {difficulty: easy,      drm_overrides: {}}
+assembly:        {difficulty: hard,      drm_overrides: {}}
+push-back:       {difficulty: hard,      drm_overrides: {}}
+drawer-open:     {difficulty: easy,      drm_overrides: {}}
+plate-slide:     {difficulty: easy,      drm_overrides: {}}

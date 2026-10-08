@@ -180,6 +180,14 @@ class Encoder(nn.Module):
         self, images: torch.Tensor, motion_score: torch.Tensor | None = None, mask_ratio: float | None = None
     ) -> dict[str, torch.Tensor]:
         """images (B,T,3,H,W) float in [0,1]. Returns slots (B,K,Ds), patch_tokens, visible mask."""
+        return self._encode(images, motion_score, mask_ratio, None)
+
+    def forward_visible(self, images: torch.Tensor, visible: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Like ``forward`` with an explicit visible-token mask (B,N), the same count per row: synthetic training views
+        (review item 2b) keep their holes out of the token set."""
+        return self._encode(images, None, None, visible)
+
+    def _encode(self, images, motion_score, mask_ratio, visible) -> dict[str, torch.Tensor]:
         cfg = self.cfg
         B, T, C, H, W = images.shape
         if (H, W) != (cfg.image_height, cfg.image_width) or T != cfg.num_frames:
@@ -190,13 +198,14 @@ class Encoder(nn.Module):
         tokens = self.patch_embed(x).flatten(2).transpose(1, 2).view(B, T, cfg.num_patches, -1)
         tokens = tokens + self.pos_embed[:, None] + self.temporal_embed[:, :T, None]
         ratio = cfg.mask_ratio if mask_ratio is None else mask_ratio
-        if ratio > 0.0 and self.training:
-            scores = (
-                self.patch_scores(motion_score)
-                if motion_score is not None
-                else torch.zeros(B, cfg.num_patches, device=images.device)
-            )
-            visible = sample_tube_mask(scores, ratio, cfg.motion_patch_threshold)
+        if visible is not None or (ratio > 0.0 and self.training):
+            if visible is None:
+                scores = (
+                    self.patch_scores(motion_score)
+                    if motion_score is not None
+                    else torch.zeros(B, cfg.num_patches, device=images.device)
+                )
+                visible = sample_tube_mask(scores, ratio, cfg.motion_patch_threshold)
             n_vis = int(visible.sum(1)[0])
             ids = visible.nonzero()[:, 1].view(B, n_vis)
             tokens = torch.gather(tokens, 2, ids[:, None, :, None].expand(B, T, n_vis, tokens.shape[-1]))

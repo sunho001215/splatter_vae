@@ -7,6 +7,13 @@ import torch.nn.functional as F
 
 PAIR_WEIGHTS = (0.4, 0.4, 0.2)
 MOVING_THRESHOLD_M = 0.005
+# normalization="moving" (review item 4e): the moving term sums over valid pixels with non-zero target motion,
+# w = 1 + |target| / MOTION_WEIGHT_SCALE_M, divided by max(sum w, MIN_MOVING_FRACTION * valid pixels); a static term
+# (weight STATIC_WEIGHT) averages over valid pixels with zero target motion.
+MOTION_WEIGHT_SCALE_M = 0.03
+MIN_MOVING_FRACTION = 0.01
+STATIC_WEIGHT = 0.1
+ZERO_MOTION_M = 1e-6
 
 
 def expected_displacement(features: torch.Tensor, coverage: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -22,11 +29,16 @@ def motion_loss(
     huber_delta: float = 0.01,
     coverage_threshold: float = 0.01,
     pair_weights=PAIR_WEIGHTS,
+    normalization: str = "valid",
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Huber loss between predicted and target displacements, weighted by motion_weight.
 
-    Returns the pair-weighted scalar loss and metrics: per-pair loss, EPE, relative EPE on moving pixels.
+    ``normalization="valid"`` averages over every valid pixel; ``"moving"`` normalises over moving pixels (see the
+    constants above). Returns the pair-weighted scalar loss and metrics: per-pair loss, EPE, relative EPE on moving
+    pixels.
     """
+    if normalization not in ("valid", "moving"):
+        raise ValueError(f"unknown motion normalization {normalization!r}")
     valid = weight > 0
     w = weight * valid.float()
     per_pixel = F.smooth_l1_loss(pred.float(), target.float(), beta=huber_delta, reduction="none").sum(3, keepdim=True)
@@ -37,7 +49,17 @@ def motion_loss(
     for p, name in enumerate(("01", "12", "02")):
         wp = w[:, p]
         denom = wp.sum().clamp_min(1.0)
-        lp = (per_pixel[:, p] * wp).sum() / denom
+        if normalization == "valid":
+            lp = (per_pixel[:, p] * wp).sum() / denom
+        else:
+            mag = gt_mag[:, p]
+            nonzero = (valid[:, p] & (mag > ZERO_MOTION_M)).float()
+            zero = (valid[:, p] & (mag <= ZERO_MOTION_M)).float()
+            wm = nonzero * (1.0 + mag / MOTION_WEIGHT_SCALE_M)
+            floor = MIN_MOVING_FRACTION * valid[:, p].float().sum()
+            moving_term = (per_pixel[:, p] * wm).sum() / torch.maximum(wm.sum(), floor.clamp_min(1.0))
+            static_term = (per_pixel[:, p] * zero).sum() / zero.sum().clamp_min(1.0)
+            lp = moving_term + STATIC_WEIGHT * static_term
         losses.append(lp)
         metrics[f"motion_loss_{name}"] = lp.detach()
         metrics[f"epe_{name}"] = ((err[:, p] * wp).sum() / denom).detach()

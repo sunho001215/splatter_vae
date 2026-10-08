@@ -1,0 +1,240 @@
+{
+  "sweep-into": {
+    "task": "sweep-into",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 48.25720816209555,
+      "p10": 10.566234349220244,
+      "p50": 24.115518368728758,
+      "p90": 72.09826345498871,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.02,
+    "expert_return_mean": 1051.3480751306458,
+    "expert_success": 0.9,
+    "object_bodies": [
+      "obj"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.26162864373958244,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/sweep-into.png",
+    "passed": true,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  },
+  "coffee-push": {
+    "task": "coffee-push",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 10.563934980310995,
+      "p10": 6.3850529266236435,
+      "p50": 10.303205950404271,
+      "p90": 16.650492655947946,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.0,
+    "expert_return_mean": 1121.0693154003443,
+    "expert_success": 1.0,
+    "object_bodies": [
+      "mug"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.22085096429305742,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/coffee-push.png",
+    "passed": true,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  },
+  "lever-pull": {
+    "task": "lever-pull",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 118.52546882621488,
+      "p10": 59.92575619714578,
+      "p50": 123.06131641710738,
+      "p90": 189.60476137486916,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.0,
+    "expert_return_mean": 576.4637194222296,
+    "expert_success": 1.0,
+    "object_bodies": [
+      "lever_link1"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.0,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/lever-pull.png",
+    "passed": true,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  },
+  "assembly": {
+    "task": "assembly",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 111.75120118738921,
+      "p10": 93.6467024570955,
+      "p50": 114.80009179309175,
+      "p90": 126.38484605825076,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.0,
+    "expert_return_mean": 1797.3867928093,
+    "expert_success": 1.0,
+    "object_bodies": [
+      "asmbly_peg"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.2679422611931107,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/assembly.png",
+    "passed": true,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  },
+  "push-back": {
+    "task": "push-back",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 2.6875982217925127,
+      "p10": 1.8892410668268604,
+      "p50": 2.6239123183978164,
+      "p90": 3.497808733406091,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.0,
+    "expert_return_mean": 195.95287274198134,
+    "expert_success": 0.64,
+    "object_bodies": [
+      "obj"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.22495102871320094,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/push-back.png",
+    "passed": false,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  },
+  "drawer-open": {
+    "task": "drawer-open",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 316.52466267296154,
+      "p10": 232.542878794491,
+      "p50": 307.6930377470894,
+      "p90": 433.4606844502815,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.0,
+    "expert_return_mean": 1800.303988635806,
+    "expert_success": 1.0,
+    "object_bodies": [
+      "drawer_link"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.2020624145485319,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/drawer-open.png",
+    "passed": true,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  },
+  "plate-slide": {
+    "task": "plate-slide",
+    "protocol": {
+      "action_repeat": 2,
+      "max_sim_steps": 250,
+      "episodes": 50
+    },
+    "random_return": {
+      "mean": 160.80168563609578,
+      "p10": 87.76311507859137,
+      "p50": 147.3053541327851,
+      "p90": 230.1149481826199,
+      "fraction_positive": 1.0
+    },
+    "random_success": 0.0,
+    "expert_return_mean": 2106.496286389152,
+    "expert_success": 1.0,
+    "object_bodies": [
+      "body34"
+    ],
+    "object_visible_4_of_6_fraction": 1.0,
+    "visible_cameras_median": 6.0,
+    "expert_object_displacement_m": 0.2855550294485359,
+    "contact_sheet": "/home/ws/ws/splatter4d/.worktrees/review/docs/task_screening/plate-slide.png",
+    "passed": true,
+    "gpu_mapping": [
+      {
+        "index": 0,
+        "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      }
+    ],
+    "egl_device": 17
+  }
+}

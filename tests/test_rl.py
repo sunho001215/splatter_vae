@@ -314,6 +314,11 @@ def test_schedule_spacing_guard_and_eval_protocol():
     )
     assert len(groups) == 12 and sum(n for _, n in groups.values()) == 240
     assert sum(groups[f"train{i}"][1] for i in range(6)) == 120
+    light = evaluation_groups(
+        {"episodes_per_train_camera": 20, "episodes_per_heldout_camera": 0, "episodes_per_trajectory": 0,
+         "train_episodes_total": 20}
+    )
+    assert sorted(light) == [f"train{i}" for i in range(6)] and [n for _, n in light.values()] == [4, 4, 3, 3, 3, 3]
     assert episode_seeds(3, 4, 5) == episode_seeds(3, 4, 5) != episode_seeds(3, 5, 5)
 
 
@@ -393,3 +398,7 @@ def test_every_task_resolves_to_the_official_drm_metaworld_settings(tmp_path, en
         assert cfg["train"]["num_seed_steps"] == 2000 and cfg["train"]["time_limit_continuation"] == 1.0
         assert cfg["agent"]["feature_dim"] == (50 if encoder == "cnn" else 256)
         assert cfg["algorithm"] == "drm"
+    # the only official DrM per-task override (sweep-into) applies to any method that runs the task
+    if encoder == "cnn":
+        sweep = resolve_config("sweep-into", encoder, 0, overrides)
+        assert sweep["agent"]["max_perturb_factor"] == 0.9 and sweep["agent"]["target_lambda"] == 0.6

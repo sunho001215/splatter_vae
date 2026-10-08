@@ -3,10 +3,16 @@
 The decoder never sees pixels, depth, or cameras. Parent tokens are FiLM-conditioned
 by the mean slot, refined by L blocks of (self-attention, cross-attention to the K
 slots, MLP), then expanded into children around parent centres.
+
+Screened options (review item 4, all off by default): ``state_concat`` concatenates the full K-slot state to every
+parent token before the first block; ``conditioning="adaln_zero"`` replaces FiLM by DiT-style adaptive LayerNorm
+(shift, scale and a zero-initialised gate per sub-layer, from the mean slot); ``anchor_fourier`` adds Fourier
+features of each parent's anchor position to its token.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import torch
@@ -40,6 +46,10 @@ class DecoderConfig:
     scene: GroupConfig = field(default_factory=lambda: GroupConfig(768, 8, 0.15, 0.06, 0.001, 0.08))
     dynamic: GroupConfig = field(default_factory=lambda: GroupConfig(256, 8, 0.4, 0.04, 0.0005, 0.03))
     single_group: bool = False  # ablation (c): one static-budget group that also carries motion
+    num_slots: int = 1  # K, needed to size the state concatenation
+    state_concat: bool = False
+    conditioning: str = "film"  # "film" | "adaln_zero"
+    anchor_fourier: int = 0  # number of frequencies (0 = off)
 
 
 class DecoderBlock(nn.Module):
@@ -57,6 +67,40 @@ class DecoderBlock(nn.Module):
         parents = parents + self.self_attn(h, h, h, need_weights=False)[0]
         parents = parents + self.cross_attn(self.norm2(parents), slots, slots, need_weights=False)[0]
         return parents + self.mlp(self.norm3(parents))
+
+
+class AdaLNZeroBlock(nn.Module):
+    """DecoderBlock with adaptive LayerNorm: each sub-layer input is modulated by (shift, scale) and its output scaled
+    by a gate, all regressed from the conditioning vector by a zero-initialised layer (so every block starts as the
+    identity)."""
+
+    def __init__(self, dim: int, heads: int, mlp_ratio: float):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        self.self_attn = nn.MultiheadAttention(dim, heads, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        self.cross_attn = nn.MultiheadAttention(dim, heads, batch_first=True)
+        self.norm3 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+        self.mlp = nn.Sequential(nn.Linear(dim, int(dim * mlp_ratio)), nn.GELU(), nn.Linear(int(dim * mlp_ratio), dim))
+        self.modulation = nn.Sequential(nn.SiLU(), nn.Linear(dim, 9 * dim))
+        nn.init.zeros_(self.modulation[1].weight)
+        nn.init.zeros_(self.modulation[1].bias)
+
+    def forward(self, parents: torch.Tensor, slots: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        s1, c1, g1, s2, c2, g2, s3, c3, g3 = self.modulation(cond)[:, None].chunk(9, dim=-1)
+        h = self.norm1(parents) * (1.0 + c1) + s1
+        parents = parents + g1 * self.self_attn(h, h, h, need_weights=False)[0]
+        h = self.norm2(parents) * (1.0 + c2) + s2
+        parents = parents + g2 * self.cross_attn(h, slots, slots, need_weights=False)[0]
+        h = self.norm3(parents) * (1.0 + c3) + s3
+        return parents + g3 * self.mlp(h)
+
+
+def fourier_features(x: torch.Tensor, frequencies: int) -> torch.Tensor:
+    """(..., 3) metres -> (..., 6 * frequencies): sin and cos of 2^k * pi * x, k = 0..frequencies-1."""
+    scales = math.pi * 2.0 ** torch.arange(frequencies, device=x.device, dtype=x.dtype)
+    angles = (x[..., None] * scales).flatten(-2)
+    return torch.cat((angles.sin(), angles.cos()), -1)
 
 
 class GroupHeads(nn.Module):
@@ -116,10 +160,27 @@ class GaussianDecoder(nn.Module):
         super().__init__()
         self.cfg = cfg
         D = cfg.dim
-        self.film = nn.Sequential(nn.Linear(cfg.slot_dim, D), nn.SiLU(), nn.Linear(D, 2 * D))
+        if cfg.conditioning == "film":
+            self.film = nn.Sequential(nn.Linear(cfg.slot_dim, D), nn.SiLU(), nn.Linear(D, 2 * D))
+            self.blocks = nn.ModuleList(DecoderBlock(D, cfg.heads, cfg.mlp_ratio) for _ in range(cfg.depth))
+        elif cfg.conditioning == "adaln_zero":
+            self.cond = nn.Sequential(nn.Linear(cfg.slot_dim, D), nn.SiLU(), nn.Linear(D, D))
+            self.blocks = nn.ModuleList(AdaLNZeroBlock(D, cfg.heads, cfg.mlp_ratio) for _ in range(cfg.depth))
+        else:
+            raise ValueError(f"unknown decoder conditioning {cfg.conditioning!r}")
         self.slot_proj = nn.Linear(cfg.slot_dim, D)
         self.token_norm = nn.LayerNorm(D)
-        self.blocks = nn.ModuleList(DecoderBlock(D, cfg.heads, cfg.mlp_ratio) for _ in range(cfg.depth))
+        if cfg.anchor_fourier > 0:
+            self.anchor_proj = nn.Linear(6 * cfg.anchor_fourier, D)
+            nn.init.normal_(self.anchor_proj.weight, std=0.02)
+            nn.init.zeros_(self.anchor_proj.bias)
+        if cfg.state_concat:  # Linear([token, state]) starting as the identity on the token
+            self.state_cat = nn.Linear(D + cfg.num_slots * cfg.slot_dim, D)
+            with torch.no_grad():
+                self.state_cat.weight.zero_()
+                self.state_cat.weight[:, :D].copy_(torch.eye(D))
+                nn.init.normal_(self.state_cat.weight[:, D:], std=0.02)
+                self.state_cat.bias.zero_()
         if cfg.single_group:
             total = cfg.scene.parents + cfg.dynamic.parents
             merged = GroupConfig(
@@ -160,12 +221,27 @@ class GaussianDecoder(nn.Module):
         if slots.dim() != 2 + 1:
             raise ValueError(f"slots must be (B,K,Ds), got {tuple(slots.shape)}")
         B = slots.shape[0]
-        gamma, beta = self.film(slots.mean(1)).chunk(2, dim=-1)
         kv = self.slot_proj(slots)
-        parents = torch.cat([self.token_norm(h.parent_tokens)[None].expand(B, -1, -1) for h in self.groups], 1)
-        parents = parents * (1.0 + gamma[:, None]) + beta[:, None]
-        for block in self.blocks:
-            parents = block(parents, kv)
+        tokens = []
+        for h in self.groups:
+            token = self.token_norm(h.parent_tokens)
+            if self.cfg.anchor_fourier > 0:
+                token = token + self.anchor_proj(fourier_features(h.anchors, self.cfg.anchor_fourier))
+            tokens.append(token[None].expand(B, -1, -1))
+        parents = torch.cat(tokens, 1)
+        if self.cfg.conditioning == "film":
+            gamma, beta = self.film(slots.mean(1)).chunk(2, dim=-1)
+            parents = parents * (1.0 + gamma[:, None]) + beta[:, None]
+        if self.cfg.state_concat:
+            state = slots.flatten(1)[:, None].expand(B, parents.shape[1], -1)
+            parents = self.state_cat(torch.cat((parents, state.to(parents.dtype)), -1))
+        if self.cfg.conditioning == "film":
+            for block in self.blocks:
+                parents = block(parents, kv)
+        else:
+            cond = self.cond(slots.mean(1))
+            for block in self.blocks:
+                parents = block(parents, kv, cond)
         outputs, start = [], 0
         for head in self.groups:
             outputs.append(head(parents[:, start : start + head.g.parents], self.cfg.motion_max, self.cfg.scale_act_bias))

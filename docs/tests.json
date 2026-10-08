@@ -1,12 +1,12 @@
 {
-  "started_utc": "2026-10-08T01:08:20.849226+00:00",
+  "started_utc": "2026-10-08T03:14:06.864570+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
   "gpu_mapping": [
     {
       "index": 0,
-      "uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+      "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
       "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
     }
   ],
@@ -14,17 +14,17 @@
     "tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/docs/tests.junit.xml"
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/review/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 222.03673257213086,
+  "duration_seconds": 213.4503135192208,
   "counts": {
-    "passed": 204,
+    "passed": 222,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 204,
+  "total": 222,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -55,10 +55,13 @@
     "s4d/data/droid/pointworld.py": "4d9d5f89b48d558c97fb6a00322b53c5844185655689de8ba115ed0f518d0112",
     "s4d/data/droid/rlds.py": "55fa47e3c560436801a60a8a561ad2f2d7af5adb7f2d7f35b00bd2dca237e36a",
     "s4d/data/metaworld/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "s4d/data/metaworld/cameras.py": "fab5d78a22e05fda42a8c88df8e038bcb6e865983de1386ebf4db8c035a6d321",
+    "s4d/data/metaworld/cameras.py": "4489ada843e1ea45dff5b4bde3d3152730392c559ee2e8beb6b92df04d5dddba",
     "s4d/data/metaworld/collect.py": "f1eb373e7413faf4c64de7b133494792e99fdbc736c1ae7b566cf17e9aa0666d",
-    "s4d/data/metaworld/dataset.py": "7576b5762e55ac090df2f917b27f1f6726107e04ca9eac68793e972a8fd8ef00",
+    "s4d/data/metaworld/dataset.py": "2df65d7f77c5049c26599d8c861d76bce718c434ce5cffb372651b400c22cf54",
+    "s4d/data/metaworld/heldout.py": "a06afefa84db4a2b85dfe41ae7ecfb378b7b1df1fdc034740fd1e2c580525aae",
+    "s4d/data/metaworld/heldout_render.py": "fac5dadf0d5fa9dde4091372f43b5885b9d4c28d8da64ffe33e9144c851558f3",
     "s4d/diag/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/diag/heldout.py": "856f9b7492fc75eb1eb673d9be38d5220eec8a59179705e9c5d8b36e65c609f8",
     "s4d/diag/local_log.py": "c93b3cfd83911139ea67b5ea6e131eb0cdd9c3889c07a23b646f574714a6e9c2",
     "s4d/diag/panels.py": "99f4eaf62e6acb9de705214c5e0fcc616e478ca4b8712d3e5a19949455c41722",
     "s4d/diag/pointclouds.py": "37570cb6d6c2b3e12ebe9f1f218402455393fbe584f1da2012384587233f1f18",
@@ -70,27 +73,28 @@
     "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
     "s4d/losses/invariance.py": "6746f4115e6cf88f7056f914f5f881b0aeda990b8def4bfd6f669a8c93481d3b",
-    "s4d/losses/motion.py": "eaa37912d2aa440443d218ea2b6c479389ca74c2cf0b36fd3278b67b4a97cd60",
+    "s4d/losses/motion.py": "b321d5f320d5a16204b052a13b8f878eac99fd99a48d5b65daf4486c61828258",
     "s4d/losses/regularizers.py": "431cae83a1d13110e2b80043e2b994bc2c26d056fb7f1a9d634e6cd8f97333d3",
     "s4d/losses/rgb.py": "94da2fabf2631899d34d330bcb121626efa36caba573cd820c445d64ec6deaa9",
     "s4d/model/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "s4d/model/decoder.py": "cc555ac4aadece1b832cd74a289168ec9981dbf348a68f2bfeda6c1c4f218fc1",
-    "s4d/model/encoder.py": "d339f53a70639eaa33318c39f66da32a78b7120c19ab56843efd1c8133150288",
+    "s4d/model/decoder.py": "94a843ab7b76bd7d2c1c4e36e237ff6ff126910af0669bc07e058080e51aabb8",
+    "s4d/model/encoder.py": "346045218986a854f8a57727cbc4ada8a959565e4e15f7bc72155b25a42d1298",
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "a91b194adb4c6246cd50812a97c3e2af3f4681f430ec51b6e675c85f6c2b3b00",
     "s4d/rl/__init__.py": "3a4dfbe72092286ae5b7c3f85e520c425de1e5384177c392eda936967964c01e",
     "s4d/rl/agent.py": "6791e32c1b3332167bcb98b0c659f26ee6de31327958dbe4a6db2187cf0e464a",
     "s4d/rl/encoders.py": "a381e94552b0d5a5b6767ac472419e6ad6dd175ea8000061205af88bf09e07ed",
     "s4d/rl/env.py": "16a51854c5b053147eca485a83e1281b793e72d16da9c1ea1eef91d30585fd29",
-    "s4d/rl/evaluate.py": "7e879d034fcda6884ea508d40c0fac9f278ce922196f954c6bd92a2c352174a8",
+    "s4d/rl/evaluate.py": "9c5c49bc131e24234a399978adc85a208f3ee6b077093f2aa0f1d46e231fd1f6",
     "s4d/rl/protocol.py": "59092e73cdafd88b5836a4db044379de970086ef98a7b01dcfc530347e3d382e",
     "s4d/rl/replay.py": "7a0fbe89f579fb59d38962db95de956d90164b594db2d2804c5ca212fd545c25",
     "s4d/rl/vecenv.py": "d16289ed7bd9837fa3ca234c1f87a11f2b2c8a42fb8b080fcb305094a0d6a075",
     "s4d/train/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "s4d/train/augment.py": "3f93a4536643fb7c094b5af2e3d0fb40294754036d91bc4f3fdd15d7adf0d258",
     "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
     "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
-    "s4d/train/evaluate.py": "580669fd4223b42b876abac3934c6f1a6b6cc62191a6d17305843d06aba2c1ec",
-    "s4d/train/loop.py": "39a9e865a8675eec2ef09b5b9a8f1fa2e09bcbd116cbf760c2828ee6ad431eb5",
+    "s4d/train/evaluate.py": "8daf1d0fcae86575ff617a2b52f6501229122dad2e71238d63bdb419e2439adf",
+    "s4d/train/loop.py": "7785c27a5baf1b4b89c3fda79cfec4c0d5760bcfa20a455a4f00c19eed95b894",
     "s4d/train/workers.py": "10d24b41be48aa1f9230ad176848638167fa7cabf4f6906365897a84732a4a08",
     "scripts/_bootstrap.py": "6575f5eeb95d13d960ec84c00ef4b3defabbcf477b5e558ac684c4a5bcca4336",
     "scripts/check_gpu_isolation.py": "8edd19b5e7cdea3a4535e2c8c8d3440bf4a836561ea8b1760c17bfa62b09ba69",
@@ -105,16 +109,18 @@
     "scripts/droid_compare_step0.py": "2a1e9c296b8365ec8ac2679f4fbac7bc2af49ca2e87af8a449aa8293fa00a600",
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
     "scripts/eval_rl.py": "f857800f42c3eaea83944077c266b9ea09813984d68dad5e2ef5dd13f1dc03db",
-    "scripts/evaluate.py": "e3f5c8cf60e5044fd7b0f0ede40e9fdbf8e1f4f601c5f9e8a4e5d5b793181546",
+    "scripts/evaluate.py": "8158f4fe7adcf6ad8ef1c6e98cc568d9bf5fa2a230d0f594dce6aebd7d5eaf94",
     "scripts/export_encoder.py": "752e54f0e0eccbf0ced150ce45ab3b38a5350780e37a36f10eb2fa9459e6edb4",
     "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",
     "scripts/heartbeat.py": "4dffe6270a3e946d749afd0bc3cfc555bf2247a82e0f72c35c3e7541a43d575c",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
     "scripts/jobs.py": "d24c0d61be4500de66791e5b7772900c2fa0c4c190134ff2166b155ccfc5d72d",
+    "scripts/render_heldout_sets.py": "95e69a0896001e69fb0e77382de68c04f399646dfa2fc01d86b1c9ad29b3d71f",
     "scripts/run_tests.py": "a50ea1c89efd7f491a4281b4b25c6a5b756d5e870ab93383efd293b75648f9d9",
+    "scripts/screen_tasks.py": "d64ba85a1086588608c3b6bd237851a7aa54c62ef3b4be4a9c92273551a32b6a",
     "scripts/split_metaworld.py": "df6df73b8ad5fa6c2d130ca9c855ba31f64d09ed92b25f6c15d5d07cd33f511d",
     "scripts/summarize_run.py": "530fe7a4cad17e777baef6c92a85a663950fa6f2a4919a3b15ffa3bb47b1a7a4",
-    "scripts/train.py": "348c1c45dd9ecbde399ad890facb3501e6cb603c3c47f9c2d6c33a5eded976e3",
+    "scripts/train.py": "90a7d1d8ecef5ffbbbf70b8617a21597197c2f4ed9d809ef5530cf9ad616032a",
     "scripts/train_reviwo.py": "d1079d9f4bacb3b57ff56b3f72c953e4541fcacd52ef8590b0bf4b154026b40d",
     "scripts/train_rl.py": "a9b39cfbc696b33d38ab27ff0e8916c969c91c3678b18dcb50a1a54515b456bd",
     "scripts/train_sincro.py": "f847d15e5ea60416b5dfbd2c49cff4ea7c2814ec836c0be483981d21ee72735d",
@@ -141,12 +147,15 @@
     "tests/test_encoder.py": "eb1f3f1dd0a9dd6e01fa049a0ddab3c263128fc040a59d00da4a390c3fe8b986",
     "tests/test_export.py": "619707a8c7748143df0ee8e9723baac00f3e35ff3969e8039d5881c792798a56",
     "tests/test_geometry.py": "bc127b7470cdf9a23485d8a740c519d272f001b33377f9cbb9dda7e5d12819a3",
+    "tests/test_heldout.py": "81c837a7c58948960a6b4a27133a766d3ef943b370af83c9a34a0d64d5c0a551",
     "tests/test_jobs.py": "d6ca7bf6be5b403a16da96d6f8a633c8128bd2ba336df374b0702559fc0aa3a2",
     "tests/test_metaworld_checks.py": "d32fa21a9fc0a4a28a21ac564d5850bc58710ae4aa0e9d9debb278c6d3757c34",
     "tests/test_motion.py": "0b59aa14a8af4c55dee408d7652a737bb34ffb0b83a8dd44ad049a05ad2c7299",
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
-    "tests/test_rl.py": "314b47ad1e4071f7af8b1a3c5be870f70e8c46df07ed86e18894e6678d565f51",
+    "tests/test_review_options.py": "2af61115a6e321aaa58eb3b6b685128da20b46208c2eb5765c69979da17f92ce",
+    "tests/test_rl.py": "6704db0adcaa32a05fd28f6f7de89df2c154c53f7f2db5ca339a1bcd6d8c21ff",
     "tests/test_rl_cli.py": "dfe33af7121f2d9d42cbf06ad65adbe768b68c3761b18e7de8f3033e49462761",
+    "tests/test_stop_step.py": "1348e1509a6416b94529e7cdeb9539dcb066d38ca6595c5e9a483fe474764eb9",
     "tests/test_watch.py": "c181728b203e7638e48da11e15516531549fc3c703a03fb5c1aa3f755e3eed56",
     "tests/test_workers.py": "b49241832c24db15d45a7f997e38b55b10d4fdb01261ce265c5fe342a1c76447",
     "configs/baselines/reviwo/bin-picking.yaml": "8e0b6b94a2a68d952c4a1f8149d926e94a69164e917aac8ab12fed44d15d5567",
@@ -193,7 +202,7 @@
     "configs/rl/encoders/reviwo.yaml": "56a858b29d08e73f62bd31676bc772470541c229137e3a2bff71a8f3716ad10a",
     "configs/rl/encoders/sincro.yaml": "deff8cfb0cb7b393fc9c8fa11c969d9d52a8c477bf167efa4c7ac137e5c5361b",
     "configs/rl/encoders/splatter4d.yaml": "baaa3bd29816a4255bba7ec7f34344cbb5c405ad1b0277ef6b4bcd9f580fa8b8",
-    "configs/rl/tasks.yaml": "df01fe8fbecaa581d16199d2c2322256608e4a72902a7763d4054e4867517576"
+    "configs/rl/tasks.yaml": "42df309436dbe06094aabf421a0dbc6d30cf6f011c32fa64248d8259c05efb59"
   },
   "executed_functions": {
     "s4d/baselines/__init__.py": [
@@ -420,12 +429,18 @@
       "<module>"
     ],
     "s4d/data/metaworld/cameras.py": [
+      "<dictcomp>",
       "<listcomp>",
       "<module>",
       "camera_rig",
+      "heldout_camera_set",
       "intrinsics_from_fovy",
+      "offsets_to_orbit",
       "opengl_to_opencv_c2w",
-      "orbit_c2w_opengl"
+      "orbit_c2w_opengl",
+      "orbit_rig",
+      "perturbed_orbit",
+      "sample_offsets"
     ],
     "s4d/data/metaworld/dataset.py": [
       "<dictcomp>",
@@ -441,8 +456,33 @@
       "list_episodes",
       "split_episodes"
     ],
+    "s4d/data/metaworld/heldout.py": [
+      "<dictcomp>",
+      "<genexpr>",
+      "<listcomp>",
+      "<module>",
+      "HeldoutSets",
+      "__contains__",
+      "__init__",
+      "window"
+    ],
     "s4d/diag/__init__.py": [
       "<module>"
+    ],
+    "s4d/diag/heldout.py": [
+      "<dictcomp>",
+      "<listcomp>",
+      "<module>",
+      "chamfer_metrics",
+      "chamfer_stats",
+      "gt_cloud_t0",
+      "lift_valid",
+      "nearest_distances",
+      "oracle_views",
+      "render_chamfer",
+      "splat",
+      "splat_depth",
+      "voxel_downsample"
     ],
     "s4d/diag/local_log.py": [
       "<dictcomp>",
@@ -535,7 +575,8 @@
     "s4d/losses/invariance.py": [
       "<module>",
       "multi_positive_info_nce",
-      "slot_consistency"
+      "slot_consistency",
+      "state_statistics"
     ],
     "s4d/losses/motion.py": [
       "<genexpr>",
@@ -565,6 +606,7 @@
       "<genexpr>",
       "<listcomp>",
       "<module>",
+      "AdaLNZeroBlock",
       "DecoderBlock",
       "DecoderConfig",
       "GaussianDecoder",
@@ -572,6 +614,7 @@
       "GroupHeads",
       "__init__",
       "forward",
+      "fourier_features",
       "set_anchor_statistics"
     ],
     "s4d/model/encoder.py": [
@@ -585,7 +628,9 @@
       "Mlp",
       "__init__",
       "_drop",
+      "_encode",
       "forward",
+      "forward_visible",
       "grid",
       "load_encoder",
       "num_patches",
@@ -724,6 +769,15 @@
     "s4d/train/__init__.py": [
       "<module>"
     ],
+    "s4d/train/augment.py": [
+      "<listcomp>",
+      "<module>",
+      "apply",
+      "coverage_visible",
+      "jitter_cameras",
+      "random_resized_crop",
+      "synthesize_views"
+    ],
     "s4d/train/checkpoint.py": [
       "<module>",
       "_unwrap",
@@ -741,27 +795,42 @@
       "barrier",
       "cleanup",
       "forward",
+      "init_distributed",
       "is_distributed",
       "is_main",
       "rank",
       "rank_zero_call",
+      "reduce_mean",
       "world_size"
     ],
     "s4d/train/evaluate.py": [
       "<dictcomp>",
+      "<genexpr>",
       "<lambda>",
       "<listcomp>",
       "<module>",
+      "<setcomp>",
       "Evaluator",
+      "__call__",
       "__init__",
+      "_cpu",
       "_select_retrieval_windows",
+      "_spread_windows",
       "encode_states",
+      "evaluate_stride",
       "image_plane_flow",
+      "oracle_metrics",
       "orbit_w2c",
-      "panels"
+      "panels",
+      "probes",
+      "retrieval",
+      "retrieval_sets"
     ],
     "s4d/train/loop.py": [
       "<dictcomp>",
+      "<genexpr>",
+      "<lambda>",
+      "<listcomp>",
       "<module>",
       "Model",
       "ResumableDistributedSampler",
@@ -771,12 +840,18 @@
       "_per_t",
       "_rows",
       "build_model",
+      "build_optimizer",
       "forward",
       "forward_losses",
+      "grad_norms",
       "infinite",
+      "lr_lambda",
+      "make_train_loader",
       "move_batch",
+      "run_evaluation",
       "seed_everything",
-      "temporal_ramp"
+      "temporal_ramp",
+      "train"
     ],
     "s4d/train/workers.py": [
       "<module>",
