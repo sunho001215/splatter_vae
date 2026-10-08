@@ -3044,4 +3044,49 @@ jobs:
   stage: 1
   ram_gb: 12
   oom_score_adj: 300
+- id: screen-g-ref-seed1
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g-ref-seed1
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=4
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  - train.seed=1
+  gpu: any
+  mem_gb: 10
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 10
+  oom_score_adj: 500
+- id: fulleval2-screen-g-ref-seed1-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g-ref-seed1-6k
+  - --checkpoint
+  - runs/pretrain/screen-g-ref-seed1/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 1
+  deps:
+  - screen-g-ref-seed1
+  max_restarts: 0
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
 host_ram_reserve_gb: 60

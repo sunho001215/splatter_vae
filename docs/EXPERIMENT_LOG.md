@@ -581,3 +581,26 @@ Means of strides 2 and 6; jobs `runs/fulleval2-s1-{base,it1-decdim256,it2-lambda
 - **S1 (motion weight 20) vs the fresh gate reference at 6k** (item 4 rule, means of strides 2/6): PSNR -0.99 dB,
   moving PSNR -0.62 dB (both worse beyond the margin), relative EPE 0.00, CD-centers -1 cm, CD-motion dynamic -1 cm:
   not promoted. Gate reference at 6k: PSNR 25.81 / 25.89, moving PSNR 23.11 / 21.99, relative EPE 0.51 / 0.32.
+
+## 2026-10-08 — Item 4 result: no gate screen is promoted
+
+Gate (hammer ep001, iteration-2 settings, 6k steps), full evaluation on the gate episode, means of strides 2 and 6;
+jobs `runs/fulleval2-screen-*-6k`. Rule (fixed before the runs): better on >= 3 of 5 by 0.5 dB / 0.5 dB / 0.03 / 10 % /
+10 % and worse on none beyond those margins.
+
+| Screen | PSNR | Moving PSNR | Rel. EPE 0->2 | CD-centers sym p90 (m) | CD-motion dyn sym p90 (m) | CD-motion dyn p2g p50 (m) | Decision |
+|---|---|---|---|---|---|---|---|
+| reference | 25.85 | 22.55 | 0.413 | 0.222 | 0.171 | 0.083 | - |
+| S1 motion x20 | 24.86 | 21.93 | 0.412 | 0.219 | 0.169 | 0.048 | no (PSNR, moving PSNR worse) |
+| 4a decoder LR x3, 4 blocks x 256 | 7.38 | 9.38 | 1.000 | 4.375 | 4.363 | 4.187 | no (diverged near step 1000, never recovered) |
+| 4b K = 4 + state concatenation | 24.81 | 20.92 | 0.504 | 0.217 | 0.203 | 0.203 | no (4 metrics worse) |
+| 4c AdaLN-zero + Fourier anchors | 25.12 | 22.66 | 0.390 | 0.209 | 0.123 | 0.027 | no (PSNR -0.73 dB; CD-motion -28 %) |
+| 4d hard depth x3 for 20 % | 24.51 | 22.08 | 0.422 | 0.225 | 0.161 | 0.133 | no (PSNR -1.34 dB) |
+| 4e moving-pixel motion normalisation | 24.84 | 21.29 | 0.486 | 0.216 | 0.180 | 0.039 | no (PSNR, moving PSNR, EPE worse) |
+
+- 4e vs the current all-pixel average and vs S1 (as the review asked): both re-weighted motion losses lower PSNR by
+  ~1 dB; the normalised loss moves the dynamic centres closer to the moved surfaces (p50 3.9 cm vs 8.3 cm) but its
+  relative EPE is worse (0.49 vs 0.41); S1 keeps the EPE and costs moving PSNR. Neither is promoted.
+- Every change lowered PSNR by 0.7-1.3 dB against the fresh reference, so the run-to-run spread at 6k matters for
+  reading these margins. A second-seed reference (`screen-g-ref-seed1`, `train.seed=1`) is queued to measure it; it is
+  context only and does not change the decisions above.
