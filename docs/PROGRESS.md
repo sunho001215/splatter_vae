@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 03:09
+Last updated: 2026-10-09 04:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -242,6 +242,10 @@ Last updated: 2026-10-09 03:09
   155 GB RAM available. Item 2: crop pick-place done and evaluated (fails 2d on pick-place: trajectory retrieval
   +0.00, CD-render +15 %); crop hammer 99.8k; synth 86.0k / 84.8k; self-render 87.1k / 87.1k (100k ~04:00).
   base300k 62.3k / 62.7k.
+
+- 04:07: HEARTBEAT_OK — 11 running jobs, watcher and scheduler alive, 5326 GB free, 185 GB RAM available. Item 2:
+  crop rejected (2d); synth hammer evaluated (trajectory retrieval 0.33 -> 0.74, hand-position R² 0.49 -> 0.89,
+  CD-render p90 halved); synth pick-place done at 100k, evaluation running; self-render ~95k.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
