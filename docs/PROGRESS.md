@@ -188,6 +188,7 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-08 07:45 | 5.0 TB (s1-proxy-base-hammer-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-08 08:08 | 5.0 TB (s1-proxy-base-pick-place-s1001 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-08 08:47 | 5.0 TB (s1-proxy-base-pick-place-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
+| 2026-10-08 13:46 | 4.9 TB (s1-proxy-it2-lambdadyn4-pick-place-s1000 completed with final eval at 200k; deleted its replay/, 0.58 GB) |
 
 ## Next actions
 1. ~12:30: iterations reach 100k -> exports -> DrM proxies (seeds 1000/1001, 200k agent steps); compare with base at
