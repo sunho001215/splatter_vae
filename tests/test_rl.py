@@ -398,3 +398,7 @@ def test_every_task_resolves_to_the_official_drm_metaworld_settings(tmp_path, en
         assert cfg["train"]["num_seed_steps"] == 2000 and cfg["train"]["time_limit_continuation"] == 1.0
         assert cfg["agent"]["feature_dim"] == (50 if encoder == "cnn" else 256)
         assert cfg["algorithm"] == "drm"
+    # the only official DrM per-task override (sweep-into) applies to any method that runs the task
+    if encoder == "cnn":
+        sweep = resolve_config("sweep-into", encoder, 0, overrides)
+        assert sweep["agent"]["max_perturb_factor"] == 0.9 and sweep["agent"]["target_lambda"] == 0.6
