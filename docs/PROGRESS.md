@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 02:10
+Last updated: 2026-10-09 03:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -237,6 +237,11 @@ Last updated: 2026-10-09 02:10
   53.5k. coffee-push fully ready (held-out sets rendered). Queued for the length study: exports at 100k/200k/300k of
   the base300k runs (waiting for the checkpoints), their full-split evaluations, hammer proxies (400k agent steps,
   seeds 1000/1001) at each point, pick-place proxies at 300k (reported, not counted).
+
+- 03:07: HEARTBEAT_OK — 13 running jobs (7 training, 6 export waiters), watcher and scheduler alive, 5336 GB free,
+  155 GB RAM available. Item 2: crop pick-place done and evaluated (fails 2d on pick-place: trajectory retrieval
+  +0.00, CD-render +15 %); crop hammer 99.8k; synth 86.0k / 84.8k; self-render 87.1k / 87.1k (100k ~04:00).
+  base300k 62.3k / 62.7k.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
