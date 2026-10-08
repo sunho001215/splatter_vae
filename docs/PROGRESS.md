@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 20:09
+Last updated: 2026-10-08 21:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -202,6 +202,10 @@ Last updated: 2026-10-08 20:09
   Item 2 screens: crop 39.9k / 34.4k, synth 22.9k / 22.7k, self-render 33.1k / 33.0k. 3b: coffee-push 0.17 and
   drawer-open 0.92 at 200k. Base hammer 185k/200k; base300k runs at 1.8k / 2.0k (0.41 s/step). Base pick-place 200k
   evaluated (PSNR +0.4 dB over 100k; retrieval and EPE flat); its 200k proxies running.
+
+- 21:07: HEARTBEAT_OK — 18 running jobs active, watcher and scheduler alive, 5328 GB free, 127 GB RAM available.
+  Item 2 screens: crop 48.0k / 40.4k, synth 27.3k / 27.1k, self-render 40.4k / 40.2k. 3b: coffee-push 0.42 at 250k,
+  drawer-open 0.94 at 275k (300k within ~30 min). Base hammer 192k/200k; base300k runs 10.0k / 10.3k.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
