@@ -611,3 +611,17 @@ jobs `runs/fulleval2-screen-*-6k`. Rule (fixed before the runs): better on >= 3 
   criterion (ii); assembly: 0.00 at 150k. If neither qualifies at 300k, the pre-registered ranking continues with
   coffee-push and drawer-open; both are started now (same protocol) so that the 3c decision is not delayed. The
   decision itself still uses the 300k results of the runs in ranking order.
+
+## 2026-10-08 — Item 4 context: seed-to-seed spread of the gate at 6k
+
+| Gate reference | PSNR | Moving PSNR | Rel. EPE 0->2 | CD-centers sym p90 | CD-motion dyn sym p90 | CD-motion dyn p2g p50 |
+|---|---|---|---|---|---|---|
+| seed 0 (`screen-g-ref`) | 25.85 | 22.55 | 0.413 | 0.222 | 0.171 | 0.083 |
+| seed 1 (`screen-g-ref-seed1`) | 25.07 | 21.58 | 0.437 | 0.227 | 0.168 | 0.036 |
+
+- Changing only the seed moves PSNR by 0.78 dB, moving PSNR by 0.97 dB and the dynamic CD-motion median by 4.7 cm.
+  That is as large as the 0.5 dB / 10 % promotion margins and as the screens' effects: every screen's PSNR deficit
+  (0.7-1.3 dB, except the diverged 4a) and 4c's CD-motion gain (2.7 cm) lie within one seed's spread.
+- The item 4 decisions stand as pre-registered (nothing promoted). The honest reading is that the one-episode gate at
+  6k cannot resolve effects of this size: none of 4b-4e is shown to be worse or better; only 4a (divergence) is a
+  clear negative. Gate screens should use several seeds or be replaced by full-split 100k screens in future.
