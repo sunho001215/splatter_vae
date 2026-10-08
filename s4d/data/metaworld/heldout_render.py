@@ -51,9 +51,20 @@ def _render(scene: MetaworldScene, cams) -> tuple[np.ndarray, np.ndarray]:
     return np.stack(rgb), np.stack(depth)
 
 
-def _set_state(scene: MetaworldScene, qpos: np.ndarray, qvel: np.ndarray) -> None:
-    scene.data.qpos[:] = qpos
-    scene.data.qvel[:] = qvel
+def _static_world_bodies(model) -> np.ndarray:
+    """Bodies without joints whose parent is the world: tasks may move them at reset through ``model.body_pos`` (the
+    shelf of shelf-place, for example), so their pose is not part of qpos."""
+    return np.asarray([b for b in range(1, model.nbody) if model.body_parentid[b] == 0 and model.body_jntnum[b] == 0
+                       and model.body_mocapid[b] < 0])
+
+
+def _set_state(scene: MetaworldScene, episode: h5py.Group, t: int) -> None:
+    static = _static_world_bodies(scene.model)
+    if len(static):
+        scene.model.body_pos[static] = episode["xpos"][t][static]
+        scene.model.body_quat[static] = episode["xquat"][t][static]
+    scene.data.qpos[:] = episode["qpos"][t]
+    scene.data.qvel[:] = episode["qvel"][t]
     mujoco.mj_forward(scene.model, scene.data)
 
 
@@ -76,7 +87,7 @@ def replay_check(scene: MetaworldScene, episode: h5py.Group, train_cams: np.ndar
     _set_goal(scene, episode)
     rows = []
     for t in sorted({0, length // 3, (2 * length) // 3, length - 1}):
-        _set_state(scene, episode["qpos"][t], episode["qvel"][t])
+        _set_state(scene, episode, t)
         rgb, depth = _render(scene, [scene.cams[i] for i in train_cams])
         drgb = np.abs(rgb.astype(np.int32) - episode["rgb"][t, train_cams].astype(np.int32)).max(-1)
         ddepth = np.abs(depth.astype(np.int64) - episode["depth"][t, train_cams].astype(np.int64))
@@ -164,7 +175,7 @@ def render_heldout_sets(
                     rgb = np.empty((length, len(cameras), height, width, 3), dtype=np.uint8)
                     depth = np.empty((length, len(cameras), height, width), dtype=np.uint16)
                     for t in range(length):
-                        _set_state(scene, stored["qpos"][t], stored["qvel"][t])
+                        _set_state(scene, stored, t)
                         rgb[t], depth[t] = _render(scene, mj_cams)
                     g = group.create_group(ep)
                     g.attrs["length"] = length
