@@ -2323,7 +2323,7 @@ jobs:
   ram_gb: 4
   oom_score_adj: 0
 - id: fulleval2-s1-base-pick-place-100k
-  script: .worktrees/review/scripts/evaluate.py
+  script: scripts/evaluate.py
   args:
   - --run
   - runs/fulleval2-s1-base-pick-place-100k
@@ -2333,14 +2333,13 @@ jobs:
   mem_gb: 8
   priority: 0
   deps:
-  - hold-merge-review-items
   - heldout-sets-pick-place
   max_restarts: 0
   stage: 1
   ram_gb: 20
   oom_score_adj: 300
 - id: fulleval2-s1-base-hammer-100k
-  script: .worktrees/review/scripts/evaluate.py
+  script: scripts/evaluate.py
   args:
   - --run
   - runs/fulleval2-s1-base-hammer-100k
@@ -2350,8 +2349,695 @@ jobs:
   mem_gb: 8
   priority: 0
   deps:
-  - hold-merge-review-items
   - heldout-sets-hammer
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s3b-cnn-plate-slide-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - plate-slide
+  - --encoder
+  - cnn
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s3b-cnn-plate-slide-s2000
+  - --set
+  - train.num_train_steps=300000
+  - eval.every_steps=25000
+  - eval.train_episodes_total=20
+  - eval.episodes_per_heldout_camera=0
+  - eval.episodes_per_trajectory=0
+  gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
+  mem_gb: 4
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 8
+  oom_score_adj: 300
+- id: s3b-cnn-plate-slide-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s3b-cnn-plate-slide-s2000
+  - --train-job
+  - s3b-cnn-plate-slide-s2000
+  - --workers
+  - '2'
+  - --envs-per-worker
+  - '10'
+  gpu: GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
+  mem_gb: 3
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 6
+  oom_score_adj: 400
+- id: s3b-cnn-assembly-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - assembly
+  - --encoder
+  - cnn
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s3b-cnn-assembly-s2000
+  - --set
+  - train.num_train_steps=300000
+  - eval.every_steps=25000
+  - eval.train_episodes_total=20
+  - eval.episodes_per_heldout_camera=0
+  - eval.episodes_per_trajectory=0
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+  mem_gb: 4
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 8
+  oom_score_adj: 300
+- id: s3b-cnn-assembly-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s3b-cnn-assembly-s2000
+  - --train-job
+  - s3b-cnn-assembly-s2000
+  - --workers
+  - '2'
+  - --envs-per-worker
+  - '10'
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+  mem_gb: 3
+  priority: 0
+  deps: []
+  max_restarts: 1
+  stage: 3
+  ram_gb: 6
+  oom_score_adj: 400
+- id: fulleval2-s1-it1-decdim256-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s1-it1-decdim256-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1-it1-decdim256-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 0
+  deps:
+  - export-s1-it1-decdim256-hammer-100k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: fulleval2-s1-it1-decdim256-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s1-it1-decdim256-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1-it1-decdim256-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 0
+  deps:
+  - export-s1-it1-decdim256-pick-place-100k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: fulleval2-s1-it2-lambdadyn4-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s1-it2-lambdadyn4-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1-it2-lambdadyn4-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 0
+  deps:
+  - export-s1-it2-lambdadyn4-hammer-100k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: fulleval2-s1-it2-lambdadyn4-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s1-it2-lambdadyn4-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1-it2-lambdadyn4-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 0
+  deps:
+  - export-s1-it2-lambdadyn4-pick-place-100k
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: screen-g-ref
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g-ref
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=12
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  gpu: any
+  mem_gb: 12
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-screen-g-ref-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g-ref-6k
+  - --checkpoint
+  - runs/pretrain/screen-g-ref/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps:
+  - screen-g-ref
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: screen-g4a-declr3-dec4x256
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g4a-declr3-dec4x256
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=12
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  - model.decoder.depth=4
+  - model.decoder.dim=256
+  - train.decoder_lr_mult=3.0
+  gpu: any
+  mem_gb: 12
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-screen-g4a-declr3-dec4x256-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g4a-declr3-dec4x256-6k
+  - --checkpoint
+  - runs/pretrain/screen-g4a-declr3-dec4x256/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps:
+  - screen-g4a-declr3-dec4x256
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: screen-g4b-k4-statecat
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g4b-k4-statecat
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=12
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  - model.encoder.num_slots=4
+  - model.decoder.state_concat=true
+  gpu: any
+  mem_gb: 12
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-screen-g4b-k4-statecat-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g4b-k4-statecat-6k
+  - --checkpoint
+  - runs/pretrain/screen-g4b-k4-statecat/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps:
+  - screen-g4b-k4-statecat
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: screen-g4c-adaln-fourier
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g4c-adaln-fourier
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=12
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  - model.decoder.conditioning=adaln_zero
+  - model.decoder.anchor_fourier=6
+  gpu: any
+  mem_gb: 12
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-screen-g4c-adaln-fourier-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g4c-adaln-fourier-6k
+  - --checkpoint
+  - runs/pretrain/screen-g4c-adaln-fourier/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps:
+  - screen-g4c-adaln-fourier
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: screen-g4d-hardx3
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g4d-hardx3
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=12
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  - 'loss.depth_hard_boost={factor: 3.0, fraction: 0.2}'
+  gpu: any
+  mem_gb: 12
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-screen-g4d-hardx3-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g4d-hardx3-6k
+  - --checkpoint
+  - runs/pretrain/screen-g4d-hardx3/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps:
+  - screen-g4d-hardx3
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: screen-g4e-motionnorm
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/gates/overfit_m2.yaml
+  - --name
+  - screen-g4e-motionnorm
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - loss.ramp_steps=300
+  - train.min_lr=5.0e-4
+  - train.num_workers=12
+  - train.steps=6000
+  - train.eval_every=1000
+  - train.save_every=6000
+  - loss.motion_norm=moving
+  gpu: any
+  mem_gb: 12
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-screen-g4e-motionnorm-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-g4e-motionnorm-6k
+  - --checkpoint
+  - runs/pretrain/screen-g4e-motionnorm/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps:
+  - screen-g4e-motionnorm
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: fulleval2-screen-s1-motion20-6k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-screen-s1-motion20-6k
+  - --checkpoint
+  - runs/pretrain/screen-s1-motion20/checkpoints/step_0006000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s2-screen-crop-hammer
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s2-screen-crop-hammer
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - 'aug.crop={prob: 0.5, scale: [0.8, 1.0], ratio: [0.95, 1.05]}'
+  gpu: any
+  mem_gb: 14
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-s2-screen-crop-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s2-screen-crop-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-crop-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 2
+  deps:
+  - s2-screen-crop-hammer
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s2-screen-crop-pick-place
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s2-screen-crop-pick-place
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - 'aug.crop={prob: 0.5, scale: [0.8, 1.0], ratio: [0.95, 1.05]}'
+  gpu: any
+  mem_gb: 14
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-s2-screen-crop-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s2-screen-crop-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-crop-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 2
+  deps:
+  - s2-screen-crop-pick-place
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s2-screen-synth-hammer
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s2-screen-synth-hammer
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - aug.synth_views=2
+  - aug.synth_render=true
+  gpu: any
+  mem_gb: 14
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-s2-screen-synth-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s2-screen-synth-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-synth-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 2
+  deps:
+  - s2-screen-synth-hammer
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s2-screen-synth-pick-place
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s2-screen-synth-pick-place
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - aug.synth_views=2
+  - aug.synth_render=true
+  gpu: any
+  mem_gb: 14
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-s2-screen-synth-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s2-screen-synth-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-synth-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 2
+  deps:
+  - s2-screen-synth-pick-place
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s2-screen-selfrender-hammer
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s2-screen-selfrender-hammer
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - loss.self_render=0.5
+  gpu: any
+  mem_gb: 14
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-s2-screen-selfrender-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s2-screen-selfrender-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-selfrender-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 2
+  deps:
+  - s2-screen-selfrender-hammer
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: s2-screen-selfrender-pick-place
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s2-screen-selfrender-pick-place
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - loss.self_render=0.5
+  gpu: any
+  mem_gb: 14
+  priority: 2
+  deps: []
+  max_restarts: 6
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 500
+- id: fulleval2-s2-screen-selfrender-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s2-screen-selfrender-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-selfrender-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 2
+  deps:
+  - s2-screen-selfrender-pick-place
   max_restarts: 0
   stage: 1
   ram_gb: 20

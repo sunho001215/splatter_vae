@@ -24,7 +24,7 @@ Last updated: 2026-10-08 12:16
   main checkout's test evidence stays valid for the scheduler; it is merged once the full suite passes there.
   - Item 1a done: near/trajectory held-out sets rendered for all 8 tasks by replaying stored states (training-camera
     replay reproduces the stored frames; goal sites and the moved shelf body are restored from the stored data),
-    `/home/ws/data/metaworld/splatter4d_v1/heldout_sets/<task>.hdf5` (13-23 GB in total ~14 GB).
+    `/home/ws/data/metaworld/splatter4d_v1/heldout_sets/<task>.hdf5` (1.4-2.3 GB per task, ~14 GB in total).
   - Item 3a done: push-back fails (expert 0.64); ranking plate-slide, assembly, coffee-push, drawer-open, lever-pull,
     sweep-into; 3b CNN runs on plate-slide and assembly queue after the merge.
   - Items 1b/1c, 2, 4 code written with tests (held-out diagnostics, crop / synthetic views / self-render, decoder
