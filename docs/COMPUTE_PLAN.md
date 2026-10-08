@@ -64,6 +64,22 @@ GPU-hours. SinCro at 300k costs ~15 GPU-days instead of ~25 at the reference 500
 stays capped at 8 iterations or 25% of the total GPU budget, whichever comes first. If L = 200k, the stage 2 and
 stage 3 pretraining rows shrink by a third; if L = 400k, they grow by a third.
 
+## Mid-campaign review additions (2026-10-08)
+
+| Item | Runs | Count | Est. GPU-hours | Tier |
+|---|---|---|---|---|
+| 1a | held-out-set ground truth (replayed states, 24 cameras, validation episodes), 8 tasks + replacement | 9 | ~1.5 | 1 |
+| 1b/1c | full-split evaluations with oracle, Chamfer, near/trajectory retrieval and probes (~5-10 min each) | ~40 | ~5 | 1 |
+| 3b | DrM + CNN, 300k agent steps, light evaluation, top-2 reserve tasks (next 2 if neither qualifies) | 2-4 | 1 each | 1 |
+| 3c | collection (250 episodes), split, statistics, D2/D3 and held-out sets for the replacement task | 1 | ~2 | 1 |
+| 2 | viewpoint screens (crop, synthetic near views, self-render) x 2 tasks, 100k steps on the 200k schedule | 6 | ~5 each, 30 | 1 (improvement budget) |
+| 4 | gate screens (reference + 4a-4e, 6k steps) | 6 | ~0.5 each, 3 | 1 (improvement budget) |
+| 2/4 | counted iterations combining winners (100k x 2 tasks + proxies) | <= 2 | ~12 each | 1 (improvement budget) |
+| 5 | hammer proxies to 400k agent steps for every compared encoder (2 seeds) | ~10 encoders | ~+1 each (shared) | 1 |
+
+Added cost ~80-90 GPU-hours, all inside the Phase D improvement budget (8 counted iterations or 25 % of the GPU
+budget). Shelf-place's place in Stages 3/4 is taken by the replacement task at the same cost.
+
 ## Disk
 
 CNN replay: one 128x128 frame per state, 1M states -> 46 GB per run (sparse until written); deleted once the run is

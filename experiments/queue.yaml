@@ -1,9 +1,9 @@
 limits:
   GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce:
-    max_jobs: 12
+    max_jobs: 16
     max_mem_gb: 90
   GPU-d09f0338-71b9-d915-3c7f-e99754a3b639:
-    max_jobs: 12
+    max_jobs: 16
     max_mem_gb: 90
 jobs:
 - id: collect-door-open
@@ -2197,4 +2197,163 @@ jobs:
   stage: 1
   ram_gb: 6
   oom_score_adj: 400
+- id: heldout-sets-hammer
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - hammer
+  gpu: any
+  mem_gb: 1
+  priority: 0
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-pick-place
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - pick-place
+  gpu: any
+  mem_gb: 1
+  priority: 0
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-door-open
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - door-open
+  gpu: any
+  mem_gb: 1
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-peg-unplug-side
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - peg-unplug-side
+  gpu: any
+  mem_gb: 1
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-peg-insert-side
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - peg-insert-side
+  gpu: any
+  mem_gb: 1
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-bin-picking
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - bin-picking
+  gpu: any
+  mem_gb: 1
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-stick-push
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - stick-push
+  gpu: any
+  mem_gb: 1
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: heldout-sets-shelf-place
+  script: .worktrees/review/scripts/render_heldout_sets.py
+  args:
+  - --task
+  - shelf-place
+  gpu: any
+  mem_gb: 1
+  priority: 1
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: screen-reserve-tasks
+  script: .worktrees/review/scripts/screen_tasks.py
+  args:
+  - --tasks
+  - sweep-into
+  - coffee-push
+  - lever-pull
+  - assembly
+  - push-back
+  - drawer-open
+  - plate-slide
+  - --episodes
+  - '50'
+  gpu: any
+  mem_gb: 1
+  priority: 0
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 4
+  oom_score_adj: 0
+- id: fulleval2-s1-base-pick-place-100k
+  script: .worktrees/review/scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s1-base-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-pick-place-base/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 0
+  deps:
+  - hold-merge-review-items
+  - heldout-sets-pick-place
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
+- id: fulleval2-s1-base-hammer-100k
+  script: .worktrees/review/scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval2-s1-base-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1-pretrain-hammer-base/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 8
+  priority: 0
+  deps:
+  - hold-merge-review-items
+  - heldout-sets-hammer
+  max_restarts: 0
+  stage: 1
+  ram_gb: 20
+  oom_score_adj: 300
 host_ram_reserve_gb: 60

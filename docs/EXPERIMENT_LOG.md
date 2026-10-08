@@ -490,3 +490,27 @@ within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,10
   than 0.10. Recovery is reported alongside. With amendment A, the full rule is: 200k if A300 wins at most 8 of the 40
   representation comparisons (or loses more than it wins) and the hammer RL condition for 200k holds; 400k if it
   wins at least 24 of 40 (at least 8 per task) and the hammer RL condition for 400k holds; otherwise 300k.
+
+## 2026-10-08 — Item 3a result: reserve-task screen (50 random + 50 expert episodes per task, campaign protocol)
+
+- **Definition refined before the run.** Object visibility uses the simulator segmentation, as for the eight
+  campaign tasks (`scripts/verify_metaworld_tasks.py`): the non-robot body that moves most in the expert episode
+  (plus its descendants) is visible in a camera when at least one of its pixels is; it must be visible in >= 4 of the
+  6 training cameras in > 50 % of sampled steps (every 5 agent steps). Script: `scripts/screen_tasks.py`; output
+  `docs/task_screening/summary.json`, `ranking.json` and contact sheets.
+
+| Task | 3a | Random return mean (fraction > 0) | Random success | Expert return | Expert success | Visible 4/6 | 3D object displacement |
+|---|---|---|---|---|---|---|---|
+| sweep-into | pass | 48.3 (1.00) | 0.02 | 1051 | 0.90 | 1.00 | 0.262 m |
+| coffee-push | pass | 10.6 (1.00) | 0.00 | 1121 | 1.00 | 1.00 | 0.221 m |
+| lever-pull | pass | 118.5 (1.00) | 0.00 | 577 | 1.00 | 1.00 | 0.000 m (rotation only) |
+| assembly | pass | 111.8 (1.00) | 0.00 | 1797 | 1.00 | 1.00 | 0.268 m |
+| push-back | **fail** (expert 0.64) | 2.7 (1.00) | 0.00 | 196 | 0.64 | 1.00 | 0.225 m |
+| drawer-open | pass | 316.5 (1.00) | 0.00 | 1800 | 1.00 | 1.00 | 0.202 m |
+| plate-slide | pass | 160.8 (1.00) | 0.00 | 2107 | 1.00 | 1.00 | 0.286 m |
+
+- **Ranking by the pre-registered rule** (lowest random success, then larger object displacement): plate-slide,
+  assembly, coffee-push, drawer-open, lever-pull, sweep-into. 3b runs DrM + CNN (seed 2000, 300k agent steps, light
+  evaluation) on **plate-slide** and **assembly**. If neither meets 3c, the next two in the ranking follow.
+- The displacement tie-break measures translation only, so lever-pull (a rotating lever) ranks low on it; it is
+  recorded, not changed.

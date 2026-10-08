@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-08 11:08
+Last updated: 2026-10-08 12:16
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -18,6 +18,18 @@ Last updated: 2026-10-08 11:08
 - **Stage 4 prep** done: SinCro and ReViWo ported (merge 67f5984, `docs/BASELINES.md`); suite 199/199. Measured cost
   under load: SinCro 0.53 s/step (300k steps ~45 h/task, ~15 GPU-days for 8 tasks), ReViWo 0.58 s/step (100k steps
   ~16 h/task). SinCro's budget is settled by the user's 300k decision.
+
+- **Mid-campaign review (user, ~11:40)** integrated: one EXPERIMENT_LOG entry per item with designs and decision
+  rules fixed before any run. Code is developed in the worktree `.worktrees/review` (branch `review-items`) so the
+  main checkout's test evidence stays valid for the scheduler; it is merged once the full suite passes there.
+  - Item 1a done: near/trajectory held-out sets rendered for all 8 tasks by replaying stored states (training-camera
+    replay reproduces the stored frames; goal sites and the moved shelf body are restored from the stored data),
+    `/home/ws/data/metaworld/splatter4d_v1/heldout_sets/<task>.hdf5` (13-23 GB in total ~14 GB).
+  - Item 3a done: push-back fails (expert 0.64); ranking plate-slide, assembly, coffee-push, drawer-open, lever-pull,
+    sweep-into; 3b CNN runs on plate-slide and assembly queue after the merge.
+  - Items 1b/1c, 2, 4 code written with tests (held-out diagnostics, crop / synthetic views / self-render, decoder
+    options, moving-pixel motion normalisation, depth-hard boost, `train.stop_step`); suite running in the worktree.
+  - Item 5: queued hammer proxies run 400k agent steps; base-100k hammer proxies rerun at 400k (running).
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
