@@ -726,3 +726,14 @@ Full split, strides 2 / 6; jobs `runs/fulleval2-s1-base-*-100k` and `runs/fullev
 - 2026-10-09 01:28: coffee-push held-out sets rendered after the target-site replay fix (merge db5f6c8): all 10
   validation episodes replay with max |rgb| difference 0 on the training cameras; 2.0 GiB. coffee-push is ready for
   Stage 3/4 (data, split, statistics, D2/D3, held-out sets, task and baseline configs).
+
+## 2026-10-09 — Length study: hammer RL proxies of the base encoder at 100k vs A200
+
+| Base encoder | Last-5 train cameras (s1000 / s1001 / mean) | Last-5 held-out | Last-5 trajectories | Peak | Recovery 150k / 250k |
+|---|---|---|---|---|---|
+| 100k (from the 200k schedule) | 0.23 / 0.61 / 0.42 | 0.07 | 0.31 | 0.61 | +0.06 / -0.06 |
+| A200 (annealed 200k) | 0.30 / 0.50 / 0.40 | 0.06 | 0.29 | 0.58 | -0.10 / +0.06 |
+
+The 200k encoder is indistinguishable from the 100k one on RL (mean 0.40 vs 0.42, both inside the 0.38 seed
+spread), matching the flat representation metrics between 100k and 200k. A200's hammer RL value for the length rule
+is 0.40 (last-5 mean at 400k). pick-place A200 proxies: 0.003 (not counted).
