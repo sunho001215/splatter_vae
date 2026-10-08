@@ -514,3 +514,33 @@ within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,10
   evaluation) on **plate-slide** and **assembly**. If neither meets 3c, the next two in the ranking follow.
 - The displacement tie-break measures translation only, so lever-pull (a rotating lever) ranks low on it; it is
   recorded, not changed.
+
+## 2026-10-08 — Item 1b/1c result: base encoders at 100k under the new held-out diagnostics
+
+Full-split `scripts/evaluate.py` (merged code, ac02dd0); strides 2 / 6. Jobs `runs/fulleval2-s1-base-{hammer,pick-place}-100k`.
+
+| Metric | hammer | pick-place |
+|---|---|---|
+| PSNR training cameras | 25.9 / 25.9 | 24.2 / 24.1 |
+| PSNR near (unmasked / oracle-covered) | 22.1 / 25.5 | 21.5 / 24.8 |
+| PSNR trajectory (unmasked / oracle-covered) | 20.7 / 24.9 | 20.3 / 24.6 |
+| PSNR extrapolation (unmasked / covered) | 14.8 / 19.9 | 14.6 / 19.4 |
+| Oracle on trajectory set: coverage, PSNR covered | 0.91, 26.1 | 0.91, 26.4 |
+| Retrieval top-1, 64 validation windows: train / near / trajectory / extrapolation | 0.89 / 0.50 / 0.31 / 0.03 (s2) | 0.77 / 0.52 / 0.35 / 0.06 (s2) |
+| Hand-position R²: train / near / trajectory | 0.96 / 0.86 / 0.51 | 0.96 / 0.92 / 0.69 |
+| Hand-velocity R²: train / near / trajectory | 0.58 / 0.44 / 0.22 | 0.21 / 0.15 / -0.23 |
+| CD-render trajectory (p2g p50 / p90; g2p p50 / p90), m | 0.007 / 0.074; 0.006 / 0.021 | 0.007 / 0.057; 0.007 / 0.018 |
+| CD-centers (p2g p50 / p90; g2p p50 / p90), m | 0.145 / 0.311; 0.042 / 0.126 | 0.189 / 0.384; 0.054 / 0.115 |
+| CD-centers dynamic p2g p90 / g2p p90, m | 0.43 / 0.08 | 0.48 / 0.07 |
+| Relative EPE 0->2 | 0.69 / 0.65 | 0.98 / 0.88 |
+
+- **Rendering generalises to near views; the state does not.** On the pixels the training cameras also observe
+  (oracle-covered, 91 % of a trajectory view), held-out PSNR is within ~1 dB of the training cameras; the unmasked drop
+  (4-5 dB) is the never-observed background. Retrieval falls from ~0.8-0.9 (training cameras) to ~0.5 (near) and
+  ~0.3 (trajectory), and the velocity probe collapses on the trajectory set. This is what item 2 targets.
+- **Where the CD-centers tail comes from (diagnostic on 16 windows per task).** 87-89 % of the opaque Gaussians
+  (opacity > 0.3, ~7000 per scene) are more than 5 cm from every GT point, but 85-87 % of all opaque Gaussians lie
+  behind the observed surface in every training camera that sees them (inside or under the table and objects), and
+  only 1.5-1.7 % sit in free space in front of a surface. So the large p2g values measure hidden mass, not visible
+  floaters; rendered geometry is accurate (CD-render p50 7 mm). A visible-only variant of CD-centers would separate the
+  two; proposed to the user rather than changed silently.
