@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 04:09
+Last updated: 2026-10-09 04:50
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -246,6 +246,12 @@ Last updated: 2026-10-09 04:09
 - 04:07: HEARTBEAT_OK — 11 running jobs, watcher and scheduler alive, 5326 GB free, 185 GB RAM available. Item 2:
   crop rejected (2d); synth hammer evaluated (trajectory retrieval 0.33 -> 0.74, hand-position R² 0.49 -> 0.89,
   CD-render p90 halved); synth pick-place done at 100k, evaluation running; self-render ~95k.
+
+- 04:45: item 2d decided — synthetic near views adopted (passes on both tasks); crop and self-render rejected.
+  Synthetic views abandon the dynamic group on pick-place (relative EPE 1.00, dynamic share 0.06): raised with the
+  user. Queued: counted iteration 3 = synth (exports at 100k + hammer 400k / pick-place 200k proxies); length study
+  for C = base + synth (screen runs continue to 200k = A200; synth300k runs = A300; exports, full evaluations and
+  proxies follow). Base A300 runs continue as context / fallback.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |

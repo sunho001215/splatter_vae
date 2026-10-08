@@ -755,3 +755,34 @@ Full split at 100k (base 200k schedule, `train.stop_step=100000`) vs the base ru
   (+0.33 R²) and velocity on pick-place, but lowers retrieval among the training cameras (hammer 0.89 -> 0.75, pick-
   place 0.78 -> 0.75): with crop, states of the same scene from different training cameras are less alike, while
   linear position/velocity content becomes more viewpoint-robust.
+
+## 2026-10-09 — Item 2d decided: synthetic near views adopted; crop and self-render rejected
+
+Full split at 100k (base 200k schedule stopped at 100k) vs the base run at 100k; means of strides 2 and 6. Decision
+columns per the pre-registered rule (retrieval, hand-position R² and hand-velocity R² on the trajectory set each
+>= +0.10; moving-pixel PSNR >= -0.5 dB; CD-render trajectory symmetric p90 <= +5 %; both tasks).
+
+| Task / screen | Retrieval traj | Pos R² traj | Vel R² traj | Moving PSNR | CD-render sym p90 | 2d | Context: PSNR | rel. EPE | dyn. share | retrieval train |
+|---|---|---|---|---|---|---|---|---|---|---|
+| hammer base | 0.33 | 0.49 | 0.22 | 23.93 | 4.77 cm | - | 25.86 | 0.67 | 0.82 | 0.91 |
+| hammer crop | 0.37 | 0.82 | 0.29 | 23.96 | 4.48 cm | fail | 25.53 | 0.69 | 0.82 | 0.77 |
+| hammer synth | 0.74 | 0.89 | 0.51 | 24.85 | 2.54 cm | pass | 25.95 | 0.64 | 0.89 | 0.89 |
+| hammer self-render | 0.73 | 0.83 | 0.50 | 25.11 | 4.14 cm | pass | 25.99 | 0.58 | 0.91 | 0.93 |
+| pick-place base | 0.36 | 0.68 | -0.16 | 17.02 | 3.78 cm | - | 24.15 | 0.93 | 0.66 | 0.78 |
+| pick-place crop | 0.35 | 0.78 | 0.01 | 17.44 | 4.36 cm | fail | 23.79 | 0.90 | 0.74 | 0.75 |
+| pick-place synth | 0.77 | 0.91 | 0.08 | 18.18 | 2.82 cm | pass | 24.50 | **1.00** | **0.06** | 0.89 |
+| pick-place self-render | 0.69 | 0.94 | 0.47 | 18.58 | 4.29 cm (+13.5 %) | **fail** | 25.11 | 0.63 | 0.88 | 0.90 |
+
+- **Synthetic near views (2b): adopted** (passes on both tasks). **Crop (2a): rejected** (retrieval, and on pick-place
+  position R² and CD-render). **Self-render (2c): rejected** by the CD-render tolerance on pick-place only (+13.5 % vs
+  <= +5 %), while it passes every other criterion and is the only screen that improves motion on pick-place.
+- **Problem not covered by the rule: synthetic views abandon the dynamic group on pick-place.** The dynamic group's
+  share of moving pixels falls from 0.44 at step 0 to 0.05 by 10k and stays there (base: rises to 0.66-0.77); relative
+  EPE is 1.00 at every evaluation (zero predicted motion), the moving object is drawn by scene Gaussians. On hammer the
+  same change improves motion (EPE 0.67 -> 0.64, dynamic share 0.82 -> 0.89). Raised with the user.
+- **Next, per the plan.** "Combine winners in one counted iteration": iteration 3 = base + synthetic views. Its 100k
+  pretraining is the screen runs themselves (same configuration and schedule), so iteration 3 adds the exports and RL
+  proxies (hammer 400k agent steps, pick-place 200k reported). The method configuration C becomes base + synthetic
+  views, so the length study is redone for it: the synth screen runs continue to 200k on their schedule (A200) and
+  300k-schedule synth runs start (A300). The base A300 runs continue as context and as the fallback if the user
+  decides against synthetic views. Counted iterations used: 3 of 8.
