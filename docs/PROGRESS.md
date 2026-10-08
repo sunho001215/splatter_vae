@@ -112,6 +112,10 @@ Last updated: 2026-10-08 10:15
   was stopped (SIGTERM to its own session) one minute after resuming; relaunched on GPU 5 at 09:30 (attempt 5, from
   the same 70k checkpoint).
 
+- 10:15: queued full-split `scripts/evaluate.py` runs (job dirs `runs/fulleval-*`, outputs kept out of the training
+  runs) for base/it1/it2 at 100k (iteration comparison; in-training validation is too noisy, see EXPERIMENT_LOG) and
+  base at 200k, plus the base-200k exports and DrM proxies (seeds 1000/1001). Base 100k evaluations started on GPU 5.
+
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
 |---|---|---|---|---|
