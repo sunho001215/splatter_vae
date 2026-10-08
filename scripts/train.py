@@ -79,8 +79,16 @@ def build_data(cfg: dict):
         strides = tuple(int(s) for s in get(cfg, "data.strides"))
         val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
         train_ds = MetaworldWindowDataset(path, train_eps, strides=strides, seed=int(get(cfg, "train.seed", 0)))
+        heldout = None
+        if get(cfg, "eval.heldout_sets", False):  # near/trajectory held-out sets (validation episodes only)
+            from s4d.data.metaworld.heldout import heldout_path  # noqa: PLC0415
+
+            heldout = heldout_path(get(cfg, "data.task"), get(cfg, "data.root"))
+            if not heldout.is_file():
+                raise FileNotFoundError(f"eval.heldout_sets requested but {heldout} is missing (scripts/render_heldout_sets.py)")
         val_loaders = {
-            s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True), False) for s in val_strides
+            s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True, heldout=heldout), False)
+            for s in val_strides
         }
         probe_loaders = {s: loader(MetaworldWindowDataset(path, train_eps, strides=(s,)), True) for s in val_strides}
         n_train_cams = len(train_ds.train_cams)

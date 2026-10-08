@@ -35,12 +35,16 @@ def main() -> None:
     ap.add_argument("--checkpoint", default=None)
     ap.add_argument("--set", nargs="*", default=[])
     ap.add_argument("--wandb", action="store_true", help="also log to W&B (resumes nothing; separate eval run)")
+    ap.add_argument(
+        "--no-heldout-sets", action="store_true", help="skip the near/trajectory sets, oracle and Chamfer diagnostics"
+    )
     args = ap.parse_args()
     run_dir = Path(args.run).resolve(strict=True)
     if REPO.resolve() not in run_dir.parents:
         raise ValueError("evaluation outputs must remain inside the new repository")
     require_prebuilt_renderer()
     cfg = load_config([run_dir / "config.yaml"], args.set)
+    cfg.setdefault("eval", {})["heldout_sets"] = not args.no_heldout_sets
     ckpt = Path(args.checkpoint) if args.checkpoint else run_dir / "checkpoints" / "latest.pt"
     device = torch.device("cuda", 0)
     model = build_model(cfg).to(device)

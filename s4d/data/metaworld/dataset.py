@@ -17,6 +17,7 @@ from torch.utils.data import Dataset
 
 from s4d.data import METAWORLD_ROOT, writable_path
 from s4d.data.contract import MOTION_SCORE_SCALE_M, PAIRS, T_WINDOW
+from s4d.data.metaworld.heldout import HeldoutSets
 from s4d.geometry import lift_depth, rigid_body_displacement
 
 # Frame strides in simulator steps. RL observations are 2 simulator steps apart (action repeat 2),
@@ -61,14 +62,19 @@ class MetaworldWindowDataset(Dataset):
         strides=TRAIN_STRIDES,
         with_eval: bool = False,
         seed: int = 0,
+        heldout: str | Path | None = None,
     ):
         """One sample per (episode, start frame, stride). Start frames are kept only where *every* stride fits,
-        so each sample's stride is exactly uniform over ``strides``."""
+        so each sample's stride is exactly uniform over ``strides``.
+
+        ``heldout``: near/trajectory held-out-set file (validation episodes only); with ``with_eval`` its views are
+        added as ``<set>_images/_depth/_K/_w2c/_c2w`` for episodes it contains."""
         self.path = str(path)
         self.episodes = list(episodes)
         self.strides = tuple(int(s) for s in strides)
         self.with_eval = with_eval
         self._file: h5py.File | None = None
+        self.heldout = HeldoutSets(heldout) if (with_eval and heldout is not None) else None
         with h5py.File(self.path, "r") as f:
             self.task = str(f.attrs["task"])
             self.depth_unit = float(f.attrs["depth_unit_m"])
@@ -174,4 +180,6 @@ class MetaworldWindowDataset(Dataset):
             sample["eval_K"] = self.K[ev].clone()
             sample["eval_w2c"] = self.w2c[ev].clone()
             sample["eval_depth"] = depth[:, ev][:, :, None].contiguous()
+            if self.heldout is not None and ep_key in self.heldout:
+                sample.update({k: torch.from_numpy(v) for k, v in self.heldout.window(ep_key, t_idx).items()})
         return sample
