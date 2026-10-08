@@ -58,13 +58,12 @@ def _set_state(scene: MetaworldScene, qpos: np.ndarray, qvel: np.ndarray) -> Non
 
 
 def _set_goal(scene: MetaworldScene, episode: h5py.Group) -> None:
-    """The visible goal marker is a world site whose position is not part of qpos; Meta-World reports it in the last
-    three observation entries, constant within an episode."""
+    """A goal marker attached to the world body is a site whose position is not part of qpos; Meta-World reports it in
+    the last three observation entries, constant within an episode. Goal sites on other bodies move with qpos.
+    ``replay_check`` verifies the result either way."""
     site = mujoco.mj_name2id(scene.model, mujoco.mjtObj.mjOBJ_SITE, "goal")
-    if site < 0:
+    if site < 0 or scene.model.site_bodyid[site] != 0:
         return
-    if scene.model.site_bodyid[site] != 0:
-        raise ValueError("the goal site is not attached to the world body")
     goal = np.asarray(episode["obs"][:, -3:])
     if not np.allclose(goal, goal[0], atol=1e-6):
         raise ValueError("goal position changes within the episode")
