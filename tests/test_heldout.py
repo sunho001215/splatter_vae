@@ -274,3 +274,30 @@ def test_evaluator_reports_sets_oracle_chamfer_retrieval_and_probes(tmp_path, mo
     assert "metric/psnr_heldout@s2" in gate_summary and "metric/psnr_near@s2" not in gate_summary
     assert "metric/retrieval_top1_near_val@s2" not in gate_summary and "metric/cd_centers_p2g_mean@s2" in gate_summary
     logger.close()
+
+
+def test_batched_splat_and_oracle_equal_the_per_cloud_versions(batch):
+    torch.manual_seed(0)
+    G, N, V = 3, 200, 2
+    points = torch.rand(G, N, 3) * torch.tensor([0.4, 0.4, 0.5]) + torch.tensor([-0.2, -0.2, 0.8])
+    colors, valid = torch.rand(G, N, 3), torch.rand(G, N) > 0.2
+    K = torch.tensor([[20.0, 0, 8], [0, 20.0, 8], [0, 0, 1]]).expand(G, V, 3, 3)
+    c2w = torch.eye(4).repeat(G, V, 1, 1)
+    c2w[:, 1, 0, 3] = 0.05
+    w2c = torch.linalg.inv(c2w)
+    rgb, cov, dep = D.splat_batched(points, colors, valid, K, w2c, 16, 16, 0.05, chunk=2)
+    for g in range(G):
+        r, c, d = D.splat_depth(points[g][valid[g]], colors[g][valid[g]], K[g], w2c[g], 16, 16, 0.05)
+        assert torch.equal(c, cov[g]) and torch.equal(d, dep[g])
+        same_depth_pixels = c.expand_as(r)
+        assert torch.equal(r[same_depth_pixels], rgb[g][same_depth_pixels]) or torch.allclose(r, rgb[g])
+    batch["images"] = torch.randint(0, 256, batch["images"].shape, dtype=torch.uint8)
+    batch.update({"near_K": batch["K"].clone(), "near_w2c": batch["w2c"].clone()})
+    rgb, covered = D.oracle_batch(batch, "near", 0.05, 3.0)
+    B, T, Vt = batch["images"].shape[:3]
+    i = 0
+    for b in range(B):
+        for t in range(T):
+            r, c = D.oracle_views(batch, b, t, "near", 0.05, 3.0)
+            assert torch.equal(c, covered[i : i + Vt])
+            i += Vt

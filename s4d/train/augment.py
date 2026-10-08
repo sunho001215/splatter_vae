@@ -17,8 +17,7 @@ import torch
 import torch.nn.functional as F
 
 from s4d.data.metaworld.cameras import TRAIN_CAMERAS, offsets_to_orbit, orbit_rig, sample_offsets
-from s4d.diag.heldout import splat_depth
-from s4d.geometry import lift_depth
+from s4d.diag.heldout import fused_training_clouds, splat_batched
 
 PATCH_COVERAGE = 0.9  # a synthetic-view patch is a token only if this fraction of its pixels is covered in every frame
 
@@ -79,23 +78,18 @@ def synthesize_views(batch: dict, cams: dict, near: float, far: float) -> dict[s
     """Fuse the training cameras' GT depth + RGB per (sample, time) and splat it into ``cams``.
 
     Returns images (B,T,n,3,H,W) in [0,1], depth (B,T,n,1,H,W) and covered (B,T,n,1,H,W)."""
-    depth = batch["depth"][:, :, :, 0]  # (B,T,V,H,W)
-    B, T, V, H, W = depth.shape
-    colors = batch["images"].float().permute(0, 1, 2, 4, 5, 3) / 255.0  # (B,T,V,H,W,3)
-    xyz = lift_depth(depth, batch["K"][:, None].expand(B, T, V, 3, 3), batch["c2w"][:, None].expand(B, T, V, 4, 4))
-    keep = (depth > 0) & (depth <= far)
-    rgb, cov, dep = [], [], []
-    for b in range(B):
-        for t in range(T):
-            r, c, d = splat_depth(xyz[b, t][keep[b, t]], colors[b, t][keep[b, t]], cams["K"][b], cams["w2c"][b], H, W, near)
-            rgb.append(r)
-            cov.append(c)
-            dep.append(d)
+    B, T = batch["depth"].shape[:2]
+    H, W = batch["depth"].shape[-2:]
+    points, colors, valid = fused_training_clouds(batch, far)
     n = cams["K"].shape[1]
+    rgb, cov, dep = splat_batched(
+        points, colors, valid, cams["K"][:, None].expand(B, T, n, 3, 3).reshape(B * T, n, 3, 3),
+        cams["w2c"][:, None].expand(B, T, n, 4, 4).reshape(B * T, n, 4, 4), H, W, near
+    )
     return {
-        "images": torch.stack(rgb).view(B, T, n, 3, H, W),
-        "covered": torch.stack(cov).view(B, T, n, 1, H, W),
-        "depth": torch.stack(dep).view(B, T, n, 1, H, W),
+        "images": rgb.view(B, T, n, 3, H, W),
+        "covered": cov.view(B, T, n, 1, H, W),
+        "depth": dep.view(B, T, n, 1, H, W),
     }
 
 
