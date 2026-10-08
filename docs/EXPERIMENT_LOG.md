@@ -295,3 +295,15 @@ Runs: `runs/stage0-drm-cnn-hammer-s2000`, `runs/stage0-drm-cnn-shelf-place-s2000
 hammer learns quickly (0.4 near 80-100k agent steps vs 0.02 for the Stage 0 CNN at 100k; different seed, informal) but
 then degrades; held-out success is low but above the CNN's (0.03-0.09 vs 0.00 at 200k). pick-place is not learned
 within 200k agent steps. Runs: `runs/s1-proxy-base-{hammer,pick-place}-s{1000,1001}`.
+
+## 2026-10-08 — Third OOM round; OOM priorities
+
+- **Incident (09:06).** it1-pick-place and it2-hammer were OOM-killed shortly after being readmitted (available RAM
+  fell from ~60 to ~30 GB within minutes as other tenants grew again).
+- **Fix.** Jobs set their own `oom_score_adj` at launch (inherited by all children): improvement iterations 500,
+  evaluators 400, RL runs 300, base pretraining and exports 0, so the kernel kills low-priority work first and the base
+  encoders survive. The running it1-hammer session was raised to 500 by hand. Admission reserve raised to 60 GB.
+  Liveness checks (`jobs.pid_alive`, `heartbeat.alive`) now treat ESRCH/ENOENT while reading `/proc` as dead (an
+  intermittent scheduler test failure). Suite 204/204.
+- **Plan.** Iterations are readmitted one at a time as memory allows; if host memory stays this tight, iterations 1
+  and 2 run sequentially (both tasks each) instead of together.
