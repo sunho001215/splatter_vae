@@ -544,3 +544,28 @@ Full-split `scripts/evaluate.py` (merged code, ac02dd0); strides 2 / 6. Jobs `ru
   only 1.5-1.7 % sit in free space in front of a surface. So the large p2g values measure hidden mass, not visible
   floaters; rendered geometry is accurate (CD-render p50 7 mm). A visible-only variant of CD-centers would separate the
   two; proposed to the user rather than changed silently.
+
+## 2026-10-08 — Iterations 1-2 vs base at 100k (full split, new diagnostics); RL proxies pending
+
+Means of strides 2 and 6; jobs `runs/fulleval2-s1-{base,it1-decdim256,it2-lambdadyn4}-{hammer,pick-place}-100k`.
+
+| Metric | hammer base / it1 / it2 | pick-place base / it1 / it2 |
+|---|---|---|
+| PSNR training cameras | 25.86 / 24.80 / 25.43 | 24.15 / 24.19 / 24.42 |
+| PSNR moving pixels | 23.93 / 24.27 / 24.30 | 17.02 / 16.92 / 17.37 |
+| PSNR trajectory set (unmasked) | 20.76 / 20.66 / 21.02 | 20.34 / 20.29 / 20.34 |
+| Relative EPE 0->2 | 0.67 / 0.89 / 0.70 | 0.93 / 0.97 / 0.92 |
+| Retrieval trajectory set | 0.33 / 0.31 / 0.34 | 0.36 / 0.32 / 0.34 |
+| Hand-position R² trajectory set | 0.49 / 0.53 / 0.71 | 0.68 / 0.73 / 0.72 |
+| Hand-velocity R² trajectory set | 0.22 / -0.01 / 0.16 | -0.16 / -0.16 / -0.49 |
+| CD-motion dynamic p2g p50 (m) | 0.28 / 0.21 / 0.10 | 0.37 / 0.31 / 0.17 |
+| CD-centers dynamic g2p p90 (m) | 0.07 / 0.17 / 0.08 | 0.07 / 0.16 / 0.05 |
+
+- **Iteration 1 (decoder dim 256): hypothesis H1 not supported.** PSNR is not higher (hammer -1.1 dB), motion is
+  worse (hammer relative EPE 0.67 -> 0.89), trajectory-set retrieval and the hammer velocity probe drop, and the
+  dynamic group covers the moving surfaces less (g2p p90 7 -> 16-17 cm). The gate-screen gain (S3) did not transfer.
+- **Iteration 2 (lambda_dyn 4): H2 partly supported.** Moving-pixel PSNR +0.35 dB (both tasks) and the displaced
+  dynamic centres sit much closer to the moved surfaces (CD-motion dynamic p50 halves), but relative EPE is unchanged,
+  hammer training-camera PSNR drops 0.4 dB, and the pick-place velocity probe on the trajectory set is lower.
+- **Decision pending** the hammer RL proxies at 400k (item 5: last-5 mean and recovery at 150k/250k), which arbitrate
+  between the base configuration and iteration 2; iteration 1 is not carried into any combination.
