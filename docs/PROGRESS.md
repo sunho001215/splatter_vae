@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 06:09
+Last updated: 2026-10-09 07:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -261,6 +261,11 @@ Last updated: 2026-10-09 06:09
 - 06:07: HEARTBEAT_OK — 22 running jobs, watcher and scheduler alive, 5323 GB free, 201 GB RAM available. Synth A200
   continuations 112.8k / 110.3k; synth300k 8.0k / 6.7k; base300k 96.4k / 96.3k (base300k 100k exports next).
   Iteration-3 proxies: hammer 188-199k (0.07-0.23), pick-place 149-181k (~0.0).
+
+- 07:07: HEARTBEAT_OK — 20 running jobs, watcher and scheduler alive, 5338 GB free, 193 GB RAM available. Synth A200
+  continuations 124.2k / 121.6k (200k ~14:00); synth300k 15.1k / 13.6k (0.50-0.53 s/step; 300k in ~40 h with base300k
+  sharing the GPUs); base300k 105.9k / 106.2k (context / fallback). Iteration-3 hammer proxies 338-356k (0.19-0.59);
+  base300k@100k hammer proxies 52-55k.
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
