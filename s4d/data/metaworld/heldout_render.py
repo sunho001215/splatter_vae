@@ -106,8 +106,10 @@ def render_heldout_sets(
     if DATA_ROOT.resolve() not in output.resolve().parents:
         raise ValueError(f"held-out sets must be written under {DATA_ROOT}")
     tmp = output.with_name(output.name + ".incomplete")
-    if output.exists() or tmp.exists():
+    if output.exists():
         raise FileExistsError(f"refusing to overwrite {output}")
+    if tmp.exists():  # a failed earlier attempt of this task; it is rewritten from scratch, a complete file never is
+        log(f"rewriting the partial file {tmp} of an earlier attempt")
     episodes = json.loads(Path(manifest).read_text())["validation"]
     if max_episodes is not None:
         episodes = episodes[:max_episodes]
