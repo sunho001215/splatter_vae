@@ -786,3 +786,18 @@ columns per the pre-registered rule (retrieval, hand-position R² and hand-veloc
   views, so the length study is redone for it: the synth screen runs continue to 200k on their schedule (A200) and
   300k-schedule synth runs start (A300). The base A300 runs continue as context and as the fallback if the user
   decides against synthetic views. Counted iterations used: 3 of 8.
+
+## 2026-10-09 — Iteration 3 (synthetic near views) RL proxies
+
+| Encoder (100k) | Hammer last-5 train cameras (s1000 / s1001 / mean) | Last-5 held-out | Last-5 trajectories | Peak | Recovery 150k / 250k |
+|---|---|---|---|---|---|
+| base | 0.23 / 0.61 / 0.42 | 0.07 | 0.31 | 0.61 | +0.06 / -0.06 |
+| iteration 3 (synthetic views) | 0.56 / 0.22 / 0.39 | 0.09 | 0.15 | 0.50 | +0.04 / -0.05 |
+
+pick-place (200k agent steps, reported only): base 0.003, iteration 3 0.024 (peak 0.067).
+
+- The large representation gains on the trajectory set (retrieval 0.33 -> 0.74, hand-position R² 0.49 -> 0.89) do not
+  show in hammer RL with two seeds: training-camera success is unchanged within the seed spread (0.39 vs 0.42),
+  held-out-camera success 0.09 vs 0.07, and trajectory success is lower (0.15 vs 0.31; per-seed 0.23 / 0.07 vs
+  0.24 / 0.39). Two seeds cannot resolve differences of this size; the decision of item 2d (rule-based, representation
+  metrics) stands, and the user's call on the pick-place motion collapse is pending.
