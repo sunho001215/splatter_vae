@@ -656,3 +656,18 @@ assembly (DrM + CNN, seed 2000, 300k agent steps, light evaluation): training-ca
 criterion (ii). plate-slide is far above the ~0.7 ceiling (0.89-1.00 from 150k). The choice continues with
 coffee-push and drawer-open (0.29 and 0.44 at 75k), in ranking order.
 - plate-slide final: training-camera success 0.89 at 300k (0.85-1.00 from 125k on): fails criterion (ii) (too easy).
+
+## 2026-10-08 — Item 5 / iteration 2: not adopted; base configuration remains the method configuration
+
+| Encoder (100k) | Last-5 train cameras (s1000 / s1001 / mean) | Last-5 held-out | Last-5 trajectories | Peak | Recovery 150k / 250k |
+|---|---|---|---|---|---|
+| base | 0.23 / 0.61 / 0.42 | 0.07 | 0.31 | 0.61 | +0.06 / -0.06 |
+| iteration 1 (decoder dim 256) | 0.20 / 0.21 / 0.21 | 0.04 | 0.16 | 0.42 | -0.06 / -0.28 |
+| iteration 2 (lambda_dyn 4) | 0.23 / 0.31 / 0.27 | 0.06 | 0.34 | 0.53 | +0.16 / -0.19 |
+
+- Iteration 2's RL proxy is not better than base (mean last-5 0.27 vs 0.42; within base's own 0.38 seed spread, so
+  not shown worse either), and its pretraining gains were mixed (entry above). With no clear improvement it is not
+  adopted. The base configuration remains the method configuration C, pending the item 2 viewpoint screens.
+- The iteration-2 runs were ended at their latest checkpoints (hammer 130k, pick-place 140k) with `train.stop_step`,
+  as for iteration 1; only the base runs continue to 200k (the A200 point of the length study for C = base).
+- Counted iterations used so far: 2 of 8 (both rejected).

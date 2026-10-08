@@ -1140,6 +1140,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.stop_step=130000
   - train.steps=200000
   - train.num_workers=8
   - loss.lambda_dyn=4.0
@@ -1164,6 +1165,7 @@ jobs:
   - --resume
   - auto
   - --set
+  - train.stop_step=140000
   - train.steps=200000
   - train.num_workers=8
   - loss.lambda_dyn=4.0
