@@ -855,3 +855,115 @@ hand-velocity R² trajectory, relative EPE 0->2, dynamic share of moving pixels,
   configuration on this task, not a slow start.
 - A200 hammer proxies (400k agent steps, seeds 1000/1001) and pick-place proxies (200k) are running; A300 synth runs at
   ~60k of 300k.
+
+## 2026-10-09 — User directives (items 1-3, S1-S6): validation standard (pre-registered before any result)
+
+- **Standard for items 1-2 and the S1 resolution.** Two pretraining seeds (`train.seed` 0 and 1) per variant on hammer
+  and pick-place, base 200k schedule stopped at 100k (`train.stop_step=100000`), full-split `scripts/evaluate.py`.
+  Existing runs are reused as seed 0 only where the configuration is byte-identical.
+- **Margins (pre-registered formula).** For each metric and task, margin = max(|reference seed 0 - reference seed 1|,
+  floor), computed from the two seeds of that comparison's reference once they exist and written into this log before
+  any variant is compared. Floors: PSNR-type 0.2 dB; retrieval 0.03; probe R² 0.05; relative EPE 0.03; EPE 1 mm;
+  dynamic share 0.05; utilisation / hidden / floater fractions 0.02 (absolute); Chamfer metrics 5 % (relative).
+  "Better / worse beyond the margin" compares the two-seed means of variant and reference.
+- **Motion metrics use stride 6 as primary** (stride 2 reported) in every comparison; other metrics use the mean of
+  strides 2 and 6 as before.
+- **RL proxies (S2 adopted).** Every compared encoder gets 6 hammer seeds (1000-1005), 400k agent steps, full
+  evaluation protocol. Decision quantity: mean over seeds of the last-5 training-camera success; RL margin =
+  max(0.10, 2 x standard error of the difference of means). Two-seed proxies stay context only.
+- **Budget.** Items 1-2 and S1 are counted iterations beyond the original 8 (user authorisation, 2026-10-09). Counted
+  so far: 3 (it1 decoder dim, it2 lambda_dyn, it3 synthetic views). `method-frozen-v1` only after items 1-2.
+
+## 2026-10-09 — S1 decided first: does a synthetic-view variant keep the viewpoint gains without the pick-place motion collapse?
+
+- **Why first.** S1 fixes the configuration C on which items 1-2 run; items 1-2 code is written meanwhile.
+- **Runs** (counted iteration 4; all at 100k of the base 200k schedule, prefetch per item 3):
+  - R = current C (synthetic views as invariance positives and render targets): seed 0 = `s2-screen-synth-*`
+    (identical configuration), seed 1 = `s1v-synth-seed1-*` (new).
+  - V1 = synthetic views as invariance positives only (`aug.synth_render=false`), seeds 0/1.
+  - V2 = synthetic views + self-render (`loss.self_render=0.5`), seeds 0/1.
+- **Rule (margins from R's two seeds).** A variant V qualifies if
+  (a) on pick-place the motion recovers: dynamic share >= 0.5 and relative EPE (stride 6) below R by more than the
+  margin;
+  (b) on both tasks, trajectory-set retrieval, hand-position R² and hand-velocity R² are not below R beyond the
+  margins;
+  (c) on both tasks, training-camera PSNR, moving-pixel PSNR and CD-render (trajectory, symmetric p90) are not worse
+  than R beyond the margins.
+  If both qualify, V1 is chosen (fewer loss terms) unless V2 is better than V1 beyond the margins on a majority of
+  {retrieval traj, position R² traj, velocity R² traj, moving PSNR, relative EPE s6, CD-render} pooled over both tasks
+  (>= 7 of 12). If none qualifies, C stays as is and the collapse is reported as a limitation.
+
+## 2026-10-09 — Item 1 (pre-registered): depth supervision redesign
+
+- **1a occlusion / free-space loss** (`loss.occlusion`, `loss.occlusion_margin` m = 0.02 m: the measured D3 depth
+  error has median 1.9-2.0 mm and p90 ~4 mm, the 2 cm margin is ~5x the p90 and also absorbs Gaussian extent; weight
+  1.0, a first guess recorded before any run). Centres at each time (with predicted motion) are projected into all
+  training cameras; GT depth is read at the nearest pixel (0 < D < far). Behind term min_v relu(z_v - D_v - m) for
+  centres behind by more than m in every camera where they land on valid depth; front term mean_v relu(D_v - z_v - m)
+  over cameras where they lie in observed free space; both averaged over Gaussians, gradient to positions only.
+- **1b** depth validity in the losses becomes 0 < depth < `render.far` for every variant (bug fix; therefore D0 is
+  re-run with it and the existing runs are not reused for D0).
+- **1c diagnostics** in training logs and `scripts/evaluate.py`: utilisation (fraction of Gaussians whose accumulated
+  blending weight sum_p T_i(p) alpha_i(p) exceeds 1e-3 in at least one training camera, computed exactly as the
+  gradient of a summed scalar-feature render), hidden fraction (opaque Gaussians behind the surface by > m in every
+  camera), floater fraction (opaque Gaussians in front of the surface by > m in at least one camera), visible-only
+  CD-centers (centres passing the utilisation test), old CD-centers kept, step time and GPU time per step.
+- **1d variants** (2 seeds, both tasks, current image-space motion loss, on C after S1): D0 current depth losses;
+  D1 = D0 + occlusion; D2 = expected-depth L1 + coverage + occlusion (gradient and hard-depth pass removed; the hard
+  pass is skipped entirely when its weight is 0); D3 = D2 + hard depth; D4 = D2 + gradient term.
+- **Rule (margins from D0's two seeds).** D2 is adopted if (i) it is better than D0 beyond the margins on utilisation,
+  hidden fraction and visible-only CD-centers (symmetric p90) on both tasks; (ii) it is not worse than D0 beyond the
+  margins on training PSNR, moving PSNR, trajectory PSNR, CD-render, relative EPE (s6), trajectory retrieval,
+  trajectory position R² and velocity R², on both tasks; (iii) neither D3 nor D4 beats D2, where "beats" means better
+  beyond the margins on >= 3 of the 16 (ii) metric-task pairs and worse beyond them on none; a beating variant brings
+  its term back (both beating: D1's term set). If D2 fails (i) or (ii), D1 is adopted if it passes (i) and (ii)
+  against D0; otherwise D0 stays. Step-time saving of dropping the hard pass is reported.
+- **1e** follows item 2 with the same leave-one-out protocol; candidates chosen then and pre-registered before running.
+
+## 2026-10-09 — Item 2 (pre-registered): Gaussian-space 3D motion loss (M3D) vs image-space (M2D), exclusive
+
+- **M3D** (`loss.motion_space: gaussian`; the image-space loss is then not computed into the objective, only its
+  metrics). Per view and pair (0->1 at t0, 1->2 at t1, 0->2 at t0, pair weights 0.4/0.4/0.2): N = 256 track points
+  sampled from pixels with motion_weight > 0, half from |target| > 5 mm (when available) and half uniform, lifted with
+  GT depth at the source time. Displacement term: each point's k = 4 nearest dynamic Gaussians at the source time
+  within r = 3 cm, Gaussian kernel (sigma = r/2), Huber(delta 1 cm) between the Gaussian's pair displacement and the
+  target, weighted by kernel and motion_weight, averaged over points (static points pull nearby dynamic Gaussians to
+  zero motion). Attraction term: for moving points, the distance to the nearest dynamic centre at the source time
+  (Huber, delta 1 cm), gradient to positions, averaged over moving points. Total = displacement + 1.0 x attraction,
+  times the existing `loss.motion` weight and temporal ramp. Tube masking and pixel weights unchanged.
+- **New metrics** (both motion spaces): relative EPE in GT-magnitude bins 5-10 mm, 1-3 cm, > 3 cm, and EPE in mm, on
+  the image-space evaluation used so far.
+- **Comparison** on the item-1 winner (2 seeds, both tasks; M2D = the item-1 winner itself, reused).
+- **Rule (margins from M2D's two seeds).** Motion metrics (stride 6): relative EPE in the three bins, EPE (mm),
+  CD-motion dynamic (symmetric p90), dynamic share on moving pixels, hand-velocity R² on training cameras and on the
+  trajectory set: 8 per task. Guards: moving-pixel PSNR and training PSNR. RL: hammer, 6 seeds each (standard above).
+  M3D is adopted if it is better beyond the margins on >= 9 of the 16 motion metric-task pairs (>= 3 per task), worse
+  beyond them on none of the 4 guard pairs, and its RL mean is not below M2D's by more than the RL margin. Otherwise
+  M2D stays. Only the adopted loss remains in the training code path; if M3D is adopted, 2c (DROID track arrays)
+  follows with smoke tests only.
+
+## 2026-10-09 — Item 3 (pre-registered): DataLoader prefetch factor
+
+- **Measurement.** `scripts/bench_loader.py` runs real training steps (C configuration, hammer, batch 16) for 400 steps
+  after 100 warm-up steps per setting, under the usual host load, for prefetch factor {4, 2, 1} x workers {8, 6}, in
+  the order ABCDEF then FEDCBA (load drift cancels); per setting: mean step time, mean data-wait per step, and the
+  proportional set size (PSS, shared memory counted once) of the whole process tree (main + workers), sampled every
+  25 steps.
+- **Rule.** Choose the setting with the smallest peak PSS whose mean step time is <= 1.10 x the current setting's
+  (prefetch 4, 8 workers). The default becomes that setting; `ram_gb` per pretraining job = measured peak PSS x 1.25,
+  rounded up; running jobs are restarted at their next checkpoint only if the saving is >= 40 % of their memory.
+
+## 2026-10-09 — Reviewer suggestions S2-S6: decisions
+
+- **S2 (adopted):** 6-seed hammer RL proxies for every decision that uses RL (standard above).
+- **S3 (adopted for base300k):** the base300k runs are context only and compete for host memory: base300k hammer is
+  stopped at its next checkpoint and both stay held. The length study is redone for the final configuration after items
+  1-2 (A200 and A300 of that configuration; the rule's amendments A/B stand, RL now with 6 seeds). The synth300k runs
+  keep running for now ("running jobs continue"); they are stopped if S1 or items 1-2 change C.
+- **S4 (adopted):** DrM + CNN on pick-place, seed 2000, full 1M agent steps and full evaluation protocol now, to learn
+  whether pick-place is solvable under this protocol. It is a Stage 4 seed if code and protocol stay unchanged.
+- **S5 (kept):** anchors stay initialised from the per-task workspace mean/std, treated as a coordinate-normalisation
+  statistic (any dataset provides it; a generic workspace box is a drop-in replacement). A generic-box ablation on one
+  task is deferred to Stage 2 if compute allows; no evidence against it so far.
+- **S6 (adopted):** gate screens at 6k are retired for decisions; future screens use the 100k full-split two-seed
+  standard.
