@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-08T16:08:51.785621+00:00",
+  "started_utc": "2026-10-09T02:45:16.734559+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,14 +17,14 @@
     "--junitxml=/home/ws/ws/splatter4d/.worktrees/review/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 224.43320151790977,
+  "duration_seconds": 231.9174311873503,
   "counts": {
-    "passed": 223,
+    "passed": 224,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 223,
+  "total": 224,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -114,7 +114,7 @@
     "scripts/gpu_env.sh": "89dce4d796bbd4b6bcc4230487100df7dabaaf802e673b3486a88f5291bdeb92",
     "scripts/heartbeat.py": "4dffe6270a3e946d749afd0bc3cfc555bf2247a82e0f72c35c3e7541a43d575c",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
-    "scripts/jobs.py": "d24c0d61be4500de66791e5b7772900c2fa0c4c190134ff2166b155ccfc5d72d",
+    "scripts/jobs.py": "6183c9d7d05c83669baf9b52e40265e56f65117b76a5b5d936678c54bae90db8",
     "scripts/render_heldout_sets.py": "95e69a0896001e69fb0e77382de68c04f399646dfa2fc01d86b1c9ad29b3d71f",
     "scripts/run_tests.py": "a50ea1c89efd7f491a4281b4b25c6a5b756d5e870ab93383efd293b75648f9d9",
     "scripts/screen_tasks.py": "d64ba85a1086588608c3b6bd237851a7aa54c62ef3b4be4a9c92273551a32b6a",
@@ -148,7 +148,7 @@
     "tests/test_export.py": "619707a8c7748143df0ee8e9723baac00f3e35ff3969e8039d5881c792798a56",
     "tests/test_geometry.py": "bc127b7470cdf9a23485d8a740c519d272f001b33377f9cbb9dda7e5d12819a3",
     "tests/test_heldout.py": "27c60b89f14377c522adb5f7b7612621a0ccba6abe9dd21f56a95a768d20741c",
-    "tests/test_jobs.py": "d6ca7bf6be5b403a16da96d6f8a633c8128bd2ba336df374b0702559fc0aa3a2",
+    "tests/test_jobs.py": "9eb3fddc04092fcc09a84bfdfa7a56cd9ab9b63e5fcf5d836a80a7dd1430c86d",
     "tests/test_metaworld_checks.py": "d32fa21a9fc0a4a28a21ac564d5850bc58710ae4aa0e9d9debb278c6d3757c34",
     "tests/test_motion.py": "0b59aa14a8af4c55dee408d7652a737bb34ffb0b83a8dd44ad049a05ad2c7299",
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
