@@ -1007,3 +1007,16 @@ be informed by results.
   seeds are split over the two pretraining seeds of each variant: RL seeds 1000-1002 on pretraining seed 0 and
   1003-1005 on pretraining seed 1 (same split for M2D and M3D). The RL margin and decision quantity are as
   pre-registered (mean of last-5 training-camera success over the 6 runs; max(0.10, 2 x SE of the difference)).
+
+## 2026-10-09 — Reading of the directive rules, fixed before any variant result (`analysis/review_rules.py`)
+
+- **Motion metrics** (read at stride 6): relative EPE overall and per magnitude bin, EPE in mm, CD-motion (dynamic,
+  symmetric p90), dynamic share on moving pixels and the hand-velocity R² probes (training cameras and trajectory
+  set), as item 2 lists them. Every other metric is the mean of strides 2 and 6. All motion quantities use the pair
+  0->2 (as `rel_epe_02` in every earlier decision).
+- **Chamfer margins are relative:** margin = max(|seed 0 - seed 1| / their mean, 5 %), compared with the relative
+  difference of the two-seed means. All other margins are absolute: max(|seed 0 - seed 1|, floor).
+- **S1 tie-break** uses R's margins for the V2-vs-V1 comparison; item-1 (iii) and item-2 use D0's / M2D's margins.
+- **Evaluations.** Every S1 member is evaluated with the current evaluator, including R seed 0 (`s2-screen-synth-*`
+  at 100k, re-evaluated so that all six runs per task share one evaluator version; its earlier numbers are not mixed
+  in). Commands: `python analysis/review_rules.py s1 | item1 | item2m3d <m2d>`.

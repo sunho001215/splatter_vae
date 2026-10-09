@@ -4749,4 +4749,194 @@ jobs:
   stage: 1
   ram_gb: 30
   oom_score_adj: 300
+- id: fulleval-s1v-synth-seed0-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synth-seed0-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-synth-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synth-seed1-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synth-seed1-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synth-seed1-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synth-seed1-hammer
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthinv-seed0-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthinv-seed0-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthinv-seed0-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthinv-seed0-hammer
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthinv-seed1-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthinv-seed1-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthinv-seed1-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthinv-seed1-hammer
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthsr-seed0-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthsr-seed0-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthsr-seed0-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthsr-seed0-hammer
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthsr-seed1-hammer-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthsr-seed1-hammer-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthsr-seed1-hammer/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthsr-seed1-hammer
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synth-seed0-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synth-seed0-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s2-screen-synth-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps: []
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synth-seed1-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synth-seed1-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synth-seed1-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synth-seed1-pick-place
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthinv-seed0-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthinv-seed0-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthinv-seed0-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthinv-seed0-pick-place
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthinv-seed1-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthinv-seed1-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthinv-seed1-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthinv-seed1-pick-place
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthsr-seed0-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthsr-seed0-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthsr-seed0-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthsr-seed0-pick-place
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
+- id: fulleval-s1v-synthsr-seed1-pick-place-100k
+  script: scripts/evaluate.py
+  args:
+  - --run
+  - runs/fulleval-s1v-synthsr-seed1-pick-place-100k
+  - --checkpoint
+  - runs/pretrain/s1v-synthsr-seed1-pick-place/checkpoints/step_0100000.pt
+  gpu: any
+  mem_gb: 5
+  priority: 2
+  deps:
+  - s1v-synthsr-seed1-pick-place
+  max_restarts: 1
+  stage: 1
+  ram_gb: 12
+  oom_score_adj: 300
 host_ram_reserve_gb: 60
