@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-09T09:38:29.440897+00:00",
+  "started_utc": "2026-10-09T18:11:09.260328+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,14 +17,14 @@
     "--junitxml=/home/ws/ws/splatter4d/.worktrees/review/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 518.2407510722987,
+  "duration_seconds": 458.0442516808398,
   "counts": {
-    "passed": 240,
+    "passed": 241,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 240,
+  "total": 241,
   "full_suite_passed": true,
   "source_sha256": {
     "s4d/__init__.py": "c82d0ec54e3bf7eb83ddf513f0909afeffb4a0eb441d9b550a719dd6dcc021d0",
@@ -89,7 +89,7 @@
     "s4d/rl/env.py": "16a51854c5b053147eca485a83e1281b793e72d16da9c1ea1eef91d30585fd29",
     "s4d/rl/evaluate.py": "9c5c49bc131e24234a399978adc85a208f3ee6b077093f2aa0f1d46e231fd1f6",
     "s4d/rl/protocol.py": "59092e73cdafd88b5836a4db044379de970086ef98a7b01dcfc530347e3d382e",
-    "s4d/rl/replay.py": "7a0fbe89f579fb59d38962db95de956d90164b594db2d2804c5ca212fd545c25",
+    "s4d/rl/replay.py": "c060fbd90a44620f3f46e67b143b47ae7a777f0908300fddeff1b737c4855c46",
     "s4d/rl/vecenv.py": "d16289ed7bd9837fa3ca234c1f87a11f2b2c8a42fb8b080fcb305094a0d6a075",
     "s4d/train/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/train/augment.py": "f08532057374144cc9ce9d438f283354955b5538c9153fcd28e52045b085698f",
@@ -158,7 +158,7 @@
     "tests/test_occlusion.py": "a448c77d13305a356a166db8f9534693d4541c25c944a9ef3f90792d93457c9e",
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
     "tests/test_review_options.py": "4801accffa5a796cd27933bc983cb49ffcbd36f7a41800b9f922bdafb8723524",
-    "tests/test_rl.py": "6704db0adcaa32a05fd28f6f7de89df2c154c53f7f2db5ca339a1bcd6d8c21ff",
+    "tests/test_rl.py": "6bd4dd9be56830341f7d7da9a6f8cec902184e347a6c4882f9a9451c10a45a7f",
     "tests/test_rl_cli.py": "dfe33af7121f2d9d42cbf06ad65adbe768b68c3761b18e7de8f3033e49462761",
     "tests/test_stop_step.py": "1348e1509a6416b94529e7cdeb9539dcb066d38ca6595c5e9a483fe474764eb9",
     "tests/test_watch.py": "c181728b203e7638e48da11e15516531549fc3c703a03fb5c1aa3f755e3eed56",
@@ -782,6 +782,7 @@
       "_write_state",
       "add",
       "add_initial",
+      "advise_random",
       "buffer",
       "checkpoint",
       "replay_iterator",
