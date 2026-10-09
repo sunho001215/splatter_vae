@@ -3220,7 +3220,8 @@ jobs:
   gpu: any
   mem_gb: 7
   priority: 2
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
