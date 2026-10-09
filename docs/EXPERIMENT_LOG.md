@@ -967,3 +967,6 @@ hand-velocity R² trajectory, relative EPE 0->2, dynamic share of moving pixels,
   task is deferred to Stage 2 if compute allows; no evidence against it so far.
 - **S6 (adopted):** gate screens at 6k are retired for decisions; future screens use the 100k full-split two-seed
   standard.
+- **Update (16:56): synth300k runs stopped too.** Every item-1 variant includes the 1b depth-validity fix, so the final
+  configuration cannot equal the current C and the synth300k runs could only ever be context; with host memory at
+  30-36 GB available they were blocking the S1 runs. Stopped at ~70k (checkpoints kept) and held.
