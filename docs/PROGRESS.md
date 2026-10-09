@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 17:30
+Last updated: 2026-10-09 18:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -303,10 +303,16 @@ Last updated: 2026-10-09 17:30
   synthsr-seed0 pick-place, 200 steps, no checkpoint) were restarted from step 0 pinned to GPU 5 (same seeds, so the
   same training). Loader benchmark relaunched from the main checkout (GPU 4).
 
+- 18:07: HEARTBEAT_OK — watcher and scheduler alive, 4.9 TB free, 104 GB RAM available (host at 311 GB used). Split
+  defect found and fixed (EXPERIMENT_LOG): the six seed-1 S1 runs were stopped and rerun on the fixed split
+  (`s1v-*-seed1-split0-*`, merge 81692be, suite 240/240); 2 started, 4 + the two reference re-evaluations wait for host
+  RAM. Seed-0 S1 runs at 4.4k-8.2k (0.30-0.49 s/step); synth200k proxies hammer 163k/166k (of 400k), pick-place s1000
+  192k; S4 CNN pick-place 80k; loader benchmark at 6 of 12 settings.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| s1v-{synth-seed1, synthinv-seed0/1, synthsr-seed0/1}-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | all 10 running | runs/pretrain/s1v-*/log.txt |
+| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 4 seed-0 running; seed-1 split0: 2 running, 4 waiting for host RAM | runs/pretrain/s1v-*/log.txt |
 | s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | running | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | s1-proxy-synth200k-{hammer (400k), pick-place (200k)}-s{1000,1001} (+ -eval) | 4/5 | running (context) | runs/<id>/console.log |
 | bench-loader-synth-hammer (item 3) | GPU 4 | running (relaunched 17:28 from the main checkout) | runs/bench-loader-synth-hammer/console.log |
