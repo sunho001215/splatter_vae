@@ -3451,7 +3451,8 @@ jobs:
   gpu: any
   mem_gb: 1
   priority: 2
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 1
   stage: 1
   ram_gb: 1
@@ -3571,7 +3572,8 @@ jobs:
   gpu: any
   mem_gb: 1
   priority: 2
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 1
   stage: 1
   ram_gb: 1
@@ -3725,7 +3727,8 @@ jobs:
   gpu: any
   mem_gb: 1
   priority: 2
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 1
   stage: 1
   ram_gb: 1
@@ -3759,7 +3762,8 @@ jobs:
   gpu: any
   mem_gb: 1
   priority: 2
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 1
   stage: 1
   ram_gb: 1
@@ -4726,4 +4730,23 @@ jobs:
   stage: 1
   ram_gb: 30
   oom_score_adj: 0
+- id: bench-loader-synth-hammer
+  script: .worktrees/review/scripts/bench_loader.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --set
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - --out
+  - /home/ws/ws/splatter4d/runs/bench-loader-synth-hammer/bench.json
+  gpu: any
+  mem_gb: 10
+  priority: 0
+  deps: []
+  max_restarts: 0
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 300
 host_ram_reserve_gb: 60
