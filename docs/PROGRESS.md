@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 06:58
+Last updated: 2026-10-10 07:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -367,6 +367,12 @@ Last updated: 2026-10-10 06:58
 - 06:58: host memory still exhausted by other tenants (415 GB used, pressure 91-95 %). Two more S1 runs OOM-killed
   (synthsr-seed0-pick-place 80.3k, synth-seed1-split0-hammer 82.2k; resume from 80k). 3 S1 runs running, 7 waiting
   for 75 GB available. S1 completion now depends on when host memory frees.
+
+- 07:07: watcher and scheduler alive; memory pressure gone (0 % over 60 s) but only 49 GB available (host 392 GB
+  used), below the 75 GB the scheduler needs to resume an S1 run. First S1 run done (`s1v-synthinv-seed0-hammer`
+  100k); its evaluation waits for RAM. Two S1 runs training fast on the emptied GPUs (0.18-0.20 s/step:
+  synthsr-seed0-hammer 89.7k, synthinv-seed0-pick-place 78.2k). The 60 GB reserve is kept for now: the last two
+  incidents came from 100+ GB jumps by other tenants within an hour.
 
 ## Job table (running or pending)
 | id | GPU | status | log |
