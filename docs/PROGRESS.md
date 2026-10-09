@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 11:51
+Last updated: 2026-10-09 12:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -280,6 +280,10 @@ Last updated: 2026-10-09 11:51
   held behind `hold-memory` with the synth300k runs (concurrency 3: synth to-200k x2, base300k hammer). Scheduler fix
   merged (dfc5270, suite 224/224): jobs launched in the last 10 min count their declared RAM against available host
   memory; daemon restarted on it (pid in `experiments/daemon.pid`).
+
+- 12:07: HEARTBEAT_OK — 13 running jobs, watcher and scheduler alive, 5344 GB free, 86 GB RAM available. Three
+  pretraining runs at 0.23-0.26 s/step: synth to-200k 147.4k / 135.8k (200k ~16:00 / ~17:00), base300k hammer 115.8k.
+  Held: base300k pick-place, synth300k x2 (memory; user decision on synth pending).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
