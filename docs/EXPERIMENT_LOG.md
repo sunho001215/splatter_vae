@@ -1040,3 +1040,9 @@ be informed by results.
   decision (synthetic views adopted) rests on gains far larger than this noise (trajectory retrieval +0.41 on both
   tasks, position R² +0.40 / +0.23, velocity R² +0.29 / +0.24 against a +0.10 threshold and <= 0.11 observed noise);
   the velocity-R² parts of other earlier comparisons carry this noise and are not re-litigated. The two R seed-0 evaluations made today are redone with the fix, so all S1 numbers share it.
+
+## 2026-10-09 — Context: pick-place proxies of the synth encoder at 200k (A200), 200k agent steps
+
+Two seeds (1000/1001), last-5 training-camera success 0.015 / 0.017 (held-out 0.005 / 0.000, trajectories 0.015 /
+0.010), peak 0.025 / 0.042. Pick-place stays unsolved within 200k agent steps for every encoder tried so far; it is
+context only (directive S2) and the S4 CNN run to 1M (80k at 18:07) tells whether it is solvable under this protocol.
