@@ -201,7 +201,7 @@ class Evaluator:
                         window_rows.append(render_chamfer(rendered, batch, 0, prefix, self.far))
                 group_states[name].append(_cpu(encode_states(model, batch[f"{prefix}_images"]).flatten(2)))
             if self.heldout_diag:
-                window_rows.append(chamfer_metrics(batch, gs, 0, self.far))
+                window_rows.append(chamfer_metrics(batch, gs, 0, self.far, used=out.get("used")))
             for k, v in metrics.items():
                 val = float(v)
                 if math.isfinite(val):
