@@ -4478,7 +4478,8 @@ jobs:
   gpu: any
   mem_gb: 10
   priority: 0
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4532,7 +4533,8 @@ jobs:
   gpu: any
   mem_gb: 10
   priority: 0
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4588,7 +4590,8 @@ jobs:
   gpu: any
   mem_gb: 10
   priority: 0
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4615,7 +4618,8 @@ jobs:
   gpu: any
   mem_gb: 10
   priority: 0
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4669,7 +4673,8 @@ jobs:
   gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 10
   priority: 0
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4725,7 +4730,8 @@ jobs:
   gpu: any
   mem_gb: 10
   priority: 0
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4770,12 +4776,12 @@ jobs:
   - --run
   - runs/fulleval-s1v-synth-seed1-hammer-100k
   - --checkpoint
-  - runs/pretrain/s1v-synth-seed1-hammer/checkpoints/step_0100000.pt
+  - runs/pretrain/s1v-synth-seed1-split0-hammer/checkpoints/step_0100000.pt
   gpu: any
   mem_gb: 5
   priority: 2
   deps:
-  - s1v-synth-seed1-hammer
+  - s1v-synth-seed1-split0-hammer
   max_restarts: 1
   stage: 1
   ram_gb: 12
@@ -4802,12 +4808,12 @@ jobs:
   - --run
   - runs/fulleval-s1v-synthinv-seed1-hammer-100k
   - --checkpoint
-  - runs/pretrain/s1v-synthinv-seed1-hammer/checkpoints/step_0100000.pt
+  - runs/pretrain/s1v-synthinv-seed1-split0-hammer/checkpoints/step_0100000.pt
   gpu: any
   mem_gb: 5
   priority: 2
   deps:
-  - s1v-synthinv-seed1-hammer
+  - s1v-synthinv-seed1-split0-hammer
   max_restarts: 1
   stage: 1
   ram_gb: 12
@@ -4834,12 +4840,12 @@ jobs:
   - --run
   - runs/fulleval-s1v-synthsr-seed1-hammer-100k
   - --checkpoint
-  - runs/pretrain/s1v-synthsr-seed1-hammer/checkpoints/step_0100000.pt
+  - runs/pretrain/s1v-synthsr-seed1-split0-hammer/checkpoints/step_0100000.pt
   gpu: any
   mem_gb: 5
   priority: 2
   deps:
-  - s1v-synthsr-seed1-hammer
+  - s1v-synthsr-seed1-split0-hammer
   max_restarts: 1
   stage: 1
   ram_gb: 12
@@ -4865,12 +4871,12 @@ jobs:
   - --run
   - runs/fulleval-s1v-synth-seed1-pick-place-100k
   - --checkpoint
-  - runs/pretrain/s1v-synth-seed1-pick-place/checkpoints/step_0100000.pt
+  - runs/pretrain/s1v-synth-seed1-split0-pick-place/checkpoints/step_0100000.pt
   gpu: any
   mem_gb: 5
   priority: 2
   deps:
-  - s1v-synth-seed1-pick-place
+  - s1v-synth-seed1-split0-pick-place
   max_restarts: 1
   stage: 1
   ram_gb: 12
@@ -4897,12 +4903,12 @@ jobs:
   - --run
   - runs/fulleval-s1v-synthinv-seed1-pick-place-100k
   - --checkpoint
-  - runs/pretrain/s1v-synthinv-seed1-pick-place/checkpoints/step_0100000.pt
+  - runs/pretrain/s1v-synthinv-seed1-split0-pick-place/checkpoints/step_0100000.pt
   gpu: any
   mem_gb: 5
   priority: 2
   deps:
-  - s1v-synthinv-seed1-pick-place
+  - s1v-synthinv-seed1-split0-pick-place
   max_restarts: 1
   stage: 1
   ram_gb: 12
@@ -4929,14 +4935,184 @@ jobs:
   - --run
   - runs/fulleval-s1v-synthsr-seed1-pick-place-100k
   - --checkpoint
-  - runs/pretrain/s1v-synthsr-seed1-pick-place/checkpoints/step_0100000.pt
+  - runs/pretrain/s1v-synthsr-seed1-split0-pick-place/checkpoints/step_0100000.pt
   gpu: any
   mem_gb: 5
   priority: 2
   deps:
-  - s1v-synthsr-seed1-pick-place
+  - s1v-synthsr-seed1-split0-pick-place
   max_restarts: 1
   stage: 1
   ram_gb: 12
   oom_score_adj: 300
+- id: s1v-synth-seed1-split0-hammer
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s1v-synth-seed1-split0-hammer
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - train.seed=1
+  - aug.synth_views=2
+  - aug.synth_render=true
+  mem_gb: 10
+  priority: 0
+  deps:
+  - hold-memory
+  max_restarts: 6
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 0
+  gpu: any
+- id: s1v-synthinv-seed1-split0-hammer
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s1v-synthinv-seed1-split0-hammer
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - train.seed=1
+  - aug.synth_views=2
+  - aug.synth_render=false
+  mem_gb: 10
+  priority: 0
+  deps:
+  - hold-memory
+  max_restarts: 6
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 0
+  gpu: any
+- id: s1v-synthsr-seed1-split0-hammer
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s1v-synthsr-seed1-split0-hammer
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - train.seed=1
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.self_render=0.5
+  mem_gb: 10
+  priority: 0
+  deps:
+  - hold-memory
+  max_restarts: 6
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 0
+  gpu: any
+- id: s1v-synth-seed1-split0-pick-place
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s1v-synth-seed1-split0-pick-place
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - train.seed=1
+  - aug.synth_views=2
+  - aug.synth_render=true
+  mem_gb: 10
+  priority: 0
+  deps:
+  - hold-memory
+  max_restarts: 6
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 0
+  gpu: any
+- id: s1v-synthinv-seed1-split0-pick-place
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s1v-synthinv-seed1-split0-pick-place
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - train.seed=1
+  - aug.synth_views=2
+  - aug.synth_render=false
+  mem_gb: 10
+  priority: 0
+  deps:
+  - hold-memory
+  max_restarts: 6
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 0
+  gpu: any
+- id: s1v-synthsr-seed1-split0-pick-place
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s1v-synthsr-seed1-split0-pick-place
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=100000
+  - train.num_workers=8
+  - train.seed=1
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.self_render=0.5
+  mem_gb: 10
+  priority: 0
+  deps:
+  - hold-memory
+  max_restarts: 6
+  stage: 1
+  ram_gb: 30
+  oom_score_adj: 0
+  gpu: any
 host_ram_reserve_gb: 60

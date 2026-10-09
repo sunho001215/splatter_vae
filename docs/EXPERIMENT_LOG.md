@@ -1020,3 +1020,23 @@ be informed by results.
 - **Evaluations.** Every S1 member is evaluated with the current evaluator, including R seed 0 (`s2-screen-synth-*`
   at 100k, re-evaluated so that all six runs per task share one evaluator version; its earlier numbers are not mixed
   in). Commands: `python analysis/review_rules.py s1 | item1 | item2m3d <m2d>`.
+
+## 2026-10-09 — Two evaluation-protocol defects found before any S1 variant result; fixed
+
+- **Seed-1 runs used a different episode split.** `scripts/train.py` drew the train/validation split from
+  `train.seed`, so the six S1 seed-1 runs (`s1v-*-seed1-*`) trained on the seed-1 split: some seed-0 validation
+  episodes were in their training data, and their own validation episodes mostly have no near/trajectory held-out
+  views. The pre-registered "two pretraining seeds" means initialisation, masks and data order, not the split. Fix:
+  the split comes from `data.split_seed` (default 0) for every run; the six runs were stopped at 2.3k-6.5k steps (no
+  checkpoint) and rerun from step 0 as `s1v-*-seed1-split0-*`; their evaluation jobs keep their names. The stopped
+  runs' directories and the written `splits/{hammer,pick-place}_seed1.json` are left in place and never used.
+  Earlier campaign runs all used seed 0 (the 6k gate screen with seed 1 used an explicit episode list), so nothing
+  else is affected.
+- **Probe fits depended on an unseeded shuffle.** The probes' training windows came from a shuffled loader without a
+  generator, so evaluating the same checkpoint twice gave different R²: R seed 0 on pick-place, hand-velocity R² on the
+  trajectory set 0.125 vs 0.016 (stride 2) and 0.165 vs 0.138 (stride 6); hand-position R² differed by <= 0.03; every
+  rendering, motion, Chamfer and retrieval metric was identical. Fix: a fixed generator (`eval.probe_seed`, 0), so
+  every evaluation fits its probes on the same training windows. Consequence for decisions already taken: the 2d
+  decision (synthetic views adopted) rests on gains far larger than this noise (trajectory retrieval +0.41 on both
+  tasks, position R² +0.40 / +0.23, velocity R² +0.29 / +0.24 against a +0.10 threshold and <= 0.11 observed noise);
+  the velocity-R² parts of other earlier comparisons carry this noise and are not re-litigated. The two R seed-0 evaluations made today are redone with the fix, so all S1 numbers share it.
