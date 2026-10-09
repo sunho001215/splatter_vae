@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 07:07
+Last updated: 2026-10-10 07:49
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -374,10 +374,14 @@ Last updated: 2026-10-10 07:07
   synthsr-seed0-hammer 89.7k, synthinv-seed0-pick-place 78.2k). The 60 GB reserve is kept for now: the last two
   incidents came from 100+ GB jumps by other tenants within an hour.
 
+- 07:49: host memory recovered (104-123 GB available); the scheduler resumed all seven waiting S1 runs from their
+  checkpoints between 07:19 and 07:49. 9 S1 runs training, 1 done (synthinv-seed0-hammer, evaluated). CNN pick-place
+  trainer stays held until S1 ends.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 3 running; 7 waiting for host RAM (resume from checkpoints) | runs/pretrain/s1v-*/log.txt |
+| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 9 running (resumed 07:19-07:49), synthinv-seed0-hammer done and evaluated | runs/pretrain/s1v-*/log.txt |
 | s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | OOM-killed at 693k (03:16); held until S1 reaches 100k, resumes from 650k | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
