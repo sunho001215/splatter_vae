@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 02:07
+Last updated: 2026-10-10 03:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -342,6 +342,14 @@ Last updated: 2026-10-10 02:07
 - 02:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 189 GB RAM available, 12 jobs running. S1 seed 0
   at 50.7k-72.5k, seed 1 at 35.9k-59.5k (0.42-0.68 s/step; slowest at 100k ~13:30). S4 CNN pick-place 648k, success
   0.22.
+
+- 03:07: HEARTBEAT_OK with one slowdown — watcher and scheduler alive, 4.8 TB free, but host RAM available fell to
+  44-47 GB (host 353 GB used; other tenants grew, page cache shrank from ~255 to ~143 GB). S1 runs unaffected (seed 0
+  at 57.8k-80.5k, seed 1 at 41.1k-66.8k, 0.44-0.61 s/step). The S4 CNN pick-place run (693k, success 0.42 at 690k) is
+  not stalled but slowed from ~15 to 2.5 agent steps/s: its 33 GB frame memmap no longer stays in page cache and
+  every random frame fault reads ~1.5 MB through the 2 MB device readahead (805 MB/s of reads, 538 major faults/s).
+  The run is left as is (still a Stage 4 candidate seed). Fix for future CNN runs: MADV_RANDOM on the frame memmap
+  (I/O hint only, sampled bytes unchanged; worktree commit, suite running).
 
 ## Job table (running or pending)
 | id | GPU | status | log |
