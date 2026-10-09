@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 03:07
+Last updated: 2026-10-10 03:30
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -351,11 +351,15 @@ Last updated: 2026-10-10 03:07
   The run is left as is (still a Stage 4 candidate seed). Fix for future CNN runs: MADV_RANDOM on the frame memmap
   (I/O hint only, sampled bytes unchanged; worktree commit, suite running).
 
+- 03:30: host-memory incident — S4 CNN pick-place trainer OOM-killed at 693k (exit 137; available RAM 2-6 GB from
+  other tenants' growth). Held until the S1 runs reach 100k, then resumes from 690k. Replay readahead fix merged
+  (25793e0, suite 241/241). All 10 S1 runs unaffected; RAM available back to 40-69 GB. Details in EXPERIMENT_LOG.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
 | s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | all 10 running | runs/pretrain/s1v-*/log.txt |
-| s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | running | runs/s4-drm-cnn-pick-place-s2000/console.log |
+| s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | OOM-killed at 693k (03:16); held until S1 reaches 100k, resumes from 690k | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
 Completed: data collection and checks (32 jobs), timing runs, Stage 0, review screens and proxies (see Disk table).

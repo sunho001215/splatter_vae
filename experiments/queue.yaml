@@ -4432,7 +4432,8 @@ jobs:
   gpu: any
   mem_gb: 5
   priority: 1
-  deps: []
+  deps:
+  - hold-memory
   max_restarts: 1
   stage: 4
   ram_gb: 8
