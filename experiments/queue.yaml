@@ -4666,7 +4666,7 @@ jobs:
   - train.seed=1
   - aug.synth_views=2
   - aug.synth_render=false
-  gpu: any
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 10
   priority: 0
   deps: []
@@ -4694,7 +4694,7 @@ jobs:
   - aug.synth_views=2
   - aug.synth_render=true
   - loss.self_render=0.5
-  gpu: any
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 10
   priority: 0
   deps: []
@@ -4731,7 +4731,7 @@ jobs:
   ram_gb: 30
   oom_score_adj: 0
 - id: bench-loader-synth-hammer
-  script: .worktrees/review/scripts/bench_loader.py
+  script: scripts/bench_loader.py
   args:
   - --config
   - configs/metaworld/base.yaml
