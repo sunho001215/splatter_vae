@@ -419,7 +419,7 @@ def make_train_loader(dataset, cfg: dict, ctx: ddp.DistContext, seed: int) -> Da
         drop_last=True,
         collate_fn=collate,
         persistent_workers=workers > 0,
-        prefetch_factor=4 if workers > 0 else None,
+        prefetch_factor=int(get(cfg, "train.prefetch_factor", 4)) if workers > 0 else None,
         generator=torch.Generator().manual_seed(seed),
     )
 
