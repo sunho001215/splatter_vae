@@ -820,3 +820,14 @@ pick-place (200k agent steps, reported only): base 0.003, iteration 3 0.024 (pea
   the 60 GB reserve this admits one pretraining run per ~90 GB of available host memory: synth hammer (continuation to
   200k) restarted first (priority 1); synth pick-place and both base300k runs wait for RAM and resume from their
   latest checkpoints (synth 130k, base300k 110k).
+
+## 2026-10-09 — Context: hammer proxies of the base300k run at 100k
+
+| Base encoder | Last-5 train cameras (s1000 / s1001 / mean) | Last-5 held-out | Last-5 trajectories | Peak |
+|---|---|---|---|---|
+| 200k schedule @100k | 0.23 / 0.61 / 0.42 | 0.07 | 0.31 | 0.61 |
+| A200 (200k schedule, annealed) | 0.30 / 0.50 / 0.40 | 0.06 | 0.29 | 0.58 |
+| 300k schedule @100k | 0.13 / 0.60 / 0.37 | 0.08 | 0.34 | 0.52 |
+
+All three base encoders are indistinguishable on hammer RL within the two-seed spread (seed 1001 is consistently the
+stronger seed, 0.50-0.61; seed 1000 0.13-0.30). Context only; the length decision compares A300 with A200.
