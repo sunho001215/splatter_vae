@@ -82,6 +82,27 @@ def test_launches_wait_for_host_ram(tmp_path):
     assert jobs.host_available_gb() > 0
 
 
+def test_recently_launched_jobs_still_count_against_host_ram(tmp_path):
+    """A job that started a minute ago has not allocated its memory yet; admission must not count it as free."""
+    queue = tmp_path / "q.yaml"
+    jobs_list = [
+        {"id": "ramping", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "ram_gb": 30},
+        {"id": "next", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "ram_gb": 30},
+    ]
+    queue.write_text(yaml.safe_dump({"limits": LIMITS, "host_ram_reserve_gb": 40, "jobs": jobs_list}))
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    own = os.getpid()  # a live session so reconciliation keeps the job running
+    registry.write_text(json.dumps({"event": "launched", "id": "ramping", "pid": os.getsid(own), "gpu": GPU4,
+                                    "attempt": 1, "time": time.time() - 60}) + "\n")
+    messages = jobs.tick(queue, registry, runs, usage={}, available_gb=90.0)  # 90 - 30 (ramping) - 30 < 40
+    assert any("next: waiting for host RAM (60 GB available" in m for m in messages)
+    assert "next" not in registry.read_text()
+    registry.write_text(json.dumps({"event": "launched", "id": "ramping", "pid": os.getsid(own), "gpu": GPU4,
+                                    "attempt": 1, "time": time.time() - 3600}) + "\n")
+    messages = jobs.tick(queue, registry, runs, usage={}, available_gb=50.0)  # ramp over: 50 - 30 < 40 still waits
+    assert any("next: waiting for host RAM (50 GB available" in m for m in messages)
+
+
 def test_only_guarded_repository_scripts_launch(tmp_path):
     assert jobs.check_guarded("scripts/train_rl.py").name == "train_rl.py"
     assert jobs.check_guarded("scripts/train.py").name == "train.py"

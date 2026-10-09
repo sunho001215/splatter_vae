@@ -246,6 +246,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb) -> 
         return messages
     available = host_available_gb() if available_gb is None else available_gb
     reserve = float(queue.get("host_ram_reserve_gb", 0))
+    # Jobs launched in the last ``host_ram_ramp_minutes`` have not allocated their memory yet (loader workers start
+    # lazily), so their declared RAM is still counted against what the host reports as available.
+    ramp = 60.0 * float(queue.get("host_ram_ramp_minutes", 10))
+    now = time.time()
+    for job_id, s in state.items():
+        if s["status"] == RUNNING and now - float(s.get("since", 0.0)) < ramp:
+            available -= float(jobs.get(job_id, {}).get("ram_gb", 0))
     for job in eligible(list(jobs.values()), state):
         gpu = choose_gpu(job, queue["limits"], running, foreign)
         if gpu is None:
