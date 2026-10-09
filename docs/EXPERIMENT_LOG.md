@@ -1090,12 +1090,12 @@ final configuration (A200 vs A300, 6-seed proxies) decides the length.
 
 - From ~02:20 other tenants grew to ~370 GB (this container: 127 GB PSS, of which the 10 S1 runs ~115 GB), the page
   cache collapsed and available memory reached 2-6 GB with 32 % full memory pressure (60 s). The kernel killed the
-  S4 CNN trainer and its evaluation companion (exit 137) at agent step 693k (last checkpoint 690k; training-camera
+  S4 CNN trainer and its evaluation companion (exit 137) at agent step 693k (resume checkpoint at 650k, `checkpoint_every_steps` 50k; training-camera
   success 0.42 at 690k). No S1 run was hit.
 - Before the kill the CNN run had slowed from ~15 to 2.5 agent steps/s: its 33 GB frame memmap fell out of the page
   cache and each random ~49 KB frame fault read ~1.5 MB through the 2 MB device readahead (805 MB/s). Fix (merged
   25793e0, suite 241/241): MADV_RANDOM on the CNN frame memmap; an I/O hint only, the sampled bytes are unchanged (test),
   so the run stays a Stage 4 candidate seed when it resumes with it.
 - **Decision:** the CNN trainer is held (`hold-memory`) until the S1 pretraining runs reach 100k (~14:00), then
-  resumes from its 690k checkpoint and on-disk replay. S1 is the critical path to the freeze; the CNN run is context
+  resumes from its 650k checkpoint (the replay is returned to that point; 43k agent steps are redone). S1 is the critical path to the freeze; the CNN run is context
   (S4) and cannot finish usefully under this pressure anyway.
