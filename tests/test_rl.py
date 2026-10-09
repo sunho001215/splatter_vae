@@ -402,3 +402,17 @@ def test_every_task_resolves_to_the_official_drm_metaworld_settings(tmp_path, en
     if encoder == "cnn":
         sweep = resolve_config("sweep-into", encoder, 0, overrides)
         assert sweep["agent"]["max_perturb_factor"] == 0.9 and sweep["agent"]["target_lambda"] == 0.6
+
+
+def test_disk_frames_are_advised_random_and_read_back_unchanged(tmp_path):
+    from s4d.rl.replay import advise_random
+
+    replay = Replay(tmp_path / "replay", (3, 4, 4), np.uint8, 4, 4, 100, 3, 3)
+    fill(replay, episodes=2, length=6)
+    assert advise_random(replay.atom)  # the frame memmap accepts the hint (Linux)
+    assert not advise_random(np.zeros(3))  # in-RAM arrays are left alone
+    a = replay.sample(64, np.random.default_rng(1), GAMMA)
+    reopened = Replay(tmp_path / "replay", (3, 4, 4), np.uint8, 4, 4, 100, 3, 3, mode="r+")
+    b = reopened.sample(64, np.random.default_rng(1), GAMMA)
+    for x, y in zip(a, b):
+        np.testing.assert_array_equal(np.asarray(x), np.asarray(y))
