@@ -970,3 +970,40 @@ hand-velocity R² trajectory, relative EPE 0->2, dynamic share of moving pixels,
 - **Update (16:56): synth300k runs stopped too.** Every item-1 variant includes the 1b depth-validity fix, so the final
   configuration cannot equal the current C and the synth300k runs could only ever be context; with host memory at
   30-36 GB available they were blocking the S1 runs. Stopped at ~70k (checkpoints kept) and held.
+
+## 2026-10-09 — Items 1-2: implementation details fixed before any variant run
+
+Written into the code before any D- or M3D run exists (worktree commits df1df24, 648ff5e); none of these choices can
+be informed by results.
+
+- **Occlusion loss (1a).** Per state t in {0, 1, 2} with the predicted centres at t and the GT depth of time t,
+  combined over states with the temporal ramp like the render and visibility terms. A camera counts for a centre when
+  the centre is in front of the near plane, inside the image and its nearest pixel (pixel centres at +0.5) has
+  0 < D < far. Behind = min over counted cameras of relu(z - D - m) (0 without counted cameras); front = relu(D - z - m)
+  summed over counted cameras and divided by the number of cameras where it is > 0 (free-space cameras), so one camera
+  that sees through a centre is enough. All Gaussians (scene and dynamic, any opacity) are averaged; gradient reaches
+  the centres (and through the states at t1/t2 the displacements), nothing else.
+- **Far-plane validity (1b, `loss.depth_valid_far`).** Measured on 5 episodes per task: 1.8 % (hammer) / 2.2 %
+  (pick-place) of training-camera pixels have depth >= 3 m (max 5.85 m) and were treated as valid targets the renderer
+  cannot reach. The fix applies to depth L1, gradient and hard depth, coverage, and the motion weights of each pair's
+  source time (and therefore the M3D track points). The evaluator's training-camera depth AbsRel uses the same mask.
+- **Diagnostics (1c)** at t0 for every sample (training: every log step; evaluation: every batch): utilisation over all
+  Gaussians (blending weight > 1e-3 in at least one training camera, from the gradient of a per-camera unit-feature
+  render); hidden and floater fractions over opaque Gaussians (opacity > 0.3, the CD-centers threshold), with the
+  counted-camera rule above (hidden needs at least one counted camera); visible-only CD-centers = opaque and utilised
+  centres vs the same GT cloud as CD-centers; `train/gpu_time` = mean CUDA-event time of forward + backward + update
+  per step over each log interval. Sanity on the synth encoder at 100k (hammer, 3 training batches): utilisation
+  0.62, hidden fraction 0.87 (the earlier 85-87 % estimate), floater fraction 0.006, occlusion loss 0.157; the
+  diagnostic costs ~8 ms per log step.
+- **M3D (2a).** Track points are sampled per (sample, view, pair) with replacement; the kernel weights
+  exp(-d^2 / (2 sigma^2)) inside r are detached and not normalised over neighbours (a point whose neighbours are far
+  pulls less); the displacement term sums kernel x Huber over the k neighbours, times the point's motion weight, and
+  averages over all counted points (motion weight > 0); attraction is Huber(1 cm) of the distance to the nearest
+  dynamic centre, averaged over moving points. The image-space render still runs for the metrics (`motion_image`).
+  Sanity on the same synth encoder (trained with M2D): 54-59 % of track points have a dynamic Gaussian within 3 cm,
+  moving points are 42-49 mm from the nearest dynamic centre, so attraction dominates the M3D loss at the start
+  (0.037-0.044 vs displacement 0.002-0.006 per pair); no measurable change in step time or GPU memory.
+- **Item 2 RL proxies: which encoders get the 6 seeds.** The comparison is between loss variants, so the 6 hammer
+  seeds are split over the two pretraining seeds of each variant: RL seeds 1000-1002 on pretraining seed 0 and
+  1003-1005 on pretraining seed 1 (same split for M2D and M3D). The RL margin and decision quantity are as
+  pre-registered (mean of last-5 training-camera success over the 6 runs; max(0.10, 2 x SE of the difference)).

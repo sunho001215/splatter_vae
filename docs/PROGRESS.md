@@ -3,33 +3,26 @@
 Last updated: 2026-10-09 16:09
 
 ## Current phase
-- **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
-- **Phase C** in progress: RL timing done (CNN GPU-bound ~80 steps/s/GPU; frozen ~190 steps/s/GPU with 8 runs);
-  pretraining 0.22 s/step at 8 loader workers (loader-bound; 32 workers now); `docs/COMPUTE_PLAN.md` written.
-  M2 overfit gate FAILED after three diagnosed iterations (G1-G3; recorded in RESULTS.md).
-- **Stage 0** done: DrM + CNN hammer 0.70 train-camera / 0.02 held-out success at 1M; shelf-place 0 (no reward ever: sparse v3 reward). See EXPERIMENT_LOG.
-- **Stage 1** in progress: base pretraining (200k schedule) on hammer and pick-place at ~120k; improvement iterations
-  1 (decoder dim 256) and 2 (lambda_dyn 4) at 70-77k of their 200k schedules, compared with base at 100k.
-- **Pretraining length (user update, 2026-10-08).** Ours: default 300k; the final length (200k/300k/400k) is chosen on
-  hammer and pick-place by the pre-registered rule in EXPERIMENT_LOG ("Pretraining length") and fixed before
-  `method-frozen-v1`, for all 8 tasks and all ablations. SinCro: exactly 300k steps on every task. ReViWo: reference
-  100 001 steps. Configs updated (`base.yaml` train.steps 300000; SinCro `max_global_steps: 300000`); the six running
-  200k-schedule jobs pin `train.steps=200000` in the queue. Suite 204/204 on the new configs.
-- **Stage 4 prep** done: SinCro and ReViWo ported (merge 67f5984, `docs/BASELINES.md`); suite 199/199. Measured cost
-  under load: SinCro 0.53 s/step (300k steps ~45 h/task, ~15 GPU-days for 8 tasks), ReViWo 0.58 s/step (100k steps
-  ~16 h/task). SinCro's budget is settled by the user's 300k decision.
-
-- **Mid-campaign review (user, ~11:40)** integrated: one EXPERIMENT_LOG entry per item with designs and decision
-  rules fixed before any run. Code is developed in the worktree `.worktrees/review` (branch `review-items`) so the
-  main checkout's test evidence stays valid for the scheduler; it is merged once the full suite passes there.
-  - Item 1a done: near/trajectory held-out sets rendered for all 8 tasks by replaying stored states (training-camera
-    replay reproduces the stored frames; goal sites and the moved shelf body are restored from the stored data),
-    `/home/ws/data/metaworld/splatter4d_v1/heldout_sets/<task>.hdf5` (1.4-2.3 GB per task, ~14 GB in total).
-  - Item 3a done: push-back fails (expert 0.64); ranking plate-slide, assembly, coffee-push, drawer-open, lever-pull,
-    sweep-into; 3b CNN runs on plate-slide and assembly queue after the merge.
-  - Items 1b/1c, 2, 4 code written with tests (held-out diagnostics, crop / synthetic views / self-render, decoder
-    options, moving-pixel motion normalisation, depth-hard boost, `train.stop_step`); suite running in the worktree.
-  - Item 5: queued hammer proxies run 400k agent steps; base-100k hammer proxies rerun at 400k (running).
+- **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
+  after three diagnosed iterations, recorded), Stage 0 (DrM + CNN hammer 0.70 / shelf-place 0), Stage 4 prep (SinCro,
+  ReViWo ported), mid-campaign review items 1-5 (EXPERIMENT_LOG; coffee-push replaces shelf-place; synthetic near
+  views adopted into the method configuration C).
+- **Stage 1 (in progress), user directives of 2026-10-09** (all rules pre-registered in EXPERIMENT_LOG before results):
+  - **S1 (first, counted iteration 4):** R = C, V1 = synthetic views as invariance positives only, V2 = C +
+    self-render; 2 pretraining seeds each on hammer and pick-place at 100k of the 200k schedule, full-split
+    evaluation; margins from R's two seeds. Decides the C on which items 1-2 run. 4 of 10 new runs running.
+  - **Item 1 (depth redesign):** code done and tested (occlusion/free-space loss, far-plane depth validity, usage
+    diagnostics, visible-only CD-centers, GPU time; worktree df1df24). D0-D4 x 2 seeds x 2 tasks queue after S1.
+  - **Item 2 (M3D):** code done and tested (Gaussian-space motion loss, binned relative EPE, EPE in mm; worktree
+    648ff5e). Runs on the item-1 winner (2 seeds x 2 tasks) + 6-seed hammer RL proxies per variant.
+  - **Item 3 (prefetch):** benchmark script written; its first launch failed on an output-path check (worktree script
+    writing into the main checkout's `runs/`), relaunched from the main checkout after the merge.
+  - **S2-S6:** 6-seed hammer RL proxies for RL-based decisions; base300k/synth300k stopped (context only; length study
+    redone for the final configuration); S4 CNN pick-place seed 2000 to 1M running; S5 workspace-statistics anchors
+    kept; S6 gate screens retired.
+  - `method-frozen-v1` only after items 1-2 (then item 1e leave-one-out and the A200/A300 length study).
+- **Pretraining lengths:** ours default 300k, final L chosen on hammer/pick-place before the freeze (same L for all
+  8 tasks and ablations); SinCro exactly 300k; ReViWo 100 001 (reference).
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
@@ -305,18 +298,15 @@ Last updated: 2026-10-09 16:09
   to-200k 195.2k / 195.8k (200k ~16:30); base300k hammer 175.9k; synth300k 55.0k / 62.7k.
 
 ## Job table (running or pending)
-| id | GPU | status | log | W&B |
-|---|---|---|---|---|
-| stage0-drm-cnn-hammer-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-hammer-s2000/console.log | splatter4d-rl / stage0-drm-cnn-hammer-s2000 |
-| stage0-drm-cnn-shelf-place-s2000 (+ -eval) | GPU 5 | running | runs/stage0-drm-cnn-shelf-place-s2000/console.log | splatter4d-rl / stage0-drm-cnn-shelf-place-s2000 |
-| s1-pretrain-hammer-base | GPU 4 | running (200k) | runs/s1-pretrain-hammer-base/console.log, runs/pretrain/s1-pretrain-hammer-base/ | splatter4d-metaworld / s1-pretrain-hammer-base |
-| s1-pretrain-pick-place-base | GPU 5 | running (200k) | runs/s1-pretrain-pick-place-base/console.log, runs/pretrain/s1-pretrain-pick-place-base/ | splatter4d-metaworld / s1-pretrain-pick-place-base |
-| export-s1-base-* -> s1-proxy-base-{task}-s{1000,1001} | GPU 5 | hammer done; pick-place s1001 done, s1000 finishing |
-| export-s1-it{1,2}-*-100k -> s1-proxy-it{1,2}-*-{task}-s{1000,1001} | GPU 5 | waiting for 100k checkpoints | runs/<id>/console.log | splatter4d-rl |
-| s1-it1-decdim256-{hammer,pick-place} (iteration 1, 200k schedule, compared at 100k) | GPU 4 | running (resumed 03:17 from 30k) | runs/pretrain/s1-it1-*/log.txt | splatter4d-metaworld |
-| s1-it2-lambdadyn4-{hammer,pick-place} (iteration 2) | GPU 4 | running (resumed 03:17 from 30k) | runs/pretrain/s1-it2-*/log.txt | splatter4d-metaworld |
+| id | GPU | status | log |
+|---|---|---|---|
+| s1v-{synth-seed1, synthinv-seed0/1, synthsr-seed0/1}-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 4 hammer running, 6 waiting for host RAM | runs/pretrain/s1v-*/log.txt |
+| s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | running | runs/s4-drm-cnn-pick-place-s2000/console.log |
+| s1-proxy-synth200k-{hammer (400k), pick-place (200k)}-s{1000,1001} (+ -eval) | 4/5 | running (context) | runs/<id>/console.log |
+| bench-loader-synth-hammer (item 3) | - | failed on the output-path check; relaunch after the merge | runs/bench-loader-synth-hammer/console.log |
+| base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
-Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-*`, `timing2-*`), gate it1/it2.
+Completed: data collection and checks (32 jobs), timing runs, Stage 0, review screens and proxies (see Disk table).
 
 ## Disk
 | time | free on /home/ws |
@@ -357,10 +347,11 @@ Completed: all `collect-/split-/stats-/check-<task>` (32), timing runs (`timing-
 | 2026-10-09 13:05 | 4.9 TB (s1-proxy-base300k-100k-hammer-s1000 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 
 ## Next actions
-1. ~12:30: iterations reach 100k -> exports -> DrM proxies (seeds 1000/1001, 200k agent steps); compare with base at
-   100k (pretraining metrics at strides 2 and 6 + proxies) -> choose the method configuration C; stop iteration runs
-   that do not help (the winner continues to 200k as its A200).
-2. Launch C with the default 300k schedule on hammer and pick-place (A300); exports at 100k/200k/300k.
-3. ~16:00: base runs reach 200k -> export -> DrM proxies; full-split `scripts/evaluate.py` on the A200 endpoints.
-4. Length decision by the pre-registered rule (A200 vs A300) -> EXPERIMENT_LOG; then Stage 1 final DrM RL at L with
-   seeds 1000-1002 (1M steps) and the Stage 1 report to the user.
+1. Merge items 1-3 code (suite in the worktree), relaunch the loader benchmark from the main checkout; decide item 3
+   by its rule and report the numbers to the user.
+2. S1 runs reach 100k -> full-split evaluations -> margins from R's two seeds -> S1 rule -> C.
+3. Queue D0-D4 (2 seeds x 2 tasks, 100k of the 200k schedule, prefetch per item 3) on C -> evaluations -> margins from
+   D0 -> item-1 rule -> report 1d to the user.
+4. M3D on the item-1 winner (2 seeds x 2 tasks) + 6-seed hammer RL proxies for M2D and M3D -> item-2 rule -> report 2b.
+5. Item 1e leave-one-out, length study (A200/A300 of the final configuration, 6-seed RL), `method-frozen-v1`, Stage 1
+   final RL (seeds 1000-1002, 1M).

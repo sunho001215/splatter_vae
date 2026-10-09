@@ -80,6 +80,30 @@ stage 3 pretraining rows shrink by a third; if L = 400k, they grow by a third.
 Added cost ~80-90 GPU-hours, all inside the Phase D improvement budget (8 counted iterations or 25 % of the GPU
 budget). Shelf-place's place in Stages 3/4 is taken by the replacement task at the same cost.
 
+## User directives additions (2026-10-09)
+
+Validation standard: 2 pretraining seeds per variant on hammer and pick-place at 100k of the 200k schedule
+(`train.stop_step=100000`) + full-split evaluation; RL decisions use 6 hammer seeds at 400k agent steps. Measured
+pretraining speed under the current sharing: 0.25-0.35 s/step, i.e. ~8-10 h of wall-clock per 100k run; host RAM, not
+the GPUs, limits concurrency (each pretraining run is declared at `ram_gb` 30 until item 3 measures it; 5-7 fit
+next to the other tenants).
+
+| Item | Runs | Count | Est. GPU-hours | Tier |
+|---|---|---|---|---|
+| S1 | V1/V2 x 2 seeds + R seed 1, 2 tasks, 100k (R seed 0 reused) + full-split evaluations | 10 + 12 | ~85 | 1 (iteration 4) |
+| 1 | D0-D4 x 2 seeds x 2 tasks, 100k + full-split evaluations | 20 + 20 | ~170 | 1 (directive budget) |
+| 2 | M3D x 2 seeds x 2 tasks, 100k (M2D = item-1 winner, reused) + evaluations | 4 + 4 | ~35 | 1 |
+| 2 | hammer RL proxies, M2D and M3D x 6 seeds, 400k agent steps, full evaluation protocol | 12 | ~8 (shared) | 1 |
+| 1e | leave-one-out of redundant terms (candidates pre-registered after item 2), ~3-4 variants x 2 seeds x 2 tasks | <= 16 | <= 140 | 1 |
+| length | A200 and A300 of the final configuration (2 tasks) + 6-seed hammer proxies at 100k/200k/300k and A200 | 4 + 24 | ~90 + 16 | 1 |
+| 3 | loader benchmark (6 prefetch x worker settings, 2 passes) | 1 | ~1 | 1 |
+| S4 | DrM + CNN pick-place seed 2000, 1M agent steps (a Stage 4 seed if code and protocol stay unchanged) | 1 | 3.5 | 1 |
+
+Added cost ~550 GPU-hours (user authorisation of 2026-10-09 for items 1-2). At 5-7 concurrent pretraining runs the
+critical path to `method-frozen-v1` is roughly S1 ~1 day, item 1 ~2 days, item 2 ~0.5-1 day, item 1e ~1.5 days and
+the length study ~1.5 days. SinCro and ReViWo pretraining do not depend on our method and may fill spare host memory at
+lower priority before the freeze (no baseline RL before the freeze).
+
 ## Disk
 
 CNN replay: one 128x128 frame per state, 1M states -> 46 GB per run (sparse until written); deleted once the run is

@@ -127,7 +127,7 @@ ablation encoder receives only the newest frame.
 
 | Encoder | Pretraining steps | Notes |
 |---|---|---|
-| splatter4d (ours) | default 300 000; final value chosen on hammer and pick-place before `method-frozen-v1` | warmup 10k + cosine decay to `train.steps`; the chosen value is used for all 8 tasks and every ablation of our method (rule and evidence: `docs/EXPERIMENT_LOG.md`, "Pretraining length") |
+| splatter4d (ours) | default 300 000; final value chosen on hammer and pick-place before `method-frozen-v1` from A200 vs A300 of the final configuration (after items 1-2, 6-seed hammer proxies) | warmup 10k + cosine decay to `train.steps`; the chosen value is used for all 8 tasks and every ablation of our method (rule and evidence: `docs/EXPERIMENT_LOG.md`, "Pretraining length") |
 | SinCro | exactly 300 000 on every task | user decision; reference 500 001; other reference hyperparameters unchanged (`docs/BASELINES.md`, deviation 9) |
 | ReViWo | 100 001 (reference) | reference hyperparameters unchanged |
 
@@ -143,12 +143,21 @@ encoder sees identical initial states and camera paths.
 | Stage | Use | Seeds |
 |---|---|---|
 | 0 | DrM pipeline sanity, CNN, hammer and shelf-place | 2000 (a final-comparison seed: the runs count as Stage 4 CNN seed 2000 only if code and protocol are unchanged afterwards, otherwise they are rerun in Stage 4) |
-| 1 | our encoder, development tasks (hammer, pick-place), including improvement iterations | 1000, 1001, 1002 |
+| 1 | our encoder, development tasks (hammer, pick-place), including improvement iterations | 1000, 1001, 1002 (decision proxies: 1000-1005 on hammer) |
 | 2 | RL ablations (hammer, pick-place) | 1000, 1001, 1002 |
 | 3, 4 | final comparison, all eight tasks, ours and baselines | 2000, 2001, 2002 |
 
 Stage 3/4 seeds are fresh with respect to development; results on the six non-development tasks are never used for
 method decisions. The Stage 0 CNN runs validate the RL pipeline only; they never inform method decisions.
+
+## Development RL proxies (user directives of 2026-10-09)
+
+Every method decision that uses RL compares encoders with 6 hammer seeds (1000-1005) at 400k agent steps under the
+full evaluation protocol (S2). Decision quantity: the mean over seeds of the last-5 training-camera success; margin
+max(0.10, 2 x standard error of the difference of means). When the compared objects are loss variants trained with two
+pretraining seeds, RL seeds 1000-1002 use pretraining seed 0 and 1003-1005 pretraining seed 1. Two-seed proxies and
+pick-place proxies are context only. The pick-place DrM + CNN run with seed 2000 to 1M agent steps (S4) tells whether
+pick-place is solvable under this protocol; it counts as a Stage 4 seed only if code and protocol stay unchanged.
 
 ## Reported metrics
 
