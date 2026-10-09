@@ -303,3 +303,31 @@ def test_batched_splat_and_oracle_equal_the_per_cloud_versions(batch):
             r, c = D.oracle_views(batch, b, t, "near", 0.05, 3.0)
             assert torch.equal(c, covered[i : i + Vt])
             i += Vt
+
+
+def test_split_follows_data_split_seed_not_the_pretraining_seed_and_probe_windows_repeat(tmp_path):
+    import importlib
+    import sys
+
+    sys.path.insert(0, str(REPO / "scripts"))
+    build_data = importlib.import_module("train").build_data
+    write_main(tmp_path / "plane.hdf5", episodes=tuple(f"ep{i:03d}" for i in range(12)))
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"])
+    cfg["data"].update(root=str(tmp_path), task="plane", train_ratio=0.75, strides=[2], val_strides=[2])
+    cfg["train"].update(num_workers=0, batch_size=2)
+
+    def split_and_probe_windows(**changes):
+        for key, value in changes.items():
+            section, name = key.split(".")
+            cfg[section][name] = value
+        train_ds, val_loaders, probe_loaders, _ = build_data(cfg)
+        stride = min(val_loaders)
+        first = next(iter(probe_loaders[stride]))["meta"]
+        return train_ds.episodes, val_loaders[stride].dataset.episodes, list(zip(first["episode"], first["t_indices"]))
+
+    base = split_and_probe_windows(**{"train.seed": 0})
+    assert len(base[1]) == 3 and not set(base[0]) & set(base[1])
+    assert split_and_probe_windows(**{"train.seed": 1}) == base  # pretraining seed: same split, same probe windows
+    other = split_and_probe_windows(**{"train.seed": 0, "data.split_seed": 3})
+    assert other[1] != base[1]
+    assert (tmp_path / "splits" / "plane_seed3.json").is_file()

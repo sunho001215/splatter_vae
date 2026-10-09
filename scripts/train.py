@@ -55,6 +55,8 @@ def build_data(cfg: dict):
     bs = int(get(cfg, "train.batch_size", 16))
 
     def loader(dataset, shuffle: bool):
+        # shuffled evaluation loaders (the probes' training windows) draw from a fixed generator, so evaluating the same
+        # checkpoint twice fits the probes on the same windows
         return DataLoader(
             dataset,
             batch_size=bs,
@@ -63,6 +65,7 @@ def build_data(cfg: dict):
             collate_fn=collate,
             pin_memory=True,
             drop_last=shuffle,
+            generator=torch.Generator().manual_seed(int(get(cfg, "eval.probe_seed", 0))) if shuffle else None,
         )
 
     if regime == "metaworld":
@@ -73,8 +76,10 @@ def build_data(cfg: dict):
         if episodes:  # overfit gate: explicit episode list used for both splits
             train_eps = val_eps = list(episodes)
         else:
+            # the episode split is fixed by data.split_seed, independent of the pretraining seed (train.seed only
+            # changes initialisation, masks and data order), so every seed is validated on the same held-out episodes
             train_eps, val_eps = split_episodes(
-                path, float(get(cfg, "data.train_ratio", 0.96)), int(get(cfg, "train.seed", 0))
+                path, float(get(cfg, "data.train_ratio", 0.96)), int(get(cfg, "data.split_seed", 0))
             )
         strides = tuple(int(s) for s in get(cfg, "data.strides"))
         val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
