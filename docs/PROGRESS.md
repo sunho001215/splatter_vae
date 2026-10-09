@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 13:09
+Last updated: 2026-10-09 14:09
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -293,6 +293,10 @@ Last updated: 2026-10-09 13:09
   to-200k 161.8k / 151.3k; base300k hammer 133.1k; synth300k hammer 21.2k. Memory ample, so synth300k pick-place is
   released now (critical path of the length study) instead of waiting for a to-200k run to finish. base300k pick-place
   stays held (fallback).
+
+- 14:07: HEARTBEAT_OK — 11 running jobs (5 pretraining), watcher and scheduler alive, 5345 GB free, 208 GB RAM
+  available. synth to-200k 172.9k / 166.5k (200k ~16:30 / ~16:10); base300k hammer 148.1k; synth300k 32.8k / 34.5k
+  (0.24-0.30 s/step; 300k in ~20-22 h).
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
