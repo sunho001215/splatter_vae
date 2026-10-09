@@ -13,6 +13,7 @@ crosses an episode boundary or an overwritten slot.
 
 from __future__ import annotations
 
+import mmap
 import queue
 import threading
 import time
@@ -20,6 +21,17 @@ from pathlib import Path
 
 import numpy as np
 import torch
+
+
+def advise_random(array: np.ndarray) -> bool:
+    """Tell the kernel that a disk memmap is read at random (no readahead). Frames are ~49 KB and sampled uniformly;
+    with the device's readahead (2 MB here) every page fault under page-cache pressure read ~30x the needed data
+    (measured 805 MB/s for a 6x slower run on 2026-10-10). Purely an I/O hint: the bytes read are unchanged."""
+    handle = getattr(array, "_mmap", None)
+    if handle is None or not hasattr(mmap, "MADV_RANDOM"):
+        return False
+    handle.madvise(mmap.MADV_RANDOM)
+    return True
 
 
 class NotEnoughData(RuntimeError):
@@ -71,6 +83,8 @@ class Replay:
                 array = np.zeros(shape, dtype=dtype)
             else:
                 array = np.memmap(self.directory / f"{name}.memmap", dtype=dtype, mode=mode, shape=shape)
+                if name == "atom":
+                    advise_random(array)
             setattr(self, name, array)
         if fresh:
             for name in ("state_id", "transition_id", "episode_id", "episode_step"):
