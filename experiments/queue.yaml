@@ -4966,8 +4966,7 @@ jobs:
   - aug.synth_render=true
   mem_gb: 10
   priority: 0
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -4994,8 +4993,7 @@ jobs:
   - aug.synth_render=false
   mem_gb: 10
   priority: 0
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -5023,8 +5021,7 @@ jobs:
   - loss.self_render=0.5
   mem_gb: 10
   priority: 0
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -5051,8 +5048,7 @@ jobs:
   - aug.synth_render=true
   mem_gb: 10
   priority: 0
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -5079,8 +5075,7 @@ jobs:
   - aug.synth_render=false
   mem_gb: 10
   priority: 0
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 6
   stage: 1
   ram_gb: 30
@@ -5108,8 +5103,7 @@ jobs:
   - loss.self_render=0.5
   mem_gb: 10
   priority: 0
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 6
   stage: 1
   ram_gb: 30
