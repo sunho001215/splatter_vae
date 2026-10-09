@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 03:30
+Last updated: 2026-10-10 04:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -354,6 +354,10 @@ Last updated: 2026-10-10 03:30
 - 03:30: host-memory incident — S4 CNN pick-place trainer OOM-killed at 693k (exit 137; available RAM 2-6 GB from
   other tenants' growth). Held until the S1 runs reach 100k, then resumes from its 650k checkpoint. Replay readahead fix merged
   (25793e0, suite 241/241). All 10 S1 runs unaffected; RAM available back to 40-69 GB. Details in EXPERIMENT_LOG.
+
+- 04:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 191 GB RAM available. S1 seed 0 at 66.3k-88.7k,
+  seed 1 at 48.1k-74.1k (0.43-0.51 s/step); first S1 run reaches 100k ~05:30, the slowest ~11:30; their evaluations
+  start automatically (configs in place). CNN pick-place trainer held (incident 03:16).
 
 ## Job table (running or pending)
 | id | GPU | status | log |
