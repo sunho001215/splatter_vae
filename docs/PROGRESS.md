@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 18:07
+Last updated: 2026-10-09 19:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -309,13 +309,18 @@ Last updated: 2026-10-09 18:07
   RAM. Seed-0 S1 runs at 4.4k-8.2k (0.30-0.49 s/step); synth200k proxies hammer 163k/166k (of 400k), pick-place s1000
   192k; S4 CNN pick-place 80k; loader benchmark at 6 of 12 settings.
 
+- 19:07: HEARTBEAT_OK — watcher and scheduler alive, 4.9 TB free, 165 GB RAM available. Item 3 decided and merged
+  (prefetch 2 x 6 workers; `ram_gb` 13 / 15 from measured PSS; reported). All 10 S1 runs running: seed 0 at
+  10.9k-16.2k, seed 1 (fixed split) at 1.6k-7.2k; GPU 4 runs at 0.73-0.81 s/step next to the CNN run and two proxies,
+  GPU 5 runs at 0.45-0.52. Slowest S1 run reaches 100k in ~20 h (sooner once the hammer proxies finish, 265k/270k of
+  400k). S4 CNN pick-place 150k.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 4 seed-0 running; seed-1 split0: 2 running, 4 waiting for host RAM | runs/pretrain/s1v-*/log.txt |
+| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | all 10 running | runs/pretrain/s1v-*/log.txt |
 | s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | running | runs/s4-drm-cnn-pick-place-s2000/console.log |
-| s1-proxy-synth200k-{hammer (400k), pick-place (200k)}-s{1000,1001} (+ -eval) | 4/5 | running (context) | runs/<id>/console.log |
-| bench-loader-synth-hammer (item 3) | GPU 4 | running (relaunched 17:28 from the main checkout) | runs/bench-loader-synth-hammer/console.log |
+| s1-proxy-synth200k-hammer-s{1000,1001} (+ -eval), 400k | GPU 4 | running (context; pick-place pair done) | runs/<id>/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
 Completed: data collection and checks (32 jobs), timing runs, Stage 0, review screens and proxies (see Disk table).
