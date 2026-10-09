@@ -4482,7 +4482,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthinv-seed0-hammer
   script: scripts/train.py
@@ -4509,7 +4509,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthinv-seed1-hammer
   script: scripts/train.py
@@ -4537,7 +4537,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthsr-seed0-hammer
   script: scripts/train.py
@@ -4565,7 +4565,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthsr-seed1-hammer
   script: scripts/train.py
@@ -4594,7 +4594,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synth-seed1-pick-place
   script: scripts/train.py
@@ -4622,7 +4622,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthinv-seed0-pick-place
   script: scripts/train.py
@@ -4649,7 +4649,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthinv-seed1-pick-place
   script: scripts/train.py
@@ -4677,7 +4677,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthsr-seed0-pick-place
   script: scripts/train.py
@@ -4705,7 +4705,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: s1v-synthsr-seed1-pick-place
   script: scripts/train.py
@@ -4734,7 +4734,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
 - id: bench-loader-synth-hammer
   script: scripts/bench_loader.py
@@ -4969,7 +4969,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
   gpu: any
 - id: s1v-synthinv-seed1-split0-hammer
@@ -4996,7 +4996,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
   gpu: any
 - id: s1v-synthsr-seed1-split0-hammer
@@ -5024,7 +5024,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
   gpu: any
 - id: s1v-synth-seed1-split0-pick-place
@@ -5051,7 +5051,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
   gpu: any
 - id: s1v-synthinv-seed1-split0-pick-place
@@ -5078,7 +5078,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
   gpu: any
 - id: s1v-synthsr-seed1-split0-pick-place
@@ -5106,7 +5106,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 30
+  ram_gb: 15
   oom_score_adj: 0
   gpu: any
 host_ram_reserve_gb: 60

@@ -1046,3 +1046,33 @@ be informed by results.
 Two seeds (1000/1001), last-5 training-camera success 0.015 / 0.017 (held-out 0.005 / 0.000, trajectories 0.015 /
 0.010), peak 0.025 / 0.042. Pick-place stays unsolved within 200k agent steps for every encoder tried so far; it is
 context only (directive S2) and the S4 CNN run to 1M (80k at 18:07) tells whether it is solvable under this protocol.
+
+## 2026-10-09 — Item 3 decided: loader default prefetch 2 x 6 workers; pretraining ram_gb from PSS
+
+`runs/bench-loader-synth-hammer/bench.json` (C configuration, hammer, batch 16, GPU 4 shared with 6 pretraining and
+4 RL jobs; 100 warm-up + 400 timed steps per setting, order ABCDEF then FEDCBA; PSS of the whole process tree sampled
+every 25 steps). Means of the two passes, peak PSS over both:
+
+| prefetch x workers | step time (s) | vs 4x8 | data wait (s) | GPU time (s) | peak PSS (GB) | mean PSS (GB) |
+|---|---|---|---|---|---|---|
+| 4 x 8 (current) | 0.717 | 1.000 | 0.010 | 0.703 | 11.29 | 10.65 |
+| 2 x 8 | 0.678 | 0.945 | 0.003 | 0.671 | 11.33 | 10.48 |
+| 1 x 8 | 0.750 | 1.045 | 0.016 | 0.729 | 10.85 | 10.23 |
+| 4 x 6 | 0.768 | 1.071 | 0.207 | 0.557 | 9.70 | 9.28 |
+| 2 x 6 | 0.481 | 0.671 | 0.002 | 0.475 | 9.61 | 9.19 |
+| 1 x 6 | 0.498 | 0.694 | 0.025 | 0.469 | 9.62 | 9.14 |
+
+- **Rule applied:** every setting is within 1.10 x of 4 x 8; the smallest peak PSS is 2 x 6 (9.61 GB; 1 x 6 9.62 and
+  4 x 6 9.70 are within 0.1 GB). New default `train.prefetch_factor: 2`, `train.num_workers: 6` in `base.yaml`;
+  `ram_gb` for 2 x 6 pretraining jobs = ceil(9.61 x 1.25) = 13; for jobs that keep 4 x 8 (all S1 runs, for a uniform
+  S1 data pipeline) ceil(11.29 x 1.25) = 15. Saving for running jobs 15 % (< 40 %): no restarts.
+- **What the numbers say.** The step time is set by GPU contention (GPU time ~= step time; the GPU-time drift between
+  passes, 0.84 -> 0.47 -> 0.57 s, is the shared load changing, not the loader). Prefetch depth barely matters for
+  memory (<= 0.5 GB); the worker count does (~0.8 GB per worker). The 4 x 8 measurement agrees with the running S1
+  jobs measured at the same time: 10.5-12.4 GB PSS per job tree, versus 25-26 GB RSS, which counts the workers'
+  shared pages once per process and is what the old `ram_gb: 30` was based on. With 6 workers the loader can become
+  the bottleneck when a GPU is lightly loaded (first 4 x 6 pass: 0.41 s data wait); under the current sharing it is
+  not.
+- **Limitation.** The benchmark has no in-training evaluation (validation and probe loaders start their own workers
+  for a few minutes every 5k steps); the 25 % margin and the scheduler's 60 GB host reserve cover these transients,
+  and the first 2 x 6 runs will be measured during an evaluation to confirm.

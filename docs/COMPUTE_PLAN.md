@@ -9,6 +9,7 @@ campaign (the host is shared), 5.0 TB free disk. All numbers from scheduler jobs
 |---|---|---|---|---|---|---|
 | Pretraining (ours) | batch 16, 6 cameras x 3 times, 8 loader workers | 0.22 s/step alone (0.06-0.10 s waiting for data); 0.25-0.35 s/step with 2-5 runs per GPU | 3.2 GB | ~6 GB + workers | loader-bound | `runs/pretrain/timing-pretrain-hammer` |
 | Pretraining loader | one window (6+4 cameras, 3 times, motion for 6 pairs) | 76 ms/window/core; 16-window batch: 258 / 178 / 152 ms with 8 / 16 / 24 workers | - | - | 1 core/worker | loader benchmark (E-log G1) |
+| Pretraining memory (item 3) | C configuration, batch 16, whole process tree | prefetch x workers 4x8: 11.3 GB peak PSS; 2x6 (default since 2026-10-09): 9.6 GB; ~0.8 GB per worker, prefetch depth <= 0.5 GB | - | `ram_gb` 13 (2x6) / 15 (4x8) = 1.25 x peak PSS | - | `runs/bench-loader-synth-hammer` |
 | DrM + CNN, alone | 128x128, batch 256, update every 2 steps | 52 agent steps/s; update 30 ms, sampling hidden by prefetch | 1.7 GB + renderer | 3.2 GB | 6 cores | `runs/timing2-cnn-c1` |
 | DrM + CNN, 4 per GPU | same | 20 steps/s each, 80 total: the GPU saturates | same | same | 3 cores each | `runs/timing2-cnn-c4-*` |
 | DrM + frozen splatter4d, alone | latents in RAM | 39 steps/s (GPU shared with 2 CNN runs) | 0.13 GB + renderer | 2.2 GB (0.5 GB replay) | 1 core | `runs/timing-s4d-c1` |
@@ -85,8 +86,9 @@ budget). Shelf-place's place in Stages 3/4 is taken by the replacement task at t
 Validation standard: 2 pretraining seeds per variant on hammer and pick-place at 100k of the 200k schedule
 (`train.stop_step=100000`) + full-split evaluation; RL decisions use 6 hammer seeds at 400k agent steps. Measured
 pretraining speed under the current sharing: 0.25-0.35 s/step, i.e. ~8-10 h of wall-clock per 100k run; host RAM, not
-the GPUs, limits concurrency (each pretraining run is declared at `ram_gb` 30 until item 3 measures it; 5-7 fit
-next to the other tenants).
+the GPUs, limits concurrency (item 3: a pretraining run needs ~10-12 GB PSS, declared as `ram_gb` 13 at the new
+2x6 loader default or 15 at 4x8; RSS (~25 GB) double-counts shared worker pages; ~8-12 runs fit next to the other
+tenants).
 
 | Item | Runs | Count | Est. GPU-hours | Tier |
 |---|---|---|---|---|
