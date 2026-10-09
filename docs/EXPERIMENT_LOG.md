@@ -801,3 +801,16 @@ pick-place (200k agent steps, reported only): base 0.003, iteration 3 0.024 (pea
   held-out-camera success 0.09 vs 0.07, and trajectory success is lower (0.15 vs 0.31; per-seed 0.23 / 0.07 vs
   0.24 / 0.39). Two seeds cannot resolve differences of this size; the decision of item 2d (rule-based, representation
   metrics) stands, and the user's call on the pick-place motion collapse is pending.
+
+## 2026-10-09 — Fourth host-memory incident (11:10-11:20); synth 300k runs paused
+
+- **Incident.** Host MemAvailable fell to ~6 GB with swap full (other tenants ~250 GB; our six pretraining runs had
+  grown to 17-30 GB each including DataLoader shared memory, ~156 GB in total). Pretraining slowed to >200 s/step and
+  the kernel OOM-killed (exit 137) the base300k@100k hammer proxies and their evaluators, base300k hammer pretraining
+  and synth300k pick-place pretraining.
+- **Action.** Launches held, the two synth300k runs (20-22k steps, latest checkpoints at 20k) stopped and held behind
+  `hold-memory` (they lose 1-2k steps), HOLD released after checking the test evidence. Available memory recovered to
+  ~36 GB and the remaining runs to 0.46-0.54 s/step. The killed jobs restart from their checkpoints through the
+  scheduler as host RAM admits them (RAM admission: job need + 60 GB reserve).
+- **Next.** The synth300k runs resume when memory allows and the user has decided on synthetic views; if the user
+  rejects synthetic views they are not needed. Concurrency of pretraining runs is kept at <= 4 until then.

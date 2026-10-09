@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 08:09
+Last updated: 2026-10-09 11:24
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -270,6 +270,11 @@ Last updated: 2026-10-09 08:09
 - 08:07: HEARTBEAT_OK — 16 running jobs, watcher and scheduler alive, 5332 GB free, 95 GB RAM available. Synth A200
   continuations 137.3k / 133.9k; synth300k 22.0k / 20.5k; base300k 115.1k / 115.6k. Iteration 3 proxies done (no
   hammer RL gain within two seeds). Awaiting the user's call on the synth motion collapse.
+
+- 11:18: HEARTBEAT_PROBLEM — host memory exhausted (6 GB available, swap full; pretraining >200 s/step); OOM kills of
+  base300k@100k hammer proxies + evaluators, base300k hammer and synth300k pick-place pretraining. Paused both synth300k
+  runs (held behind `hold-memory`); available back to ~36 GB, runs at ~0.5 s/step. Killed jobs restart from
+  checkpoints as RAM admits. See EXPERIMENT_LOG "Fourth host-memory incident".
 
 ## Job table (running or pending)
 | id | GPU | status | log | W&B |
