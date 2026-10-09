@@ -831,3 +831,27 @@ pick-place (200k agent steps, reported only): base 0.003, iteration 3 0.024 (pea
 
 All three base encoders are indistinguishable on hammer RL within the two-seed spread (seed 1001 is consistently the
 stronger seed, 0.50-0.61; seed 1000 0.13-0.30). Context only; the length decision compares A300 with A200.
+
+## 2026-10-09 — Length study for C = base + synthetic views: A200 representation metrics
+
+Full split, means of strides 2 / 6. Columns: PSNR, moving PSNR, retrieval trajectory set, hand-position R² trajectory,
+hand-velocity R² trajectory, relative EPE 0->2, dynamic share of moving pixels, CD-render trajectory symmetric p90 (cm).
+
+| Task / encoder | PSNR | Mov. PSNR | Retr. traj | Pos R² traj | Vel R² traj | Rel. EPE | Dyn. share | CD-render |
+|---|---|---|---|---|---|---|---|---|
+| hammer base 100k | 25.86 | 23.93 | 0.33 | 0.49 | 0.22 | 0.67 | 0.82 | 4.77 |
+| hammer base A200 | 26.06 | 24.47 | 0.32 | 0.52 | 0.13 | 0.74 | 0.82 | 4.76 |
+| hammer synth 100k | 25.95 | 24.85 | 0.74 | 0.89 | 0.51 | 0.64 | 0.89 | 2.54 |
+| hammer synth A200 | 26.44 | 25.74 | 0.80 | 0.93 | 0.62 | 0.51 | 0.90 | 2.49 |
+| pick-place base 100k | 24.15 | 17.02 | 0.36 | 0.68 | -0.16 | 0.93 | 0.66 | 3.78 |
+| pick-place base A200 | 24.59 | 17.32 | 0.34 | 0.70 | -0.07 | 0.91 | 0.72 | 3.81 |
+| pick-place synth 100k | 24.50 | 18.18 | 0.77 | 0.91 | 0.08 | 1.00 | 0.06 | 2.82 |
+| pick-place synth A200 | 24.71 | 18.63 | 0.79 | 0.93 | 0.16 | 1.00 | 0.06 | 2.72 |
+
+- With synthetic views, training from 100k to the end of the 200k schedule keeps improving on hammer (moving PSNR
+  +0.9 dB, trajectory retrieval +0.06, velocity R² +0.11, relative EPE 0.64 -> 0.51) and slightly on pick-place, unlike
+  the base configuration, whose representation metrics were flat between 100k and 200k.
+- The pick-place motion collapse persists at 200k (relative EPE 1.00, dynamic share 0.06): a stable property of the
+  configuration on this task, not a slow start.
+- A200 hammer proxies (400k agent steps, seeds 1000/1001) and pick-place proxies (200k) are running; A300 synth runs at
+  ~60k of 300k.
