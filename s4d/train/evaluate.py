@@ -212,6 +212,8 @@ class Evaluator:
                         denominator = float(out["metrics"]["dynamic_score_moving_count"])
                     elif metric.startswith(("rel_epe_", "epe_moving_")):
                         denominator = float(out["metrics"][f"motion_moving_count_{pair}"])
+                    elif metric.startswith("relepe_bin"):
+                        denominator = float(out["metrics"][f"motion_{metric.split('_')[1]}_count_{pair}"])
                     elif metric.startswith("epe_static_"):
                         denominator = float(out["metrics"][f"motion_static_count_{pair}"])
                     elif metric.startswith("epe_"):

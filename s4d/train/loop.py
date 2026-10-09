@@ -20,6 +20,7 @@ from s4d.data.contract import PAIRS, collate, validate_batch
 from s4d.losses.depth import abs_rel, align_teacher, depth_gradient_loss, depth_l1
 from s4d.losses.invariance import multi_positive_info_nce, slot_consistency, state_statistics
 from s4d.losses.motion import expected_displacement, motion_loss
+from s4d.losses.motion3d import motion3d_loss
 from s4d.losses.occlusion import occlusion_loss, usage_diagnostics
 from s4d.losses.regularizers import visibility_loss
 from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss
@@ -238,6 +239,15 @@ def forward_losses(
         float(loss_cfg.get("motion_huber", 0.01)),
         normalization=str(loss_cfg.get("motion_norm", "valid")),
     )
+    motion_space = str(loss_cfg.get("motion_space", "image"))
+    if motion_space == "gaussian":  # directive item 2 (M3D): the image-space loss above then only provides metrics
+        m_metrics["motion_image"] = m_loss.detach()
+        m_loss, m3d_metrics = motion3d_loss(
+            gs, xyz_seq, gs.group == DYNAMIC_GROUP, batch["depth"], K, batch["c2w"], batch["motion3d"], motion_weight
+        )
+        m_metrics.update(m3d_metrics)
+    elif motion_space != "image":
+        raise ValueError(f"unknown loss.motion_space {motion_space!r}")
     dyn_share_map = (feats[:, :, :, 6:7] / cov.clamp_min(1e-6)).detach()
     moving0 = score > MOVING_SCORE
     moving_count = moving0.float().sum()

@@ -269,3 +269,29 @@ def test_depth_beyond_the_far_plane_is_invalid_only_with_the_fix(batch, monkeypa
         assert float(a["losses"][key]) == pytest.approx(float(b["losses"][key])), key
     for key in ("motion_valid_weight_01", "motion_valid_weight_02"):
         assert float(a["metrics"][key]) < float(run(batch)["metrics"][key]), key
+
+
+# ------------------------------------------------------------------------------------------ directive item 2
+def test_forward_losses_switches_the_objective_to_gaussian_space(batch, monkeypatch):
+    from s4d.model import render
+
+    monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    batch["motion3d"][:, :, :, 0, :4] = 0.02
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"])
+    cfg["train"]["bf16"] = False
+    cfg["loss"]["ramp_steps"] = 0
+    model = _model().train()
+    torch.manual_seed(0)
+    image = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    cfg["loss"]["motion_space"] = "gaussian"
+    torch.manual_seed(0)  # the same encoder masks, hence the same Gaussians
+    gauss = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    assert "m3d_disp_01" in gauss["metrics"] and "m3d_disp_01" not in image["metrics"]
+    torch.testing.assert_close(gauss["metrics"]["motion_image"], image["losses"]["motion"])
+    assert float(gauss["losses"]["motion"]) != pytest.approx(float(image["losses"]["motion"]))
+    gauss["total"].backward()
+    assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
+    cfg["loss"]["motion_space"] = "pixels"
+    with pytest.raises(ValueError, match="motion_space"):
+        forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))

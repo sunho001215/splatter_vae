@@ -14,6 +14,8 @@ MOTION_WEIGHT_SCALE_M = 0.03
 MIN_MOVING_FRACTION = 0.01
 STATIC_WEIGHT = 0.1
 ZERO_MOTION_M = 1e-6
+# directive item 2: relative EPE per GT-magnitude bin (metres, [low, high)); bin 1 = 5-10 mm, 2 = 1-3 cm, 3 = > 3 cm
+MAGNITUDE_BINS = ((0.005, 0.01), (0.01, 0.03), (0.03, float("inf")))
 
 
 def expected_displacement(features: torch.Tensor, coverage: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -77,6 +79,11 @@ def motion_loss(
         metrics[f"motion_static_count_{name}"] = static.sum().detach()
         metrics[f"epe_static_{name}"] = region_mean(err[:, p], static)
         metrics[f"epe_moving_{name}"] = region_mean(err[:, p], mv)
+        metrics[f"epe_moving_mm_{name}"] = 1000.0 * metrics[f"epe_moving_{name}"]
+        for n, (low, high) in enumerate(MAGNITUDE_BINS, 1):
+            in_bin = (valid[:, p] & (gt_mag[:, p] >= low) & (gt_mag[:, p] < high)).float()
+            metrics[f"relepe_bin{n}_{name}"] = region_mean(err[:, p] / gt_mag[:, p].clamp_min(1e-6), in_bin)
+            metrics[f"motion_bin{n}_count_{name}"] = in_bin.sum().detach()
     total = sum(float(pw) * lp for pw, lp in zip(pair_weights, losses))
     visible = valid & (coverage.detach() > coverage_threshold)
     metrics["motion_visible_fraction"] = (visible.float().sum() / valid.float().sum().clamp_min(1.0)).detach()
