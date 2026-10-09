@@ -814,3 +814,9 @@ pick-place (200k agent steps, reported only): base 0.003, iteration 3 0.024 (pea
   scheduler as host RAM admits them (RAM admission: job need + 60 GB reserve).
 - **Next.** The synth300k runs resume when memory allows and the user has decided on synthetic views; if the user
   rejects synthetic views they are not needed. Concurrency of pretraining runs is kept at <= 4 until then.
+- **Second round (11:37).** Other tenants grew further and the remaining pretraining runs (base300k pick-place, both
+  synth continuations to 200k) were OOM-killed as well. Their declared RAM (20 GB) was below the measured 17-30 GB per
+  run including DataLoader shared memory, so admission had over-committed; pretraining jobs now declare 30 GB. With
+  the 60 GB reserve this admits one pretraining run per ~90 GB of available host memory: synth hammer (continuation to
+  200k) restarted first (priority 1); synth pick-place and both base300k runs wait for RAM and resume from their
+  latest checkpoints (synth 130k, base300k 110k).

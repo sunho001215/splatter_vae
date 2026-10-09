@@ -3200,7 +3200,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 20
+  ram_gb: 30
   oom_score_adj: 0
 - id: s1-pretrain-pick-place-base300k
   script: scripts/train.py
@@ -3223,7 +3223,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 20
+  ram_gb: 30
   oom_score_adj: 0
 - id: pilot-coffee-push
   script: scripts/collect_metaworld.py
@@ -3990,7 +3990,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 20
+  ram_gb: 30
   oom_score_adj: 0
 - id: export-s1-synth-hammer-200k
   script: scripts/export_encoder.py
@@ -4136,7 +4136,7 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 20
+  ram_gb: 30
   oom_score_adj: 0
 - id: export-s2-synth-pick-place-100k
   script: scripts/export_encoder.py
@@ -4264,7 +4264,7 @@ jobs:
   deps: []
   max_restarts: 6
   stage: 1
-  ram_gb: 20
+  ram_gb: 30
   oom_score_adj: 0
 - id: export-s1-synth-pick-place-200k
   script: scripts/export_encoder.py
@@ -4410,6 +4410,6 @@ jobs:
   - hold-memory
   max_restarts: 6
   stage: 1
-  ram_gb: 20
+  ram_gb: 30
   oom_score_adj: 0
 host_ram_reserve_gb: 60
