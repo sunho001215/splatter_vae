@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-09T08:59:04.613421+00:00",
+  "started_utc": "2026-10-09T09:38:29.440897+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -17,7 +17,7 @@
     "--junitxml=/home/ws/ws/splatter4d/.worktrees/review/docs/tests.junit.xml"
   ],
   "exit_code": 0,
-  "duration_seconds": 230.95116295898333,
+  "duration_seconds": 518.2407510722987,
   "counts": {
     "passed": 240,
     "error": 0,
@@ -194,7 +194,7 @@
     "configs/metaworld/ablations/no_motion.yaml": "663c6ec049cb2b631e4f943e457a69d1c8ab08a9ed54c1eb12bfc0acf5955704",
     "configs/metaworld/ablations/single_frame.yaml": "9c1b2dd0b2b916cbab1e98a78a9030cfa9de1fc2c86264a10ee8713a78d503b2",
     "configs/metaworld/ablations/single_group.yaml": "332cd3ff14581abb6d1dc910394bcefa04b4c2883aa76b16ad657ec53d8c73fb",
-    "configs/metaworld/base.yaml": "8c72acb2a8bbf36531b151ae5c98cf29389f50bc34713deab1b6bba3a81c8949",
+    "configs/metaworld/base.yaml": "7f97e2f1e866d260d22a2f63251d9cc11578760f0e49ab64bc03882c97bc7bad",
     "configs/metaworld/gates/overfit_m2.yaml": "4c55afebf6361bf35e156259101bf9a1683e5633301a9201d82e3bfb1f9a895a",
     "configs/metaworld/tasks/bin-picking.yaml": "3f2c9093b1a72d1f6a8c70209b58c3b979a3336e2c525a26ebfcbfb55e11a3be",
     "configs/metaworld/tasks/coffee-push.yaml": "7cf468aba450937588f558323285a4ca15c74a0b80a398baeff111022dd716f3",
