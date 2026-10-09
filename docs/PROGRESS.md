@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-09 11:58
+Last updated: 2026-10-09 11:51
 
 ## Current phase
 - **Phase A** complete (E0). **Phase B** complete: 8 tasks, 162 GB, D2/D3 pass (EXPERIMENT_LOG "Phase B result").
@@ -276,7 +276,7 @@ Last updated: 2026-10-09 11:58
   runs (held behind `hold-memory`); available back to ~36 GB, runs at ~0.5 s/step. Killed jobs restart from
   checkpoints as RAM admits. See EXPERIMENT_LOG "Fourth host-memory incident".
 
-- 11:37-11:57: second OOM round (all pretraining killed); pretraining jobs now declare 30 GB RAM; base300k pick-place
+- 11:37-11:51: second OOM round (all pretraining killed); pretraining jobs now declare 30 GB RAM; base300k pick-place
   held behind `hold-memory` with the synth300k runs (concurrency 3: synth to-200k x2, base300k hammer). Scheduler fix
   merged (dfc5270, suite 224/224): jobs launched in the last 10 min count their declared RAM against available host
   memory; daemon restarted on it (pid in `experiments/daemon.pid`).
