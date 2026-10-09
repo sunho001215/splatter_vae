@@ -243,6 +243,7 @@ def test_evaluator_reports_sets_oracle_chamfer_retrieval_and_probes(tmp_path, mo
             **rendered,
             "pred_disp": batch["motion3d"].clone(),
             "pairs": ((0, 1, 0), (1, 2, 1), (0, 2, 0)),
+            "used": torch.ones(gs.opacity.shape, dtype=torch.bool),  # every Gaussian passes the utilisation test
         }
 
     monkeypatch.setattr(E, "forward_losses", fake_forward)
@@ -257,10 +258,11 @@ def test_evaluator_reports_sets_oracle_chamfer_retrieval_and_probes(tmp_path, mo
         assert math.isfinite(summary[f"metric/oracle_psnr_covered_{name}@s2"])
         assert f"metric/retrieval_top1_{name}_val@s2" in summary
     assert summary["metric/oracle_psnr_covered_near@s2"] > 30  # the planar scene reprojects exactly
-    for kind in ("centers", "centers_dyn", "motion", "motion_dyn", "render_traj"):
+    for kind in ("centers", "centers_vis", "centers_dyn", "motion", "motion_dyn", "render_traj"):
         for stat in ("p2g_mean", "p2g_p50", "p2g_p90", "g2p_mean", "g2p_p50", "g2p_p90"):
             assert f"metric/cd_{kind}_{stat}@s2" in summary
     assert math.isfinite(summary["metric/cd_centers_p2g_p90@s2"])
+    assert summary["metric/cd_centers_vis_p2g_p90@s2"] == summary["metric/cd_centers_p2g_p90@s2"]
     assert summary["metric/cd_windows@s2"] == len(loaders[2])
     for target in ("hand_pos", "hand_vel", "obj_pos"):
         for name in ("traincams", "heldout", "near", "traj"):

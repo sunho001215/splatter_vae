@@ -34,6 +34,8 @@ def test_perfect_motion_has_zero_loss_zero_metrics_and_finite_gradients():
     for name, value in metrics.items():
         if "static" in name and "epe" in name:
             assert torch.isnan(value), "No static support is not a perfect static-motion measurement"
+        elif name.startswith("relepe_bin") and float(metrics[f"motion_{name.split('_')[1]}_count_{name[-2:]}"]) == 0:
+            assert torch.isnan(value), name  # every target here moves >= 3 cm: the two lower bins are empty
         elif "loss" in name or "epe" in name:
             assert value.item() == 0.0, name
     loss.backward()

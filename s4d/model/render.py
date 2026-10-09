@@ -179,3 +179,34 @@ def render_hard_depth(
         render_mode="ED",
     )
     return {"depth": rendered.movedim(-1, -3), "alpha": alpha.movedim(-1, -3)}
+
+
+def render_blending_weights(
+    gs: GaussianSet, xyz: torch.Tensor, w2c: torch.Tensor, K: torch.Tensor, height: int, width: int, near: float, far: float
+) -> torch.Tensor:
+    """Accumulated blending weight sum_p T_i(p) alpha_i(p) of every Gaussian (centres xyz (B,N,3)) in every camera
+    (B,V,…), returned as (B,V,N) without gradient. Computed exactly as the gradient of the summed render of a constant
+    per-camera scalar feature."""
+    B, N, _ = xyz.shape
+    V = w2c.shape[1]
+    with torch.enable_grad():
+        feature = torch.ones(B, V, N, 1, device=xyz.device, requires_grad=True)
+        rendered, _, _ = _rasterize(
+            means=xyz.detach().float().contiguous(),
+            quats=gs.quats.detach().float().contiguous(),
+            scales=gs.scales.detach().float().contiguous(),
+            opacities=gs.opacity.detach().float().contiguous(),
+            colors=feature,
+            viewmats=w2c.float().contiguous(),
+            Ks=K.float().contiguous(),
+            width=width,
+            height=height,
+            near_plane=near,
+            far_plane=far,
+            packed=False,
+            sh_degree=None,
+            backgrounds=torch.zeros(B, V, 1, device=xyz.device),
+            render_mode="RGB",
+        )
+        (weights,) = torch.autograd.grad(rendered.sum(), feature)
+    return weights[..., 0]

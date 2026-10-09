@@ -20,6 +20,8 @@ from s4d.data.contract import PAIRS, collate, validate_batch
 from s4d.losses.depth import abs_rel, align_teacher, depth_gradient_loss, depth_l1
 from s4d.losses.invariance import multi_positive_info_nce, slot_consistency, state_statistics
 from s4d.losses.motion import expected_displacement, motion_loss
+from s4d.losses.motion3d import motion3d_loss
+from s4d.losses.occlusion import occlusion_loss, usage_diagnostics
 from s4d.losses.regularizers import visibility_loss
 from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss
 from s4d.model.decoder import DecoderConfig, GaussianDecoder, GroupConfig
@@ -169,7 +171,8 @@ def forward_losses(
         factor = torch.empty(B, T, V, 1, 1, 1, device=device).uniform_(float(jitter[0]), float(jitter[1]))
         depth_t = depth_t * factor
     weights = pixel_weights(_rows(score), float(loss_cfg.get("lambda_dyn", 1.0)))
-    valid = _rows(depth_t) > 0
+    valid_far = bool(loss_cfg.get("depth_valid_far", False))  # directive item 1b: depth beyond the far plane is invalid
+    valid = (_rows(depth_t) > 0) & (_rows(depth_t) < far) if valid_far else _rows(depth_t) > 0
     rgb_rows, tgt_rows, depth_rows, alpha_rows = _rows(r["rgb"]), _rows(images01), _rows(r["depth"]), _rows(r["alpha"])
     rgb_l = rgb_loss(rgb_rows, tgt_rows, weights, float(loss_cfg.get("ssim_weight", 0.2)))
     cov_l = coverage_loss(alpha_rows, valid, weights)
@@ -179,9 +182,6 @@ def forward_losses(
     aligned, align_stats = align_teacher(depth_rows, _rows(depth_t), alpha_rows, align_mode, weights=weights)
     dl1 = depth_l1(depth_rows, aligned, valid, weights)
     dgrad = depth_gradient_loss(depth_rows, aligned, valid, weights=weights)
-    hard = render_hard_depth(gs, xyz_seq, w2c, K, H, W, near, far)
-    hard_valid = valid
-    dhard = depth_l1(_rows(hard["depth"]), aligned, hard_valid, weights)
     hard_weight = float(loss_cfg.get("depth_hard", 0.5))
     boost = loss_cfg.get("depth_hard_boost")  # review item 4d: {factor, fraction} of train.steps
     if boost and step < float(boost.get("fraction", 0.2)) * int(get(cfg, "train.steps", 200000)):
@@ -191,8 +191,17 @@ def forward_losses(
         + float(loss_cfg.get("coverage", 0.1)) * _per_t(cov_l, B, T, V)
         + float(loss_cfg.get("depth_l1", 1.0)) * _per_t(dl1, B, T, V)
         + float(loss_cfg.get("depth_grad", 0.5)) * _per_t(dgrad, B, T, V)
-        + hard_weight * _per_t(dhard, B, T, V)
     )
+    dhard = None
+    if hard_weight > 0:  # the hard-depth pass is skipped entirely when its weight is 0 (directive item 1d)
+        hard = render_hard_depth(gs, xyz_seq, w2c, K, H, W, near, far)
+        dhard = depth_l1(_rows(hard["depth"]), aligned, valid, weights)
+        render_t = render_t + hard_weight * _per_t(dhard, B, T, V)
+    occ_w = float(loss_cfg.get("occlusion", 0.0))
+    occ_margin = float(loss_cfg.get("occlusion_margin", 0.02))
+    if occ_w > 0:  # directive item 1a: centres vs GT depth in every training camera
+        occ_t = occlusion_loss(xyz_seq, batch["depth"], w2c, K, near, far, occ_margin)
+        render_t = render_t + occ_w * occ_t
     render_loss = (render_t[0] + ramp * (render_t[1] + render_t[2])) / (1.0 + 2.0 * ramp)
     extra_losses = {}
     if syn is not None and aug.get("synth_render", False):  # synthetic views as render targets on covered pixels
@@ -218,14 +227,27 @@ def forward_losses(
     pred_feat = torch.stack((feats[:, 0, :, 0:3], feats[:, 1, :, 0:3], feats[:, 0, :, 3:6]), 1)
     coverage = torch.stack((cov[:, 0], cov[:, 1], cov[:, 0]), 1)
     pred_disp = expected_displacement(pred_feat, coverage)
+    motion_weight = batch["motion_weight"]
+    if valid_far:
+        src_depth = batch["depth"][:, [a for a, _, _ in PAIRS]]  # (B,P,V,1,H,W) on each pair's source grid
+        motion_weight = motion_weight * (src_depth < far).to(motion_weight.dtype)
     m_loss, m_metrics = motion_loss(
         pred_disp,
         coverage,
         batch["motion3d"],
-        batch["motion_weight"],
+        motion_weight,
         float(loss_cfg.get("motion_huber", 0.01)),
         normalization=str(loss_cfg.get("motion_norm", "valid")),
     )
+    motion_space = str(loss_cfg.get("motion_space", "image"))
+    if motion_space == "gaussian":  # directive item 2 (M3D): the image-space loss above then only provides metrics
+        m_metrics["motion_image"] = m_loss.detach()
+        m_loss, m3d_metrics = motion3d_loss(
+            gs, xyz_seq, gs.group == DYNAMIC_GROUP, batch["depth"], K, batch["c2w"], batch["motion3d"], motion_weight
+        )
+        m_metrics.update(m3d_metrics)
+    elif motion_space != "image":
+        raise ValueError(f"unknown loss.motion_space {motion_space!r}")
     dyn_share_map = (feats[:, :, :, 6:7] / cov.clamp_min(1e-6)).detach()
     moving0 = score > MOVING_SCORE
     moving_count = moving0.float().sum()
@@ -308,8 +330,11 @@ def forward_losses(
             metrics[f"psnr_moving_t{t}"] = _nanmean(psnr_mov[:, t])
         metrics.update(m_metrics)
         metrics.update(nce_metrics)
+        used = None
         if not model.training or step == 0 or (step + 1) % int(get(cfg, "train.log_every", 50)) == 0:
             metrics.update(state_statistics(slots_mean))
+            usage, used = usage_diagnostics(gs, batch["depth"][:, 0], w2c, K, near, far, occ_margin)
+            metrics.update({k: _nanmean(v) for k, v in usage.items()})
     losses = {
         "total": total.detach(),
         "render": render_loss.detach(),
@@ -321,11 +346,12 @@ def forward_losses(
         **{f"coverage_t{t}": v.detach() for t, v in enumerate(_per_t(cov_l, B, T, V))},
         **{f"depth_l1_t{t}": v.detach() for t, v in enumerate(_per_t(dl1, B, T, V))},
         **{f"depth_grad_t{t}": v.detach() for t, v in enumerate(_per_t(dgrad, B, T, V))},
-        **{f"depth_hard_t{t}": v.detach() for t, v in enumerate(_per_t(dhard, B, T, V))},
+        **({f"depth_hard_t{t}": v.detach() for t, v in enumerate(_per_t(dhard, B, T, V))} if dhard is not None else {}),
+        **({f"occlusion_t{t}": v.detach() for t, v in enumerate(occ_t)} if occ_w > 0 else {}),
         **{f"visibility_t{t}": v.detach() for t, v in enumerate(vis_t)},
         **{k: v.detach() for k, v in extra_losses.items()},
     }
-    out = {"total": total, "losses": losses, "metrics": metrics, "slots": slots, "source": source, "gs": gs}
+    out = {"total": total, "losses": losses, "metrics": metrics, "slots": slots, "source": source, "gs": gs, "used": used}
     if return_renders:
         out.update(
             {
@@ -419,7 +445,7 @@ def make_train_loader(dataset, cfg: dict, ctx: ddp.DistContext, seed: int) -> Da
         drop_last=True,
         collate_fn=collate,
         persistent_workers=workers > 0,
-        prefetch_factor=4 if workers > 0 else None,
+        prefetch_factor=int(get(cfg, "train.prefetch_factor", 4)) if workers > 0 else None,
         generator=torch.Generator().manual_seed(seed),
     )
 
@@ -486,12 +512,17 @@ def train(
     t_last = time.time()
     data_time = 0.0
     last_log_step = step
+    timed = torch.device(device).type == "cuda"
+    gpu_events = []  # (start, end) per step since the last log: GPU time of forward, backward and update
     while step < end_step:
         t0 = time.time()
         batch = move_batch(next(batches), device)
         data_time += time.time() - t0
         if step == 0:
             validate_batch(batch)
+        if timed:
+            gpu_events.append((torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)))
+            gpu_events[-1][0].record()
         out = forward_losses(wrapped, batch, cfg, step)
         total = out["total"]
         if not torch.isfinite(total):
@@ -503,6 +534,8 @@ def train(
         norms = grad_norms(model) if (step + 1) % log_every == 0 or step == 0 else {}
         optimizer.step()
         scheduler.step()
+        if timed:
+            gpu_events[-1][1].record()
         step += 1
         if step % log_every == 0 or step == 1:
             scalars = ddp.reduce_mean(
@@ -523,6 +556,9 @@ def train(
                         "train/gpu_mem_gb": torch.cuda.max_memory_allocated() / 2**30,
                     }
                 )
+                if gpu_events:
+                    gpu_events[-1][1].synchronize()
+                    scalars["train/gpu_time"] = sum(a.elapsed_time(b) for a, b in gpu_events) / 1000.0 / len(gpu_events)
                 logger.scalars(step, scalars)
                 logger.text(
                     f"step {step} loss {scalars['loss/total']:.4f} psnr {scalars['metric/psnr']:.2f} "
@@ -530,6 +566,7 @@ def train(
                     f"{scalars['train/step_time']:.3f}s/it"
                 )
                 t_last, data_time, last_log_step = now, 0.0, step
+            gpu_events = []
         if step % save_every == 0 or step == end_step:
             rng_by_rank = gather_rng_states()
             if ctx.is_main:

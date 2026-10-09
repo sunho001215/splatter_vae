@@ -183,8 +183,11 @@ def gt_cloud_t0(batch: dict, b: int, far: float, prefixes=("eval", "near", "traj
     return voxel_downsample(torch.cat(clouds))
 
 
-def chamfer_metrics(batch: dict, gs, b: int, far: float, motion_pair: int = 2) -> dict[str, float]:
-    """CD-centers (all and dynamic) and CD-motion (all and dynamic) for sample b; keys ``cd_<kind>_<dir>_<stat>``."""
+def chamfer_metrics(
+    batch: dict, gs, b: int, far: float, motion_pair: int = 2, used: torch.Tensor | None = None
+) -> dict[str, float]:
+    """CD-centers (all and dynamic) and CD-motion (all and dynamic) for sample b; keys ``cd_<kind>_<dir>_<stat>``.
+    With ``used`` (B,N), the utilisation mask of directive item 1c, also the visible-only ``cd_centers_vis``."""
     from s4d.model.gaussians import DYNAMIC_GROUP  # noqa: PLC0415
 
     out = {}
@@ -193,6 +196,8 @@ def chamfer_metrics(batch: dict, gs, b: int, far: float, motion_pair: int = 2) -
     centers = gs.xyz[b]
     gt = gt_cloud_t0(batch, b, far)
     out.update({f"cd_centers_{k}": v for k, v in chamfer_stats(centers[opaque], gt).items()})
+    if used is not None:
+        out.update({f"cd_centers_vis_{k}": v for k, v in chamfer_stats(centers[opaque & used[b]], gt).items()})
     depth0 = batch["depth"][b, 0, :, 0]
     moving = batch["motion_score"][b, 0, :, 0] > MOVING_SCORE
     K, c2w = batch["K"][b], batch["c2w"][b]

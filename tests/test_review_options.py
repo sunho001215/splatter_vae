@@ -150,21 +150,23 @@ def test_adaln_zero_blocks_start_as_identity_and_fourier_features_are_periodic()
 # ------------------------------------------------------------------------------------------ forward_losses
 def _fake_rasterizer(calls):
     def fake(**kw):
-        # synthetic differentiable stand-in (shapes and gradients only), as in test_diagnostics
+        # synthetic differentiable stand-in (shapes and gradients only), as in test_diagnostics; any batch dims, colours
+        # shared by the cameras [..., N, D] or per camera [..., C, N, D]
         means, opacity, colors = kw["means"], kw["opacities"], kw["colors"]
-        B, T = means.shape[:2]
-        V, H, W = kw["viewmats"].shape[2], kw["height"], kw["width"]
-        alpha = opacity.mean(-1)
-        depth = means[..., 2].mean(-1).abs().add(0.5)[..., None]
+        lead = means.shape[:-2]
+        V, H, W = kw["viewmats"].shape[-3], kw["height"], kw["width"]
+        alpha = opacity.mean(-1)[..., None, None].expand(*lead, V, 1)
+        depth = means[..., 2].mean(-1).abs().add(0.5)[..., None, None].expand(*lead, V, 1)
         if colors is None:
             values = depth
         else:
-            values = colors.mean(-2) * alpha[..., None]
+            per_camera = colors.dim() == means.dim() + 1
+            values = (colors.mean(-2) if per_camera else colors.mean(-2)[..., None, :]) * alpha
             if kw["render_mode"] == "RGB+ED":
                 values = torch.cat((values, depth), -1)
         calls.append((kw["render_mode"], V, torch.is_grad_enabled()))
-        output = values[:, :, None, None, None].expand(B, T, V, H, W, values.shape[-1])
-        return output, alpha[:, :, None, None, None, None].expand(B, T, V, H, W, 1), {}
+        output = values[..., None, None, :].expand(*lead, V, H, W, values.shape[-1])
+        return output, alpha[..., None, None, :].expand(*lead, V, H, W, 1), {}
 
     return fake
 
@@ -216,3 +218,80 @@ def test_depth_hard_boost_applies_only_in_the_first_fraction(batch, monkeypatch)
     torch.testing.assert_close(boosted[0]["losses"]["render"], base["losses"]["render"] + extra)
     torch.testing.assert_close(boosted[1]["losses"]["render"], base["losses"]["render"])
     assert np.isfinite(float(extra))
+
+
+# ------------------------------------------------------------------------------------------ directive item 1
+def test_hard_pass_is_skipped_at_weight_zero_and_occlusion_adds_its_term(batch, monkeypatch):
+    from s4d.model import render
+
+    calls = []
+    monkeypatch.setattr(render, "_rasterize", _fake_rasterizer(calls))
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"])
+    cfg["train"]["bf16"] = False
+    cfg["loss"]["ramp_steps"] = 0
+    model = _model().eval()
+    base = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]), mask_ratio=0.0)
+    assert "ED" in [c[0] for c in calls] and "depth_hard_t0" in base["losses"]
+    calls.clear()
+    cfg["loss"]["depth_hard"] = 0.0
+    no_hard = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]), mask_ratio=0.0)
+    assert "ED" not in [c[0] for c in calls] and "depth_hard_t0" not in no_hard["losses"]
+    torch.testing.assert_close(no_hard["losses"]["render"], base["losses"]["render"] - 0.5 * base["losses"]["depth_hard_t0"])
+    cfg["loss"].update(occlusion=2.0, occlusion_margin=0.02)
+    occ = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]), mask_ratio=0.0)
+    torch.testing.assert_close(occ["losses"]["render"], no_hard["losses"]["render"] + 2.0 * occ["losses"]["occlusion_t0"])
+    # evaluation reports the usage diagnostics and the utilisation mask
+    assert {"utilisation", "hidden_fraction", "floater_fraction"} <= set(occ["metrics"])
+    assert occ["used"].shape == occ["gs"].opacity.shape and occ["used"].dtype == torch.bool
+
+
+def test_depth_beyond_the_far_plane_is_invalid_only_with_the_fix(batch, monkeypatch):
+    from s4d.model import render
+
+    monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"])
+    cfg["train"]["bf16"] = False
+    cfg["loss"]["ramp_steps"] = 0
+    model = _model().eval()
+    far = float(cfg["render"]["far"])
+    run = lambda b: forward_losses(model, b, cfg, 100, source=torch.tensor([0, 1]), mask_ratio=0.0)  # noqa: E731
+    beyond = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in batch.items()}
+    beyond["depth"][..., :4, :] = far + 1.0  # the top rows are background beyond the far plane
+    other = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in beyond.items()}
+    other["depth"][..., :4, :] = far + 2.0
+    a, b = run(beyond), run(other)
+    assert float(a["losses"]["depth_l1_t0"]) != pytest.approx(float(b["losses"]["depth_l1_t0"]))
+    cfg["loss"]["depth_valid_far"] = True
+    a, b = run(beyond), run(other)
+    for key in ("depth_l1_t0", "depth_grad_t0", "depth_hard_t0", "coverage_t0", "motion"):
+        assert float(a["losses"][key]) == pytest.approx(float(b["losses"][key])), key
+    for key in ("motion_valid_weight_01", "motion_valid_weight_02"):
+        assert float(a["metrics"][key]) < float(run(batch)["metrics"][key]), key
+
+
+# ------------------------------------------------------------------------------------------ directive item 2
+def test_forward_losses_switches_the_objective_to_gaussian_space(batch, monkeypatch):
+    from s4d.model import render
+
+    monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    batch["motion3d"][:, :, :, 0, :4] = 0.02
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"])
+    cfg["train"]["bf16"] = False
+    cfg["loss"]["ramp_steps"] = 0
+    model = _model().train()
+    torch.manual_seed(0)
+    image = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    cfg["loss"]["motion_space"] = "gaussian"
+    torch.manual_seed(0)  # the same encoder masks, hence the same Gaussians
+    gauss = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    assert "m3d_disp_01" in gauss["metrics"] and "m3d_disp_01" not in image["metrics"]
+    torch.testing.assert_close(gauss["metrics"]["motion_image"], image["losses"]["motion"])
+    assert float(gauss["losses"]["motion"]) != pytest.approx(float(image["losses"]["motion"]))
+    gauss["total"].backward()
+    assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
+    cfg["loss"]["motion_space"] = "pixels"
+    with pytest.raises(ValueError, match="motion_space"):
+        forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
