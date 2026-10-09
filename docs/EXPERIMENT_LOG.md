@@ -1076,3 +1076,12 @@ every 25 steps). Means of the two passes, peak PSS over both:
 - **Limitation.** The benchmark has no in-training evaluation (validation and probe loaders start their own workers
   for a few minutes every 5k steps); the 25 % margin and the scheduler's 60 GB host reserve cover these transients,
   and the first 2 x 6 runs will be measured during an evaluation to confirm.
+
+## 2026-10-09 — Context: hammer proxies of the synth encoder at 200k (A200), 400k agent steps
+
+Seeds 1000 / 1001: last-5 training-camera success 0.470 / 0.882 (mean 0.676), held-out cameras 0.092 / 0.025,
+trajectories 0.285 / 0.745, peak 0.558 / 0.917. The same encoder at 100k gave 0.388 (it3), base at 100k 0.419,
+base A200 0.398, base300k at 100k 0.366 (all two-seed means). Context only (directive S2): the two seeds differ by 0.41,
+larger than any difference between encoders so far, which is why RL decisions now use 6 seeds. It is consistent with
+the representation metrics, which kept improving from 100k to 200k for this configuration; the length study for the
+final configuration (A200 vs A300, 6-seed proxies) decides the length.
