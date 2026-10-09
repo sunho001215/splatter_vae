@@ -66,7 +66,8 @@ train:
   grad_clip: 1.0
   bf16: true
   seed: 0
-  num_workers: 8
+  num_workers: 6  # directive item 3: prefetch 2 x 6 workers, peak PSS 9.6 GB vs 11.3 GB at 4 x 8 (EXPERIMENT_LOG)
+  prefetch_factor: 2
   log_every: 50
   eval_every: 5000
   save_every: 10000
