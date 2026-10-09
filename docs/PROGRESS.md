@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 04:07
+Last updated: 2026-10-10 05:25
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -359,10 +359,15 @@ Last updated: 2026-10-10 04:07
   seed 1 at 48.1k-74.1k (0.43-0.51 s/step); first S1 run reaches 100k ~05:30, the slowest ~11:30; their evaluations
   start automatically (configs in place). CNN pick-place trainer held (incident 03:16).
 
+- 05:18: host-memory incident 6 — three S1 seed-1 runs and the CNN eval companion OOM-killed (host 400 GB used, swap
+  full, pressure 82 %); I stopped the two slowest seed-1 runs to end the thrash (seed-0 runs back to 0.32-0.53
+  s/step). The five resume from checkpoints (80k, 4 x 50k) when 75 GB is available. Watcher re-armed (it had exited on
+  the crash events). Reference evaluations R seed 0 done for both tasks.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | all 10 running | runs/pretrain/s1v-*/log.txt |
+| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 5 running; 5 seed-1 runs waiting for host RAM (resume from 80k / 50k) | runs/pretrain/s1v-*/log.txt |
 | s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | OOM-killed at 693k (03:16); held until S1 reaches 100k, resumes from 650k | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 

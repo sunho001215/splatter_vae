@@ -1099,3 +1099,16 @@ final configuration (A200 vs A300, 6-seed proxies) decides the length.
 - **Decision:** the CNN trainer is held (`hold-memory`) until the S1 pretraining runs reach 100k (~14:00), then
   resumes from its 650k checkpoint (the replay is returned to that point; 43k agent steps are redone). S1 is the critical path to the freeze; the CNN run is context
   (S4) and cannot finish usefully under this pressure anyway.
+
+## 2026-10-10 — Sixth host-memory incident (04:58-05:20): three S1 seed-1 runs OOM-killed; two more stopped
+
+- Other tenants grew again (host 400 GB used with this container at ~87-115 GB PSS; swap full; memory pressure "full"
+  82 % over 5 min). The kernel killed `s1v-synth-seed1-split0-pick-place` (at 59.3k), `s1v-synthinv-seed1-split0-
+  pick-place` (59.3k), `s1v-synthinv-seed1-split0-hammer` (80.6k) and the CNN evaluation companion (exit 137); the
+  remaining runs crawled at ~21 s/step.
+- **Action:** stopped the two slowest S1 runs (`s1v-synthsr-seed1-split0-hammer` at 57.6k and `-pick-place` at
+  54.2k), freeing ~22 GB; the five seed-0 / near-100k runs recovered to 0.32-0.53 s/step within two minutes. All five
+  stopped or killed runs resume from their last checkpoints (80k, 50k, 50k, 50k, 50k; 0.6k-9.3k steps redone) once
+  the scheduler sees 75 GB available. Resuming restores optimizer, scheduler, RNG and the sampler position, so the
+  S1 comparison is unaffected apart from time; the S1 decision moves to ~tonight.
+- The CNN evaluation companion exhausted its restarts (`failed`); it is reset when the CNN trainer resumes after S1.
