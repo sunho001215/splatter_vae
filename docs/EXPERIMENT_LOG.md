@@ -1112,3 +1112,10 @@ final configuration (A200 vs A300, 6-seed proxies) decides the length.
   the scheduler sees 75 GB available. Resuming restores optimizer, scheduler, RNG and the sampler position, so the
   S1 comparison is unaffected apart from time; the S1 decision moves to ~tonight.
 - The CNN evaluation companion exhausted its restarts (`failed`); it is reset when the CNN trainer resumes after S1.
+- **06:58 update:** pressure continued (host 415 GB used, memory pressure 91-95 % over 5 min). Two more S1 runs were
+  OOM-killed: `s1v-synthsr-seed0-pick-place` at 80.3k and `s1v-synth-seed1-split0-hammer` at 82.2k (both resume from
+  80k). Three S1 runs keep running (`synthinv-seed0-hammer` at 98.0k, `synthsr-seed0-hammer` at 87.2k,
+  `synthinv-seed0-pick-place` at 75.5k). The other tenants hold ~380 GB; this container holds ~35 GB. The scheduler
+  relaunches the seven waiting runs only when 75 GB is available, so it does not feed the OOM churn. Changing the
+  resumed S1 runs to the 2 x 6 loader would save only ~2 GB each (the window loader has no randomness, so it would not
+  change the data); not done, to keep the S1 pipeline uniform.

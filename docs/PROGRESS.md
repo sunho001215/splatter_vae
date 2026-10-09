@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 05:25
+Last updated: 2026-10-10 06:58
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -364,10 +364,14 @@ Last updated: 2026-10-10 05:25
   s/step). The five resume from checkpoints (80k, 4 x 50k) when 75 GB is available. Watcher re-armed (it had exited on
   the crash events). Reference evaluations R seed 0 done for both tasks.
 
+- 06:58: host memory still exhausted by other tenants (415 GB used, pressure 91-95 %). Two more S1 runs OOM-killed
+  (synthsr-seed0-pick-place 80.3k, synth-seed1-split0-hammer 82.2k; resume from 80k). 3 S1 runs running, 7 waiting
+  for 75 GB available. S1 completion now depends on when host memory frees.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 5 running; 5 seed-1 runs waiting for host RAM (resume from 80k / 50k) | runs/pretrain/s1v-*/log.txt |
+| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 3 running; 7 waiting for host RAM (resume from checkpoints) | runs/pretrain/s1v-*/log.txt |
 | s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | OOM-killed at 693k (03:16); held until S1 reaches 100k, resumes from 650k | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
