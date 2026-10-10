@@ -82,6 +82,46 @@ def test_launches_wait_for_host_ram(tmp_path):
     assert jobs.host_available_gb() > 0
 
 
+@pytest.mark.parametrize("failure", [
+    jobs.subprocess.CalledProcessError(255, ["nvidia-smi"]),
+    jobs.subprocess.TimeoutExpired(["nvidia-smi"], 60),
+])
+def test_gpu_query_failure_reconciles_exits_but_launches_nothing(tmp_path, monkeypatch, failure):
+    queue = write_queue(tmp_path / "q.yaml", [
+        {"id": "done", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1},
+        {"id": "next", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "deps": ["done"]},
+    ])
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    jobs.record({"event": "launched", "id": "done", "pid": 2**30, "gpu": GPU4, "attempt": 1}, registry)
+    (runs / "done").mkdir(parents=True)
+    (runs / "done/exit_code").write_text("0")
+    probes = iter([failure, {GPU4: [], GPU5: []}])
+
+    def query():
+        result = next(probes)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    launched = []
+
+    def launch(job, gpu, attempt, runs):
+        launched.append(job["id"])
+        return 2**30
+
+    monkeypatch.setattr(jobs, "gpu_usage", query)
+    monkeypatch.setattr(jobs, "launch", launch)
+    messages = jobs.tick(queue, registry, runs, available_gb=100)
+    assert any("done exited with 0" in message for message in messages)
+    assert any("GPU process query failed" in message and "no jobs launched" in message for message in messages)
+    assert not launched
+    assert jobs.read_registry(registry)["done"]["status"] == "done"
+    assert "next" not in jobs.read_registry(registry)
+    jobs.tick(queue, registry, runs, available_gb=100)
+    assert launched == ["next"]
+    assert jobs.read_registry(registry)["next"]["status"] == "running"
+
+
 def test_recently_launched_jobs_still_count_against_host_ram(tmp_path):
     """A job that started a minute ago has not allocated its memory yet; admission must not count it as free."""
     queue = tmp_path / "q.yaml"

@@ -107,6 +107,7 @@ def gpu_usage() -> dict[str, list[tuple[int, float]]]:
         capture_output=True,
         text=True,
         check=True,
+        timeout=60,
     ).stdout
     usage: dict[str, list[tuple[int, float]]] = {uuid: [] for uuid in ALLOWED_GPU_UUIDS}
     for line in out.splitlines():
@@ -238,7 +239,11 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb) -> 
         if s["status"] == RUNNING
     ]
     sessions = {r["pid"] for r in running}
-    usage = gpu_usage() if usage is None else usage
+    if usage is None:
+        try:
+            usage = gpu_usage()
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            return messages + [f"GPU process query failed ({type(exc).__name__}); no jobs launched"]
     foreign = {uuid for uuid, procs in usage.items() if any(session_id(pid) not in sessions for pid, _ in procs)}
     for uuid in foreign:
         messages.append(f"foreign processes on {uuid}: {usage[uuid]}; not launching there")
