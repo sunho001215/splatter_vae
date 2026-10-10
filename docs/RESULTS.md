@@ -4,6 +4,35 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Operational/native acceptance failures during second-host setup (2026-10-10)
+
+- The 18:12 full-suite attempt failed before pytest: the unchanged GPU guard saw zero CUDA devices for the allowed
+  GPU-5 UUID. No tests were skipped or replaced. Evidence: `runs/setup/nvml-20261010-1812-suite-attempt.log`.
+- Later NVIDIA management queries hung in kernel D state; a timed command could not promptly reap its own child.
+  Existing item-1 CUDA contexts continued. This does not justify a GPU reset, unguarded access, or migration.
+- At 19:22 a fresh unchanged-main guarded CUDA process succeeded on the exact allowed GPU-5 UUID (native sum 16.0);
+  evidence `runs/setup/guarded-access-20261010-1925.log`. Remote CUDA/EGL isolation/equivalence have not run.
+  Remote version/byte checks alone are not native acceptance.
+- The complete local review suite begun 19:25 finished at approximately 19:53: **492 passed, 1 failed, 0 errors,
+  0 skipped**, 1,675.4 seconds, sources unchanged. The detached scheduler/native-worker test exceeded its unchanged
+  180-second bound: workers launched 19:33:27 and wrote native guard messages at 19:48:29, then correct exit codes
+  0 and 7 at 19:48:31. Retrospective evidence cannot identify the exact blocked function. This is failed acceptance,
+  not a scheduler/native pass. Evidence: `.worktrees/review/runs/acceptance/local-20261010-1926/tests.json` and its
+  `tmp/test_detached_launch_success_r0/runs/{ok,bad}/console.log`. Add flushed phase markers and timed stack dumps
+  for the next real run; do not widen the timeout, substitute cached GPU mappings, or skip the failing test.
+
+### Post-repair local source acceptance (2026-10-10)
+
+- The complete review suite begun at 20:32 finished at 20:43: **625 passed, 0 failed, 0 errors, 0 skipped**,
+  669.64 seconds. All 210 source fingerprints match before/after execution and the independently checked current
+  review tree. Evidence: `.worktrees/review/runs/acceptance/local-20261010-2034/tests.json`, SHA-256
+  `6404b27e6092e19c7d7623ad4b5e92862ddfae74d18ba498e9327fa1599cabbf`.
+- The previously failing detached native-worker check passed its original 180-second bound: observed native guards
+  took 17.54 and 15.61 seconds; workers exited with the expected codes 0 and 7. No threshold relaxation, native
+  replacement or skipped test. The earlier 492/1 failed acceptance remains a separate honest failure above.
+- This is local source acceptance, not remote image/CUDA/EGL or cross-host equivalence acceptance. Source deployment,
+  scheduler recovery and resource admission are recorded separately in PROGRESS/EXPERIMENT_LOG.
+
 ### Phase A — runtime (R1)
 | Check | Result | Evidence |
 |---|---|---|

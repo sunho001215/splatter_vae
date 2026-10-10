@@ -1268,3 +1268,122 @@ centres onto moving track points) is the most direct test of the failure. Items 
   historical first-forward logs are candidates only until commit/config/batch identity is demonstrated.
 - **Decision rules.** No seeds, schedules, losses, thresholds, margins, task selection or method ordering change.
   Extra capacity changes elapsed time only. Setup is in progress; no remote campaign result exists yet.
+
+## 2026-10-10 — Remote runtime built; native admission remains gated (19:28)
+
+- **Observed build, not experimental success.** Owned image `s4d-runtime-03cca5218096dc88`, immutable ID
+  `sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7`, was built from the unchanged uv.lock,
+  immutable Ubuntu 22.04 amd64 base and checksum-verified installed native payload. A detached, non-GPU Docker audit
+  verified all runtime versions and 1,948 native package inputs byte-for-byte. Build-generator setuptools 84.0.0
+  remains distinct from runtime setuptools 82.0.1. Image/build/hash evidence is local under `runs/remote/runtime/`.
+- **Control-plane corrections before admission.** The root `mujoco_mig_setup.py` joins every source fingerprint;
+  a valid existing deterministic split manifest is read without rewriting (mismatch fails rather than replacing
+  transferred evidence); Docker receives 8 GiB shared-memory capacity without changing batch/workers/prefetch;
+  literal root `encoder.pt` returns as an export, not a blanket checkpoint transfer. Explicit numerical artifacts
+  must hash-verify before an exit-0 remote job becomes done. No threshold, seed, schedule or numerical objective changes.
+- **Source deployment remains held.** All extension/recovery source changes remain in `.worktrees/review`. Local
+  NVML queries hung in kernel D state after the earlier Unknown Error, including one watcher child. The watcher
+  eventually returned its timeout event and was re-armed. At 19:22 a fresh process passed the unchanged original
+  GPU-5 UUID guard and a real CUDA sum=16.0; the complete settled review suite is running. Neither this operation nor
+  CPU control-plane tests establish full acceptance. Do not publish an unaccepted review tree as a campaign release.
+- **Data and equivalence.** Eight explicit hammer/pick-place files, 40,611,169,250 bytes and fixed split seed 0,
+  remain in a resumable checksum transfer; no final data gate yet. Full remote native suite, four one-UUID CUDA/EGL
+  checks and actual same-input initial-loss/short-run equivalence are still pending. Historical losses are not a
+  substitute. Existing item-1 runs remain local; no favorable-seed rerun or protocol change is authorized.
+
+## 2026-10-10 — Failed complete acceptance and verification bootstrap boundary (20:00)
+
+- **Actual suite result.** Review acceptance `runs/acceptance/local-20261010-1926/tests.json` finished with 492
+  passed, one failed, no errors or skipped tests, unchanged source fingerprints, duration 1,675.4 seconds. The
+  failing real detached native scheduler workers launched 19:33:27, logged their guards at 19:48:29, and exited
+  correctly (0/7) at 19:48:31. The existing 180-second test bound is unchanged. The exact blocked native/startup
+  operation was not captured; flushed phase markers and timed stack diagnostics will be added for the next run.
+- **Independent recovery.** Shared durable NVIDIA-query identity and nonblocking timeout cleanup are being corrected
+  in review only. A child records its own PID/start ticks/boot identity before executing the query; rearming must
+  not duplicate a still-live query, and a killed D-state child must not prevent independent host reconciliation.
+  No GPU reset, permissions change, foreign signal, cached guard substitution, or failing-test deletion.
+- **Data observed.** The eight explicit development files finished checksum-verified transfer at 19:33; semantic
+  identity `56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1`. This does not substitute for native
+  dataset acceptance or cross-host numerics.
+- **Bootstrap permission boundary.** Current remote admission requires cross-host evidence before launching the
+  runs that would produce it. A strict 50-update, non-campaign verification-only mode retaining all other gates was
+  proposed; permission denied deferring the `cross_host` guard without explicit user approval. Do not implement
+  that exception, fabricate a PASS, or use an alternate/test launcher. Existing guard remains unchanged. Continue
+  independent recovery and stop for the user's decision before any such bootstrap change.
+
+## 2026-10-10 — Host GPU repair verified; CDI preference and shared-host RAM correction (20:15)
+
+- **User-supplied cause and repair.** Host `systemctl daemon-reload` during VPN service setup, under the systemd
+  cgroup driver, removed NVIDIA runtime-hook devices that were outside systemd's DeviceAllow list. The user applied
+  `systemctl set-property --runtime DeviceAllow=...` for each container's own devices on the host. They report those
+  rules survive reloads until container restart. No agent host/VPN/driver/device-permission repair was attempted.
+- **Actual verification.** Fresh bounded `nvidia-smi` completed exit 0. At 20:02 the unchanged-main
+  `scripts/check_gpu_isolation.py` passed actual CUDA matmul and MetaWorld/MuJoCo EGL on both allowed local UUIDs:
+  GPU 4 child PID 2746214, EGL device 16; GPU 5 child PID 2746662, EGL device 17. Each C+G PID appeared only on its
+  assigned UUID. Numeric and unset CVD were rejected. Evidence: `docs/gpu_isolation.json` and
+  `runs/setup/gpu-isolation-host-fix-20261010-2003.log`; prior isolation JSON preserved in `runs/setup/`.
+  This repairs the local hardware-access gate, not acceptance of changed source or any remote native claim.
+- **Infrastructure retry accounting.** Substantiated outage-related CUDA/NVML initialization failures must not
+  consume `max_restarts`. Preserve append-only history and monotonic launch/container attempt IDs; record a separate
+  audited infrastructure classification against an observed failed attempt, not a blanket exemption for OOM or
+  arbitrary errors. Registry inspection found no campaign exit/failure events since the outage began at 18:07,
+  so no historical campaign retry exemption was fabricated or appended. Failed acceptance tests remain honestly failed.
+- **Remote device injection.** Prefer CDI `--device nvidia.com/gpu=<UUID>` for owned containers. Review changes
+  require Docker 28's actual qualified CDI DeviceRequests schema and exact UUID/env/graphics validation, no silent
+  fallback. Remote CDI availability is still unverified. If remote NVML fails, hold/report; never repair the host.
+- **Conservative shared memory.** At approximately 20:10 host MemAvailable was 60.9 GB and swap nearly exhausted.
+  Begin a non-invasive four-hour/two-minute whole-owned-session memory window, including RSS/PSS components, shmem,
+  Locked/VmPin, HWM, cgroup/host pressure and unique hot HDF5 residency. First sample covered all 20 item-1 jobs,
+  185.6 GB aggregate PSS and 198.1 GB container memory.current, with no read errors. Data/shmem are not added twice;
+  driver-pinned attribution and allocator-internal causes remain measurement limitations. Historical 13 GB
+  declarations are provisional until long-window peaks, evaluation transients and retained growth are measured.
+  Evidence: `runs/setup/memory-window-20261010-2015.jsonl` and its eventual summary.
+- **Admission, not scientific change.** Review queue raises provisional local shared-tenant reserve from 60 to
+  128 GiB (scheduler binary units), retaining the ten-minute ramp; no further memory-heavy local launches during
+  measurement. No active run's loader/prefetch/seed/schedule/pinning/allocator environment changed and no healthy
+  trainer was restarted. Future jobs keep validated six-worker/prefetch-two defaults; other footprint reductions
+  require independent evidence. Prefer remote RAM-heavy/many-process work after all comparability gates.
+- **Continuity.** All 20 item-1 PIDs remained live and wrote recent output at 20:10. The tracked watcher remained
+  alive; scheduler recovery and complete settled-source native acceptance remain pending. Local launch HOLD remains
+  for those independent source/resource gates; remote remains disabled. The stopped cross-host observer assignment
+  made no edits, and its admission-guard exception remains unauthorized.
+
+### 2026-10-10 — Effective headroom and reconciliation isolation corrected before acceptance (20:34)
+
+- A duplicate top-level queue key made the proposed 128 GiB reserve ineffective: the older final key still held 60.
+  Removed the new duplicate and changed the original authoritative review key to 128. Actual scheduler queue parsing
+  verified 128 GiB local reserve, ten-minute ramp, remote disabled/CDI. No production admission change yet.
+- Read-only audit confirmed that remote lost-response reconciliation checked GPU/image/labels but not the complete
+  container runtime or exact bind mapping. Require explicit nonprivileged/read-only rootfs, host PID namespace,
+  exactly 8 GiB shm, and all eight immutable-code/data/evidence/proof and writable-run/cache bind source/destination/
+  permission pairs. Launcher existing-container reuse also verifies privilege/rootfs. Added running/exited
+  lost-response mutation cases proving no sync, retry charge or duplicate dispatch, plus reuse rejection cases.
+- All 66 directly exercised CPU isolation boundary cases and focused lint/whitespace checks passed. This is not
+  native acceptance. Complete unchanged-threshold native suite began at 20:31 as tracked task `bomqe4f3o`; log
+  `runs/setup/remote-extension-local-suite-20261010-2034.log`, evidence
+  `.worktrees/review/runs/acceptance/local-20261010-2034/`. Source remains frozen until completion.
+- All 20 item-1 runs had present launch PIDs and sub-minute output at 20:33, steps 22.5k-33.65k; no comparison was
+  restarted or changed. Watcher PID 2697085 is live; disk has 4.8T available (`df -h`). Four-hour memory observer
+  remains running. Scheduler remains down and HOLD remains pending real acceptance/resource admission; no source
+  deployment, commit/push, remote gate exception, host repair or foreign-process action occurred.
+
+### 2026-10-10 — Complete settled-source native acceptance passes (20:46)
+
+- Full review suite completed at 20:43: 625 passed, zero failures/errors/skips, 669.64 seconds, local GPU-5 UUID.
+  Independent verification confirmed all 210 current source hashes exactly match the before/after evidence.
+  Evidence `.worktrees/review/runs/acceptance/local-20261010-2034/tests.json`; SHA-256
+  `6404b27e6092e19c7d7623ad4b5e92862ddfae74d18ba498e9327fa1599cabbf`.
+- Previously failing native detached workers passed the original 180-second bound, with guard times 17.54/15.61
+  seconds and correct exit codes 0/7. No thresholds, native components or scientific protocols were substituted.
+  Earlier failed acceptance remains in RESULTS. This permits source integration under HOLD, not remote admission.
+- Both allowed local UUIDs are receiving additional real CUDA/EGL checks with settled review source as tracked task
+  `b9tyt5uat`; log `runs/setup/review-gpu-isolation-20261010-2046.log`. No claim about remote isolation or equivalence.
+  Four-hour RAM measurement continues; current healthy item-1 settings remain untouched. Deployment/recovery will
+  preserve append-only registry and conservative admission; cross-host guard deferral remains unauthorized.
+- Settled-source local checks returned actual CUDA operations and EGL frames on both UUIDs: GPU 4 PID 2805280,
+  EGL device 16; GPU 5 PID 2805958, EGL device 17. Frame mean 103.1044921875 on both. Each PID appears only on its
+  selected UUID in the local NVIDIA tables, and numeric/unset/other-host CVD are rejected; source hashes match
+  accepted tests. Reports retain their `--host-pid-namespace` assertion, but main Docker HostConfig.PidMode is not
+  independently available here (PID 1 is bash in `pid:[4026538500]`). These local CUDA/EGL observations must not
+  be represented as inspected remote host-PID proof. Remote verification must inspect its owned container's
+  actual `PidMode=host` and perform the native PID/device checks there; no gate is waived.

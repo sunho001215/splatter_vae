@@ -1,7 +1,8 @@
 # Compute plan (Meta-World campaign)
 
-Measured on GPU 4 / GPU 5 (RTX PRO 6000 Blackwell, 96 GB each), 384 CPU cores, ~140 GB RAM available to this
-campaign (the host is shared), 5.0 TB free disk. All numbers from scheduler jobs in `runs/`.
+Measured on GPU 4 / GPU 5 (RTX PRO 6000 Blackwell, 96 GB each), 384 CPU cores on a shared host. Historical
+availability was ~140 GB RAM and 5.0 TB free disk; neither is a guaranteed campaign allocation. Current conservative
+memory correction and pending acceptance are below. Workload numbers come from scheduler jobs in `runs/`.
 
 ## Measurements
 
@@ -30,6 +31,37 @@ campaign (the host is shared), 5.0 TB free disk. All numbers from scheduler jobs
   host-RAM reserve and a 10-minute RAM ramp window. Item-1 training jobs declare 6 GB GPU memory and 13 GB RAM.
   At 2026-10-10 17:16, the 20 process trees held 175 GB PSS (7.98-9.38 GB each) after their 10k evaluations; none was
   still evaluating at the snapshot, so the transient evaluation-time peak remains unmeasured.
+
+## Shared-host memory correction (2026-10-10, measurement underway)
+
+The historic 13 GB declaration above is based on a short PSS benchmark, not a complete long-run footprint. It must
+not justify further packing on this shared host. At approximately 20:10, host MemAvailable was 60.9 GB, swap was
+almost exhausted, our container's `memory.current` was 213.7 GB, and its cgroup reported roughly 110.9 GB anonymous,
+99.9 GB file (including 80.6 GB shmem), and 2.8 GB kernel memory. These components must not be added twice. The two
+training HDF5 files alone had 18.8 GB resident page cache, shared across their runs rather than per-worker copies.
+This is a snapshot, not a measured lifetime peak or exclusive attribution of all container memory to the campaign.
+
+- New memory-heavy local launches remain held during a four-hour, two-minute-cadence read-only measurement of all
+  20 owned item-1 launch sessions. Evidence: `runs/setup/memory-window-20261010-2015.jsonl` and its eventual summary.
+  Sample whole-session RSS/PSS (including Pss_Anon/File/Shmem), Locked/VmPin/VmHWM, stage/step, unique resident HDF5
+  pages via fincore/mincore without warming them, host available/swap memory, cgroup memory/stat/events and pressure.
+- PSS already contains mapped shared memory and file pages. Do not add those again; shared dataset/replay cache is
+  reserved once at host level (or explicitly apportioned), and kernel/allocator retention receives a measured margin.
+  RSS/HWM are diagnostic and double-count shared worker pages. Zero VmPin/Locked is not proof that CUDA-pinned pages
+  are absent; driver-registered pinned memory is not completely visible in proc. Bound this uncertainty conservatively
+  and do not present allocator-specific attribution or a lifetime peak that the observer cannot measure.
+- Sample across additional scheduled evaluations and post-evaluation training, inspect retained anonymous growth,
+  then set workload `ram_gb` from observed peaks plus margin. Extend observation if footprint continues growing or
+  an evaluation is not covered. Never alter active comparisons' workers, prefetch, pinning or allocator environment.
+- Review admission raises the provisional local reserve to 128 GiB (about 26% of the 540.5 GB host), retaining the
+  ten-minute ramp. This is explicit shared-tenant headroom, not a fabricated measured job peak. Production queue
+  changes only after accepted source merge. At 20:29 a duplicate reserve key was corrected and actual scheduler
+  parsing verified one effective 128 GiB review reserve. Final declarations and any campaign cap await long-window evidence.
+- The validated six-worker/prefetch-two setting remains the future default. Fewer workers, capped/reused pinning and
+  allocator arena limits require independent validation before adoption; do not apply speculative fixes to running
+  jobs. Admission will leave explicit shared-tenant headroom, not merely avoid our own OOM.
+- After real remote native/isolation/data/equivalence acceptance, prefer its larger RAM for many-worker pretraining,
+  CNN disk replay and wide seed sweeps; all comparison arms stay on one host or first pass cross-host equivalence.
 
 ## Planned runs, cost and priority tier
 
@@ -119,7 +151,7 @@ complete and its final evaluation written. Frozen-encoder replay: <1 GB RAM snap
 
 | Host | Eligible GPUs | Host RAM | GPU limits | Disk admission |
 |---|---|---|---|---|
-| Main container | original GPU 4/5 UUIDs only | 60 GB reserve, 10-minute launch ramp | 20 slots / 90 GB per GPU, measured packing above | 300 GB minimum free plus future-growth reservations |
+| Main container | original GPU 4/5 UUIDs only | review candidate: 128 GiB reserve (was 60), 10-minute launch ramp; no new memory-heavy admission during measurement | 20 slots / 90 GB per GPU are ceilings, not packing targets | 300 GB minimum free plus future-growth reservations |
 | Remote Docker | four explicit remote UUIDs in `configs/hosts/remote.yaml` | 1.5 TiB total at inventory; 120 GiB reserve, 10-minute ramp | initial ceilings 20 slots / 90 GiB per GPU; exclude foreign processes | 15% total floor, initially 1.129 TB, plus future-growth reservations |
 
 Remote capacity is not currently accepted campaign capacity: immutable runtime, full native suite, all four
@@ -134,8 +166,10 @@ leave-one-out, pretraining-length selection, freeze and Stage 3/4 in the existin
 fill lower-priority slots but no baseline RL precedes freeze. The extra four GPUs and RAM reduce wall-clock time;
 they do not expand the experiment/iteration budget or change numerical protocols.
 
-Begin with measured 6-worker/prefetch-2 training declarations (13 GB RAM per run), not an untested higher batch size.
-Increase packing from observed PSS, GPU memory and steady throughput, respecting remote CPU/data I/O and launch ramp.
+Keep the validated 6-worker/prefetch-2 loader and original batch size. Historical 13 GB RAM declarations are
+provisional and must be replaced by complete-footprint long-window peaks plus margin before new heavy admission.
+Increase packing only from accepted footprint, GPU memory and steady throughput, respecting remote CPU/data I/O,
+shared-tenant headroom and the launch ramp.
 No remote throughput has been measured yet; local timings must not be relabeled as remote evidence. Keep the two
 1M-step CNN runs/GPU ceiling until measured remote contention justifies a scheduling change. Reserve 46 GB replay
 per admitted CNN run, plus snapshots and data/image transfer storage; 8 concurrent CNN runs reserve at least 368 GB

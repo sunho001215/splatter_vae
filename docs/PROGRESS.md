@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 18:50
+Last updated: 2026-10-10 20:46
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -28,27 +28,89 @@ Last updated: 2026-10-10 18:50
   8 tasks and ablations); SinCro exactly 300k; ReViWo 100 001 (reference).
 
 ## Operational blocker (2026-10-10 18:07 onward)
-- NVIDIA management queries fail with `Failed to initialize NVML: Unknown Error`. Scheduler pid 957531 exited on
-  the failed query; existing training processes continue to advance (14.8k-21.5k at 18:07). A fresh guarded test
-  process sees zero CUDA devices, so new launches and native acceptance are blocked, not routed to another GPU.
-- The watcher was re-armed as tracked task `bo345vngk` (pid 2612702) after its `GPU_QUERY_FAILING` event.
-  `experiments/HOLD` remains in place. Fail-closed scheduler recovery is prepared in `.worktrees/review`, but the
-  suite stopped at the GPU guard before tests ran; no source merge or production use of the patch is allowed yet.
-- Next: restore host/container GPU visibility without resetting shared GPUs or changing device permissions;
-  rerun the full guarded suite, merge the recovery under HOLD, restart the scheduler, then release HOLD.
+- At 18:07 NVIDIA management queries returned `Failed to initialize NVML: Unknown Error`; scheduler pid 957531
+  exited. The first fresh guarded suite attempt saw zero CUDA devices. At 19:22 a fresh unchanged-main GPU-5 guard
+  and real CUDA operation succeeded, but management queries still intermittently hang in kernel D state.
+- The current watcher is tracked task `bb5esaarp` (pid 2697085), re-armed after the earlier timeout event. At 19:41
+  its last beacon was 0.5 minutes old; its NVIDIA query child was in D state. HOLD remains. Full review acceptance
+  finished at approximately 19:53: 492 passed, one failed, no errors/skips, sources unchanged; no acceptance claim.
+  The native scheduler worker took approximately 904 seconds, beyond its unchanged 180-second check. Review source
+  freeze lifted for durable query fixes and flushed/timed diagnostics; full acceptance must be rerun.
+- Read-only audit confirmed two review query-cleanup defects: process-local watcher query ownership does not survive
+  `--once` rearming, and scheduler `subprocess.run(timeout=60)` can block on unbounded reap of a D-state child. Fix with
+  durable child identity and nonblocking cleanup after the current suite ends, then rerun the complete native suite.
+- **Host repair verified at 20:02.** The user identified host `systemctl daemon-reload` with the systemd cgroup
+  driver removing hook-injected NVIDIA devices from new processes, and applied runtime DeviceAllow rules on the
+  host. Fresh bounded `nvidia-smi` returned exit 0. Unchanged-main `scripts/check_gpu_isolation.py` then passed real
+  CUDA matmul and MetaWorld/MuJoCo EGL on GPU 4 and GPU 5, with each C+G child visible only on its assigned UUID
+  (PIDs 2746214/2746662, EGL devices 16/17). Numeric/unset CVD rejected. Evidence: `docs/gpu_isolation.json` and
+  `runs/setup/gpu-isolation-host-fix-20261010-2003.log`; previous isolation evidence was preserved under `runs/setup/`.
+- Remaining local HOLD is for source acceptance and conservative resource admission, not an unverified GPU repair.
+  Finish durable query/retry patches, rerun the full guarded suite, merge under HOLD and restore the scheduler;
+  release launch HOLD only with passing acceptance and shared-host memory headroom. No healthy trainer restart.
+  Outage-related CUDA/NVML initialization failures are infrastructure failures, not chargeable restart failures.
 
 ## Second-server extension (2026-10-10, setup in progress)
 - TCP/SSH access and remote Docker inventory verified from this container; four authorized remote GPUs were idle.
   Owned Docker resources and all host writes stay under `/home/compu/kaist/sunho`; no host VPN action is permitted.
 - `docs/REMOTE.md` contains inventory, identity/transfer mechanics and pending gates. Decisions are registered in
   EXPERIMENT_LOG and both-host packing/disk reserves in COMPUTE_PLAN. The local registry remains authoritative.
-- Exact installed native binaries will be packaged, not mismatched cached wheels. Host guard, detached backend,
-  result verification, provenance and watcher changes are being developed only in `.worktrees/review`.
-- No remote long job is admitted yet. Full suite, four one-UUID CUDA/EGL checks, data checksums and cross-host
-  initial-loss/short-run equivalence remain pending; fresh main-host CUDA access currently blocks equivalence.
+- Exact installed native binaries were packaged and verified inside the built image, not replaced by mismatched
+  cached wheels. Host guard, detached backend, result verification, provenance and watcher changes remain review-only.
+- No remote long job is admitted yet. Remote full suite, four one-UUID CUDA/EGL checks and cross-host initial-loss/
+  short-run equivalence remain pending. Main post-repair NVML and both actual CUDA/EGL isolation checks passed at 20:02;
+  remote CDI availability, native acceptance and cross-host bootstrap permission remain separate pending gates.
 - The existing 20 item-1 runs stay local and healthy; item ordering/decision rules are unchanged. At 18:48 they
   reached 17.4k-24.35k, watcher pid 2612702 was live, disk free was 5230 GB, and the only heartbeat problem was the
   already documented dead scheduler. No new exit/failure or trainer restart was observed.
+
+### Extension setup update, 19:28
+- Owned remote image built: `sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7`.
+  Detached CPU-only Docker audit verified all runtime versions and 1,948 native package files byte-for-byte; this
+  does not establish native CUDA/EGL acceptance. Build, image inspection and integrity evidence are under
+  `runs/remote/runtime/`; exact details are in REMOTE.
+- The eight explicit development-data files (40.61 GB) finished resumable SHA-256-verified transfer at 19:33.
+  Semantic identity `56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1`; verified manifest under
+  `runs/remote/data/`. Native loader acceptance, equivalence and remote long-job admission remain pending.
+- Main NVML queries subsequently hung in kernel D state, including the watcher's child; no reset, driver change,
+  permission change or foreign-process action was used. The tracked watcher eventually returned its timeout event
+  and was re-armed as `bb5esaarp`. At 19:22 a fresh process passed the unchanged main GPU-5 UUID guard and a native
+  CUDA sum=16.0. Full review acceptance is now running, log `runs/setup/remote-extension-local-suite-20261010-1926.log`;
+  HOLD remains, scheduler remains down, production sources remain unchanged.
+- At 19:13 all 20 item-1 PIDs were alive and free disk was 5238 GB. Several runs were at their scheduled 20k
+  evaluations (last training-log writes 19:00-19:02); this is not evidence of a crash and none was restarted.
+- Review fixes cover immutable host boundaries/provenance, verified numerical result return, read-only split reuse,
+  8 GiB Docker shared memory, baseline encoder exports, and nonblocking watcher query-timeout cleanup. CPU boundary
+  checks are not native acceptance. Remote suite, four real isolation checks and cross-host equivalence are pending.
+
+### Shared-host RAM update, 20:15
+- Read-only four-hour/two-minute sampling of all 20 owned item-1 sessions is running as tracked task `bfu6v5ovg`.
+  Evidence `runs/setup/memory-window-20261010-2015.jsonl`; first sample: 185.6 GB whole-tree PSS, 198.1 GB container
+  memory.current, 8.81-9.84 GB PSS per run. These are initial values, not a lifetime peak. Cache, shmem, pinned-memory
+  uncertainty, growth and evaluation transients are being measured/accounted before final declarations.
+- Review queue provisionally raises local tenant headroom to 128 GiB (was 60) with the ten-minute ramp unchanged.
+  No memory-heavy local admissions during measurement, and no active comparison settings changed. Prefer eligible
+  remote heavy/many-process jobs only after its native and comparability gates; detailed policy in COMPUTE_PLAN.
+
+### Settled-source acceptance update, 20:34
+- Fixed duplicate top-level RAM-reserve keys in the review queue; verified the actual parsed local reserve is
+  128 GiB, with one authoritative key and the ten-minute ramp. This is not yet deployed production admission.
+- Read-only audit found incomplete runtime/mount validation in lost-response remote reconciliation. Review now
+  rejects privileged/writable-root containers, non-host PID namespace, anything other than 8 GiB shm, and any
+  differing source/destination/readonly mapping among the eight expected binds. Launcher reuse also checks rootfs
+  and privilege policy. All 66 targeted CPU boundary cases passed; native acceptance is separate.
+- Complete guarded native suite started at 20:31, tracked task `bomqe4f3o`, with the original thresholds unchanged.
+  Log `runs/setup/remote-extension-local-suite-20261010-2034.log`; evidence
+  `.worktrees/review/runs/acceptance/local-20261010-2034/`. At 20:43 the suite passed 625/625, with zero failures/
+  errors/skips and all 210 source fingerprints unchanged and independently verified. Source integration and
+  scheduler recovery follow under HOLD; shared-resource admission remains independently gated.
+- Settled-source native CUDA/EGL checks also returned real frames on both local UUIDs (PIDs 2805280/2805958,
+  EGL devices 16/17), with each NVML-visible PID confined to its assigned UUID and numeric/unset/remote CVD rejected.
+  Evidence under the suite directory's `isolation-gpu4/` and `isolation-gpu5/`. Their host-PID flag is an assertion,
+  not independently inspected main Docker PID-mode proof; do not reuse these local reports as remote host-PID acceptance.
+- At 20:33 all 20 item-1 launcher PIDs were present, with recent output under one minute old and steps 22.5k-33.65k.
+  Watcher PID 2697085 is live. Disk: `df -h` reported 4.8T available. Four-hour memory observation remains running;
+  no active run settings changed. Remote remains disabled pending native/CDI/isolation/data/equivalence gates.
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
@@ -58,6 +120,18 @@ Last updated: 2026-10-10 18:50
   fingerprinted by the test gate); remove it after the suite passes.
 
 ## Heartbeats
+- 2026-10-10 20:35: all 20 registered running jobs have live, non-zombie launch PIDs with matching owned sessions,
+  no exit files, and output under one minute old. Steps advanced to 22.7k-33.85k; no trainer stall found. Watcher
+  PID 2697085 is live, beacon age 19 seconds. Complete review suite `bomqe4f3o` is executing after the GPU-5 guard,
+  with visible test progress and no acceptance claim. Memory observer is live, latest sample covers all 20 jobs
+  with zero read errors (only 22 minutes into the four-hour window). Disk free 4,871.6 GiB. Scheduler remains down
+  pending genuine source acceptance; HOLD retained for acceptance/shared-resource admission. No healthy job restarted.
+
+- 2026-10-10 19:41: all 20 registered item-1 jobs have live PIDs; 13 are writing training steps (22.1k-29.7k), seven
+  are in scheduled 20k evaluation with stride-2 panels already written and last output 9-20 minutes old. No new
+  registry exits/failures or verified permanent stall. Watcher beacon age 0.5 min; scheduler remains dead. Disk free
+  5235 GB. Trainers were not restarted. Local review suite still running, with one visible failure; HOLD retained.
+
 - 20:13: HEARTBEAT_OK — 8 running jobs active (last activity < 3 min), watcher and scheduler alive, 5375 GB free.
   hammer pretraining at 5k/200k (0.175 s/step), pick-place at 2.9k (0.34 s/step), gate arms at 2.0k (3a) / 1.3k (3b).
 
