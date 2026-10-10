@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 14:10
+Last updated: 2026-10-10 15:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -411,6 +411,10 @@ Last updated: 2026-10-10 14:10
   declare `mem_gb` 6 and both started (all 20 running; finishing together instead of a slow 2-run tail). New
   diagnostics are logged as expected (e.g. at ~2k: d0 hammer utilisation 0.50 / hidden 0.90; d2 0.92 / 0.21).
   All 20 runs reach 100k in ~25 h (~15:00 tomorrow).
+
+- 15:07: watcher and scheduler alive, 4.8 TB free. All 20 item-1 runs at 3.2k-6.9k (0.88-1.04 s/step). Host memory
+  tight again: 76 GB available, memory pressure ~20 % (60 s and 5 min); this campaign holds 164 GB PSS (20 runs x
+  ~8.2 GB), other tenants ~300 GB. No action yet (no kills); runs checkpoint every 10k (~2.7 h at this speed).
 
 ## Job table (running or pending)
 | id | GPU | status | log |
