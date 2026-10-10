@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 18:13
+Last updated: 2026-10-10 18:50
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -36,6 +36,19 @@ Last updated: 2026-10-10 18:13
   suite stopped at the GPU guard before tests ran; no source merge or production use of the patch is allowed yet.
 - Next: restore host/container GPU visibility without resetting shared GPUs or changing device permissions;
   rerun the full guarded suite, merge the recovery under HOLD, restart the scheduler, then release HOLD.
+
+## Second-server extension (2026-10-10, setup in progress)
+- TCP/SSH access and remote Docker inventory verified from this container; four authorized remote GPUs were idle.
+  Owned Docker resources and all host writes stay under `/home/compu/kaist/sunho`; no host VPN action is permitted.
+- `docs/REMOTE.md` contains inventory, identity/transfer mechanics and pending gates. Decisions are registered in
+  EXPERIMENT_LOG and both-host packing/disk reserves in COMPUTE_PLAN. The local registry remains authoritative.
+- Exact installed native binaries will be packaged, not mismatched cached wheels. Host guard, detached backend,
+  result verification, provenance and watcher changes are being developed only in `.worktrees/review`.
+- No remote long job is admitted yet. Full suite, four one-UUID CUDA/EGL checks, data checksums and cross-host
+  initial-loss/short-run equivalence remain pending; fresh main-host CUDA access currently blocks equivalence.
+- The existing 20 item-1 runs stay local and healthy; item ordering/decision rules are unchanged. At 18:48 they
+  reached 17.4k-24.35k, watcher pid 2612702 was live, disk free was 5230 GB, and the only heartbeat problem was the
+  already documented dead scheduler. No new exit/failure or trainer restart was observed.
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.

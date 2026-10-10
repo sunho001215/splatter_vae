@@ -1232,3 +1232,39 @@ centres onto moving track points) is the most direct test of the failure. Items 
   remain unchanged. Guard failure log: `runs/setup/nvml-20261010-1812-suite-attempt.log`.
 - Resume only after GPU visibility recovers and the complete native suite passes; then merge under HOLD and restart
   the scheduler. Hourly checks and the existing watcher continue. Seeds, thresholds, margins and protocols unchanged.
+
+## 2026-10-10 — Second-server extension: placement and verification mechanics registered before remote results
+
+- **Authorization and continuity.** The user authorized a second execution server, not a campaign stop. The atomic
+  scheduler recovery was committed review-only as `cd09c8a` (correcting the previous entry's "uncommitted" status),
+  then existing main documentation was merged into review. It remains unaccepted and undeployed. The 20 healthy
+  item-1 trainers stay local; no fresh CUDA process or GPU reset is used to replace them.
+- **Connectivity.** Container-side TCP and password-authenticated SSH to the authorized host succeeded. The bridge
+  route, pinned SSH host key, remote inventory and operational boundaries are recorded in `docs/REMOTE.md`. No host
+  VPN action, remote SSH-key installation, foreign process termination or foreign Docker modification is permitted.
+- **Single authority and failure semantics.** The local queue/append-only registry and all decision evidence remain
+  authoritative. Remote execution uses owned, detached, deterministically named Docker containers and persisted local
+  launch intents. Connectivity loss means unknown, never failure/restart eligibility. A success releases dependencies
+  only after required results return with verified checksums. Each detected outage is recorded with its duration.
+- **Data.** Transfer, rather than regenerate, only the scheduled tasks' original HDF5, held-out sets, fixed splits and
+  workspace statistics, using resumable checksum-verified transfers. Initial scope is hammer and pick-place. Preserve
+  numerical container data paths. No DROID transfer or additional experiment is authorized by this extension.
+- **Code/runtime.** Campaign releases must be clean commits already pushed to `origin/splatter4d`; remote edits are
+  forbidden. Candidate snapshots are only for native acceptance, never campaign provenance. Use the same lock and
+  audited installed gsplat/fused-ssim native payloads: cached wheels differ from production binaries and cannot be
+  substituted. Record locked Git revisions, payload hashes, immutable image ID, build/runtime versions and driver.
+- **Resource admission.** Remote disk floor is at least 15% of measured capacity (initially 1,129,338,552,730 bytes),
+  plus reservations for declared future growth, including 46 GB CNN replay. Reserve 120 GiB host RAM and account for
+  recent-launch ramp. Four authorized UUIDs have separate admission; foreign work blocks a device. Main GPU/RAM/disk
+  limits remain unchanged. All remote bind sources and host writes remain below `/home/compu/kaist/sunho`.
+- **Placement.** Keep item-1's existing seeds/variants together on the main host. Following item-1's unchanged decision,
+  prioritize item-2's two-seed/both-task validation and both six-seed hammer RL arms on the remote. Comparison arms
+  must share commit, numerical configs, data and protocol; reusing an older local arm requires actual equivalence,
+  not a retroactive provenance claim. Then proceed with the registered leave-one-out, length, freeze and Stage 3/4
+  sequence. Baseline pretraining may fill spare capacity at its existing lower priority; no baseline RL before freeze.
+- **Gates.** The full native suite, one-UUID CUDA/EGL isolation on all four devices, data checksum identity and
+  cross-host identical initial losses plus short-run agreement are required before remote campaign admission. Initial
+  SSH/Docker inventory is not acceptance. Fresh main-host equivalence remains blocked by the CUDA/NVML outage;
+  historical first-forward logs are candidates only until commit/config/batch identity is demonstrated.
+- **Decision rules.** No seeds, schedules, losses, thresholds, margins, task selection or method ordering change.
+  Extra capacity changes elapsed time only. Setup is in progress; no remote campaign result exists yet.

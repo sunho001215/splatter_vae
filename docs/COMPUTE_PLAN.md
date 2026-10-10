@@ -113,4 +113,35 @@ lower priority before the freeze (no baseline RL before the freeze).
 
 CNN replay: one 128x128 frame per state, 1M states -> 46 GB per run (sparse until written); deleted once the run is
 complete and its final evaluation written. Frozen-encoder replay: <1 GB RAM snapshot per run. Snapshots: ~20 MB (CNN)
-/ ~4 MB (frozen) every 10k steps. New runs are not launched below 300 GB free.
+/ ~4 MB (frozen) every 10k steps. New local runs are not launched below 300 GB free.
+
+## Second host (authorized 2026-10-10; admission remains held until verification)
+
+| Host | Eligible GPUs | Host RAM | GPU limits | Disk admission |
+|---|---|---|---|---|
+| Main container | original GPU 4/5 UUIDs only | 60 GB reserve, 10-minute launch ramp | 20 slots / 90 GB per GPU, measured packing above | 300 GB minimum free plus future-growth reservations |
+| Remote Docker | four explicit remote UUIDs in `configs/hosts/remote.yaml` | 1.5 TiB total at inventory; 120 GiB reserve, 10-minute ramp | initial ceilings 20 slots / 90 GiB per GPU; exclude foreign processes | 15% total floor, initially 1.129 TB, plus future-growth reservations |
+
+Remote capacity is not currently accepted campaign capacity: immutable runtime, full native suite, all four
+one-UUID CUDA/EGL checks, data checksums and cross-host equivalence must pass first. The main container's new-CUDA
+outage does not justify restarting its 20 healthy item-1 runs. At 18:48 those runs were at 17.4k-24.35k; the watcher
+was alive and the scheduler remained dead/held. This is a progress snapshot, not a new timing estimate.
+
+After acceptance, keep both comparison arms/all seeds on one host wherever possible. Initial remote priority is
+item-2 two-seed/both-development-task validation and both six-seed hammer RL arms after the unchanged item-1 decision;
+item-1 evaluations may move only with proven equivalence and checkpoints transferred on explicit need. Then follow
+leave-one-out, pretraining-length selection, freeze and Stage 3/4 in the existing order. Baseline pretraining may
+fill lower-priority slots but no baseline RL precedes freeze. The extra four GPUs and RAM reduce wall-clock time;
+they do not expand the experiment/iteration budget or change numerical protocols.
+
+Begin with measured 6-worker/prefetch-2 training declarations (13 GB RAM per run), not an untested higher batch size.
+Increase packing from observed PSS, GPU memory and steady throughput, respecting remote CPU/data I/O and launch ramp.
+No remote throughput has been measured yet; local timings must not be relabeled as remote evidence. Keep the two
+1M-step CNN runs/GPU ceiling until measured remote contention justifies a scheduling change. Reserve 46 GB replay
+per admitted CNN run, plus snapshots and data/image transfer storage; 8 concurrent CNN runs reserve at least 368 GB
+before other growth. Completed literal replay directories alone are eligible for cleanup after final evaluation.
+
+Remote image native payloads come from audited installed production binaries, not cached wheels with different
+hashes. Driver versions differ (main 580.178.04, remote 580.95.05); CUDA/EGL equivalence is a required gate. See
+`docs/REMOTE.md` for identity, transfers, isolation and outage mechanics. Queue/registry and all decision results
+remain on the main server.
