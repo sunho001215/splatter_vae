@@ -5129,7 +5129,7 @@ jobs:
   - aug.synth_render=true
   - loss.depth_valid_far=true
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5172,7 +5172,7 @@ jobs:
   - aug.synth_render=true
   - loss.depth_valid_far=true
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5217,7 +5217,7 @@ jobs:
   - loss.occlusion=1.0
   - loss.occlusion_margin=0.02
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5262,7 +5262,7 @@ jobs:
   - loss.occlusion=1.0
   - loss.occlusion_margin=0.02
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5309,7 +5309,7 @@ jobs:
   - loss.depth_grad=0.0
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5356,7 +5356,7 @@ jobs:
   - loss.depth_grad=0.0
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5402,7 +5402,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_grad=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5448,7 +5448,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_grad=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5494,7 +5494,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5540,7 +5540,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5583,7 +5583,7 @@ jobs:
   - aug.synth_render=true
   - loss.depth_valid_far=true
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5626,7 +5626,7 @@ jobs:
   - aug.synth_render=true
   - loss.depth_valid_far=true
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5671,7 +5671,7 @@ jobs:
   - loss.occlusion=1.0
   - loss.occlusion_margin=0.02
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5716,7 +5716,7 @@ jobs:
   - loss.occlusion=1.0
   - loss.occlusion_margin=0.02
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5763,7 +5763,7 @@ jobs:
   - loss.depth_grad=0.0
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5810,7 +5810,7 @@ jobs:
   - loss.depth_grad=0.0
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5856,7 +5856,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_grad=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5902,7 +5902,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_grad=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5948,7 +5948,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6
@@ -5994,7 +5994,7 @@ jobs:
   - loss.occlusion_margin=0.02
   - loss.depth_hard=0.0
   gpu: any
-  mem_gb: 10
+  mem_gb: 6
   priority: 0
   deps: []
   max_restarts: 6

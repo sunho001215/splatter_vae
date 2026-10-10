@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 13:10
+Last updated: 2026-10-10 14:10
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -405,10 +405,17 @@ Last updated: 2026-10-10 13:10
   in place for the started runs); 13 of 20 runs started at 13:05, the rest wait for host RAM. S4 CNN pick-place
   finished: 0.675 training cameras at 1M (replay deleted).
 
+- 14:07: watcher and scheduler alive, 4.8 TB free, 108 GB RAM available. 18 item-1 runs at 1.6k-3.3k (0.78-0.89
+  s/step, GPU-bound at 96 % on both GPUs). The last two (d4 pick-place) were blocked by the per-GPU declared-memory cap
+  (`mem_gb` 10 x 9 = 90), not by RAM; measured peak is 3.7 GB allocated / ~4.7 GB per process, so item-1 jobs now
+  declare `mem_gb` 6 and both started (all 20 running; finishing together instead of a slow 2-run tail). New
+  diagnostics are logged as expected (e.g. at ~2k: d0 hammer utilisation 0.50 / hidden 0.90; d2 0.92 / 0.21).
+  All 20 runs reach 100k in ~25 h (~15:00 tomorrow).
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| i1-{d0..d4}-seed{0,1}-{hammer,pick-place} (item 1, 100k of the 200k schedule, 2 x 6 loader) | 4/5 | 13 running, 7 waiting for host RAM (started 13:05) | runs/pretrain/i1-*/log.txt |
+| i1-{d0..d4}-seed{0,1}-{hammer,pick-place} (item 1, 100k of the 200k schedule, 2 x 6 loader) | 4/5 | all 20 running (13:05-14:09) | runs/pretrain/i1-*/log.txt |
 | fulleval-i1-*-100k (20 full-split evaluations) | any | wait for their runs | runs/fulleval-i1-*/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
