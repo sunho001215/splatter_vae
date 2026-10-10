@@ -28,6 +28,7 @@ runs/**/wandb/
 experiments/*.lock
 experiments/daemon.pid
 experiments/watch_state.json
+experiments/local_gpu_query.json
 experiments/watcher.alive
 experiments/watcher.pid
 experiments/HOLD
