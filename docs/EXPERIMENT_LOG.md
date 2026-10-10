@@ -1212,3 +1212,23 @@ render targets (V1) gave the only non-collapsed pick-place seed so far, at the c
 self-rendering (V2) improves retrieval (+0.045 to +0.056) but not motion. With two seeds per variant the motion
 metrics of items 1-2 will be dominated by which seeds collapse; this is why item 2's attraction term (pulls dynamic
 centres onto moving track points) is the most direct test of the failure. Items 1-2 proceed on C as pre-registered.
+
+## 2026-10-10 — NVIDIA management access failure (18:07); scheduler recovery blocked by native isolation gate
+
+- Scheduler pid 957531 exited when `nvidia-smi --query-compute-apps` returned 255. A direct query of the two allowed
+  UUIDs also failed with `Failed to initialize NVML: Unknown Error`. The cause of the host/container access failure
+  is not established; no GPU reset, permission change, driver reload, or foreign-process termination was attempted.
+- All 20 item-1 training jobs remain alive and advancing (14.8k-21.5k at 18:07; D0 seed-1 pick-place completed its
+  20k evaluation and reached 20.2k by 18:13). No new item-1 exits/crashes appear in the registry. 4.8 TB disk free,
+  107 GiB RAM available, memory pressure 13-16% at the initial check.
+- The watcher reported `GPU_QUERY_FAILING consecutive=5 reason=CalledProcessError`; re-armed once as tracked task
+  `bo345vngk`. New launches are held with `experiments/HOLD`; existing jobs are not restarted.
+- Recovery prepared only in `.worktrees/review`: bound the GPU process query to 60 s; on query error/timeout,
+  reconcile exited jobs but launch nothing and keep the daemon running. Two regression cases require no launch
+  during failure and admission on a later successful query. This is operational recovery, not a method change.
+- **Acceptance blocked:** the full-suite attempt (`b12xr4j29`, GPU 5 UUID) exited 1 at the GPU guard before tests
+  started: `torch sees 0 CUDA devices but CUDA_VISIBLE_DEVICES lists 1`. Syntax and whitespace checks alone do not
+  satisfy acceptance. The recovery patch is unmerged/uncommitted; production sources and existing test evidence
+  remain unchanged. Guard failure log: `runs/setup/nvml-20261010-1812-suite-attempt.log`.
+- Resume only after GPU visibility recovers and the complete native suite passes; then merge under HOLD and restart
+  the scheduler. Hourly checks and the existing watcher continue. Seeds, thresholds, margins and protocols unchanged.
