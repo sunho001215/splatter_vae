@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 16:08
+Last updated: 2026-10-10 17:17
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -8,18 +8,21 @@ Last updated: 2026-10-10 16:08
   ReViWo ported), mid-campaign review items 1-5 (EXPERIMENT_LOG; coffee-push replaces shelf-place; synthetic near
   views adopted into the method configuration C).
 - **Stage 1 (in progress), user directives of 2026-10-09** (all rules pre-registered in EXPERIMENT_LOG before results):
-  - **S1 (first, counted iteration 4):** R = C, V1 = synthetic views as invariance positives only, V2 = C +
-    self-render; 2 pretraining seeds each on hammer and pick-place at 100k of the 200k schedule, full-split
-    evaluation; margins from R's two seeds. Decides the C on which items 1-2 run. 4 of 10 new runs running.
-  - **Item 1 (depth redesign):** code done and tested (occlusion/free-space loss, far-plane depth validity, usage
-    diagnostics, visible-only CD-centers, GPU time; worktree df1df24). D0-D4 x 2 seeds x 2 tasks queue after S1.
-  - **Item 2 (M3D):** code done and tested (Gaussian-space motion loss, binned relative EPE, EPE in mm; worktree
-    648ff5e). Runs on the item-1 winner (2 seeds x 2 tasks) + 6-seed hammer RL proxies per variant.
-  - **Item 3 (prefetch):** benchmark script written; its first launch failed on an output-path check (worktree script
-    writing into the main checkout's `runs/`), relaunched from the main checkout after the merge.
+  - **S1 (done, counted iteration 4):** neither V1 (synthetic invariance only) nor V2 (C + self-render) qualifies;
+    C remains synthetic views as invariance positives and render targets. Two seeds per configuration/task,
+    full-split evaluation at 100k of the 200k schedule; fixed margins and output in
+    `docs/decisions/s1_rule_2026-10-10.txt`. Seed-sensitive motion collapse recorded in `docs/RESULTS.md`.
+  - **Item 1 (depth redesign):** code merged and tested (occlusion/free-space loss, far-plane depth validity, usage
+    diagnostics, visible-only CD-centers, GPU time). All 20 D0-D4 x 2 seeds x 2 tasks runs are training on C;
+    their 20 full-split evaluations wait for completion at 100k. No decision yet.
+  - **Item 2 (M3D):** code merged and tested (Gaussian-space motion loss, binned relative EPE, EPE in mm).
+    Waits for the item-1 winner (2 seeds x 2 tasks) + 6-seed hammer RL proxies per variant.
+  - **Item 3 (prefetch, done):** default 2 x 6 workers; measured peak PSS 9.61 GB versus 11.29 GB for 4 x 8.
+    New pretraining jobs declare 13 GB RAM; existing 4 x 8 jobs were not restarted (15% saving < 40% rule).
+    Evaluation-time peak PSS still needs measurement.
   - **S2-S6:** 6-seed hammer RL proxies for RL-based decisions; base300k/synth300k stopped (context only; length study
-    redone for the final configuration); S4 CNN pick-place seed 2000 to 1M running; S5 workspace-statistics anchors
-    kept; S6 gate screens retired.
+    redone for the final configuration); S4 CNN pick-place seed 2000 completed at 1M (final train-camera success
+    0.675; OOM-resume/mixed-curve caveat recorded); S5 workspace-statistics anchors kept; S6 gate screens retired.
   - `method-frozen-v1` only after items 1-2 (then item 1e leave-one-out and the A200/A300 length study).
 - **Pretraining lengths:** ours default 300k, final L chosen on hammer/pick-place before the freeze (same L for all
   8 tasks and ablations); SinCro exactly 300k; ReViWo 100 001 (reference).
@@ -420,6 +423,13 @@ Last updated: 2026-10-10 16:08
   at 6.8k-10.1k; five are in their 10k in-training evaluation (retrieval + probes; 3-12 min so far, writing panels),
   not stalled. No kills.
 
+- 17:15-17:16: HEARTBEAT_OK — the existing tracked watcher (pid 2413157) and scheduler (957531) are alive; no new
+  item-1 exits or crashes. All 20 runs advanced to 11.0k-17.8k, with logs updated within 42 s; the previously quiet
+  10k evaluations finished, including D2 seed 0 hammer (now 15.5k). Both GPUs at 96% utilisation; all trainer
+  environments contain exactly their assigned allowed UUID. 4.8 TB disk free, ~108 GiB RAM available, memory pressure
+  ~8-11%. Process-tree PSS totals 175 GiB (7.98-9.38 GiB/run); this is a post-evaluation snapshot, not a measurement
+  of the transient evaluation peak. No healthy job restarted or protocol changed.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
@@ -471,7 +481,7 @@ evaluations), item-3 benchmark, S4 CNN pick-place (see Disk table and EXPERIMENT
 | 2026-10-09 18:15 | 4.9 TB (s1-proxy-synth200k-pick-place-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-09 20:39 | 4.9 TB (s1-proxy-synth200k-hammer-s1001 completed with final eval at 400k; deleted its replay/, 0.56 GB) |
 | 2026-10-09 20:43 | 4.9 TB (s1-proxy-synth200k-hammer-s1000 completed with final eval at 400k; deleted its replay/, 0.56 GB) |
-| 2026-10-10 12:56 | 4.8 TB (s4-drm-cnn-pick-place-s2000 completed with final eval at 1M; deleted its replay/, 46 GB apparent / ~33 GB used) |
+| 2026-10-10 12:56 | 4.8 TB (s4-drm-cnn-pick-place-s2000 completed with final eval at 1M; deleted its replay/, 46 GB apparent; the earlier ~33 GB used measurement was at 693k, not the final replay) |
 
 ## Next actions
 1. Item 1: runs reach 100k (~1-1.5 days with 13-20 concurrent runs) -> 20 evaluations -> margins from D0's two seeds

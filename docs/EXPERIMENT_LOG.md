@@ -1184,10 +1184,11 @@ rising). Caveats: the run was OOM-killed at 693k and resumed from 650k (evaluati
 pre-incident branch; `eval.jsonl` holds one record per step); the resumed part used the MADV_RANDOM replay hint
 (I/O only).
 
-**Reading.** Pick-place is solvable under the protocol, but only after ~500k agent steps for the end-to-end CNN; the
-200k / 400k proxies used for our encoders on pick-place could not have shown success, which confirms that pick-place
-proxies are context only (S2). It stays one of the 8 campaign tasks. The run counts as Stage 4 CNN seed 2000 for
-pick-place if code and protocol stay unchanged until Stage 4 (the replay hint changes no numerics).
+**Reading (interpretation corrected at 17:17).** Pick-place is solvable under the protocol and this end-to-end CNN
+learned late. That does not establish how quickly any frozen encoder could learn or rule out success in a 200k/400k
+proxy. Pick-place proxies remain context only under the pre-registered S2 rule, not because of a universal inference
+from this CNN run. Pick-place stays one of the 8 campaign tasks. The run is a Stage 4 CNN seed-2000 candidate if code
+and protocol stay unchanged until Stage 4; its OOM-resume and mixed-curve caveats must accompany any reuse.
 
 ## 2026-10-10 — S1 decided: neither variant qualifies; C stays (synthetic views as positives and render targets)
 

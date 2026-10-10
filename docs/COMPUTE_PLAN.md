@@ -23,10 +23,13 @@ campaign (the host is shared), 5.0 TB free disk. All numbers from scheduler jobs
   GPU, and CNN runs are spread over both GPUs. One 1M-step CNN run needs ~3.5 GPU-hours of saturated GPU time.
 - **Frozen encoders (ours, SinCro, ReViWo):** latency-bound (one core, small kernels). Up to 12 per GPU; per-run speed
   ~20-25 steps/s when mixed with other work, ~12 h per 1M-step run.
-- **Pretraining:** one run nearly saturates a GPU at full loader speed; 32 loader workers per run. At most 2 per GPU
-  when mixed with RL.
-- Admission in `experiments/queue.yaml`: per-GPU `max_jobs` 16 and `max_mem_gb` 80 (declared per job), so renderer
-  memory and pretraining stay below the 92% alarm of the watcher.
+- **Pretraining:** current default is 6 loader workers with prefetch factor 2 (item 3). Item 1 currently packs 10
+  runs per GPU, with measured training steps around 0.72-0.94 s and both GPUs at 96% utilisation. This is operational
+  packing, not a comparison of loss-variant efficiency; the final hard-pass timing comparison remains pending.
+- Admission in `experiments/queue.yaml`: per-GPU `max_jobs` 20 and `max_mem_gb` 90 (declared per job), plus a 60 GB
+  host-RAM reserve and a 10-minute RAM ramp window. Item-1 training jobs declare 6 GB GPU memory and 13 GB RAM.
+  At 2026-10-10 17:16, the 20 process trees held 175 GB PSS (7.98-9.38 GB each) after their 10k evaluations; none was
+  still evaluating at the snapshot, so the transient evaluation-time peak remains unmeasured.
 
 ## Planned runs, cost and priority tier
 

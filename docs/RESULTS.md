@@ -46,6 +46,50 @@ moving pixels reaches 0.88 (M7 threshold 0.7). Conclusion: with the specified de
 fits a single episode slowly; M2 is recorded as failed and the plan continues (full pretraining and the Stage 1
 improvement loop).
 
+### Completed development comparisons — not the frozen-method final comparison
+
+#### S1 — synthetic-view variants (2026-10-10): neither qualifies
+
+Two pretraining seeds (0/1) on each development task, evaluated with the full-split evaluator at 100k of the base
+200k schedule and fixed episode split 0. The pre-registered fallback retains C: synthetic near views as invariance
+positives and render targets. Evidence and reference-derived margins: `docs/decisions/s1_rule_2026-10-10.txt`.
+
+| Configuration | Hammer dynamic share, seed 0 / 1 | Pick-place dynamic share, seed 0 / 1 | Pick-place relative EPE, two-seed mean |
+|---|---|---|---|
+| R = C | 0.884 / 0.170 | 0.062 / 0.074 | 1.0001 |
+| V1 = synthetic invariance only | 0.825 / 0.183 | 0.718 / 0.017 | 0.9024 |
+| V2 = C + self-render | 0.923 / 0.439 | 0.050 / 0.051 | 1.0000 |
+
+Motion metrics above use stride 6, pair 0→2. V1 fails the required pick-place mean dynamic share >=0.5 (0.3676), and
+its trajectory CD-render worsens by 47.4% on hammer and 31.4% on pick-place, beyond reference margins of 14.7% and
+19.7%. Pick-place PSNR falls 0.423 dB, beyond the 0.2 dB margin. V2 fails to recover pick-place motion and reduces
+moving-pixel PSNR by 0.347 dB, also beyond its 0.2 dB margin. Both fail the registered rule despite passing the
+retrieval/probe no-regression guards.
+
+**Limitation:** low dynamic contribution is seed-sensitive and is not confined to pick-place. The reference hammer
+seeds differ by 0.714 in dynamic share and 0.313 in relative EPE. Improved retrieval does not establish successful
+motion learning. No favorable seed rerun or margin change is used; items 1-2 continue under their registered rules.
+
+#### Item 3 — loader benchmark (2026-10-09)
+
+The chosen default is prefetch 2 x 6 workers: 9.61 GB maximum whole-process-tree PSS across two passes, versus
+11.29 GB for reference 4 x 8. Its mean step time was 0.481 s versus 0.717 s, satisfying the registered +10% bound.
+GPU contention changed between passes, so this is not evidence of a causal loader speedup. Raw measurements:
+`runs/bench-loader-synth-hammer/bench.json`. RAM declarations are 13 GB for the new default and 15 GB for existing
+4 x 8 jobs; the approximately 15% saving did not meet the 40% restart rule.
+
+#### S4 context — DrM + CNN pick-place, seed 2000 (2026-10-10)
+
+Run: `runs/s4-drm-cnn-pick-place-s2000/`, 1M agent steps, full evaluation protocol. Final success: training cameras
+0.675, held-out cameras 0.000, trajectories 0.575. Last-5 means: 0.645 / 0.015 / 0.570, respectively. This establishes
+that pick-place is solvable under the protocol, not that another representation must learn at the same rate.
+
+**Caveat:** OOM-killed at 693k and resumed from the 650k checkpoint with the same seed. Evaluation records at
+660k-690k come from the pre-incident branch; later evaluations, including the final endpoint, come from the resumed
+branch. The curve is therefore mixed and must not be presented as uninterrupted training. The resumed branch used
+MADV_RANDOM, an I/O hint that leaves replay contents and sampling unchanged. Stage-4 reuse is conditional on unchanged
+code/protocol, and must retain this caveat.
+
 ---
 
 # Earlier record: implementation phase (before this campaign)
