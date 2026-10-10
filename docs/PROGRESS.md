@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 08:07
+Last updated: 2026-10-10 09:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -382,6 +382,10 @@ Last updated: 2026-10-10 08:07
   and evaluated (synthinv-seed0-hammer, synthsr-seed0-hammer) + both R seed-0 evaluations; 8 training (seed 0
   pick-place 89.3k / 91.4k, seed-1 hammer 53.1k-87.0k, seed-1 pick-place 52.2k-54.4k; 0.29-0.52 s/step). Slowest
   reaches 100k ~15:00, S1 decision ~15:30. Item-1 runs wait for S1 (it may change C).
+
+- 09:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 172 GB RAM available. S1: seed-0 pick-place runs
+  at 99.1k / 99.8k (evaluations next), seed-1 hammer 60.3k-95.8k, seed-1 pick-place 59.1k-64.8k (0.30-0.50 s/step);
+  4 of 12 evaluations done. Slowest at 100k ~14:50.
 
 ## Job table (running or pending)
 | id | GPU | status | log |
