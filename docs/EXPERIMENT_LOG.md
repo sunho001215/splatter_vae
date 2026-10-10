@@ -1188,3 +1188,26 @@ pre-incident branch; `eval.jsonl` holds one record per step); the resumed part u
 200k / 400k proxies used for our encoders on pick-place could not have shown success, which confirms that pick-place
 proxies are context only (S2). It stays one of the 8 campaign tasks. The run counts as Stage 4 CNN seed 2000 for
 pick-place if code and protocol stay unchanged until Stage 4 (the replay hint changes no numerics).
+
+## 2026-10-10 — S1 decided: neither variant qualifies; C stays (synthetic views as positives and render targets)
+
+`python analysis/review_rules.py s1` (full output with margins:
+`docs/decisions/s1_rule_2026-10-10.txt`). Two-seed means, margins from R (entries above):
+
+| check | V1 = invariance positives only | V2 = C + self-render |
+|---|---|---|
+| (a) pick-place: dynamic share >= 0.5 and rel. EPE (s6) better than R | dyn 0.368 (seeds 0.718 / 0.017), rel EPE 0.902 vs 1.000 (better) -> **fail** (share < 0.5) | dyn 0.051, rel EPE 1.000 -> **fail** |
+| (b) retrieval, position R², velocity R² (trajectory) not worse, both tasks | pass (pick-place velocity R² better: 0.366 vs 0.277) | pass (retrieval better on both tasks: 0.803 / 0.807 vs 0.747 / 0.762; hammer velocity R² better) |
+| (c) PSNR, moving PSNR, CD-render not worse, both tasks | **fail**: CD-render worse on hammer (+47 %) and pick-place (+31 %), pick-place PSNR -0.42 dB | **fail**: pick-place moving PSNR -0.35 dB |
+
+**Decision (pre-registered fallback):** neither qualifies, so C is unchanged and the motion collapse is reported as a
+limitation. Counted iteration 4 is used.
+
+**What the seeds show** (context, not a decision input). The collapse (dynamic Gaussians lose the moving pixels by
+~10k steps and never recover) is a per-seed event in every configuration: R hammer 1 of 2 seeds collapsed (dynamic
+share 0.88 / 0.17), R pick-place 2 of 2 (0.06 / 0.07), V1 hammer 1 of 2 (0.83 / 0.18), V1 pick-place 1 of 2 (0.72 /
+0.02), V2 hammer 0 of 2 but one partial (0.92 / 0.44), V2 pick-place 2 of 2 (0.05 / 0.05). Removing the synthetic
+render targets (V1) gave the only non-collapsed pick-place seed so far, at the cost of geometry (CD-render +31-47 %);
+self-rendering (V2) improves retrieval (+0.045 to +0.056) but not motion. With two seeds per variant the motion
+metrics of items 1-2 will be dominated by which seeds collapse; this is why item 2's attraction term (pulls dynamic
+centres onto moving track points) is the most direct test of the failure. Items 1-2 proceed on C as pre-registered.

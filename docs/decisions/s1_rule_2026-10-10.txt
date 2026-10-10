@@ -1,0 +1,53 @@
+  margin hammer     dyn_share       0.7140  seeds [0.8842, 0.1702]
+  margin hammer     rel_epe         0.3126  seeds [0.6271, 0.9398]
+  margin hammer     retrieval_traj  0.0300  seeds [0.7415, 0.7516]
+  margin hammer     r2_pos_traj     0.0500  seeds [0.9106, 0.8835]
+  margin hammer     r2_vel_traj     0.0545  seeds [0.6249, 0.5705]
+  margin hammer     psnr            1.0124  seeds [25.9545, 24.9421]
+  margin hammer     psnr_moving     1.4016  seeds [24.8506, 23.4489]
+  margin hammer     cd_render_traj  0.1475  seeds [0.0254, 0.0294]
+  margin pick-place dyn_share       0.0500  seeds [0.0622, 0.074]
+  margin pick-place rel_epe         0.0300  seeds [1.0001, 1.0001]
+  margin pick-place retrieval_traj  0.0300  seeds [0.7666, 0.7579]
+  margin pick-place r2_pos_traj     0.0500  seeds [0.9155, 0.9099]
+  margin pick-place r2_vel_traj     0.0500  seeds [0.2628, 0.2911]
+  margin pick-place psnr            0.2000  seeds [24.5035, 24.4666]
+  margin pick-place psnr_moving     0.2000  seeds [18.1815, 18.116]
+  margin pick-place cd_render_traj  0.1974  seeds [0.0282, 0.0343]
+V1 (synthinv) vs R
+  hammer     dyn_share       var   0.5042 ref   0.5272 delta  -0.0230 margin 0.7140 =
+  hammer     rel_epe         var   0.7933 ref   0.7835 delta  +0.0098 margin 0.3126 =
+  hammer     retrieval_traj  var   0.7495 ref   0.7466 delta  +0.0029 margin 0.0300 =
+  hammer     r2_pos_traj     var   0.8785 ref   0.8971 delta  -0.0186 margin 0.0500 =
+  hammer     r2_vel_traj     var   0.5787 ref   0.5977 delta  -0.0190 margin 0.0545 =
+  hammer     psnr            var  25.4116 ref  25.4483 delta  -0.0367 margin 1.0124 =
+  hammer     psnr_moving     var  24.6896 ref  24.1497 delta  +0.5399 margin 1.4016 =
+  hammer     cd_render_traj  var   0.0404 ref   0.0274 delta  +0.4743 margin 0.1475 worse
+  pick-place dyn_share       var   0.3676 ref   0.0681 delta  +0.2995 margin 0.0500 BETTER
+  pick-place rel_epe         var   0.9024 ref   1.0001 delta  -0.0977 margin 0.0300 BETTER
+  pick-place retrieval_traj  var   0.7774 ref   0.7623 delta  +0.0151 margin 0.0300 =
+  pick-place r2_pos_traj     var   0.9149 ref   0.9127 delta  +0.0022 margin 0.0500 =
+  pick-place r2_vel_traj     var   0.3661 ref   0.2770 delta  +0.0891 margin 0.0500 BETTER
+  pick-place psnr            var  24.0623 ref  24.4851 delta  -0.4228 margin 0.2000 worse
+  pick-place psnr_moving     var  18.4760 ref  18.1488 delta  +0.3273 margin 0.2000 BETTER
+  pick-place cd_render_traj  var   0.0411 ref   0.0312 delta  +0.3144 margin 0.1974 worse
+  V1: (a) False (b) True (c) False -> does not qualify
+V2 (synthsr) vs R
+  hammer     dyn_share       var   0.6806 ref   0.5272 delta  +0.1534 margin 0.7140 =
+  hammer     rel_epe         var   0.6692 ref   0.7835 delta  -0.1142 margin 0.3126 =
+  hammer     retrieval_traj  var   0.8029 ref   0.7466 delta  +0.0563 margin 0.0300 BETTER
+  hammer     r2_pos_traj     var   0.8974 ref   0.8971 delta  +0.0003 margin 0.0500 =
+  hammer     r2_vel_traj     var   0.6659 ref   0.5977 delta  +0.0683 margin 0.0545 BETTER
+  hammer     psnr            var  26.0151 ref  25.4483 delta  +0.5668 margin 1.0124 =
+  hammer     psnr_moving     var  24.5509 ref  24.1497 delta  +0.4012 margin 1.4016 =
+  hammer     cd_render_traj  var   0.0269 ref   0.0274 delta  -0.0162 margin 0.1475 =
+  pick-place dyn_share       var   0.0505 ref   0.0681 delta  -0.0176 margin 0.0500 =
+  pick-place rel_epe         var   1.0000 ref   1.0001 delta  -0.0001 margin 0.0300 =
+  pick-place retrieval_traj  var   0.8071 ref   0.7623 delta  +0.0448 margin 0.0300 BETTER
+  pick-place r2_pos_traj     var   0.9513 ref   0.9127 delta  +0.0386 margin 0.0500 =
+  pick-place r2_vel_traj     var   0.2711 ref   0.2770 delta  -0.0059 margin 0.0500 =
+  pick-place psnr            var  24.5164 ref  24.4851 delta  +0.0313 margin 0.2000 =
+  pick-place psnr_moving     var  17.8015 ref  18.1488 delta  -0.3472 margin 0.2000 worse
+  pick-place cd_render_traj  var   0.0286 ref   0.0312 delta  -0.0831 margin 0.1974 =
+  V2: (a) False (b) True (c) False -> does not qualify
+S1 decision: R
