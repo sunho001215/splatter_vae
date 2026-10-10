@@ -5,6 +5,28 @@ limits:
   GPU-d09f0338-71b9-d915-3c7f-e99754a3b639:
     max_jobs: 20
     max_mem_gb: 90
+host_ram_ramp_minutes: 10
+hosts:
+  remote:
+    enabled: false
+    gpu_backend: cdi
+    host_ram_reserve_gb: 120
+    host_ram_ramp_minutes: 10
+    disk_floor_gb: 0
+    disk_floor_fraction: 0.15
+    limits:
+      GPU-4391fcee-537f-d408-d138-10d8a3866eea:
+        max_jobs: 20
+        max_mem_gb: 90
+      GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea:
+        max_jobs: 20
+        max_mem_gb: 90
+      GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79:
+        max_jobs: 20
+        max_mem_gb: 90
+      GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1:
+        max_jobs: 20
+        max_mem_gb: 90
 jobs:
 - id: collect-door-open
   script: scripts/collect_metaworld.py
@@ -6017,4 +6039,4 @@ jobs:
   stage: 1
   ram_gb: 12
   oom_score_adj: 300
-host_ram_reserve_gb: 60
+host_ram_reserve_gb: 128

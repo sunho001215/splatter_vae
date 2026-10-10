@@ -33,6 +33,8 @@ from s4d.baselines.reviwo.model import build_model, disable_kmeans_init, save_ex
 from s4d.baselines.reviwo.training import ReViWoTrainConfig, compute_reviwo_loss  # noqa: E402
 from s4d.config import dump_config, load_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
+from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from s4d.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 1000
 
@@ -51,11 +53,13 @@ def main() -> None:
     cfg_train = ReViWoTrainConfig(**cfg["train"])
     if cfg_train.max_global_steps is not None and cfg_train.max_global_steps > SHORT_RUN_STEPS:
         require_passed_tests()
-    run_dir = (Path(args.output_root) / args.name).resolve()
-    if REPO.resolve() not in run_dir.parents:
-        raise ValueError("pretraining outputs must stay inside the repository")
+    try:
+        run_dir = validate_runtime_path(Path(args.output_root) / args.name, repository=REPO)
+    except GPUIsolationError as exc:
+        raise ValueError("pretraining outputs must stay inside an authorized runtime root") from exc
     (run_dir / "checkpoints").mkdir(parents=True, exist_ok=True)
     cfg["run"] = {"gpus": GPU_MAPPING, "dir": str(run_dir)}
+    record_run_identity(cfg, REPO, run_dir, native_diagnostic_steps=cfg_train.max_global_steps)
     dump_config(cfg, run_dir / "config.yaml")
 
     seed = int(ds_cfg.get("seed", 42))  # reference set_random_seed(seed)

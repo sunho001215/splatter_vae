@@ -5,20 +5,18 @@ Native tests are never skipped. Source/JIT builds remain disabled by the rendere
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _bootstrap import REPO, guard_gpus, source_fingerprints
-
-GPU_MAPPING = guard_gpus()
-
-import pytest  # noqa: E402
-import torch  # noqa: E402
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "scripts"))
+sys.path.insert(0, str(REPO))
 
 
 class Evidence:
@@ -65,12 +63,33 @@ class Tee:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--output-dir", default=os.environ.get("S4D_TEST_EVIDENCE_DIR", str(REPO / "docs")))
+    options = ap.parse_args()
+    from s4d.gpu_guard import HOST_NAME, validate_runtime_path
+
+    output_dir = validate_runtime_path(Path(options.output_dir))
+    os.environ["S4D_TEST_EVIDENCE_DIR"] = str(output_dir)
+    os.environ["S4D_PYTEST_TMP"] = str(output_dir / "tmp")
+    if REPO not in output_dir.parents:
+        os.environ.setdefault("S4D_CACHE_ROOT", str(output_dir / "cache"))
+    from _bootstrap import guard_gpus, source_fingerprints
+
+    gpu_mapping = guard_gpus()
+    import pytest
+    import torch
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    source_before = source_fingerprints()
     evidence = Evidence()
     started = datetime.now(timezone.utc).isoformat()
     clock = time.perf_counter()
-    args = ["tests", "-q", "--tb=short", f"--junitxml={REPO / 'docs/tests.junit.xml'}"]
+    args = [
+        str(REPO / "tests"), "-q", "--tb=short", f"--junitxml={output_dir / 'tests.junit.xml'}",
+        "-o", f"cache_dir={output_dir / 'pytest-cache'}",
+    ]
     stdout, stderr = sys.stdout, sys.stderr
-    with (REPO / "docs/tests.log").open("w") as log:
+    with (output_dir / "tests.log").open("w") as log:
         sys.stdout, sys.stderr = Tee(stdout, log), Tee(stderr, log)
         sys.setprofile(evidence.trace)
         try:
@@ -79,19 +98,31 @@ def main() -> int:
             sys.setprofile(None)
             sys.stdout, sys.stderr = stdout, stderr
     fingerprints = source_fingerprints()
+    source_changed = fingerprints != source_before
+    if source_changed:
+        code = 1 if code == 0 else code
+        evidence.problems.append({"phase": "evidence", "error": "Sources changed during the full suite."})
     report = {
         "started_utc": started,
         "python": sys.version,
         "torch": torch.__version__,
         "cuda_runtime": torch.version.cuda,
-        "gpu_mapping": GPU_MAPPING,
+        "host": HOST_NAME,
+        "expected_commit": os.environ.get("S4D_EXPECTED_COMMIT"),
+        "expected_image_digest": os.environ.get("S4D_IMAGE_DIGEST"),
+        "gpu_mapping": gpu_mapping,
         "pytest_args": args,
         "exit_code": code,
         "duration_seconds": time.perf_counter() - clock,
         "counts": {kind: evidence.counts[kind] for kind in ("passed", "error", "failed", "skipped")},
         "total": sum(evidence.counts.values()),
-        "full_suite_passed": code == 0 and not evidence.counts["skipped"],
+        "full_suite_passed": (
+            code == 0 and evidence.counts["passed"] > 0
+            and not any(evidence.counts[kind] for kind in ("failed", "error", "skipped"))
+        ),
         "source_sha256": fingerprints,
+        "source_sha256_before": source_before,
+        "source_changed_during_suite": source_changed,
         "executed_functions": {path: sorted(names) for path, names in sorted(evidence.functions.items())},
         "problems": evidence.problems,
         "limitations": (
@@ -99,7 +130,7 @@ def main() -> int:
             "Synthetic renders are not CUDA acceptance."
         ),
     }
-    (REPO / "docs/tests.json").write_text(json.dumps(report, indent=2))
+    (output_dir / "tests.json").write_text(json.dumps(report, indent=2))
     print(json.dumps({k: report[k] for k in ("counts", "total", "exit_code", "full_suite_passed")}, indent=2))
     return code
 

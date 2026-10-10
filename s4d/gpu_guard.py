@@ -9,11 +9,27 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+from types import MappingProxyType
 
-ALLOWED_GPU_UUIDS = (
-    "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",  # physical GPU 4
-    "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",  # physical GPU 5
+import yaml
+
+APPROVED_HOST_GPUS = MappingProxyType(
+    {
+        "local": (
+            "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+            "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+        ),
+        "remote": (
+            "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+            "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
+            "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+            "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+        ),
+    }
 )
+APPROVED_RUNTIME_ROOTS = MappingProxyType({"local": None, "remote": Path("/home/compu/kaist/sunho")})
+REPO = Path(__file__).resolve().parents[1]
 
 
 class GPUIsolationError(RuntimeError):
@@ -29,6 +45,55 @@ def _die(message: str) -> None:
     sys.stderr.write(f"[gpu_guard] FATAL: {message}\n")
     sys.stderr.flush()
     raise GPUIsolationError(message)
+
+
+def load_host_config(path: Path) -> dict:
+    path = Path(path)
+    if not path.is_absolute():
+        _die("S4D_HOST_CONFIG must name an absolute host-config path.")
+    try:
+        config = yaml.safe_load(path.read_text())
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        _die(f"Cannot read host config {path} ({type(exc).__name__}).")
+    if not isinstance(config, dict):
+        _die("Host config must be a mapping.")
+    name = config.get("name")
+    if not isinstance(name, str) or name not in APPROVED_HOST_GPUS:
+        _die("Host config name must be exactly local or remote.")
+    uuids = config.get("gpu_uuids")
+    approved = APPROVED_HOST_GPUS[name]
+    if (
+        not isinstance(uuids, list)
+        or any(not isinstance(uuid, str) for uuid in uuids)
+        or len(uuids) != len(approved)
+        or set(uuids) != set(approved)
+    ):
+        _die(f"Host config {name} must contain exactly its approved GPU UUID set.")
+    root = config.get("runtime_root")
+    approved_root = APPROVED_RUNTIME_ROOTS[name]
+    if root != (str(approved_root) if approved_root is not None else None):
+        _die(f"Host config {name} has an unauthorized runtime_root.")
+    return {"name": name, "gpu_uuids": approved, "runtime_root": approved_root}
+
+
+HOST_CONFIG_PATH = Path(os.environ.get("S4D_HOST_CONFIG", str(REPO / "configs/hosts/local.yaml")))
+HOST_CONFIG = MappingProxyType(load_host_config(HOST_CONFIG_PATH))
+HOST_NAME = HOST_CONFIG["name"]
+ALLOWED_GPU_UUIDS = HOST_CONFIG["gpu_uuids"]
+RUNTIME_ROOT = HOST_CONFIG["runtime_root"]
+
+
+def validate_runtime_path(path: Path, *, repository: Path | None = None, cache: bool = False) -> Path:
+    resolved = Path(path).expanduser().resolve()
+    repository = REPO.resolve() if repository is None else Path(repository).resolve()
+    if repository in resolved.parents:
+        cache_root = repository / ".cache"
+        if cache and resolved != cache_root and cache_root not in resolved.parents:
+            _die("Repository caches must remain inside .cache.")
+        return resolved
+    if RUNTIME_ROOT is not None and RUNTIME_ROOT in resolved.parents:
+        return resolved
+    _die("Runtime output must be beneath the repository or the explicitly approved host runtime_root.")
 
 
 def visible_device_uuids() -> list[str]:
