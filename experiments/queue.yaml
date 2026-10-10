@@ -4429,14 +4429,13 @@ jobs:
   - '2000'
   - --run-dir
   - runs/s4-drm-cnn-pick-place-s2000
-  gpu: any
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 5
   priority: 1
-  deps:
-  - hold-memory
+  deps: []
   max_restarts: 1
   stage: 4
-  ram_gb: 8
+  ram_gb: 12
   oom_score_adj: 300
 - id: s4-drm-cnn-pick-place-s2000-eval
   script: scripts/eval_rl.py
@@ -4449,7 +4448,7 @@ jobs:
   - '6'
   - --envs-per-worker
   - '8'
-  gpu: any
+  gpu: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
   mem_gb: 3
   priority: 1
   deps: []

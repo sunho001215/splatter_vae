@@ -1143,3 +1143,14 @@ while seed 0 rises to 0.91 (relative EPE 0.36). The collapse is present from 10k
 pick-place-specific; the S1 question ("does V1/V2 remove the collapse?") is unchanged, but R's hammer margins on the
 motion and PSNR metrics are wide, so on hammer the rule's (b)/(c) checks will only flag large degradations.
 Pick-place margins follow when `s1v-synth-seed1-split0-pick-place` is evaluated.
+
+## 2026-10-10 — S4 CNN pick-place run resumed at 10:08 (from 650k, on GPU 5)
+
+- Host memory had recovered (188 GB available, no pressure) and GPU 5 carried a single S1 run, so the CNN trainer was
+  released early instead of waiting for all of S1; pinned to GPU 5 with `ram_gb` 12 (measured RSS ~10-13 GB).
+  Resumed from its 650k checkpoint (events.jsonl "resumed" at 650000; replay returned to that point; with the
+  MADV_RANDOM hint). Its evaluation companion was reset and restarted.
+- **Record caveat:** `eval.jsonl` already holds evaluations at 660k-690k from the branch that was killed at 693k; the
+  companion skips steps it has evaluated, so those four points stay from the pre-incident branch, while every point
+  from 700k on comes from the resumed branch. `train.jsonl` repeats steps 651k-694k. Final success (1M) is
+  unaffected; success AUC uses the records as they are, and this is noted with the run's results.

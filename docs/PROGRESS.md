@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 09:07
+Last updated: 2026-10-10 10:10
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -387,11 +387,16 @@ Last updated: 2026-10-10 09:07
   at 99.1k / 99.8k (evaluations next), seed-1 hammer 60.3k-95.8k, seed-1 pick-place 59.1k-64.8k (0.30-0.50 s/step);
   4 of 12 evaluations done. Slowest at 100k ~14:50.
 
+- 10:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 188 GB RAM available, no pressure. S1: 8 of 12
+  evaluations done; 4 seed-1 runs left (68.1k-77.1k, 0.22-0.34 s/step; slowest at 100k ~13:10). S1 margins for
+  hammer recorded (R seed 1 shows the motion collapse on hammer). CNN pick-place resumed at 10:08 from 650k on
+  GPU 5 (memory recovered; GPU 5 had one S1 run).
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
 | s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 9 running (resumed 07:19-07:49), synthinv-seed0-hammer done and evaluated | runs/pretrain/s1v-*/log.txt |
-| s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 4 | OOM-killed at 693k (03:16); held until S1 reaches 100k, resumes from 650k | runs/s4-drm-cnn-pick-place-s2000/console.log |
+| s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 5 | resumed 10:08 from 650k on GPU 5 (OOM-killed at 693k at 03:16) | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
 Completed: data collection and checks (32 jobs), timing runs, Stage 0, review screens and proxies (see Disk table).
