@@ -93,7 +93,11 @@ Complete local native acceptance subsequently passed as `bomqe4f3o`: 625 passed,
 acceptance is inferred. Settled-source local CUDA/EGL checks also passed on both approved UUIDs with actual frames
 and matching source hashes; their supplied host-PID flag is an assertion, not independently inspected main Docker
 PID-mode proof. Remote checks must inspect actual `PidMode=host` on the owned container before PID/device acceptance.
-Local review reserve parses as 128 GiB after removing a duplicate key; final footprint declarations await long-window evidence.
+Review source commit `2850b30` integrated under main merge `b91b7c3` at 21:03. All 210 production fingerprints
+match the accepted suite; its report/log/JUnit are published unchanged in `docs/tests.*` with original review
+provenance retained. Detached local scheduler PID 2819571 and accepted tracked watcher PID 2819468 are live.
+Production reserve parses as 128 GiB; remote remains disabled/CDI. Memory-heavy admission remains held while
+long-window evidence is collected. Remote clean pushed-release deployment/native gates are still pending.
 
 ## Verification ledger
 

@@ -54,9 +54,10 @@ This is a snapshot, not a measured lifetime peak or exclusive attribution of all
   then set workload `ram_gb` from observed peaks plus margin. Extend observation if footprint continues growing or
   an evaluation is not covered. Never alter active comparisons' workers, prefetch, pinning or allocator environment.
 - Review admission raises the provisional local reserve to 128 GiB (about 26% of the 540.5 GB host), retaining the
-  ten-minute ramp. This is explicit shared-tenant headroom, not a fabricated measured job peak. Production queue
-  changes only after accepted source merge. At 20:29 a duplicate reserve key was corrected and actual scheduler
-  parsing verified one effective 128 GiB review reserve. Final declarations and any campaign cap await long-window evidence.
+  ten-minute ramp. This is explicit shared-tenant headroom, not a fabricated measured job peak. Accepted source
+  integrated under HOLD at 21:03; production parsing verifies one effective 128 GiB reserve and remote disabled/CDI.
+  At 21:01 only 47.6 GiB MemAvailable remained, so no additional memory-heavy launch is justified. Final declarations
+  and any campaign cap await long-window evidence.
 - The validated six-worker/prefetch-two setting remains the future default. Fewer workers, capped/reused pinning and
   allocator arena limits require independent validation before adoption; do not apply speculative fixes to running
   jobs. Admission will leave explicit shared-tenant headroom, not merely avoid our own OOM.

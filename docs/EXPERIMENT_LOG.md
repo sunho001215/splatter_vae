@@ -1387,3 +1387,23 @@ centres onto moving track points) is the most direct test of the failure. Items 
   independently available here (PID 1 is bash in `pid:[4026538500]`). These local CUDA/EGL observations must not
   be represented as inspected remote host-PID proof. Remote verification must inspect its owned container's
   actual `PidMode=host` and perform the native PID/device checks there; no gate is waived.
+
+### 2026-10-10 — Accepted source integrated; detached reconciliation restored (21:04)
+
+- Review source committed as `2850b30`, merged under the existing HOLD as `b91b7c3`; main incident documentation
+  preserved in `e1a35b2`. Independent production check verifies all 210 source fingerprints equal the 625/625
+  passing native report. No merge/source mutation or scientific configuration change was introduced.
+- Published original review `tests.json`, `tests.log` and `tests.junit.xml` byte-for-byte in `docs/`; retained their
+  original paths/provenance inside the report. SHA-256 of the report remains
+  `6404b27e6092e19c7d7623ad4b5e92862ddfae74d18ba498e9327fa1599cabbf`. Prior production evidence preserved under
+  `runs/setup/tests-before-extension-20261010-2108/`. Actual production `require_passed_tests()` succeeds.
+- Restored scheduler through detached setsid/nohup with the production Python and explicit local host config;
+  PID 2819571, SID 2819571, PPID 1, interval 30 seconds. It reconciles under HOLD without new campaign launches.
+  Stopped only the previously owned watcher before replacing it with accepted tracked task `b6jz1d99z`, PID
+  2819468; retained registry/log cursors. Fresh beacon and bounded shared NVIDIA-query state verified.
+- All 20 registered item-1 sessions remain alive and unchanged; no new exit/failure, no trainer restart, no
+  infrastructure-failure exemption event without an observed qualifying failure. Production reserve is one
+  parsed 128 GiB key. At the pre-merge check MemAvailable was only 47.6 GiB, below that tenant-headroom reserve.
+- GPU/source-acceptance holds are resolved; global HOLD remains independently for complete-footprint shared-host
+  memory measurement/admission. Remote remains disabled/CDI, with native suite/isolation/equivalence gates intact.
+  No remote campaign run, cross-host guard exception, host repair or foreign-resource action occurred.

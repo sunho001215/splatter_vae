@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 20:46
+Last updated: 2026-10-10 21:04
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -27,7 +27,7 @@ Last updated: 2026-10-10 20:46
 - **Pretraining lengths:** ours default 300k, final L chosen on hammer/pick-place before the freeze (same L for all
   8 tasks and ablations); SinCro exactly 300k; ReViWo 100 001 (reference).
 
-## Operational blocker (2026-10-10 18:07 onward)
+## GPU incident and scheduler recovery (2026-10-10)
 - At 18:07 NVIDIA management queries returned `Failed to initialize NVML: Unknown Error`; scheduler pid 957531
   exited. The first fresh guarded suite attempt saw zero CUDA devices. At 19:22 a fresh unchanged-main GPU-5 guard
   and real CUDA operation succeeded, but management queries still intermittently hang in kernel D state.
@@ -45,10 +45,16 @@ Last updated: 2026-10-10 20:46
   CUDA matmul and MetaWorld/MuJoCo EGL on GPU 4 and GPU 5, with each C+G child visible only on its assigned UUID
   (PIDs 2746214/2746662, EGL devices 16/17). Numeric/unset CVD rejected. Evidence: `docs/gpu_isolation.json` and
   `runs/setup/gpu-isolation-host-fix-20261010-2003.log`; previous isolation evidence was preserved under `runs/setup/`.
-- Remaining local HOLD is for source acceptance and conservative resource admission, not an unverified GPU repair.
-  Finish durable query/retry patches, rerun the full guarded suite, merge under HOLD and restore the scheduler;
-  release launch HOLD only with passing acceptance and shared-host memory headroom. No healthy trainer restart.
-  Outage-related CUDA/NVML initialization failures are infrastructure failures, not chargeable restart failures.
+- **Source acceptance and scheduler recovery completed at 21:04.** Review commit `2850b30` integrated under HOLD
+  as `b91b7c3`; all 210 production fingerprints exactly match the 625/625 native suite. Its original report/log/JUnit
+  were copied byte-for-byte to `docs/tests.*`, retaining review provenance; prior evidence is preserved under
+  `runs/setup/tests-before-extension-20261010-2108/`. Detached scheduler PID 2819571 is live in its own session.
+  Accepted watcher is tracked task `b6jz1d99z`, PID 2819468; old watcher stopped before replacement, cursor retained.
+- GPU/source holds are resolved. Global HOLD now remains for conservative shared-host memory admission while the
+  four-hour observer finishes, not for GPU repair or stale test evidence. Current MemAvailable is only 47.6 GiB,
+  below the deployed 128 GiB shared-tenant reserve. No healthy trainer restarted or comparison setting changed.
+  Outage-related CUDA/NVML initialization failures are infrastructure failures, not chargeable restart failures;
+  no qualifying new campaign exit has been observed, so no exemption event was fabricated.
 
 ## Second-server extension (2026-10-10, setup in progress)
 - TCP/SSH access and remote Docker inventory verified from this container; four authorized remote GPUs were idle.
@@ -56,7 +62,8 @@ Last updated: 2026-10-10 20:46
 - `docs/REMOTE.md` contains inventory, identity/transfer mechanics and pending gates. Decisions are registered in
   EXPERIMENT_LOG and both-host packing/disk reserves in COMPUTE_PLAN. The local registry remains authoritative.
 - Exact installed native binaries were packaged and verified inside the built image, not replaced by mismatched
-  cached wheels. Host guard, detached backend, result verification, provenance and watcher changes remain review-only.
+  cached wheels. Host guard, detached backend, result verification, provenance and watcher changes passed the full
+  native suite and integrated under HOLD; no remote acceptance or campaign admission is inferred.
 - No remote long job is admitted yet. Remote full suite, four one-UUID CUDA/EGL checks and cross-host initial-loss/
   short-run equivalence remain pending. Main post-repair NVML and both actual CUDA/EGL isolation checks passed at 20:02;
   remote CDI availability, native acceptance and cross-host bootstrap permission remain separate pending gates.
@@ -117,9 +124,16 @@ Last updated: 2026-10-10 20:46
 - Hourly check: user `/loop`, session cron job `af519ff6` at :47 (expires after 7 days).
 - Scheduler daemon: `scripts/jobs.py daemon --interval 30` (pid `experiments/daemon.pid`, log `experiments/daemon.log`).
   `touch experiments/HOLD` while editing or testing sources (every file in `s4d/ scripts/ tests/ configs/` is
-  fingerprinted by the test gate); remove it after the suite passes.
+  fingerprinted by the test gate); release only when source acceptance and independent resource-admission holds resolve.
 
 ## Heartbeats
+- 2026-10-10 21:04: all 20 item-1 sessions remain alive and unchanged, with steps 24.15k-35.55k at the pre-merge
+  check; scheduled 30k evaluations explain two older console writes. Accepted detached scheduler PID 2819571 and
+  tracked watcher PID 2819468 are live, beacon age 9 seconds. No new launch/exit/failure or trainer restart.
+  Production test gate accepts all 210 source fingerprints; 625 passed, zero failed/errors/skips. Global HOLD
+  remains only for shared-host memory admission; MemAvailable 47.6 GiB, reserve 128 GiB. Remote disabled pending
+  actual native/isolation/equivalence evidence. Four-hour memory observer still running. Disk remains 4.8T free.
+
 - 2026-10-10 20:35: all 20 registered running jobs have live, non-zombie launch PIDs with matching owned sessions,
   no exit files, and output under one minute old. Steps advanced to 22.7k-33.85k; no trainer stall found. Watcher
   PID 2697085 is live, beacon age 19 seconds. Complete review suite `bomqe4f3o` is executing after the GPU-5 guard,
