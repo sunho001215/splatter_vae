@@ -14,6 +14,10 @@ if str(REPO) not in sys.path:
 
 sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
+from s4d.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device, validate_runtime_path  # noqa: E402
+
+CACHE_ROOT = validate_runtime_path(Path(os.environ.get("S4D_CACHE_ROOT", str(REPO / ".cache"))), cache=True)
 for variable, suffix in (
     ("TORCH_HOME", "torch"),
     ("TORCH_EXTENSIONS_DIR", "extensions"),
@@ -22,11 +26,9 @@ for variable, suffix in (
     ("WANDB_CACHE_DIR", "wandb-cache"),
     ("WANDB_DATA_DIR", "wandb-data"),
 ):
-    cache = REPO / ".cache" / suffix
+    cache = CACHE_ROOT / suffix
     cache.mkdir(parents=True, exist_ok=True)
     os.environ[variable] = str(cache)
-
-from s4d.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device  # noqa: E402
 
 
 def guard_gpus() -> list[dict]:
@@ -47,17 +49,24 @@ def guard_mujoco() -> int:
 
 def source_fingerprints() -> dict[str, str]:
     """Fingerprint exactly the code, scripts, tests and configs exercised by the suite."""
-    return {
-        str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest()
+    paths = [REPO / "mujoco_mig_setup.py"] + [
+        path
         for folder in ("s4d", "scripts", "tests", "configs")
         for path in sorted((REPO / folder).rglob("*"))
         if path.is_file() and path.suffix in (".py", ".yaml", ".sh")
-    }
+    ]
+    return {str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def test_evidence_directory() -> Path:
+    return validate_runtime_path(
+        Path(os.environ.get("S4D_TEST_EVIDENCE_DIR", str(REPO / "docs"))), repository=REPO
+    )
 
 
 def require_passed_tests() -> None:
     """Reject long work without a complete, passing suite for these exact sources."""
-    path = REPO / "docs/tests.json"
+    path = test_evidence_directory() / "tests.json"
     if not path.is_file():
         raise RuntimeError("all tests must pass before long work; run scripts/run_tests.py")
     evidence = json.loads(path.read_text())

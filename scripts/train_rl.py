@@ -13,7 +13,6 @@ import atexit
 import json
 import os
 import random
-import subprocess
 import sys
 import time
 from collections import deque
@@ -30,17 +29,15 @@ import torch  # noqa: E402
 
 from s4d.config import dump_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
+from s4d.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.rl.agent import DrMAgent  # noqa: E402
 from s4d.rl.env import MetaWorldCameraEnv, TrainCameraSampler, env_kwargs  # noqa: E402
 from s4d.rl.evaluate import policy_inputs  # noqa: E402
 from s4d.rl.protocol import resolve_config  # noqa: E402
 from s4d.rl.replay import Replay, replay_iterator  # noqa: E402
+from s4d.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 1000
-
-
-def git_commit() -> str:
-    return subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
 
 
 def rss_gb() -> float:
@@ -70,9 +67,7 @@ def main() -> None:
     ap.add_argument("--set", nargs="*", default=[], help="config overrides key.path=value")
     args = ap.parse_args()
 
-    run_dir = Path(args.run_dir).resolve()
-    if REPO.resolve() not in run_dir.parents:
-        raise ValueError("RL run directories must be inside the repository")
+    run_dir = validate_runtime_path(Path(args.run_dir))
     cfg = resolve_config(args.task, args.encoder, args.seed, args.set)
     if int(cfg["train"]["num_train_steps"]) > SHORT_RUN_STEPS:  # short diagnostics (like 5-episode pilots) are exempt
         require_passed_tests()
@@ -81,7 +76,8 @@ def main() -> None:
     snap_dir.mkdir(exist_ok=True)
     latest = ckpt_dir / "latest.pt"
     resume = latest.is_file()
-    cfg["run"] = {"dir": str(run_dir), "git_commit": git_commit(), "gpus": GPU_MAPPING, "egl_device": EGL_DEVICE}
+    cfg.setdefault("run", {}).update(dir=str(run_dir), gpus=GPU_MAPPING, egl_device=EGL_DEVICE)
+    record_run_identity(cfg, REPO, run_dir, native_diagnostic_steps=int(cfg["train"]["num_train_steps"]))
     dump_config(cfg, run_dir / "config.yaml")
 
     seed, tcfg = int(cfg["seed"]), cfg["train"]

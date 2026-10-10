@@ -16,7 +16,6 @@ from s4d.losses.invariance import multi_positive_info_nce
 from s4d.train.ddp import all_gather_with_grad
 
 REPO = Path(__file__).resolve().parents[1]
-GPU_UUID = "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
 
 
 def test_single_process_gather_is_identity_with_identity_gradient():
@@ -30,7 +29,7 @@ def test_single_process_gather_is_identity_with_identity_gradient():
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="The installed torch build lacks the CPU Gloo backend.")
 def test_two_rank_gather_gradient_and_infonce_equal_global_reference(tmp_path):
     env = dict(os.environ)
-    env["CUDA_VISIBLE_DEVICES"] = GPU_UUID
+    env["CUDA_VISIBLE_DEVICES"] = os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["OMP_NUM_THREADS"] = "1"
     processes = []

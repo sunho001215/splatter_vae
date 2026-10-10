@@ -11,11 +11,20 @@ from pathlib import Path
 import pytest
 import yaml
 
+from scripts._nvidia_query import QueryUnavailable
+
 REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("jobs", REPO / "scripts/jobs.py")
 jobs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(jobs)
-GPU4, GPU5 = jobs.ALLOWED_GPU_UUIDS
+GPU4, GPU5 = jobs.APPROVED_HOST_GPUS["local"]
+
+
+@pytest.fixture(autouse=True)
+def scheduler_storage(monkeypatch):
+    monkeypatch.setattr(jobs, "disk_usage", lambda _: (2000 * 2**30, 1000 * 2**30))
+
+
 LIMITS = {GPU4: {"max_jobs": 2, "max_mem_gb": 40}, GPU5: {"max_jobs": 1, "max_mem_gb": 40}}
 
 
@@ -34,10 +43,153 @@ def test_queue_validation_and_registry_replay(tmp_path):
     jobs.record({"event": "exited", "id": "a", "code": 3}, registry)
     jobs.record({"event": "launched", "id": "b", "pid": 2, "gpu": GPU5, "attempt": 1}, registry)
     state = jobs.read_registry(registry)
-    assert state["a"]["status"] == "crashed" and state["a"]["attempts"] == 1
+    assert state["a"]["status"] == "crashed" and state["a"]["attempts"] == 1 and state["a"]["failures"] == 1
     assert state["b"]["status"] == "running" and state["b"]["gpu"] == GPU5
     jobs.record({"event": "reset", "id": "a"}, registry)
-    assert jobs.read_registry(registry)["a"] == {**state["a"], "status": "pending", "attempts": 0}
+    assert jobs.read_registry(registry)["a"] == {**state["a"], "status": "pending"}
+
+
+def test_audited_infrastructure_failure_replay_is_append_only_and_idempotent(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    events = [
+        {"event": "launched", "id": "a", "pid": 1, "gpu": GPU4, "attempt": 1, "time": 10},
+        {"event": "exited", "id": "a", "attempt": 1, "code": 1, "time": 20},
+        {"event": "failed", "id": "a", "time": 21},
+    ]
+    registry.write_text("".join(json.dumps(event) + "\n" for event in events))
+    previous = registry.read_bytes()
+    exemption = {"event": "infrastructure_failure", "id": "a", "attempt": 1,
+                 "reason": "cuda_init_unavailable", "incident_started": 9, "incident_ended": 20,
+                 "evidence": "audited initialization traceback"}
+    jobs.record(exemption, registry)
+    jobs.record(exemption, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert registry.read_bytes().startswith(previous)
+    assert state["status"] == "crashed" and state["attempts"] == 1 and state["failures"] == 0
+    assert len(state["failed_attempts"]) == len(state["infrastructure_failures"]) == 1
+    jobs.record({"event": "launched", "id": "a", "pid": 2, "gpu": GPU4, "attempt": 2}, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 2, "code": 137}, registry)
+    jobs.record({"event": "reset", "id": "a"}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "pending" and state["attempts"] == 2 and state["failures"] == 1
+    assert [failure["code"] for failure in state["failed_attempts"]] == [1, 137]
+    jobs.record({"event": "launched", "id": "a", "pid": 3, "gpu": GPU4, "attempt": 3}, registry)
+    jobs.record(exemption, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "running" and state["attempts"] == 3 and state["failures"] == 1
+
+
+@pytest.mark.parametrize("invalid", [
+    {"reason": "oom"}, {"reason": "generic_failure"}, {"attempt": 0}, {"attempt": True}, {"attempt": 2},
+    {"incident_started": 21}, {"incident_ended": 8}, {"incident_started": "9"},
+    {"incident_started": float("nan")}, {"incident_ended": float("inf")},
+])
+def test_infrastructure_exemption_rejects_invalid_or_nonoverlapping_incidents(tmp_path, invalid):
+    registry = tmp_path / "registry.jsonl"
+    events = [
+        {"event": "launched", "id": "a", "attempt": 1, "time": 10},
+        {"event": "exited", "id": "a", "code": 1, "time": 20},
+        {"event": "infrastructure_failure", "id": "a", "attempt": 1, "reason": "nvml_init_unavailable",
+         "incident_started": 9, "incident_ended": 20, "time": 21, **invalid},
+    ]
+    registry.write_text("".join(json.dumps(event) + "\n" for event in events))
+    with pytest.raises(ValueError, match="infrastructure failure"):
+        jobs.read_registry(registry)
+
+
+@pytest.mark.parametrize("exit_code", [None, 0])
+def test_infrastructure_exemption_requires_an_observed_failed_exit(tmp_path, exit_code):
+    registry = tmp_path / "registry.jsonl"
+    jobs.record({"event": "launched", "id": "a", "attempt": 1}, registry)
+    if exit_code is not None:
+        jobs.record({"event": "exited", "id": "a", "code": exit_code}, registry)
+    jobs.record({"event": "infrastructure_failure", "id": "a", "attempt": 1,
+                 "reason": "nvml_init_unavailable", "incident_started": 0, "incident_ended": None}, registry)
+    with pytest.raises(ValueError, match="observed outage failure"):
+        jobs.read_registry(registry)
+
+
+def test_reused_legacy_attempts_require_unambiguous_failure_evidence(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    events = [
+        {"event": "launched", "id": "a", "attempt": 3, "time": 10},
+        {"event": "exited", "id": "a", "code": 1, "time": 20},
+        {"event": "reset", "id": "a", "time": 21},
+        {"event": "launched", "id": "a", "attempt": 1, "time": 30},
+        {"event": "exited", "id": "a", "code": 137, "time": 40},
+        {"event": "reset", "id": "a", "time": 41},
+        {"event": "launched", "id": "a", "attempt": 1, "time": 50},
+        {"event": "exited", "id": "a", "code": 1, "time": 60},
+    ]
+    registry.write_text("".join(json.dumps(event) + "\n" for event in events))
+    state = jobs.read_registry(registry)["a"]
+    assert state["attempts"] == 3 and state["failures"] == 3
+    exemption = {"event": "infrastructure_failure", "id": "a", "attempt": 1,
+                 "reason": "cuda_init_unavailable", "incident_started": 0, "incident_ended": None}
+    original = registry.read_text()
+    jobs.record(exemption, registry)
+    with pytest.raises(ValueError, match="identify one observed"):
+        jobs.read_registry(registry)
+    registry.write_text(original)
+    jobs.record({**exemption, "failure_time": 60}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["attempts"] == 3 and state["failures"] == 2
+    assert [item["code"] for item in state["failed_attempts"]] == [1, 137, 1]
+
+
+def test_infrastructure_exemption_retries_with_monotonic_identity_and_original_failure_budget(tmp_path, monkeypatch):
+    queue = write_queue(tmp_path / "q.yaml", [
+        {"id": "a", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "max_restarts": 1},
+    ])
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    jobs.record({"event": "launched", "id": "a", "pid": 2**30, "gpu": GPU4, "attempt": 1}, registry)
+    jobs.record({"event": "exited", "id": "a", "code": 1}, registry)
+    jobs.record({"event": "failed", "id": "a"}, registry)
+    jobs.record({"event": "infrastructure_failure", "id": "a", "attempt": 1,
+                 "reason": "cuda_init_unavailable", "incident_started": 0, "incident_ended": None}, registry)
+    launched = []
+    monkeypatch.setattr(jobs, "launch", lambda job, gpu, attempt, runs: launched.append(attempt) or 2**30)
+    monkeypatch.setattr(jobs, "source_identity", lambda: {})
+    jobs.tick(queue, registry, runs, usage={}, available_gb=100)
+    assert launched == [2] and jobs.read_registry(registry)["a"]["failures"] == 0
+    jobs.record({"event": "exited", "id": "a", "attempt": 2, "code": 7}, registry)
+    jobs.tick(queue, registry, runs, usage={}, available_gb=100)
+    assert launched == [2, 3] and jobs.read_registry(registry)["a"]["failures"] == 1
+    jobs.record({"event": "exited", "id": "a", "attempt": 3, "code": 7}, registry)
+    jobs.tick(queue, registry, runs, usage={}, available_gb=100)
+    state = jobs.read_registry(registry)["a"]
+    assert launched == [2, 3] and state["status"] == "failed" and state["attempts"] == 3 and state["failures"] == 2
+
+
+@pytest.mark.parametrize("code", [1, 7, 137, -1])
+def test_outage_logs_alone_do_not_exempt_generic_errors_or_oom(tmp_path, monkeypatch, code):
+    queue = write_queue(tmp_path / "q.yaml", [
+        {"id": "a", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "max_restarts": 0},
+    ])
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    jobs.record({"event": "launched", "id": "a", "pid": 2**30, "gpu": GPU4, "attempt": 1}, registry)
+    jobs.record({"event": "exited", "id": "a", "code": code}, registry)
+    (runs / "a").mkdir(parents=True)
+    (runs / "a/console.log").write_text("Failed to initialize NVML: Unknown Error\nCUDA out of memory\n")
+    monkeypatch.setattr(jobs, "launch", lambda *args: pytest.fail("unsubstantiated failure was retried"))
+    jobs.tick(queue, registry, runs, usage={}, available_gb=100)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "failed" and state["failures"] == 1 and state["infrastructure_failures"] == []
+
+
+def test_reset_preserves_attempt_high_water_for_the_next_local_launch(tmp_path, monkeypatch):
+    queue = write_queue(tmp_path / "q.yaml", [
+        {"id": "a", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1},
+    ])
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    jobs.record({"event": "launched", "id": "a", "pid": 2**30, "gpu": GPU4, "attempt": 4}, registry)
+    jobs.record({"event": "exited", "id": "a", "code": 7}, registry)
+    jobs.record({"event": "reset", "id": "a"}, registry)
+    launched = []
+    monkeypatch.setattr(jobs, "launch", lambda job, gpu, attempt, runs: launched.append(attempt) or 2**30)
+    monkeypatch.setattr(jobs, "source_identity", lambda: {})
+    jobs.tick(queue, registry, runs, usage={}, available_gb=100)
+    assert launched == [5] and jobs.read_registry(registry)["a"]["attempts"] == 5
 
 
 def test_session_id_matches_the_kernel():
@@ -80,6 +232,49 @@ def test_launches_wait_for_host_ram(tmp_path):
     messages = jobs.tick(queue, registry, runs, usage={}, available_gb=60.0)
     assert any("waiting for host RAM" in m for m in messages) and not registry.exists()
     assert jobs.host_available_gb() > 0
+
+
+@pytest.mark.parametrize("failure", [
+    jobs.subprocess.CalledProcessError(255, ["nvidia-smi"]),
+    jobs.subprocess.TimeoutExpired(["nvidia-smi"], 60),
+    QueryUnavailable(["nvidia-smi"], 60),
+])
+def test_gpu_query_failure_reconciles_exits_but_launches_nothing(tmp_path, monkeypatch, failure):
+    queue = write_queue(tmp_path / "q.yaml", [
+        {"id": "done", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1},
+        {"id": "next", "script": "tests/_job_worker.py", "args": [0], "gpu": GPU4, "mem_gb": 1, "deps": ["done"]},
+    ])
+    registry, runs = tmp_path / "registry.jsonl", tmp_path / "runs"
+    jobs.record({"event": "launched", "id": "done", "pid": 2**30, "gpu": GPU4, "attempt": 1}, registry)
+    (runs / "done").mkdir(parents=True)
+    (runs / "done/exit_code").write_text("0")
+    probes = iter([failure, ""])
+
+    def query(command, state_dir, timeout):
+        assert command == ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory", "--format=csv,noheader,nounits"]
+        assert state_dir == REPO / "experiments" and timeout == 60
+        result = next(probes)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    launched = []
+
+    def launch(job, gpu, attempt, runs):
+        launched.append(job["id"])
+        return 2**30
+
+    monkeypatch.setattr(jobs, "query_output", query)
+    monkeypatch.setattr(jobs, "launch", launch)
+    messages = jobs.tick(queue, registry, runs, available_gb=100)
+    assert any("done exited with 0" in message for message in messages)
+    assert any("GPU process query failed" in message and "no jobs launched" in message for message in messages)
+    assert not launched
+    assert jobs.read_registry(registry)["done"]["status"] == "done"
+    assert "next" not in jobs.read_registry(registry)
+    jobs.tick(queue, registry, runs, available_gb=100)
+    assert launched == ["next"]
+    assert jobs.read_registry(registry)["next"]["status"] == "running"
 
 
 def test_recently_launched_jobs_still_count_against_host_ram(tmp_path):
@@ -149,8 +344,9 @@ def test_exit_terminates_leftover_processes_of_the_job_session(tmp_path):
     assert not jobs.pid_alive(child), status.read_text()[:400] if status.exists() else "gone"
 
 
-def test_detached_launch_success_restart_once_then_fail(tmp_path):
+def test_detached_launch_success_restart_once_then_fail(tmp_path, monkeypatch):
     uuid = os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]
+    monkeypatch.setattr(jobs, "APPROVED_HOST_GPUS", {**jobs.APPROVED_HOST_GPUS, "local": (uuid,)})
     limits = {uuid: {"max_jobs": 2, "max_mem_gb": 10}}
     queue = write_queue(
         tmp_path / "q.yaml",

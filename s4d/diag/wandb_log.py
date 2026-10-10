@@ -16,11 +16,14 @@ def init_wandb(cfg: dict, run_name: str, project: str, enabled: bool, run_dir):
         return None
     import wandb  # noqa: PLC0415
 
+    from s4d.gpu_guard import HOST_NAME  # noqa: PLC0415
+
     mode = os.environ.get("WANDB_MODE", "online")
     return wandb.init(
         project=project,
         name=run_name,
         config=cfg,
+        tags=[f"host={HOST_NAME}"],
         dir=str(run_dir),
         mode=mode,
         settings=wandb.Settings(start_method="thread"),

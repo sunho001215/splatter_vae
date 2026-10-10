@@ -23,7 +23,9 @@ import torch  # noqa: E402
 from s4d.config import dump_config, get, load_config  # noqa: E402
 from s4d.diag.local_log import RunLogger  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
+from s4d.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.model.render import require_prebuilt_renderer  # noqa: E402
+from s4d.run_identity import record_run_identity  # noqa: E402
 from s4d.train import ddp  # noqa: E402
 from s4d.train.evaluate import Evaluator  # noqa: E402
 from s4d.train.loop import train  # noqa: E402
@@ -90,7 +92,9 @@ def build_data(cfg: dict):
 
             heldout = heldout_path(get(cfg, "data.task"), get(cfg, "data.root"))
             if not heldout.is_file():
-                raise FileNotFoundError(f"eval.heldout_sets requested but {heldout} is missing (scripts/render_heldout_sets.py)")
+                raise FileNotFoundError(
+                    f"eval.heldout_sets requested but {heldout} is missing (scripts/render_heldout_sets.py)"
+                )
         val_loaders = {
             s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True, heldout=heldout), False)
             for s in val_strides
@@ -128,12 +132,10 @@ def main() -> None:
     args = ap.parse_args()
 
     cfg = load_config(args.config, args.set)
-    cfg["run"] = {"name": args.name, "gpus": GPU_MAPPING}
+    cfg.setdefault("run", {}).update(name=args.name, gpus=GPU_MAPPING)
     require_passed_tests()
     ctx = ddp.init_distributed()
-    run_dir = Path(args.output_root) / args.name
-    if REPO.resolve() not in run_dir.resolve().parents:
-        raise ValueError("run outputs must remain inside the new repository")
+    run_dir = validate_runtime_path(Path(args.output_root) / args.name)
     if run_dir.exists() and args.resume is None:
         raise FileExistsError(f"run {run_dir} exists; use --resume auto explicitly")
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -143,6 +145,7 @@ def main() -> None:
         resume = str(latest) if latest.exists() else None
     wandb_run = None
     if ctx.is_main:
+        record_run_identity(cfg, REPO, run_dir)
         dump_config(cfg, run_dir / "config.yaml")
         wandb_run = init_wandb(
             cfg,

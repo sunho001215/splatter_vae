@@ -201,10 +201,22 @@ def test_split_manifest_is_deterministic_and_bounded_before_input_reads(tmp_path
         for i in range(5):
             file.create_group(f"episodes/ep{i:03d}")
     first = split_episodes(path, seed=3)
+    manifest_path = tmp_path / "splits/episodes_seed3.json"
+    before = manifest_path.stat().st_mtime_ns
     assert first == split_episodes(path, seed=3)
+    assert manifest_path.stat().st_mtime_ns == before
     assert len(first[0]) == 4 and len(first[1]) == 1
-    manifest = json.loads((tmp_path / "splits/episodes_seed3.json").read_text())
+    manifest = json.loads(manifest_path.read_text())
     assert manifest["train"] == first[0] and manifest["validation"] == first[1]
+    with pytest.raises(ValueError, match="differs from the deterministic split"):
+        split_episodes(path, seed=3, train_ratio=0.5)
+    assert manifest_path.stat().st_mtime_ns == before
+    manifest["validation"] = []
+    manifest_path.write_text(json.dumps(manifest))
+    corrupted = manifest_path.read_bytes()
+    with pytest.raises(ValueError, match="differs from the deterministic split"):
+        split_episodes(path, seed=3)
+    assert manifest_path.read_bytes() == corrupted
     with pytest.raises(ValueError, match="escapes"):
         split_episodes("/nonexistent", manifest_dir="/home/ws/data/droid/splits")
     escape = tmp_path / "escape"

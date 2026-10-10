@@ -91,6 +91,7 @@ def test_long_run_gate_requires_passing_current_source_evidence(tmp_path, monkey
     import _bootstrap as bootstrap
 
     monkeypatch.setattr(bootstrap, "REPO", tmp_path)
+    monkeypatch.delenv("S4D_TEST_EVIDENCE_DIR", raising=False)
     monkeypatch.setattr(bootstrap, "source_fingerprints", lambda: {"code.py": "sha256"})
     with pytest.raises(RuntimeError, match="all tests"):
         bootstrap.require_passed_tests()

@@ -23,7 +23,9 @@ from train import build_data  # noqa: E402
 from s4d.config import load_config  # noqa: E402
 from s4d.diag.local_log import RunLogger  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
+from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.model.render import require_prebuilt_renderer  # noqa: E402
+from s4d.run_identity import record_run_identity  # noqa: E402
 from s4d.train.checkpoint import load_checkpoint  # noqa: E402
 from s4d.train.evaluate import Evaluator  # noqa: E402
 from s4d.train.loop import build_model  # noqa: E402
@@ -39,12 +41,14 @@ def main() -> None:
         "--no-heldout-sets", action="store_true", help="skip the near/trajectory sets, oracle and Chamfer diagnostics"
     )
     args = ap.parse_args()
-    run_dir = Path(args.run).resolve(strict=True)
-    if REPO.resolve() not in run_dir.parents:
-        raise ValueError("evaluation outputs must remain inside the new repository")
+    try:
+        run_dir = validate_runtime_path(Path(args.run).resolve(strict=True), repository=REPO)
+    except GPUIsolationError as exc:
+        raise ValueError("evaluation outputs must remain inside an authorized runtime root") from exc
     require_prebuilt_renderer()
     cfg = load_config([run_dir / "config.yaml"], args.set)
     cfg.setdefault("eval", {})["heldout_sets"] = not args.no_heldout_sets
+    record_run_identity(cfg, REPO, REPO / "runs" / f"{run_dir.name}-eval")
     ckpt = Path(args.checkpoint) if args.checkpoint else run_dir / "checkpoints" / "latest.pt"
     device = torch.device("cuda", 0)
     model = build_model(cfg).to(device)

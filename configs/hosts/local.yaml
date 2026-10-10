@@ -1,0 +1,4 @@
+name: local
+gpu_uuids:
+  - GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce
+  - GPU-d09f0338-71b9-d915-3c7f-e99754a3b639

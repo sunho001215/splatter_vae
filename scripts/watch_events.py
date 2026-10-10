@@ -32,6 +32,10 @@ import traceback
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+from scripts._nvidia_query import query_output  # noqa: E402
+
 ALLOWED = ("GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce", "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639")
 REGISTRY = REPO / "experiments/registry.jsonl"
 STATE = REPO / "experiments/watch_state.json"
@@ -39,6 +43,7 @@ ALIVE = REPO / "experiments/watcher.alive"
 BUILD_LOG = REPO / "runs/setup/uv_sync.log"
 GPU_HIGH, GPU_CLEAR = 0.92, 0.85
 DISK_LOW_GB, DISK_CLEAR_GB = 400.0, 420.0
+GPU_QUERY_TIMEOUT = 60
 
 
 def load_state() -> dict:
@@ -74,10 +79,23 @@ def registry_events(state: dict) -> list[str]:
     for line in complete.decode().splitlines():
         event = json.loads(line)
         job_id = event["id"]
-        job = state["jobs"].setdefault(job_id, {"gpu": "-", "attempt": 0})
+        job = state["jobs"].setdefault(job_id, {"gpu": "-", "attempt": 0, "host": "local"})
         kind = event["event"]
-        if kind == "launched":
-            job.update(gpu=event["gpu"], attempt=event["attempt"])
+        host = event.get("host", job.get("host", "local"))
+        if kind in ("host_unreachable", "host_reconnected", "host_query_failed", "host_disk_low"):
+            details = f"host={host}"
+            if kind == "host_reconnected":
+                details += f" duration_seconds={event.get('duration_seconds', 0):.1f}"
+            prefix = "REMOTE_" if host == "remote" else ""
+            events.append(f"{prefix}{kind.upper()} {details}")
+        elif kind == "unknown":
+            events.append(f"REMOTE_JOB_UNKNOWN id={job_id} host={host}")
+        elif kind == "remote_exited":
+            events.append(f"REMOTE_RESULTS_PENDING id={job_id} host={host} code={event['code']}")
+        elif kind == "results_synced":
+            events.append(f"REMOTE_RESULTS_SYNCED id={job_id} host={host}")
+        elif kind == "launched":
+            job.update(gpu=event["gpu"], attempt=event["attempt"], host=host)
             state["log_offsets"][job_id] = Path(log_path(job_id)).stat().st_size if Path(log_path(job_id)).is_file() else 0
             if event["attempt"] > 1:
                 events.append(
@@ -89,8 +107,35 @@ def registry_events(state: dict) -> list[str]:
                 events.append(f"JOB_COMPLETED id={job_id} gpu={job['gpu']} log={log_path(job_id)}")
             else:
                 events.append(f"JOB_CRASHED id={job_id} gpu={job['gpu']} code={event['code']} log={log_path(job_id)}")
+            if host == "remote":
+                events[-1] += " host=remote"
         elif kind == "failed":
             events.append(f"JOB_FAILED id={job_id} gpu={job['gpu']} log={log_path(job_id)}")
+            if host == "remote":
+                events[-1] += " host=remote"
+    return events
+
+
+def remote_network_events(state: dict) -> list[str]:
+    path = REPO / "runs/remote/network.jsonl"
+    if not path.is_file():
+        return []
+    with path.open("rb") as stream:
+        stream.seek(state.get("remote_network_offset", 0))
+        data = stream.read()
+    complete = data[: data.rfind(b"\n") + 1]
+    state["remote_network_offset"] = state.get("remote_network_offset", 0) + len(complete)
+    events = []
+    for line in complete.decode().splitlines():
+        event = json.loads(line)
+        kind = event["event"]
+        if kind == "REMOTE_UNREACHABLE":
+            events.append(f"REMOTE_UNREACHABLE host=remote started={event['time']:.3f}")
+        elif kind == "REMOTE_RECONNECTED":
+            events.append(
+                f"REMOTE_RECONNECTED host=remote started={event['outage_started']:.3f} "
+                f"ended={event['time']:.3f} duration_seconds={event['duration_seconds']:.1f}"
+            )
     return events
 
 
@@ -126,16 +171,17 @@ def build_events(state: dict) -> list[str]:
     return []
 
 
+def gpu_query_output() -> str:
+    return query_output(
+        ["nvidia-smi", "--query-gpu=uuid,memory.used,memory.total", "--format=csv,noheader,nounits"],
+        REPO / "experiments", timeout=GPU_QUERY_TIMEOUT,
+    )
+
+
 def gpu_events(state: dict) -> list[str]:
     """A slow nvidia-smi under heavy load skips this check; only 5 consecutive failures become an event."""
     try:
-        out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=uuid,memory.used,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=60,
-        ).stdout
+        out = gpu_query_output()
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
         state["gpu_query_failures"] = state.get("gpu_query_failures", 0) + 1
         if state["gpu_query_failures"] == 5:
@@ -167,7 +213,10 @@ def disk_events(state: dict) -> list[str]:
 
 
 def poll(state: dict) -> list[str]:
-    events = registry_events(state) + log_error_events(state) + build_events(state) + gpu_events(state)
+    events = (
+        registry_events(state) + remote_network_events(state) + log_error_events(state)
+        + build_events(state) + gpu_events(state)
+    )
     return events + disk_events(state)
 
 

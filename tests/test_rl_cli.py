@@ -35,7 +35,7 @@ def run(script: str, *args: str) -> subprocess.CompletedProcess:
 
 
 def test_drm_cnn_training_evaluation_and_resume(tmp_path):
-    run_dir = REPO / ".pytest_tmp" / f"rl_cli_{tmp_path.name}"
+    run_dir = tmp_path / "rl_cli"
     common = ["--task", "hammer", "--encoder", "cnn", "--seed", "3", "--run-dir", str(run_dir)]
     run("scripts/train_rl.py", *common, "--set", "train.num_train_steps=60", *TINY)
     assert json.loads((run_dir / "final.json").read_text())["steps"] == 60

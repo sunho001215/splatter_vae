@@ -17,7 +17,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import enforce_allowed_gpus  # noqa: E402
+from s4d.gpu_guard import GPUIsolationError, enforce_allowed_gpus, validate_runtime_path  # noqa: E402
 
 GPU_MAPPING = enforce_allowed_gpus()
 
@@ -401,9 +401,11 @@ def _window_indices(dataset, number):
 
 
 def check_dataset(path, out, windows=12, points_per_view=2048, seed=0):
-    path, out = Path(path).resolve(), Path(out).resolve()
-    if REPO not in out.parents:
-        raise ValueError("sanity output must be a child directory of the new repository")
+    path = Path(path).resolve()
+    try:
+        out = validate_runtime_path(Path(out), repository=REPO)
+    except GPUIsolationError as exc:
+        raise ValueError("sanity output must stay inside the new repository or authorized runtime root") from exc
     if windows < 1 or points_per_view < 1:
         raise ValueError("windows and points_per_view must be positive")
     out.mkdir(parents=True, exist_ok=True)

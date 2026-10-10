@@ -1,0 +1,7 @@
+name: remote
+gpu_uuids:
+  - GPU-4391fcee-537f-d408-d138-10d8a3866eea
+  - GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea
+  - GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79
+  - GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1
+runtime_root: /home/compu/kaist/sunho

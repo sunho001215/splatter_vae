@@ -26,9 +26,17 @@ def running_jobs() -> dict[str, dict]:
     path = REPO / "experiments/registry.jsonl"
     for line in path.read_text().splitlines() if path.is_file() else []:
         event = json.loads(line)
-        if event["event"] == "launched":
-            state[event["id"]] = {"pid": event["pid"], "gpu": event["gpu"]}
-        elif event["event"] in ("exited", "failed"):
+        kind = event["event"]
+        if kind in ("launching", "launched"):
+            state[event["id"]] = {
+                "host": event.get("host", "local"), "pid": event.get("pid"),
+                "gpu": event.get("gpu", "-"), "container": event.get("container"), "status": kind,
+            }
+        elif kind == "remote_exited" and event["id"] in state:
+            state[event["id"]]["status"] = "sync_pending"
+        elif kind == "unknown" and event["id"] in state:
+            state[event["id"]]["status"] = "unknown"
+        elif kind in ("exited", "failed"):
             state.pop(event["id"], None)
     return state
 
@@ -61,7 +69,30 @@ def main() -> None:
     ap.add_argument("--max-age", type=float, default=60.0, help="minutes")
     args = ap.parse_args()
     now, problems = time.time(), 0
+    snapshot_path = REPO / "runs/remote/host_snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text()) if snapshot_path.is_file() else {}
     for job_id, job in sorted(running_jobs().items()):
+        if job["host"] == "remote":
+            observed_age = (now - snapshot.get("checked_at", 0)) / 60
+            inspect = snapshot.get("containers", {}).get(job["container"], {})
+            remote_known = (
+                snapshot.get("reachable", False) and snapshot.get("query_ok", False)
+                and observed_age <= 5 and bool(inspect)
+            )
+            if not remote_known:
+                status = "UNKNOWN"
+            elif inspect.get("State", {}).get("Running"):
+                status = "RUNNING"
+            elif inspect.get("State", {}).get("ExitCode") == 0:
+                status = "SYNC_PENDING"
+            else:
+                status = "OBSERVED_EXIT"
+                problems += 1
+            print(
+                f"{status} job {job_id} host=remote gpu={job['gpu']} container={job['container']} "
+                f"registry_status={job['status']} snapshot_age_min={observed_age:.1f}"
+            )
+            continue
         age = (now - newest_activity(job_id)) / 60
         ok = alive(job["pid"]) and age <= args.max_age
         problems += not ok

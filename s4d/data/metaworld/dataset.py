@@ -44,13 +44,14 @@ def split_episodes(
     rng.shuffle(shuffled)
     n_train = max(1, min(len(shuffled) - 1, int(round(len(shuffled) * train_ratio))))
     train, val = sorted(shuffled[:n_train]), sorted(shuffled[n_train:])
-    manifest_dir.mkdir(parents=True, exist_ok=True)
     manifest = manifest_dir / f"{path.stem}_seed{seed}.json"
-    manifest.write_text(
-        json.dumps(
-            {"file": path.name, "seed": seed, "train_ratio": train_ratio, "train": train, "validation": val}, indent=1
-        )
-    )
+    expected = {"file": path.name, "seed": seed, "train_ratio": train_ratio, "train": train, "validation": val}
+    if manifest.is_file():
+        if json.loads(manifest.read_text()) != expected:
+            raise ValueError(f"split manifest differs from the deterministic split: {manifest}")
+    else:
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps(expected, indent=1))
     return train, val
 
 

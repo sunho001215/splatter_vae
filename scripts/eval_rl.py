@@ -24,10 +24,12 @@ import yaml  # noqa: E402
 from jobs import read_registry  # noqa: E402  (scripts/ is on sys.path)
 
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
+from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.rl.agent import DrMAgent  # noqa: E402
 from s4d.rl.env import env_kwargs  # noqa: E402
 from s4d.rl.evaluate import evaluation_suite  # noqa: E402
 from s4d.rl.vecenv import EnvPool  # noqa: E402
+from s4d.run_identity import record_run_identity  # noqa: E402
 
 META_WORLD_ACTION_DIM = 4  # xyz end-effector delta + gripper
 
@@ -47,12 +49,17 @@ def main() -> None:
     ap.add_argument("--cpu-threads", type=int, default=8)
     ap.add_argument("--poll-seconds", type=float, default=30.0)
     args = ap.parse_args()
-    run_dir = Path(args.run_dir).resolve()
-    if REPO.resolve() not in run_dir.parents:
-        raise ValueError("RL run directories must be inside the repository")
+    try:
+        run_dir = validate_runtime_path(Path(args.run_dir), repository=REPO)
+    except GPUIsolationError as exc:
+        raise ValueError("RL run directories must be inside an authorized runtime root") from exc
     while not (run_dir / "config.yaml").is_file():
         time.sleep(args.poll_seconds)
     cfg = yaml.safe_load((run_dir / "config.yaml").read_text())
+    record_run_identity(
+        cfg, REPO, run_dir / "eval_provenance",
+        native_diagnostic_steps=int(cfg["train"]["num_train_steps"]),
+    )
     if int(cfg["train"]["num_train_steps"]) > 1000:  # same exemption for short diagnostics as train_rl.py
         require_passed_tests()
     device = torch.device("cuda")

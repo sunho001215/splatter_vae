@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import enforce_allowed_gpus  # noqa: E402
+from s4d.gpu_guard import enforce_allowed_gpus, validate_runtime_path  # noqa: E402
 
 GPU_MAPPING = enforce_allowed_gpus()
 
@@ -17,8 +18,8 @@ import torch  # noqa: E402
 
 
 def pytest_configure(config):
-    # Keep even distributed-test rendezvous and subprocess reports inside the new repo.
-    config.option.basetemp = str(REPO / ".pytest_tmp")
+    temp = os.environ.get("S4D_PYTEST_TMP") or config.option.basetemp or str(REPO / ".pytest_tmp")
+    config.option.basetemp = str(validate_runtime_path(Path(temp)))
 
 
 @pytest.fixture

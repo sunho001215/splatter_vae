@@ -15,6 +15,11 @@ def writable_path(path: str | Path, data_root: Path) -> Path:
     Callers remain responsible for honoring permission denials and empty outputs.
     """
     resolved = Path(path).resolve()
-    if not any(resolved == root or root in resolved.parents for root in (REPO.resolve(), data_root)):
-        raise ValueError(f"output escapes the authorized repository/data root: {resolved}")
-    return resolved
+    if any(resolved == root or root in resolved.parents for root in (REPO.resolve(), data_root)):
+        return resolved
+    from s4d.gpu_guard import GPUIsolationError, validate_runtime_path
+
+    try:
+        return validate_runtime_path(resolved, repository=REPO)
+    except GPUIsolationError as exc:
+        raise ValueError(f"output escapes the authorized repository/data root: {resolved}") from exc
