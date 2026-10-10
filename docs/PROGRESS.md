@@ -403,7 +403,6 @@ Last updated: 2026-10-10 12:07
 | id | GPU | status | log |
 |---|---|---|---|
 | s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 9 running (resumed 07:19-07:49), synthinv-seed0-hammer done and evaluated | runs/pretrain/s1v-*/log.txt |
-| s4-drm-cnn-pick-place-s2000 (+ -eval) (S4, 1M agent steps) | GPU 5 | resumed 10:08 from 650k on GPU 5 (OOM-killed at 693k at 03:16) | runs/s4-drm-cnn-pick-place-s2000/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
 Completed: data collection and checks (32 jobs), timing runs, Stage 0, review screens and proxies (see Disk table).
@@ -449,6 +448,7 @@ Completed: data collection and checks (32 jobs), timing runs, Stage 0, review sc
 | 2026-10-09 18:15 | 4.9 TB (s1-proxy-synth200k-pick-place-s1000 completed with final eval at 200k; deleted its replay/, 0.56 GB) |
 | 2026-10-09 20:39 | 4.9 TB (s1-proxy-synth200k-hammer-s1001 completed with final eval at 400k; deleted its replay/, 0.56 GB) |
 | 2026-10-09 20:43 | 4.9 TB (s1-proxy-synth200k-hammer-s1000 completed with final eval at 400k; deleted its replay/, 0.56 GB) |
+| 2026-10-10 12:56 | 4.8 TB (s4-drm-cnn-pick-place-s2000 completed with final eval at 1M; deleted its replay/, 46 GB apparent / ~33 GB used) |
 
 ## Next actions
 1. Merge items 1-3 code (suite in the worktree), relaunch the loader benchmark from the main checkout; decide item 3

@@ -1173,3 +1173,18 @@ Seed 0 = `s2-screen-synth-pick-place` (re-evaluated), seed 1 = `s1v-synth-seed1-
 Both R seeds collapse on pick-place (dynamic share 0.06-0.07, relative EPE 1.00), so the pick-place margins sit at
 their floors except CD-render. All 12 inputs of the S1 rule exist once `synthsr-seed1` hammer and pick-place are
 evaluated; the rule is applied then, unchanged.
+
+## 2026-10-10 — S4 result: DrM + CNN solves pick-place under this protocol, slowly
+
+`s4-drm-cnn-pick-place-s2000`, 1M agent steps, full evaluation protocol (seed 2000). Final (1M): training cameras
+0.675, held-out cameras 0.000, trajectories 0.575 (lateral 0.65, circular 0.50). Last-5 mean: training 0.645,
+held-out 0.015, trajectories 0.570. Success AUC over 100 evaluation points: training 0.241, trajectories 0.192.
+Training-camera success by step: 300k 0.03, 500k 0.16, 650k 0.26, 700k 0.38, 800k 0.48, 900k 0.60, 1M 0.68 (still
+rising). Caveats: the run was OOM-killed at 693k and resumed from 650k (evaluations at 660k-690k are from the
+pre-incident branch; `eval.jsonl` holds one record per step); the resumed part used the MADV_RANDOM replay hint
+(I/O only).
+
+**Reading.** Pick-place is solvable under the protocol, but only after ~500k agent steps for the end-to-end CNN; the
+200k / 400k proxies used for our encoders on pick-place could not have shown success, which confirms that pick-place
+proxies are context only (S2). It stays one of the 8 campaign tasks. The run counts as Stage 4 CNN seed 2000 for
+pick-place if code and protocol stay unchanged until Stage 4 (the replay hint changes no numerics).
