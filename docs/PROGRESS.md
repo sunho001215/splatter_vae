@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 11:07
+Last updated: 2026-10-10 12:07
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -395,6 +395,9 @@ Last updated: 2026-10-10 11:07
 - 11:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 185 GB RAM available. S1 seed-1 runs at
   79.0k-90.0k (0.24-0.36 s/step; slowest at 100k ~12:50). CNN pick-place 766k at ~46 agent steps/s (page cache warm
   again; 1M in ~1.5 h).
+
+- 12:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 201 GB RAM available. S1: 9 of 12 evaluations
+  done; last three runs at 89.9k-94.8k (100k by ~13:00). CNN pick-place 883k, training-camera success 0.61 at 880k.
 
 ## Job table (running or pending)
 | id | GPU | status | log |
