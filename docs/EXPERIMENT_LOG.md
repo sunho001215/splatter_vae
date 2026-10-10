@@ -1119,3 +1119,27 @@ final configuration (A200 vs A300, 6-seed proxies) decides the length.
   relaunches the seven waiting runs only when 75 GB is available, so it does not feed the OOM churn. Changing the
   resumed S1 runs to the 2 x 6 loader would save only ~2 GB each (the window loader has no randomness, so it would not
   change the data); not done, to keep the S1 pipeline uniform.
+
+## 2026-10-10 — S1 margins, hammer (from R's two seeds only; written before any variant is compared)
+
+R = current C (synthetic views as positives and render targets), 100k of the 200k schedule, full split. Seed 0 =
+`s2-screen-synth-hammer` (re-evaluated), seed 1 = `s1v-synth-seed1-split0-hammer`.
+
+| metric (reading) | seed 0 | seed 1 | margin |
+|---|---|---|---|
+| dynamic share, moving pixels (s6) | 0.884 | 0.170 | 0.714 |
+| relative EPE 0->2 (s6) | 0.627 | 0.940 | 0.313 |
+| trajectory retrieval (mean s2/s6) | 0.742 | 0.752 | 0.030 (floor) |
+| hand-position R², trajectory (mean) | 0.911 | 0.884 | 0.050 (floor) |
+| hand-velocity R², trajectory (s6) | 0.625 | 0.571 | 0.055 |
+| training-camera PSNR (mean) | 25.95 | 24.94 | 1.01 dB |
+| moving-pixel PSNR (mean) | 24.85 | 23.45 | 1.40 dB |
+| CD-render trajectory, sym. p90 (mean) | 2.54 cm | 2.94 cm | 14.7 % (relative) |
+
+**Observation (reference only):** R seed 1 on hammer shows the same motion collapse that R seed 0 shows on
+pick-place: its dynamic share falls to 0.06 by 10k and recovers only to 0.22 (relative EPE 0.88-1.00 throughout),
+while seed 0 rises to 0.91 (relative EPE 0.36). The collapse is present from 10k, long before the resume at 80k
+(incident 6), so it is not a resume artifact. The collapse of C is therefore seed-dependent on both tasks, not
+pick-place-specific; the S1 question ("does V1/V2 remove the collapse?") is unchanged, but R's hammer margins on the
+motion and PSNR metrics are wide, so on hammer the rule's (b)/(c) checks will only flag large degradations.
+Pick-place margins follow when `s1v-synth-seed1-split0-pick-place` is evaluated.
