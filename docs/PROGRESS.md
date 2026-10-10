@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 17:17
+Last updated: 2026-10-10 18:13
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -26,6 +26,16 @@ Last updated: 2026-10-10 17:17
   - `method-frozen-v1` only after items 1-2 (then item 1e leave-one-out and the A200/A300 length study).
 - **Pretraining lengths:** ours default 300k, final L chosen on hammer/pick-place before the freeze (same L for all
   8 tasks and ablations); SinCro exactly 300k; ReViWo 100 001 (reference).
+
+## Operational blocker (2026-10-10 18:07 onward)
+- NVIDIA management queries fail with `Failed to initialize NVML: Unknown Error`. Scheduler pid 957531 exited on
+  the failed query; existing training processes continue to advance (14.8k-21.5k at 18:07). A fresh guarded test
+  process sees zero CUDA devices, so new launches and native acceptance are blocked, not routed to another GPU.
+- The watcher was re-armed as tracked task `bo345vngk` (pid 2612702) after its `GPU_QUERY_FAILING` event.
+  `experiments/HOLD` remains in place. Fail-closed scheduler recovery is prepared in `.worktrees/review`, but the
+  suite stopped at the GPU guard before tests ran; no source merge or production use of the patch is allowed yet.
+- Next: restore host/container GPU visibility without resetting shared GPUs or changing device permissions;
+  rerun the full guarded suite, merge the recovery under HOLD, restart the scheduler, then release HOLD.
 
 ## Event handling
 - Event watcher: `python3 -I scripts/watch_events.py --once` as a background task, re-armed after each event.
@@ -430,11 +440,18 @@ Last updated: 2026-10-10 17:17
   ~8-11%. Process-tree PSS totals 175 GiB (7.98-9.38 GiB/run); this is a post-evaluation snapshot, not a measurement
   of the transient evaluation peak. No healthy job restarted or protocol changed.
 
+- 18:07-18:13: HEARTBEAT_PROBLEM — NVIDIA/NVML queries fail, and scheduler pid 957531 exited on query status 255.
+  All 20 training jobs remain alive and progressing (14.8k-21.5k at the initial check), with no new registry failures;
+  D0 seed-1 pick-place finished its 20k evaluation by 18:13. 4.8 TB disk free, 107 GiB RAM available, pressure 13-16%.
+  Watcher re-armed (`bo345vngk`, pid 2612702); new launches held. Scheduler recovery prepared in the review worktree,
+  but full-suite attempt failed at the GPU guard (fresh process sees zero CUDA devices), so no production merge or
+  restart using unverified code. Host/container GPU visibility must recover first; existing jobs are untouched.
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
 | i1-{d0..d4}-seed{0,1}-{hammer,pick-place} (item 1, 100k of the 200k schedule, 2 x 6 loader) | 4/5 | all 20 running (13:05-14:09) | runs/pretrain/i1-*/log.txt |
-| fulleval-i1-*-100k (20 full-split evaluations) | any | wait for their runs | runs/fulleval-i1-*/console.log |
+| fulleval-i1-*-100k (20 full-split evaluations) | any | wait for their runs and NVML/scheduler recovery; HOLD | runs/fulleval-i1-*/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
 Completed: data collection and checks, timing runs, Stage 0, review screens and proxies, S1 (10 runs + 12

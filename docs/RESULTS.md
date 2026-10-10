@@ -90,6 +90,16 @@ branch. The curve is therefore mixed and must not be presented as uninterrupted 
 MADV_RANDOM, an I/O hint that leaves replay contents and sampling unchanged. Stage-4 reuse is conditional on unchanged
 code/protocol, and must retain this caveat.
 
+### Operational blocker — native isolation gate, 2026-10-10 18:07
+
+NVIDIA queries fail with `Failed to initialize NVML: Unknown Error`, terminating the scheduler. Existing item-1
+training processes continue, but a fresh full-suite attempt on the allowed GPU-5 UUID exited 1 at the guard:
+`torch sees 0 CUDA devices but CUDA_VISIBLE_DEVICES lists 1`. No tests ran in that attempt; it is **BLOCKED**, not
+acceptance for the scheduler recovery patch. Log: `runs/setup/nvml-20261010-1812-suite-attempt.log`.
+
+Production sources are unchanged. The recovery patch remains in `.worktrees/review` pending the full native suite;
+new launches remain held. No native check was mocked or skipped, no guard relaxed, and no shared GPU reset attempted.
+
 ---
 
 # Earlier record: implementation phase (before this campaign)
