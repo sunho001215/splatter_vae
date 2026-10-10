@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-10 12:07
+Last updated: 2026-10-10 13:10
 
 ## Current phase
 - **Done:** Phase A (E0), Phase B (8 tasks, D2/D3 pass), Phase C (timing, `docs/COMPUTE_PLAN.md`; M2 overfit gate failed
@@ -399,13 +399,21 @@ Last updated: 2026-10-10 12:07
 - 12:07: HEARTBEAT_OK — watcher and scheduler alive, 4.8 TB free, 201 GB RAM available. S1: 9 of 12 evaluations
   done; last three runs at 89.9k-94.8k (100k by ~13:00). CNN pick-place 883k, training-camera success 0.61 at 880k.
 
+- 13:10: **S1 decided** — neither V1 nor V2 qualifies (both fail (c); V1 also misses (a) with pick-place dynamic share
+  0.37 < 0.5); C unchanged, collapse reported as a limitation (it is a per-seed event in every variant). **Item 1
+  queued** on C: D0-D4 x 2 seeds x 2 tasks (`i1-*`, 2 x 6 loader, `ram_gb` 13) + 20 full-split evaluations (configs
+  in place for the started runs); 13 of 20 runs started at 13:05, the rest wait for host RAM. S4 CNN pick-place
+  finished: 0.675 training cameras at 1M (replay deleted).
+
 ## Job table (running or pending)
 | id | GPU | status | log |
 |---|---|---|---|
-| s1v-{synthinv,synthsr}-seed0-{hammer,pick-place} and s1v-{synth,synthinv,synthsr}-seed1-split0-{hammer,pick-place} (S1, 100k of 200k) | 4/5 | 9 running (resumed 07:19-07:49), synthinv-seed0-hammer done and evaluated | runs/pretrain/s1v-*/log.txt |
+| i1-{d0..d4}-seed{0,1}-{hammer,pick-place} (item 1, 100k of the 200k schedule, 2 x 6 loader) | 4/5 | 13 running, 7 waiting for host RAM (started 13:05) | runs/pretrain/i1-*/log.txt |
+| fulleval-i1-*-100k (20 full-split evaluations) | any | wait for their runs | runs/fulleval-i1-*/console.log |
 | base300k / synth300k pretraining and their export/proxy waiters | - | stopped and held (S3; checkpoints kept) | - |
 
-Completed: data collection and checks (32 jobs), timing runs, Stage 0, review screens and proxies (see Disk table).
+Completed: data collection and checks, timing runs, Stage 0, review screens and proxies, S1 (10 runs + 12
+evaluations), item-3 benchmark, S4 CNN pick-place (see Disk table and EXPERIMENT_LOG).
 
 ## Disk
 | time | free on /home/ws |
@@ -451,11 +459,9 @@ Completed: data collection and checks (32 jobs), timing runs, Stage 0, review sc
 | 2026-10-10 12:56 | 4.8 TB (s4-drm-cnn-pick-place-s2000 completed with final eval at 1M; deleted its replay/, 46 GB apparent / ~33 GB used) |
 
 ## Next actions
-1. Merge items 1-3 code (suite in the worktree), relaunch the loader benchmark from the main checkout; decide item 3
-   by its rule and report the numbers to the user.
-2. S1 runs reach 100k -> full-split evaluations -> margins from R's two seeds -> S1 rule -> C.
-3. Queue D0-D4 (2 seeds x 2 tasks, 100k of the 200k schedule, prefetch per item 3) on C -> evaluations -> margins from
-   D0 -> item-1 rule -> report 1d to the user.
-4. M3D on the item-1 winner (2 seeds x 2 tasks) + 6-seed hammer RL proxies for M2D and M3D -> item-2 rule -> report 2b.
-5. Item 1e leave-one-out, length study (A200/A300 of the final configuration, 6-seed RL), `method-frozen-v1`, Stage 1
+1. Item 1: runs reach 100k (~1-1.5 days with 13-20 concurrent runs) -> 20 evaluations -> margins from D0's two seeds
+   (written before comparing) -> item-1 rule -> report 1d to the user.
+2. Item 2: M3D on the item-1 winner (2 seeds x 2 tasks; `analysis/queue_variants.py item2`) + 6-seed hammer RL
+   proxies for M2D and M3D -> item-2 rule -> report 2b.
+3. Item 1e leave-one-out, length study (A200/A300 of the final configuration, 6-seed RL), `method-frozen-v1`, Stage 1
    final RL (seeds 1000-1002, 1M).
