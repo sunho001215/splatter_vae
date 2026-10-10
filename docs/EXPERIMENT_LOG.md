@@ -1154,3 +1154,22 @@ Pick-place margins follow when `s1v-synth-seed1-split0-pick-place` is evaluated.
   companion skips steps it has evaluated, so those four points stay from the pre-incident branch, while every point
   from 700k on comes from the resumed branch. `train.jsonl` repeats steps 651k-694k. Final success (1M) is
   unaffected; success AUC uses the records as they are, and this is noted with the run's results.
+
+## 2026-10-10 — S1 margins, pick-place (from R's two seeds only; written before any variant is compared)
+
+Seed 0 = `s2-screen-synth-pick-place` (re-evaluated), seed 1 = `s1v-synth-seed1-split0-pick-place`.
+
+| metric (reading) | seed 0 | seed 1 | margin |
+|---|---|---|---|
+| dynamic share, moving pixels (s6) | 0.062 | 0.074 | 0.050 (floor) |
+| relative EPE 0->2 (s6) | 1.000 | 1.000 | 0.030 (floor) |
+| trajectory retrieval (mean s2/s6) | 0.767 | 0.758 | 0.030 (floor) |
+| hand-position R², trajectory (mean) | 0.916 | 0.910 | 0.050 (floor) |
+| hand-velocity R², trajectory (s6) | 0.263 | 0.291 | 0.050 (floor) |
+| training-camera PSNR (mean) | 24.50 | 24.47 | 0.20 dB (floor) |
+| moving-pixel PSNR (mean) | 18.18 | 18.12 | 0.20 dB (floor) |
+| CD-render trajectory, sym. p90 (mean) | 2.82 cm | 3.43 cm | 19.7 % (relative) |
+
+Both R seeds collapse on pick-place (dynamic share 0.06-0.07, relative EPE 1.00), so the pick-place margins sit at
+their floors except CD-render. All 12 inputs of the S1 rule exist once `synthsr-seed1` hammer and pick-place are
+evaluated; the rule is applied then, unchanged.
