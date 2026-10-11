@@ -33,6 +33,51 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 - This is local source acceptance, not remote image/CUDA/EGL or cross-host equivalence acceptance. Source deployment,
   scheduler recovery and resource admission are recorded separately in PROGRESS/EXPERIMENT_LOG.
 
+### Accepted-release remote native failure (2026-10-10)
+
+- The real full suite on clean pushed release `200e5e6`, image `sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7`,
+  started at 23:00:32 +09:00 and exited at 23:05:54: **589 passed, 36 failed, 0 errors, 0 skipped**, 317.77 seconds.
+  Source fingerprints were unchanged; Docker reported exit 1 and no OOM. This is failed acceptance, not a remote native pass.
+- Confirmed failures: 31 remote-access fixtures attempted writes beneath the read-only source checkout; two real encoder
+  export tests and one protocol path test rejected the approved external pytest runtime directory; the evaluator boundary
+  test strictly resolved a nonexistent local-only path before rejecting it. The detached native worker passed its actual
+  CUDA guard, then failed because UID 1000 could not lower inherited OOM score 500 to the test's requested 300. Its
+  dependency never completed before the unchanged 180-second bound. Original child logs are under the remote suite's
+  `evidence/tmp/test_detached_launch_success_r0/runs/ok/console.log`. Future suite containers use initial OOM score 0,
+  permitting the tested increase to 300 without extra capabilities; production OOM policy stays 500. No threshold,
+  timeout, test or native assertion has been relaxed or removed.
+- A separate operational wrapper used a host run pathname inside the container, so its report copy and exit-file write
+  failed. Original suite reports were recovered unchanged from the approved runtime directory using checksum-verified rsync.
+  Evidence: `runs/verify-native-200e5e6-20261010/evidence/`; SHA-256:
+  `tests.json` = `965490f7ed37fa18964f144d05648a3ce23df3b6b9ea8223a13b91e1e58c18cd`,
+  `tests.log` = `fc12a254adb285ce86a6b4cc0a7b7eda78cd25821c4c518a2b83e5aa1c29a824`,
+  `tests.junit.xml` = `bf21180e99bc0087ba385dcaac50fc92e13ba2b009d910b1b3f997529cd5749b`.
+- All four independent one-UUID CUDA/EGL checks subsequently **passed** from this release, starting at
+  23:19:05 / 23:19:33 / 23:20:02 / 23:20:31. Real native child PIDs 1833556 / 1835080 / 1836547 / 1838079 were each
+  observed on only their assigned UUID; numerical/unset/foreign UUIDs were rejected. Source hashes match the unchanged
+  native-suite sources. Evidence: `runs/verify-isolation-{0,1,2,3}-200e5e6-20261010/evidence/gpu_isolation.json` and original
+  Docker inspections under `runs/remote/verification/`. This is isolation acceptance, not full-suite acceptance.
+  Scientific jobs still require the passing full native suite and cross-host v2 gates; none has started.
+
+### Frozen portability candidate: incomplete native verification (2026-10-11)
+
+- Scheduled local job `verify-native-portability-200e5e6-local-20261010`, launched 00:50:01, stalled after its last
+  output at **01:10:33 +09:00**. At 02:08 there was no final JSON, JUnit or exit file. Its original log contains
+  630 dot markers and one failure marker; these are partial progress, not final suite counts or acceptance.
+- Captured stderr from its exact owned pytest parent PID3031655 contains four real tensor-transport failures:
+  `multiprocessing.resource_sharer` → `SocketListener.bind` → `OSError: AF_UNIX path too long`.
+  The operational launcher's long candidate cache produced 115-byte `pymp-*` directory paths before adding the
+  listener filename, exceeding Linux's 107 usable pathname bytes. The final two-worker regression is the likely
+  waiting test; no claim is made about first versus second loader iteration or the separate early failure's cause.
+- Original captured bytes: `runs/verify-native-portability-200e5e6-local-20261010/stall-captured-stderr.log`, SHA-256
+  `8bfd4a7d431e2c1d9fd186e6c37d82cdc2d4a7e29559a0099dfc00d13f3ec268`.
+  `stall-diagnostic.json` preserves identity, unchanged complete 210-source map and the original partial-log hash.
+  No tested source, assertion, threshold, native component or original report was changed.
+- The permission layer denied SIGINT to the exact owned parent. **No signal was sent**, no alternate route or
+  duplicate suite was used, and the attempt remains incomplete/unaccepted. Recovery requires explicit interruption
+  permission, genuine original failure evidence and teardown, then a shorter authorized candidate path and fresh
+  admission for a new immutable full-suite job. Remote scientific gates remain closed.
+
 ### Phase A — runtime (R1)
 | Check | Result | Evidence |
 |---|---|---|

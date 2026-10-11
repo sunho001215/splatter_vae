@@ -6039,4 +6039,4 @@ jobs:
   stage: 1
   ram_gb: 12
   oom_score_adj: 300
-host_ram_reserve_gb: 128
+host_ram_reserve_gb: 60

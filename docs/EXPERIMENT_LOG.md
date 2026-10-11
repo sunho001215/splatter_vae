@@ -1407,3 +1407,896 @@ centres onto moving track points) is the most direct test of the failure. Items 
 - GPU/source-acceptance holds are resolved; global HOLD remains independently for complete-footprint shared-host
   memory measurement/admission. Remote remains disabled/CDI, with native suite/isolation/equivalence gates intact.
   No remote campaign run, cross-host guard exception, host repair or foreign-resource action occurred.
+
+### 2026-10-10 — Clean pushed release and remote CDI registration prepared (21:12)
+
+- Accepted integration and original native evidence pushed to `origin/splatter4d` as
+  `200e5e63f6238180312c0007b4ecc1f33b669dd3`; deployed an exact clean checkout beneath the authorized remote
+  release root through secure resumable checksum-verified bundle transfer. Bundle SHA-256
+  `c4a4ef4e9fe71d80d9d95fac3db64ccc0b28ad1881901cfcbfad7b3a9b1705cd`; main provenance file under
+  `runs/remote/releases/200e5e63f6238180312c0007b4ecc1f33b669dd3/`. No remote source editing or credentials transfer.
+  Independent read-only HEAD/clean-status check and six returned file hashes match main bytes; evidence
+  `runs/remote/access/release-identity-200e5e6.log`. The copied local suite is not remote native acceptance.
+- Only generated `experiments/local_gpu_query.json` was added to the existing narrow runtime ignore rules, since
+  deployed durable query bookkeeping must not masquerade as dirty source. All 210 accepted fingerprints remain
+  unchanged; operational registry/runs, runtime query identity and credentials were excluded from commits.
+- Fresh inventory at 21:11 confirms Docker 28.5.1, unchanged immutable image, successful NVIDIA queries, all four
+  authorized UUIDs idle and UUID-specific CDI names listed. Free SSD 4,054,387,412,992 bytes; MemAvailable
+  1,506,675,684 KiB. Evidence `runs/remote/access/inventory-cdi-20261010-2110.log`. Foreign GPUs 4-7 remain excluded.
+- CDI registration is not actual injection or native CUDA/EGL acceptance. Full remote suite, four real one-UUID
+  isolation checks with inspected host-PID mode, data-loader acceptance and same-input equivalence remain pending.
+  Scheduler-only/acceptance guards and the denied cross-host bootstrap boundary remain intact; no alternate
+  verification route or fabricated equivalence evidence was used. Healthy local comparisons continue untouched.
+
+### 2026-10-10 — Hard RAM ceilings and checkpoint-resume migration policy (21:47)
+
+- User policy now requires total local campaign footprint <=150,000,000,000 bytes (150 decimal GB), steady target
+  around 130 GB, with the deployed 128 GiB host-available reserve additional. Include all tests/evaluations/exports,
+  HDF5/memmap cache, loader shmem, pinning and retained allocator growth; no cache exclusion is invoked. Remote budget
+  is <=1,000,000,000,000 bytes (1 decimal TB), preserving SSD floor and independent host reserve. Remote becomes the
+  default for item 2, wide RL sweeps, Stage 4 baselines and future pretraining once all gates pass.
+- Fresh conservative heartbeat at 21:47: container memory.current 227,428,167,680 bytes, whole-cgroup PSS
+  190,078,193,664 bytes, Pss_Shmem 79,129,518,080 bytes already included, cgroup file 114,039,021,568 bytes including
+  80,769,945,600 bytes shmem. Full charged cache counts. This is above the mandatory ceiling, not an accepted budget.
+  Evidence `runs/setup/memory-ceiling-20261010.json`; all 20 item-1 owned sessions are alive with matching session
+  IDs and no exit files. No heavy/native launch is added.
+- Independent inventory of all 20 active config files found num_workers=6 and prefetch_factor=2 already deployed.
+  A redundant loader restart would not provide the anticipated additional saving. Original seeds, objectives,
+  100k stopping points, 200k LR schedules and all required experiments are unchanged.
+- Proposed reduction is checkpoint-bound pausing of the complete hammer comparison group (D0-D4 x seeds 0/1),
+  preserving every completed step/checkpoint rather than rolling back to an older checkpoint. This groups decision
+  arms/seeds together and leaves required work waiting, not dropped or shortened. Whole-tree per-job PSS around
+  9 GB supports a ten-run group reduction; actual post-pause charge must be measured before further admission.
+- Permission layer denied both temporary owned scheduler suspension and execution of checkpoint-bound termination
+  of that hammer group. Neither command ran. No trainer/daemon signal, intentional pause, migration, fabricated
+  exit/exemption event, alternate tool/host/agent workaround or container/cgroup/host setting change occurred.
+  Global HOLD remains; the local cap is not yet met or enforced by newly deployed code.
+- Review-only changes implement explicit-byte local/remote budget admission, complete charged-memory/PSS cross-checks,
+  active-peak plus unattributed-cache/kernel/background reservations, same-tick reservation, heartbeat reporting and
+  separately audited intentional-pause replay without erasing attempts/exits or marking experiments completed.
+  Four pure memory boundary tests and six pure admission/pause-replay checks passed; no native fixture/worker/GPU
+  was executed and this is not full-suite acceptance. Source remains unmerged until full native acceptance fits budget.
+- Remote suite readiness audit found root-writing temp fixtures and a protocol helper rejecting authorized external
+  runtime temp. Narrow review-only fixes preserve path, symlink/traversal and native security assertions. Audit also
+  found no existing compliant initial scheduler-only acceptance route: ready/manifest/launcher/entry require prior
+  suite/isolation/cross-host evidence. Ordinary campaign acceptance mounts/identity cannot generate those artifacts.
+  A bounded verification-only bootstrap still needs explicit named guard-exception approval; none is inferred.
+- Migration must additionally pass real resumed-checkpoint same-next-step loss within numerical noise, preserving
+  optimizer, RNG, scheduler and deterministic data position. All variants/both seeds of one task move together;
+  registry must identify exact step ranges per host and checkpoint hashes. Pauses are not infrastructure failures.
+  No migrated experiment or accepted cross-host checkpoint-resume claim exists yet. COMPUTE_PLAN and PROGRESS carry
+  both budgets, current footprint, policy and blockers; observation is not permission to postpone cap reduction.
+
+### 2026-10-10 — Hard-budget heartbeat and bounded review checks (22:06)
+
+- Latest charge 215,380,869,120 bytes (215.38 decimal GB), whole-cgroup PSS 190,718,515,200 bytes (190.72 GB),
+  including 79,362,768,896 bytes Pss_Shmem. Cgroup file 97,752,182,784 bytes includes 80,515,616,768 bytes shmem.
+  No cache exclusion; still above the required 150 GB cap. Prior 21:47 evidence remains untouched. New evidence:
+  `runs/setup/memory-ceiling-20261010-2206.json`. Whole-cgroup snapshot did not request owned-session attribution;
+  its owned_pss_bytes=0 is not a claim that the campaign has no memory.
+- Latest accepted heartbeat found all 20 trainers alive with newest output no older than 2.7 minutes, scheduler
+  PID 2819571 alive and watcher beacon age 0.3 minutes. Free disk 5220 decimal GB. No stall detected; no restart,
+  pause, migration, cancellation, shortening or new heavy/native launch. Existing signals/bootstrap denials stand.
+- Review accounting now rejects missing live-process PSS/shared PSS and changed PID start identity; safely ignores
+  vanished/zombie processes. A temporary unavailable live PSS sample raised ValueError rather than silently returning
+  a partial total. The subsequent complete cross-check above passed; any unavailable admission sample holds launches.
+- Six pure accounting checks and thirteen pure admission/intentional-pause replay checks passed without pytest native
+  fixtures, Torch/gsplat/MuJoCo/MetaWorld imports, workers or GPU launches. Replay tests reject false proof flags,
+  noninteger verified steps, conflicting checkpoint hashes and double classification of an observed exit as both
+  infrastructure failure and intentional pause. A late exit remains paused, not completed or chargeably failed.
+- Source remains only in `.worktrees/review`, not full-native-accepted, merged, committed or deployed. Remote memory
+  and mandatory resumed-checkpoint gate edits are still undergoing review; no equivalent checkpoint loss or remote
+  native result was produced. HOLD remains while the hard ceiling and permission-blocked reduction are unresolved.
+
+### 2026-10-10 — Pure boundary checks and explicit standing pause/bootstrap authorization (22:23-22:35)
+
+- Independently reviewed remote accounting/admission/resume-gate diffs; 136 pure boundary cases passed without real
+  Docker/SSH, GPU/native fixtures or campaign launches. Together with six accounting and thirteen local replay/admission
+  cases, these are bounded CPU evidence, not complete native acceptance. Ruff initially found fourteen formatting/import
+  errors; all were fixed without changing behavior/templates/thresholds, and the full twelve-file targeted lint passed.
+- Remote accounting reserves owned-container full memory.current plus an outside-container upper bound of all
+  nonfree host RAM, including foreign usage, from MemTotal-MemFree. This can over-restrict admissions; it is not a
+  kernel all-times cap. Missing charge or host evidence holds admissions without deleting observed container state.
+- The user explicitly authorized standing lossless checkpoint-bound SIGTERM/train.stop_step pauses and later resumes
+  for owned registered jobs, and specifically the complete hammer D0-D4/both-seed group. Nothing may be cancelled or
+  shortened. Controller `bv3z5vw1s`, PID 2904319, is armed at nine fresh 40k boundaries and D2 seed 0 at 50k; exact
+  session identity, original save-before-eval ordering and ten checkpoint metadata readers verified before execution.
+  Log `runs/setup/checkpoint-pause-hammer-20261010-2228.log`; append-only pause requests are real, not completion proof.
+- The user also explicitly approved bounded remote native suite, four real one-UUID CUDA/EGL checks, cross-host
+  step-0/short-run/checkpoint-resume equivalence, then admitted remote jobs after gates. This supersedes earlier
+  approval blocks but not any fresh permission-layer denial or ordinary scientific acceptance requirement. Any fresh
+  block must report exact command/reason. Code remains review-only pending full native acceptance within local budget.
+- Numerical verification protocol registered before any cross-host numerical results: `meta-world-cross-host-v1`,
+  fifty actual optimizer steps of the original 200k schedule, checkpoint after 25, production BF16/batch16/loader6x2,
+  C with each D0-D4 variant and both seeds on both development tasks. Actual initialized model and every observed
+  input-batch hash must match exactly; each finite total/component loss must satisfy abs 1e-5 + relative 1e-4.
+  Original local checkpoint25 is resumed remotely at the exact next batch/step26 with optimizer/scheduler/RNG preserved;
+  never substitute a remote-produced checkpoint. Tolerances are fixed now, not adjusted after seeing results.
+- No real cross-host numerical evidence, remote native acceptance, migration or resumed scientific run exists yet.
+  Arming a checkpoint pause does not establish that the local 150GB ceiling has been met. HOLD remains.
+- At 22:38 all twenty owned sessions were alive with activity under one minute, watcher and scheduler healthy, ten
+  real pause requests and zero verified pauses. Full charge 215,091,752,960 bytes; whole-cgroup PSS 184,427,823,104
+  bytes, owned-session PSS 180,446,863,360 bytes, Pss_Shmem 77,718,347,776 bytes already included. All cache charged;
+  ceiling remains violated. Disk free 5,219,396,988,928 bytes. Evidence `runs/setup/memory-ceiling-20261010-2240.json`
+  has authoritative observed_at 22:38. No native/heavy job is added while above budget.
+
+### 2026-10-10 — User speed-up decision BEFORE cross-host numerics (22:44)
+
+- The user explicitly superseded the conflicting 22:23 gate details before any cross-host numerical result exists.
+  Remote native acceptance and isolation start from accepted, clean, pushed and already deployed `200e5e6` in image
+  `sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7`. Local RAM and unfinished review code
+  are not prerequisites for remote-only work. GPU UUID isolation, the authorized remote root, data checksums and the
+  single local registry remain mandatory. Normal source integration still requires its full native acceptance.
+- Local hard cap remains 150 decimal GB, with a 130 GB steady target; the extra host-available reserve returns to
+  **60 GiB**. A short verification job taking a few minutes and at most 15 GB may use measured headroom under 150 GB.
+- Superseding numerical protocol `meta-world-cross-host-v2`: same commit/image/data; actual remote full suite;
+  seed 0 and equal first-batch hashes; step-0 forward losses within 1e-4 relative (both zero must match exactly).
+  Fresh production training is **200 steps, C/D0, hammer, seed 0**, on both hosts, retaining the original 200k schedule,
+  BF16, batch16 and loader6/prefetch2. Repeat that identical 200-step run twice on the remote to measure same-host noise.
+  Before results, define curve difference as RMSE across all 200 unsmoothed total-loss values: local versus the first
+  remote run must not exceed first versus second remote RMSE. Component, maximum and pointwise differences are
+  diagnostics, not extra acceptance gates; no fixed post-training tolerance, smoothing or invented noise floor.
+- Only actually migrated runs require the original local checkpoint resumed remotely and compared with local
+  continuation for the next **50 steps**, using an identically measured same-host RMSE criterion. Remote-only Stage 4
+  work does not wait for a checkpoint-migration check. Every arm/both seeds of the hammer comparison moves together,
+  or the entire group resumes locally if that is faster and measured budget permits; nothing is cancelled or shortened.
+- Once identity, native/isolation and fresh step-0/200-step gates pass, launch Stage 4 CNN DrM for eight tasks and
+  seeds2000-2002, then SinCro/ReViWo on already transferred tasks; transfer others as SSD allows. Item 2 and RL proxies
+  follow the unchanged item-1 decision. New accounting/replay infrastructure is not on the remote bring-up critical path.
+- Estimate given at22:44: first remote verification within about15minutes; first scientific work in roughly2-3hours,
+  conditional on passing gates and local headroom for the paired check. Actual launches will be recorded separately.
+
+### 2026-10-10 — User pretraining-seed policy for unregistered comparisons (23:00)
+
+- User decision, applying only to comparisons not yet registered or launched. Previously observed representation
+  seed spread is largely bimodal from dynamic-group motion collapse; retrieval, position R² and non-collapsed PSNR
+  agree closely. This does not retroactively alter any active experiment or its rule.
+- **Item1:** all20D0-D4/both-seed/development-task runs and the pre-registered decision remain unchanged.
+- **Item2 M2D versus M3D:** retain two pretraining seeds per variant and per task, since collapse is the question and
+  the motion decision metrics are affected. Explicitly report, per task/configuration/seed, whether collapse occurred
+  and the actual dynamic-share values at10kand100k; retain existing full-split stride6/pair0->2motion diagnostics.
+- **After item2:** unregistered item1eleave-one-out, final length study and later screens default to one pretraining
+  seed per variant/task (seed0). Before registration/launch, write exact numeric margins from the existing reference
+  seed pair: max(already measured pair spread, existing metric floor). Reuse the fixed task/metric references, not a
+  convenient post-result pair. No new paired runs are required merely to re-estimate margins.
+- **Exception:** if the adopted configuration still collapses in any seed after item2, report the per-seed10k/100k
+  dynamic-share numbers to the user before launching downstream comparisons; they decide seed count again.
+- **RL proxies:** retain all six seeds and the existing RL rule. RL variance is separate from pretraining variance.
+  Final RL seeds2000-2002and baseline original protocols remain unchanged. COMPUTE_PLAN records the prospective
+  encoder-count saving only; no registered job has been removed, shortened or reseeded.
+
+### 2026-10-10 — Actual accepted-release remote native launch (23:00:32)
+
+- `verify-native-200e5e6-20261010` actually started at2026-10-10T14:00:32.528695935Z (23:00:32+09:00), DockerID
+  `a1763af58cf3c87b6a4bd5a32737b54eba552d39aa150317271faf248797c93b`, throughCDI onUUIDGPU-4391... only.
+  Alllaunches run through accepted `scripts/jobs.py::tick` with one narrow fixed-suite/isolation operationalbackend;
+  fsynced intentandactualcontainerID are in the sole local `experiments/registry.jsonl`. No remote source is edited.
+  Native entrypoints contain assignment-form guardcalls not recognized by the scheduler's regex; the adapter accepts
+  only these two exactacceptedcommit scriptbytes and verifies their realguardcalls, ratherthan claiming they lackguards.
+  Suite child has no campaignjob environment; diagnosticprovenance is explicitly `campaign_eligible=false`.
+- Independent Dockerinspection verified immutableimage/read-onlyrootandcode/authorizedbinds/hostPID/8GiBshm,
+  exactlyoneUUIDCDIand64GiBRAMwithswapboundedtoRAM. Remote datafilechecksums andcleanpushedcommit rechecked.
+  Evidence `runs/remote/verification/verify-native-200e5e6-20261010-container.json`; controllerlog
+  `runs/setup/remote-native-bootstrap-20261010.log`. Two earlier localcontroller failures (missingPyYAML in system
+  interpreter and regexguardrecognition) occurred before anylaunchintent; repairedwithoutchangingacceptedsource.
+- At23:04real suite remainedrunningat34%withatleastfourfailures. No acceptance claim orscientificlaunch. Original
+  finalreport/log/JUnit willbe returned unchangedby tracked mechanicalDockerwait `b8zrqpw1p`; no threshold/test bypass.
+  ThefirstverificationETAslippedbyabout90seconds; scientific2-3hourestimate remains conditionalonpassinggates.
+- Localqueueadditionalreserve60GiBapplied underHOLDwithoutmodifyingnumericjobsettings oracceptedproductionfingerprints.
+  LocalGPUqueryeventreportedfiveQueryUnavailablefailures; no device/driver/host/VPNrepair attempted. Watcher rearmed
+  onlyaftercompletion. Actualcharge213.91GBat23:04, nopausecompletedyet; capviolationandlosslesspausecontrollerremain.
+
+### 2026-10-10 — Remote native failure, independent isolation and first proven pause (23:05–23:25)
+
+- The accepted-release remote full suite finished at23:05:54, exit1/noOOM: **589passed/36failed/0errors/0skips**,
+  317.77seconds, source fingerprints unchanged. Original JSON/log/JUnit were recovered byte-for-byte by checksumed
+  rsync from the approved runtime evidence root. Hashes and failures are recorded honestly in RESULTS. No scientific
+  admission or cross-host numerical result exists. The original2–3hour scientific ETA cannot now be promised.
+- Thirty-one fixtures wrote beneath read-only source; two real exports and one protocol helper rejected approved
+  external pytest temp; evaluator boundary strict-resolved an absent local-only path first. Native worker actually
+  passed CUDA, then nonroot could not lower inheritedOOM500to300, leaving a failed dependency until the unchanged
+  180secondbound. Suite-only initialOOM0 permits the tested increase without addedcapabilities; productionOOM500stays.
+  Minimal path repairs are only in review, not accepted/merged/deployed. No test/native assertion/threshold removed.
+- Fixed the operational wrapper's host/container run-path mismatch for later jobs. The initial failed attempt and its
+  reports remain untouched. Accepted result sync does not includeXML; originalJUnit was explicitly checksum-downloaded.
+- Independent approved isolation jobs actually started23:19:05/23:19:33/23:20:02/23:20:31, oneCDIUUIDeach, through the
+  accepted scheduler and sole registry. All four exited0 and returned original `gpu_isolation.json`: realCUDA+EGL,
+  each childPID seen on only its assigned UUID, numeric/unset/foreignUUIDrejected, sourceunchanged. ActualDocker
+  inspections verifiedhostPID/read-onlyroot/8GiBshm/authorizedmounts. Evidence `runs/verify-isolation-{0,1,2,3}-200e5e6-20261010/`.
+  Fullnativeacceptance andv2numerics remain mandatory forscience; isolation itself has no invented suite-pass prerequisite.
+- `i1-d0-seed1-hammer` received ownedSIGTERM at the fresh40kcheckpoint with26.6ms publicationlatency at23:17.
+  Controller exited on its60secondteardownlimit because one sessionworker remained; no second signal was sent.
+  Later verified the whole session gone, lastloggedstep40000, both archivesCRCvalid and all718 normalized archive
+  member hashes identical betweenlatestandnumberedcheckpoint. Container headers differ, so wholefile equality is not
+  claimed. Registered losslesspauseproof and exactcheckpointSHA256 `96890bf0ee49811aa1cdc4a9a6c52820237e1c6a0477a56291eb706567f45d2a`
+  are in `runs/i1-d0-seed1-hammer/checkpoint_pause.json`; original100kstop/200kscheduleunchanged. Charge atproof208.75GB,
+  stillabove150GB. Rearmremainingnine from verifiedregistry/session identities; teardownwait900seconds sends no extra
+  signal and does not change training/tests. HOLD remains because accepted main replay does not yet interpret pauseproof.
+- Frozen v2 producer/helper/tests independently passed95directpure checks, Ruff, and sevenPython3.10ASTchecks
+  including minimal new path repairs; noTorch/native/conftest/GPUimports occurred and no native acceptance is inferred.
+  The seven-file portability integration must use an isolated candidate underreview: a suite on the currentdirtyreview
+  tree would include unrelated accounting/replay/partialbootstrap fingerprints and cannot substantiate a selective release.
+  Preserve those unfinished changes; freeze accepted200e5e6plusonlythreepathscriptsandfourtestfiles, then normal full
+  native acceptance underbudget beforemergeunderHOLD/cleanpush/deploy. Neverfilterorrewrite suiteevidence.
+  Watcher rearms onlyaftercompleted events; currenttrackedwatcher `bnfnsqsw3`. No foreign signals/GPUreset/driver/cgroup/VPNaction.
+
+### 2026-10-10 — Four independently verified lossless hammer pauses (23:47–23:49)
+
+- D0 seeds 0/1, D1 seed 1 and D2 seed 1 are checkpoint-paused at 40,000. Each full owned session has exited;
+  its numbered checkpoint SHA-256 matches the original proof and registry, both numbered/latest archives pass CRC,
+  all 718 normalized payload-member hashes match, and the last logged training step is exactly 40,000. Whole-file
+  equality is not claimed because archive header names differ. Proofs remain in each `runs/<id>/checkpoint_pause.json`.
+  The original 100k stop and 200k schedules, seeds, configs and required comparisons are unchanged; nothing is cancelled.
+- Remaining six hammer sessions are armed by tracked controller `bjhmh9q29`, PID 2961453, with the previously
+  registered fresh-boundary checks and 900-second teardown wait. All sixteen remaining trainers are alive, have
+  log activity within 32 seconds and show no traceback in the inspected tails. No healthy trainer is restarted.
+- At 23:49 full cgroup charge is **186,648,727,552 bytes (186.65 GB)**, still above the 150 GB hard ceiling.
+  Observed whole-cgroup PSS subtotal is 153,311,744,000 bytes and owned-session subtotal 149,522,493,440 bytes;
+  two transient processes exited during the 209-process scan, so PSS is explicitly incomplete, not acceptance evidence.
+  Host MemAvailable is 101,695,590,400 bytes. Full charge includes cache; mapped shmem/file PSS is not added twice.
+  Snapshot: `runs/setup/memory-ceiling-20261010-post-pause4.json`. No local native/training check is admitted.
+- Legacy watcher crash events correspond to these proven intentional pauses. HOLD prevents replay relaunch;
+  no infrastructure-failure exemption or restart reset is fabricated. Watcher `bg11bj9xc` reported the D0 seed 0
+  and D1 seed 1 exits, then was replaced once by tracked `bmt455pyv`. Accepted daemon and four-hour observer remain.
+- Remote four-UUID isolation is passed; full native suite remains failed and v2 numerical checks have not run.
+  The frozen seven-file local acceptance candidate is unchanged and unaccepted. No new source integration,
+  deployment, migration or scientific launch occurred; the earlier scientific launch ETA remains withdrawn.
+
+### 2026-10-11 — Frozen candidate local launch preparation (not native acceptance)
+
+- The local-only frozen candidate now has independent Git metadata at its own code root, with accepted base HEAD
+  `200e5e6` and exactly the seven registered modified production files. No source checkout, new commit, shared-main
+  Git metadata pointer, merge or deployment was used. Its complete 210-file source map is unchanged.
+- A separately hashed operational `code/launch_native_acceptance.py` calls the real GPU guard at top level before
+  importing the unchanged full-suite runner. Accepted `jobs.check_guarded()` passes without modification or override.
+  The wrapper does not replace native components, skip tests, relax assertions or alter the seven-file repair scope.
+- Fixed single-job `native-acceptance-queue.yaml` declares exactly 15,000,000,000 RAM bytes, 60 GiB host reserve,
+  300 GiB local disk floor, OOM score 0 and no automatic retry. Entry/queue hashes and original JSON/log/JUnit
+  locations are recorded in `candidate.json`. This scoped verification queue does not release the main campaign HOLD.
+- Tracked mechanical headroom waiter `bwxuxx2fm` emits one readiness signal only after charge <=135 GB and
+  MemAvailable >=60 GiB +15 GB. It makes no GPU query and never launches a job. A fresh complete PSS check,
+  actual foreign-GPU check, unchanged fingerprints and accepted scheduler admission are still required on wake.
+  No native suite or scientific job was launched; the existing pause controller, observer and watcher remain primary.
+
+### 2026-10-11 — Fifth proven hammer pause (00:02)
+
+- D4 seed 1 is independently verified checkpoint-paused at 40k: full owned session gone, original proof/registry
+  SHA-256 `3b3643481e24775060d3f4d08cde0323bcc213f064b8bf196b56488633ce74ed` matches the checkpoint,
+  both archives CRC-valid, all 718 normalized payload members equal, and last logged step exactly 40k.
+  Publication latency was 39.7 ms. Its 100k stop/200k schedule remains unchanged. Total proven pauses now five;
+  remaining five hammer sessions stay armed under the same controller, with no extra signals or cancellations.
+- Charge-only observation at 00:02:34 is **178,154,872,832 bytes (178.15 GB)**, still above 150 GB. Original
+  observation is in `runs/setup/memory-charge-20261011-0002.json`; no new complete PSS scan is claimed.
+  Watcher `bmt455pyv` reported this planned exit and was replaced once by tracked `b1r8jmeq0`.
+  Native headroom waiter remains armed, main HOLD remains, and no native/scientific launch has occurred.
+
+### 2026-10-11 — Campaign health check (00:05)
+
+- Read PROGRESS and the sole registry. All fifteen active local trainers have advanced since the previous check,
+  remain in their owned launch sessions, and have log activity 0.8–28.2 seconds old with no traceback in the inspected
+  tails. Hammer steps are 36,900–48,350; pick-place steps 38,350–49,000. No running trainer is identified as stalled.
+  Five checkpoint-pause proofs remain unchanged; the other five hammer sessions remain armed, not cancelled.
+- Accepted scheduler PID 2819571, pause controller PID 2961453 and observer PID 2755012 are live. Watcher
+  `b1r8jmeq0` / PID 2991284 is live with a 9.9-second-old beacon; no duplicate watcher or sampler is started.
+  The existing `bwxuxx2fm` headroom waiter remains live and cannot launch a job itself.
+- Full cgroup charge is 173,025,517,568 bytes (173.03 GB), still over 150 GB. This is a charge-only observation;
+  no new complete PSS result is claimed. Disk reports 4.8 TiB available, safely above the local floor. No RL run
+  completed during this check and no replay directory is deleted. HOLD stays; no protocol, seed, native threshold,
+  healthy trainer, remote host infrastructure or deployment is changed.
+
+### 2026-10-11 — Completed memory window, complete lossless hammer pause and admitted native suite (00:13–00:52)
+
+- Original four-hour observer completed exit 0: actual window 2026-10-10 20:12:40 to 2026-10-11 00:12:59 +09:00,
+  14,419.60 seconds, 102 samples. Original JSONL/summary remain `runs/setup/memory-window-20261010-2015*`.
+  Maximum full charge 227,567,730,688 bytes (227.57 GB); maximum aggregate owned PSS 188,319,444,992 bytes
+  (188.32 GB), on a different sample. Per-run sampled PSS peaks range 9.15–10.77 GB; largest D4 seed 1 hammer,
+  latest logged metric step 30k, not independent phase identification. Actual median timestamp gap 142.59 seconds
+  (120-second nominal wait plus scan); maximum gap 161.94 seconds. One ProcessLookupError at 23:38:37, PID 2969774.
+  No lifetime/evaluation-exclusive peak, allocator-exclusive attribution, absent CUDA pinning or native admission
+  is inferred. PSS contains mapped shmem/file pages; full charge includes cache. COMPUTE_PLAN records full results.
+- All ten hammer comparisons are independently proven lossless: nine at 40k, D2 seed 0 at 50k. Every original
+  proof/registry matches its numbered checkpoint SHA-256; both archives CRC-valid, all 718 normalized payload
+  hashes equal latest, last logged step exact, entire owned session gone. Final D1 seed 0 checkpoint SHA-256:
+  `3f9f2b2194de72b2f7802853dcb8bd609c9bcde611bca14e4b33d8d89295fc0a`. All original 100k stops/200k schedules,
+  seeds, six workers/prefetch two and required full evaluations remain. Controller `bjhmh9q29` completed exit 0;
+  log `runs/setup/checkpoint-pause-hammer-20261010-2325.log`, per-run proofs and registry retained. No cancellation,
+  resume, migration, extra signal or invented infrastructure/restart exemption. Ten pick-place runs continue.
+- Readiness waiter `bwxuxx2fm` completed with charge 127.45 GB and host available 146.72 GB; it launched nothing.
+  Actual accepted durable GPU query verified all ten visible CUDA processes in the exact owned pick-place sessions,
+  no foreign processes: `runs/setup/portability-native-preflight-20261011-0040.json`. The real guard checker passed
+  unchanged; complete 210-file candidate source map, accepted-base Git identity and entry/queue hashes match.
+- Two initial accounting scans retained honestly as incomplete at `runs/setup/portability-native-memory-20261011-0043.json`
+  and `...-0046.json`; two short-lived processes disappeared in each. No job was dispatched from either result.
+  The new 00:50 snapshot verifies every live end-of-scan PID identity, backfills new PIDs and rejects missing/reused
+  live identities. It had zero scan errors/missing live PIDs and retains two measured exited PIDs in the conservative
+  PSS sum (95,702,760,448 bytes), not a cache subtraction or ignored live memory. Maximum before/after full charge
+  128,152,104,960 bytes; adding the exact 15,000,000,000-byte suite reservation gives 143.15 GB below 150 GB.
+  Host available 176,720,408,576 bytes exceeds 60 GiB +15 GB. Original artifact `...-0049.json` records the non-atomic
+  snapshot method and limits; no all-times cap guarantee is claimed.
+- **Actual local native-suite launch 00:50:01 +09:00**, sole scoped job
+  `verify-native-portability-200e5e6-local-20261010`, detached attempt 1, PID 3031654, GPU 4 UUID, via unchanged
+  accepted main scheduler and sole registry. Global campaign HOLD remains; OOM score 0, no automatic retry.
+  Launcher provenance is accepted main 200e5e6; the actual seven-file candidate suite fingerprint map is separately
+  authoritative and must exactly match before/after/future integrated source. Complete unfiltered suite is running;
+  startup confirms actual UUID guard and test execution, not acceptance. Original JSON/log/JUnit will be under
+  `.worktrees/review/runs/acceptance/portability-200e5e6-20261010/code/runs/native-acceptance/evidence/`.
+- At 00:52 native session is alive, watcher `bh91jxnaq` / PID 3026196 has a 5.9-second beacon, full charge is
+  131,411,144,704 bytes, and main HOLD remains. Watcher replaced completed `bczjqakzb` once after final hammer exit;
+  native-result waiter `b23nd555i` is readiness-only, with no retry or signalling. No duplicate controller/observer.
+  Remote full suite is still failed, four isolation gates passed, v2 numerics have not run; no integration,
+  clean deployment or scientific admission is inferred. Prospective seed policy and all decision rules stay intact.
+
+### 2026-10-11 — Native verification stall diagnosed; permission-layer recovery block (02:08–02:12)
+
+- Watcher `bh91jxnaq` / PID3026196 and accepted scheduler PID2819571 are alive with expected commands.
+  At 02:12:15 all ten pick-place trainers match owned sessions, advance since the previous sample, and have logs
+  3.7–19.6 seconds old without inspected traceback; logged steps53,250–64,250. Hammer group remains held unchanged.
+  Full charge130,292,334,592bytes (130.29GB), hostavailable181,700,411,392bytes (181.70GB), mainHOLD true;
+  watcher beacon17.0seconds. Evidence `runs/setup/campaign-health-20261011-0214.json` records actual02:12:15,
+  not the filename suffix. Charge-only observation, not new complete PSS or admission. Disk4.8TiBfree; no RL finish
+  or replay deletion during this check.
+- Sole native candidate job has no final report/JUnit/exit and no new output since01:10:33. Its partial log contains
+  630dots/oneF, not complete counts. Owned parent3031655 has two DataLoader children; captured fd2 contains four
+  original `OSError: AF_UNIX path too long` tensor feeder traces. Independent read-only diagnosis corroborates
+  115-byte cache.pymp directories before the listener filename and localizes the wait to the final worker regression.
+  No unproven thread-pool explanation or early-failure cause is adopted.
+- Original captured stderr was preserved byte-for-byte at
+  `runs/verify-native-portability-200e5e6-local-20261010/stall-captured-stderr.log`, SHA-256
+  `8bfd4a7d431e2c1d9fd186e6c37d82cdc2d4a7e29559a0099dfc00d13f3ec268`.
+  `stall-diagnostic.json` records original partial-log hash, complete unchanged210method-source hashes and identity.
+- Attempted SIGINT to exact owned parent3031655 (startticks416876204/session3031654) was **denied by the permission
+  layer before execution**. No signal, process teardown, alternate interpreter/agent/host route, automatic retry or
+  duplicate native job was used. The kernel diagnostic stack/syscall reads were also unavailable and not bypassed.
+  Exact blocked operation `signal.pidfd_send_signal(fd, signal.SIGINT)` needs explicit workload-interruption approval.
+- Task33 remains blocked. A future attempt must use a shorter physical authorized candidate/cache path, identical
+  frozen method sources/native assertions and original thresholds, after complete old-session teardown and fresh
+  budget/GPU admission. The separate earlyF must be diagnosed from real failure evidence. Existing native waiter
+  `b23nd555i` and watcher are not duplicated. No integration, push, deployment, numerical acceptance or scientific
+  launch; all registered campaign configurations, seeds, stops, schedules and prospective seed rules remain.
+- Subsequent automated notification: native-result waiter `b23nd555i` exited1 with
+  `TimeoutError: Native suite exit not observed in90minutes; no relaunch or process signal`. Original waiter output
+  confirms its bound, not a native result. No replacement waiter, process signal or permission-denial retry.
+  The workload interruption remains blocked pending genuine explicit user approval; no live-health update is
+  inferred from the waiter notification alone.
+
+### 2026-10-11 — First item-1 100k completion and admitted standalone full-split evaluation (06:52–06:58)
+
+- `i1-d2-seed1-pick-place` completed attempt1, exit0, at06:52:31+09:00. Original training stopped at100k on its
+  200k schedule with seed1, six workers/prefetch2, unchanged C/D2 configuration and both final in-training strides.
+  Its entire original session2423623 is gone. Numbered100k checkpoint SHA-256
+  `126ecbc82394b9523695952ec4ef07cec5f4eb00b318891e1f3a006c90b8986e`; latest has a different container hash,
+  but both archives are CRC-valid and all718 normalized members match. Nonexecuting pickletools inspection proves
+  step100000. Completion record `runs/setup/item1-first-completion-20261011-0652.json`; in-training validation
+  does not decide item1. Nine other pick-place trainers and all ten held hammer comparisons remain required.
+- Completed watcher `bh91jxnaq` emitted the genuine completion event and was rearmed exactly once as tracked
+  background task `b3z9idtrr`, PID3346557, using the exact absolute main `watch_events.py --once` command.
+  At06:58 the replacement matches its command and beacon is17.45seconds old. No duplicate watcher or native waiter.
+- The already-registered `fulleval-i1-d2-seed1-pick-place-100k` definition, arguments, numbered checkpoint,
+  original trainer dependency, seeds and protocol were copied unchanged into a one-job operational queue
+  `runs/setup/item1-fulleval-d2-seed1-pick-place-20261011-0655.yaml`. All20 original full-split jobs already exist;
+  no second job ID or new comparison was registered. Global `experiments/HOLD` remains to prevent legacy hammer
+  pause replay. Accepted main200e5e6 and all210 fingerprints exactly match the original625/625 passing suite,
+  including its complete before/after maps; no source/test/threshold/production-scheduler changes were made.
+- Fresh06:57 accounting covered all141 end-live PID identities, with no missing live PID or scan error. Five
+  short-lived PID lookup races are explicitly retained as transient observations, not silently omitted live PSS.
+  Conservative PSS89,258,494,976bytes; full before/after charge104,192,905,216/105,415,507,968bytes.
+  Accounted105.42GB plus unchanged12GiB reservation12,884,901,888bytes equals118,300,409,856bytes<150GB;
+  hostavailable128,370,339,840bytes exceeds reservation plus60GiB reserve. All cache/kernel/background charge
+  included, no double-added PSS components. Actual GPU ownership/limits and disk floor checked. Non-atomic
+  admission snapshot, not lifetime peak or all-times guarantee: `runs/setup/item1-fulleval-admission-20261011-065706.json`.
+- Actual detached scheduler launch06:57:07: `fulleval-i1-d2-seed1-pick-place-100k`, attempt1, session/PID3348664,
+  GPU5UUID, via unmodified accepted `jobs.tick(queue_path=queue)` and the sole main registry with no resource override.
+  Original dispatch record `runs/setup/item1-fulleval-dispatch-20261011-065706.json`. At06:58 direct startup verifies
+  the real GPU guard, assigned UUID in the owned session, checkpointstep100000 and full validation windows
+  {2:1996,6:1916}; no inspected traceback or exit. Start evidence `runs/setup/item1-fulleval-start-20261011-0657.json`.
+  Current charge112,110,047,232bytes/hostavailable128,034,525,184bytes. Disk remains4.8TiBfree; no RL completion
+  or replay deletion. Evaluation is not finished, and no item1 decision is inferred.
+- The stalled native candidate remains unaccepted and its fresh interruption denial remains binding: no signal,
+  alternate route, retry or duplicate suite. No source integration, commit/push, remote deployment, cross-host
+  acceptance, remote scientific launch, hammer resume or migration occurred. Existing scientific decision rules,
+  original schedules/seeds and prospective seed policy remain unchanged.
+
+### 2026-10-11 — Two verified item-1 full-split results and three further admitted evaluations (07:06–07:23)
+
+- Original `fulleval-i1-d2-seed1-pick-place-100k` completed exit0 at07:06:53.498753; original
+  `fulleval-i1-d0-seed1-pick-place-100k` completed exit0 at07:16:36.146255. Each original summary has step100000,
+  full validation windows1996/1916 and batches125/120 at strides2/6. Entire original evaluator sessions3348664
+  and3360837 are independently gone. Original console metrics exactly equal the summary's metric dictionary;
+  the file additionally contains step and num_batches. An initial assistant diagnostic incorrectly expected those
+  metadata fields in the console JSON; the reader was corrected, not the original outputs or any scientific check.
+- Original summary SHA-256 hashes: D2seed1 `fbb9d3c448ae33755138e40d9a9a2ea3285aea7d3af644fbbdde0e60181d0532`;
+  D0seed1 `b9dfc3f4f6dc54557e94d3198f69f9c0230a1c0720a0673ab399717533426e9b`. Summary/log/config/checkpoint
+  hashes, exact registry exits, guarded full-window startup and session teardown are preserved in
+  `runs/setup/item1-fulleval-{d2,d0}-seed1-completion-20261011-072046.json`. No original output was rewritten.
+  D0seed1's unchanged original evaluation was admitted at07:09:37, accounted97.67GB plus12GiB equals110.56GB;
+  complete end-live coverage, no scan errors, three transient PID disappearances, actual host/GPU/disk/source gates
+  passed. Evidence `runs/setup/item1-fulleval-d0-seed1-{admission,dispatch}-20261011-070937.json`; actual scheduler
+  launch07:09:37.572491, attempt1, GPU5UUID, session3360837, original console full-window start07:09:41.
+- Raw completed full-split values below use registered motion stride6/pair0→2. These are two individual
+  seed/task observations, not a variant comparison, winner, margin calculation or item-1 decision; all20 results
+  remain required. Existing margin formula, thresholds, seeds and schedules stay unchanged.
+
+| pick-place run at100k | PSNR@s6 (dB) | moving PSNR@s6 (dB) | dynamic share moving@s6 | relative EPE02@s6 | moving EPE02@s6 (mm) |
+|---|---:|---:|---:|---:|---:|
+| D2 seed1 | 25.310001 | 17.788283 | 0.02722294 | 0.99000076 | 37.223818 |
+| D0 seed1 | 25.787666 | 18.499751 | 0.06705575 | 0.99997943 | 38.041745 |
+
+- Three more original trainers completed100k/exit0: D0seed0 at07:15:34.785826, D2seed0 at07:18:07.851228,
+  D4seed0 at07:20:40.975430. Each unchanged200k schedule/100k stop/seed0/sixworkers/prefetch2 is verified;
+  train/eval configs equal except run metadata, both checkpoint archives CRC-valid and all718 normalized payload
+  members equal atstep100000, entire original trainer sessions gone. Exact numbered/latest hashes are in the
+  new admission record; original registry exits and final in-training summary hashes are in the startup record.
+  Five pick-place trainers are now complete, five continue, and all ten hammer trainers remain checkpoint-held.
+- Those three already-registered standalone jobs were copied unchanged into operational queue
+  `runs/setup/item1-fulleval-pick-place-seed0-d0-d2-d4-20261011-072222.yaml`; no new scientific jobID/protocol.
+  At07:22:26 a fresh complete end-live PID/PSS scan has zero missing live identities/errors, with three explicitly
+  recorded transient PID disappearances. Accounted full charge68,636,971,008bytes plus all three12GiB reservations
+  (38,654,705,664bytes combined) equals107,291,676,672bytes<150GB. Hostavailable225,104,248,832bytes exceeds
+  all reservations plus60GiB; real GPU ownership/limits, disk floor and accepted200e5e6/210-source625-pass maps
+  verified. Full cache/kernel/background charge retained, no double-counted PSS; non-atomic snapshot, not lifetime
+  peak or all-times guarantee. Evidence `runs/setup/item1-fulleval-seed0-batch-admission-20261011-072226.json`.
+- Unmodified accepted `jobs.tick` with the sole main registry and no resource overrides actually launched all
+  three jobs07:22:26–27, attempt1, GPU5UUID: D0seed0 session3380163, D2seed0 session3380164, D4seed0 session3380173.
+  Original dispatch evidence `runs/setup/item1-fulleval-seed0-batch-dispatch-20261011-072226.json`; direct07:22:58
+  startup verified genuine guards, exact one-UUID environments and full validation windows{2:1996,6:1916} at100k.
+  `runs/setup/item1-fulleval-seed0-batch-start-20261011-072258.json` records original trainer exits, owned evaluator
+  identities and startup hashes. Charge87,867,441,152bytes/hostavailable171,587,358,720bytes at that observation;
+  charge-only poststart evidence is not a second completePSS/admission. Two evaluations complete, three running,
+  fifteen await original dependencies/admission. No standalone result from the new three is inferred from startup.
+- Tracked watcher completions were handled once each: `b3z9idtrr`→`bbrosvuij`→`b049at30u`→`bvsx17qwx`→
+  `babiavl62`→`bcwjom6h3`. Each rearm used the exact absolute main command as its own background call. Latest
+  `bcwjom6h3`/PID3379467 is alive with the exact command, one watcher process and6.38second beacon at07:22:58;
+  daemon2819571 remains unchanged. The07:20:46 health snapshot honestly records the previous watcher already gone
+  at its genuine event boundary, before that replacement; no duplicate monitor or native result waiter.
+- `runs/setup/campaign-health-followup-20261011-072046.json` verifies the five remaining trainers advancing to
+  88,100–99,550steps with owned live sessions and3.6–28.8second log ages, no inspected traceback; all ten original
+  held hammer sessions are gone. Disk5,207,119,802,368bytes free, no RL finish or replay deletion. Native launcher
+  and parent retain exact identities but remain stalled, without finalJSON/JUnit/exit; fresh interruption denial
+  untouched. GlobalHOLD stays. No source integration, commit/push, remote deployment/science, v2numerics,
+  hammer resume/migration, cancellation, shortened schedule or reseeding occurred.
+
+### 2026-10-11 — D1seed0 100k completion and admitted full-split startup (07:24–07:27)
+
+- `i1-d1-seed0-pick-place` completed exit0 at07:24:15.027527, step100000 on original200k schedule, seed0,
+  sixworkers/prefetch2. Original config unchanged and equals standalone config except run metadata; entire
+  session2413367 gone. Both checkpoint archives CRC-valid, all718 normalized members equal atstep100000.
+  Numbered SHA-256 `50cbc92b2ddce15c2a0c5fc12712530c6bb4855ca8b5099bd48ed85f3e948818`;
+  latest SHA-256 `5868f888fc8b6fb0e9dfde7b63445859fbdac93d7bcab1d530b26b6108d7a83e`.
+- The existing original `fulleval-i1-d1-seed0-pick-place-100k` was copied unchanged into a one-job operational
+  queue; no duplicate jobID, dependency/config/seed/schedule/evaluation change. Fresh07:26:11 complete end-live
+  PID/PSS coverage has zero missing identities/errors, with two explicit transient PID disappearances.
+  Accounted75,877,339,136bytes plus12GiB reservation12,884,901,888bytes equals88,762,241,024bytes<150GB;
+  hostavailable184,460,763,136bytes exceeds reservation plus60GiB. Actual GPU ownership/limits, disk floor and
+  accepted200e5e6/210-source map/original625-pass evidence verified. All cache/kernel/background charge retained,
+  PSS components not double-added; non-atomic snapshot, no lifetime/all-times claim. Admission/provenance at
+  `runs/setup/item1-fulleval-d1-seed0-admission-20261011-072611.json`.
+- Unmodified accepted scoped `jobs.tick`, sole main registry, no resource override, globalHOLD retained:
+  actual launch07:26:11.353785, attempt1, GPU5UUID, session3385436. Original dispatch evidence
+  `runs/setup/item1-fulleval-d1-seed0-dispatch-20261011-072611.json`. Direct07:26:52 verifies genuine GPU guard,
+  exact one-UUID owned session, checkpoint100000/full windows{2:1996,6:1916}, no inspected traceback/exit;
+  `runs/setup/item1-fulleval-d1-seed0-start-20261011-072652.json`. Charge82,983,542,784bytes,
+  hostavailable174,542,090,240bytes; charge-only poststart observation, not second completePSS/admission.
+- Six pick-place trainers complete; remaining four advance to89,050–99,300steps with7.0–15.4second log ages,
+  owned live sessions and no inspected traceback. Two original standalone results complete/verified, four original
+  evaluations running, fourteen await dependencies/admission; ten hammer comparisons remain checkpoint-held.
+  No item1 decision or change to registered margins/thresholds/seeds/protocol. Original native candidate remains
+  stalled with exact launcher/parent identities/no exit, interruption denial untouched; no signal/retry/duplicate.
+- Completed watcher `bcwjom6h3` emitted the actual D1 completion and was rearmed once as `b20v8j9i3`, PID3384819.
+  Exact absolute main command, one watcher process and6.27second beacon verified07:26:52; scheduler2819571 live.
+  `df -h`:4.8TiBfree (5,202,564,063,232bytes), no RL finish/replay deletion. No source integration, commit/push,
+  remote deployment/science/v2numerics, hammer resume/migration, cancellation, shortened schedule or reseeding.
+
+### 2026-10-11 — D4seed1 startup, five verified full-split completions and admitted D3 pair (07:42–08:11)
+
+- `i1-d4-seed1-pick-place` completed100k/exit0 at07:42:40.739649 on its original200k schedule/seed1/
+  sixworkers/prefetch2. Entire session2476889 gone; both checkpoint CRCs and all718 normalized members verified.
+  Numbered SHA-256 `0f1941fa9d8fde4c06d6a54c5084526c0431b0ab8b5630195fc280dd60e3139f`,
+  latest `900bc55ee32292cecabfc840b8d028fee8f70f9bb91a6ef6ff459a26742c2b9f`.
+  Original train/eval configurations match except run metadata. Fresh07:45:01 complete end-live PID/PSS admission
+  has zero missing identities/errors, two explicit transient disappearances, accounted73,515,708,416bytes plus
+  12GiB12,884,901,888bytes=86,400,610,304bytes<150GB; hostavailable185,984,765,952bytes exceeds reservation
+  plus60GiB. Actual GPU/disk/accepted210-source625-pass gates passed; original definition retained.
+- Existing `fulleval-i1-d4-seed1-pick-place-100k` launched07:45:02.126187, attempt1, GPU4UUID/session3405564.
+  Direct07:45:45 verifies actual one-UUID owned session, genuine guard, checkpoint100000/full windows1996/1916,
+  no startup traceback/exit. Charge80,384,847,872bytes/hostavailable183,723,835,392bytes is charge-only poststart,
+  not second admission. Original admission/dispatch `runs/setup/item1-fulleval-d4-seed1-*-20261011-074501.json`,
+  startup `runs/setup/item1-fulleval-d4-seed1-start-20261011-074545.json`; result later completed07:53:56.
+- Five additional original full-split evaluations independently verified at07:54:53: step100000, full batches
+  {2:125,6:120}/windows{2:1996,6:1916}, original console/file metric equality, original config/checkpoint/log hashes,
+  genuine guard/full-window starts, exit file/registry0 and complete owned-session teardown. Complete evaluation
+  launch source maps equal the original accepted625-pass suite. Originals remain unchanged. Evidence
+  `runs/setup/item1-fulleval-{d0,d1,d2,d4}-seed0-completion-20261011-075453.json` and
+  `runs/setup/item1-fulleval-d4-seed1-completion-20261011-075453.json`.
+
+| Pick-place standalone result | Actual exit (+09:00) | Original summary SHA-256 |
+|---|---|---|
+| D0 seed0 | 07:49:19.675499 | `db262335b9deebbd5b72a079fbdcdddb12eeb47c94bed0a7821199dc6236ab33` |
+| D1 seed0 | 07:51:22.236490 | `31054a23ec9c6881b608abc273cf716a914d0573144f60081384c8e2cb0d1525` |
+| D2 seed0 | 07:51:22.234634 | `15340ef071d5dd192601d12106ab0e7a18bcea5843a0517053ee8d9592a55c9a` |
+| D4 seed0 | 07:50:51.596469 | `8022f587139cc20f3215e0ed4c6171e1e6458f0423c587817db725469ca0aa5c` |
+| D4 seed1 | 07:53:56.735614 | `7711f3539f7d892487dfbb2fc17dd652c2d7654ba4601ed5350ca4612d38d7b9` |
+
+Raw registered stride6/pair02 observations only; no winner, variant decision or changed threshold:
+
+| Variant/seed | PSNR | Moving PSNR | Dynamic alpha share moving | Relative EPE02 | Moving EPE02 (mm) |
+|---|---|---|---|---|---|
+| D0 seed0 | 25.72338553808925 | 18.68371968762628 | 0.052145841550988406 | 1.000076276319449 | 38.04111501175424 |
+| D1 seed0 | 25.82855891185912 | 19.038728665757453 | 0.07833080151066926 | 0.9785498843987317 | 36.01119475669792 |
+| D2 seed0 | 25.722008018254737 | 18.007564088667948 | 2.116271620604216e-09 | 1.0 | 38.04306681384049 |
+| D4 seed0 | 25.352031727673367 | 18.339833445932673 | 1.5905642664902153e-11 | 1.0 | 38.04306681384049 |
+| D4 seed1 | 25.273062751785947 | 17.692760938885566 | 1.1898630053462666e-06 | 0.9999998636350634 | 38.04306555039492 |
+
+- D3seed1 trainer completed07:52:24.888463; D3seed0 completed08:06:40.229655. Both original100k checkpoints/
+  200k schedules/seeds/sixworkers/prefetch2/configs and complete sessions2423625/2423624 teardown verified.
+  Both archive CRCs valid and all718 normalized numbered/latest members equal at100000. Their original legacy
+  trainer launch events contain no commit/source snapshot; evidence retains that absence, not invented provenance.
+  Numbered hashes: seed0 `b3e451fc59b0bab90328272b436eecfdbbc9c0e049934222e076b7f9585bfddb`,
+  seed1 `3a21dee11cf1c171dac3243dc0d92c85bdb8ade9d7b78f2385f6449337f555e6`.
+- The two existing D3 full-split jobs were copied unchanged into an exact scoped operational queue. Fresh08:09:56
+  complete end-live PID/PSS coverage has zero missing identities/errors. Accounted32,703,467,520bytes plus both
+  12GiB reservations25,769,803,776bytes=58,473,271,296bytes<150GB; hostavailable301,770,792,960bytes exceeds
+  both reservations plus60GiB. Actual GPU ownership/limits/disk/accepted200e5e6 complete210-source/original625-pass
+  maps verified. Full charge/cache/kernel/background retained, PSS not double-added; non-atomic snapshot, no lifetime
+  peak or all-times guarantee. `runs/setup/item1-fulleval-d3-both-seeds-admission-20261011-080956.json`.
+- Unmodified accepted scoped `jobs.tick`, sole registry/no resource overrides/globalHOLD retained, launched seed0
+  08:09:56.599436/session3431484 and seed1 08:09:56.601989/session3431485, attempt1/GPU5UUID. Dispatch
+  `runs/setup/item1-fulleval-d3-both-seeds-dispatch-20261011-080956.json`; direct08:10:56 genuine one-UUID guards,
+  checkpoint100000/full windows1996/1916, no inspected traceback/exit, and complete active-job health at
+  `runs/setup/item1-fulleval-d3-both-seeds-start-20261011-081056.json`. Charge46,346,731,520bytes/hostavailable
+  327,562,141,696bytes is charge-only poststart, not new admission; disk5,206,874,460,160bytes (`df -h`:4.8TiB).
+- Nine pick-place trainers completed; only D1seed1 remains, advancing to96,150 with2.61second log age. Seven of20
+  standalone results verified, two D3 evaluations running, eleven await dependencies/admission. D0 margins still
+  must be recorded before comparing variants; all20 results required before an item1 decision. All ten hammer runs
+  remain checkpoint-held: charge plus full-group139,586,437,120byte reservations=185,933,168,640bytes>150GB.
+- Watchers b20v8j9i3/bsloddxym/bw2g8vjcr/bwsr8gs72/be3rysqh1 each completed on genuine registered events and were
+  each rearmed once. Current tracked `bsly0028t`/PID3430038 is the sole exact-command watcher, beacon18.09seconds;
+  daemon2819571 retains its identity. Native3031654/3031655 retain original identities, log420.38minutes old,
+  finalJSON/JUnit/exit absent; the interruption denial remains binding. No signal, alternate route, native retry,
+  duplicate suite, source integration/commit/push/deployment, remote science/v2numerics, hammer resume/migration,
+  cancellation, shortened schedule, reseeding or replay deletion.
+
+### 2026-10-11 — D3 full-split completions, post-event health and D0-only margins (08:14–08:17)
+
+- Both original D3 standalone evaluations completed exit0 on attempt1. Independently verified at08:16:39:
+  original registry exits and exit files, step100000, full windows{2:1996,6:1916}/batches{2:125,6:120}, genuine
+  assigned-UUID guards/full-window console starts, exact equality of every console metric with its original summary
+  (excluding only producer-added step/num_batches), accepted200e5e6 complete launch source map/original625-pass
+  evidence, and complete sessions3431484/3431485 teardown. Original summary/log/config/numbered checkpoint hashes
+  preserved in `runs/setup/item1-fulleval-d3-seed{0,1}-completion-20261011-081639.json`; no originals modified.
+
+| Pick-place standalone result | Actual exit (+09:00) | Original summary SHA-256 |
+|---|---|---|
+| D3 seed0 | 08:14:49.105455 | `ae6ab7d1179aa10e059fa0afdfc9da07c2816907071ca1ec7a3e4e18a0838423` |
+| D3 seed1 | 08:14:49.106129 | `bc6c9f614c7f0b46a181715364dec597ee9d354c751d2c87da8cf7e6edf3d370` |
+
+Raw stride6/pair02 observations only; no comparison or winner:
+
+| Variant/seed | PSNR | Moving PSNR | Dynamic alpha share moving | Relative EPE02 | Moving EPE02 (mm) |
+|---|---|---|---|---|---|
+| D3 seed0 | 25.597991736298564 | 18.86239476697198 | 0.08028560903837531 | 0.9684705873344823 | 34.99612020214034 |
+| D3 seed1 | 25.177300395447926 | 17.64513816395025 | 0.09658589735376634 | 0.9796309243633435 | 35.68360214362344 |
+
+- The initial08:14 diagnostic showed D1seed1 advancing96,800, both D3 parents doing CPU work, and the single live
+  watcher. The subsequent saved-health attempt hit its single-live-watcher assertion at the genuine completion
+  boundary and wrote no health artifact. Actual tracked watcher `bsly0028t` output reported both D3 completions;
+  the exact absolute main watcher was rearmed once as `b8yrtq7ru`, without a duplicate or native recovery action.
+- Fresh `runs/setup/campaign-health-20261011-081639.json` covers every active registry job after those events.
+  Nine pick-place trainers complete; D1seed1 alone advances97,500, log9.12seconds old/no inspected traceback,
+  original wrapper/session2423619/start412705288 and parent2423622/start412705289 retained. Nine of20 standalone
+  results independently verified, none running, eleven pending original dependencies/admission; no active remote
+  job. Watcher `b8yrtq7ru`/PID3439778/start419548279 is the sole exact-command watcher, beacon16.83seconds;
+  daemon2819571 retains session/start415518078. All ten held original hammer sessions remain gone.
+- Full cgroup charge32,329,625,600bytes, hostMemAvailable344,853,987,328bytes, diskfree5,204,974,952,448bytes.
+  This is charge-only/non-atomic operational health, not completePSS or a new admission/lifetime/all-times proof.
+  Unchanged full hammer reservations139,586,437,120bytes plus charge=171,916,062,720bytes>150GB, so no full-group
+  local resume. Genuine GPU query shows only original native parent on GPU4 and original trainer parent on GPU5.
+- Native3031654/3031655 retain exact original identities, log426.10minutes old, original finalJSON/JUnit/exit absent.
+  The confirmed AF_UNIX stall and exact-parent interruption denial remain binding. No signal/alternate route/retry/
+  duplicate suite/replacement native waiter, source integration/commit/push/deployment, remote scientific launch/
+  v2numerics, hammer resume/migration, cancellation, schedule change, reseeding or replay deletion. GlobalHOLD stays.
+
+#### Pick-place D0 reference margins recorded before any variant comparison
+
+Recorded08:16:43 from only the independently verified original D0 seed0/seed1 full-split100k summaries. Both input
+summary hashes were rechecked against the completion proofs, both have full batches125/120, and original paired
+configs differ only by run metadata and the registered seed. No variant result was read by the margin calculation;
+no variant mean, delta, gate or winner was calculated. This applies the already registered formula and floors,
+not a new threshold selected from variant results. Eleven item-1 decision metrics are distinguished from three
+additional diagnostic-only margins; none of the diagnostic rows adds an item-1 gate. Hammer-specific margins
+remain unavailable until its original reference pair completes; these pick-place margins are not substituted.
+
+- Absolute margin: `max(abs(D0_seed0 - D0_seed1), registered_floor)`.
+- Relative Chamfer margin: `max(abs(D0_seed0 - D0_seed1) / ((D0_seed0 + D0_seed1) / 2), 0.05)`.
+- Non-motion readers average strides2/6; Chamfer also averages the two directionalp90 values. Motion and hand-velocity
+  readers use stride6, with motion pair0->2. Existing registered readers/floors in unchanged `analysis/review_rules.py`.
+- Full precision values, reference means/spreads/floors/formulas and input/config/reader hashes are preserved in
+  `runs/setup/item1-d0-pick-place-margins-20261011-081643.json`. Its D0 summary hashes are
+  seed0 `db262335b9deebbd5b72a079fbdcdddb12eeb47c94bed0a7821199dc6236ab33`,
+  seed1 `b9dfc3f4f6dc54557e94d3198f69f9c0230a1c0720a0673ab399717533426e9b`.
+  Display rounding below does not replace the full precision evidence.
+
+| Item-1 decision metric | Reading | D0 seed0 | D0 seed1 | Fixed margin |
+|---|---|---|---|---|
+| Utilisation | mean s2/s6 | 0.588098878960 | 0.587100381551 | 0.02 absolute |
+| Hidden fraction | mean s2/s6 | 0.915585072132 | 0.928671653996 | 0.02 absolute |
+| Visible-only CD-centers symmetric p90 | both directions, mean s2/s6 | 0.159057810903 | 0.159694656730 | 5% relative |
+| Training PSNR | mean s2/s6 | 26.022572720246 | 26.057269687246 | 0.2 dB |
+| Moving PSNR | mean s2/s6 | 18.192986700856 | 18.063602398876 | 0.2 dB |
+| Trajectory PSNR | mean s2/s6 | 22.219449538682 | 21.832482517167 | 0.38696702151532847 dB |
+| Trajectory CD-render symmetric p90 | both directions, mean s2/s6 | 0.023990931921 | 0.029315647902 | 19.97770631307706% relative |
+| Relative EPE02 | s6, pair0->2 | 1.000076276319 | 0.999979430934 | 0.03 absolute |
+| Trajectory retrieval top1 | mean s2/s6 | 0.775716145833 | 0.765407986111 | 0.03 absolute |
+| Trajectory hand-position R² | mean s2/s6 | 0.910362933659 | 0.906991308826 | 0.05 absolute |
+| Trajectory hand-velocity R² | s6 | 0.244898513697 | 0.327079412192 | 0.08218089849556909 absolute |
+
+Diagnostic-only reference margins: floater fraction0.02absolute (mean s2/s6), dynamic alpha share moving0.05absolute
+(s6), moving EPE02 1mm (s6/pair0->2). All20 original standalone results, both task-specific reference-margin sets
+and the unchanged item-1 rule remain required before deciding. Item2/proxies remain dependent; no item-1 decision.
+
+### 2026-10-11 — Final pick-place trainer completion and admitted original full-split evaluation (08:27–08:32)
+
+- `i1-d1-seed1-pick-place` completed exit0 at08:27:32.631833, exactly100000 on its original200000-step schedule.
+  Original seed1/batch16/BF16/sixworkers/prefetch2, strides2/4/6 and validation2/6, three frames, C synthetic views,
+  far mask, occlusion1.0/margin0.02/depth-gradient0.5 retained. Original standalone configuration equals training
+  configuration except run metadata; entire original session2423619 gone. Both checkpoint archive CRCs valid,
+  all718 normalized payload members equal, nonexecuting pickle inspection proves step100000 in each archive.
+  Numbered checkpoint SHA-256 `3dae0436e09dd886b653e033f1d095ccab95ecbec5b062b342b01c8fcad1fec7`;
+  latest `dc764b162641b0f455cc1e6b3510a8d1bcd5268285879e0d91822ab02ba1cc15`.
+  Original legacy trainer launch contains no commit/source snapshot; that absence remains explicitly preserved.
+- All ten pick-place trainers now completed their registered100k stop, with no cancellation, shortened schedule
+  or new seed. Ten hammer trainers remain losslessly checkpoint-paused/held. Nine original standalone results
+  independently verified; the final pick-place evaluation is unfinished. All20 results remain required for item1.
+- Existing `fulleval-i1-d1-seed1-pick-place-100k` job dictionary/dependency/script/arguments copied unchanged to
+  `runs/setup/item1-fulleval-d1-seed1-pick-place-20261011-083012.yaml`; no new scientific ID or duplicate attempt.
+  Fresh complete cgroup end-live PID/start-tick/PSS admission covers51 live identities with zero missing identities
+  or substantive errors; three short-lived disappeared PIDs explicitly retained. Conservative accounted footprint
+  23,738,314,752bytes plus12GiB reservation12,884,901,888bytes=36,623,216,640bytes<150GB. HostMemAvailable
+  291,632,754,688bytes exceeds reservation plus60GiB, active ramp reservation0. Genuine GPU ownership/limits/disk
+  floor, original report SHA/original625-pass zero-failure/error/skip counts and unchanged accepted200e5e6 complete
+  210-source maps passed. Full charge/cache/kernel/background retained, PSS not double-added; departed measurements
+  retained; non-atomic snapshot, no lifetime peak/all-times guarantee. Admission/checkpoint/config provenance in
+  `runs/setup/item1-fulleval-d1-seed1-admission-20261011-083012.json`, fsynced before scheduler dispatch.
+- Unmodified accepted `jobs.tick(queue_path=exact scoped original queue)`, sole main registry/shared lock, genuine
+  resource queries/no overrides, globalHOLD retained. Dispatch recheck charge23,738,253,312bytes, unchanged sources,
+  boot/native identities/no native exit/HOLD/job state verified. Actual launch08:30:14.227601, attempt1,
+  GPU5UUID/session3450316, original accepted complete source snapshot. Original dispatch record
+  `runs/setup/item1-fulleval-d1-seed1-dispatch-20261011-083012.json`.
+- Genuine guard/full-window startup logged08:30:17; independently verified08:31:08.905296: original checkpoint
+  step100000/windows{2:1996,6:1916}, actual owned session/one assigned UUID, no inspected startup traceback/exit.
+  `runs/setup/item1-fulleval-d1-seed1-start-20261011-083108.json` covers every active registry job: only this original
+  evaluator and the previously diagnosed blocked native stall. Genuine GPU query sees evaluator parent3450317 on
+  GPU5 and native parent3031655 onGPU4. Nine of20 standalone results verified, one running, ten pending hammer
+  dependencies/admission; no active remote job. This startup is not a completed result or a second admission.
+- Completed watcher `b8yrtq7ru` output read: real D1seed1 trainer JOB_COMPLETED event. Rearmed exactly once through
+  the absolute main background command as `bu332l3jl`; sole exact-command watcherPID3449271/start419626277 and
+  5.65second beacon verified08:31:08, daemon2819571 unchanged. All ten held hammer original sessions remain gone.
+  Poststart full cgroup charge30,435,794,944bytes/hostMemAvailable282,727,247,872bytes/diskfree5,208,575,184,896bytes
+  is charge-only operational health, not completePSS/new admission. Charge plus unchanged full hammer reservations
+  139,586,437,120bytes=170,022,232,064bytes>150GB: no full-group local resume.
+- Native3031654/3031655 retain exact original identities, log440.59minutes old, original finalJSON/JUnit/exit absent;
+  AF_UNIX stall and exact-parent interruption denial remain binding. No signal/alternate route/retry/duplicate native
+  suite/replacement native waiter/source integration/commit/push/deployment/remote scientific launch/v2numerics,
+  hammer resume/migration/replay deletion. Pick-place D0 margins remain frozen unchanged; no variant comparison,
+  item-1 winner or dependent item2/proxy dispatch. GlobalHOLD retained; schedules/seeds/thresholds unchanged.
+
+### 2026-10-11 — All ten pick-place full-split results preserved; hammer budget still blocks (08:34–08:38)
+
+- Final original `fulleval-i1-d1-seed1-pick-place-100k` completed08:34:40.882420, registry/exit-file0, attempt1.
+  Independently verified08:36:52: original step100000/full windows{2:1996,6:1916}/batches{2:125,6:120}, genuine
+  assigned-UUID guard/full-window start, all console metrics exactly equal original summary metrics (excluding only
+  producer-added step/num_batches), accepted200e5e6 complete210-source launch map/original625-pass evidence,
+  original train/eval config equality except run metadata, and entire session3450316 gone. Original numbered
+  checkpoint SHA rechecked against the earlier100k proof; original result/log/config hashes preserved, no edits.
+  `runs/setup/item1-fulleval-d1-seed1-completion-20261011-083652.json`; original summary SHA-256
+  `925743dd8802ee6fa8f8e079ee9f86514a4fdf9c5078ed2b2a068a752e9d588c`.
+
+Raw stride6/pair02 observations only; no variant comparison, winner or adjusted threshold:
+
+| Variant/seed | PSNR | Moving PSNR | Dynamic alpha share moving | Relative EPE02 | Moving EPE02 (mm) |
+|---|---|---|---|---|---|
+| D1 seed1 | 25.563794372972716 | 18.005233448949355 | 0.043602760353091644 | 0.9827788627419474 | 36.232905914086984 |
+
+- Reverified all ten original pick-place standalone results independently: genuine exits/full coverage/config/
+  console-file equality/accepted source provenance/hashes/entire evaluator-session teardown. The previous nine
+  original summary hashes remain unchanged; all ten original pick-place trainers are done. Immutable inventory
+  `runs/setup/item1-pick-place-fullsplit-inventory-20261011-083652.json` retains each raw launch/exit event and
+  original summary/log/config hash, with no variant means/deltas/gates/winner. Ten of20 required results verified,
+  none running; all ten hammer results await the held original trainers. No partial-task item-1 decision.
+- Reference-only pick-place D0 margin artifact and input hashes rechecked unchanged. Hammer-specific margins
+  remain unavailable; no substitution by pick-place values. All20 results/both task-specific margin sets/original
+  item-1 rule still required; item2/proxies remain dependent. No seed/schedule/protocol/threshold change.
+- Actual completed watcher `bu332l3jl` output read: genuine D1seed1 evaluator JOB_COMPLETED event. Rearmed once
+  through the exact absolute main tracked background command as `bw36yh48g`; fresh08:36:52 verifies sole watcher
+  PID3455689/start419667412, exact command/beacon18.14seconds, daemon2819571 unchanged. No duplicate monitor,
+  new sampler or mechanical waiter. `runs/setup/campaign-health-20261011-083652.json` covers every active registry
+  job: only the previously diagnosed blocked native stall; no active scientific job locally or remotely. All ten
+  original held hammer sessions independently remain gone, with checkpoint-pause proofs retained.
+- Full cgroup charge23,718,563,840bytes/hostMemAvailable292,726,284,288bytes/diskfree5,210,003,456,000bytes.
+  Unchanged full hammer reservations139,586,437,120bytes plus charge=163,305,000,960bytes>150GB. The full charge
+  alone already rules out group admission; no completePSS scan/new admission/second dispatch or lifetime/all-times
+  proof is claimed, no cache excluded or PSS double-added. No partial-group resume, checkpoint cancellation,
+  shorter schedule, extra seed or migration. Accepted main sources remain identical to the original625-pass maps.
+- Native3031654/3031655 retain exact original identities, log446.31minutes old, original finalJSON/JUnit/exit absent.
+  Confirmed AF_UNIX stall and denied exact-parent SIGINT remain binding; event notifications are not consent.
+  No signal/alternate route/retry/duplicate native suite/replacement native waiter/source integration/commit/push/
+  deployment/remote scientific launch/v2numerics/RL completion/replay deletion. GlobalHOLD retained against legacy
+  hammer replay. Current continuation is gated by genuine whole-group budget or validated remote capacity and,
+  for native recovery, explicit workload-interruption approval; no gate waived.
+
+### 2026-10-11 — Requested campaign health check; blockers unchanged (09:08–09:17)
+
+- Read PROGRESS and the sole main registry. Fresh `runs/setup/campaign-health-20261011-090904.json` covers every
+  active job: only original native verification; no scientific job active locally/remotely, no newly eligible
+  original dependency. All ten pick-place trainers/results remain done (10/20 required full-split results), all ten
+  held hammer original sessions independently gone/checkpoint-pause proofs retained. No item1 decision/comparison.
+- Exactly one live Python watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command and17.78second
+  beacon verified09:09:04; daemon2819571 retains original session/start415518078. A preliminary substring search
+  included shell wrappers/diagnostic text, not duplicate watcher processes; the preserved check uses exact command
+  equality. Existing tracked watcher remains armed, no rearm/termination/duplicate monitor or new waiter.
+- Full cgroup charge23,724,085,248bytes/hostMemAvailable296,578,805,760bytes/diskfree5,205,032,054,784bytes.
+  Unchanged whole-group hammer reservations139,586,437,120bytes plus charge=163,310,522,368bytes>150GB: charge
+  alone already prevents full-group admission. Charge-only/non-atomic observation, not completePSS/new admission/
+  lifetime/all-times proof; all cache/kernel/background charge included. No partial-group resume or cache exclusion.
+- Native launcher3031654/parent3031655 retain original identities, original log478.52minutes old, finalJSON/JUnit/
+  exit absent. Minor CPU ticking is not suite progress or acceptance. Confirmed AF_UNIX stall and exact-parent
+  `signal.pidfd_send_signal(fd, signal.SIGINT)` denial remain binding; the generic campaign-check request is not
+  explicit interruption approval. No signal/alternate route/retry/duplicate suite/replacement native waiter.
+- Genuine GPU query sees only original native parent onGPU4, GPU5 empty; accepted200e5e6 complete210-source maps/
+  original625-pass report still match. This is not a newly executed suite. GlobalHOLD, frozen pick-place D0 margins,
+  original seeds/schedules/thresholds and all20-result decision requirement remain. No source change/integration/
+  commit/push/deployment/remote science/v2numerics/hammer resume/migration/cancellation/RL finish/replay deletion.
+
+### 2026-10-11 — Requested campaign health check; no newly admissible work (10:08–10:10)
+
+- Fresh `runs/setup/campaign-health-20261011-100943.json` covers every active registry job: only original native
+  verification. No active scientific job locally/remotely or eligible original job. All ten pick-place trainers/results
+  remain complete (10/20 required standalone results); all ten original held hammer sessions independently gone,
+  checkpoint-pause proofs present. No repeated evaluation, variant comparison, item1 decision or item2/proxy launch.
+- Exactly one existing tracked watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command and
+  11.11second beacon verified10:09:43; daemon2819571/session2819571/start415518078 alive. No rearm/duplicate monitor.
+- Full cgroup charge23,733,637,120bytes, hostMemAvailable315,371,159,552bytes, diskfree5,197,498,392,576bytes.
+  Unchanged whole-group reservations139,586,437,120bytes plus charge=163,320,074,240bytes>150GB. Charge alone
+  prevents full-group admission; no completePSS/new admission/lifetime guarantee, no cache exclusion/partial resume.
+- Native3031654/3031655 retain exact original identities; log539.16minutes old, finalJSON/JUnit/exit absent. Original
+  confirmed AF_UNIX stall stderr SHA256 unchanged; CPU ticking is not suite progress or acceptance. Previously denied
+  exact-parent `signal.pidfd_send_signal(fd, signal.SIGINT)` still requires explicit interruption approval; generic
+  campaign checks/automated events are not consent. No signal/alternate route/retry/duplicate suite/native waiter.
+- Real GPU query: native parent3031655 onGPU4/812MiB, GPU5 empty. Main200e5e6 complete210-source maps equal both
+  original625-pass maps/report hash; not a newly executed suite or candidate acceptance. GlobalHOLD/original checkpoints/
+  frozen margins/seeds/schedules/thresholds/all20-result requirement retained. No source integration/commit/push/
+  deployment/remote science/v2numerics/hammer resume/migration/cancellation/RL finish/replay deletion.
+
+### 2026-10-11 — Requested campaign health check; existing blockers persist (11:08–11:09)
+
+- `runs/setup/campaign-health-20261011-110850.json` covers every active registry job: only the original stalled
+  native verification; no active scientific job locally/remotely or eligible original job. Ten pick-place trainers/
+  full-split results complete (10/20 required), ten original held hammer sessions independently gone/proofs present.
+- Exactly one existing tracked watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command,
+  beacon14.61seconds at11:08:50; scheduler2819571 retains original identity. No rearm/duplicate monitor/new waiter.
+- Full cgroup charge23,738,851,328bytes/hostMemAvailable283,784,126,464bytes/diskfree5,199,193,767,936bytes.
+  Unchanged full-group139,586,437,120byte reservations plus charge=163,325,288,448bytes>150GB: charge alone
+  blocks admission, no completePSS/new admission/lifetime guarantee/cache exclusion/partial-group resume.
+- Native3031654/3031655 retain original identities; log598.28minutes old, finalJSON/JUnit/exit absent, confirmed
+  AF_UNIX stall stderr SHA unchanged. CPU ticking is not suite progress/acceptance. Previously denied exact-parent
+  `signal.pidfd_send_signal(fd, signal.SIGINT)` requires explicit interruption approval; generic campaign requests/
+  automated events are not consent. No signal/alternate route/retry/duplicate suite/replacement native waiter.
+- Genuine GPU query: original native parent3031655 onGPU4/812MiB, GPU5 empty. Accepted main200e5e6 complete210-source
+  maps match both original625-pass maps/report hash; not new suite/candidate acceptance. GlobalHOLD/original
+  checkpoints/inventory/frozen margins/seeds/schedules/thresholds/all20-result requirement unchanged. No comparison/
+  item1 decision/repeated evaluation/item2/proxy launch/source integration/commit/push/deployment/remote science/
+  v2numerics/hammer resume/migration/cancellation/RL finish/replay deletion.
+
+### 2026-10-11 — Requested campaign health check; no change to execution gates (12:08–12:09)
+
+- Fresh `runs/setup/campaign-health-20261011-120848.json` covers every active registry job: only original stalled
+  native verification; no scientific job active locally/remotely or eligible original job. Ten pick-place trainers/
+  full-split results remain complete (10/20 required), ten held hammer original sessions independently gone/proofs present.
+- Exactly one existing tracked watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command,
+  beacon7.21seconds at12:08:48; daemon2819571 retains original identity. No rearm/duplicate monitor/new waiter.
+- Full cgroup charge23,725,817,856bytes/hostMemAvailable297,610,649,600bytes/diskfree5,204,740,108,288bytes.
+  Unchanged full hammer reservations139,586,437,120bytes plus charge=163,312,254,976bytes>150GB. Charge alone
+  prevents admission; charge-only/non-atomic health, not completePSS/new admission/lifetime guarantee/cache exclusion.
+- Native3031654/3031655 retain original identities; log658.25minutes old, finalJSON/JUnit/exit absent, original
+  confirmed AF_UNIX stall stderr SHA unchanged. CPU ticking is not suite progress/acceptance. Previously denied
+  exact-parent `signal.pidfd_send_signal(fd, signal.SIGINT)` still requires explicit interruption approval; generic
+  campaign requests/automated events do not provide consent. No signal/alternate route/retry/duplicate native suite.
+- Real GPU query: original native parent3031655 onGPU4/812MiB, GPU5 empty. Accepted main200e5e6 complete210-source
+  maps equal both original625-pass maps/report hash, not new suite/candidate acceptance. GlobalHOLD, original
+  checkpoints/inventory/frozen margins/seeds/schedules/thresholds/all20-result requirement retained. No comparison/
+  item1 decision/repeated evaluation/item2/proxy launch/partial-group resume/source integration/commit/push/deployment/
+  remote science/v2numerics/hammer resume/migration/cancellation/RL finish/replay deletion.
+
+### 2026-10-11 — Requested campaign health check; execution still gated (13:08–13:09)
+
+- `runs/setup/campaign-health-20261011-130845.json` covers every active registry job: only original stalled native
+  verification; no scientific job active locally/remotely or eligible original job. Ten pick-place trainers/results
+  remain complete (10/20 required), ten original held hammer sessions independently gone/checkpoint-pause proofs present.
+- Exactly one existing tracked watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command,
+  beacon18.11seconds at13:08:45; scheduler2819571 retains original identity. No rearm/duplicate monitor/new waiter.
+- Full cgroup charge23,704,461,312bytes/hostMemAvailable301,206,192,128bytes/diskfree5,194,716,532,736bytes.
+  Unchanged whole-group reservations139,586,437,120bytes plus charge=163,290,898,432bytes>150GB: charge alone
+  blocks admission. Charge-only/non-atomic health, not completePSS/new admission/lifetime proof; no cache exclusion.
+- Native3031654/3031655 retain original identities, log718.20minutes old, finalJSON/JUnit/exit absent, original
+  confirmed AF_UNIX stall stderr SHA unchanged. CPU ticking is not suite progress/acceptance. Denied exact-parent
+  `signal.pidfd_send_signal(fd, signal.SIGINT)` requires explicit interruption approval; generic campaign requests/
+  automated events are not consent. No signal/alternate route/retry/duplicate suite/replacement native waiter.
+- Genuine GPU query: original native parent3031655 onGPU4/812MiB, GPU5 empty. Main200e5e6 complete210-source maps
+  match both original625-pass maps/report hash; not new suite/candidate acceptance. HOLD/checkpoints/inventory/frozen
+  margins/seeds/schedules/thresholds/all20-result requirement retained. No comparison/decision/repeated evaluation/
+  item2/proxy launch/partial-group resume/source integration/commit/push/deployment/remote science/v2numerics/hammer
+  resume/migration/cancellation/RL finish/replay deletion. Existing monitoring stays armed; no newly admissible work.
+
+### 2026-10-11 — Requested campaign health check; full-group admission still fails (14:09–14:10)
+
+- `runs/setup/campaign-health-20261011-140941.json` covers every active registry job: only original stalled native
+  verification; no active scientific job locally/remotely or eligible original job. Ten pick-place trainers/results
+  remain complete (10/20 required); ten original held hammer sessions independently gone/checkpoint-pause proofs present.
+- Exactly one existing tracked watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command,
+  beacon7.09seconds at14:09:41; daemon2819571 retains original identity. No rearm/duplicate monitor/new waiter.
+- Full cgroup charge23,696,949,248bytes/hostMemAvailable373,796,024,320bytes/diskfree5,193,824,825,344bytes.
+  Unchanged full-group reservations139,586,437,120bytes plus charge=163,283,386,368bytes>150GB. Improved host
+  availability does not remove the local cap; charge alone blocks admission. Charge-only/non-atomic operational
+  health, not completePSS/new admission/lifetime proof; no cache exclusion/partial-group resume.
+- Native3031654/3031655 retain original identities; log779.13minutes old, finalJSON/JUnit/exit absent, original
+  confirmed AF_UNIX stall stderr SHA unchanged. CPU ticking is not progress/acceptance. Previously denied
+  exact-parent `signal.pidfd_send_signal(fd, signal.SIGINT)` requires explicit interruption approval; generic
+  campaign requests/automated events are not consent. No signal/alternate route/retry/duplicate suite/native waiter.
+- Real GPU query: native parent3031655 onGPU4/812MiB, GPU5 empty. Main200e5e6 complete210-source maps match both
+  original625-pass maps/report hash, not new suite/candidate acceptance. HOLD/original checkpoints/inventory/frozen
+  margins/seeds/schedules/thresholds/all20-result requirement retained; no comparison/decision/repeated evaluation/
+  item2/proxy launch/source integration/commit/push/deployment/remote science/v2numerics/hammer resume/migration/
+  cancellation/RL finish/replay deletion. No newly admissible work; existing monitoring remains armed.
+
+### 2026-10-11 — Requested campaign health check; no scientific dispatch allowed (15:09–15:10)
+
+- Fresh `runs/setup/campaign-health-20261011-150935.json` covers every active registry job: only original stalled
+  native verification; no active scientific job locally/remotely or eligible original job. Ten pick-place trainers/
+  full-split results remain complete (10/20 required), ten original held hammer sessions independently gone/proofs present.
+- Exactly one existing tracked watcher `bw36yh48g`/PID3455689/start419667412, exact absolute main command,
+  beacon13.54seconds at15:09:35; daemon2819571 retains original identity. No rearm/duplicate monitor/new waiter.
+- Full cgroup charge23,741,833,216bytes/hostMemAvailable387,705,036,800bytes/diskfree5,191,325,392,896bytes.
+  Unchanged full-group reservations139,586,437,120bytes plus charge=163,328,270,336bytes>150GB: charge alone
+  blocks admission despite host headroom. Charge-only/non-atomic health, not completePSS/new admission/lifetime
+  proof; no cache exclusion/PSS double-counting/partial-group resume.
+- Native3031654/3031655 retain original identities, log839.04minutes old, finalJSON/JUnit/exit absent, original
+  confirmed AF_UNIX stall stderr SHA unchanged. CPU ticking is not progress/acceptance. Denied exact-parent
+  `signal.pidfd_send_signal(fd, signal.SIGINT)` requires explicit interruption approval; generic campaign requests/
+  automated events are not consent. No signal/alternate route/retry/duplicate suite/replacement native waiter.
+- Real GPU query: original native parent3031655 onGPU4/812MiB, GPU5 empty. Main200e5e6 complete210-source maps match
+  both original625-pass maps/report hash, not new suite/candidate acceptance. HOLD/checkpoints/inventory/frozen
+  margins/seeds/schedules/thresholds/all20-result requirement retained; no comparison/decision/repeated evaluation/
+  item2/proxy launch/source integration/commit/push/deployment/remote science/v2numerics/hammer resume/migration/
+  cancellation/RL finish/replay deletion. Existing monitoring remains armed, no newly admissible work.
+
+### 2026-10-11 — User decisions; native interruption; hammer resume; short-path native rerun (15:40–15:50)
+
+- **User decisions (standing for the campaign).** (1) Explicit approval to interrupt and terminate the stalled
+  native suite, keep its partial evidence marked failed/incomplete, and rerun the same frozen seven-file candidate
+  from a short physical path (same sources, assertions, thresholds). (2) No group-size or all-or-nothing admission:
+  launch/resume as many jobs as fit local <= 150 GB using measured per-job footprints, start the rest as headroom
+  appears. Comparability requires same code/config/data/protocol on one host or after a passed cross-host check,
+  not simultaneous starts; decisions still wait for every run in the comparison. (3) Hammer: resume from proven
+  checkpoints with the measured four-hour peak per-run PSS (10.77 GB) as the admission figure; at 100k run the ten
+  full-split evaluations, record hammer D0 margins first, then apply the item-1 rule. (4) Remote: after the
+  candidate passes, integrate, push, deploy, rerun the remote suite, run v2 numerics, then Stage 4 CNN remotely;
+  if the candidate route stalls again, use a long-lived writable `s4d-worker` container. (5) Health entries only
+  when something changes; PROGRESS concise. These supersede the earlier whole-group admission rule.
+- **Native interruption 15:41:45.** Identity-checked pidfd SIGINT to parent 3031655 (launcher 3031654); parent
+  exited after 3.6 s, whole session gone, no escalation needed, exit code 2. Partial result before interruption:
+  630 passed / 1 failed / 0 errors / 0 skipped after 14 h 51 min. The failure is
+  `tests/test_baselines.py::test_pretraining_entry_points_run_export_and_resume[reviwo]`: its `train_reviwo.py`
+  subprocess timed out after 900 s under the same long candidate TMPDIR as the AF_UNIX stall. Marked
+  `failed_incomplete` in `runs/verify-native-portability-200e5e6-local-20261010/interruption.json`; original
+  console/stall diagnostics and the partial tests.json/log/JUnit stay in place. Not counted as candidate acceptance.
+- **Hammer resume 15:45:01.** Admission `runs/setup/hammer-resume-native-shortpath-admission-20261011-154501.json`:
+  complete live PSS 2.93 GB, full charge 22.74 GB (accounted), plus 10 x 10.77 GB plus 15 GB native = 145.47 GB
+  < 150 GB; host available and 300 GB disk floor satisfied, both GPUs idle. Each numbered checkpoint matched its
+  pause-proof SHA-256 with no newer checkpoint. Unchanged scheduler dispatch from scoped queue
+  `runs/setup/hammer-resume-native-shortpath-20261011-154501.yaml` (original job definitions); all ten relaunched as
+  attempt 2 (failures 1 of max 6) and logged `resumed from .../latest.pt` at step 40000 (D2 seed 0: 50000).
+  Original seeds, 200k schedules, 100k stop, configs and data unchanged. Charge plateaued at about 120-123 GB
+  (anon ~55 GB, shmem ~26-28 GB, inactive file cache ~34 GB). Host-step segments: local 0-40k/50k, local resume.
+- **Short-path native rerun 15:45:03** `verify-native-portability-200e5e6-shortpath-20261011`: the frozen candidate
+  copied to `runs/nv/c` is byte-identical (all 210 sources equal `candidate.json`, same seven modified files on
+  base 200e5e6, entrypoint SHA-256 unchanged). TMPDIR is `/home/ws/ws/splatter4d/runs/nv/c/.cache/tmp`; the AF_UNIX
+  listener path is 75 bytes (< 108).

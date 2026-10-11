@@ -1,6 +1,6 @@
 # Second-server campaign extension
 
-Status: setup in progress; no remote campaign run is verified or admitted yet. Main-server records and decision rules remain authoritative. Updated 2026-10-10 20:58 +09:00.
+Status: first accepted-release remote native suite failed: **589 passed / 36 failed / 0 errors / 0 skipped**, unchanged source. Scientific admission remains gated; all four independent one-UUID CUDA/EGL checks passed with unchanged source and returned original evidence. Main registry is authoritative. Updated 2026-10-10 23:56 +09:00. The user’s 22:44 directive supersedes conflicting historical bootstrap/reserve/protocol details below: accepted deployed `200e5e6` first, independent of local RAM; local reserve 60 GiB; one C/D0 hammer seed-0 case for 200 steps against measured same-host repeat noise; checkpoint next-50-step gate only for actual migrations. GPU/security/data/clean-pushed-source boundaries and honest full-suite acceptance remain mandatory; unfinished review bootstrap is off the critical path.
 
 ## Connectivity and access
 
@@ -42,8 +42,8 @@ Foreign work exists on remote GPUs 4-7. It is neither eligible capacity nor ours
 4. **Filesystem/Docker boundaries.** All remote host files, release checkouts, data, manifests, artifacts, and build contexts are beneath the allowed root, with symlink/realpath checks before writes. Only owned `s4d-` images/containers/networks; bind sources beneath that root; no named volumes, foreign-resource removal, or system-wide prune. Campaign code runs in detached Docker, not an SSH-bound process.
 5. **Code identity.** Campaign jobs must use a clean immutable checkout of a commit already pushed to `origin/splatter4d`; never edit remote code. A shared decision uses the same commit, numerical configs, checksummed data, and protocol. Existing item-1 runs predate the extension and cannot retroactively acquire identical whole-commit provenance. Keep all 20 on the main host for now rather than claim migration is automatically equivalent.
 6. **Runtime identity.** Build from the same `uv.lock`, matching `docs/runtime_versions.json` and exact prebuilt native artifacts for sm_120. No gsplat/fused-ssim source/JIT-build workaround. Store the immutable image digest and runtime/native hashes. Driver difference is explicit and must be tested, not dismissed.
-7. **Validation gates.** Full suite inside the remote image and one-UUID CUDA/EGL isolation on each authorized GPU before long runs. Native tests are neither mocked nor skipped. Cross-host step-0 loss and short-run equivalence must be demonstrated before any decision mixes hosts; inability to start a new main-host CUDA process is currently a blocker to fresh equivalence evidence.
-8. **Resource admission.** Remote SSD free floor is at least 15% of total: 1,129,338,552,730 bytes (approximately 1.13 TB), recomputed from measured capacity if it changes. Also reserve declared future per-run growth, including 46 GB per 1M-step CNN replay, before launch. Initial remote host-RAM reserve: 120 GiB (about 8% of total), with the same launch-ramp accounting; use measured job PSS. Per-GPU GPU-memory cap 90 GiB and at most 20 job slots are ceilings, not permission to compete with foreign processes. Local 300 GB disk floor and 60 GB RAM reserve remain unchanged.
+7. **Validation gates.** Full suite inside the remote image and one-UUID CUDA/EGL isolation on each authorized GPU before long runs. Native tests are neither mocked nor skipped. Cross-host step-0 loss and short-run equivalence must be demonstrated before any decision mixes hosts. Main CUDA/native acceptance recovered; the clean pushed release exists, but fresh same-input comparisons have not been demonstrated and the bootstrap guard exception remains unauthorized.
+8. **Resource admission.** Remote SSD free floor is at least 15% of total: 1,129,338,552,730 bytes (approximately 1.13 TB), recomputed from measured capacity if it changes. Also reserve declared future per-run growth, including 46 GB per 1M-step CNN replay, before launch. Initial remote host-RAM reserve: 120 GiB (about 8% of total), with the same launch-ramp accounting; use measured job PSS. Per-GPU GPU-memory cap 90 GiB and at most 20 job slots are ceilings, not permission to compete with foreign processes. Local disk floor remains 300 GB; deployed RAM reserve is now 128 GiB tenant headroom, with new heavy admissions held for long-window footprint evidence.
 9. **Placement.** Item ordering is unchanged. Keep both decision arms/all seeds on one host when possible. After verification, prioritize item-1 full evaluations if needed, item-2 validations and both six-seed hammer RL arms on the remote, then leave-one-out/length work and planned Stage 3/4 capacity. Do not rerun favorable seeds, tune rules, or use non-development RL to decide the method. Baseline pretraining may fill spare capacity only under the existing campaign plan.
 10. **Result return.** Sync metrics, evaluation JSONL, summaries, exports, logs and panels to the main server with resumable `rsync --partial --append-verify` plus checksums. Checkpoints return only on explicit need. Do not transfer/delete replay by broad patterns. Delete only a completed run's literal replay path after its final evaluation is written; preserve agent snapshots, metrics, and logs.
 
@@ -99,18 +99,79 @@ provenance retained. Detached local scheduler PID 2819571 and accepted tracked w
 Production reserve parses as 128 GiB; remote remains disabled/CDI. Memory-heavy admission remains held while
 long-window evidence is collected. Remote clean pushed-release deployment/native gates are still pending.
 
+## Clean release and CDI registration (21:12)
+
+- Accepted integration/evidence pushed as `200e5e63f6238180312c0007b4ecc1f33b669dd3` to `origin/splatter4d`.
+  Secure checksum-verified bundle deployment completed at 21:10 beneath
+  `/home/compu/kaist/sunho/releases/200e5e63f6238180312c0007b4ecc1f33b669dd3/code`; clean exact checkout and
+  pushed ancestry enforced by the access helper. Bundle SHA-256
+  `c4a4ef4e9fe71d80d9d95fac3db64ccc0b28ad1881901cfcbfad7b3a9b1705cd`. Main proof:
+  `runs/remote/releases/200e5e63f6238180312c0007b4ecc1f33b669dd3/provenance.json`. Independent read-only follow-up
+  checked exact HEAD/empty status and matched EGL helper, scheduler, durable-query helper, uv.lock, original local
+  test report and release-provenance hashes against main files; `runs/remote/access/release-identity-200e5e6.log`.
+- Fresh remote inventory at 21:11: Docker 28.5.1; existing immutable image ID unchanged; NVIDIA queries returned
+  success. All four permitted UUIDs still idle (1 MiB each, no compute/graphics processes); foreign GPUs 4-7
+  remain excluded. Free SSD 4,054,387,412,992 bytes, still above the 15% floor. MemAvailable 1,506,675,684 KiB.
+- `nvidia-ctk cdi list` registers UUID-specific device names for all four authorized GPUs. This is registration
+  evidence only, not successful Docker injection, CUDA/EGL or host-PID validation; none of those gates is waived.
+  Evidence `runs/remote/access/inventory-cdi-20261010-2110.log`. No connectivity outage or remote host action.
+- A narrow ignore rule excludes only the generated `experiments/local_gpu_query.json`, alongside the existing
+  watcher cursor, so runtime query bookkeeping does not make immutable source releases appear dirty. No source,
+  numerical configuration or accepted fingerprint changed. Operational registry/runs and credentials were not staged.
+
+## Hard budgets and acceptance blockers (2026-10-10 21:47)
+
+- Required campaign limits are local <=150 decimal GB (steady target 130 GB, plus existing 128 GiB host reserve)
+  and remote <=1 decimal TB (provisional steady target 900 GB, plus host reserve and SSD floor). Full charged cache
+  counts; no Docker working-set subtraction. Latest local full cgroup charge at 22:38 is 215.09 GB, PSS 184.43 GB;
+  this violates the required ceiling. Evidence `runs/setup/memory-ceiling-20261010-2240.json` (observed 22:38); earlier snapshots
+  remain unchanged. New heavy launches remain held.
+- All 20 active item-1 configs already have six workers/prefetch 2. The user explicitly authorized standing lossless
+  checkpoint pauses/resumes and the complete hammer group pause at 22:23, superseding the earlier approval blocker.
+  Controller `bv3z5vw1s` is armed for all ten fresh next boundaries; no completed pause/migration is inferred from
+  arming. Every required experiment and scientific setting remains. Fresh permission-layer blocks are reported with
+  exact command/reason rather than bypassed or silently awaited.
+- After gates, remote is the default for item 2, wide RL sweeps, Stage 4 baseline work and future pretraining batches.
+  Migration requires resumed-checkpoint same-next-step loss within numerical noise in addition to step-0/short-run
+  equivalence; every arm/both seeds of a task moves together with explicit registry step-host ranges/checkpoint hashes.
+- Read-only audit found remote suite fixture defects: `tests/test_remote_access.py` wrote temp fixtures at the immutable
+  repository root; DROID protocol path validation rejected authorized external pytest temp. Narrow fixes/boundary tests
+  now exist only in review. They preserve runtime-root/symlink/traversal and all native acceptance boundaries.
+- Initial acceptance remains circular: scheduler `RemoteBackend.ready`, `acceptance_manifest`, launcher
+  `evidence_artifacts` and remote entry require already-passing suite/isolation/cross-host evidence. No existing
+  compliant scheduler-only bootstrap was found. The ordinary campaign's read-only acceptance mount and job identity
+  are also unsuitable for initial suite publication. **The user explicitly authorized bounded bootstrap at 22:23**;
+  typed, fixed-command verification purposes are now being implemented only in review. This authorization permits
+  producing real suite/isolation/equivalence evidence; it does not establish passing evidence or admit scientific
+  work before all gates. Local native acceptance within budget and clean pushed deployment must precede bootstrap.
+- New budget code is review-only, no full native suite is launched above local budget, and no source is merged/pushed
+  as accepted without that suite. The previously pushed clean release remains the accepted integration, not a new
+  budget-enforcement or remote-native acceptance claim.
+- Completed remote-accounting diffs were independently reviewed; 136 pure boundary checks passed without real
+  Docker/SSH, GPU/native fixtures or campaign-worker launches. Snapshot and fresh launcher admission measure owned
+  cgroup `memory.current` without working-set/cache subtraction, and conservatively reserve all outside-container
+  nonfree host RAM using MemTotal-MemFree, including foreign usage. Incomplete accounting holds admission while
+  preserving observed container state. This may over-restrict placement and is not an all-times kernel cap.
+- Both campaign acceptance validators now require true `checkpoint_resume_within_noise`, a valid checkpoint SHA-256
+  and positive integer resume step, in addition to the existing suite/isolation/data/step-0/short-run requirements.
+  Only synthetic boundary fixtures were changed/tested; no accepted evidence was edited and no real cross-host
+  checkpoint loss was measured. Bootstrap authorization is now explicit; gate execution and acceptance remain pending.
+
 ## Verification ledger
 
 | Gate | Status | Evidence |
 |---|---|---|
 | Container TCP route and SSH access | PASS | Initial connection and inventory above |
-| Authorized root / Docker access / idle GPUs | PASS at inventory only | Recheck at admission |
+| Authorized root / Docker access / idle GPUs | PASS at 21:11 inventory only | All four permitted UUIDs idle; recheck at admission |
+| Clean pushed immutable release | PASS | Exact `200e5e6` checkout; verified bundle/provenance above |
+| UUID-specific CDI registration and execution | PASS for four isolation containers | Inspected exact one-UUID CDI injection; original reports and inspections under `runs/verify-isolation-<0..3>-200e5e6-20261010/` and `runs/remote/verification/` |
 | Immutable image / exact native runtime bytes | PASS for build/version/byte identity only | Image ID and 1,948-file audit above; native execution still pending |
-| Remote full native suite | PENDING | No acceptance claim |
-| Per-GPU CUDA/EGL isolation | PENDING | Must run on all four UUIDs |
+| Remote full native suite | FAILED at 23:05:54 | 589 passed / 36 failed / 0 errors / 0 skips; unchanged source, originals in `runs/verify-native-200e5e6-20261010/evidence/`; honest failure in RESULTS; seven-file repair candidate not yet accepted |
+| Per-GPU CUDA/EGL isolation | PASS on all four UUIDs | Actual one-UUID CUDA matmul and EGL render, child PID visible only on assigned UUID; originals in `runs/verify-isolation-<0..3>-200e5e6-20261010/evidence/gpu_isolation.json` |
 | Scheduled data identity | PASS for initial transferred scope | Eight files verified at 19:33; semantic identity `56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1` |
-| Cross-host step-0 and short-run equivalence | PENDING / not demonstrated | Fresh main GPU-5 CUDA operation passed at 19:22; code acceptance and same-input comparisons remain |
-| Remote long-job admission | HOLD | All gates above required |
+| Cross-host v2 fresh step-0 and 200-update equivalence | PENDING / no numerical run | C/D0 hammer seed 0; first-batch equality and forward 1e-4 relative; loss-curve RMSE no larger than two actual same-host repeats; frozen producer is not acceptance |
+| Checkpoint continuation for actual migrations only | PENDING / no migration | Original local checkpoint, next 50 updates, same measured-noise criterion; complete hammer group moves together |
+| Remote long-job admission | HOLD | Real full-suite pass, four isolation passes, source/image/data identity and fresh v2 numerical pass required; checkpoint continuation is not required for independent remote-only work |
 
 ## Outages
 
