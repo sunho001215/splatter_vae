@@ -77,6 +77,32 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
   duplicate suite was used, and the attempt remains incomplete/unaccepted. Recovery requires explicit interruption
   permission, genuine original failure evidence and teardown, then a shorter authorized candidate path and fresh
   admission for a new immutable full-suite job. Remote scientific gates remain closed.
+- **Resolved 2026-10-11 (user-approved interruption).** SIGINT at 15:41:45 ended it after 3.6 s (exit 2). Its
+  final partial report reads 630 passed / 1 failed after 14 h 51 min; the failure
+  (`test_baselines.py::...[reviwo]`, 900 s subprocess timeout) ran under the same long TMPDIR. Marked
+  failed/incomplete in `runs/verify-native-portability-200e5e6-local-20261010/interruption.json`.
+
+### Short-path native acceptance, integration and remote suite (2026-10-11)
+
+- The byte-identical seven-file candidate, rerun from `runs/nv/c` (AF_UNIX listener path 75 bytes), **passed:
+  632 passed, 0 failed, 0 errors, 0 skipped** in 378.8 s; integrated as `414a6c9`. Adding the three cross-host v2
+  sources, the 213-source candidate **passed 727/0/0/0** (341.7 s); integrated as `e267ba8` and pushed.
+- Remote full suite on clean release `e267ba8`, image `sha256:c3ffea7f…`: **727 passed, 0 failed, 0 errors,
+  0 skipped**, 138 s, sources equal the pushed tree. Evidence `runs/verify-native-e267ba8-20261011b/evidence/`
+  (JUnit fetched by checksum-verified rsync because the accepted result sync copies no `*.xml`). A first attempt
+  (`...-20261011`) lacked the read-only acceptance mount the container validator requires; it was closed as failed
+  and its evidence is not used. All four one-UUID CUDA/EGL isolation checks passed on `e267ba8`.
+
+### Cross-host v2 numerical gate: failed narrowly (2026-10-11)
+
+- Protocol `meta-world-cross-host-v2` (C/D0 hammer seed 0, fresh, 200 unsmoothed updates, BF16, batch 16).
+  Local reference `runs/rel/e267ba8/runs/v2-local/equivalenceb/equivalence.json` (clean release worktree); remote
+  report `runs/verify-v2-remote-e267ba8-20261011/evidence/equivalence.json`.
+- Step 0: initial state, batch sequence and every step-0 loss component **bit-identical** across hosts.
+- Short run: cross-host total-loss RMSE (local vs remote run 1) **4.687e-5**; same-host repeat RMSE (remote run 1
+  vs run 2) **4.588e-5**; ratio 1.022; maxima 1.93e-4 vs 1.73e-4 on losses of ~4.3. The registered criterion
+  `cross_host_rmse <= same_host_rmse` is **not met**, so `passed=false` and no remote campaign admission follows.
+  No threshold was relaxed and the measurement was not repeated.
 
 ### Phase A — runtime (R1)
 | Check | Result | Evidence |

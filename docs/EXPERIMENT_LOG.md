@@ -2300,3 +2300,27 @@ Raw stride6/pair02 observations only; no variant comparison, winner or adjusted 
   copied to `runs/nv/c` is byte-identical (all 210 sources equal `candidate.json`, same seven modified files on
   base 200e5e6, entrypoint SHA-256 unchanged). TMPDIR is `/home/ws/ws/splatter4d/runs/nv/c/.cache/tmp`; the AF_UNIX
   listener path is 75 bytes (< 108).
+
+### 2026-10-11 — Native acceptance, integration, remote gates and v2 result (15:51–16:20)
+
+- **15:51 short-path suite PASSED: 632 / 0 failed / 0 errors / 0 skipped**, 378.8 s, sources unchanged, map equal to
+  `candidate.json`; the reviwo entry-point test now passes, confirming the long-path cause. Seven files plus the
+  report integrated under HOLD as `414a6c9` (bookkeeping commit `01e303b` first preserved the docs), pushed.
+  `scripts/evaluate.py` changes only path-validation order, so hammer evaluations under it compute the same metrics.
+- **15:59 v2 candidate PASSED: 727 / 0 / 0 / 0** (632 + 95 v2 checks), 341.7 s, 213 sources (v2 files equal the
+  registered review hashes c5778…, a9a27…, 54c3a…). Integrated as `e267ba8`, pushed, deployed by `sync_code`
+  (clean exact checkout, bundle SHA-256 53aa70da…).
+- **Remote suite on `e267ba8`: 727 / 0 / 0 / 0**, 138 s, host remote, expected commit/image recorded, sources equal
+  the pushed tree. First attempt `verify-native-e267ba8-20261011` lacked the read-only acceptance mount required by
+  `validate_container` (adapter error); recorded `failed`, evidence unused. Attempt `...b` (remote GPU 1) passed; the
+  accepted sync never copies `*.xml`, so its required JUnit was fetched by checksum-verified rsync and the accepted
+  `_verify_synced_exit` check then passed before recording synced/exited. Isolation passed on all four UUIDs.
+- **v2 numerics.** Local reference from clean release worktree `runs/rel/e267ba8` (the checker rejects a checkout
+  with untracked files; `python -I` ignores `PYTHONDONTWRITEBYTECODE`, so the scheduler launched the unchanged
+  interpreter with `-X pycache_prefix` under the worktree's `.cache`; the first attempt failed its clean-release check
+  before measuring). Remote: two independent runs on remote GPU 2. Step 0 bit-identical (state, batches, all loss
+  components). Cross-host RMSE 4.687e-5 vs same-host repeat RMSE 4.588e-5 (ratio 1.022) → **criterion not met;
+  `passed=false`**. No threshold change or repeat. Remote campaign admission (Stage 4 CNN) is therefore held pending
+  a user decision; with a single same-host repeat, hosts with equal noise fail this criterion about half the time.
+- Memory: peak sampled charge 129.2 GB during both suites plus v2 local; hammer runs at 43,450 steps by 16:15
+  (~110 steps/min, 100k expected around 00:30–01:30).
