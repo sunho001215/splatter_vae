@@ -4,6 +4,33 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Item 1 (depth redesign) decision: D0 stays (2026-10-11 23:10)
+
+Pre-registered rule (EXPERIMENT_LOG 2026-10-09, item 1d), run unchanged (`analysis/review_rules.py`
+`directive_item1`, SHA-256 48b4af2a…) on all 20 verified full-split results (5 variants x 2 seeds x 2 tasks, 100k
+of the 200k schedule). Margins from each task's D0 pair, frozen before comparison:
+`runs/setup/item1-d0-{pick-place-margins-20261011-081643,hammer-margins-20261011-230332}.json`. Full output:
+`runs/setup/item1-decision-20261011.txt` (SHA-256 a1a093a6…).
+
+| D2 vs D0 (two-seed means) | hammer | margin | pick-place | margin |
+|---|---|---|---|---|
+| utilisation (higher better) | 0.617 vs 0.641 (=) | 0.086 | 0.584 vs 0.588 (=) | 0.020 |
+| hidden fraction | 0.235 vs 0.878 (better) | 0.058 | 0.340 vs 0.922 (better) | 0.020 |
+| visible CD-centers (rel.) | -33.8 % (better) | 5 % | -35.5 % (better) | 5 % |
+| PSNR | 26.11 vs 27.20 (**worse**) | 0.95 | 25.73 vs 26.04 (**worse**) | 0.20 |
+| moving PSNR | 22.69 vs 24.71 (**worse**) | 1.41 | 17.22 vs 18.13 (**worse**) | 0.20 |
+| trajectory PSNR | 21.89 vs 22.52 (**worse**) | 0.37 | 21.81 vs 22.03 (=) | 0.39 |
+| CD-render traj, rel. EPE, retrieval, pos/vel R² | all within margins | | all within margins | |
+
+- **D2 fails** (i) (utilisation not better on either task) and (ii) (PSNR and moving PSNR worse on both tasks,
+  trajectory PSNR worse on hammer). **D1 fails** (i) (utilisation worse on both tasks: 0.313 vs 0.641, 0.289 vs 0.588)
+  and (ii) (PSNR guards). Per the rule **D0 stays**; D3/D4 are not considered. The occlusion/free-space variants do
+  remove hidden Gaussians and tighten visible centres, but at a reconstruction cost the guards reject.
+- Hammer D0 seeds split on the motion collapse (dynamic share 0.93 vs 0.27), widening hammer margins; pick-place
+  margins sit mostly at the floors. The decision is the same on either task alone.
+- Hard-pass step-time saving (D2 vs D3, median logged GPU time per step): 1.9 % hammer, 1.0 % pick-place; wall-clock
+  step time is dominated by GPU contention (-5.8 % / +3.6 %). `runs/setup/item1-step-time-report-20261011.txt`.
+
 ### Operational/native acceptance failures during second-host setup (2026-10-10)
 
 - The 18:12 full-suite attempt failed before pytest: the unchanged GPU guard saw zero CUDA devices for the allowed

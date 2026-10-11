@@ -1,20 +1,17 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-11 17:25 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-11 23:20 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
 - **Done:** Phase A, Phase B (8 tasks: bin-picking, coffee-push, door-open, hammer, peg-insert-side,
   peg-unplug-side, pick-place, stick-push), Phase C, Stage 0, Stage 4 prep (SinCro, ReViWo ported), review items
   1-5, S1 (C remains the base: synthetic near views as invariance positives and render targets).
-- **Stage 1 — item 1 (depth redesign D0–D4, 2 seeds x hammer/pick-place, 100k of the 200k schedule):**
-  - pick-place: 10/10 trainers and 10/10 full-split results verified
-    (`runs/setup/item1-pick-place-fullsplit-inventory-20261011-083652.json`); D0-only margins frozen
-    (`runs/setup/item1-d0-pick-place-margins-20261011-081643.json`).
-  - hammer: all 10 trainers resumed 15:45 from proven checkpoints (40k; D2 seed 0 at 50k), attempt 2, unchanged
-    seeds/schedules; ~110 steps/min, 100k expected around 00:30–01:30 on 2026-10-12.
-  - Next: 10 hammer full-split evaluations → freeze hammer D0 margins → item-1 rule over all 20 results.
-- **Item 2 (M3D vs M2D)** waits for the item-1 decision; then 2 seeds x 2 tasks + 6-seed hammer RL proxies.
+- **Stage 1 — item 1 decided 23:10: D0 stays** (registered rule over all 20 verified results; D2 and D1 fail
+    their utilisation and PSNR gates). Table in RESULTS; output `runs/setup/item1-decision-20261011.txt`.
+- **Item 2 (M3D vs M2D on D0) running locally since 23:12:** four M3D pretraining runs (2 seeds x 2 tasks, 100k of
+  200k) and six M2D hammer RL proxies (400k steps, seeds 1000-1005); M3D proxies start from the M3D 100k exports.
+  Decision after all M3D evaluations and all 12 proxies (pre-registered rule, RL margin max(0.10, 2 SE)).
 - `method-frozen-v1` after items 1-2, item 1e leave-one-out and the A200/A300 length study.
 - Pretraining lengths: ours default 300k (final L chosen on hammer/pick-place before the freeze); SinCro 300k;
   ReViWo 100 001.
@@ -39,8 +36,9 @@ Last updated: 2026-10-11 17:25 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| i1-{d0..d4}-seed{0,1}-hammer | local GPU4/GPU5 (5 each) | training 40k→100k (attempt 2) | runs/pretrain/i1-*-hammer/log.txt |
-| fulleval-i1-*-hammer-100k (10) | local | pending (deps on trainers) | runs/fulleval-i1-*/console.log |
+| i2-m3d-seed{0,1}-{hammer,pick-place} | local GPU4/GPU5 | training to 100k (started 23:12) | runs/pretrain/i2-m3d-*/log.txt |
+| i2-proxy-m2d-hammer-s1000..s1005 (+ eval) | local | RL 400k steps (started 23:15) | runs/i2-proxy-m2d-*/ |
+| fulleval-i2-m3d-*, export-i2-m3d-*, i2-proxy-m3d-* | local | waiting on M3D trainers | — |
 | s4-drm-cnn-<task>-s2000/-s2001 (+ `-eval`; bin-picking s2000 as `-r4`), bin-picking-s2002 | remote GPU 0-3 | 16 pairs training to 1M (first 16:47, last 17:13) | runs/s4-drm-cnn-*/ (synced) |
 | s4-drm-cnn-<task>-s2002, 7 tasks | remote | pending headroom (measured 48 GiB trainer + 8 GiB companion, <= 1 TB) | — |
 
@@ -90,6 +88,5 @@ Last updated: 2026-10-11 17:25 +09:00. Concise current state; chronology and evi
 ## Next actions
 1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
    pretraining on the remote (check media panels in their offline W&B runs).
-2. Hammer trainers reach 100k → 10 full-split evaluations (admitted job by job) → hammer D0 margins →
-   item-1 rule → report 1d.
-3. Item 2 + RL proxies after item 1; then item 1e, length study, freeze, Stage 3 final RL.
+2. Item 2: M3D 100k → full-split evaluations (M2D margins from the D0 pair) + 12 RL proxies → item-2 rule → report 2b.
+3. Then item 1e leave-one-out, length study (A200/A300), `method-frozen-v1`, Stage 3 final RL.

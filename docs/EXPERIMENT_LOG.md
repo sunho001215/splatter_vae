@@ -2363,3 +2363,53 @@ Raw stride6/pair02 observations only; no variant comparison, winner or adjusted 
   5 QueryUnavailable ticks from 18:29:29 to 18:34:20; a direct `nvidia-smi` timed out at 30 s at 18:32, host load ~130).
   Device nodes stayed openable by new processes and all training continued (hammer at ~62k steps). Queries returned
   instantly from 18:33 and the scheduler recovered without any action; no host, driver or process intervention.
+- 21:39 first hammer trainer finished: `i1-d2-seed0-hammer` reached 100k (exit 0; checkpoint CRC/step 100000
+  verified, session gone; local segments 0-50k then 50k-100k after the pause). Its registered full-split evaluation
+  launched 21:42 (admission `runs/setup/item1-hammer-fulleval-admission-*.json`: charge 124.2 GB + 12 GiB < 150 GB),
+  windows 2058/1978 at strides 2/6.
+  Completed 21:47, independently verified (129/124 batches, console = summary, session gone); proof
+  `runs/setup/item1-fulleval-i1-d2-seed0-hammer-100k-completion.json`. Hammer results 1/10; no comparison yet.
+
+### 2026-10-11 — Hammer D0 reference-only item-1 margins (frozen 23:03:32, before any variant comparison)
+
+Unchanged registered readers/formulas/floors (`analysis/review_rules.py`), inputs: the two verified hammer D0
+full-split summaries only. Artifact `runs/setup/item1-d0-hammer-margins-20261011-230332.json`.
+
+| decision metric | D0 seed 0 | D0 seed 1 | fixed margin |
+|---|---|---|---|
+| utilisation | 0.68371 | 0.597432 | 0.0862778 absolute |
+| hidden | 0.849109 | 0.907231 | 0.0581225 absolute |
+| cd_centers_vis | 0.156974 | 0.154211 | 0.05 relative (floor) |
+| psnr | 27.6768 | 26.7307 | 0.946116 dB |
+| psnr_moving | 25.4143 | 24.0007 | 1.41365 dB |
+| psnr_traj | 22.7063 | 22.3389 | 0.367409 dB |
+| cd_render_traj | 0.0222673 | 0.0267577 | 0.183188 relative |
+| rel_epe | 0.572394 | 0.897686 | 0.325292 absolute |
+| retrieval_traj | 0.744032 | 0.74707 | 0.03 absolute (floor) |
+| r2_pos_traj | 0.862522 | 0.884698 | 0.05 absolute (floor) |
+| r2_vel_traj | 0.625447 | 0.531127 | 0.09432 absolute |
+
+Diagnostic only (no gate): floater 0.0132693 / 0.00785738 → 0.02; dyn_share 0.934168 / 0.267652 → 0.666515;
+EPE02 15.1551 / 33.5236 mm → 18.3686 mm. The hammer D0 seeds split on the dynamic-group motion collapse (seed 0
+dynamic share 0.93, seed 1 0.27), which widens the PSNR, moving-PSNR and relative-EPE margins. No variant compared.
+
+### 2026-10-11 — Item 1 decided: D0 stays (23:10); item 2 launched locally (23:12)
+
+- All ten hammer full-split results verified 21:47–23:08 (proofs `runs/setup/item1-fulleval-i1-*-hammer-100k-completion.json`;
+  129/124 batches, console = summary, sessions gone). Hammer D0 margins frozen 23:03:32 before comparison (above).
+- Registered rule `analysis/review_rules.py directive_item1` (SHA-256 48b4af2a…) run unchanged on all 20 results:
+  **D2 fails (i) and (ii); D1 fails (i) and (ii); D0 stays.** Details and table in RESULTS; full output
+  `runs/setup/item1-decision-20261011.txt` (SHA-256 a1a093a6…). Hard-pass step-time saving (D2 vs D3, median GPU time
+  per step): 1.9 % hammer, 1.0 % pick-place; wall-clock step time dominated by contention
+  (`runs/setup/item1-step-time-report-20261011.txt`).
+- **Item 2 (pre-registered 2026-10-09) on the item-1 winner D0.** M3D = D0 overrides (`aug.synth_views=2
+  aug.synth_render=true loss.depth_valid_far=true`) + `loss.motion_space=gaussian`, 2 seeds x 2 tasks, 100k of the
+  200k schedule, via `analysis/queue_variants.py item2`; M2D = the existing i1-d0 runs. RL: hammer proxies 400k agent
+  steps, RL seeds 1000-1002 on pretraining seed 0 and 1003-1005 on seed 1 (`i2-proxy-{m2d,m3d}-hammer-s100X` with
+  eval companions; encoders exported at 100k to `runs/exports/i2-{m2d,m3d}-seed{0,1}-hammer-100k.pt`).
+  Run locally: local GPUs were idle and the M2D references were produced locally (same host for both arms).
+  Per-seed collapse (dynamic share at 10k and 100k) will be reported per the 2026-10-10 seed policy.
+- 23:12 four M3D trainers launched (admission 89.9 GB incl. 10.77 GB measured trainer footprint); M2D exports
+  finished 23:13; six M2D proxies and their companions admitted from 23:15 (local charge 68 GB). M3D proxies follow
+  their exports at 100k. A per-minute driver (`runs/setup/item2-driver-20261011.log`) admits under 150 GB and verifies
+  the M3D full-split evaluations.
