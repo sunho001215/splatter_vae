@@ -74,6 +74,23 @@ def test_evaluator_rejects_outside_output_before_renderer(monkeypatch):
         evaluator.main()
 
 
+@pytest.mark.parametrize("escape", ["missing", "traversal", "symlink"])
+def test_evaluator_rejects_unauthorized_paths_before_renderer(tmp_path, monkeypatch, escape):
+    evaluator = script("evaluate")
+    outside = Path("/home/ws/data/droid/s4d-forbidden-eval")
+    if escape == "traversal":
+        run = Path("/home/ws/data/metaworld/../droid/s4d-forbidden-eval")
+    elif escape == "symlink":
+        run = tmp_path / "escape"
+        run.symlink_to(outside, target_is_directory=True)
+    else:
+        run = outside
+    monkeypatch.setattr(sys, "argv", ["evaluate.py", "--run", str(run)])
+    monkeypatch.setattr(evaluator, "require_prebuilt_renderer", lambda: pytest.fail("output boundary must run first"))
+    with pytest.raises(ValueError, match="inside"):
+        evaluator.main()
+
+
 def test_evaluator_preflights_before_checkpoint_and_data_reads(tmp_path, monkeypatch):
     evaluator = script("evaluate")
     monkeypatch.setattr(sys, "argv", ["evaluate.py", "--run", str(tmp_path)])

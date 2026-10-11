@@ -21,14 +21,17 @@ guard_gpus()
 import torch  # noqa: E402
 
 from s4d.config import load_config  # noqa: E402
+from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.model.encoder import Encoder, EncoderConfig  # noqa: E402
 
 EXPORT_FORMAT = "splatter4d-encoder-v1"
 
 
 def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
-    if REPO.resolve() not in out.resolve().parents:
-        raise ValueError("encoder exports must remain inside the new repository")
+    try:
+        out = validate_runtime_path(out, repository=REPO)
+    except GPUIsolationError as exc:
+        raise ValueError("encoder exports must remain inside the repository or approved host runtime_root") from exc
     cfg = load_config([run_dir / "config.yaml"])
     settings = dict(cfg["model"]["encoder"])
     backbone = settings.pop("backbone", "scratch")

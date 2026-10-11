@@ -56,6 +56,24 @@ def test_real_encoder_export_reload_is_identical_and_contains_no_decoder(tmp_pat
     torch.testing.assert_close(encoder.policy_state(images), expected, atol=0, rtol=0)
 
 
+@pytest.mark.parametrize("escape", ["outside", "traversal", "symlink"])
+def test_export_rejects_unauthorized_output_before_model_reads(tmp_path, monkeypatch, escape):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    exporter = importlib.import_module("scripts.export_encoder")
+    outside = Path("/home/ws/data/droid/s4d-forbidden-export.pt")
+    if escape == "traversal":
+        out = Path("/home/ws/data/metaworld/../droid/s4d-forbidden-export.pt")
+    elif escape == "symlink":
+        link = tmp_path / "escape"
+        link.symlink_to(outside.parent, target_is_directory=True)
+        out = link / outside.name
+    else:
+        out = outside
+    monkeypatch.setattr(exporter, "load_config", lambda *args: pytest.fail("output boundary must run first"))
+    with pytest.raises(ValueError, match="inside"):
+        exporter.export(tmp_path, None, out)
+
+
 def test_encoder_loader_rejects_non_export_payload(tmp_path):
     path = tmp_path / "training_checkpoint.pt"
     torch.save({"encoder": {}}, path)

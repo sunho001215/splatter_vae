@@ -49,6 +49,24 @@ def test_parser_partition_and_repository_boundary(protocol, tmp_path):
     assert protocol.repository_path(tmp_path / "result.json").parent == tmp_path
     with pytest.raises(ValueError, match="inside"):
         protocol.repository_path("/home/ws/data/comparison.json")
+    with pytest.raises(ValueError, match="inside"):
+        protocol.repository_path(REPO / ".." / "comparison.json")
+    (tmp_path / "escape").symlink_to("/home/ws/data", target_is_directory=True)
+    with pytest.raises(ValueError, match="inside"):
+        protocol.repository_path(tmp_path / "escape" / "comparison.json")
+
+
+def test_comparison_artifacts_allow_only_approved_external_runtime_root(protocol, monkeypatch):
+    from s4d import gpu_guard
+
+    root = gpu_guard.APPROVED_RUNTIME_ROOTS["remote"]
+    monkeypatch.setattr(gpu_guard, "RUNTIME_ROOT", root)
+    output = root / "runtime/evidence/comparison.json"
+    assert protocol.repository_path(output) == output.resolve()
+    for path in (root, root / ".." / "comparison.json", root.parent / "sunho-other/comparison.json",
+                 Path("/tmp/comparison.json")):
+        with pytest.raises(ValueError, match="inside"):
+            protocol.repository_path(path)
 
 
 def test_comparison_tolerance_and_mismatched_inputs_fail_closed(protocol):

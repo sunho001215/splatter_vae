@@ -42,7 +42,7 @@ def main() -> None:
     )
     args = ap.parse_args()
     try:
-        run_dir = validate_runtime_path(Path(args.run).resolve(strict=True), repository=REPO)
+        run_dir = validate_runtime_path(Path(args.run), repository=REPO).resolve(strict=True)
     except GPUIsolationError as exc:
         raise ValueError("evaluation outputs must remain inside an authorized runtime root") from exc
     require_prebuilt_renderer()

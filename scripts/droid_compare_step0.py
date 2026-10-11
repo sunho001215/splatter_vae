@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _bootstrap import REPO, guard_gpus
+from _bootstrap import guard_gpus
 
 GPU_MAPPING = guard_gpus()
 
@@ -28,6 +28,7 @@ from torch.nn.parallel import DistributedDataParallel  # noqa: E402
 from s4d.config import get, load_config  # noqa: E402
 from s4d.data.contract import collate  # noqa: E402
 from s4d.data.droid.dataset import DroidCacheDataset  # noqa: E402
+from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.model.render import require_prebuilt_renderer  # noqa: E402
 from s4d.train import ddp  # noqa: E402
 from s4d.train.loop import build_model, forward_losses, move_batch, seed_everything  # noqa: E402
@@ -48,10 +49,10 @@ def argument_parser() -> argparse.ArgumentParser:
 
 
 def repository_path(path: str | Path) -> Path:
-    resolved = Path(path).resolve()
-    if REPO.resolve() not in resolved.parents:
-        raise ValueError("comparison artifacts must remain inside the new repository")
-    return resolved
+    try:
+        return validate_runtime_path(Path(path))
+    except GPUIsolationError as exc:
+        raise ValueError("comparison artifacts must remain inside the repository or approved host runtime_root") from exc
 
 
 def partition_indices(indices: list[int], length: int, world_size: int, rank: int) -> list[int]:

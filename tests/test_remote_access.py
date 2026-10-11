@@ -14,11 +14,14 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from s4d import remote_access as access  # noqa: E402
+from s4d.gpu_guard import validate_runtime_path  # noqa: E402
 
 
 class RemoteAccessTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix=".remote-access-test-", dir=REPO)
+        temp_root = validate_runtime_path(Path(os.environ.get("S4D_PYTEST_TMP", str(REPO / ".pytest_tmp"))))
+        temp_root.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix=".remote-access-test-", dir=temp_root)
         self.addCleanup(self.temp.cleanup)
         self.repo = Path(self.temp.name)
         self.secret = "boundary-only-password-!$`"
