@@ -96,6 +96,7 @@ Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evi
 | 2026-10-12 06:33 | remote 3.44 TB (s4-drm-cnn-peg-unplug-side-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 06:46 | remote 3.47 TB (s4-drm-cnn-door-open-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 06:46 | remote 3.52 TB (s4-drm-cnn-door-open-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 06:55 | remote 3.56 TB (s4-drm-cnn-pick-place-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 
 ## Next actions
 1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
