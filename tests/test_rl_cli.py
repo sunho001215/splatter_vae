@@ -61,6 +61,17 @@ def test_drm_cnn_training_evaluation_and_resume(tmp_path):
     assert [e["step"] for e in evals] == [30, 60] and all(e["episodes"] == 12 for e in evals)
     assert all(0 <= e["heldout_cameras_success"] <= 1 and "traj_circular_success" in e for e in evals)
 
+    # A remote companion job writes its records into its own run directory and leaves the training run untouched.
+    companion = tmp_path / "rl_cli-eval"
+    before = (run_dir / "eval.jsonl").read_bytes()
+    run(
+        "scripts/eval_rl.py", "--run-dir", str(run_dir), "--train-job", "none", "--workers", "1",
+        "--envs-per-worker", "2", "--poll-seconds", "1", "--output-dir", str(companion),
+    )
+    separate = [json.loads(line) for line in (companion / "eval.jsonl").read_text().splitlines()]
+    assert [e["step"] for e in separate] == [30, 60] and (companion / "eval_provenance" / "provenance.json").is_file()
+    assert (run_dir / "eval.jsonl").read_bytes() == before
+
     (run_dir / "final.json").unlink()
     run("scripts/train_rl.py", *common, "--set", "train.num_train_steps=90", *TINY)
     events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text().splitlines()]

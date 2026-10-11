@@ -1,8 +1,8 @@
 """Evaluate every policy snapshot of one RL run with the full protocol (companion job of ``train_rl.py``).
 
-Processes ``<run>/snapshots/step_*.pt`` in order, appending one record per snapshot to ``<run>/eval.jsonl``.
-Exits when the training run has written ``final.json`` and every snapshot is evaluated, or when the
-scheduler marks the training job failed. Launch with exactly one allowed GPU UUID.
+Processes ``<run>/snapshots/step_*.pt`` in order, appending one record per snapshot to ``<output>/eval.jsonl``
+(``--output-dir``, default the run directory). Exits when the training run has written ``final.json`` and every
+snapshot is evaluated, or when the scheduler marks the training job failed. Launch with exactly one allowed GPU UUID.
 """
 
 from __future__ import annotations
@@ -48,16 +48,19 @@ def main() -> None:
     ap.add_argument("--envs-per-worker", type=int, default=8)
     ap.add_argument("--cpu-threads", type=int, default=8)
     ap.add_argument("--poll-seconds", type=float, default=30.0)
+    ap.add_argument("--output-dir", help="eval.jsonl, provenance and W&B files (a remote companion job's own run dir)")
     args = ap.parse_args()
     try:
         run_dir = validate_runtime_path(Path(args.run_dir), repository=REPO)
+        output_dir = run_dir if args.output_dir is None else validate_runtime_path(Path(args.output_dir), repository=REPO)
     except GPUIsolationError as exc:
         raise ValueError("RL run directories must be inside an authorized runtime root") from exc
+    output_dir.mkdir(parents=True, exist_ok=True)
     while not (run_dir / "config.yaml").is_file():
         time.sleep(args.poll_seconds)
     cfg = yaml.safe_load((run_dir / "config.yaml").read_text())
     record_run_identity(
-        cfg, REPO, run_dir / "eval_provenance",
+        cfg, REPO, output_dir / "eval_provenance",
         native_diagnostic_steps=int(cfg["train"]["num_train_steps"]),
     )
     if int(cfg["train"]["num_train_steps"]) > 1000:  # same exemption for short diagnostics as train_rl.py
@@ -68,13 +71,13 @@ def main() -> None:
     pool = None
     agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
-    out = run_dir / "eval.jsonl"
+    out = output_dir / "eval.jsonl"
     wandb_run = init_wandb(
         {**cfg, "eval_gpus": GPU_MAPPING},
         f"{run_dir.name}-eval",
         cfg["wandb"]["project"],
         bool(cfg["wandb"]["enabled"]),
-        run_dir,
+        output_dir,
     )
     every = int(cfg["eval"]["every_steps"])
     try:

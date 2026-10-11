@@ -204,12 +204,29 @@ def test_generated_shell_has_detachment_single_uuid_rooted_mounts_and_syntax(gpu
         assert "NVIDIA_VISIBLE_DEVICES=" + spec["gpu"] in docker_args
     assert "CUDA_VISIBLE_DEVICES=" + spec["gpu"] in command
     assert "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics" in command
+    assert docker_args.count("WANDB_MODE=offline") == 1 and docker_args[docker_args.index("WANDB_MODE=offline") - 1] == "--env"
     assert f"src={REMOTE_ROOT}/releases/{COMMIT}/code,dst=/workspace/splatter4d,readonly" in command
     assert "type=volume" not in command and "--volume" not in command
     assert str(RAM_RESERVE_BYTES) in command and "reserved_disk" in command and "ramp_ram" in command
     assert command.index("if existing; then exit 0; fi") < command.index("nvidia-smi --query-compute-apps")
     assert "git -C \"$code\" status --porcelain --untracked-files=all" in command
     assert "flock -x 9" in command and "native" not in spec["args"]
+
+
+def test_remote_rl_evaluation_writes_only_into_its_own_run_directory():
+    spec = job_spec()
+    spec.update(id="cnn-hammer-s2000-eval", container="s4d-cnn-hammer-s2000-eval-a1", script="scripts/eval_rl.py",
+                required_results=["eval.jsonl"],
+                labels={**spec["labels"], "s4d.run_id": "cnn-hammer-s2000-eval"})
+    for output in (None, "runs/cnn-hammer-s2000", "runs/other-eval", "runs/cnn-hammer-s2000-eval/../x"):
+        spec["args"] = ["--run-dir", "runs/cnn-hammer-s2000", "--train-job", "cnn-hammer-s2000"]
+        if output is not None:
+            spec["args"] += ["--output-dir", output]
+        with pytest.raises(ValueError):
+            validate_spec(spec)
+    for output in ("runs/cnn-hammer-s2000-eval", "/workspace/splatter4d/runs/cnn-hammer-s2000-eval"):
+        spec["args"] = ["--run-dir", "runs/cnn-hammer-s2000", "--train-job", "cnn-hammer-s2000", "--output-dir", output]
+        assert validate_spec(spec)["script"] == "scripts/eval_rl.py"
 
 
 def test_cdi_is_the_default_backend_without_legacy_fallback():

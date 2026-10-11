@@ -63,6 +63,9 @@ def validate_output_arguments(script: str, arguments: list[str], job_id: str) ->
     if script == "scripts/train_rl.py":
         if _output_path(_option(arguments, "--run-dir")) != f"{CONTAINER_REPO}/runs/{job_id}":
             raise ValueError("Remote RL artifacts must be under runs/<job_id>")
+    if script == "scripts/eval_rl.py":
+        if _output_path(_option(arguments, "--output-dir")) != f"{CONTAINER_REPO}/runs/{job_id}":
+            raise ValueError("Remote RL evaluation results must be written under runs/<job_id>")
 
 
 def validate_spec(spec: dict) -> dict:
@@ -278,6 +281,8 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
         "S4D_JOB_ID": spec["id"], "S4D_ATTEMPT": str(spec["attempt"]), "S4D_RELEASE_PROOF": proof,
         "S4D_CACHE_ROOT": cache, "S4D_TEST_EVIDENCE_DIR": acceptance, "TMPDIR": f"{cache}/tmp",
         "HOME": f"{cache}/home", "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1",
+        # No W&B credentials exist on the remote: runs log offline into their own run folder and are synced from main.
+        "WANDB_MODE": "offline",
     }
     if spec["gpu_backend"] == "cdi":
         environment["NVIDIA_VISIBLE_DEVICES"] = "void"
