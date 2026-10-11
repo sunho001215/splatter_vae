@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-11 17:10 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-11 17:25 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -41,7 +41,7 @@ Last updated: 2026-10-11 17:10 +09:00. Concise current state; chronology and evi
 |---|---|---|---|
 | i1-{d0..d4}-seed{0,1}-hammer | local GPU4/GPU5 (5 each) | training 40k→100k (attempt 2) | runs/pretrain/i1-*-hammer/log.txt |
 | fulleval-i1-*-hammer-100k (10) | local | pending (deps on trainers) | runs/fulleval-i1-*/console.log |
-| s4-drm-cnn-<task>-s2000/-s2001 (+ `-eval`; bin-picking s2000 as `-r4`), bin-picking-s2002 | remote GPU 0-3 | 16 pairs training to 1M (first 16:47, last 17:21) | runs/s4-drm-cnn-*/ (synced) |
+| s4-drm-cnn-<task>-s2000/-s2001 (+ `-eval`; bin-picking s2000 as `-r4`), bin-picking-s2002 | remote GPU 0-3 | 16 pairs training to 1M (first 16:47, last 17:13) | runs/s4-drm-cnn-*/ (synced) |
 | s4-drm-cnn-<task>-s2002, 7 tasks | remote | pending headroom (measured 48 GiB trainer + 8 GiB companion, <= 1 TB) | — |
 
 ## Disk
