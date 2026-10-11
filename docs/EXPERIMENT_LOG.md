@@ -2413,3 +2413,8 @@ dynamic share 0.93, seed 1 0.27), which widens the PSNR, moving-PSNR and relativ
   finished 23:13; six M2D proxies and their companions admitted from 23:15 (local charge 68 GB). M3D proxies follow
   their exports at 100k. A per-minute driver (`runs/setup/item2-driver-20261011.log`) admits under 150 GB and verifies
   the M3D full-split evaluations.
+- 23:20:03–23:21:08 remote SSH unreachable (TimeoutError, ~65 s); all 32 remote CNN jobs marked unknown with no
+  relaunch, then reconciled to running after reconnection (verified 23:22). No host or VPN action; under the
+  10-minute reporting threshold.
+- 23:25:22–23:25:46 a second brief remote SSH drop (~24 s); all 32 remote jobs reconciled to running by 23:27, no
+  relaunch. Two drops within six minutes; if they recur or exceed 10 minutes the user is told (host-side VPN).
