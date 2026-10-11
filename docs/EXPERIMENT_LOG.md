@@ -2351,3 +2351,6 @@ Raw stride6/pair02 observations only; no variant comparison, winner or adjusted 
   rsync (status in `runs/remote/wandb/status.json`) and uploads finished runs with `wandb sync`; failures are
   recorded and never block. All seven seed-2000 pairs then launched by 17:00 (one companion launch returned an
   unconfirmed outcome; rerunning the idempotent launcher created its deterministic container).
+- 17:15–17:21: measured remote companion footprint 0.8–6.04 GiB (trainers ~2.4 GiB early, replay grows to ~46 GB);
+  companion reservation set to 8 GiB (user's measured-footprint rule) and four more pairs admitted: 16 pairs
+  (all seeds 2000/2001 + bin-picking s2002), 962 GB reserved <= 1 TB. Seven seed-2002 pairs wait for headroom.

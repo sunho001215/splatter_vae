@@ -41,8 +41,8 @@ Last updated: 2026-10-11 17:10 +09:00. Concise current state; chronology and evi
 |---|---|---|---|
 | i1-{d0..d4}-seed{0,1}-hammer | local GPU4/GPU5 (5 each) | training 40k→100k (attempt 2) | runs/pretrain/i1-*-hammer/log.txt |
 | fulleval-i1-*-hammer-100k (10) | local | pending (deps on trainers) | runs/fulleval-i1-*/console.log |
-| s4-drm-cnn-<task>-s2000 (+ `-eval`), bin-picking as `-r4`; s2001 for 5 tasks | remote GPU 0-3 | 12 pairs training to 1M (first 16:47, last 17:13) | runs/s4-drm-cnn-*/ (synced) |
-| remaining s2001 (3 tasks) + s2002 (8 tasks) | remote | 11 pairs pending headroom (<= 1 TB) | — |
+| s4-drm-cnn-<task>-s2000/-s2001 (+ `-eval`; bin-picking s2000 as `-r4`), bin-picking-s2002 | remote GPU 0-3 | 16 pairs training to 1M (first 16:47, last 17:21) | runs/s4-drm-cnn-*/ (synced) |
+| s4-drm-cnn-<task>-s2002, 7 tasks | remote | pending headroom (measured 48 GiB trainer + 8 GiB companion, <= 1 TB) | — |
 
 ## Disk
 | time | free on /home/ws |
