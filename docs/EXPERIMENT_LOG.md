@@ -2324,3 +2324,30 @@ Raw stride6/pair02 observations only; no variant comparison, winner or adjusted 
   a user decision; with a single same-host repeat, hosts with equal noise fail this criterion about half the time.
 - Memory: peak sampled charge 129.2 GB during both suites plus v2 local; hammer runs at 43,450 steps by 16:15
   (~110 steps/min, 100k expected around 00:30–01:30).
+
+### 2026-10-11 — v2 decision, offline W&B release `5a7177e`, first remote campaign jobs (16:20–17:10)
+
+- **User decision (after seeing the v2 result): accept as equivalent.** Recorded in
+  `runs/remote/acceptance/<commit>/cross_host.json` with the measured numbers, `registered_criterion_met: false` and
+  the original report hash (unchanged). For `5a7177e` the decision is carried over after a checked comparison: the
+  pushed sources differ from the measured `e267ba8` only in `s4d/remote_launch.py`, `scripts/eval_rl.py` and their
+  two tests, none imported by the v2 training path.
+- **Remote job definitions.** 23 Stage 4 CNN DrM trainers (8 tasks x seeds 2000-2002 minus the finished local
+  pick-place s2000) plus one evaluation companion each, registered in `experiments/queue.yaml`. Admission uses the
+  measured footprints: trainer 48 GiB (1M-step RSS 47.8 GB, mostly reclaimable replay cache), companion 24 GiB
+  (unmeasured, conservative); at most 1 TB reserved. Launch issues found and fixed before any training step:
+  (1) the launcher rejects `config.yaml`/`console.log` as required results → trainers require `final.json` and
+  `train.jsonl`; (2) both containers exited at W&B login (no remote key). A `wandb.enabled=false` workaround (one pair
+  ran ~2 min, then stopped by us) was rejected by the user: **remote W&B stays on, offline.**
+- **Release `5a7177e`.** Remote containers get `WANDB_MODE=offline`; `eval_rl.py --output-dir` lets a companion write
+  `eval.jsonl`, provenance and its offline W&B run into its own `runs/<id>-eval` (the launcher requires this), so
+  its results are verifiable and its W&B run keeps the local name `<run>-eval`. Local suite 728/0/0/0 (215 s),
+  remote suite 728/0/0/0, all four isolation checks passed; acceptance manifest validated. Superseded attempts
+  (`s4-drm-cnn-bin-picking-s2000`, `-r2`, `-r3` and companions) are recorded `failed` with reasons; the run is `-r4`.
+- **First remote campaign job started 16:47:07 +09:00** (`s4-drm-cnn-bin-picking-s2000-r4`, remote GPU 0); its
+  companion started 16:47:39. Offline W&B runs are created in each run folder. RL training/evaluation log scalars
+  only (as locally); media panels (images, Object3D, videos) come from pretraining evaluation and are checked when
+  remote pretraining starts. `runs/setup/tools/sync_wandb_remote.py` pulls offline folders with checksum-verified
+  rsync (status in `runs/remote/wandb/status.json`) and uploads finished runs with `wandb sync`; failures are
+  recorded and never block. All seven seed-2000 pairs then launched by 17:00 (one companion launch returned an
+  unconfirmed outcome; rerunning the idempotent launcher created its deterministic container).

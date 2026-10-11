@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-11 16:25 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-11 17:10 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -27,10 +27,12 @@ Last updated: 2026-10-11 16:25 +09:00. Concise current state; chronology and evi
 - Health entries only when something changes.
 
 ## Source and remote status
-- Main `e267ba8` (pushed): seven-file portability repairs + cross-host v2 producer; local native suite 727/0/0/0.
-- Remote release `e267ba8`: full suite 727/0/0/0; four one-UUID CUDA/EGL isolation checks passed.
-- **Cross-host v2: failed narrowly** — step 0 bit-identical; 200-update RMSE cross-host 4.687e-5 vs same-host
-  repeat 4.588e-5 (ratio 1.02). Remote campaign admission (first job: Stage 4 CNN, 23 runs) awaits a user decision.
+- Main `5a7177e` (pushed, deployed): portability repairs, cross-host v2 producer, remote W&B offline and RL
+  evaluation `--output-dir`; local and remote native suites 728/0/0/0; four remote isolation checks passed.
+- Cross-host v2: step 0 bit-identical; 200-update RMSE 4.687e-5 vs same-host 4.588e-5 (ratio 1.02, registered
+  criterion not met) — **accepted as equivalent by the user**; acceptance manifest `runs/remote/acceptance/5a7177e/`.
+- Remote W&B: offline in each run folder; pulled and uploaded by `runs/setup/tools/sync_wandb_remote.py`
+  (status `runs/remote/wandb/status.json`). W&B never blocks decisions.
 - Global `experiments/HOLD` stays: it blocks the scheduler from relaunching old held jobs (S3 base/synth300k,
   s1v seed-1 runs); current work is dispatched through scoped queues in `runs/setup/`.
 
@@ -39,6 +41,8 @@ Last updated: 2026-10-11 16:25 +09:00. Concise current state; chronology and evi
 |---|---|---|---|
 | i1-{d0..d4}-seed{0,1}-hammer | local GPU4/GPU5 (5 each) | training 40k→100k (attempt 2) | runs/pretrain/i1-*-hammer/log.txt |
 | fulleval-i1-*-hammer-100k (10) | local | pending (deps on trainers) | runs/fulleval-i1-*/console.log |
+| s4-drm-cnn-<task>-s2000 (+ `-eval`), bin-picking as `-r4`; s2001 for 5 tasks | remote GPU 0-3 | 12 pairs training to 1M (first 16:47, last 17:13) | runs/s4-drm-cnn-*/ (synced) |
+| remaining s2001 (3 tasks) + s2002 (8 tasks) | remote | 11 pairs pending headroom (<= 1 TB) | — |
 
 ## Disk
 | time | free on /home/ws |
@@ -84,8 +88,8 @@ Last updated: 2026-10-11 16:25 +09:00. Concise current state; chronology and evi
 | 2026-10-10 12:56 | 4.8 TB (s4-drm-cnn-pick-place-s2000 completed with final eval at 1M; deleted its replay/, 46 GB apparent; the earlier ~33 GB used measurement was at 693k, not the final replay) |
 
 ## Next actions
-1. Cross-host decision from the user → acceptance manifest for `e267ba8` → Stage 4 CNN DrM on the remote
-   (8 tasks x seeds 2000-2002; pick-place seed 2000 already done locally), then SinCro/ReViWo pretraining.
+1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
+   pretraining on the remote (check media panels in their offline W&B runs).
 2. Hammer trainers reach 100k → 10 full-split evaluations (admitted job by job) → hammer D0 margins →
    item-1 rule → report 1d.
 3. Item 2 + RL proxies after item 1; then item 1e, length study, freeze, Stage 3 final RL.

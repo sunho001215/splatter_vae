@@ -1,6 +1,6 @@
 # Second-server campaign extension
 
-Status: first accepted-release remote native suite failed: **589 passed / 36 failed / 0 errors / 0 skipped**, unchanged source. Scientific admission remains gated; all four independent one-UUID CUDA/EGL checks passed with unchanged source and returned original evidence. Main registry is authoritative. Updated 2026-10-10 23:56 +09:00. The user’s 22:44 directive supersedes conflicting historical bootstrap/reserve/protocol details below: accepted deployed `200e5e6` first, independent of local RAM; local reserve 60 GiB; one C/D0 hammer seed-0 case for 200 steps against measured same-host repeat noise; checkpoint next-50-step gate only for actual migrations. GPU/security/data/clean-pushed-source boundaries and honest full-suite acceptance remain mandatory; unfinished review bootstrap is off the critical path.
+Status (2026-10-11 17:10 +09:00): release `5a7177e` deployed; remote full native suite 728/0/0/0 and all four one-UUID isolation checks passed; cross-host v2 accepted as equivalent by the user (ratio 1.02, registered criterion not met); Stage 4 CNN DrM running remotely since 16:47 with offline W&B. Earlier history below; the 200e5e6 failure and later fixes are in RESULTS/EXPERIMENT_LOG.
 
 ## Connectivity and access
 
@@ -163,15 +163,15 @@ long-window evidence is collected. Remote clean pushed-release deployment/native
 |---|---|---|
 | Container TCP route and SSH access | PASS | Initial connection and inventory above |
 | Authorized root / Docker access / idle GPUs | PASS at 21:11 inventory only | All four permitted UUIDs idle; recheck at admission |
-| Clean pushed immutable release | PASS | Exact `200e5e6` checkout; verified bundle/provenance above |
+| Clean pushed immutable release | PASS | `5a7177e` clean exact checkout; `runs/remote/releases/5a7177eb41541feb3f193fb62e7459c5b80274e5/provenance.json` |
 | UUID-specific CDI registration and execution | PASS for four isolation containers | Inspected exact one-UUID CDI injection; original reports and inspections under `runs/verify-isolation-<0..3>-200e5e6-20261010/` and `runs/remote/verification/` |
 | Immutable image / exact native runtime bytes | PASS for build/version/byte identity only | Image ID and 1,948-file audit above; native execution still pending |
-| Remote full native suite | FAILED at 23:05:54 | 589 passed / 36 failed / 0 errors / 0 skips; unchanged source, originals in `runs/verify-native-200e5e6-20261010/evidence/`; honest failure in RESULTS; seven-file repair candidate not yet accepted |
-| Per-GPU CUDA/EGL isolation | PASS on all four UUIDs | Actual one-UUID CUDA matmul and EGL render, child PID visible only on assigned UUID; originals in `runs/verify-isolation-<0..3>-200e5e6-20261010/evidence/gpu_isolation.json` |
+| Remote full native suite | PASS (5a7177e) | 728/0/0/0, `runs/verify-native-5a7177e-20261011/evidence/`; earlier 200e5e6 failure 589/36 kept in RESULTS |
+| Per-GPU CUDA/EGL isolation | PASS on all four UUIDs (5a7177e) | `runs/verify-isolation-<0..3>-5a7177e-20261011/evidence/gpu_isolation.json` |
 | Scheduled data identity | PASS for initial transferred scope | Eight files verified at 19:33; semantic identity `56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1` |
-| Cross-host v2 fresh step-0 and 200-update equivalence | PENDING / no numerical run | C/D0 hammer seed 0; first-batch equality and forward 1e-4 relative; loss-curve RMSE no larger than two actual same-host repeats; frozen producer is not acceptance |
+| Cross-host v2 fresh step-0 and 200-update equivalence | ACCEPTED by user decision | Step 0 bit-identical; RMSE 4.687e-5 vs same-host 4.588e-5 (criterion not met); `runs/remote/acceptance/5a7177e/cross_host.json` |
 | Checkpoint continuation for actual migrations only | PENDING / no migration | Original local checkpoint, next 50 updates, same measured-noise criterion; complete hammer group moves together |
-| Remote long-job admission | HOLD | Real full-suite pass, four isolation passes, source/image/data identity and fresh v2 numerical pass required; checkpoint continuation is not required for independent remote-only work |
+| Remote long-job admission | OPEN | Manifest `runs/remote/acceptance/5a7177e/manifest.json`; job-by-job under 1 TB; W&B offline |
 
 ## Outages
 
