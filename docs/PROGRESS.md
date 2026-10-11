@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-11 23:20 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -36,11 +36,10 @@ Last updated: 2026-10-11 23:20 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| i2-m3d-seed{0,1}-{hammer,pick-place} | local GPU4/GPU5 | training to 100k (started 23:12) | runs/pretrain/i2-m3d-*/log.txt |
-| i2-proxy-m2d-hammer-s1000..s1005 (+ eval) | local | RL 400k steps (started 23:15) | runs/i2-proxy-m2d-*/ |
-| fulleval-i2-m3d-*, export-i2-m3d-*, i2-proxy-m3d-* | local | waiting on M3D trainers | — |
-| s4-drm-cnn-<task>-s2000/-s2001 (+ `-eval`; bin-picking s2000 as `-r4`), bin-picking-s2002 | remote GPU 0-3 | 16 pairs training to 1M (first 16:47, last 17:13) | runs/s4-drm-cnn-*/ (synced) |
-| s4-drm-cnn-<task>-s2002, 7 tasks | remote | pending headroom (measured 48 GiB trainer + 8 GiB companion, <= 1 TB) | — |
+| i2-m3d-seed{0,1}-{hammer,pick-place} | local | seed 1 done 06:17/06:23 (full-split verified); seed 0 training to 100k | runs/pretrain/i2-m3d-*/log.txt |
+| i2-proxy-m2d-hammer-s1000..s1005 | local | finished 01:31–02:14 (replays deleted) | runs/i2-proxy-m2d-*/ |
+| i2-proxy-m3d-hammer-s1003..s1005 (+ eval) | local | RL 400k (started 06:20); s1000-s1002 wait for seed-0 export | runs/i2-proxy-m3d-*/ |
+| s4-drm-cnn-<task>-s200{0,1,2} (+ `-eval`), 23 pairs | remote GPU 0-3 | all launched (last 06:50); 7 finished, 16 running | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
 
 ## Disk
 | time | free on /home/ws |
@@ -93,6 +92,10 @@ Last updated: 2026-10-11 23:20 +09:00. Concise current state; chronology and evi
 | 2026-10-12 03:09 | remote 3.44 TB (s4-drm-cnn-peg-insert-side-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 03:41 | remote 3.46 TB (s4-drm-cnn-peg-unplug-side-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 03:50 | remote 3.50 TB (s4-drm-cnn-coffee-push-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 06:21 | remote 3.40 TB (s4-drm-cnn-coffee-push-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 06:33 | remote 3.44 TB (s4-drm-cnn-peg-unplug-side-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 06:46 | remote 3.47 TB (s4-drm-cnn-door-open-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 06:46 | remote 3.52 TB (s4-drm-cnn-door-open-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 
 ## Next actions
 1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
