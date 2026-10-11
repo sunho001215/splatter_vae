@@ -2418,3 +2418,36 @@ dynamic share 0.93, seed 1 0.27), which widens the PSNR, moving-PSNR and relativ
   10-minute reporting threshold.
 - 23:25:22–23:25:46 a second brief remote SSH drop (~24 s); all 32 remote jobs reconciled to running by 23:27, no
   relaunch. Two drops within six minutes; if they recur or exceed 10 minutes the user is told (host-side VPN).
+- 2026-10-12 07:26 a third brief remote SSH drop (8.7 s); remote jobs reconciled, no relaunch.
+
+### 2026-10-12 — Item-2 M2D reference margins (frozen 07:46, before any M3D comparison)
+
+All four M3D full-split results verified 06:2x–07:4x (proofs `runs/setup/item2-fulleval-i2-m3d-*-completion.json`).
+Margins from the M2D = D0 pair with the unchanged registered readers/floors, artifact `runs/setup/item2-m2d-margins-20261012-074618.json`.
+Motion metrics at stride 6 (8 per task) and the PSNR guards:
+
+| task/metric | M2D seed 0 | M2D seed 1 | margin | role |
+|---|---|---|---|---|
+| hammer/relepe_bin1 | 0.869564 | 0.999259 | 0.129694 | motion |
+| hammer/relepe_bin2 | 0.766259 | 0.970979 | 0.204721 | motion |
+| hammer/relepe_bin3 | 0.335151 | 0.811445 | 0.476293 | motion |
+| hammer/epe_mm | 15.1551 | 33.5236 | 18.3686 | motion |
+| hammer/cd_motion_dyn | 0.215449 | 0.27168 | 0.230865 relative | motion |
+| hammer/dyn_share | 0.934168 | 0.267652 | 0.666515 | motion |
+| hammer/r2_vel_train | 0.746096 | 0.690575 | 0.0555213 | motion |
+| hammer/r2_vel_traj | 0.625447 | 0.531127 | 0.09432 | motion |
+| hammer/psnr | 27.6768 | 26.7307 | 0.946116 | guard |
+| hammer/psnr_moving | 25.4143 | 24.0007 | 1.41365 | guard |
+| pick-place/relepe_bin1 | 1.00102 | 0.999778 | 0.03 | motion |
+| pick-place/relepe_bin2 | 0.999872 | 1.00007 | 0.03 | motion |
+| pick-place/relepe_bin3 | 0.999948 | 0.999972 | 0.03 | motion |
+| pick-place/epe_mm | 38.0411 | 38.0417 | 1 | motion |
+| pick-place/cd_motion_dyn | 0.426761 | 0.420383 | 0.05 relative | motion |
+| pick-place/dyn_share | 0.0521458 | 0.0670558 | 0.05 | motion |
+| pick-place/r2_vel_train | 0.358009 | 0.382757 | 0.05 | motion |
+| pick-place/r2_vel_traj | 0.244899 | 0.327079 | 0.0821809 | motion |
+| pick-place/psnr | 26.0226 | 26.0573 | 0.2 | guard |
+| pick-place/psnr_moving | 18.193 | 18.0636 | 0.2 | guard |
+
+The hammer reference pair splits on the motion collapse (dynamic share 0.93 vs 0.27), so hammer motion margins are
+wide; pick-place margins sit at the floors. No M3D value compared yet; the rule is run once all 12 RL proxies finish.
