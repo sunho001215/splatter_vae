@@ -2359,3 +2359,7 @@ Raw stride6/pair02 observations only; no variant comparison, winner or adjusted 
   in this container, so the stale page cache of the finished pick-place runs' data (`pick-place.hdf5` 11.5 GB
   resident, held-out set 1.6 GB) was evicted with read-only `POSIX_FADV_DONTNEED`: charge 142.9 → 128.2 GB. No job
   touched; hammer data stays cached. All 16 remote CNN pairs stepping; seed-2002 pairs wait for headroom.
+- 18:20–18:35 local NVIDIA management queries stalled transiently (watcher GPU_QUERY_FAILING; scheduler logged
+  5 QueryUnavailable ticks from 18:29:29 to 18:34:20; a direct `nvidia-smi` timed out at 30 s at 18:32, host load ~130).
+  Device nodes stayed openable by new processes and all training continued (hammer at ~62k steps). Queries returned
+  instantly from 18:33 and the scheduler recovered without any action; no host, driver or process intervention.
