@@ -2594,3 +2594,9 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   baseline-RL jobs repointed).
 - Data: parallel transfer streams (~7-8 MB/s each, ~22-30 MB/s total); all held-out sets and stats done; three task
   HDF5 files still transferring.
+- 2026-10-13 01:05 — remote concurrency raised (per-GPU load limit 2.0 -> 2.8; SinCro/Stage-3 trainer 1.0, ReViWo
+  0.4, RL trainer 0.5 + companion 0.3). Basis (measured): with the 2.4-2.5 load of the A200 proxies on top of the
+  SinCro runs, SinCro step rates stayed 200-300/min (unchanged), and the GPU with two SinCro runs gave 2 x 200 =
+  400 steps/min vs ~300 for one, so contention raised total throughput. To be re-measured after the next
+  admissions. 6 of the A200 arm's 8 proxies are done (verified, replay deleted; s1003 finishing, s1005 running);
+  the last two ReViWo baselines started 01:0x.
