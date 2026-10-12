@@ -39,7 +39,7 @@ Last updated: 2026-10-12 09:40 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| s4-drm-cnn-<task>-s200{0,1,2} (+ `-eval`), 23 pairs | remote GPU 0-3 | all launched (last 06:50); 7 finished, 16 running | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
+| s4-drm-cnn-<task>-s200{0,1,2} (+ `-eval`), 23 pairs | remote GPU 0-3 | all launched (last 06:50); 11 finished, 12 running | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
 
 ## Disk
 | time | free on /home/ws |
