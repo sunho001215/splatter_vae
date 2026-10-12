@@ -2570,3 +2570,27 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   14:56 on remote GPUs 0/1 (5a7177e). At 15:08 SinCro was at step 5000 and ReViWo at 5950. Their offline W&B runs
   hold scalars only, as do the local baseline runs: the baseline trainers log scalar records to W&B and write
   evaluation images as PNGs under `eval/` (returned with the results), so there are no W&B media panels to verify.
+
+## 2026-10-12 — Remote utilisation directive (user, ~15:20): execution
+
+- **Placement.** Length-study trainers and full-split evaluations stay local (both arms local; A200 is the
+  pre-registered continuation of a local run). The 16 length-study RL proxies (both arms) move to the remote. All
+  16 SinCro/ReViWo pretraining runs and the 48 baseline RL runs (+ evaluation companions, seeds 2000-2002) run on
+  the remote; 8 speculative Stage 3 runs (C + D0 + M3D, 300k, seed 0, `s3spec-m3d-seed0-<task>`) fill spare
+  capacity. No CNN seeds remain. Priority order: proxies > baseline pretraining > baseline RL > speculative Stage 3.
+- **Local baselines stopped:** the five local SinCro/ReViWo runs (2 h in) were stopped (SIGTERM) and registered
+  as failed with that reason; their remote restarts are `<id>-rem`. The four length-study trainers now have the
+  local GPUs to themselves (0.24-0.30 s/step, was 0.34-0.40).
+- **Bundle integrated:** M3D-only training path + DROID track arrays merged (d81cbca); full native suite on the
+  integrated sources 755/0/0/0 (2f03779).
+- **CPU oversubscription found and fixed.** First remote measurement (15:37-15:47): two ReViWo jobs kept ~250 of 384
+  host cores busy (load ~350); ReViWo fell 565 -> ~145 steps/min, SinCro 468 -> 350-410, our trainer ran ~165.
+  Cause: unlimited OpenMP/PyTorch pools. Fix 8417843 (per-container OMP/MKL/OpenBLAS threads, default 8,
+  per-job `cpu_threads`), local suite 760/0/0/0, release 226d8ae pushed and deployed; remote suite 760/0/0/0 and
+  isolation on all four GPUs passed; acceptance manifest `runs/remote/acceptance/226d8ae/` (cross-host entry
+  carried over from e267ba8 with an explicit basis: every current comparison keeps its arms on one host).
+- **Restarts for the redeploy:** the release checks need empty GPUs, so all eight early remote runs (<= 25k steps)
+  were stopped and relaunched fresh on 226d8ae under `<id>-b` ids (old ids failed with the reason; dependent
+  baseline-RL jobs repointed).
+- Data: parallel transfer streams (~7-8 MB/s each, ~22-30 MB/s total); all held-out sets and stats done; three task
+  HDF5 files still transferring.

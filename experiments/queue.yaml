@@ -9523,14 +9523,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-hammer-s2000
   - --set
-  - vision.export_path=runs/s4-sincro-hammer-rem/encoder.pt
+  - vision.export_path=runs/s4-sincro-hammer-rem-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-hammer-rem
+  - s4-sincro-hammer-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9556,7 +9556,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-hammer-rem
+  - s4-sincro-hammer-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9625,14 +9625,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-pick-place-s2000
   - --set
-  - vision.export_path=runs/s4-sincro-pick-place-rem/encoder.pt
+  - vision.export_path=runs/s4-sincro-pick-place-rem-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-pick-place-rem
+  - s4-sincro-pick-place-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9658,7 +9658,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-pick-place-rem
+  - s4-sincro-pick-place-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9829,14 +9829,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-coffee-push-s2000
   - --set
-  - vision.export_path=runs/s4-sincro-coffee-push/encoder.pt
+  - vision.export_path=runs/s4-sincro-coffee-push-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-coffee-push
+  - s4-sincro-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9862,7 +9862,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-coffee-push
+  - s4-sincro-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9880,14 +9880,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-reviwo-coffee-push-s2000
   - --set
-  - vision.export_path=runs/s4-reviwo-coffee-push/encoder.pt
+  - vision.export_path=runs/s4-reviwo-coffee-push-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-reviwo-coffee-push
+  - s4-reviwo-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9913,7 +9913,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-reviwo-coffee-push
+  - s4-reviwo-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9931,14 +9931,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-door-open-s2000
   - --set
-  - vision.export_path=runs/s4-sincro-door-open/encoder.pt
+  - vision.export_path=runs/s4-sincro-door-open-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-door-open
+  - s4-sincro-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9964,7 +9964,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-door-open
+  - s4-sincro-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -9982,14 +9982,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-reviwo-door-open-s2000
   - --set
-  - vision.export_path=runs/s4-reviwo-door-open/encoder.pt
+  - vision.export_path=runs/s4-reviwo-door-open-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-reviwo-door-open
+  - s4-reviwo-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10015,7 +10015,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-reviwo-door-open
+  - s4-reviwo-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10339,14 +10339,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-hammer-s2001
   - --set
-  - vision.export_path=runs/s4-sincro-hammer-rem/encoder.pt
+  - vision.export_path=runs/s4-sincro-hammer-rem-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-hammer-rem
+  - s4-sincro-hammer-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10372,7 +10372,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-hammer-rem
+  - s4-sincro-hammer-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10441,14 +10441,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-pick-place-s2001
   - --set
-  - vision.export_path=runs/s4-sincro-pick-place-rem/encoder.pt
+  - vision.export_path=runs/s4-sincro-pick-place-rem-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-pick-place-rem
+  - s4-sincro-pick-place-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10474,7 +10474,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-pick-place-rem
+  - s4-sincro-pick-place-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10645,14 +10645,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-coffee-push-s2001
   - --set
-  - vision.export_path=runs/s4-sincro-coffee-push/encoder.pt
+  - vision.export_path=runs/s4-sincro-coffee-push-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-coffee-push
+  - s4-sincro-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10678,7 +10678,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-coffee-push
+  - s4-sincro-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10696,14 +10696,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-reviwo-coffee-push-s2001
   - --set
-  - vision.export_path=runs/s4-reviwo-coffee-push/encoder.pt
+  - vision.export_path=runs/s4-reviwo-coffee-push-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-reviwo-coffee-push
+  - s4-reviwo-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10729,7 +10729,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-reviwo-coffee-push
+  - s4-reviwo-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10747,14 +10747,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-door-open-s2001
   - --set
-  - vision.export_path=runs/s4-sincro-door-open/encoder.pt
+  - vision.export_path=runs/s4-sincro-door-open-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-door-open
+  - s4-sincro-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10780,7 +10780,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-door-open
+  - s4-sincro-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10798,14 +10798,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-reviwo-door-open-s2001
   - --set
-  - vision.export_path=runs/s4-reviwo-door-open/encoder.pt
+  - vision.export_path=runs/s4-reviwo-door-open-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-reviwo-door-open
+  - s4-reviwo-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -10831,7 +10831,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-reviwo-door-open
+  - s4-reviwo-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11155,14 +11155,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-hammer-s2002
   - --set
-  - vision.export_path=runs/s4-sincro-hammer-rem/encoder.pt
+  - vision.export_path=runs/s4-sincro-hammer-rem-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-hammer-rem
+  - s4-sincro-hammer-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11188,7 +11188,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-hammer-rem
+  - s4-sincro-hammer-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11257,14 +11257,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-pick-place-s2002
   - --set
-  - vision.export_path=runs/s4-sincro-pick-place-rem/encoder.pt
+  - vision.export_path=runs/s4-sincro-pick-place-rem-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-pick-place-rem
+  - s4-sincro-pick-place-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11290,7 +11290,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-pick-place-rem
+  - s4-sincro-pick-place-rem-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11461,14 +11461,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-coffee-push-s2002
   - --set
-  - vision.export_path=runs/s4-sincro-coffee-push/encoder.pt
+  - vision.export_path=runs/s4-sincro-coffee-push-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-coffee-push
+  - s4-sincro-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11494,7 +11494,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-coffee-push
+  - s4-sincro-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11512,14 +11512,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-reviwo-coffee-push-s2002
   - --set
-  - vision.export_path=runs/s4-reviwo-coffee-push/encoder.pt
+  - vision.export_path=runs/s4-reviwo-coffee-push-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-reviwo-coffee-push
+  - s4-reviwo-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11545,7 +11545,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-reviwo-coffee-push
+  - s4-reviwo-coffee-push-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11563,14 +11563,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-sincro-door-open-s2002
   - --set
-  - vision.export_path=runs/s4-sincro-door-open/encoder.pt
+  - vision.export_path=runs/s4-sincro-door-open-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-sincro-door-open
+  - s4-sincro-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11596,7 +11596,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-sincro-door-open
+  - s4-sincro-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11614,14 +11614,14 @@ jobs:
   - --run-dir
   - runs/s4-drm-reviwo-door-open-s2002
   - --set
-  - vision.export_path=runs/s4-reviwo-door-open/encoder.pt
+  - vision.export_path=runs/s4-reviwo-door-open-b/encoder.pt
   gpu: any
   mem_gb: 4
   ram_gb: 16
   disk_gb: 10
   priority: 2
   deps:
-  - s4-reviwo-door-open
+  - s4-reviwo-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -11647,7 +11647,7 @@ jobs:
   disk_gb: 1
   priority: 2
   deps:
-  - s4-reviwo-door-open
+  - s4-reviwo-door-open-b
   max_restarts: 1
   stage: 4
   required_results:
@@ -12191,6 +12191,196 @@ jobs:
   - configs/metaworld/tasks/stick-push.yaml
   - --name
   - s3spec-m3d-seed0-stick-push
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s4-sincro-coffee-push-b
+  host: remote
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/baselines/sincro/coffee-push.yaml
+  - --name
+  - s4-sincro-coffee-push-b
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 20
+  ram_gb: 24
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-sincro-door-open-b
+  host: remote
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/baselines/sincro/door-open.yaml
+  - --name
+  - s4-sincro-door-open-b
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 20
+  ram_gb: 24
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-sincro-hammer-rem-b
+  host: remote
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/baselines/sincro/hammer.yaml
+  - --name
+  - s4-sincro-hammer-rem-b
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 16
+  ram_gb: 24
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-sincro-pick-place-rem-b
+  host: remote
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/baselines/sincro/pick-place.yaml
+  - --name
+  - s4-sincro-pick-place-rem-b
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 16
+  ram_gb: 24
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-reviwo-coffee-push-b
+  host: remote
+  script: scripts/train_reviwo.py
+  args:
+  - --config
+  - configs/baselines/reviwo/coffee-push.yaml
+  - --name
+  - s4-reviwo-coffee-push-b
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 20
+  ram_gb: 16
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-reviwo-door-open-b
+  host: remote
+  script: scripts/train_reviwo.py
+  args:
+  - --config
+  - configs/baselines/reviwo/door-open.yaml
+  - --name
+  - s4-reviwo-door-open-b
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 20
+  ram_gb: 16
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-hammer-b
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s3spec-m3d-seed0-hammer-b
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-pick-place-b
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s3spec-m3d-seed0-pick-place-b
   - --output-root
   - runs
   - --resume
