@@ -1,0 +1,149 @@
+{
+  "gpu_mapping": [
+    {
+      "index": 0,
+      "uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+  ],
+  "cache": "/home/ws/ws/splatter4d/.worktrees/review/runs/droid_smoke/cache",
+  "contract": {
+    "train": {
+      "windows": 30,
+      "checked": 4,
+      "sizes": {
+        "B": 4,
+        "T": 3,
+        "V": 2,
+        "H": 144,
+        "W": 256
+      },
+      "track_capacity": 36992,
+      "track_count": [
+        [
+          28010,
+          36863
+        ],
+        [
+          28010,
+          36863
+        ],
+        [
+          28010,
+          36863
+        ],
+        [
+          28010,
+          36863
+        ]
+      ],
+      "supervised_fraction": 0.8868404626846313,
+      "moving_5mm_supervised": 57801,
+      "gripper_points": 32,
+      "gripper_visible_fraction": 0.5208333134651184,
+      "pixel_grid_motion_fields": []
+    },
+    "validation": {
+      "windows": 5,
+      "checked": 4,
+      "sizes": {
+        "B": 4,
+        "T": 3,
+        "V": 2,
+        "H": 144,
+        "W": 256
+      },
+      "track_capacity": 36992,
+      "track_count": [
+        [
+          22621,
+          33987
+        ],
+        [
+          22621,
+          33987
+        ],
+        [
+          22621,
+          33987
+        ],
+        [
+          22621,
+          33987
+        ]
+      ],
+      "supervised_fraction": 0.8486020565032959,
+      "moving_5mm_supervised": 61811,
+      "gripper_points": 32,
+      "gripper_visible_fraction": 0.15625,
+      "pixel_grid_motion_fields": []
+    }
+  },
+  "overlays": [
+    "docs/figures/droid_smoke/cached_tracks_scratch_window00030.png",
+    "docs/figures/droid_smoke/cached_tracks_dinov2_window00030.png",
+    "docs/figures/droid_smoke/cached_tracks_scratch_window00000.png",
+    "docs/figures/droid_smoke/cached_tracks_dinov2_window00000.png"
+  ],
+  "config_overrides": [
+    "loss.ramp_steps=0",
+    "train.warmup_steps=20",
+    "train.steps=300"
+  ],
+  "overfit": {
+    "episode": {
+      "mode": "shuffled batches of all training windows",
+      "steps": 300,
+      "seconds": 116.36157989501953,
+      "train_windows": 30,
+      "m3d_loss_first_mean": 0.0972727233171463,
+      "m3d_loss_last_mean": 0.11070997536182403,
+      "m3d_loss_ratio_last_first": 1.1381399799085212,
+      "probe_first": {
+        "step": 0,
+        "motion": 0.1334100216627121,
+        "total": 3.8106143474578857,
+        "m3d_disp_01": 0.0035325062926858664,
+        "m3d_attr_01": 0.13405902683734894,
+        "m3d_covered_01": 0.095703125
+      },
+      "probe_last": {
+        "step": 299,
+        "motion": 0.07144661992788315,
+        "total": 1.7816020250320435,
+        "m3d_disp_01": 0.03260611370205879,
+        "m3d_attr_01": 0.015667647123336792,
+        "m3d_covered_01": 0.8515625
+      },
+      "probe_m3d_ratio_last_first": 0.5355416260145348,
+      "gpu_mem_gb": 1.0444512367248535
+    },
+    "fixed_batch": {
+      "mode": "one fixed batch of two training windows",
+      "steps": 300,
+      "seconds": 33.526283740997314,
+      "train_windows": 2,
+      "m3d_loss_first_mean": 0.10283736050128937,
+      "m3d_loss_last_mean": 0.07385481506586075,
+      "m3d_loss_ratio_last_first": 0.7181710489830664,
+      "probe_first": {
+        "step": 0,
+        "motion": 0.1334100216627121,
+        "total": 3.8106143474578857,
+        "m3d_disp_01": 0.0035325062926858664,
+        "m3d_attr_01": 0.13405902683734894,
+        "m3d_covered_01": 0.095703125
+      },
+      "probe_last": {
+        "step": 299,
+        "motion": 0.08183985948562622,
+        "total": 1.825434684753418,
+        "m3d_disp_01": 0.036484479904174805,
+        "m3d_attr_01": 0.013795210048556328,
+        "m3d_covered_01": 0.7783203125
+      },
+      "probe_m3d_ratio_last_first": 0.6134461149592958,
+      "gpu_mem_gb": 1.0444512367248535
+    }
+  }
+}

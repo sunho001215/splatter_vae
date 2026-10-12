@@ -1,7 +1,8 @@
 """Smoke check of the DROID 3D track arrays (review item 2c); no DROID training.
 
-Loads a few cache windows through the loader and the shared contract, renders track overlays, and runs a short M3D
-overfit on the sample episode's training windows. Run with python -I and one approved GPU UUID.
+Loads a few cache windows through the loader and the shared contract, renders track overlays, and runs two short M3D
+overfits from the same initialisation: on the sample episode's training windows, and on one fixed batch of two of
+them. Run with python -I and one approved GPU UUID.
 """
 
 from __future__ import annotations
@@ -29,7 +30,8 @@ from s4d.data.droid.inspect import cached_coordinate_overlays  # noqa: E402
 from s4d.train.loop import build_model, build_optimizer, forward_losses, move_batch, seed_everything  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-WINDOW = 25  # steps averaged at each end of the curve
+WINDOW = 25  # steps averaged at each end of the curve; also the probe interval
+M3D_KEYS = ("m3d_disp_01", "m3d_attr_01", "m3d_covered_01")
 
 
 def contract_checks(root: Path, count: int) -> dict:
@@ -67,7 +69,7 @@ def curve_png(path: Path, steps: list[int], series: dict[str, list[float]]) -> N
     x = lambda s: pad + (width - 2 * pad) * s / max(steps[-1], 1)  # noqa: E731
     y = lambda v: height - pad - (height - 2 * pad) * (v - low) / span  # noqa: E731
     draw.rectangle((pad, pad, width - pad, height - pad), outline="#999999")
-    for (name, vs), color in zip(series.items(), ("#2a78d6", "#eb6834")):
+    for (name, vs), color in zip(series.items(), ("#2a78d6", "#eb6834", "#3a9a5b")):
         draw.line([(x(s), y(v)) for s, v in zip(steps, vs)], fill=color, width=2)
         draw.text((pad + 8, pad + 8 + 16 * list(series).index(name)), name, fill=color)
     draw.text((pad, height - pad + 10), f"step 0 .. {steps[-1]}", fill="#252a32")
@@ -76,7 +78,8 @@ def curve_png(path: Path, steps: list[int], series: dict[str, list[float]]) -> N
     image.save(path)
 
 
-def overfit(cfg: dict, root: Path, steps: int, device: torch.device) -> dict:
+def overfit(cfg: dict, root: Path, steps: int, device: torch.device, fixed: bool) -> dict:
+    """``fixed``: every step trains on the probe batch; otherwise on shuffled batches of all training windows."""
     seed_everything(int(get(cfg, "train.seed", 0)))
     model = build_model(cfg).to(device)
     stats_path = get(cfg, "model.anchor_stats")
@@ -98,15 +101,23 @@ def overfit(cfg: dict, root: Path, steps: int, device: torch.device) -> dict:
     step, start = 0, time.time()
     clip = float(get(cfg, "train.grad_clip", 1.0))
     while step < steps:
-        for raw in loader:
+        for raw in [probe] * steps if fixed else loader:
             if step % WINDOW == 0 or step == steps - 1:
                 model.eval()
                 with torch.no_grad():
                     torch.manual_seed(1234)
                     source = torch.zeros(2, dtype=torch.long, device=device)
                     out = forward_losses(model, probe, cfg, step, source=source, mask_ratio=0.0)
-                losses = out["losses"]
-                probes.append({"step": step, "motion": float(losses["motion"]), "total": float(losses["total"])})
+                losses, metrics = out["losses"], out["metrics"]
+                probes.append(
+                    {
+                        "step": step,
+                        "motion": float(losses["motion"]),
+                        "total": float(losses["total"]),
+                        **{k: float(metrics[k]) for k in M3D_KEYS},
+                    }
+                )
+                print(f"step {step} probe M3D {probes[-1]['motion']:.5f} ({time.time() - start:.0f} s)", flush=True)
                 model.train()
             batch = move_batch(raw, device)
             out = forward_losses(model, batch, cfg, step)
@@ -123,7 +134,7 @@ def overfit(cfg: dict, root: Path, steps: int, device: torch.device) -> dict:
                     "step": step,
                     "motion": float(out["losses"]["motion"]),
                     "total": float(out["losses"]["total"]),
-                    **{k: float(metrics[k]) for k in ("m3d_disp_01", "m3d_attr_01", "m3d_covered_01", "psnr")},
+                    **{k: float(metrics[k]) for k in (*M3D_KEYS, "psnr")},
                 }
             )
             step += 1
@@ -133,14 +144,16 @@ def overfit(cfg: dict, root: Path, steps: int, device: torch.device) -> dict:
     first = sum(r["motion"] for r in rows[:WINDOW]) / WINDOW
     last = sum(r["motion"] for r in rows[-WINDOW:]) / WINDOW
     return {
+        "mode": "one fixed batch of two training windows" if fixed else "shuffled batches of all training windows",
         "steps": steps,
         "seconds": time.time() - start,
-        "train_windows": len(dataset),
+        "train_windows": 2 if fixed else len(dataset),
         "m3d_loss_first_mean": first,
         "m3d_loss_last_mean": last,
         "m3d_loss_ratio_last_first": last / first,
-        "probe_m3d_first": probes[0]["motion"],
-        "probe_m3d_last": probes[-1]["motion"],
+        "probe_first": probes[0],
+        "probe_last": probes[-1],
+        "probe_m3d_ratio_last_first": probes[-1]["motion"] / probes[0]["motion"],
         "gpu_mem_gb": torch.cuda.max_memory_allocated() / 2**30 if device.type == "cuda" else None,
         "train": rows,
         "probe": probes,
@@ -155,7 +168,9 @@ def main() -> None:
     parser.add_argument("--set", nargs="*", default=[])
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--windows", type=int, default=4)
+    parser.add_argument("--threads", type=int, default=4, help="CPU threads; keeps the host's campaign jobs unaffected")
     args = parser.parse_args()
+    torch.set_num_threads(args.threads)
     root = writable_path(args.cache, DROID_CACHE_ROOT)
     out = writable_path(args.out, DROID_CACHE_ROOT)
     out.mkdir(parents=True, exist_ok=True)
@@ -166,14 +181,22 @@ def main() -> None:
     report["overlays"] = [str(path.relative_to(REPO)) if REPO in path.parents else str(path) for path in overlays]
     cfg = load_config(args.config, ["loss.ramp_steps=0", "train.warmup_steps=20", f"train.steps={args.steps}", *args.set])
     report["config_overrides"] = ["loss.ramp_steps=0", "train.warmup_steps=20", f"train.steps={args.steps}", *args.set]
-    fit = overfit(cfg, root, args.steps, torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-    curve_png(
-        out / "m3d_overfit.png",
-        [r["step"] for r in fit["probe"]],
-        {"probe M3D loss (fixed batch, fixed sampling)": [r["motion"] for r in fit["probe"]]},
-    )
-    report["overfit"] = {k: v for k, v in fit.items() if k not in ("train", "probe")}
-    (out / "m3d_overfit_curve.json").write_text(json.dumps({"train": fit["train"], "probe": fit["probe"]}))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    report["overfit"] = {}
+    for name, fixed in (("episode", False), ("fixed_batch", True)):
+        fit = overfit(cfg, root, args.steps, device, fixed)
+        probe = fit["probe"]
+        curve_png(
+            out / f"m3d_overfit_{name}.png",
+            [r["step"] for r in probe],
+            {
+                f"{name}: probe M3D loss (fixed batch and sampling)": [r["motion"] for r in probe],
+                "attraction term 01": [r["m3d_attr_01"] for r in probe],
+                "displacement term 01": [r["m3d_disp_01"] for r in probe],
+            },
+        )
+        report["overfit"][name] = {k: v for k, v in fit.items() if k not in ("train", "probe")}
+        (out / f"m3d_overfit_{name}_curve.json").write_text(json.dumps({"train": fit["train"], "probe": probe}))
     (out / "smoke_report.json").write_text(json.dumps(report, indent=2))
     print(json.dumps({k: report[k] for k in ("contract", "overlays", "overfit")}, indent=2))
 
