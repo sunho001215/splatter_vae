@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-12T06:28:53.544977+00:00",
+  "started_utc": "2026-10-12T06:56:36.346787+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -14,22 +14,22 @@
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/runs/nv/d/tests",
+    "/home/ws/ws/splatter4d/runs/nv/e/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/runs/nv/d/runs/native-acceptance/evidence/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/runs/nv/e/runs/native-acceptance/evidence/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/runs/nv/d/runs/native-acceptance/evidence/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/runs/nv/e/runs/native-acceptance/evidence/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 236.44308331329376,
+  "duration_seconds": 245.79577764775604,
   "counts": {
-    "passed": 755,
+    "passed": 760,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 755,
+  "total": 760,
   "full_suite_passed": true,
   "source_sha256": {
     "mujoco_mig_setup.py": "c2834ce9b3d36d8beaa47e092215b01d09551753ffee857d1ad624aee7bc8bd2",
@@ -91,8 +91,8 @@
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "fe26bd68723cc7850a19f8817d8b58ca967625a47727d6a239e4e37dd4a59a6a",
     "s4d/remote_access.py": "ceb9b289bf151ca81340dc7f30d1922c4f17bfc51053e4a00b819114639c4a4b",
-    "s4d/remote_jobs.py": "615fdda768500538e1b668db51ea1d2fd825ad559284d5f62ad2e4a0ae5da9d6",
-    "s4d/remote_launch.py": "02daf04c02e75b4b9d249693f588802eed977797830401d9516d91d505f98c06",
+    "s4d/remote_jobs.py": "95a1143a74041368b2ed7d7c5a8119ba216b004c182f96c78e5fff968304306f",
+    "s4d/remote_launch.py": "b756ed9ceefb31f66afa6c423f6048ca28c83955dbd41480cfce1287a83c0caf",
     "s4d/rl/__init__.py": "3a4dfbe72092286ae5b7c3f85e520c425de1e5384177c392eda936967964c01e",
     "s4d/rl/agent.py": "6791e32c1b3332167bcb98b0c659f26ee6de31327958dbe4a6db2187cf0e464a",
     "s4d/rl/encoders.py": "a381e94552b0d5a5b6767ac472419e6ad6dd175ea8000061205af88bf09e07ed",
@@ -186,7 +186,7 @@
     "tests/test_occlusion.py": "a448c77d13305a356a166db8f9534693d4541c25c944a9ef3f90792d93457c9e",
     "tests/test_remote_access.py": "e96c45c36b4971278be7395e5c49ae21d1882b4ca1535a1f179b1733a9ba6de3",
     "tests/test_remote_jobs.py": "5a048cb3810c6266545dd2716706cd9c6e8c5ba4c6909e1bfd7e54ac3826ce94",
-    "tests/test_remote_launch.py": "6747f985c844b9063e044927f26abfb3c2b5158ce52490b2f8cc535c9c653a93",
+    "tests/test_remote_launch.py": "d0b30d0ff8d425a5c11ec0eb58796ad9577956dc52038c43eed326843a758b26",
     "tests/test_remote_runtime.py": "cf971b616b29c9765d9d7cc71e8b53f7aec198e02c8754ffabcfbe3276a00b14",
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
     "tests/test_review_options.py": "453512ca3cae6aee5990085947e7db869605e24d82e0fce5eace56a6812b606d",
@@ -307,8 +307,8 @@
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "fe26bd68723cc7850a19f8817d8b58ca967625a47727d6a239e4e37dd4a59a6a",
     "s4d/remote_access.py": "ceb9b289bf151ca81340dc7f30d1922c4f17bfc51053e4a00b819114639c4a4b",
-    "s4d/remote_jobs.py": "615fdda768500538e1b668db51ea1d2fd825ad559284d5f62ad2e4a0ae5da9d6",
-    "s4d/remote_launch.py": "02daf04c02e75b4b9d249693f588802eed977797830401d9516d91d505f98c06",
+    "s4d/remote_jobs.py": "95a1143a74041368b2ed7d7c5a8119ba216b004c182f96c78e5fff968304306f",
+    "s4d/remote_launch.py": "b756ed9ceefb31f66afa6c423f6048ca28c83955dbd41480cfce1287a83c0caf",
     "s4d/rl/__init__.py": "3a4dfbe72092286ae5b7c3f85e520c425de1e5384177c392eda936967964c01e",
     "s4d/rl/agent.py": "6791e32c1b3332167bcb98b0c659f26ee6de31327958dbe4a6db2187cf0e464a",
     "s4d/rl/encoders.py": "a381e94552b0d5a5b6767ac472419e6ad6dd175ea8000061205af88bf09e07ed",
@@ -402,7 +402,7 @@
     "tests/test_occlusion.py": "a448c77d13305a356a166db8f9534693d4541c25c944a9ef3f90792d93457c9e",
     "tests/test_remote_access.py": "e96c45c36b4971278be7395e5c49ae21d1882b4ca1535a1f179b1733a9ba6de3",
     "tests/test_remote_jobs.py": "5a048cb3810c6266545dd2716706cd9c6e8c5ba4c6909e1bfd7e54ac3826ce94",
-    "tests/test_remote_launch.py": "6747f985c844b9063e044927f26abfb3c2b5158ce52490b2f8cc535c9c653a93",
+    "tests/test_remote_launch.py": "d0b30d0ff8d425a5c11ec0eb58796ad9577956dc52038c43eed326843a758b26",
     "tests/test_remote_runtime.py": "cf971b616b29c9765d9d7cc71e8b53f7aec198e02c8754ffabcfbe3276a00b14",
     "tests/test_render_guard.py": "fee6067fd6b8b5faed9db465338bd9ab4470bdebfc5b84af13f01b2b88b956c8",
     "tests/test_review_options.py": "453512ca3cae6aee5990085947e7db869605e24d82e0fce5eace56a6812b606d",
@@ -1029,6 +1029,7 @@
       "validate_container"
     ],
     "s4d/remote_launch.py": [
+      "<dictcomp>",
       "<genexpr>",
       "<listcomp>",
       "<module>",
