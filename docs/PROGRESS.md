@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 17:10 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 23:10 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -43,10 +43,12 @@ Last updated: 2026-10-12 17:10 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| ls-a200-m3d-seed0-{hammer,pick-place} | local GPU 4 | ~134k of 200k at 17:07 (0.26-0.28 s/step) | runs/pretrain/i2-m3d-seed0-*/ |
-| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | ~40k of 300k at 17:07 | runs/pretrain/ls-a300-*/ |
-| 11 SinCro/ReViWo pretraining runs (226d8ae) | remote GPU 0-3 | 250-300 steps/min each, GPUs 96-98 % | runs/setup/remote-driver-20261012.log |
-| queued on the remote | — | 5 baselines, 16 length-study proxies, 48 baseline RL, 8 speculative Stage 3 | same |
+| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | ~130k / ~123k of 300k at 23:09 | runs/pretrain/ls-a300-*/ |
+| A200 arm (i2-m3d-seed0-<task> to 200k) | local | done 21:47 / 22:08; both full-split evaluations verified | runs/fulleval-ls-a200-*/ |
+| ls-proxy-a200-* (8 of 16 proxies) | remote | pick-place s1000/s1001 done 23:06; hammer s1000-s1005 running | runs/setup/remote-driver-20261012.log |
+| SinCro pretraining (5 running, 3 queued) | remote GPU 0-3 | ~100k of 300k at 22:10 | same |
+| ReViWo pretraining | remote | 6 of 8 done 22:32-23:05 (verified, W&B uploaded); 2 queued | runs/remote/finished/ |
+| queued on the remote | — | 48 baseline RL, 8 speculative Stage 3, 8 A300 proxies (after A300) | same |
 
 ## Disk
 | time | free on /home/ws |
