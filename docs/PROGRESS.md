@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 09:40 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 14:35 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -12,10 +12,13 @@ Last updated: 2026-10-12 09:40 +09:00. Concise current state; chronology and evi
 - **Item 2 decided 2026-10-12: M3D adopted** (12/16 motion pairs better, no guard worse; RL 0.756 vs 0.666 over 6
   hammer seeds). No M3D seed collapsed (dynamic share 0.93–0.96 at 100k), so later comparisons default to one seed.
   Table in RESULTS; output `runs/setup/item2-decision-20261012.txt`.
-- **Next for Stage 1:** item 1e leave-one-out (candidates to be pre-registered), removal of the image-space motion loss
-  from the training path (source change through the review worktree and full suite), 2c DROID smoke tests, then the
-  A200/A300 length study of the final configuration and `method-frozen-v1`.
-- `method-frozen-v1` after items 1-2, item 1e leave-one-out and the A200/A300 length study.
+- **User decisions 2026-10-12:** item 1e skipped (term contributions measured by the Stage 2 ablations); 2c smoke only.
+- **2c done (smoke level) and bundled with the M3D-only training path on `review-items`** (3cdad57, 75e2f5d, 28c8f6c,
+  6e976f8; not integrated). DROID batches now carry 3D track arrays and gripper FK points; contract checks pass on
+  the local sample; M3D probe loss -46 % over 300 steps (-39 % on one fixed batch). Details in EXPERIMENT_LOG.
+  Next: one full native suite on the bundle, then integration.
+- **Length study running** (C + D0 + M3D, one seed): A200 = i2-m3d-seed0-<task> continued 100k -> 200k, A300 new
+  300k runs; then 8 full evaluations, 16 RL proxies, the pre-registered rule, `method-frozen-v1`.
 - Pretraining lengths: ours default 300k (final L chosen on hammer/pick-place before the freeze); SinCro 300k;
   ReViWo 100 001.
 
@@ -39,7 +42,10 @@ Last updated: 2026-10-12 09:40 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| s4-drm-cnn-<task>-s200{0,1,2} (+ `-eval`), 23 pairs | remote GPU 0-3 | all launched (last 06:50); 11 finished, 12 running | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
+| ls-a200-m3d-seed0-{hammer,pick-place} | local GPU 4 | running from 100k (13:26), ~107k at 14:25 | runs/pretrain/i2-m3d-seed0-*/ |
+| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | running (13:26), ~10k at 14:25 | runs/pretrain/ls-a300-*/ |
+| s4-sincro-{hammer,pick-place}, s4-reviwo-{hammer,pick-place,bin-picking} | local GPU 4/5 | running; 11 more admitted as memory frees | runs/pretrain/s4-*/ |
+| s4-drm-cnn-stick-push-s2002 (+ `-eval`) | remote | 22 of 23 CNN pairs finished | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
 
 ## Disk
 | time | free on /home/ws |
@@ -106,9 +112,19 @@ Last updated: 2026-10-12 09:40 +09:00. Concise current state; chronology and evi
 | 2026-10-12 09:13 | 4.7TB (i2-proxy-m3d-hammer-s1000 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 | 2026-10-12 09:13 | 4.7TB (i2-proxy-m3d-hammer-s1002 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 | 2026-10-12 09:15 | 4.7TB (i2-proxy-m3d-hammer-s1001 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
+| 2026-10-12 09:38 | remote 3.60 TB (s4-drm-cnn-bin-picking-s2000-r4 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 09:59 | remote 3.63 TB (s4-drm-cnn-hammer-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 10:09 | remote 3.66 TB (s4-drm-cnn-bin-picking-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 10:15 | remote 3.71 TB (s4-drm-cnn-peg-insert-side-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 10:15 | remote 3.76 TB (s4-drm-cnn-bin-picking-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 12:32 | remote 3.71 TB (s4-drm-cnn-coffee-push-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 12:48 | remote 3.75 TB (s4-drm-cnn-hammer-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 12:53 | remote 3.79 TB (s4-drm-cnn-door-open-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 13:44 | remote 3.81 TB (s4-drm-cnn-pick-place-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 13:50 | remote 3.85 TB (s4-drm-cnn-peg-insert-side-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 13:56 | remote 3.90 TB (s4-drm-cnn-peg-unplug-side-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 
 ## Next actions
-1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
-   pretraining on the remote (check media panels in their offline W&B runs).
-2. Pre-register item 1e candidates; remove the image-space motion loss from the training path; 2c smoke tests.
-3. Then the length study (A200/A300), `method-frozen-v1`, Stage 3 final RL.
+1. Length study: the per-minute driver admits evaluations, exports and proxies as trainers finish; apply the rule.
+2. Bundle (`review-items`): full native suite once 15 GB local headroom exists, then integrate under HOLD and push.
+3. `method-frozen-v1`, Stage 2 ablations, Stage 3 final RL; Stage 4 SinCro/ReViWo DrM after their pretraining.

@@ -4,6 +4,20 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### 2c DROID 3D track arrays: smoke check only (2026-10-12; code on `review-items`, not integrated)
+
+No DROID training. On the one local sample episode (35 windows), the converter now emits per-camera 3D track arrays
+and gripper FK points instead of splatted pixel targets; images, depth, cameras and motion score are byte-identical
+to the earlier cache. Contract checks pass on 4 train and 4 validation windows. Track targets: 5.65 M supervised
+track-pairs vs 3.63 M splatted pixels. A 300-step M3D overfit (DROID config, ramp off) lowered the probe M3D loss on a
+fixed batch with fixed sampling from 0.133 to 0.071 (-46 %), and to 0.082 (-39 %) when training on that one batch.
+Not a decrease everywhere: on shuffled training batches the M3D mean rose 0.097 -> 0.111 (first vs last 25 steps)
+because its displacement term counts only points with a dynamic Gaussian within 3 cm, and that share rose
+10 % -> 85 % while the attraction term fell 88 %. Data caveat: 1.63 % of supervised tracks move > 10 cm in 0.45 s and
+77 % of those fail the visibility/depth tests at the target time (likely occlusion or tracking failures). Figures:
+`docs/figures/droid_smoke/` (on `review-items`). The first smoke attempt oversubscribed host CPUs (72 threads) and was
+stopped without a result.
+
 ### Item 2 (motion loss) decision: M3D adopted (2026-10-12 09:16)
 
 Pre-registered rule (EXPERIMENT_LOG 2026-10-09, item 2) run unchanged (`review_rules.directive_item2('d0')` plus the

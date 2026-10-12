@@ -2498,3 +2498,56 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   - Rule: 200k if A300 wins <= 8 of 40 (or loses more than it wins) and A300's hammer RL is not better than A200's by
     more than the RL margin; 400k if A300 wins >= 24 of 40 with >= 8 per task and its hammer RL is not worse than
     A200's by more than the RL margin; otherwise 300k. Then `method-frozen-v1`.
+
+## 2026-10-12 — 2c DROID track arrays (smoke only) and the M3D-only training path, bundled on `review-items`
+
+- **Local data (nothing downloaded; `/home/ws/data/droid` only listed).** `/home/ws/data/pointworld_droid_sample/`
+  holds one real episode (AUTOLab+0d4edc83, "Put brick in drawer shelf and close drawer"): PointWorld 3D tracks for
+  7 clips x 11 canonical frames (22-28k points from camera 22008760, 34-37k from 24400334), depth, cameras and the
+  matched raw RLDS episode (127 steps). `/home/ws/data/droid_pointworld_cache_sample/` is the earlier pixel-grid
+  cache. TensorFlow is not installed in the venv, so the converter gained a `--raw-episode NPZ METADATA` source (the
+  saved matched episode) with the same scene-path and per-step raw-state verification as an RLDS reread.
+- **Code (review worktree, branch `review-items`; earlier unfinished drafts kept on `review-items-wip-20261012`,
+  8f8f952):** 3cdad57 track arrays, 75e2f5d M3D-only training path, 28c8f6c smoke script and figures, 6e976f8
+  README. Not integrated: the bundle gets one full native suite, then integration (user decision).
+  - Contract: exactly one of dense targets (`motion3d`, `motion_weight`; Meta-World) or track arrays (`track_src`,
+    `track_disp` (B,3,V,N,3), `track_weight` (B,3,V,N), `track_count` (B,V) int64 with zero padding after the count,
+    `gripper_points` (B,3,G,3), `gripper_weight` (B,3,V,G)); the validator checks shapes, dtypes, finiteness,
+    ranges, padding and that the two forms are not mixed. `motion_score` stays a splatted pixel map (encoder input).
+  - Weights: PointWorld visibility, depth-valid mask and the native 2 cm surface test at the pair's source time, and
+    finite positions at both times (the resized-grid test and nearest-z collisions existed only for splatting).
+    Gripper FK points: per-camera native 2 cm surface test at the source time.
+  - M3D: `motion3d_track_loss` samples and scores exactly like the pixel version, at the given 3D positions (a test
+    shows identical loss and metrics when the tracks are the lifted pixels). The pixel M3D path is unchanged:
+    bitwise on CPU; on CUDA identical loss and metrics, gradients within the existing atomic-add nondeterminism
+    (old-vs-old differs equally, max 1.5e-8).
+  - M3D-only (the pre-registered "only the adopted loss remains in the training code path"): `loss.motion_space`
+    defaults to gaussian and any other value raises; image-space EPE stays a metric (evaluation uses it).
+  - Targeted tests 141 passed (contract, droid, droid protocols, motion3d, review options, diagnostics, stop step,
+    heldout, checkpoint); the full suite has not run on the bundle yet.
+- **Smoke on the local sample** (`runs/droid_smoke/` in the worktree; figures and report in
+  `docs/figures/droid_smoke/` on `review-items`):
+  - Converted 35 windows (30 train, 5 validation, last clip), capacity 36 992 tracks per camera. Raw-state alignment
+    exact (xyz max 0, rotation max 1.1e-7 rad); gripper calibration identical to the earlier cache (offset -0.019 m,
+    held-out median residual 12.2 mm). Images, depth, cameras, motion score and probe state are byte-identical to the
+    earlier pixel-grid cache; only the motion targets differ.
+  - Targets: 5.65 M supervised track-pairs vs 3.63 M splatted pixels before (1.56x; no collisions, no resolution
+    limit). Supervised |displacement| p50/p90/p99 = 0.8/4.3/327 mm (pair 01). 1.63 % of supervised pair-01 tracks
+    move > 10 cm in 0.45 s and only 23 % of those pass the visibility/depth tests at the target time, so they are
+    likely occlusion or tracking failures; a target-time test would be the first thing to consider before any DROID
+    training (not changed here: the user's spec and the earlier pipeline use source-time weights).
+  - Contract checks: 4 train and 4 validation windows, individually and collated, pass; loader 9.6-10 windows/s on
+    one CPU thread.
+  - M3D overfit, 300 steps, DROID config, `loss.ramp_steps=0`, 1.0 GB GPU memory: (a) shuffled batches of the 30
+    training windows: probe M3D on a fixed batch with fixed sampling 0.133 -> 0.071 (-46 %); attraction term
+    0.134 -> 0.016 while the share of track points with a dynamic Gaussian within 3 cm rose 10 % -> 85 %, so the
+    displacement term (counted only for covered points) rose 0.004 -> 0.033 and the training-batch M3D mean was
+    0.097 (first 25 steps) -> 0.111 (last 25). (b) one fixed batch of two windows: training M3D 0.103 -> 0.074
+    (-28 %), probe 0.133 -> 0.082 (-39 %).
+  - The first smoke attempt ran with 72 CPU threads, oversubscribed the shared host and was stopped by me after
+    22 min (no result); the script now uses 4 threads (`--threads`).
+- **Stage 4 baselines (local):** 20-minute PSS peaks SinCro 10.10 GB, ReViWo 5.92 GB
+  (`runs/setup/stage4-baseline-pss-peaks-20261012.json`). Admission adds a reserve for growth still expected from
+  running jobs below their measured peaks; s4-{sincro,reviwo}-pick-place started 13:44, s4-reviwo-bin-picking 13:58.
+  A per-minute loop runs the length-study driver first, then baseline admission, so freed memory goes to the length
+  study first (`runs/setup/ls-driver-20261012.log`, `runs/setup/baseline-admit-20261012.log`).
