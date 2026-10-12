@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 15:12 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 17:10 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -43,10 +43,10 @@ Last updated: 2026-10-12 15:12 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| ls-a200-m3d-seed0-{hammer,pick-place} | local GPU 4 | running from 100k (13:26), ~107k at 14:25 | runs/pretrain/i2-m3d-seed0-*/ |
-| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | running (13:26), ~10k at 14:25 | runs/pretrain/ls-a300-*/ |
-| s4-sincro-{hammer,pick-place}, s4-reviwo-{hammer,pick-place,bin-picking} | local GPU 4/5 | running; 11 more admitted as memory frees | runs/pretrain/s4-*/ |
-| s4-{sincro,reviwo}-<5 tasks> | remote GPU 0-1 | coffee-push pair running since 14:56 (~500 steps/min); the other 4 tasks start as their data verifies | runs/setup/stage4-baselines-remote-driver-20261012.log |
+| ls-a200-m3d-seed0-{hammer,pick-place} | local GPU 4 | ~134k of 200k at 17:07 (0.26-0.28 s/step) | runs/pretrain/i2-m3d-seed0-*/ |
+| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | ~40k of 300k at 17:07 | runs/pretrain/ls-a300-*/ |
+| 11 SinCro/ReViWo pretraining runs (226d8ae) | remote GPU 0-3 | 250-300 steps/min each, GPUs 96-98 % | runs/setup/remote-driver-20261012.log |
+| queued on the remote | — | 5 baselines, 16 length-study proxies, 48 baseline RL, 8 speculative Stage 3 | same |
 
 ## Disk
 | time | free on /home/ws |
@@ -127,6 +127,7 @@ Last updated: 2026-10-12 15:12 +09:00. Concise current state; chronology and evi
 | 2026-10-12 14:52 | remote 3.92 TB (s4-drm-cnn-stick-push-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 
 ## Next actions
-1. Length study: the per-minute driver admits evaluations, exports and proxies as trainers finish; apply the rule.
-2. Bundle (`review-items`): full native suite once 15 GB local headroom exists, then integrate under HOLD and push.
-3. `method-frozen-v1`, Stage 2 ablations, Stage 3 final RL; Stage 4 SinCro/ReViWo DrM after their pretraining.
+1. Length study: A200 trainers ~22:00 -> local evaluations + exports -> proxies on the remote; A300 ~12:30 Oct 13;
+   decision ~17:00 Oct 13, then `method-frozen-v1`.
+2. Remote driver (every 5 min): proxies > baselines > baseline RL > speculative Stage 3; finishing, W&B, replay.
+3. Stage 2 ablations and Stage 3 RL after the freeze.
