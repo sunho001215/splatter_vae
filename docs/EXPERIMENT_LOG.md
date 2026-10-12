@@ -2465,3 +2465,36 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   the image-space motion loss from the training path is a source change: review worktree, full suite, integration),
   and "2c (DROID track arrays) follows with smoke tests only". Item 1e candidates are to be chosen and
   pre-registered before running; then the A200/A300 length study of the final configuration and `method-frozen-v1`.
+
+## 2026-10-12 — User decisions after item 2: item 1e skipped; 2c smoke-level; length study next
+
+- **Item 1e: skipped (user decision), superseding the 1e plan of 2026-10-09.** All current terms stay in the method.
+  Their contributions are measured in the Stage 2 ablation study of the frozen method (no synthetic views, no
+  InfoNCE, no consistency, no lambda_dyn, plus the planned RL ablations).
+- **2c (DROID track arrays): smoke-level only, no DROID training.** The converter/loader emits per-window 3D track
+  arrays (source positions, per-pair displacements, per-point weights from visibility/depth tests, padded with a
+  count) and the gripper FK points instead of splatting onto the pixel grid; batch contract, validator and tests
+  updated. Smoke test on the existing local sample only (no download; `/home/ws/data/droid` read-only): a few windows
+  through the contract checks, track-overlay images in `docs/figures/droid_smoke/`, and a short M3D overfit on one
+  sample episode showing the loss decreases, run only within local headroom. Integrated only together with the next
+  required source integration (removing the image-space motion loss from the training path), one full suite.
+- **Length study of the final configuration C + D0 + M3D, applying the existing pre-registered rule (2026-10-08,
+  amendments A and B; RL per the 2026-10-09 S2 standard) with the one-seed policy (2026-10-10).** Fixed before any
+  A300-vs-A200 data of this configuration:
+  - A200 = the existing `i2-m3d-seed0-{hammer,pick-place}` runs (200k schedule) continued from 100k to their
+    annealed 200k endpoint (same run, same code and data; job `ls-a200-m3d-seed0-<task>`).
+  - A300 = new runs `ls-a300-m3d-seed0-<task>`, identical overrides, `train.steps=300000`, seed 0; their 100k and
+    200k checkpoints are curve-shape context only.
+  - Representation: full-split `scripts/evaluate.py` at A200 (200k) and A300 (300k); the 40 counted comparisons of
+    amendment A with its fixed thresholds (per task and stride: training moving PSNR > 0.3 dB, trajectory PSNR
+    > 0.2 dB, relative EPE 0->2 > 0.03 lower, training retrieval > 0.02, training hand-velocity R² > 0.03,
+    trajectory CD-render > 10 % lower, near-set retrieval > 0.02, trajectory retrieval > 0.02, trajectory
+    hand-position R² > 0.03, trajectory hand-velocity R² > 0.03). Motion metrics at stride 6 as primary are reported,
+    but the counted set keeps amendment A's per-stride definition.
+  - RL (hammer only, amendment B): 6 proxies per encoder (RL seeds 1000-1005, all on the single pretraining seed),
+    400k agent steps; decision quantity the mean last-5 training-camera success; the 0.10 thresholds of amendment B
+    become max(0.10, 2 x SE of the difference of means) per the S2 standard. pick-place proxies (seeds 1000/1001,
+    200k agent steps) are reported, not counted.
+  - Rule: 200k if A300 wins <= 8 of 40 (or loses more than it wins) and A300's hammer RL is not better than A200's by
+    more than the RL margin; 400k if A300 wins >= 24 of 40 with >= 8 per task and its hammer RL is not worse than
+    A200's by more than the RL margin; otherwise 300k. Then `method-frozen-v1`.
