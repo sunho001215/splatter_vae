@@ -2600,3 +2600,7 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   400 steps/min vs ~300 for one, so contention raised total throughput. To be re-measured after the next
   admissions. 6 of the A200 arm's 8 proxies are done (verified, replay deleted; s1003 finishing, s1005 running);
   the last two ReViWo baselines started 01:0x.
+- 2026-10-13 01:36 — re-measured at limit 2.8 (5-min window): 8 SinCro runs at ~199 steps/min each (total ~1590 vs
+  ~1290 for 5 runs before, +23 %), 2 ReViWo at ~169, 2 ReViWo-based RL runs at ~2390; all four GPUs 98 %, host load
+  ~33. Total throughput rose, so the 2.8 limit stays. The A200 arm is complete (8/8 proxies); the first baseline RL
+  runs (ReViWo hammer/pick-place s2000) started 01:11-01:16.
