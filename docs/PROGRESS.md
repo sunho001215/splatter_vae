@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 23:10 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-13 02:10 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -43,12 +43,12 @@ Last updated: 2026-10-12 23:10 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | ~130k / ~123k of 300k at 23:09 | runs/pretrain/ls-a300-*/ |
-| A200 arm (i2-m3d-seed0-<task> to 200k) | local | done 21:47 / 22:08; both full-split evaluations verified | runs/fulleval-ls-a200-*/ |
-| ls-proxy-a200-* (8 of 16 proxies) | remote | pick-place s1000/s1001 done 23:06; hammer s1000-s1005 running | runs/setup/remote-driver-20261012.log |
-| SinCro pretraining (5 running, 3 queued) | remote GPU 0-3 | ~100k of 300k at 22:10 | same |
-| ReViWo pretraining | remote | 6 of 8 done 22:32-23:05 (verified, W&B uploaded); 2 queued | runs/remote/finished/ |
-| queued on the remote | — | 48 baseline RL, 8 speculative Stage 3, 8 A300 proxies (after A300) | same |
+| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | ~176k / ~167k of 300k at 02:07 (~12:00 done) | runs/pretrain/ls-a300-*/ |
+| A200 arm | local + remote | complete: trainers, both full-split evaluations, 8/8 proxies verified | runs/remote/finished/ |
+| SinCro pretraining (8) | remote GPU 0-3 | ~200 steps/min each; first 5 ~14:00 Oct 13, last 3 ~02:00 Oct 14 | runs/setup/remote-driver-20261012.log |
+| ReViWo pretraining | remote | 6 of 8 done; bin-picking, stick-push ~09:30 Oct 13 | same |
+| baseline RL (48 + companions) | remote | ReViWo hammer/pick-place s2000 running (~2400 steps/min); rest as capacity frees | same |
+| queued | — | 8 A300 proxies (after A300), 8 speculative Stage 3 | same |
 
 ## Disk
 | time | free on /home/ws |
@@ -127,6 +127,14 @@ Last updated: 2026-10-12 23:10 +09:00. Concise current state; chronology and evi
 | 2026-10-12 13:50 | remote 3.85 TB (s4-drm-cnn-peg-insert-side-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 13:56 | remote 3.90 TB (s4-drm-cnn-peg-unplug-side-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 14:52 | remote 3.92 TB (s4-drm-cnn-stick-push-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 23:12 | remote 3.77 TB (ls-proxy-a200-pick-place-s1000 completed with final eval at 200k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-12 23:12 | remote 3.77 TB (ls-proxy-a200-pick-place-s1001 completed with final eval at 200k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 00:33 | remote 3.77 TB (ls-proxy-a200-hammer-s1000 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 00:44 | remote 3.77 TB (ls-proxy-a200-hammer-s1002 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 00:54 | remote 3.77 TB (ls-proxy-a200-hammer-s1001 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 00:54 | remote 3.77 TB (ls-proxy-a200-hammer-s1004 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 01:06 | remote 3.77 TB (ls-proxy-a200-hammer-s1003 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 01:25 | remote 3.77 TB (ls-proxy-a200-hammer-s1005 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
 
 ## Next actions
 1. Length study: A200 trainers ~22:00 -> local evaluations + exports -> proxies on the remote; A300 ~12:30 Oct 13;
