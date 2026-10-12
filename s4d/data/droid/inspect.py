@@ -236,44 +236,56 @@ def alignment_overlays(sample_root: Path, cache_root: Path) -> list[Path]:
     return files
 
 
-def cached_coordinate_overlays(cache_root: Path) -> list[Path]:
-    """Inspect actual resized cache K, source-grid displacement and gripper points."""
+def cached_coordinate_overlays(
+    cache_root: Path, output_dir: Path | None = None, window_index: int | None = None, max_tracks: int = 50
+) -> list[Path]:
+    """Inspect actual resized cache K, 3D track arrays and gripper FK points (default: first validation window).
+
+    The stored gripper points are checked against FK recomputed from the cached matched raw state.
+    """
     cache_root = writable_path(cache_root, DROID_CACHE_ROOT)
+    output_dir = writable_path(output_dir, DROID_CACHE_ROOT) if output_dir else cache_root / "alignment_overlays"
+    output_dir.mkdir(parents=True, exist_ok=True)
     from s4d.data.droid.convert import RESOLUTIONS
 
     manifest = json.loads((cache_root / "manifest.json").read_text())
-    index = next(i for i, row in enumerate(manifest["windows"]) if row["split"] == "validation")
+    if window_index is None:
+        window_index = next(i for i, row in enumerate(manifest["windows"]) if row["split"] == "validation")
+    index = int(window_index)
     window = manifest["windows"][index]
     with np.load(cache_root / "matched_raw_external.npz", allow_pickle=False) as saved:
         poses = saved["cartesian_position"][window["raw_indices"]]
         closure = saved["gripper_position"][window["raw_indices"]]
     gripper = gripper_points(poses, closure, manifest["gripper_calibration"]["offset_m"])
+    names = ("images", "depth", "K", "w2c", "track_src", "track_disp", "track_weight", "track_count", "gripper_points")
     files = []
     for backbone, (height, width) in RESOLUTIONS.items():
         with h5py.File(cache_root / f"{backbone}.h5", "r") as cache:
             group = cache[f"windows/{index:05d}"]
-            arrays = {key: group[key][:] for key in ("images", "depth", "K", "w2c", "c2w", "motion3d", "motion_weight")}
+            arrays = {key: group[key][:] for key in names}
+        if not np.allclose(arrays["gripper_points"], gripper, atol=1e-5):
+            raise ValueError("cached gripper points disagree with FK from the matched raw state")
         cell_width, cell_height = width * 2, height * 2 + 58
         canvas = Image.new("RGB", (cell_width * 3, cell_height * 4 + 105), "white")
         draw = ImageDraw.Draw(canvas)
         draw.text(
             (12, 8),
-            f"{backbone}: actual cache / continuous centers / validation {window['clip']}",
+            f"{backbone}: actual cache / continuous centers / {window['split']} {window['clip']} window {index}",
             fill="#252a32",
             font=font(24),
         )
         draw.ellipse((14, 51, 24, 61), fill=SCENE_COLOR)
-        draw.text((32, 43), "Sparse source-grid motion: circles + lines", fill="#252a32", font=font(18))
-        draw.rectangle((520, 51, 530, 61), fill=GRIPPER_COLOR)
-        draw.text((538, 43), "Matched gripper: squares", fill="#252a32", font=font(18))
+        draw.text((32, 43), "3D tracks (moving > 3 mm): source circles + lines", fill="#252a32", font=font(18))
+        draw.rectangle((620, 51, 630, 61), fill=GRIPPER_COLOR)
+        draw.text((638, 43), "Gripper FK: squares", fill="#252a32", font=font(18))
         draw.text(
             (12, 74),
-            "Lines end at the next-time projection. Only source-supervised motion and unoccluded gripper points are shown.",
+            "Lines end at the projected target position. Only supervised tracks and unoccluded gripper points are shown.",
             fill="#525a65",
             font=font(17),
         )
         for view, serial in enumerate(manifest["camera_serials"]):
-            K, w2c, c2w = arrays["K"][view], arrays["w2c"][view], arrays["c2w"][view]
+            K, w2c = arrays["K"][view], arrays["w2c"][view]
             for time in range(3):
                 depth = arrays["depth"][time, view, 0]
                 rgb = arrays["images"][time, view].transpose(1, 2, 0)
@@ -283,17 +295,12 @@ def cached_coordinate_overlays(cache_root: Path) -> list[Path]:
                 uv_grip, _ = project(gripper[time], K, w2c)
                 if time < 2:
                     pair = time
-                    vectors = arrays["motion3d"][pair, view]
-                    supported = arrays["motion_weight"][pair, view, 0] > 0
-                    dynamic = supported & (np.linalg.norm(vectors, axis=0) > 0.003)
-                    yy, xx = np.nonzero(dynamic)
-                    selection = np.arange(len(xx))[:: max(1, len(xx) // 50)][:50]
-                    xx, yy = xx[selection], yy[selection]
-                    camera = np.c_[xx + 0.5, yy + 0.5, np.ones(len(xx))] @ np.linalg.inv(K).T
-                    camera *= depth[yy, xx, None]
-                    world = camera @ c2w[:3, :3].T + c2w[:3, 3]
-                    displaced = world + vectors[:, yy, xx].T
-                    endpoints, _ = project(displaced, K, w2c)
+                    src, disp = arrays["track_src"][pair, view], arrays["track_disp"][pair, view]
+                    supervised = arrays["track_weight"][pair, view] > 0
+                    moving = np.flatnonzero(supervised & (np.linalg.norm(disp, axis=-1) > 0.003))
+                    selection = moving[:: max(1, len(moving) // max_tracks)][:max_tracks]
+                    starts, _ = project(src[selection], K, w2c)
+                    endpoints, _ = project(src[selection] + disp[selection], K, w2c)
                 for mode, frame in enumerate((rgb, np.repeat(gray[..., None], 3, -1))):
                     x, y = time * cell_width, 105 + (view * 2 + mode) * cell_height
                     draw.text(
@@ -312,16 +319,18 @@ def cached_coordinate_overlays(cache_root: Path) -> list[Path]:
                         Image.fromarray(frame).resize((width * 2, height * 2), Image.Resampling.NEAREST), (x, y + 55)
                     )
                     if time < 2:
-                        for px, py, end in zip(xx, yy, endpoints):
-                            sx, sy = x + (float(px) + 0.5) * 2, y + 55 + (float(py) + 0.5) * 2
+                        for start, end in zip(starts, endpoints):
+                            sx, sy = x + float(start[0]) * 2, y + 55 + float(start[1]) * 2
                             ex, ey = x + float(end[0]) * 2, y + 55 + float(end[1]) * 2
+                            if not (x <= sx < x + cell_width and y + 55 <= sy < y + cell_height):
+                                continue
                             if x <= ex < x + cell_width and y + 55 <= ey < y + cell_height:
                                 draw.line((sx, sy, ex, ey), fill=SCENE_COLOR, width=2)
                             draw.ellipse((sx - 4, sy - 4, sx + 4, sy + 4), fill=SCENE_COLOR, outline="white", width=2)
                     for uv in uv_grip[valid_grip]:
                         sx, sy = x + float(uv[0]) * 2, y + 55 + float(uv[1]) * 2
                         draw.rectangle((sx - 4, sy - 4, sx + 4, sy + 4), fill=GRIPPER_COLOR, outline="white", width=2)
-        destination = cache_root / "alignment_overlays" / f"cached_coordinates_{backbone}.png"
+        destination = output_dir / f"cached_tracks_{backbone}_window{index:05d}.png"
         canvas.save(destination)
         files.append(destination)
     return files

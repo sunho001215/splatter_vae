@@ -11,11 +11,13 @@ import torch
 from torch.utils.data import Dataset
 
 from s4d.data.contract import validate_batch
-from s4d.data.droid.convert import RESOLUTIONS
+from s4d.data.droid.convert import FORMAT, RESOLUTIONS
 
 
 class DroidCacheDataset(Dataset):
     """Each item is a complete three-time, two-external-camera window.
+
+    Motion targets are the contract's 3D track arrays and gripper FK points, not pixel grids.
 
     with_eval is accepted for shared training integration. This sample has no
     held-out static camera, so optional evaluation camera fields stay absent.
@@ -25,6 +27,8 @@ class DroidCacheDataset(Dataset):
     def __init__(self, root, *, split="train", with_eval=False, image_height=144, image_width=256):
         self.root = Path(root).resolve(strict=True)
         self.manifest = json.loads((self.root / "manifest.json").read_text())
+        if self.manifest.get("format") != FORMAT:
+            raise ValueError(f"DROID cache must be {FORMAT!r} (3D track arrays), got {self.manifest.get('format')!r}")
         shape = (int(image_height), int(image_width))
         backbones = [key for key, value in RESOLUTIONS.items() if value == shape]
         if len(backbones) != 1:

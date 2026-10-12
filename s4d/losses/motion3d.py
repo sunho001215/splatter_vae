@@ -6,6 +6,9 @@ with the GT depth of the pair's source time. Displacement term: each point's k n
 time within ``RADIUS_M`` get a Huber loss between their pair displacement and the point's target, weighted by a Gaussian
 kernel (sigma = radius / 2, detached) and the point's motion weight. Attraction term: for moving points, the Huber
 distance to the nearest dynamic centre at the source time (gradient to the centres). Both average over points.
+
+``motion3d_track_loss`` applies the same sampling and terms to 3D track arrays (DROID): the candidates per view are
+that camera's tracked points and the gripper FK points, at their given source positions instead of lifted pixels.
 """
 
 from __future__ import annotations
@@ -43,6 +46,19 @@ def sample_track_points(
     return torch.cat((first, second), 1), has_valid
 
 
+def track_candidates(batch: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Contract track arrays plus the gripper FK points in every camera: positions and displacements (B,P,V,N+G,3),
+    weights (B,P,V,N+G)."""
+    grip = batch["gripper_points"].float()  # (B,T,G,3)
+    V = batch["track_src"].shape[2]
+    g_src = torch.stack([grip[:, a] for a, _, _ in PAIRS], 1)[:, :, None].expand(-1, -1, V, -1, -1)
+    g_disp = torch.stack([grip[:, b] - grip[:, a] for a, b, _ in PAIRS], 1)[:, :, None].expand(-1, -1, V, -1, -1)
+    src = torch.cat((batch["track_src"].float(), g_src), 3)
+    disp = torch.cat((batch["track_disp"].float(), g_disp), 3)
+    weight = torch.cat((batch["track_weight"].float(), batch["gripper_weight"].float()), 3)
+    return src, disp, weight
+
+
 def motion3d_loss(
     gs,
     xyz_seq: torch.Tensor,
@@ -65,21 +81,66 @@ def motion3d_loss(
     per-pair metrics."""
     B, P, V, _, H, W = target.shape
     T = depth.shape[1]
+    lifted = lift_depth(depth[:, :, :, 0].float(), K[:, None].expand(B, T, V, 3, 3), c2w[:, None].expand(B, T, V, 4, 4))
+
+    def candidates(p: int, a: int):
+        tgt = target[:, p].float().permute(0, 1, 3, 4, 2).reshape(B * V, H * W, 3)
+        w = weight[:, p, :, 0].float().reshape(B * V, H * W)
+        return lifted[:, a].reshape(B * V, H * W, 3), tgt, w
+
+    return _gaussian_motion_loss(
+        gs, xyz_seq, dynamic, B, V, candidates, num_points, neighbours, radius, huber, attraction_weight, pair_weights,
+        generator,
+    )
+
+
+def motion3d_track_loss(
+    gs,
+    xyz_seq: torch.Tensor,
+    dynamic: torch.Tensor,
+    src: torch.Tensor,
+    disp: torch.Tensor,
+    weight: torch.Tensor,
+    num_points: int = NUM_POINTS,
+    neighbours: int = NEIGHBOURS,
+    radius: float = RADIUS_M,
+    huber: float = HUBER_M,
+    attraction_weight: float = ATTRACTION_WEIGHT,
+    pair_weights=PAIR_WEIGHTS,
+    generator: torch.Generator | None = None,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """M3D on 3D track arrays: src and disp (B,P,V,M,3) world-frame source positions and displacements, weight
+    (B,P,V,M) with zero on padding (see ``track_candidates``). Same terms, sampling and metrics as ``motion3d_loss``."""
+    B, P, V, M = weight.shape
+
+    def candidates(p: int, a: int):
+        rows = lambda x: x[:, p].float().reshape(B * V, M, *x.shape[4:])  # noqa: E731
+        return rows(src), rows(disp), rows(weight)
+
+    return _gaussian_motion_loss(
+        gs, xyz_seq, dynamic, B, V, candidates, num_points, neighbours, radius, huber, attraction_weight, pair_weights,
+        generator,
+    )
+
+
+def _gaussian_motion_loss(
+    gs, xyz_seq, dynamic, B, V, candidates, num_points, neighbours, radius, huber, attraction_weight, pair_weights,
+    generator,
+):
+    """candidates(p, source time) -> world positions (B*V,M,3), target displacements (B*V,M,3), weights (B*V,M)."""
     dyn_idx = torch.nonzero(dynamic, as_tuple=False)[:, 0]
     k = min(neighbours, len(dyn_idx))
     if k == 0:
         return xyz_seq.sum() * 0.0, {}
     sigma = radius / 2.0
     pair_disp = {(0, 1): gs.delta01, (1, 2): gs.delta12, (0, 2): gs.delta01 + gs.delta12}
-    lifted = lift_depth(depth[:, :, :, 0].float(), K[:, None].expand(B, T, V, 3, 3), c2w[:, None].expand(B, T, V, 4, 4))
     total = xyz_seq.new_zeros(())
     metrics = {}
     for p, ((a, b, _), name) in enumerate(zip(PAIRS, ("01", "12", "02"))):
-        tgt = target[:, p].float().permute(0, 1, 3, 4, 2).reshape(B * V, H * W, 3)
-        w = weight[:, p, :, 0].float().reshape(B * V, H * W)
+        positions, tgt, w = candidates(p, a)
         idx, row_ok = sample_track_points(w, tgt.norm(dim=-1), num_points, generator)
         gather = lambda x: torch.gather(x, 1, idx[..., None].expand(-1, -1, x.shape[-1]))  # noqa: E731
-        points = gather(lifted[:, a].reshape(B * V, H * W, 3)).view(B, V * num_points, 3)
+        points = gather(positions).view(B, V * num_points, 3)
         t_pts = gather(tgt).view(B, V * num_points, 3)
         w_pts = (torch.gather(w, 1, idx) * row_ok[:, None].float()).view(B, V * num_points)
         centres = xyz_seq[:, a][:, dyn_idx]  # (B,Nd,3)

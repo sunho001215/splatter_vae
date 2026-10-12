@@ -45,16 +45,15 @@ def main():
             )
             loader = DataLoader(dataset, batch_size=args.batch_size, num_workers=args.workers, collate_fn=collate)
             start, count, batches = time.perf_counter(), 0, 0
-            target_pixels = nonzero_motion = 0
+            supervised_tracks = moving_tracks = gripper_points = 0
             for batch in loader:
                 shape = validate_batch(batch)
                 assert "eval_images" not in batch
                 count += shape["B"]
                 batches += 1
-                target_pixels += int(batch["motion_weight"].sum())
-                nonzero_motion += int(
-                    ((batch["motion3d"].square().sum(3, keepdim=True) > 1e-8) & (batch["motion_weight"] > 0)).sum()
-                )
+                supervised_tracks += int(batch["track_weight"].sum())
+                moving_tracks += int(((batch["track_disp"].norm(dim=-1) > 0.005) & (batch["track_weight"] > 0)).sum())
+                gripper_points += int(batch["gripper_weight"].sum())
             elapsed = time.perf_counter() - start
             row[split] = {
                 "samples": count,
@@ -63,8 +62,9 @@ def main():
                 "width": width,
                 "elapsed_s": elapsed,
                 "samples_per_s": count / elapsed,
-                "target_pixels": target_pixels,
-                "nonzero_motion_pixels": nonzero_motion,
+                "supervised_track_pairs": supervised_tracks,
+                "moving_track_pairs_5mm": moving_tracks,
+                "visible_gripper_point_pairs": gripper_points,
             }
             dataset.close()
         report["variants"][name] = row

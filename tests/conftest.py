@@ -51,6 +51,33 @@ def batch():
 
 
 @pytest.fixture
+def track_batch(batch):
+    """The same batch with DROID-style 3D track arrays (two real tracks per camera, one padding slot) instead of
+    pixel-grid motion targets."""
+    del batch["motion3d"], batch["motion_weight"]
+    B, T, V = batch["images"].shape[:3]
+    src = torch.zeros(B, 3, V, 3, 3)
+    src[:, :, :, :2] = torch.tensor([[0.0, 0.0, 1.0], [0.1, 0.0, 1.0]])
+    disp = torch.zeros(B, 3, V, 3, 3)
+    disp[:, :, :, 0, 0] = 0.02
+    weight = torch.zeros(B, 3, V, 3)
+    weight[:, :, :, :2] = 1.0
+    grip = torch.zeros(B, T, 4, 3)
+    grip[..., 2] = 0.9
+    batch.update(
+        {
+            "track_src": src,
+            "track_disp": disp,
+            "track_weight": weight,
+            "track_count": torch.full((B, V), 2, dtype=torch.int64),
+            "gripper_points": grip,
+            "gripper_weight": torch.ones(B, 3, V, 4),
+        }
+    )
+    return batch
+
+
+@pytest.fixture
 def heldout_batch(batch):
     """Optional held-out fields appear together and retain the camera/time axes."""
     batch.update(

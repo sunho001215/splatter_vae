@@ -70,6 +70,23 @@ def load_episode(root: str | Path, ordinal: int, split: str = "train") -> tuple[
     return arrays, metadata
 
 
+def load_saved_episode(path: str | Path, metadata_path: str | Path) -> tuple[dict, dict]:
+    """A matched episode previously reread from RLDS and saved (exterior cameras and raw state only).
+
+    The caller still verifies it against the PointWorld clip with verify_path and verify_states.
+    """
+    keys = (*IMAGE_KEYS, "cartesian_position", "gripper_position", "joint_position")
+    with np.load(Path(path).resolve(strict=True), allow_pickle=False) as saved:
+        missing = set(keys) - set(saved.files)
+        if missing:
+            raise ValueError(f"saved matched episode misses fields {sorted(missing)}")
+        arrays = {k: saved[k] for k in keys}  # a wrist camera, if present, is never loaded
+    metadata = json.loads(Path(metadata_path).read_text())
+    if int(metadata["steps"]) != len(arrays["cartesian_position"]):
+        raise ValueError("saved matched episode length disagrees with its metadata")
+    return arrays, metadata
+
+
 def verify_path(metadata: dict, scene_path: str) -> None:
     expected = scene_suffix(scene_path)
     matches = [scene_suffix(metadata[k]) == expected for k in ("file_path", "recording_folderpath")]

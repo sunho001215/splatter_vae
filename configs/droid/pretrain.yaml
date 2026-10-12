@@ -39,6 +39,7 @@ loss:
   depth_align_warmup_steps: 5000
   motion: 5.0
   motion_huber: 0.01
+  motion_space: gaussian  # the DROID cache carries 3D track arrays, which only M3D consumes
   invariance: 1.0
   consistency: 0.1
   temperature: 0.1

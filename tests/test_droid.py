@@ -15,7 +15,7 @@ import torch
 from scipy.spatial.transform import Rotation
 
 from s4d.data.contract import collate, validate_batch
-from s4d.data.droid.convert import RESOLUTIONS, resize_image
+from s4d.data.droid.convert import FORMAT, RESOLUTIONS, resize_image
 from s4d.data.droid.dataset import DroidCacheDataset
 from s4d.data.droid.gripper import STROKE_M, gripper_points
 from s4d.data.droid.pointworld import (
@@ -24,9 +24,17 @@ from s4d.data.droid.pointworld import (
     nearest_timestamps,
     project,
     resize_intrinsics,
-    sparse_targets,
+    splat_score,
+    track_targets,
 )
-from s4d.data.droid.rlds import IMAGE_KEYS, save_matched_episode, scene_suffix, verify_path, verify_states
+from s4d.data.droid.rlds import (
+    IMAGE_KEYS,
+    load_saved_episode,
+    save_matched_episode,
+    scene_suffix,
+    verify_path,
+    verify_states,
+)
 
 
 def test_episode_suffix_and_exact_both_paths():
@@ -89,52 +97,70 @@ def motion_case():
     return points, np.ones((3, 1), bool), K, np.eye(4, dtype=np.float32), np.ones((3, 8, 8), np.float32)
 
 
-def test_pairs_source_grid_and_world_position_difference():
-    motion, weight, score = sparse_targets(*motion_case())
-    np.testing.assert_allclose(motion[0, :, 3, 3], [0.2, 0, 0])
-    np.testing.assert_allclose(motion[1, :, 3, 5], [0.2, 0, 0])
-    np.testing.assert_allclose(motion[2, :, 3, 3], [0.4, 0, 0])
-    assert weight.sum() == 3
-    assert weight[1, 0, 3, 3] == 0
+def test_tracks_keep_source_positions_and_world_displacements_per_pair():
+    points, mask, *_ = motion_case()
+    src, disp, weight = track_targets(points, mask)
+    assert src.shape == disp.shape == (3, 1, 3) and weight.shape == (3, 1)
+    assert src.dtype == disp.dtype == weight.dtype == np.float32
+    np.testing.assert_allclose(src[:, 0], [[0, 0, 1], [0.2, 0, 1], [0, 0, 1]])
+    np.testing.assert_allclose(disp[:, 0], [[0.2, 0, 0], [0.2, 0, 0], [0.4, 0, 0]], atol=1e-6)
+    assert weight[:, 0].tolist() == [1, 1, 1]
+
+
+def test_tracks_on_one_pixel_are_all_kept_unlike_a_splatted_grid():
+    points, mask, *_ = motion_case()
+    points = np.concatenate([points, points + np.float32([0, 0, 0.01])], axis=1)
+    _, _, weight = track_targets(points, np.ones((3, 2), bool))
+    assert weight.sum() == 6
+
+
+def test_track_weights_follow_source_visibility_and_finite_positions():
+    points, mask, *_ = motion_case()
+    mask[0] = False
+    src, disp, weight = track_targets(points, mask)
+    assert weight[:, 0].tolist() == [0, 1, 0]
+    assert not src[0].any() and not disp[0].any() and not disp[2].any()
+    points[2, 0, 1] = np.nan
+    _, disp, weight = track_targets(points, np.ones_like(mask))
+    assert weight[:, 0].tolist() == [1, 0, 0]
+    assert np.isfinite(disp).all()
+
+
+def test_motion_score_marks_every_time_with_the_largest_pair_displacement():
+    score = splat_score(*motion_case())
     assert score[0, 0, 3, 3] == score[1, 0, 3, 5] == score[2, 0, 3, 7] == 1
+    assert score.sum() == 3
 
 
 def test_motion_score_maximum_includes_02_at_middle_time():
     points, mask, K, w2c, depth = motion_case()
     points[1, 0, 0], points[2, 0, 0] = 0.01, 0.02
-    _, _, score = sparse_targets(points, mask, K, w2c, depth)
+    score = splat_score(points, mask, K, w2c, depth)
     np.testing.assert_allclose(score[:, 0, 3, 3], [0.02 / 0.03] * 3, atol=1e-6)
 
 
-def test_scene_and_gripper_collision_nearest_z_stable_tie():
+def test_motion_score_scene_and_gripper_collision_nearest_z_stable_tie():
     points, mask, K, w2c, depth = motion_case()
     points = np.concatenate([points, points], axis=1)
+    points[:, :, 0] = [[0, 0], [0.003, 0.0075], [0.006, 0.015]]
     points[:, 0, 2] = 1.005
     points[:, 1, 2] = 0.995
-    points[1, 1, 0] = 0.1
-    points[2, 1, 0] = 0.1
     mask = np.ones((3, 2), bool)
-    motion, weight, _ = sparse_targets(points, mask, K, w2c, depth)
-    assert weight[0].sum() == 1
-    assert motion[0, 0, 3, 3] == pytest.approx(0.1)
+    assert splat_score(points, mask, K, w2c, depth)[0, 0, 3, 3] == pytest.approx(0.5)
     points[:, :, 2] = 1
-    motion, _, _ = sparse_targets(points, mask, K, w2c, depth)
-    assert motion[0, 0, 3, 3] == pytest.approx(0.2)
+    assert splat_score(points, mask, K, w2c, depth)[0, 0, 3, 3] == pytest.approx(0.2)
 
 
-def test_source_visibility_validity_and_two_centimeter_surface_test():
+def test_motion_score_needs_visibility_and_the_two_centimeter_surface_test():
     points, mask, K, w2c, depth = motion_case()
     mask[0] = False
-    _, weight, _ = sparse_targets(points, mask, K, w2c, depth)
-    assert weight[0].sum() == weight[2].sum() == 0
-    assert weight[1].sum() == 1
+    score = splat_score(points, mask, K, w2c, depth)
+    assert score[0].sum() == 0 and score[1].sum() == 1
     points[:, :, 2] = 1.03
-    _, weight, _ = sparse_targets(points, np.ones_like(mask), K, w2c, depth)
-    assert weight.sum() == 0
+    assert splat_score(points, np.ones_like(mask), K, w2c, depth).sum() == 0
     points[:, :, 2] = 1
     depth[:] = 0
-    _, weight, _ = sparse_targets(points, np.ones_like(mask), K, w2c, depth)
-    assert weight.sum() == 0
+    assert splat_score(points, np.ones_like(mask), K, w2c, depth).sum() == 0
 
 
 def test_gripper_sign_stroke_points_and_rigid_transform():
@@ -179,6 +205,22 @@ def test_raw_cache_never_retains_wrist(tmp_path):
     assert (tmp_path / "raw.json").is_file()
 
 
+def test_saved_matched_episode_loads_exterior_cameras_and_state_only(tmp_path):
+    raw = {k: np.zeros((2, 2, 2, 3), np.uint8) for k in (*IMAGE_KEYS, "wrist_image_left")}
+    raw.update(cartesian_position=np.zeros((2, 6)), gripper_position=np.zeros((2, 1)), joint_position=np.zeros((2, 7)))
+    np.savez(tmp_path / "episode.npz", **raw)
+    (tmp_path / "meta.json").write_text(json.dumps({"steps": 2, "ordinal": 7, "split": "train"}))
+    arrays, metadata = load_saved_episode(tmp_path / "episode.npz", tmp_path / "meta.json")
+    assert "wrist_image_left" not in arrays and metadata["ordinal"] == 7
+    (tmp_path / "meta.json").write_text(json.dumps({"steps": 3, "ordinal": 7, "split": "train"}))
+    with pytest.raises(ValueError, match="length"):
+        load_saved_episode(tmp_path / "episode.npz", tmp_path / "meta.json")
+    del raw["joint_position"]
+    np.savez(tmp_path / "episode.npz", **raw)
+    with pytest.raises(ValueError, match="misses"):
+        load_saved_episode(tmp_path / "episode.npz", tmp_path / "meta.json")
+
+
 def test_metric_depth_nearest_resize_preserves_zero():
     depth = np.array([[0.0, 0.3], [0.7, 1]], np.float32)
     resized = resize_image(depth, 6, 8, depth=True)
@@ -186,10 +228,9 @@ def test_metric_depth_nearest_resize_preserves_zero():
     np.testing.assert_array_equal(np.unique(resized), np.unique(depth))
 
 
-@pytest.mark.parametrize("height,width", RESOLUTIONS.values())
-def test_cache_contract_roundtrip_both_backbone_sizes(tmp_path, height, width):
-    backbone = next(key for key, value in RESOLUTIONS.items() if value == (height, width))
+def track_cache(root, height, width, backbone, *, fmt=FORMAT, dense=False):
     manifest = {
+        "format": fmt,
         "episode": "fixture",
         "camera_serials": ["ext1", "ext2"],
         "windows": [
@@ -197,32 +238,61 @@ def test_cache_contract_roundtrip_both_backbone_sizes(tmp_path, height, width):
             {"split": "validation", "clip": "20:31", "canonical_indices": [20, 23, 26], "raw_indices": [40, 46, 52]},
         ],
     }
-    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    (root / "manifest.json").write_text(json.dumps(manifest))
     K = np.array([[100, 0, width / 2], [0, 100, height / 2], [0, 0, 1]], np.float32)
     values = {
         "images": np.zeros((3, 2, 3, height, width), np.uint8),
         "depth": np.ones((3, 2, 1, height, width), np.float32),
-        "motion3d": np.zeros((3, 2, 3, height, width), np.float32),
-        "motion_weight": np.ones((3, 2, 1, height, width), np.float32),
         "motion_score": np.zeros((3, 2, 1, height, width), np.float32),
         "K": np.stack([K, K]),
         "w2c": np.stack([np.eye(4, dtype=np.float32)] * 2),
         "c2w": np.stack([np.eye(4, dtype=np.float32)] * 2),
     }
-    with h5py.File(tmp_path / f"{backbone}.h5", "w") as cache:
+    if dense:
+        values["motion3d"] = np.zeros((3, 2, 3, height, width), np.float32)
+        values["motion_weight"] = np.ones((3, 2, 1, height, width), np.float32)
+    else:
+        src = np.zeros((3, 2, 5, 3), np.float32)
+        src[:, 0, :3] = [0.0, 0.0, 1.0]
+        src[:, 1, :4] = [0.1, 0.0, 1.0]
+        weight = np.zeros((3, 2, 5), np.float32)
+        weight[:, 0, :3] = weight[:, 1, :4] = 1
+        values.update(
+            track_src=src,
+            track_disp=weight[..., None] * np.float32([0.01, 0, 0]),
+            track_weight=weight,
+            track_count=np.array([3, 4], np.int64),
+            gripper_points=np.ones((3, 32, 3), np.float32),
+            gripper_weight=np.ones((3, 2, 32), np.float32),
+        )
+    with h5py.File(root / f"{backbone}.h5", "w") as cache:
         for i in range(2):
             group = cache.create_group(f"windows/{i:05d}")
             for key, value in values.items():
                 group[key] = value
+
+
+@pytest.mark.parametrize("height,width", RESOLUTIONS.values())
+def test_cache_contract_roundtrip_both_backbone_sizes(tmp_path, height, width):
+    backbone = next(key for key, value in RESOLUTIONS.items() if value == (height, width))
+    track_cache(tmp_path, height, width, backbone)
     for split in ("train", "validation"):
         dataset = DroidCacheDataset(tmp_path, split=split, with_eval=True, image_height=height, image_width=width)
         assert len(dataset) == 1
         batch = collate([dataset[0], dataset[0]])
         assert validate_batch(batch) == {"B": 2, "T": 3, "V": 2, "H": height, "W": width}
         assert batch["images"].dtype == torch.uint8
-        assert "eval_images" not in batch
+        assert batch["track_count"].tolist() == [[3, 4], [3, 4]] and batch["track_src"].shape == (2, 3, 2, 5, 3)
+        assert "motion3d" not in batch and "eval_images" not in batch
         assert dataset.__getstate__()["_file"] is None
         dataset.close()
+
+
+def test_loader_rejects_pixel_grid_caches(tmp_path):
+    height, width = RESOLUTIONS["scratch"]
+    track_cache(tmp_path, height, width, "scratch", fmt="splatter4d_pointworld_sample_v1", dense=True)
+    with pytest.raises(ValueError, match="track arrays"):
+        DroidCacheDataset(tmp_path)
 
 
 def test_download_copies_only_exact_regular_member_without_path_extraction(tmp_path):
@@ -289,6 +359,15 @@ def test_converter_rejects_output_boundary_before_any_input_reads():
 
     with pytest.raises(ValueError, match="escapes"):
         convert_sample(Path("/nonexistent"), Path("/home/ws/data/droid/empty"), rlds_root=Path("/nonexistent"))
+
+
+def test_converter_takes_exactly_one_matched_episode_source(tmp_path):
+    from s4d.data.droid.convert import convert_sample
+
+    saved = (Path("/nonexistent.npz"), Path("/nonexistent.json"))
+    for sources in ({}, {"rlds_root": Path("/nonexistent"), "raw_episode": saved}):
+        with pytest.raises(ValueError, match="exactly one"):
+            convert_sample(Path("/nonexistent"), tmp_path, **sources)
 
 
 def test_dense_cross_camera_validation_uses_depth_not_supplied_tracks():
