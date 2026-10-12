@@ -2551,3 +2551,12 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   running jobs below their measured peaks; s4-{sincro,reviwo}-pick-place started 13:44, s4-reviwo-bin-picking 13:58.
   A per-minute loop runs the length-study driver first, then baseline admission, so freed memory goes to the length
   study first (`runs/setup/ls-driver-20261012.log`, `runs/setup/baseline-admit-20261012.log`).
+- **Ten Stage 4 baseline pretraining jobs moved to the remote (15:0x):** s4-{sincro,reviwo}-{coffee-push, door-open,
+  peg-insert-side, peg-unplug-side, stick-push}, not yet started, re-declared `host: remote` with outputs under
+  `runs/<id>` (remote contract; local ones stay in `runs/pretrain/<id>`), `required_results` encoder.pt and
+  metrics.jsonl, commit 5a7177e (source-identical to main HEAD; accepted manifest) and the accepted image. Their data
+  (five tasks' HDF5 and split manifests, ~100 GB) is being transferred with checksum-verified resumable rsync, one
+  verified manifest per task; each task's jobs start when its manifest is verified
+  (`runs/setup/stage4-baseline-data-sync-20261012.log`, `runs/setup/stage4-baselines-remote-driver-20261012.log`).
+  Observed transfer rate ~8 MB/s. s4-sincro-bin-picking stays local (shares the cached bin-picking data with the
+  running local ReViWo job).
