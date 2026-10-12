@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 14:35 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 14:58 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -19,6 +19,7 @@ Last updated: 2026-10-12 14:35 +09:00. Concise current state; chronology and evi
   Next: one full native suite on the bundle, then integration.
 - **Length study running** (C + D0 + M3D, one seed): A200 = i2-m3d-seed0-<task> continued 100k -> 200k, A300 new
   300k runs; then 8 full evaluations, 16 RL proxies, the pre-registered rule, `method-frozen-v1`.
+- **Stage 4 CNN DrM complete** (24 runs, 8-task mean last-5 success 0.698; table in RESULTS).
 - Pretraining lengths: ours default 300k (final L chosen on hammer/pick-place before the freeze); SinCro 300k;
   ReViWo 100 001.
 
@@ -45,7 +46,7 @@ Last updated: 2026-10-12 14:35 +09:00. Concise current state; chronology and evi
 | ls-a200-m3d-seed0-{hammer,pick-place} | local GPU 4 | running from 100k (13:26), ~107k at 14:25 | runs/pretrain/i2-m3d-seed0-*/ |
 | ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | running (13:26), ~10k at 14:25 | runs/pretrain/ls-a300-*/ |
 | s4-sincro-{hammer,pick-place}, s4-reviwo-{hammer,pick-place,bin-picking} | local GPU 4/5 | running; 11 more admitted as memory frees | runs/pretrain/s4-*/ |
-| s4-drm-cnn-stick-push-s2002 (+ `-eval`) | remote | 22 of 23 CNN pairs finished | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
+| s4-{sincro,reviwo}-<5 tasks> | remote | data transfer running; start per task once verified | runs/setup/stage4-baselines-remote-driver-20261012.log |
 
 ## Disk
 | time | free on /home/ws |
@@ -123,6 +124,7 @@ Last updated: 2026-10-12 14:35 +09:00. Concise current state; chronology and evi
 | 2026-10-12 13:44 | remote 3.81 TB (s4-drm-cnn-pick-place-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 13:50 | remote 3.85 TB (s4-drm-cnn-peg-insert-side-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 13:56 | remote 3.90 TB (s4-drm-cnn-peg-unplug-side-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 14:52 | remote 3.92 TB (s4-drm-cnn-stick-push-s2002 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 
 ## Next actions
 1. Length study: the per-minute driver admits evaluations, exports and proxies as trainers finish; apply the rule.

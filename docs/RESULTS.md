@@ -4,6 +4,25 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Stage 4 CNN DrM baseline: all 24 runs complete (2026-10-12 14:52)
+
+8 tasks x RL seeds 2000-2002, 1M agent steps; pick-place s2000 local, the other 23 trainer/evaluator pairs on the
+remote (bin-picking s2000 as attempt r4). Every run verified (final.json at 1M, evaluation to 1M), remote replay
+deleted, all 46 remote W&B runs uploaded. Mean last-5 training-camera success (no comparison made yet; Stage 5):
+
+| task | s2000 | s2001 | s2002 | mean |
+|---|---|---|---|---|
+| bin-picking | 0.603 | 0.312 | 0.977 | 0.631 |
+| coffee-push | 0.743 | 0.737 | 0.683 | 0.721 |
+| door-open | 0.998 | 0.925 | 0.815 | 0.913 |
+| hammer | 0.703 | 0.168 | 0.693 | 0.522 |
+| peg-insert-side | 0.573 | 0.475 | 0.410 | 0.486 |
+| peg-unplug-side | 0.760 | 0.875 | 0.818 | 0.818 |
+| pick-place | 0.645 | 0.493 | 0.513 | 0.551 |
+| stick-push | 1.000 | 0.997 | 0.838 | 0.945 |
+
+8-task mean 0.698. Per-run records: `runs/remote/stage4-finished/*.json`.
+
 ### 2c DROID 3D track arrays: smoke check only (2026-10-12; code on `review-items`, not integrated)
 
 No DROID training. On the one local sample episode (35 windows), the converter now emits per-camera 3D track arrays
