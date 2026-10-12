@@ -2560,3 +2560,9 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   (`runs/setup/stage4-baseline-data-sync-20261012.log`, `runs/setup/stage4-baselines-remote-driver-20261012.log`).
   Observed transfer rate ~8 MB/s. s4-sincro-bin-picking stays local (shares the cached bin-picking data with the
   running local ReViWo job).
+- **Memory alert 14:47 (charge 147.2 GB, under the 150 GB cap):** the footprint model missed that a baseline on a new
+  task brings its dataset into page cache (bin-picking.hdf5, 20.7 GB, was filling as s4-reviwo-bin-picking read it;
+  hammer/pick-place data were already cached for the length-study trainers when footprints were measured). Fix: a
+  background loop drops bin-picking.hdf5 from page cache every 15 s (`posix_fadvise DONTNEED`; the job keeps reading
+  from disk, step rate unaffected so far). Charge back to 139 GB at 14:49. Remote-bound data is likewise kept out of
+  cache by the transfer script.
