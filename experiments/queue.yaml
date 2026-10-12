@@ -7980,6 +7980,7 @@ jobs:
   ram_gb: 16
   oom_score_adj: 0
 - id: s4-sincro-bin-picking
+  host: remote
   script: scripts/train_sincro.py
   args:
   - --config
@@ -7987,15 +7988,18 @@ jobs:
   - --name
   - s4-sincro-bin-picking
   - --output-root
-  - runs/pretrain
+  - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 16
+  ram_gb: 24
+  disk_gb: 20
   priority: 1
   deps: []
   max_restarts: 1
   stage: 4
-  ram_gb: 16
-  oom_score_adj: 0
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
 - id: s4-reviwo-bin-picking
   script: scripts/train_reviwo.py
   args:
@@ -8108,7 +8112,7 @@ jobs:
   - --output-root
   - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 16
   ram_gb: 24
   disk_gb: 20
   priority: 1
@@ -8129,7 +8133,7 @@ jobs:
   - --output-root
   - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 4
   ram_gb: 16
   disk_gb: 20
   priority: 1
@@ -8150,7 +8154,7 @@ jobs:
   - --output-root
   - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 16
   ram_gb: 24
   disk_gb: 20
   priority: 1
@@ -8171,7 +8175,7 @@ jobs:
   - --output-root
   - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 4
   ram_gb: 16
   disk_gb: 20
   priority: 1
@@ -8192,7 +8196,7 @@ jobs:
   - --output-root
   - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 16
   ram_gb: 24
   disk_gb: 20
   priority: 1
@@ -8213,7 +8217,7 @@ jobs:
   - --output-root
   - runs
   gpu: any
-  mem_gb: 20
+  mem_gb: 4
   ram_gb: 16
   disk_gb: 20
   priority: 1
@@ -8376,14 +8380,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-hammer-s1000-eval
   script: scripts/eval_rl.py
   args:
@@ -8395,6 +8404,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-hammer-s1000-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8402,8 +8413,12 @@ jobs:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a200-hammer-s1001
   script: scripts/train_rl.py
   args:
@@ -8419,14 +8434,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-hammer-s1001-eval
   script: scripts/eval_rl.py
   args:
@@ -8438,6 +8458,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-hammer-s1001-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8445,8 +8467,12 @@ jobs:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a200-hammer-s1002
   script: scripts/train_rl.py
   args:
@@ -8462,14 +8488,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-hammer-s1002-eval
   script: scripts/eval_rl.py
   args:
@@ -8481,6 +8512,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-hammer-s1002-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8488,8 +8521,12 @@ jobs:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a200-hammer-s1003
   script: scripts/train_rl.py
   args:
@@ -8505,14 +8542,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-hammer-s1003-eval
   script: scripts/eval_rl.py
   args:
@@ -8524,6 +8566,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-hammer-s1003-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8531,8 +8575,12 @@ jobs:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a200-hammer-s1004
   script: scripts/train_rl.py
   args:
@@ -8548,14 +8596,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-hammer-s1004-eval
   script: scripts/eval_rl.py
   args:
@@ -8567,6 +8620,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-hammer-s1004-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8574,8 +8629,12 @@ jobs:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a200-hammer-s1005
   script: scripts/train_rl.py
   args:
@@ -8591,14 +8650,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-hammer-s1005-eval
   script: scripts/eval_rl.py
   args:
@@ -8610,6 +8674,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-hammer-s1005-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8617,8 +8683,12 @@ jobs:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: export-ls-a300-hammer-300k
   script: scripts/export_encoder.py
   args:
@@ -8653,14 +8723,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-hammer-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-hammer-s1000-eval
   script: scripts/eval_rl.py
   args:
@@ -8672,6 +8747,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-hammer-s1000-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8679,8 +8756,12 @@ jobs:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a300-hammer-s1001
   script: scripts/train_rl.py
   args:
@@ -8696,14 +8777,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-hammer-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-hammer-s1001-eval
   script: scripts/eval_rl.py
   args:
@@ -8715,6 +8801,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-hammer-s1001-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8722,8 +8810,12 @@ jobs:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a300-hammer-s1002
   script: scripts/train_rl.py
   args:
@@ -8739,14 +8831,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-hammer-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-hammer-s1002-eval
   script: scripts/eval_rl.py
   args:
@@ -8758,6 +8855,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-hammer-s1002-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8765,8 +8864,12 @@ jobs:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a300-hammer-s1003
   script: scripts/train_rl.py
   args:
@@ -8782,14 +8885,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-hammer-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-hammer-s1003-eval
   script: scripts/eval_rl.py
   args:
@@ -8801,6 +8909,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-hammer-s1003-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8808,8 +8918,12 @@ jobs:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a300-hammer-s1004
   script: scripts/train_rl.py
   args:
@@ -8825,14 +8939,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-hammer-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-hammer-s1004-eval
   script: scripts/eval_rl.py
   args:
@@ -8844,6 +8963,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-hammer-s1004-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8851,8 +8972,12 @@ jobs:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a300-hammer-s1005
   script: scripts/train_rl.py
   args:
@@ -8868,14 +8993,19 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-hammer-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-hammer-s1005-eval
   script: scripts/eval_rl.py
   args:
@@ -8887,6 +9017,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-hammer-s1005-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -8894,8 +9026,12 @@ jobs:
   - export-ls-a300-hammer-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-a200-m3d-seed0-pick-place
   script: scripts/train.py
   args:
@@ -9049,14 +9185,19 @@ jobs:
   - train.num_train_steps=200000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-pick-place-s1000-eval
   script: scripts/eval_rl.py
   args:
@@ -9068,6 +9209,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-pick-place-s1000-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -9075,8 +9218,12 @@ jobs:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a200-pick-place-s1001
   script: scripts/train_rl.py
   args:
@@ -9092,14 +9239,19 @@ jobs:
   - train.num_train_steps=200000
   - vision.export_path=runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a200-pick-place-s1001-eval
   script: scripts/eval_rl.py
   args:
@@ -9111,6 +9263,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a200-pick-place-s1001-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -9118,8 +9272,12 @@ jobs:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: export-ls-a300-pick-place-300k
   script: scripts/export_encoder.py
   args:
@@ -9154,14 +9312,19 @@ jobs:
   - train.num_train_steps=200000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-pick-place-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-pick-place-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-pick-place-s1000-eval
   script: scripts/eval_rl.py
   args:
@@ -9173,6 +9336,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-pick-place-s1000-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -9180,8 +9345,12 @@ jobs:
   - export-ls-a300-pick-place-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
 - id: ls-proxy-a300-pick-place-s1001
   script: scripts/train_rl.py
   args:
@@ -9197,14 +9366,19 @@ jobs:
   - train.num_train_steps=200000
   - vision.export_path=runs/exports/ls-a300-m3d-seed0-pick-place-300k.pt
   gpu: any
-  mem_gb: 2
+  mem_gb: 4
   priority: 1
   deps:
   - export-ls-a300-pick-place-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 4
+  ram_gb: 8
   oom_score_adj: 300
+  host: remote
+  disk_gb: 5
+  required_results:
+  - final.json
+  - train.jsonl
 - id: ls-proxy-a300-pick-place-s1001-eval
   script: scripts/eval_rl.py
   args:
@@ -9216,6 +9390,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/ls-proxy-a300-pick-place-s1001-eval
   gpu: any
   mem_gb: 3
   priority: 1
@@ -9223,6 +9399,2819 @@ jobs:
   - export-ls-a300-pick-place-300k
   max_restarts: 1
   stage: 1
-  ram_gb: 6
+  ram_gb: 8
   oom_score_adj: 400
+  host: remote
+  disk_gb: 5
+  required_results:
+  - eval.jsonl
+- id: s4-sincro-hammer-rem
+  host: remote
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/baselines/sincro/hammer.yaml
+  - --name
+  - s4-sincro-hammer-rem
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 16
+  ram_gb: 24
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-reviwo-hammer-rem
+  host: remote
+  script: scripts/train_reviwo.py
+  args:
+  - --config
+  - configs/baselines/reviwo/hammer.yaml
+  - --name
+  - s4-reviwo-hammer-rem
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-sincro-pick-place-rem
+  host: remote
+  script: scripts/train_sincro.py
+  args:
+  - --config
+  - configs/baselines/sincro/pick-place.yaml
+  - --name
+  - s4-sincro-pick-place-rem
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 16
+  ram_gb: 24
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-reviwo-pick-place-rem
+  host: remote
+  script: scripts/train_reviwo.py
+  args:
+  - --config
+  - configs/baselines/reviwo/pick-place.yaml
+  - --name
+  - s4-reviwo-pick-place-rem
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-reviwo-bin-picking-rem
+  host: remote
+  script: scripts/train_reviwo.py
+  args:
+  - --config
+  - configs/baselines/reviwo/bin-picking.yaml
+  - --name
+  - s4-reviwo-bin-picking-rem
+  - --output-root
+  - runs
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 20
+  priority: 1
+  deps: []
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - encoder.pt
+  - metrics.jsonl
+- id: s4-drm-sincro-hammer-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-hammer-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-hammer-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-hammer-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-hammer-s2000
+  - --train-job
+  - s4-drm-sincro-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-hammer-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-hammer-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-hammer-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-hammer-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-hammer-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-hammer-s2000
+  - --train-job
+  - s4-drm-reviwo-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-hammer-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-pick-place-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-pick-place-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-pick-place-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-pick-place-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-pick-place-s2000
+  - --train-job
+  - s4-drm-sincro-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-pick-place-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-pick-place-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-pick-place-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-pick-place-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-pick-place-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-pick-place-s2000
+  - --train-job
+  - s4-drm-reviwo-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-pick-place-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-bin-picking-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-bin-picking-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-bin-picking/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-bin-picking
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-bin-picking-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-bin-picking-s2000
+  - --train-job
+  - s4-drm-sincro-bin-picking-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-bin-picking-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-bin-picking
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-bin-picking-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-bin-picking-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-bin-picking-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-bin-picking-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-bin-picking-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-bin-picking-s2000
+  - --train-job
+  - s4-drm-reviwo-bin-picking-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-bin-picking-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-bin-picking-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-coffee-push-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-coffee-push-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-coffee-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-coffee-push-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-coffee-push-s2000
+  - --train-job
+  - s4-drm-sincro-coffee-push-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-coffee-push-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-coffee-push-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-coffee-push-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-coffee-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-coffee-push-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-coffee-push-s2000
+  - --train-job
+  - s4-drm-reviwo-coffee-push-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-coffee-push-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-door-open-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-door-open-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-door-open/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-door-open-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-door-open-s2000
+  - --train-job
+  - s4-drm-sincro-door-open-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-door-open-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-door-open-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-door-open-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-door-open/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-door-open-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-door-open-s2000
+  - --train-job
+  - s4-drm-reviwo-door-open-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-door-open-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-peg-insert-side-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-peg-insert-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-peg-insert-side-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2000
+  - --train-job
+  - s4-drm-sincro-peg-insert-side-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-peg-insert-side-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-peg-insert-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-peg-insert-side-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2000
+  - --train-job
+  - s4-drm-reviwo-peg-insert-side-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-peg-unplug-side-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-peg-unplug-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-peg-unplug-side-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2000
+  - --train-job
+  - s4-drm-sincro-peg-unplug-side-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-peg-unplug-side-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-peg-unplug-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-peg-unplug-side-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2000
+  - --train-job
+  - s4-drm-reviwo-peg-unplug-side-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-stick-push-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - sincro
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-sincro-stick-push-s2000
+  - --set
+  - vision.export_path=runs/s4-sincro-stick-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-stick-push-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-stick-push-s2000
+  - --train-job
+  - s4-drm-sincro-stick-push-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-stick-push-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-stick-push-s2000
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - reviwo
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/s4-drm-reviwo-stick-push-s2000
+  - --set
+  - vision.export_path=runs/s4-reviwo-stick-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-stick-push-s2000-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-stick-push-s2000
+  - --train-job
+  - s4-drm-reviwo-stick-push-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-stick-push-s2000-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-hammer-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-hammer-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-hammer-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-hammer-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-hammer-s2001
+  - --train-job
+  - s4-drm-sincro-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-hammer-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-hammer-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-hammer-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-hammer-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-hammer-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-hammer-s2001
+  - --train-job
+  - s4-drm-reviwo-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-hammer-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-pick-place-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-pick-place-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-pick-place-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-pick-place-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-pick-place-s2001
+  - --train-job
+  - s4-drm-sincro-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-pick-place-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-pick-place-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-pick-place-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-pick-place-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-pick-place-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-pick-place-s2001
+  - --train-job
+  - s4-drm-reviwo-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-pick-place-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-bin-picking-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-bin-picking-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-bin-picking/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-bin-picking
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-bin-picking-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-bin-picking-s2001
+  - --train-job
+  - s4-drm-sincro-bin-picking-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-bin-picking-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-bin-picking
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-bin-picking-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-bin-picking-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-bin-picking-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-bin-picking-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-bin-picking-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-bin-picking-s2001
+  - --train-job
+  - s4-drm-reviwo-bin-picking-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-bin-picking-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-bin-picking-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-coffee-push-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-coffee-push-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-coffee-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-coffee-push-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-coffee-push-s2001
+  - --train-job
+  - s4-drm-sincro-coffee-push-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-coffee-push-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-coffee-push-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-coffee-push-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-coffee-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-coffee-push-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-coffee-push-s2001
+  - --train-job
+  - s4-drm-reviwo-coffee-push-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-coffee-push-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-door-open-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-door-open-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-door-open/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-door-open-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-door-open-s2001
+  - --train-job
+  - s4-drm-sincro-door-open-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-door-open-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-door-open-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-door-open-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-door-open/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-door-open-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-door-open-s2001
+  - --train-job
+  - s4-drm-reviwo-door-open-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-door-open-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-peg-insert-side-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-peg-insert-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-peg-insert-side-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2001
+  - --train-job
+  - s4-drm-sincro-peg-insert-side-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-peg-insert-side-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-peg-insert-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-peg-insert-side-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2001
+  - --train-job
+  - s4-drm-reviwo-peg-insert-side-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-peg-unplug-side-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-peg-unplug-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-peg-unplug-side-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2001
+  - --train-job
+  - s4-drm-sincro-peg-unplug-side-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-peg-unplug-side-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-peg-unplug-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-peg-unplug-side-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2001
+  - --train-job
+  - s4-drm-reviwo-peg-unplug-side-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-stick-push-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - sincro
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-sincro-stick-push-s2001
+  - --set
+  - vision.export_path=runs/s4-sincro-stick-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-stick-push-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-stick-push-s2001
+  - --train-job
+  - s4-drm-sincro-stick-push-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-stick-push-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-stick-push-s2001
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - reviwo
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/s4-drm-reviwo-stick-push-s2001
+  - --set
+  - vision.export_path=runs/s4-reviwo-stick-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-stick-push-s2001-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-stick-push-s2001
+  - --train-job
+  - s4-drm-reviwo-stick-push-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-stick-push-s2001-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-hammer-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-hammer-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-hammer-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-hammer-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-hammer-s2002
+  - --train-job
+  - s4-drm-sincro-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-hammer-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-hammer-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-hammer-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-hammer-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-hammer-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-hammer-s2002
+  - --train-job
+  - s4-drm-reviwo-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-hammer-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-hammer-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-pick-place-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-pick-place-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-pick-place-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-pick-place-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-pick-place-s2002
+  - --train-job
+  - s4-drm-sincro-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-pick-place-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-pick-place-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-pick-place-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-pick-place-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-pick-place-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-pick-place-s2002
+  - --train-job
+  - s4-drm-reviwo-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-pick-place-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-pick-place-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-bin-picking-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-bin-picking-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-bin-picking/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-bin-picking
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-bin-picking-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-bin-picking-s2002
+  - --train-job
+  - s4-drm-sincro-bin-picking-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-bin-picking-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-bin-picking
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-bin-picking-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-bin-picking-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-bin-picking-rem/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-bin-picking-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-bin-picking-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-bin-picking-s2002
+  - --train-job
+  - s4-drm-reviwo-bin-picking-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-bin-picking-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-bin-picking-rem
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-coffee-push-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-coffee-push-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-coffee-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-coffee-push-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-coffee-push-s2002
+  - --train-job
+  - s4-drm-sincro-coffee-push-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-coffee-push-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-coffee-push-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-coffee-push-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-coffee-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-coffee-push-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-coffee-push-s2002
+  - --train-job
+  - s4-drm-reviwo-coffee-push-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-coffee-push-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-coffee-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-door-open-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-door-open-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-door-open/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-door-open-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-door-open-s2002
+  - --train-job
+  - s4-drm-sincro-door-open-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-door-open-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-door-open-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-door-open-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-door-open/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-door-open-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-door-open-s2002
+  - --train-job
+  - s4-drm-reviwo-door-open-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-door-open-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-door-open
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-peg-insert-side-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-peg-insert-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-peg-insert-side-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2002
+  - --train-job
+  - s4-drm-sincro-peg-insert-side-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-peg-insert-side-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-peg-insert-side-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-peg-insert-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-peg-insert-side-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2002
+  - --train-job
+  - s4-drm-reviwo-peg-insert-side-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-peg-insert-side-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-peg-insert-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-peg-unplug-side-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-peg-unplug-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-peg-unplug-side-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2002
+  - --train-job
+  - s4-drm-sincro-peg-unplug-side-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-peg-unplug-side-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-peg-unplug-side-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-peg-unplug-side/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-peg-unplug-side-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2002
+  - --train-job
+  - s4-drm-reviwo-peg-unplug-side-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-peg-unplug-side-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-peg-unplug-side
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-sincro-stick-push-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - sincro
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-sincro-stick-push-s2002
+  - --set
+  - vision.export_path=runs/s4-sincro-stick-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-sincro-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-sincro-stick-push-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-sincro-stick-push-s2002
+  - --train-job
+  - s4-drm-sincro-stick-push-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-sincro-stick-push-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-sincro-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s4-drm-reviwo-stick-push-s2002
+  host: remote
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - reviwo
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/s4-drm-reviwo-stick-push-s2002
+  - --set
+  - vision.export_path=runs/s4-reviwo-stick-push/encoder.pt
+  gpu: any
+  mem_gb: 4
+  ram_gb: 16
+  disk_gb: 10
+  priority: 2
+  deps:
+  - s4-reviwo-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - final.json
+  - train.jsonl
+- id: s4-drm-reviwo-stick-push-s2002-eval
+  host: remote
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/s4-drm-reviwo-stick-push-s2002
+  - --train-job
+  - s4-drm-reviwo-stick-push-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/s4-drm-reviwo-stick-push-s2002-eval
+  gpu: any
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  priority: 2
+  deps:
+  - s4-reviwo-stick-push
+  max_restarts: 1
+  stage: 4
+  required_results:
+  - eval.jsonl
+- id: s3spec-m3d-seed0-hammer
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - --name
+  - s3spec-m3d-seed0-hammer
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-pick-place
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - --name
+  - s3spec-m3d-seed0-pick-place
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-bin-picking
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/bin-picking.yaml
+  - --name
+  - s3spec-m3d-seed0-bin-picking
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-coffee-push
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/coffee-push.yaml
+  - --name
+  - s3spec-m3d-seed0-coffee-push
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-door-open
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/door-open.yaml
+  - --name
+  - s3spec-m3d-seed0-door-open
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-peg-insert-side
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/peg-insert-side.yaml
+  - --name
+  - s3spec-m3d-seed0-peg-insert-side
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-peg-unplug-side
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/peg-unplug-side.yaml
+  - --name
+  - s3spec-m3d-seed0-peg-unplug-side
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
+- id: s3spec-m3d-seed0-stick-push
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/stick-push.yaml
+  - --name
+  - s3spec-m3d-seed0-stick-push
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=300000
+  - train.seed=0
+  - aug.synth_views=2
+  - aug.synth_render=true
+  - loss.depth_valid_far=true
+  - loss.motion_space=gaussian
+  gpu: any
+  mem_gb: 10
+  ram_gb: 16
+  disk_gb: 30
+  priority: 3
+  deps: []
+  max_restarts: 2
+  stage: 3
+  speculative: true
+  required_results:
+  - completion.json
+  - metrics.jsonl
 host_ram_reserve_gb: 60
