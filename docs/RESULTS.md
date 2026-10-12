@@ -4,6 +4,37 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Item 2 (motion loss) decision: M3D adopted (2026-10-12 09:16)
+
+Pre-registered rule (EXPERIMENT_LOG 2026-10-09, item 2) run unchanged (`review_rules.directive_item2('d0')` plus the
+6-seed RL rule) on M3D = D0 + Gaussian-space 3D motion loss vs M2D = D0, 2 pretraining seeds x 2 tasks, 100k of the
+200k schedule; margins from the M2D pair frozen before comparison (`runs/setup/item2-m2d-margins-20261012-074618.json`).
+Full output `runs/setup/item2-decision-20261012.txt` (SHA-256 08693ecf…).
+
+| M3D vs M2D (two-seed means, stride 6) | hammer | margin | pick-place | margin |
+|---|---|---|---|---|
+| relative EPE 5-10 mm | 0.585 vs 0.934 (better) | 0.130 | 0.630 vs 1.000 (better) | 0.03 |
+| relative EPE 1-3 cm | 0.439 vs 0.869 (better) | 0.205 | 0.351 vs 1.000 (better) | 0.03 |
+| relative EPE > 3 cm | 0.195 vs 0.573 (=) | 0.476 | 0.195 vs 1.000 (better) | 0.03 |
+| EPE (mm) | 9.2 vs 24.3 (=) | 18.4 | 8.2 vs 38.0 (better) | 1.0 |
+| CD-motion dynamic (rel.) | -13.6 % (=) | 23.1 % | -62.9 % (better) | 5 % |
+| dynamic share | 0.955 vs 0.601 (=) | 0.667 | 0.936 vs 0.060 (better) | 0.05 |
+| hand-velocity R² train cams | 0.889 vs 0.718 (better) | 0.056 | 0.916 vs 0.370 (better) | 0.05 |
+| hand-velocity R² trajectory | 0.736 vs 0.578 (better) | 0.094 | 0.855 vs 0.286 (better) | 0.08 |
+| guard: PSNR | 27.72 vs 27.20 (=) | 0.95 | 26.64 vs 26.04 (better) | 0.20 |
+| guard: moving PSNR | 25.23 vs 24.71 (=) | 1.41 | 19.59 vs 18.13 (better) | 0.20 |
+
+- Representation part: better beyond the margins on **12 of 16** motion pairs (hammer 4, pick-place 8; needs >= 9 and
+  >= 3 per task), worse on none of the 4 guard pairs. The hammer "=" rows are improvements that fall inside margins
+  widened by the M2D seed split (one collapsed seed).
+- RL part (hammer, 400k agent steps, RL seeds 1000-1002 on pretraining seed 0 and 1003-1005 on seed 1): mean last-5
+  training-camera success **M3D 0.756 vs M2D 0.666** (+0.090; SE of difference 0.083, margin 0.166). M3D is not below
+  M2D, so the RL condition holds. Per-seed M2D 0.577/0.665/0.797/0.767/0.680/0.510, M3D 0.433/0.843/0.933/0.812/0.748/0.765.
+- **Collapse report** (dynamic share on moving pixels, stride 6; in-training validation at 10k / full split at 100k):
+  M3D hammer 0.865/0.959 and 0.864/0.950; M3D pick-place 0.735/0.939 and 0.785/0.934. M2D hammer 0.613/0.934 and
+  0.081/0.268; M2D pick-place 0.020/0.052 and 0.034/0.067. **No M3D seed collapsed**; M2D collapsed on hammer seed 1
+  and both pick-place seeds.
+
 ### Item 1 (depth redesign) decision: D0 stays (2026-10-11 23:10)
 
 Pre-registered rule (EXPERIMENT_LOG 2026-10-09, item 1d), run unchanged (`analysis/review_rules.py`

@@ -2451,3 +2451,17 @@ Motion metrics at stride 6 (8 per task) and the PSNR guards:
 
 The hammer reference pair splits on the motion collapse (dynamic share 0.93 vs 0.27), so hammer motion margins are
 wide; pick-place margins sit at the floors. No M3D value compared yet; the rule is run once all 12 RL proxies finish.
+
+### 2026-10-12 — Item 2 decided: M3D adopted (09:16)
+
+- All 12 hammer RL proxies completed (400k agent steps, final evaluation written, replays deleted, df recorded):
+  M2D 01:31–02:14, M3D 08:1x–09:2x. All four M3D full-split results verified; M2D margins frozen 07:46.
+- Registered rule run unchanged: representation part better on 12/16 motion pairs (hammer 4, pick-place 8), no guard
+  worse; RL M3D 0.756 vs M2D 0.666 (margin 0.166) -> **M3D adopted**. Table, per-seed RL and collapse report in
+  RESULTS; output `runs/setup/item2-decision-20261012.txt` (SHA-256 08693ecf…).
+- Seed policy (2026-10-10): the adopted configuration does not collapse in any seed (dynamic share at 100k 0.93–0.96
+  on all four M3D runs), so downstream comparisons default to one pretraining seed with margins from existing pairs.
+- Pending, per the pre-registered item-2 text: "only the adopted loss remains in the training code path" (removing
+  the image-space motion loss from the training path is a source change: review worktree, full suite, integration),
+  and "2c (DROID track arrays) follows with smoke tests only". Item 1e candidates are to be chosen and
+  pre-registered before running; then the A200/A300 length study of the final configuration and `method-frozen-v1`.

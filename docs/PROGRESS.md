@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 09:40 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -9,9 +9,12 @@ Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evi
   1-5, S1 (C remains the base: synthetic near views as invariance positives and render targets).
 - **Stage 1 — item 1 decided 23:10: D0 stays** (registered rule over all 20 verified results; D2 and D1 fail
     their utilisation and PSNR gates). Table in RESULTS; output `runs/setup/item1-decision-20261011.txt`.
-- **Item 2 (M3D vs M2D on D0) running locally since 23:12:** four M3D pretraining runs (2 seeds x 2 tasks, 100k of
-  200k) and six M2D hammer RL proxies (400k steps, seeds 1000-1005); M3D proxies start from the M3D 100k exports.
-  Decision after all M3D evaluations and all 12 proxies (pre-registered rule, RL margin max(0.10, 2 SE)).
+- **Item 2 decided 2026-10-12: M3D adopted** (12/16 motion pairs better, no guard worse; RL 0.756 vs 0.666 over 6
+  hammer seeds). No M3D seed collapsed (dynamic share 0.93–0.96 at 100k), so later comparisons default to one seed.
+  Table in RESULTS; output `runs/setup/item2-decision-20261012.txt`.
+- **Next for Stage 1:** item 1e leave-one-out (candidates to be pre-registered), removal of the image-space motion loss
+  from the training path (source change through the review worktree and full suite), 2c DROID smoke tests, then the
+  A200/A300 length study of the final configuration and `method-frozen-v1`.
 - `method-frozen-v1` after items 1-2, item 1e leave-one-out and the A200/A300 length study.
 - Pretraining lengths: ours default 300k (final L chosen on hammer/pick-place before the freeze); SinCro 300k;
   ReViWo 100 001.
@@ -36,9 +39,6 @@ Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evi
 ## Running jobs
 | id | host / GPU | status | log |
 |---|---|---|---|
-| i2-m3d-seed{0,1}-{hammer,pick-place} | local | seed 1 done 06:17/06:23 (full-split verified); seed 0 training to 100k | runs/pretrain/i2-m3d-*/log.txt |
-| i2-proxy-m2d-hammer-s1000..s1005 | local | finished 01:31–02:14 (replays deleted) | runs/i2-proxy-m2d-*/ |
-| i2-proxy-m3d-hammer-s1003..s1005 (+ eval) | local | RL 400k (started 06:20); s1000-s1002 wait for seed-0 export | runs/i2-proxy-m3d-*/ |
 | s4-drm-cnn-<task>-s200{0,1,2} (+ `-eval`), 23 pairs | remote GPU 0-3 | all launched (last 06:50); 7 finished, 16 running | runs/s4-drm-cnn-*/, runs/remote/stage4-finished/ |
 
 ## Disk
@@ -103,9 +103,12 @@ Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evi
 | 2026-10-12 08:09 | 4.7TB (i2-proxy-m3d-hammer-s1003 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 | 2026-10-12 08:09 | 4.7TB (i2-proxy-m3d-hammer-s1004 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 | 2026-10-12 08:10 | 4.7TB (i2-proxy-m3d-hammer-s1005 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
+| 2026-10-12 09:13 | 4.7TB (i2-proxy-m3d-hammer-s1000 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
+| 2026-10-12 09:13 | 4.7TB (i2-proxy-m3d-hammer-s1002 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
+| 2026-10-12 09:15 | 4.7TB (i2-proxy-m3d-hammer-s1001 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 
 ## Next actions
 1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
    pretraining on the remote (check media panels in their offline W&B runs).
-2. Item 2: M3D 100k → full-split evaluations (M2D margins from the D0 pair) + 12 RL proxies → item-2 rule → report 2b.
-3. Then item 1e leave-one-out, length study (A200/A300), `method-frozen-v1`, Stage 3 final RL.
+2. Pre-register item 1e candidates; remove the image-space motion loss from the training path; 2c smoke tests.
+3. Then the length study (A200/A300), `method-frozen-v1`, Stage 3 final RL.
