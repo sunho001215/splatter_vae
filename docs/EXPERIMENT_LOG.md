@@ -2566,3 +2566,7 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   background loop drops bin-picking.hdf5 from page cache every 15 s (`posix_fadvise DONTNEED`; the job keeps reading
   from disk, step rate unaffected so far). Charge back to 139 GB at 14:49. Remote-bound data is likewise kept out of
   cache by the transfer script.
+- 14:55 coffee-push data verified on the remote (manifest a76c3d86…, 1170 s); s4-{sincro,reviwo}-coffee-push launched
+  14:56 on remote GPUs 0/1 (5a7177e). At 15:08 SinCro was at step 5000 and ReViWo at 5950. Their offline W&B runs
+  hold scalars only, as do the local baseline runs: the baseline trainers log scalar records to W&B and write
+  evaluation images as PNGs under `eval/` (returned with the results), so there are no W&B media panels to verify.

@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-12 14:58 +09:00. Concise current state; chronology and evidence are in
+Last updated: 2026-10-12 15:12 +09:00. Concise current state; chronology and evidence are in
 `docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
 
 ## Current phase
@@ -46,7 +46,7 @@ Last updated: 2026-10-12 14:58 +09:00. Concise current state; chronology and evi
 | ls-a200-m3d-seed0-{hammer,pick-place} | local GPU 4 | running from 100k (13:26), ~107k at 14:25 | runs/pretrain/i2-m3d-seed0-*/ |
 | ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | running (13:26), ~10k at 14:25 | runs/pretrain/ls-a300-*/ |
 | s4-sincro-{hammer,pick-place}, s4-reviwo-{hammer,pick-place,bin-picking} | local GPU 4/5 | running; 11 more admitted as memory frees | runs/pretrain/s4-*/ |
-| s4-{sincro,reviwo}-<5 tasks> | remote | data transfer running; start per task once verified | runs/setup/stage4-baselines-remote-driver-20261012.log |
+| s4-{sincro,reviwo}-<5 tasks> | remote GPU 0-1 | coffee-push pair running since 14:56 (~500 steps/min); the other 4 tasks start as their data verifies | runs/setup/stage4-baselines-remote-driver-20261012.log |
 
 ## Disk
 | time | free on /home/ws |
