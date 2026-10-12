@@ -86,6 +86,7 @@ def release_proof():
     ("host_ram_ramp_minutes", 9), ("max_jobs", 21), ("max_mem_gb", 91), ("mem_gb", 100),
     ("required_results", []), ("required_results", ["exit.json"]), ("required_results", ["../metrics.jsonl"]),
     ("gpu_backend", "auto"), ("gpu_backend", "gpus"), ("gpu_backend", None),
+    ("cpu_threads", 0), ("cpu_threads", 65), ("cpu_threads", True), ("cpu_threads", 8.0),
 ])
 def test_rejects_unsafe_remote_launch_spec(key, value):
     spec = job_spec()
@@ -205,6 +206,10 @@ def test_generated_shell_has_detachment_single_uuid_rooted_mounts_and_syntax(gpu
     assert "CUDA_VISIBLE_DEVICES=" + spec["gpu"] in command
     assert "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics" in command
     assert docker_args.count("WANDB_MODE=offline") == 1 and docker_args[docker_args.index("WANDB_MODE=offline") - 1] == "--env"
+    threads = str(spec.get("cpu_threads", 8))
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        setting = f"{name}={threads}"
+        assert docker_args.count(setting) == 1 and docker_args[docker_args.index(setting) - 1] == "--env"
     assert f"src={REMOTE_ROOT}/releases/{COMMIT}/code,dst=/workspace/splatter4d,readonly" in command
     assert "type=volume" not in command and "--volume" not in command
     assert str(RAM_RESERVE_BYTES) in command and "reserved_disk" in command and "ramp_ram" in command
@@ -419,3 +424,10 @@ def test_lost_or_ambiguous_launch_response_is_unknown_and_never_retried(tmp_path
     with pytest.raises(RemoteUnreachable):
         launch(path, client, wait=False)
     assert sum(call[0] == "ssh" for call in client.calls) == 1
+
+
+def test_cpu_thread_limit_defaults_to_eight_and_follows_the_job():
+    assert validate_spec(job_spec())["cpu_threads"] == 8
+    spec = job_spec()
+    spec["cpu_threads"] = 16
+    assert validate_spec(spec)["cpu_threads"] == 16

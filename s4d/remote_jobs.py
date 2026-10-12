@@ -376,6 +376,8 @@ class RemoteBackend:
                 "host_ram_reserve_gb": float(host.get("host_ram_reserve_gb", 0)),
                 "host_ram_ramp_minutes": float(host.get("host_ram_ramp_minutes", 10)),
                 "evidence": evidence, "labels": labels(job["id"], attempt, host["commit"], host["image_digest"])}
+        if "cpu_threads" in job:
+            spec["cpu_threads"] = job["cpu_threads"]
         if any(not math.isfinite(spec[key]) or spec[key] < 0 for key in ("ram_gb", "disk_gb", "disk_floor_gb")):
             raise ValueError("Invalid remote resource reservation")
         folder = self.runs / "remote/jobs"

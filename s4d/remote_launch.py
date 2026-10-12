@@ -15,6 +15,8 @@ from s4d.remote_access import REMOTE_ROOT, RemoteClient, RemoteCommandError, Rem
 CONTAINER_REPO = "/workspace/splatter4d"
 RAM_RESERVE_BYTES = 120 * 1024**3
 SHM_SIZE_BYTES = 8 * 1024**3
+DEFAULT_CPU_THREADS = 8  # per container; overridable per job with `cpu_threads`
+MAX_CPU_THREADS = 64
 ORIGIN_URL = "https://github.com/sunho001215/splatter_vae.git"
 HEX40 = re.compile(r"[0-9a-f]{40}")
 HEX64 = re.compile(r"[0-9a-f]{64}")
@@ -134,7 +136,10 @@ def validate_spec(spec: dict) -> dict:
     if (fraction > 1 or cap > 90 or memory > cap or isinstance(slots, bool)
             or not isinstance(slots, int) or not 1 <= slots <= 20):
         raise ValueError("Invalid host resource ceilings")
-    return {**spec, "gpu_backend": gpu_backend,
+    threads = spec.get("cpu_threads", DEFAULT_CPU_THREADS)
+    if isinstance(threads, bool) or not isinstance(threads, int) or not 1 <= threads <= MAX_CPU_THREADS:
+        raise ValueError("Invalid CPU thread limit")
+    return {**spec, "gpu_backend": gpu_backend, "cpu_threads": threads,
             "ram_bytes": math.ceil(ram * 1024**3), "gpu_bytes": math.ceil(memory * 1024**3),
             "gpu_cap_bytes": math.floor(cap * 1024**3), "reserve_bytes": math.ceil(reserve * 1024**3),
             "ramp_seconds": math.ceil(ramp * 60), "disk_bytes": math.ceil(disk * 1024**3),
@@ -283,6 +288,9 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
         "HOME": f"{cache}/home", "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1",
         # No W&B credentials exist on the remote: runs log offline into their own run folder and are synced from main.
         "WANDB_MODE": "offline",
+        # The remote host is shared: without a limit every PyTorch/OpenMP pool spans all host cores, and a few jobs
+        # oversubscribe the CPU (ReViWo measured ~130 busy cores each). Thread count is not a hyperparameter.
+        **{name: str(spec["cpu_threads"]) for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")},
     }
     if spec["gpu_backend"] == "cdi":
         environment["NVIDIA_VISIBLE_DEVICES"] = "void"
