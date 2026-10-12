@@ -100,6 +100,9 @@ Last updated: 2026-10-12 06:55 +09:00. Concise current state; chronology and evi
 | 2026-10-12 07:11 | remote 3.59 TB (s4-drm-cnn-stick-push-s2000 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 07:26 | remote 3.63 TB (s4-drm-cnn-hammer-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
 | 2026-10-12 07:37 | remote 3.67 TB (s4-drm-cnn-stick-push-s2001 completed with final eval at 1M; deleted its remote replay/, 49.2 GB) |
+| 2026-10-12 08:09 | 4.7TB (i2-proxy-m3d-hammer-s1003 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
+| 2026-10-12 08:09 | 4.7TB (i2-proxy-m3d-hammer-s1004 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
+| 2026-10-12 08:10 | 4.7TB (i2-proxy-m3d-hammer-s1005 completed with final eval at 400k; deleted its replay/, 0.58 GB) |
 
 ## Next actions
 1. Stage 4 CNN: admit remaining pairs as measured footprints allow; sync W&B as runs finish; then SinCro/ReViWo
