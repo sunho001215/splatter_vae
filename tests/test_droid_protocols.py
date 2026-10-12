@@ -13,6 +13,7 @@ import torch
 
 from s4d.config import get, load_config
 from s4d.data.contract import collate, validate_batch
+from s4d.data.droid.convert import FORMAT
 from s4d.data.droid.dataset import DroidCacheDataset
 
 REPO = Path(__file__).resolve().parents[1]
@@ -115,14 +116,18 @@ def test_fixed_indices_select_same_global_batch_from_synthetic_cache(protocol, t
         for i in range(4)
     ]
     (tmp_path / "manifest.json").write_text(
-        json.dumps({"episode": "synthetic", "camera_serials": ["a", "b"], "windows": windows})
+        json.dumps({"format": FORMAT, "episode": "synthetic", "camera_serials": ["a", "b"], "windows": windows})
     )
     K = np.array([[100, 0, width / 2], [0, 100, height / 2], [0, 0, 1]], np.float32)
     values = {
         "depth": np.ones((3, 2, 1, height, width), np.float32),
-        "motion3d": np.zeros((3, 2, 3, height, width), np.float32),
-        "motion_weight": np.ones((3, 2, 1, height, width), np.float32),
         "motion_score": np.zeros((3, 2, 1, height, width), np.float32),
+        "track_src": np.zeros((3, 2, 4, 3), np.float32),
+        "track_disp": np.zeros((3, 2, 4, 3), np.float32),
+        "track_weight": np.zeros((3, 2, 4), np.float32),
+        "track_count": np.zeros(2, np.int64),
+        "gripper_points": np.zeros((3, 32, 3), np.float32),
+        "gripper_weight": np.zeros((3, 2, 32), np.float32),
         "K": np.stack([K, K]),
         "w2c": np.stack([np.eye(4, dtype=np.float32)] * 2),
         "c2w": np.stack([np.eye(4, dtype=np.float32)] * 2),

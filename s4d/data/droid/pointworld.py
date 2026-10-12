@@ -1,4 +1,4 @@
-"""Actual released PointWorld clip schema and deterministic source-grid targets."""
+"""Actual released PointWorld clip schema, deterministic 3D track targets and the splatted motion score."""
 
 from __future__ import annotations
 
@@ -82,17 +82,15 @@ def nearest_z_winners(pixels: np.ndarray, z: np.ndarray, valid: np.ndarray, widt
     return sorted_idx[np.r_[True, sorted_key[1:] != sorted_key[:-1]]]
 
 
-def sparse_targets(
+def splat_score(
     points: np.ndarray, visibility: np.ndarray, K: np.ndarray, w2c: np.ndarray, depths: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Splat positions' differences with weights one and nearest-z collisions.
+) -> np.ndarray:
+    """Per-pixel motion score (encoder input and pixel weighting), splatted with nearest-z collisions.
 
-    points=(3,N,3), visibility=(3,N), depths=(3,H,W). Scene and gripper points
-    can be concatenated before this operation. No segmentation enters the loss.
+    points=(3,N,3), visibility=(3,N), depths=(3,H,W). Each visible point marks its pixel at every time with its
+    largest displacement over the three pairs / 3 cm, clipped to one. Scene and gripper points can be concatenated.
     """
     height, width = depths.shape[-2:]
-    motion = np.zeros((3, 3, height, width), np.float32)
-    weight = np.zeros((3, 1, height, width), np.float32)
     score = np.zeros((3, 1, height, width), np.float32)
     maximum = np.stack([np.linalg.norm(points[b] - points[a], axis=-1) for a, b in PAIR_TIMES]).max(0)
     for t in range(3):
@@ -101,12 +99,22 @@ def sparse_targets(
         _, z = project(points[t], K, w2c)
         winners = nearest_z_winners(pix, z, valid, width)
         score[t, 0, pix[winners, 1], pix[winners, 0]] = np.minimum(maximum[winners] / 0.03, 1)
+    return score
+
+
+def track_targets(points: np.ndarray, visibility: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """3D track arrays for PAIR_TIMES: source positions (P,N,3), displacements (P,N,3) and weights (P,N).
+
+    points=(3,N,3), visibility=(3,N) already includes the visibility and depth tests. A point is supervised for a
+    pair where it is visible at the source time and finite at both times; unsupervised entries are zero.
+    """
+    count = points.shape[1]
+    src = np.zeros((len(PAIR_TIMES), count, 3), np.float32)
+    disp = np.zeros((len(PAIR_TIMES), count, 3), np.float32)
+    weight = np.zeros((len(PAIR_TIMES), count), np.float32)
     for pair, (source, target) in enumerate(PAIR_TIMES):
-        valid, pix, _ = depth_test(points[source], K, w2c, depths[source], continuous=True)
-        valid &= visibility[source] & np.isfinite(points[target]).all(-1)
-        _, z = project(points[source], K, w2c)
-        winners = nearest_z_winners(pix, z, valid, width)
-        displacement = points[target, winners] - points[source, winners]
-        motion[pair, :, pix[winners, 1], pix[winners, 0]] = displacement
-        weight[pair, 0, pix[winners, 1], pix[winners, 0]] = 1
-    return motion, weight, score
+        valid = visibility[source] & np.isfinite(points[source]).all(-1) & np.isfinite(points[target]).all(-1)
+        src[pair, valid] = points[source, valid]
+        disp[pair, valid] = points[target, valid] - points[source, valid]
+        weight[pair, valid] = 1
+    return src, disp, weight

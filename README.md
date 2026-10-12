@@ -18,11 +18,27 @@ Training combines dynamically weighted RGB L1 and D-SSIM, depth alignment and gr
 | K | B,V,3,3 | float32 pixel intrinsics |
 | w2c / c2w | B,V,4,4 | OpenCV cameras, robot-base world |
 | depth | B,3,V,1,H,W | float32 meters; zero invalid |
-| motion3d | B,3,V,3,H,W | world displacement pairs 01,12,02 |
-| motion_weight | B,3,V,1,H,W | target support/confidence in [0,1] |
 | motion_score | B,3,V,1,H,W | per-time dynamics score in [0,1] |
 
-Optional probe state and a complete held-out evaluation group are validated when present. DROID has no fabricated held-out camera fields. Every collated batch is checked.
+Motion targets come in exactly one of two forms. Meta-World carries dense pixel-grid targets:
+
+| Batch field | Shape | Meaning |
+|---|---|---|
+| motion3d | B,3,V,3,H,W | world displacement pairs 01,12,02 on the source pixel grid |
+| motion_weight | B,3,V,1,H,W | target support/confidence in [0,1] |
+
+DROID carries 3D track arrays, never splatted onto the pixel grid (review item 2c):
+
+| Batch field | Shape | Meaning |
+|---|---|---|
+| track_src | B,3,V,N,3 | each camera's tracked points at the pair's source time (world) |
+| track_disp | B,3,V,N,3 | world displacement source to target |
+| track_weight | B,3,V,N | source-time visibility/depth-test weight in [0,1]; zero padding |
+| track_count | B,V | int64 real tracks per camera; entries from the count on are padding |
+| gripper_points | B,3,G,3 | gripper forward-kinematics points per time (world) |
+| gripper_weight | B,3,V,G | source-time depth-test visibility per camera in [0,1] |
+
+The Gaussian-space motion loss (M3D) consumes either form: lifted pixels with their targets, or the tracks and gripper points at their given positions. Optional probe state and a complete held-out evaluation group are validated when present. DROID has no fabricated held-out camera fields. Every collated batch is checked.
 
 Meta-World uses 128x128, patch 16, one 256-dimensional slot, and 8,192 Gaussians. DROID uses sixteen 384-dimensional slots and 16,384 Gaussians. Scratch DROID uses 256x144 and patch 16. DINOv2 ViT-S/14 uses 252x140, patch 14, retained CLS, pretrained weights and interpolated spatial positions.
 

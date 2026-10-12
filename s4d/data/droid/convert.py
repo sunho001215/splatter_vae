@@ -12,12 +12,21 @@ from PIL import Image
 
 from s4d.data import DROID_CACHE_ROOT, writable_path
 from s4d.data.droid.gripper import calibrate_offset, gripper_depth_residuals, gripper_points
-from s4d.data.droid.pointworld import clip_windows, depth_test, nearest_timestamps, resize_intrinsics, sparse_targets
-from s4d.data.droid.rlds import IMAGE_KEYS, load_episode, verify_path, verify_states
+from s4d.data.droid.pointworld import (
+    PAIR_TIMES,
+    clip_windows,
+    depth_test,
+    nearest_timestamps,
+    resize_intrinsics,
+    splat_score,
+    track_targets,
+)
+from s4d.data.droid.rlds import IMAGE_KEYS, load_episode, load_saved_episode, verify_path, verify_states
 
 RESOLUTIONS = {"scratch": (144, 256), "dinov2": (140, 252)}
 EPISODE = "AUTOLab+0d4edc83+2023-10-21-19h-07m-04s"
 REVISION = "dd9aaeec94bb14e27ab6b16b6e4aa0dbcf3ef56f"
+FORMAT = "splatter4d_pointworld_sample_v2_tracks"
 
 
 def sample_paths(root: Path) -> dict:
@@ -79,8 +88,16 @@ def resize_image(array: np.ndarray, height: int, width: int, *, depth: bool = Fa
     return np.asarray(image.resize((width, height), method)).copy()
 
 
-def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
-    """Only real matched RLDS observations are admitted; never PW pose substitution."""
+def convert_sample(
+    sample_root: Path, output: Path, *, rlds_root: Path | None = None, raw_episode: tuple[Path, Path] | None = None
+) -> dict:
+    """Only real matched RLDS observations are admitted; never PW pose substitution.
+
+    The episode is reread from ``rlds_root`` or taken from a saved ``raw_episode`` (npz, metadata json) that an
+    earlier reread wrote; either way it must match the clip's scene path and per-step raw states.
+    """
+    if (rlds_root is None) == (raw_episode is None):
+        raise ValueError("give exactly one of rlds_root or raw_episode")
     output = writable_path(output, DROID_CACHE_ROOT).resolve(strict=True)
     sample_root = sample_root.resolve(strict=True)
     paths = sample_paths(sample_root)
@@ -91,7 +108,12 @@ def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
     with h5py.File(paths["flow"], "r") as flow, h5py.File(paths["depth"], "r") as depth:
         cameras = json.loads(paths["cameras"].read_text())
         hint = json.loads((sample_root / "rlds_match_hint.json").read_text())
-        raw, metadata = load_episode(rlds_root, hint["rlds_ordinal"], hint["rlds_split"])
+        if rlds_root is not None:
+            raw, metadata = load_episode(rlds_root, hint["rlds_ordinal"], hint["rlds_split"])
+        else:
+            raw, metadata = load_saved_episode(*raw_episode)
+            if (int(metadata["ordinal"]), metadata["split"]) != (int(hint["rlds_ordinal"]), hint["rlds_split"]):
+                raise ValueError("saved matched episode is not the hinted RLDS episode")
         verify_path(metadata, str(flow.attrs["scene_path"]))
         alignment = verify_states(raw, flow)
         np.savez_compressed(output / "matched_raw_external.npz", **raw)
@@ -121,6 +143,10 @@ def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
         calibration["heldout_median_residual_m"] = float(np.median(heldout_errors)) if len(heldout_errors) else None
         calibration["heldout_point_observations"] = len(heldout_errors)
         calibration["heldout_canonical_indices"] = heldout.tolist()
+        # Every window pads each camera's tracks to the largest per-camera track count of the episode.
+        capacity = max(
+            flow[key][f"camera_{serial}_ext"]["scene_flows"].shape[1] for key in geom["clips"] for serial in geom["serials"]
+        )
         windows = []
         for key in geom["clips"]:
             for indices in clip_windows(key):
@@ -133,7 +159,7 @@ def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
                     }
                 )
         manifest = {
-            "format": "splatter4d_pointworld_sample_v1",
+            "format": FORMAT,
             "episode": EPISODE,
             "dataset": "nvidia/PointWorld-DROID",
             "revision": REVISION,
@@ -155,11 +181,20 @@ def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
             ),
             "depth_resize": "nearest neighbor, zero invalid, metric camera-z",
             "motion_target": (
-                "source visibility and depth-valid mask, native+resized 2 cm surface test, "
-                "nearest center, nearest-z collision"
+                "per-camera 3D track arrays, never splatted: source position, displacement and weight per pair; "
+                "weight 1 where PointWorld visibility, depth-valid mask and the native 2 cm surface test pass at the "
+                "source time and both positions are finite; zero padding after track_count"
             ),
+            "gripper_target": (
+                "gripper FK points per time; per-camera weight 1 where the native 2 cm surface test passes at the "
+                "source time"
+            ),
+            "track_capacity": capacity,
             "motion_pairs": [[0, 1, 0], [1, 2, 1], [0, 2, 0]],
-            "motion_score": "max norm over all three point displacement pairs / .03, clipped, splatted on each source time",
+            "motion_score": (
+                "max norm over all three point displacement pairs / .03, clipped, splatted with nearest-z on each "
+                "time (scene and gripper points)"
+            ),
             "depth_timestamp_indices": geom["depth_indices"].tolist(),
             "depth_timestamp_median_error_ms": np.median(geom["timestamp_errors_ms"], axis=0).tolist(),
             "depth_timestamp_max_error_ms": geom["timestamp_errors_ms"].max(axis=0).tolist(),
@@ -188,21 +223,34 @@ def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
                     resized_depth = np.stack(
                         [np.stack([resize_image(d, height, width, depth=True) for d in frame]) for frame in native_depth]
                     )
-                    motions, weights, scores = [], [], []
+                    gripper = all_gripper[canon]
+                    srcs, disps, weights, counts, grip_weights, scores = [], [], [], [], [], []
                     for view, serial in enumerate(geom["serials"]):
                         camera = flow[key][f"camera_{serial}_ext"]
                         points = camera["scene_flows"][relative].astype(np.float32)
                         visible = camera["scene_visibility"][relative] & camera["scene_depth_valid_mask"][relative]
-                        points = np.concatenate([points, all_gripper[canon]], axis=1)
-                        visible = np.concatenate([visible, np.ones((3, 32), bool)], axis=1)
+                        grip_visible = np.ones((3, len(gripper[0])), bool)
                         for t in range(3):
                             visible[t] &= depth_test(points[t], geom["K"][view], geom["w2c"][view], native_depth[t, view])[0]
-                        motion, weight, score = sparse_targets(
-                            points, visible, K[view], geom["w2c"][view], resized_depth[:, view]
+                            grip_visible[t] &= depth_test(
+                                gripper[t], geom["K"][view], geom["w2c"][view], native_depth[t, view]
+                            )[0]
+                        scores.append(
+                            splat_score(
+                                np.concatenate([points, gripper], axis=1),
+                                np.concatenate([visible, grip_visible], axis=1),
+                                K[view],
+                                geom["w2c"][view],
+                                resized_depth[:, view],
+                            )
                         )
-                        motions.append(motion)
-                        weights.append(weight)
-                        scores.append(score)
+                        src, disp, weight = track_targets(points, visible)
+                        pad = ((0, 0), (0, capacity - points.shape[1]))
+                        srcs.append(np.pad(src, (*pad, (0, 0))))
+                        disps.append(np.pad(disp, (*pad, (0, 0))))
+                        weights.append(np.pad(weight, pad))
+                        counts.append(points.shape[1])
+                        grip_weights.append(grip_visible[[a for a, _ in PAIR_TIMES]].astype(np.float32))
                     group = outputs[backbone].create_group(f"windows/{index:05d}")
                     tensors = {
                         "images": images,
@@ -210,9 +258,13 @@ def convert_sample(sample_root: Path, output: Path, *, rlds_root: Path) -> dict:
                         "K": K,
                         "w2c": geom["w2c"],
                         "c2w": np.linalg.inv(geom["w2c"]).astype(np.float32),
-                        "motion3d": np.stack(motions, axis=1),
-                        "motion_weight": np.stack(weights, axis=1),
                         "motion_score": np.stack(scores, axis=1),
+                        "track_src": np.stack(srcs, axis=1),
+                        "track_disp": np.stack(disps, axis=1),
+                        "track_weight": np.stack(weights, axis=1),
+                        "track_count": np.array(counts, np.int64),
+                        "gripper_points": gripper.astype(np.float32),
+                        "gripper_weight": np.stack(grip_weights, axis=1),
                         "probe_state": np.concatenate(
                             [raw["cartesian_position"][raw_idx], raw["gripper_position"][raw_idx]], axis=-1
                         ).astype(np.float32),

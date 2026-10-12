@@ -16,11 +16,11 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 from s4d.config import get
-from s4d.data.contract import PAIRS, collate, validate_batch
+from s4d.data.contract import PAIRS, collate, motion_targets, validate_batch
 from s4d.losses.depth import abs_rel, align_teacher, depth_gradient_loss, depth_l1
 from s4d.losses.invariance import multi_positive_info_nce, slot_consistency, state_statistics
 from s4d.losses.motion import expected_displacement, motion_loss
-from s4d.losses.motion3d import motion3d_loss
+from s4d.losses.motion3d import motion3d_loss, motion3d_track_loss, track_candidates
 from s4d.losses.occlusion import occlusion_loss, usage_diagnostics
 from s4d.losses.regularizers import visibility_loss
 from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss
@@ -215,7 +215,10 @@ def forward_losses(
         ) * _per_t(syn_depth, B, T, n_syn)
         extra_losses["synth_render"] = (syn_t[0] + ramp * (syn_t[1] + syn_t[2])) / (1.0 + 2.0 * ramp)
 
-    # ---- 3D motion -------------------------------------------------------------------------------
+    # ---- 3D motion: M3D (directive item 2, adopted) is the only motion loss -----------------------
+    # The rendered per-pixel displacement remains for the image-space EPE metrics, the panels and the dynamic share.
+    if str(loss_cfg.get("motion_space", "gaussian")) != "gaussian":
+        raise ValueError("loss.motion_space: only 'gaussian' (M3D) remains; the image-space motion loss was removed")
     is_dyn = (gs.group == DYNAMIC_GROUP).float()[None, :, None].expand(B, -1, 1)
     d01, d12 = gs.delta01, gs.delta12
     feat0 = torch.cat((d01, d01 + d12, is_dyn), -1)
@@ -227,27 +230,32 @@ def forward_losses(
     pred_feat = torch.stack((feats[:, 0, :, 0:3], feats[:, 1, :, 0:3], feats[:, 0, :, 3:6]), 1)
     coverage = torch.stack((cov[:, 0], cov[:, 1], cov[:, 0]), 1)
     pred_disp = expected_displacement(pred_feat, coverage)
-    motion_weight = batch["motion_weight"]
-    if valid_far:
-        src_depth = batch["depth"][:, [a for a, _, _ in PAIRS]]  # (B,P,V,1,H,W) on each pair's source grid
-        motion_weight = motion_weight * (src_depth < far).to(motion_weight.dtype)
-    m_loss, m_metrics = motion_loss(
-        pred_disp,
-        coverage,
-        batch["motion3d"],
-        motion_weight,
-        float(loss_cfg.get("motion_huber", 0.01)),
-        normalization=str(loss_cfg.get("motion_norm", "valid")),
-    )
-    motion_space = str(loss_cfg.get("motion_space", "image"))
-    if motion_space == "gaussian":  # directive item 2 (M3D): the image-space loss above then only provides metrics
-        m_metrics["motion_image"] = m_loss.detach()
+    if motion_targets(batch) == "tracks":  # review item 2c (DROID): 3D track arrays supervise M3D; no pixel grids
+        track_src, track_disp, track_weight = track_candidates(batch)
+        if valid_far:  # the far mask on each point's source depth in its camera
+            z = torch.einsum("bvj,bpvmj->bpvm", w2c[:, :, 2, :3], track_src) + w2c[:, None, :, 2, 3, None]
+            track_weight = track_weight * (z < far).to(track_weight.dtype)
+        m_loss, m_metrics = motion3d_track_loss(
+            gs, xyz_seq, gs.group == DYNAMIC_GROUP, track_src, track_disp, track_weight
+        )
+    else:
+        motion_weight = batch["motion_weight"]
+        if valid_far:
+            src_depth = batch["depth"][:, [a for a, _, _ in PAIRS]]  # (B,P,V,1,H,W) on each pair's source grid
+            motion_weight = motion_weight * (src_depth < far).to(motion_weight.dtype)
+        image_loss, m_metrics = motion_loss(  # metrics only: image-space EPE of the rendered displacements
+            pred_disp,
+            coverage,
+            batch["motion3d"],
+            motion_weight,
+            float(loss_cfg.get("motion_huber", 0.01)),
+            normalization=str(loss_cfg.get("motion_norm", "valid")),
+        )
+        m_metrics["motion_image"] = image_loss.detach()
         m_loss, m3d_metrics = motion3d_loss(
             gs, xyz_seq, gs.group == DYNAMIC_GROUP, batch["depth"], K, batch["c2w"], batch["motion3d"], motion_weight
         )
         m_metrics.update(m3d_metrics)
-    elif motion_space != "image":
-        raise ValueError(f"unknown loss.motion_space {motion_space!r}")
     dyn_share_map = (feats[:, :, :, 6:7] / cov.clamp_min(1e-6)).detach()
     moving0 = score > MOVING_SCORE
     moving_count = moving0.float().sum()

@@ -11,7 +11,7 @@ from s4d.config import load_config
 from s4d.diag.local_log import RunLogger
 from s4d.geometry import lift_depth
 from s4d.losses.motion import motion_loss
-from s4d.losses.motion3d import motion3d_loss, sample_track_points
+from s4d.losses.motion3d import motion3d_loss, motion3d_track_loss, sample_track_points, track_candidates
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.train import evaluate as E
 
@@ -104,6 +104,44 @@ def test_attraction_pulls_the_nearest_dynamic_centre_to_moving_points():
     assert float(metrics["m3d_disp_01"]) == 0.0 and float(metrics["m3d_covered_01"]) == 0.0
     loss.backward()
     assert float(xyz.grad[0, 0, 1]) > 0  # descent moves it back towards the point (-y)
+
+
+def test_track_arrays_reproduce_the_pixel_loss_on_the_lifted_pixels():
+    """With every lifted pixel as a track, M3D on track arrays samples and scores exactly as M3D on the pixel grid."""
+    K, c2w, depth, target, weight = _scene()
+    pts = _pixel_points(K, c2w, depth)
+    xyz = [pts[0, 0].tolist(), pts[0, 1].tolist(), [pts[0, 0, 0].item() + 0.01, pts[0, 0, 1].item(), 1.0]]
+    groups = [DYNAMIC_GROUP] * 3
+    delta = [[0.015, 0.0, 0.0], [0.002, 0.0, 0.0], [0.0, 0.01, 0.0]]
+    gs, _, _ = _gaussians(xyz, delta, groups)
+    src = pts.reshape(1, 1, 1, H * W, 3).expand(1, 3, 1, H * W, 3)
+    disp = target.permute(0, 1, 2, 4, 5, 3).reshape(1, 3, 1, H * W, 3)
+    w = weight.reshape(1, 3, 1, H * W)
+    dyn = gs.group == DYNAMIC_GROUP
+    pixel, pixel_metrics = motion3d_loss(
+        gs, gs.xyz_sequence(), dyn, depth, K, c2w, target, weight, generator=torch.Generator().manual_seed(3)
+    )
+    track, track_metrics = motion3d_track_loss(
+        gs, gs.xyz_sequence(), dyn, src, disp, w, generator=torch.Generator().manual_seed(3)
+    )
+    assert float(pixel) > 0
+    torch.testing.assert_close(track, pixel)
+    assert track_metrics.keys() == pixel_metrics.keys()
+    for key in pixel_metrics:
+        torch.testing.assert_close(track_metrics[key], pixel_metrics[key])
+
+
+def test_track_candidates_append_gripper_points_to_every_camera(track_batch):
+    track_batch["gripper_points"][:, 1, :, 0] = 0.01
+    track_batch["gripper_points"][:, 2, :, 0] = 0.03
+    track_batch["gripper_weight"][:, :, 1] = 0.0  # unoccluded only in camera 0
+    src, disp, weight = track_candidates(track_batch)
+    assert src.shape == disp.shape == (2, 3, 2, 3 + 4, 3) and weight.shape == (2, 3, 2, 3 + 4)
+    torch.testing.assert_close(src[:, :, :, :3], track_batch["track_src"])
+    torch.testing.assert_close(disp[0, :, 0, 3:, 0], torch.tensor([0.01, 0.02, 0.03])[:, None].expand(3, 4))
+    torch.testing.assert_close(src[0, 1, 1, 3:, 0], torch.full((4,), 0.01))
+    assert weight[:, :, 0, 3:].eq(1).all() and weight[:, :, 1, 3:].eq(0).all()
+    assert weight[:, :, :, 2].eq(0).all()  # padding stays unsupervised
 
 
 def test_binned_relative_epe_and_epe_in_millimetres():

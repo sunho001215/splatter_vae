@@ -272,7 +272,7 @@ def test_depth_beyond_the_far_plane_is_invalid_only_with_the_fix(batch, monkeypa
 
 
 # ------------------------------------------------------------------------------------------ directive item 2
-def test_forward_losses_switches_the_objective_to_gaussian_space(batch, monkeypatch):
+def test_m3d_is_the_only_motion_loss_and_image_space_epe_stays_a_metric(batch, monkeypatch):
     from s4d.model import render
 
     monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
@@ -281,17 +281,40 @@ def test_forward_losses_switches_the_objective_to_gaussian_space(batch, monkeypa
     cfg = load_config([REPO / "configs/metaworld/base.yaml"])
     cfg["train"]["bf16"] = False
     cfg["loss"]["ramp_steps"] = 0
+    cfg["loss"].pop("motion_space", None)
     model = _model().train()
     torch.manual_seed(0)
-    image = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
-    cfg["loss"]["motion_space"] = "gaussian"
+    default = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    cfg["loss"]["motion_space"] = "gaussian"  # registered jobs still pass it explicitly
     torch.manual_seed(0)  # the same encoder masks, hence the same Gaussians
     gauss = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
-    assert "m3d_disp_01" in gauss["metrics"] and "m3d_disp_01" not in image["metrics"]
-    torch.testing.assert_close(gauss["metrics"]["motion_image"], image["losses"]["motion"])
-    assert float(gauss["losses"]["motion"]) != pytest.approx(float(image["losses"]["motion"]))
+    torch.testing.assert_close(default["total"], gauss["total"])
+    assert "m3d_disp_01" in gauss["metrics"] and "epe_01" in gauss["metrics"] and "rel_epe_02" in gauss["metrics"]
+    assert float(gauss["losses"]["motion"]) != pytest.approx(float(gauss["metrics"]["motion_image"]))
     gauss["total"].backward()
     assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
-    cfg["loss"]["motion_space"] = "pixels"
-    with pytest.raises(ValueError, match="motion_space"):
-        forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    for removed in ("image", "pixels"):
+        cfg["loss"]["motion_space"] = removed
+        with pytest.raises(ValueError, match="motion_space"):
+            forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+
+
+# ------------------------------------------------------------------------------------------ review item 2c
+def test_forward_losses_supervises_m3d_from_track_arrays(track_batch, monkeypatch):
+    from s4d.model import render
+
+    monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"])
+    cfg["train"]["bf16"] = False
+    cfg["loss"]["ramp_steps"] = 0
+    model = _model().train()
+    out = forward_losses(model, track_batch, cfg, 100, source=torch.tensor([0, 1]))
+    assert "m3d_disp_01" in out["metrics"] and "motion_image" not in out["metrics"] and "epe_01" not in out["metrics"]
+    out["total"].backward()
+    assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
+    cfg["loss"]["depth_valid_far"] = True  # every track and gripper point beyond the far plane: nothing is supervised
+    track_batch["track_src"][..., 2] = torch.where(track_batch["track_weight"] > 0, 10.0, 0.0)
+    track_batch["gripper_points"][..., 2] = 10.0
+    out = forward_losses(model, track_batch, cfg, 100, source=torch.tensor([0, 1]))
+    assert float(out["metrics"]["m3d_disp_01"]) == 0.0 and float(out["metrics"]["m3d_attr_02"]) == 0.0

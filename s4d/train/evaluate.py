@@ -420,56 +420,57 @@ class Evaluator:
                 f"cam {v} (source {src}); rows: GT|render|err|GT depth|depth|"
                 "depth err|alpha|motion score|tube mask; cols t0..t2",
             )
-        # motion panel (source camera): GT vs predicted image-plane flow + magnitude + error for the three pairs
-        items = []
-        for p, (_a, _, pix) in enumerate(out["pairs"]):
-            gt_flow = image_plane_flow(
-                batch["depth"][b, pix, src, 0],
-                batch["motion3d"][b, p, src],
-                batch["K"][b, src],
-                batch["c2w"][b, src],
-                batch["w2c"][b, src],
+        if "motion3d" in batch:  # dense pixel-grid targets only (3D track batches have none)
+            # motion panel (source camera): GT vs predicted image-plane flow + magnitude + error for the three pairs
+            items = []
+            for p, (_a, _, pix) in enumerate(out["pairs"]):
+                gt_flow = image_plane_flow(
+                    batch["depth"][b, pix, src, 0],
+                    batch["motion3d"][b, p, src],
+                    batch["K"][b, src],
+                    batch["c2w"][b, src],
+                    batch["w2c"][b, src],
+                )
+                pr_flow = image_plane_flow(
+                    batch["depth"][b, pix, src, 0],
+                    out["pred_disp"][b, p, src],
+                    batch["K"][b, src],
+                    batch["c2w"][b, src],
+                    batch["w2c"][b, src],
+                )
+                gt_mag = batch["motion3d"][b, p, src].norm(dim=0)
+                pr_mag = out["pred_disp"][b, p, src].norm(dim=0)
+                err = (out["pred_disp"][b, p, src] - batch["motion3d"][b, p, src]).norm(dim=0) * (
+                    batch["motion_weight"][b, p, src, 0] > 0
+                )
+                items += [
+                    P.flow_color(gt_flow, 16.0),
+                    P.flow_color(pr_flow, 16.0),
+                    P.colorize_error(gt_mag, 0.1),
+                    P.colorize_error(pr_mag, 0.1),
+                    P.colorize_error(err, 0.05),
+                ]
+            panel = P.grid(items, ncol=5)
+            self.logger.save_png(out_dir / "motion.png", panel)
+            media["panels/motion"] = W.image(
+                panel, "rows: pairs 01,12,02; cols: GT flow | pred flow | GT |d| (0-10cm) | pred |d| | error (0-5cm)"
             )
-            pr_flow = image_plane_flow(
-                batch["depth"][b, pix, src, 0],
-                out["pred_disp"][b, p, src],
-                batch["K"][b, src],
-                batch["c2w"][b, src],
-                batch["w2c"][b, src],
-            )
-            gt_mag = batch["motion3d"][b, p, src].norm(dim=0)
-            pr_mag = out["pred_disp"][b, p, src].norm(dim=0)
-            err = (out["pred_disp"][b, p, src] - batch["motion3d"][b, p, src]).norm(dim=0) * (
-                batch["motion_weight"][b, p, src, 0] > 0
-            )
-            items += [
-                P.flow_color(gt_flow, 16.0),
-                P.flow_color(pr_flow, 16.0),
-                P.colorize_error(gt_mag, 0.1),
-                P.colorize_error(pr_mag, 0.1),
-                P.colorize_error(err, 0.05),
-            ]
-        panel = P.grid(items, ncol=5)
-        self.logger.save_png(out_dir / "motion.png", panel)
-        media["panels/motion"] = W.image(
-            panel, "rows: pairs 01,12,02; cols: GT flow | pred flow | GT |d| (0-10cm) | pred |d| | error (0-5cm)"
-        )
-        # tracks per camera
-        pixels_by_cam = {}
-        for v in range(V):
-            pixels = sample_track_pixels(batch["motion_score"][b, 0, v], batch["motion_weight"][b, 0, v])
-            pixels_by_cam[v] = pixels
-            if len(pixels) == 0:
-                continue
-            panel = track_panel(batch, out, b, v, pixels)
-            self.logger.save_png(out_dir / f"tracks_cam{v}.png", panel)
-            media[f"panels/tracks_cam{v}"] = W.image(panel, "GT tracks green, predicted red; cols t0..t2")
-        source_pixels = pixels_by_cam[src]
-        if len(source_pixels):
+            # tracks per camera
+            pixels_by_cam = {}
             for v in range(V):
-                panel = track_panel(batch, out, b, src, source_pixels, target_v=v)
-                self.logger.save_png(out_dir / f"same_tracks_source{src}_target{v}.png", panel)
-                media[f"panels/same_tracks_cam{v}"] = W.image(panel, "identical world trajectories across cameras")
+                pixels = sample_track_pixels(batch["motion_score"][b, 0, v], batch["motion_weight"][b, 0, v])
+                pixels_by_cam[v] = pixels
+                if len(pixels) == 0:
+                    continue
+                panel = track_panel(batch, out, b, v, pixels)
+                self.logger.save_png(out_dir / f"tracks_cam{v}.png", panel)
+                media[f"panels/tracks_cam{v}"] = W.image(panel, "GT tracks green, predicted red; cols t0..t2")
+            source_pixels = pixels_by_cam[src]
+            if len(source_pixels):
+                for v in range(V):
+                    panel = track_panel(batch, out, b, src, source_pixels, target_v=v)
+                    self.logger.save_png(out_dir / f"same_tracks_source{src}_target{v}.png", panel)
+                    media[f"panels/same_tracks_cam{v}"] = W.image(panel, "identical world trajectories across cameras")
         if heldout is not None:
             # held-out cameras
             items = []
