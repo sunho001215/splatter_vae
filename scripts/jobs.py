@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO))
 from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH  # noqa: E402
 from s4d.remote_access import sha256 as file_sha256  # noqa: E402
 from s4d.remote_jobs import RemoteBackend, RemoteJobError, RemoteUnreachable, validate_container  # noqa: E402
+from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 from scripts._nvidia_query import query_output  # noqa: E402
 
 QUEUE = REPO / "experiments/queue.yaml"
@@ -259,6 +260,7 @@ def source_identity() -> dict:
         if path.is_file() and path.suffix in (".py", ".yaml", ".sh")
     ]
     fingerprints = {str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+    fingerprints.update(third_party_identity(REPO))  # pinned submodule commits, .gitmodules, patch files
     return {"commit": commit, "source_sha256": fingerprints}
 
 

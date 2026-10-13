@@ -16,6 +16,7 @@ sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 from s4d.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device, validate_runtime_path  # noqa: E402
+from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 
 CACHE_ROOT = validate_runtime_path(Path(os.environ.get("S4D_CACHE_ROOT", str(REPO / ".cache"))), cache=True)
 for variable, suffix in (
@@ -55,7 +56,9 @@ def source_fingerprints() -> dict[str, str]:
         for path in sorted((REPO / folder).rglob("*"))
         if path.is_file() and path.suffix in (".py", ".yaml", ".sh")
     ]
-    return {str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+    fingerprints = {str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+    fingerprints.update(third_party_identity(REPO))  # pinned submodule commits, .gitmodules, patch files
+    return fingerprints
 
 
 def test_evidence_directory() -> Path:

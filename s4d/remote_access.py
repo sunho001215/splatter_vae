@@ -321,9 +321,9 @@ class RemoteClient:
         self._local_path(local)
         os.replace(partial, local)
 
-    def _git(self, *args: str, timeout: float = 90) -> str:
+    def _git(self, *args: str, timeout: float = 90, cwd: Path | None = None) -> str:
         env = {k: v for k, v in os.environ.items() if k not in CREDENTIAL_KEYS | {"SSHPASS"}}
-        result = subprocess.run(["git", "-C", str(self.repo), *args], capture_output=True, text=True, env=env,
+        result = subprocess.run(["git", "-C", str(cwd or self.repo), *args], capture_output=True, text=True, env=env,
                                 timeout=timeout)
         if result.returncode:
             raise RemoteCommandError("Local Git provenance check failed: " + self._redact(result.stderr)[-1000:])
@@ -392,6 +392,7 @@ class RemoteClient:
             + "test -z \"$(" + git + " status --porcelain)\"; "
         )
         self.checked_ssh(script, idempotent=True, timeout=300)
+        submodules = self._sync_submodules(sha, code, git)
         for mountpoint in ("runs", "outputs", ".cache"):
             self.ensure_remote_path(code + "/" + mountpoint, create_parent=True, directory=True)
         self.checked_ssh("test -z \"$(" + git + " status --porcelain)\"", idempotent=True)
@@ -399,11 +400,66 @@ class RemoteClient:
                  "origin_branch": "splatter4d", "origin_ref": "refs/remotes/origin/splatter4d",
                  "origin_url": origin, "bundle_sha256": expected, "verified_ancestor": True,
                  "verified_at": datetime.now(timezone.utc).isoformat()}
+        if submodules:
+            proof["submodules"] = submodules
         local_proof = self.network_dir / "releases" / sha / "provenance.json"
         local_proof.parent.mkdir(parents=True, exist_ok=True)
         local_proof.write_text(json.dumps(proof, indent=2, sort_keys=True))
         self.rsync_upload(local_proof, f"releases/{sha}/provenance.json")
         return code
+
+    def _sync_submodules(self, sha: str, code: str, git: str) -> dict:
+        """Release the pinned third-party submodules: ``git bundle`` does not carry them.
+
+        Each submodule's pinned commit is bundled from the local checkout, transferred, fetched into a repository at
+        its gitlink path in the release and checked out detached; the superproject then reports every submodule at
+        its pin and the checkout clean.
+        """
+        listing = self._git("ls-tree", "-r", "-z", sha, "--", "third_party")
+        pins = {}
+        for entry in listing.split("\x00"):
+            if entry:
+                meta, path = entry.split("\t", 1)
+                if meta.split()[1] == "commit":
+                    pins[path] = meta.split()[2]
+        released = {}
+        for path, pinned in sorted(pins.items()):
+            if not re.fullmatch(r"third_party/[A-Za-z0-9_.-]+", path) or not re.fullmatch(r"[0-9a-f]{40}", pinned):
+                raise RemoteCommandError("Unexpected third-party submodule entry")
+            local = self.repo / path
+            if not (local / ".git").exists():
+                raise RemoteCommandError(f"Submodule {path} is not checked out locally")
+            self._git("cat-file", "-e", pinned + "^{commit}", cwd=local)
+            self._git("update-ref", "refs/s4d/pin", pinned, cwd=local)
+            bundle = self.network_dir / "bundles" / f"{path.replace('/', '__')}-{pinned}.bundle"
+            bundle.parent.mkdir(parents=True, exist_ok=True)
+            if not bundle.exists():
+                temp = bundle.with_suffix(".bundle.partial")
+                self._git("bundle", "create", str(temp), "refs/s4d/pin", cwd=local, timeout=300)
+                os.replace(temp, bundle)
+            self._git("bundle", "verify", str(bundle), cwd=local)
+            remote_bundle = f"bundles/{bundle.name}"
+            self.rsync_upload(bundle, remote_bundle)
+            target = code + "/" + path
+            sub = "git -c core.hooksPath=/dev/null -C " + shlex.quote(target)
+            self.checked_ssh(
+                "set -eu; export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null; "
+                + "test \"$(sha256sum -- " + shlex.quote(self.remote_path(remote_bundle)) + " | cut -d' ' -f1)\" = "
+                + shlex.quote(sha256(bundle)) + "; test -d " + shlex.quote(target) + "; test ! -L " + shlex.quote(target)
+                + "; if [ -e " + shlex.quote(target + "/.git") + " ]; then test -z \"$(" + sub
+                + " status --porcelain --untracked-files=all)\"; else git -c init.templateDir= init --quiet -- "
+                + shlex.quote(target) + "; fi; "
+                + sub + " fetch --quiet -- " + shlex.quote(self.remote_path(remote_bundle)) + " refs/s4d/pin:refs/s4d/pin; "
+                + sub + " checkout --quiet --detach " + shlex.quote(pinned) + "; "
+                + "test \"$(" + sub + " rev-parse HEAD)\" = " + shlex.quote(pinned) + "; "
+                + "test -z \"$(" + sub + " status --porcelain --untracked-files=all)\"",
+                idempotent=True, timeout=300)
+            released[path] = {"commit": pinned, "bundle_sha256": sha256(bundle)}
+        if pins:  # every submodule at its pin (no '-', '+' or 'U' prefix) and the superproject clean
+            self.checked_ssh("set -eu; s=\"$(" + git + " submodule status)\"; test -n \"$s\"; "
+                             + "test -z \"$(printf '%s\\n' \"$s\" | grep -v '^ ')\"; test -z \"$(" + git
+                             + " status --porcelain --untracked-files=all)\"", idempotent=True)
+        return released
 
     def sync_data(self, manifest: Path | dict) -> dict:
         payload = json.loads(manifest.read_text()) if isinstance(manifest, Path) else manifest
