@@ -1,0 +1,101 @@
+{
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Max-Q (GPU-76871c16, idle at the time)",
+  "smoke_A_full_hammer_1000_steps": {
+    "mean_step_s": 0.08965970251295302,
+    "mean_data_wait_s": 0.011268743673960364,
+    "peak_gpu_mem_allocated_gb": 3.218679428100586,
+    "train_dynamics_loss_first_window": 0.2506523966789246,
+    "train_dynamics_loss_last_window": 0.02448170065879822,
+    "note": "official epoch 0: encoder/projector lr 0, only the forward model and BatchNorm statistics change"
+  },
+  "smoke_B_hammer_8_episodes_1000_steps": {
+    "steps_per_epoch": 142,
+    "mean_step_s": 0.08658476011319594,
+    "epochs": [
+      {
+        "step": 142,
+        "epoch": 0,
+        "metrics/lr": 0.0,
+        "ssl_train/total_loss": 0.11159408335762944,
+        "ssl_eval/total_loss": 0.035321805190794656,
+        "ssl_eval/dynamics_loss_total": 0.03531711335834437,
+        "ssl_eval/covariance_loss": 4.691765729280711e-06,
+        "metrics/obs_enc_mean_std": 0.15861335636214272,
+        "metrics/obs_enc_mean_norm": 19.16029121074702,
+        "metrics/obs_proj_mean_std": 0.04348162310333999
+      },
+      {
+        "step": 284,
+        "epoch": 1,
+        "metrics/lr": 2e-05,
+        "ssl_train/total_loss": 0.03106580560648985,
+        "ssl_eval/total_loss": 0.027248536460447913,
+        "ssl_eval/dynamics_loss_total": 0.02723048771836685,
+        "ssl_eval/covariance_loss": 1.804867775088437e-05,
+        "metrics/obs_enc_mean_std": 0.15629425421258208,
+        "metrics/obs_enc_mean_norm": 20.059221726173107,
+        "metrics/obs_proj_mean_std": 0.04913968786320205
+      },
+      {
+        "step": 426,
+        "epoch": 2,
+        "metrics/lr": 4e-05,
+        "ssl_train/total_loss": 0.024689135731159526,
+        "ssl_eval/total_loss": 0.02213863223039138,
+        "ssl_eval/dynamics_loss_total": 0.02211273785131386,
+        "ssl_eval/covariance_loss": 2.589433790173961e-05,
+        "metrics/obs_enc_mean_std": 0.15486014961879724,
+        "metrics/obs_enc_mean_norm": 20.237549106754948,
+        "metrics/obs_proj_mean_std": 0.11013228515012173
+      },
+      {
+        "step": 568,
+        "epoch": 3,
+        "metrics/lr": 6.000000000000001e-05,
+        "ssl_train/total_loss": 0.021522225322512495,
+        "ssl_eval/total_loss": 0.019830802524806176,
+        "ssl_eval/dynamics_loss_total": 0.01980164025725913,
+        "ssl_eval/covariance_loss": 2.9162285812632543e-05,
+        "metrics/obs_enc_mean_std": 0.14617564423309062,
+        "metrics/obs_enc_mean_norm": 20.177621646389703,
+        "metrics/obs_proj_mean_std": 0.15341336019881377
+      },
+      {
+        "step": 710,
+        "epoch": 4,
+        "metrics/lr": 8e-05,
+        "ssl_train/total_loss": 0.019312763395000068,
+        "ssl_eval/total_loss": 0.017989709159510228,
+        "ssl_eval/dynamics_loss_total": 0.017954660918449817,
+        "ssl_eval/covariance_loss": 3.5048245334466305e-05,
+        "metrics/obs_enc_mean_std": 0.1400308716958104,
+        "metrics/obs_enc_mean_norm": 20.11191841267336,
+        "metrics/obs_proj_mean_std": 0.15983201137893546
+      },
+      {
+        "step": 852,
+        "epoch": 5,
+        "metrics/lr": 0.0001,
+        "ssl_train/total_loss": 0.01696320399428601,
+        "ssl_eval/total_loss": 0.017533699466115923,
+        "ssl_eval/dynamics_loss_total": 0.017489820520874673,
+        "ssl_eval/covariance_loss": 4.387897873623821e-05,
+        "metrics/obs_enc_mean_std": 0.13803165383231275,
+        "metrics/obs_enc_mean_norm": 20.09972022919066,
+        "metrics/obs_proj_mean_std": 0.16036613697648683
+      },
+      {
+        "step": 994,
+        "epoch": 6,
+        "metrics/lr": 9.979871469976196e-05,
+        "ssl_train/total_loss": 0.014198777960799266,
+        "ssl_eval/total_loss": 0.01399055882363245,
+        "ssl_eval/dynamics_loss_total": 0.01396001683446674,
+        "ssl_eval/covariance_loss": 3.0541995048040036e-05,
+        "metrics/obs_enc_mean_std": 0.13324743890231983,
+        "metrics/obs_enc_mean_norm": 19.726058045548115,
+        "metrics/obs_proj_mean_std": 0.1796003045096182
+      }
+    ]
+  }
+}

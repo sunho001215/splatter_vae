@@ -1,0 +1,35 @@
+{
+  "run": ".cache/runs/smoke-8ep-1000",
+  "losses": {
+    "val_dynamics_loss_by_epoch": [
+      0.03531711335834437,
+      0.02723048771836685,
+      0.02211273785131386,
+      0.01980164025725913,
+      0.017954660918449817,
+      0.017489820520874673,
+      0.01396001683446674
+    ]
+  },
+  "encoder.pt_step": 1000,
+  "encoder_init.pt_step": 0,
+  "retrieval": {
+    "queries": 2118,
+    "pool_frames": 4764,
+    "pool_episodes": 8,
+    "validation_episodes": 10,
+    "metric": "median state error of the top-1 same-camera neighbour",
+    "trained": {
+      "hand_error_cm_median": 1.431351900100708,
+      "hammer_error_cm_median": 1.7931630834937096
+    },
+    "random init": {
+      "hand_error_cm_median": 1.3991130515933037,
+      "hammer_error_cm_median": 1.919836364686489
+    },
+    "random frame (chance)": {
+      "hand_error_cm_median": 15.239980816841125,
+      "hammer_error_cm_median": 16.075970232486725
+    }
+  }
+}

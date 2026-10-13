@@ -21,7 +21,7 @@ from s4d.baselines.dynamo.model import DynaMoModules
 
 
 def set_seed_everywhere(seed: int) -> None:
-    """``utils/__init__.py:87-94`` (called at train.py:36): seeds, deterministic algorithms, cuBLAS workspace."""
+    """``utils/__init__.py:60-67`` (called at train.py:36): seeds, deterministic algorithms, cuBLAS workspace."""
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)

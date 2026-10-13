@@ -7,11 +7,11 @@ extra actions): for a trajectory of ``T`` frames, ``span = (window - 1) * frame_
 the last complete window of each trajectory is never used; that upstream off-by-one is kept. Trajectories shorter
 than ``window`` (upstream compares with ``window``, not ``span``) contribute nothing.
 
-A sample is the window's frames as ``(window, 1, 3, H, W)`` uint8. ``to_official_obs`` turns a batch into the official
-float input in [0, 1] on the device: ``obs / 255.0`` computed on the CPU, as upstream datasets do in their loaders
-(``datasets/your_dataset.py:18``), bit for bit (a 256-entry table; CUDA's division by a scalar multiplies by the
-reciprocal, which can differ in the last bit). Only the training cameras are used; the HDF5 file is opened lazily in
-each worker.
+A sample is the window's frames as ``(window, 1, 3, H, W)`` uint8. ``to_official_obs`` turns a batch into the
+official float input in [0, 1] on the device: ``obs / 255.0`` computed on the CPU, as upstream datasets do in their
+loaders (``datasets/sim_kitchen.py:44``, ``datasets/your_dataset.py:18``), bit for bit (a 256-entry table; CUDA's
+division by a scalar multiplies by the reciprocal, which can differ in the last bit). Only the training cameras are
+used; the HDF5 file is opened lazily in each worker.
 """
 
 from __future__ import annotations
