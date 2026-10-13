@@ -1,0 +1,45 @@
+--- a/nerf_pretrain/dino.py
++++ b/nerf_pretrain/dino.py
+@@ -5,7 +5,7 @@
+ from torchvision import transforms
+ import torch.nn.modules.utils as nn_utils
+ import math
+-import timm
++# import timm  # s4d patch 0001: imported where used (create_model, non-DINO models); timm is not installed
+ import types
+ from pathlib import Path
+ from typing import Union, List, Tuple
+@@ -69,7 +69,7 @@
+         if 'dino' in model_type:
+             model = torch.hub.load('facebookresearch/dino:main', model_type)
+         else:  # model from timm -- load weights from timm to dino model (enables working on arbitrary size images).
+-            temp_model = timm.create_model(model_type, pretrained=True)
++            import timm; temp_model = timm.create_model(model_type, pretrained=True)  # s4d patch 0001: lazy import
+             model_type_dict = {
+                 'vit_small_patch16_224': 'dino_vits16',
+                 'vit_small_patch8_224': 'dino_vits8',
+--- a/nerf_pretrain/run_nerf.py
++++ b/nerf_pretrain/run_nerf.py
+@@ -9,11 +9,11 @@
+ import torch.nn.functional as F
+ from tqdm import tqdm, trange
+ 
+-import matplotlib.pyplot as plt
++# import matplotlib.pyplot as plt  # s4d patch 0001: unused here, and matplotlib is not installed
+ 
+ from run_nerf_helpers import *
+ from multiview_encoder import PixelEncoder
+-from load_blender import load_blender_data
++# from load_blender import load_blender_data  # s4d patch 0001: imported in train() (load_blender imports cv2)
+ 
+ from dino import ViTExtractor
+ 
+@@ -533,7 +533,7 @@
+ 
+ 
+ def train():
+-
++    from load_blender import load_blender_data  # s4d patch 0001: moved from the top level
+     parser = config_parser()
+     args = parser.parse_args()
+ 

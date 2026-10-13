@@ -18,6 +18,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from s4d.baselines.snerl.encoder import SNeRLFrameEncoder
+
 
 def weight_init(m: nn.Module) -> None:
     if isinstance(m, nn.Linear):
@@ -205,6 +207,7 @@ BACKBONES = {
     "splatter4d": Splatter4DStateEncoder,
     "sincro": SinCroStateEncoder,
     "reviwo": ReViWoFrameEncoder,
+    "snerl": SNeRLFrameEncoder,
 }
 
 
