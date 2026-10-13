@@ -104,9 +104,15 @@ def source_tree(name: str, repo: Path | None = None, cache_root: Path | None = N
     try:
         with tarfile.open(fileobj=io.BytesIO(_git(repo / path, "archive", "--format=tar", pinned))) as archive:
             archive.extractall(staging, filter="data")
+        # Outside any repository (ceiling at the cache): inside one, git-format paths resolve against its top level
+        # and fall outside the staging directory, so git apply would skip them silently.
+        env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(cache.resolve())}
         for patch in patches:
-            subprocess.run(["git", "apply", "--whitespace=nowarn", str(patch)], cwd=staging, capture_output=True,
-                           check=True)
+            subprocess.run(["git", "apply", "--whitespace=nowarn", str(patch)], cwd=staging, env=env,
+                           capture_output=True, check=True)
+            # proof that it took effect: the applied patch must reverse cleanly
+            subprocess.run(["git", "apply", "--check", "--reverse", str(patch)], cwd=staging, env=env,
+                           capture_output=True, check=True)
         (staging / ".s4d-patched.json").write_text(json.dumps(record, indent=2))
         if target.exists():  # a stale or concurrent build: replace it atomically enough for single-writer use
             shutil.rmtree(target)

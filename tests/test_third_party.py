@@ -94,3 +94,26 @@ def test_source_tree_is_the_checkout_or_a_patched_copy_never_an_edit(superprojec
     (repo / "third_party/upstream/model.py").write_text("WIDTH = 5\n")
     with pytest.raises(RuntimeError, match="clean checkout"):
         third_party.source_tree("upstream", repo, tmp_path / "cache")
+
+
+def test_git_format_patches_to_subdirectories_apply_inside_a_repository(superproject):
+    repo, first = superproject
+    module = repo / "third_party/upstream"
+    (module / "pkg").mkdir()
+    (module / "pkg/net.py").write_text("DEPTH = 1\n")
+    git(module, "add", "pkg/net.py")
+    git(module, "commit", "-qm", "pkg")
+    pinned = git(module, "rev-parse", "HEAD")
+    git(repo, "add", "third_party/upstream")
+    git(repo, "commit", "-qm", "repin")
+    (module / "pkg/net.py").write_text("DEPTH = 2\n")
+    patch = subprocess.run(["git", "-C", str(module), "diff"], capture_output=True, text=True, check=True).stdout
+    git(module, "checkout", "-q", "--", "pkg/net.py")
+    assert patch.startswith("diff --git a/pkg/net.py b/pkg/net.py")
+    (repo / "third_party/patches/upstream/fix.patch").write_text(patch)
+    tree = third_party.source_tree("upstream", repo)  # default cache inside the repository's work tree
+    assert tree.is_relative_to(repo) and (tree / "pkg/net.py").read_text() == "DEPTH = 2\n"
+    assert third_party.working_tree_identity(repo)["third_party/upstream@commit"] == pinned
+    (repo / "third_party/patches/upstream/fix.patch").write_text(patch.replace("-DEPTH = 1", "-DEPTH = 7"))
+    with pytest.raises(subprocess.CalledProcessError):
+        third_party.source_tree("upstream", repo)
