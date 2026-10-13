@@ -205,6 +205,7 @@ BACKBONES = {
     "splatter4d": Splatter4DStateEncoder,
     "sincro": SinCroStateEncoder,
     "reviwo": ReViWoFrameEncoder,
+    "mvp3d": lambda cfg: __import__("s4d.baselines.mvp3d.rl", fromlist=["rl"]).MVP3DFrameEncoder(cfg),
 }
 
 

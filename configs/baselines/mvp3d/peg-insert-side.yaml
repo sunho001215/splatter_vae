@@ -1,0 +1,46 @@
+# 3D-MVP pretraining on peg-insert-side (reimplemented: Qi et al., CVPR 2025, arXiv 2406.18158 §3.2, no official code; encoder =
+# RVT-1 MVT, NVlabs/RVT @ 367995a). In-domain data only (the paper's RLBench-pretraining ablation, §4.4). Encoder
+# scaled to at most SinCro's RL-time encoder size by user decision. Every value and its source: docs/baselines_mvp3d.md.
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/peg-insert-side.hdf5
+  num_views: 6              # training cameras; each sample uses a random non-empty subset
+  max_episodes: null
+  max_frames_per_demo: null
+  num_workers: 8
+  pin_memory: true
+render:
+  bounds: [-0.6, 0.15, -0.05, 0.6, 1.15, 0.75]   # [x_min, y_min, z_min, x_max, y_max, z_max], metres (all 8 tasks)
+  radius: 0.012             # RVT renderer radius (NDC)
+model:
+  img_size: 48              # paper/RVT 220 (size-matched)
+  img_patch_size: 12        # paper 10 (size-matched)
+  im_channels: 64           # RVT-1
+  attn_dim: 256             # paper 1024 (size-matched)
+  attn_heads: 8             # paper
+  attn_dim_head: 32         # paper 1024 / 8 = 128 (size-matched)
+  depth: 8                  # paper (4 within-view + 4 cross-view, RVT-1)
+  attn_dropout: 0.1         # RVT-1 default
+  activation: lrelu         # RVT-1 default
+  num_img: 5
+  decoder_depth: 2          # paper
+  decoder_dim: 256          # paper (v1): encoder width, scaled with it
+  decoder_heads: 8          # paper
+  decoder_dim_head: 32
+  mask_ratio: 0.75          # paper, per view
+  mask_fill: 0.0            # unspecified (masked RGB = 0)
+train:
+  batch_size: 3             # paper
+  epochs: 15                # paper; one epoch = one pass over the training time steps
+  max_steps: null           # null: epochs x (training time steps // batch_size)
+  lr: 1.0e-4                # paper (AdamW), constant (no schedule given)
+  weight_decay: 0.01        # paper
+  seed: 0
+  device: cuda
+  log_every: 100
+  eval_every: 10000
+  save_every: 10000
+  val_samples: 30
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/peg-insert-side_seed0.json

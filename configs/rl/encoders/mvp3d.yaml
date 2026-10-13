@@ -1,0 +1,12 @@
+# Frozen 3D-MVP encoder (reimplemented; Qi et al., CVPR 2025 on RVT-1): the current camera's RGB-D image + K + c2w
+# (privileged: depth and extrinsics) -> point cloud -> 5 virtual views -> E -> per-view max-pool (5 x 256) per frame
+# -> FrameMLPStackHead over the 3 frames, feature_dim 256, no image augmentation. See docs/baselines_mvp3d.md.
+vision:
+  encoder_type: mvp3d
+  export_path: null   # set on the command line: vision.export_path=<runs/pretrain/<name>/encoder.pt>
+env:
+  views: 1
+  depth: true
+  cameras: true
+agent:
+  feature_dim: 256
