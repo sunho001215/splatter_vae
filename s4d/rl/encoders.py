@@ -2,6 +2,12 @@
 
 ``ConvNet`` is the end-to-end DrM/DrQ-v2 convolutional encoder (CNN baseline). Frozen pretrained encoders cache
 features in replay and feed a small trainable projection head, exactly as in the reference.
+
+A frozen backbone that needs more than one camera, depth or camera geometry declares ``observation`` (a dict with
+``views``, ``depth``, ``cameras``; the environment config must request the same) and receives a dict of tensors with
+a time axis and a view axis instead of RGB frames: ``rgb`` (.., V, 3, H, W) float in [0,1], ``depth`` (.., V, H, W)
+metres, ``K`` (.., V, 3, 3), ``c2w`` (.., V, 4, 4) OpenCV. Per-frame backbones get (B*T, V, ...) and return
+(B*T, D); sequence-state backbones get (B, T, V, ...).
 """
 
 from __future__ import annotations
@@ -212,6 +218,13 @@ class VisionEncoderAdapter(nn.Module):
         h = w = int(cfg["env"]["image_size"])  # square frames (RandomShiftsAug requires H == W)
         self.backbone = BACKBONES[self.vision_key](cfg)
         self.backbone_trainable = bool(self.backbone.is_trainable)
+        self.observation = getattr(self.backbone, "observation", None)
+        if self.observation is not None:
+            requested = {k: cfg["env"].get(k, 1 if k == "views" else False) for k in ("views", "depth", "cameras")}
+            if requested != {k: self.observation.get(k, 1 if k == "views" else False) for k in requested}:
+                raise ValueError(f"{self.vision_key} needs env observation {self.observation}, config has {requested}")
+            if self.backbone_trainable:
+                raise ValueError("multi-view / depth / camera observations are only supported for frozen encoders")
         self.stack_feature = bool(getattr(self.backbone, "returns_sequence_state", False))
         if not self.backbone_trainable:
             self.backbone.eval().requires_grad_(False)
@@ -234,9 +247,27 @@ class VisionEncoderAdapter(nn.Module):
             self.proj_head = FrameMLPStackHead(out_shape[-1], self.frame_stack, proj, min(proj, 256), proj, proj)
         self.repr_dim = int(self.proj_head.out_dim)
 
+    def _example_observation(self, h: int, w: int, device) -> dict[str, torch.Tensor]:
+        """A zero observation with valid cameras (identity pose, principal point at the image centre)."""
+        views, lead = int(self.observation.get("views", 1)), (1, self.frame_stack)
+        out = {"rgb": torch.zeros(*lead, views, 3, h, w, device=device)}
+        if self.observation.get("depth"):
+            out["depth"] = torch.ones(*lead, views, h, w, device=device)
+        if self.observation.get("cameras"):
+            K = torch.tensor([[float(h), 0.0, w / 2], [0.0, float(h), h / 2], [0.0, 0.0, 1.0]], device=device)
+            out["K"] = K.expand(*lead, views, 3, 3).clone()
+            out["c2w"] = torch.eye(4, device=device).expand(*lead, views, 4, 4).clone()
+        return out
+
     @torch.no_grad()
     def _feature_shape(self, h: int, w: int) -> tuple[int, ...]:
         device = next(self.backbone.parameters()).device
+        if self.observation is not None:
+            example = self._example_observation(h, w, device)
+            if self.stack_feature:
+                return tuple(self.backbone(example).shape[1:])
+            dim = int(self.backbone({k: v.flatten(0, 1) for k, v in example.items()}).flatten(1).shape[-1])
+            return (self.frame_stack, dim)
         if self.stack_feature:
             return tuple(self.backbone(torch.zeros(1, self.frame_stack, 3, h, w, device=device)).shape[1:])
         dim = int(self.backbone(torch.zeros(1, 3, h, w, device=device)).flatten(1).shape[-1])
@@ -251,10 +282,22 @@ class VisionEncoderAdapter(nn.Module):
         super().train(False)
 
     @torch.no_grad()
-    def extract_cacheable_feature(self, obs: torch.Tensor) -> torch.Tensor:
-        """(B, 3*T, H, W) uint8 channel-stacked history -> fp16 cached feature."""
+    def extract_cacheable_feature(self, obs: torch.Tensor | dict[str, torch.Tensor]) -> torch.Tensor:
+        """(B, 3*T, H, W) uint8 channel-stacked history (or the dict observation of a backbone that declares one)
+        -> fp16 cached feature."""
         if self.backbone_trainable:
             raise RuntimeError("extract_cacheable_feature is only for frozen encoders.")
+        if isinstance(obs, dict) or self.observation is not None:
+            if not isinstance(obs, dict) or self.observation is None:
+                raise ValueError(f"{self.vision_key}: observation type does not match the backbone")
+            b, t = obs["rgb"].shape[:2]
+            if t != self.frame_stack:
+                raise ValueError(f"expected {self.frame_stack} frames, got {t}")
+            frames = {k: (v.float() / 255.0 if k == "rgb" else v.float()) for k, v in obs.items()}
+            if self.stack_feature:
+                return self.backbone(frames).to(torch.float16).contiguous()
+            feat = self.backbone({k: v.flatten(0, 1) for k, v in frames.items()}).flatten(1)
+            return feat.view(b, self.frame_stack, -1).to(torch.float16).contiguous()
         b, c, h, w = obs.shape
         if c != 3 * self.frame_stack:
             raise ValueError(f"expected {3 * self.frame_stack} stacked RGB channels, got {c}")

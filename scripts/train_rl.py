@@ -31,7 +31,7 @@ from s4d.config import dump_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
 from s4d.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.rl.agent import DrMAgent  # noqa: E402
-from s4d.rl.env import MetaWorldCameraEnv, TrainCameraSampler, env_kwargs  # noqa: E402
+from s4d.rl.env import MetaWorldCameraEnv, TrainCameraSampler, env_kwargs, stack_observations  # noqa: E402
 from s4d.rl.evaluate import policy_inputs  # noqa: E402
 from s4d.rl.protocol import resolve_config  # noqa: E402
 from s4d.rl.replay import Replay, replay_iterator  # noqa: E402
@@ -104,7 +104,7 @@ def main() -> None:
         mode="r+" if resume and disk else "w+",
         snapshot_dir=None if disk else run_dir / "replay",
     )
-    sampler = TrainCameraSampler(seed)
+    sampler = TrainCameraSampler(seed, int(env_kwargs(cfg).get("views", 1)))
     window = int(tcfg["rolling_window"])
     rolling_success, rolling_return = deque(maxlen=window), deque(maxlen=window)
     start_step, episode = 1, 0
@@ -137,7 +137,7 @@ def main() -> None:
 
     def begin_episode():
         obs, proprio = env.reset(sampler())
-        policy_obs = policy_inputs(agent, obs[None])
+        policy_obs = policy_inputs(agent, stack_observations([obs]))
         replay.add_initial(to_atom(policy_obs, env.latest_frame()), proprio)
         return policy_obs, proprio
 
@@ -152,7 +152,7 @@ def main() -> None:
         # Uniform actions before num_expl_steps happen inside DrMAgent.act, as in the official agent.
         action = agent.act(policy_obs, proprio[None], step=step, eval_mode=False)[0].astype(np.float32)
         obs, proprio, reward, done, info = env.step(action)
-        policy_obs = policy_inputs(agent, obs[None])
+        policy_obs = policy_inputs(agent, stack_observations([obs]))
         continuation = float(tcfg["time_limit_continuation"]) if done else 1.0  # Meta-World only truncates
         replay.add(action, reward, continuation, to_atom(policy_obs, env.latest_frame()), proprio, done)
         episode_return += reward

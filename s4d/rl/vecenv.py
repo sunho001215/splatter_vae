@@ -67,7 +67,10 @@ class EnvPool:
         return [result for conn in self.conns for result in conn.recv()]
 
     def run(self, act, episodes: list[tuple[list, int]]) -> tuple[list[float], list[float]]:
-        """Roll out ``(camera path, reset seed)`` episodes; ``act(obs (N,3T,H,W) uint8, proprio (N,P))`` -> actions."""
+        """Roll out ``(camera path, reset seed)`` episodes; ``act(obs, proprio (N,P))`` -> actions, with ``obs`` the
+        batched observations (N,3T,H,W) uint8, or a dict of batched arrays for multi-view / depth / camera envs."""
+        from s4d.rl.env import stack_observations
+
         successes, returns = [0.0] * len(episodes), [0.0] * len(episodes)
         for start in range(0, len(episodes), self.size):
             wave = list(range(start, min(start + self.size, len(episodes))))
@@ -77,7 +80,7 @@ class EnvPool:
             proprio = [None if s is None else s[1] for s in state]
             active = list(range(len(wave)))
             while active:
-                actions = act(np.stack([obs[k] for k in active]), np.stack([proprio[k] for k in active]))
+                actions = act(stack_observations([obs[k] for k in active]), np.stack([proprio[k] for k in active]))
                 commands = [None] * self.size
                 for k, action in zip(active, actions):
                     commands[k] = action

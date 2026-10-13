@@ -101,7 +101,8 @@ def main() -> None:
                 agent.actor.load_state_dict(snapshot["policy"]["actor"])
                 step = int(snapshot["step"])
                 t0 = time.time()
-                metrics = evaluation_suite(pool, agent, step, step // every, int(cfg["seed"]), cfg["eval"])
+                metrics = evaluation_suite(pool, agent, step, step // every, int(cfg["seed"]), cfg["eval"],
+                                           int(env_kwargs(cfg).get("views", 1)))
                 record = {"step": step, **metrics, "eval_seconds": time.time() - t0, "time": time.time()}
                 with open(out, "a") as f:
                     f.write(json.dumps(record, allow_nan=False) + "\n")
