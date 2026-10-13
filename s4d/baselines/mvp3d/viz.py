@@ -31,8 +31,10 @@ def depth_tiles(depth: torch.Tensor, reference: torch.Tensor | None = None) -> l
     for d, r in zip(depth, reference):
         covered = r != -1
         lo, hi = (float(r[covered].min()), float(r[covered].max())) if covered.any() else (0.0, 1.0)
-        v = 1.0 - (d - lo) / max(hi - lo, 1e-6)
-        v = (0.15 + 0.85 * v.clamp(0, 1)) * (d > -0.999)
+        span = max(hi - lo, 1e-6)
+        v = 1.0 - (d - lo) / span
+        shown = (d != -1) & (d > (lo - 1) / 2)  # a prediction nearer -1 (empty) than the nearest true depth is black
+        v = (0.15 + 0.85 * v.clamp(0, 1)) * shown
         tiles.append(np.repeat((v.cpu().numpy()[..., None] * 255).round().astype(np.uint8), 3, axis=2))
     return tiles
 

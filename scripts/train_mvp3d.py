@@ -200,7 +200,7 @@ def main() -> None:
             out["loss"].backward()
             optimizer.step()
             for key in ("loss", "loss_rgb", "loss_depth"):
-                window[key].append(float(out[key]))
+                window[key].append(float(out[key].detach()))
             window["points"].append(float((images[:, 0, 6] != -1).float().mean()))
             if global_step % log_every == 0:
                 elapsed = time.time() - tick
