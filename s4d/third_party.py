@@ -67,3 +67,51 @@ def commit_identity(repo: Path, commit: str) -> dict[str, str]:
             if meta.split()[1] == b"blob":
                 out[path.decode()] = hashlib.sha256(_git(repo, "cat-file", "blob", meta.split()[2].decode())).hexdigest()
     return out
+
+
+def source_tree(name: str, repo: Path | None = None, cache_root: Path | None = None) -> Path:
+    """Importable tree of ``third_party/<name>``: the clean pinned checkout itself, or, when patch files exist under
+    ``third_party/patches/<name>/``, a copy of the pinned commit with those patches applied, built once under the
+    cache root (``S4D_CACHE_ROOT`` or ``<repo>/.cache``) and keyed by commit and patch contents. Never edits the
+    checkout; refuses a checkout that is missing, moved or dirty."""
+    import io
+    import json
+    import os
+    import shutil
+    import tarfile
+    import tempfile
+
+    repo = Path(repo) if repo is not None else Path(__file__).resolve().parents[1]
+    path = f"{ROOT}/{name}"
+    pinned = pinned_submodules(repo).get(path)
+    if pinned is None:
+        raise ValueError(f"{path} is not a pinned submodule")
+    state = checkout_state(repo / path, pinned)
+    if state != pinned:
+        raise RuntimeError(f"{path} is not a clean checkout of its pin ({state}); run git submodule update --init")
+    patches = sorted((repo / PATCHES / name).glob("*.patch"))
+    if not patches:
+        return repo / path
+    digest = hashlib.sha256(b"".join(p.name.encode() + b"\0" + p.read_bytes() for p in patches)).hexdigest()
+    cache = Path(cache_root or os.environ.get("S4D_CACHE_ROOT", str(repo / ".cache"))) / "third_party"
+    target = cache / f"{name}-{pinned[:12]}-{digest[:12]}"
+    record = {"submodule": path, "commit": pinned, "patches": [p.name for p in patches], "patches_sha256": digest}
+    marker = target / ".s4d-patched.json"
+    if marker.is_file() and json.loads(marker.read_text()) == record:
+        return target
+    cache.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=cache))
+    try:
+        with tarfile.open(fileobj=io.BytesIO(_git(repo / path, "archive", "--format=tar", pinned))) as archive:
+            archive.extractall(staging, filter="data")
+        for patch in patches:
+            subprocess.run(["git", "apply", "--whitespace=nowarn", str(patch)], cwd=staging, capture_output=True,
+                           check=True)
+        (staging / ".s4d-patched.json").write_text(json.dumps(record, indent=2))
+        if target.exists():  # a stale or concurrent build: replace it atomically enough for single-writer use
+            shutil.rmtree(target)
+        os.replace(staging, target)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return target

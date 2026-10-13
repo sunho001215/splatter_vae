@@ -77,3 +77,20 @@ def test_repository_without_third_party_code_adds_nothing(tmp_path):
     git(tmp_path, "commit", "-qm", "a")
     assert third_party.working_tree_identity(tmp_path) == {}
     assert third_party.commit_identity(tmp_path, git(tmp_path, "rev-parse", "HEAD")) == {}
+
+
+def test_source_tree_is_the_checkout_or_a_patched_copy_never_an_edit(superproject, tmp_path):
+    repo, first = superproject
+    (repo / "third_party/patches/upstream/fix.patch").write_text(
+        "--- a/model.py\n+++ b/model.py\n@@ -1 +1 @@\n-WIDTH = 1\n+WIDTH = 9\n"
+    )
+    tree = third_party.source_tree("upstream", repo, tmp_path / "cache")
+    assert (tree / "model.py").read_text() == "WIDTH = 9\n"
+    assert (repo / "third_party/upstream/model.py").read_text() == "WIDTH = 1\n"
+    assert third_party.working_tree_identity(repo)["third_party/upstream@commit"] == first
+    assert third_party.source_tree("upstream", repo, tmp_path / "cache") == tree  # cached
+    (repo / "third_party/patches/upstream/fix.patch").unlink()
+    assert third_party.source_tree("upstream", repo, tmp_path / "cache") == repo / "third_party/upstream"
+    (repo / "third_party/upstream/model.py").write_text("WIDTH = 5\n")
+    with pytest.raises(RuntimeError, match="clean checkout"):
+        third_party.source_tree("upstream", repo, tmp_path / "cache")
