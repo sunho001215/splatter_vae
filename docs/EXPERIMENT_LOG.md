@@ -2604,3 +2604,23 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   ~1290 for 5 runs before, +23 %), 2 ReViWo at ~169, 2 ReViWo-based RL runs at ~2390; all four GPUs 98 %, host load
   ~33. Total throughput rose, so the 2.8 limit stays. The A200 arm is complete (8/8 proxies); the first baseline RL
   runs (ReViWo hammer/pick-place s2000) started 01:11-01:16.
+
+## 2026-10-13 — Baseline expansion (user decisions, ~11:20 and ~12:00)
+
+- **Final in-domain comparison set:** ours; SinCro and SNeRL (rendering-based); ReViWo (2D view-invariant); DynaMo
+  (dynamics-targeted, not 3D); 3D-MVP (RGB-D, no dynamics); CNN end-to-end. MV-MWM and GNFactor are not used.
+- New baselines SNeRL, DynaMo, 3D-MVP: implemented from the official code as pinned git submodules under
+  `third_party/` (RVT as the base for 3D-MVP, which has no official code), thin adapters only, patch files or
+  wrappers for required changes; pretraining per paper on our in-domain data; RL identical for all methods (frozen
+  encoder, SinCro/ReViWo adapter pattern, proprio, DrM, 8 tasks, seeds 2000-2002, 1M steps, same evaluation).
+  Priority below the length study, freeze and Stage 3/4, filling idle capacity. Fidelity tests against verbatim
+  official functions, sanity panels, hammer pretrained-vs-random-init check (3 seeds, 400k) before all 8 tasks.
+- **Model-size policy (supersedes the first directive's 2x/0.5x rule):** ours, SinCro, ReViWo, SNeRL and DynaMo keep
+  their sizes (SNeRL and DynaMo: official encoder size). Only 3D-MVP is resized, to at most SinCro's RL-time encoder
+  (9.06 M parameters, 1.79 GFLOPs per frame), as close as possible from below, reducing width, then view
+  resolution/patch size, then layers, with its MAE decoder scaled in proportion.
+- Measured RL-time encoders (CPU FLOP counter, multiply-add = 2 FLOPs): ours 1.73 M params, 0.215 GFLOPs per frame
+  (0.645 per 3-frame observation), state 256; SinCro 9.06 M, 1.79 GFLOPs per frame, state 256; ReViWo 1.68 M,
+  0.417 GFLOPs per frame, 1024 per frame.
+- Infrastructure on `review-items` (1a2233c, not yet integrated): source identity covers pinned submodule commits,
+  `.gitmodules` and patch files; remote releases bundle each pinned submodule and verify the checkout.
