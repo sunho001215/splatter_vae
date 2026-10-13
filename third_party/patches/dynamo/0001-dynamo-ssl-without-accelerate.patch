@@ -1,0 +1,39 @@
+DynaMoSSL without Hugging Face accelerate (not in the locked environment).
+
+models/ssl/dynamo.py builds a module-level accelerate.Accelerator() at import and passes the forward-dynamics
+model and its optimizer through accelerator.prepare(). For the official single-process fp32 launch
+(`python3 train.py`, no accelerate config) prepare() only moves the model to the device and wraps the optimizer
+without changing its step; the splatter4d adapter moves DynaMoSSL to the device itself
+(s4d/baselines/dynamo/model.py). No other line changes.
+
+--- a/models/ssl/dynamo.py
++++ b/models/ssl/dynamo.py
+@@ -3,7 +3,6 @@
+ import numpy as np
+ import torch.nn as nn
+ from .base import AbstractSSL
+-from accelerate import Accelerator
+ from typing import Tuple, Dict, Optional
+ from ..transformer_encoder import TransformerEncoder, TransformerEncoderConfig
+ from ..ema import EMA
+@@ -21,9 +20,6 @@
+     return off_diag(cov).square().mean()
+ 
+ 
+-accelerator = Accelerator()
+-
+-
+ class DynaMoSSL(AbstractSSL):
+     def __init__(
+         self,
+@@ -65,10 +61,6 @@
+             lr=lr,
+             betas=betas,
+         )
+-        self.forward_dynamics, self.forward_dynamics_optimizer = accelerator.prepare(
+-            self.forward_dynamics,
+-            self.forward_dynamics_optimizer,
+-        )
+         self.covariance_reg_coef = covariance_reg_coef
+         self.dynamics_loss_coef = dynamics_loss_coef
+         self.ema_beta = ema_beta

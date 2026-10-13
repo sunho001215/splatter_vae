@@ -1,0 +1,8 @@
+# Frozen DynaMo encoder (official online ResNet-18 trunk, eval mode): per-frame 512-d feature -> FrameMLPStackHead,
+# feature_dim 256, no image augmentation. Single RGB camera (standard env). For the random-initialisation check use
+# the same run's encoder_init.pt.
+vision:
+  encoder_type: dynamo
+  export_path: null   # set on the command line: vision.export_path=<runs/pretrain/<name>/encoder.pt>
+agent:
+  feature_dim: 256
