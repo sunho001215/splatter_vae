@@ -49,6 +49,28 @@ def test_queue_validation_and_registry_replay(tmp_path):
     assert jobs.read_registry(registry)["a"] == {**state["a"], "status": "pending"}
 
 
+def test_intentional_checkpoint_stop_is_restartable_and_not_a_failure(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    jobs.record({"event": "launched", "id": "a", "pid": 1, "gpu": GPU4, "attempt": 1}, registry)
+    pause = {"event": "checkpoint_paused", "id": "a", "attempt": 1, "checkpoint_step": 190000,
+             "checkpoint_sha256": "0" * 64, "reason": "planned_local_shutdown", "intentional_stop": True}
+    jobs.record(pause, registry)
+    jobs.record(pause, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 1, "code": -1}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "crashed" and state["failures"] == 0 and state["failed_attempts"] == []
+    assert state["intentional_stops"] == [{k: v for k, v in pause.items() if k not in ("event", "id",
+                                                                                         "intentional_stop")}]
+    jobs.record({"event": "launched", "id": "a", "pid": 2, "gpu": GPU4, "attempt": 2}, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 2, "code": 1}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "crashed" and state["failures"] == 1  # a later real failure still counts
+    jobs.record({"event": "launched", "id": "b", "pid": 3, "gpu": GPU5, "attempt": 1}, registry)
+    jobs.record({"event": "checkpoint_paused", "id": "b", "attempt": 1, "checkpoint_step": 50000}, registry)
+    jobs.record({"event": "exited", "id": "b", "attempt": 1, "code": -1}, registry)
+    assert jobs.read_registry(registry)["b"]["failures"] == 1  # legacy pause records without the flag still count
+
+
 def test_audited_infrastructure_failure_replay_is_append_only_and_idempotent(tmp_path):
     registry = tmp_path / "registry.jsonl"
     events = [

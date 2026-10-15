@@ -122,14 +122,24 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                                                                               and synced.get("verified") is True)
                 job.update(status=(DONE if verified else "sync_pending") if event["code"] == 0 else "crashed",
                            code=event["code"], unknown=False)
-                if event["code"] != 0:
-                    failure = {"attempt": event.get("attempt", job.get("attempt", 0)),
+                attempt = event.get("attempt", job.get("attempt", 0))
+                if event["code"] != 0 and any(stop["attempt"] == attempt for stop in job.get("intentional_stops", [])):
+                    pass  # an owned, verified checkpoint pause: restartable from its checkpoint, not a failure
+                elif event["code"] != 0:
+                    failure = {"attempt": attempt,
                                "launch_time": job.get("attempt_since", event["time"]),
                                "time": event["time"], "code": event["code"]}
                     if not any(item["attempt"] == failure["attempt"] and item["launch_time"] == failure["launch_time"]
                                for item in job["failed_attempts"]):
                         job["failed_attempts"].append(failure)
                         job["failures"] += 1
+            elif kind == "checkpoint_paused" and event.get("intentional_stop") is True:
+                # recorded by runs/setup/tools/pause_*_at_checkpoint.py after the checkpoint was published and
+                # verified; the following non-zero exit of the same attempt is then not charged as a failure
+                stop = {key: event[key] for key in ("attempt", "checkpoint_step", "checkpoint_sha256", "reason")
+                        if key in event}
+                if stop not in job.setdefault("intentional_stops", []):
+                    job["intentional_stops"].append(stop)
             elif kind == "infrastructure_failure":
                 start, end = event.get("incident_started"), event.get("incident_ended")
                 if (event.get("reason") not in {"cuda_init_unavailable", "nvml_init_unavailable"}
