@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-16 08:00 +09:00 (handoff publication; actual remote state refreshed07:59). **All four crop/cropnosynth pretrains,
+Last updated: 2026-10-16 08:11 +09:00 (W&B batch timeout recorded; handoff published, remote state refreshed07:59). **All four crop/cropnosynth pretrains,
 full evaluations and exports are complete/driver-verified**; representation report done. Both original no-synth200k
 pretrains/full evaluations also closed out:27/24 representation degradations beyond registered margins (hammer/pick).
 Single-seed caveats/details in RESULTS; frozen method unchanged. No-consistency hammer **completed200k and driver closeout**;
@@ -89,7 +89,9 @@ Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
 - Late numerical sync completed07:48:39: **0/14 verified live snapshots**, nine checksum/change verification errors,
   five RemoteUnreachable errors. Report `runs/setup/late-remote-result-sync-20261016-0730.json`; all `final=False`,
   partial mirrors unverified, no restart authorization. Brief reconnect events do not prove trainer failure. W&B
-  retry/pull task `ba1a6vvlo` still pending, including peg-unplug-side; previous accepted completed results remain valid.
+  retry/pull task `ba1a6vvlo` failed with2400s TimeoutExpired (observed08:11); atomic status stayed unchanged,243 old
+  persisted uploads, peg-unplug-side outcome unconfirmed. Local sync session exited naturally, no duplicate retry.
+  Evidence `runs/setup/late-remote-wandb-sync-20261016-0730.json`; previous accepted completed results remain valid.
 - Remote GPU0: no-lambda-dyn hammer + misscaled-none hammer; GPU1: their pick-place runs.
   GPU2: no-coverage hammer + misscaled-scale hammer; GPU3: their pick-place runs.
   Early measured step times imply **08:12–09:33 training-only** endpoints; planning allowance of25% for validation/

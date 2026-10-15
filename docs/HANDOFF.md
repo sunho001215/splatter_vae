@@ -275,13 +275,17 @@ stop for the final all-local-processes shutdown; the prior denied action did not
   Checksummed W&B directories are pulled into `runs/<id>/wandb/`, status `runs/remote/wandb/status.json`; then
   `wandb sync` runs here. Last pre-shutdown baseline:243 uploaded; failures never block numerics.
 - **07:30 late-sync phase:** W&B task `ba1a6vvlo` retries `s3-m3d-seed0-peg-unplug-side-200k` first, then
-  checksum-pulls all14 active remote jobs; only finished runs upload. Bounded batch2400s, W&B outcome still pending.
+  checksum-pulls all14 active remote jobs; only finished runs upload. **Batch failed:2400s TimeoutExpired**, observed08:11.
+  Atomic status was not updated (mtime10-15 08:41);243 persisted uploads remain the old baseline and the retry target's
+  persisted `uploaded` map is empty. Target upload outcome is unconfirmed, not a proved upload failure/success.
+  Report `runs/setup/late-remote-wandb-sync-20261016-0730.json`. Transient rsync descendants exited naturally on followup;
+  original session2762546 empty, no cleanup signals or duplicate retry. Inspect sync markers before retry after restart.
   Numerical result-sync task `b82ry3ven` **completed07:48:39 with0/14 verified live snapshots**: nine checksum/change
   verification errors and five RemoteUnreachable errors. Report `runs/setup/late-remote-result-sync-20261016-0730.json`.
   All requests were `final=False`, checkpoints/replay excluded. Live files may change mid-sync; exact cause of every
   checksum failure is unestablished. Partial mirrors are unverified, not final/decision-ready evidence; previous
   completed accepted results remain valid. No restart/reset/threshold relaxation. Watcher recorded brief9.4s/3.6s
-  reconnects, not a proven continuous10-minute outage. W&B task is local owned and must finish/stop before shutdown.
+  reconnects, not a proven continuous10-minute outage. W&B batch/session has now exited; retry is deferred until restart.
 - 07:30 pause checkpoint hash/session exit and matching intentional-stop accounting reverified, zero charged failures.
   Completed analyses are preserved: final/Stage2 success+return last5/final/AUC with CIs, historical crop report,
   frozen-method crop report and no-synth report. No-consistency/remote representation and crop RL remain incomplete;

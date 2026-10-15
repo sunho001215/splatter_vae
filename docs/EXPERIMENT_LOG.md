@@ -3366,3 +3366,14 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   origin exactly. Already committed/pushed/unmerged preservation needs no duplicate empty commits. Main publication
   selects docs/operational state, small reports/closeout proofs/summaries and a complete append-only registry prefix;
   no checkpoints/replays/access credentials, source changes or unaccepted baseline merge. Native764 acceptance unchanged.
+
+### 2026-10-16 08:11 — Late W&B batch timed out; no new upload success claimed
+- Task `ba1a6vvlo` failed with2400s subprocess.TimeoutExpired before the tool's final atomic status save. Persisted
+  `runs/remote/wandb/status.json` remains10-15 08:41 with243 old uploaded folders; peg-unplug-side has an empty
+  persisted uploaded map. Its retry outcome is unconfirmed, not a proved upload failure/success; do not count new uploads.
+- Two rsync descendants were briefly observed after timeout, then original session2762546 was empty on followup;
+  they exited naturally, no cleanup signals. No duplicate retry, W&B credential transfer, remote container stop or
+  numerical gate. Remote W&B remains offline. Report `runs/setup/late-remote-wandb-sync-20261016-0730.json` records
+  this bounded failure; inspect local sync markers and retry pending directories after restart.
+- Handoff/RESULTS/PROGRESS updated. Main handoff/evidence publication already pushed asab31ea0; all five WIP branches
+  published/unmerged. Final08:25/08:45 local controller stop still pending, denied daemon unchanged.

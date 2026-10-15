@@ -13,6 +13,12 @@ failure is not established. These partial mirrors are not final/decision-ready r
 job was reset/relaunched, and previously accepted completed results remain valid. Remote outages mean unknown, not
 failed. W&B synchronization is separate and never gates numerical progress.
 
+The separate W&B late batch failed with2400s `subprocess.TimeoutExpired` (observed08:11), before its final atomic
+status save. Durable status remains10-15 08:41 with243 old uploads; the peg-unplug-side retry's outcome is unconfirmed.
+No new upload count is claimed. Its transient rsync children exited naturally; original local session is empty, with
+no signals, remote stop or duplicate retry. Evidence `runs/setup/late-remote-wandb-sync-20261016-0730.json`; inspect
+sync markers and retry pending folders after restart. Numerical results/progress are not gated by this failure.
+
 ### Frozen-method crop follow-up: representation endpoints (2026-10-16 06:24)
 
 All four seed0 pretrains completed200k; all four full evaluations and native encoder exports have verified driver

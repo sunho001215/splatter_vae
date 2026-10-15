@@ -1,0 +1,26 @@
+{
+  "task_id": "ba1a6vvlo",
+  "observed_local": "2026-10-16T08:11:01+09:00",
+  "scope": "peg-unplug-side retry followed by fourteen active remote jobs; checksum pull and main-host upload only",
+  "status": "failed",
+  "exit_code": 1,
+  "error_type": "subprocess.TimeoutExpired",
+  "timeout_seconds": 2400,
+  "persisted_status_file": "runs/remote/wandb/status.json",
+  "persisted_status_mtime_local": "2026-10-15T08:41:17.559802+09:00",
+  "persisted_uploaded_count": 243,
+  "new_uploads_verified": false,
+  "retry_target": "s3-m3d-seed0-peg-unplug-side-200k",
+  "retry_target_persisted_uploaded": {},
+  "retry_target_outcome": "unconfirmed; batch did not persist its final atomic status",
+  "local_cleanup": {
+    "session": 2762546,
+    "transient_rsync_children_observed": [2786715, 2786720],
+    "session_empty_on_followup": true,
+    "signals_sent": false
+  },
+  "next_action": "After restart, inspect local sync markers and retry pending offline directories without assuming they were or were not uploaded.",
+  "numerical_progress_blocked": false,
+  "remote_wandb_mode": "offline",
+  "remote_containers_stopped": false
+}
