@@ -1,10 +1,11 @@
 """Sanity panels for the 3D-MVP port (docs/figures/baselines/mvp3d/).
 
 - ``input_cameras.png``: the six training-camera RGB images of the chosen time step;
-- ``views_6cam.png`` / ``views_1cam.png``: the five virtual views (rows RGB, depth, xyz) of the cloud of all six
-  training cameras and of one camera (the RL input), at the model's resolution;
+- ``views_6cam.png`` / ``views_3cam.png`` / ``views_1cam.png``: the five virtual views (rows RGB, depth, xyz) of the
+  fused cloud of all six training cameras (the pretraining input), of three cameras (RL condition A) and of one
+  camera (RL condition B), at the model's resolution;
 - ``views_6cam_220px.png``: the same cloud at RVT's / the paper's 220 px, to show the renderer's conventions;
-- ``reconstruction.png`` (with ``--checkpoint``): validation samples (a 6-camera and a 1-camera cloud), rows RGB,
+- ``reconstruction.png`` (with ``--checkpoint``): validation samples (6-, 3- and 1-camera clouds), rows RGB,
   masked RGB input, reconstruction, depth, reconstructed depth.
 
     CUDA_VISIBLE_DEVICES=<uuid> python -I scripts/mvp3d_figures.py --config configs/baselines/mvp3d/hammer.yaml \
@@ -36,7 +37,7 @@ from s4d.config import load_config  # noqa: E402
 
 
 def sample_with_cameras(ds: MVPTimeSteps, index: int, cameras: list[int]) -> dict:
-    """Sample ``index`` with an explicit camera subset (instead of the keyed random one)."""
+    """Sample ``index`` restricted to ``cameras`` (pretraining samples always fuse all six)."""
     s = ds[(index, 0)]
     group = ds._episode(s["episode"])
     s["view_mask"][:] = False
@@ -54,7 +55,8 @@ def main() -> None:
     ap.add_argument("--checkpoint", default=None)
     ap.add_argument("--split", default="validation")
     ap.add_argument("--index", type=int, default=40, help="time step index within the split")
-    ap.add_argument("--single-camera", type=int, default=1, help="training camera of the single-camera cloud")
+    ap.add_argument("--single-camera", type=int, default=1, help="training camera of the single-camera cloud (B)")
+    ap.add_argument("--three-cameras", default="1,2,4", help="training cameras of the 3-camera cloud (A)")
     ap.add_argument("--out", default=str(REPO / "docs/figures/baselines/mvp3d"))
     args = ap.parse_args()
 
@@ -67,11 +69,12 @@ def main() -> None:
     device = torch.device("cuda")
 
     full = sample_with_cameras(ds, args.index, list(range(6)))
+    three = sample_with_cameras(ds, args.index, [int(c) for c in args.three_cameras.split(",")])
     single = sample_with_cameras(ds, args.index, [args.single_camera])
     print(f"sample {full['episode']} t={full['t']}")
     cams = [full["rgb"][v].numpy() for v in range(6)]
     Image.fromarray(grid([cams], scale=1)).save(out / "input_cameras.png")
-    batch = batch_to_device(default_collate([full, single]), device)
+    batch = batch_to_device(default_collate([full, three, single]), device)
 
     def views(size: int) -> torch.Tensor:
         return render_rgbd(batch["rgb"], batch["depth"], batch["K"], batch["c2w"], bounds, size, radius,
@@ -79,7 +82,8 @@ def main() -> None:
 
     images = views(model_cfg.img_size)
     Image.fromarray(views_panel(images[0])).save(out / "views_6cam.png")
-    Image.fromarray(views_panel(images[1])).save(out / "views_1cam.png")
+    Image.fromarray(views_panel(images[1])).save(out / "views_3cam.png")
+    Image.fromarray(views_panel(images[2])).save(out / "views_1cam.png")
     Image.fromarray(views_panel(views(220)[0], scale=1)).save(out / "views_6cam_220px.png")
     if args.checkpoint:
         model = MVP3D(model_cfg).to(device).eval()
@@ -87,12 +91,12 @@ def main() -> None:
         model.load_state_dict(ckpt["model_state_dict"])
         g = model_cfg.img_size // model_cfg.img_patch_size
         gen = torch.Generator(device=device).manual_seed(0)
-        mask = random_view_mask(2, model_cfg.num_img, g, model_cfg.mask_ratio, gen, device)
+        mask = random_view_mask(3, model_cfg.num_img, g, model_cfg.mask_ratio, gen, device)
         with torch.no_grad():
             res = model(images.to(device), mask)
-        panels = [reconstruction_panel(images[i], res["masked"][i].cpu(), res["pred"][i].cpu()) for i in range(2)]
+        panels = [reconstruction_panel(images[i], res["masked"][i].cpu(), res["pred"][i].cpu()) for i in range(3)]
         gap = np.full((8, panels[0].shape[1], 3), 255, np.uint8)
-        Image.fromarray(np.concatenate([panels[0], gap, panels[1]])).save(out / "reconstruction.png")
+        Image.fromarray(np.concatenate([panels[0], gap, panels[1], gap, panels[2]])).save(out / "reconstruction.png")
         print(f"checkpoint step {ckpt['global_step']}: loss {float(res['loss']):.4f}")
 
 

@@ -1,0 +1,62 @@
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/hammer.hdf5
+  num_views: 6
+  max_episodes: null
+  max_frames_per_demo: null
+  num_workers: 8
+  pin_memory: true
+render:
+  bounds:
+  - -0.6
+  - 0.15
+  - -0.05
+  - 0.6
+  - 1.15
+  - 0.75
+  radius: 0.012
+model:
+  img_size: 48
+  img_patch_size: 12
+  im_channels: 64
+  attn_dim: 256
+  attn_heads: 8
+  attn_dim_head: 32
+  depth: 8
+  attn_dropout: 0.1
+  activation: lrelu
+  num_img: 5
+  decoder_depth: 2
+  decoder_dim: 256
+  decoder_heads: 8
+  decoder_dim_head: 32
+  mask_ratio: 0.75
+  mask_fill: 0.0
+train:
+  batch_size: 3
+  epochs: 15
+  max_steps: 1000
+  lr: 0.0001
+  weight_decay: 0.01
+  seed: 0
+  device: cuda
+  log_every: 50
+  eval_every: 250
+  save_every: 500
+  val_samples: 30
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/hammer_seed0.json
+run:
+  gpus:
+  - index: 0
+    uuid: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+    name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+  dir: /home/ws/ws/splatter4d/.worktrees/bx-mvp3d/runs/smoke/mvp3d-hammer-smoke
+  steps_per_epoch: 18046
+  total_steps: 1000
+  train_samples: 54140
+  host: local
+  git_commit: 0bf52175da5cbe3467c435c7dd31dbecc2b6a039
+  source_dirty: false
+  config_sha256: 437f8218724e206e658534aaf518a42aba1df3b1feff2716ed881256edd8a1de

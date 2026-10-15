@@ -30,7 +30,7 @@ RVT's nested submodules (PyRep, RLBench, YARR, PerAct) are not initialised and n
 | `s4d/baselines/mvp3d/rvt_derived.py` | **modified RVT code, NVIDIA header kept** | see below |
 | `renderer.py`, `model.py`, `data.py`, `rl.py`, `size.py`, `viz.py` in `s4d/baselines/mvp3d/` | ours | renderer, 3D-MVP parts, data adapter, RL backbone, size measurement, panels |
 | `scripts/train_mvp3d.py`, `scripts/mvp3d_figures.py`, `scripts/mvp3d_size.py` | ours | trainer, figure panels, size table |
-| `configs/baselines/mvp3d/<task>.yaml` (8 tasks), `configs/rl/encoders/mvp3d.yaml` | ours | configs |
+| `configs/baselines/mvp3d/<task>.yaml` (8 tasks), `configs/rl/encoders/mvp3d_{multiview,single}.yaml` | ours | configs |
 | `s4d/rl/encoders.py` | one line | `"mvp3d"` entry in `BACKBONES` (lazy import of `s4d.baselines.mvp3d.rl`) |
 
 `rvt_derived.py` holds the modified RVT code:
@@ -86,7 +86,7 @@ size). RVT file:line refers to the pinned commit.
 | Setting | Value | Source |
 |---|---|---|
 | Data | our in-domain Meta-World data, one task at a time, training-split time steps (`splits/<task>_seed0.json`) | **user decision** = the paper's in-domain ablation "pretrain on RLBench point clouds" (§4.4, Table 2: 67.5 vs 67.6 with Objaverse). Objaverse is not used. |
-| Point cloud of a sample | a random non-empty subset of the 6 training cameras of one time step: size k ~ U{1..6}, then a uniform k-subset | user decision (single-camera clouds included to cover the RL input). The subset distribution is **unspecified**; this one makes single-camera clouds and full 6-camera clouds each 1/6 of the samples. |
+| Point cloud of a sample | **all 6 training cameras** of one time step (RGB-D + extrinsics), fused into one cloud; no random camera subsets, no single-camera clouds | **user decision (2026-10-14)**: the original in-domain fused multi-camera setting (RVT/3D-MVP fuse a fixed camera rig; RLBench uses 4). One pretraining per task; the same encoder serves both RL conditions. |
 | Lifting | our K (continuous pixel coordinates), OpenCV c2w, metric depth (`depth > 0`) | our data contract (`s4d/geometry.py`) |
 | Scene bounds | x [-0.6, 0.6], y [0.15, 1.15], z [-0.05, 0.75] m (RVT order `[x_min, y_min, z_min, x_max, y_max, z_max]`), all 8 tasks | **unspecified for our data**; derived from the data (see below). RVT uses its RLBench `SCENE_BOUNDS` (`utils/peract_utils.py:16`). |
 | Cube placement | by the bounds; scale 2 / 1.2 m | RVT `configs/rvt.yaml:15` `place_with_mean: False`; `mvt/utils.py:16` |
@@ -115,7 +115,7 @@ size). RVT file:line refers to the pinned commit.
 | Length | 15 epochs; 1 epoch = one pass over the task's training time steps (hammer: 54 140 samples, 18 046 steps per epoch, 270 690 steps) | paper (15 epochs); the epoch definition is a user decision |
 | Augmentation | none | **unspecified**. RVT's SE(3) and `img_aug` noise belong to its action training; MAE's crops and flips do not apply to fixed virtual views. |
 | Precision, clipping | fp32, no gradient clipping | **unspecified**; RVT default `amp: False` |
-| Validation | Eq. 6 on 30 fixed validation samples (fixed camera subsets and masks), plus a reconstruction panel | the paper's validation is qualitative only |
+| Validation | Eq. 6 on 30 fixed validation samples (fused six-camera clouds, fixed masks), plus a reconstruction panel | the paper's validation is qualitative only |
 | Seed | 0 | ours |
 
 **Scene bounds.** Lifted points from all 6 training cameras were measured at 60 random training time steps per task,
@@ -134,8 +134,10 @@ do. They also cut the floor and walls. The 1.2 m x extent sets the scale, so a 4
 ## Deviations (each with its reason)
 
 1. **Pretraining data.** In-domain Meta-World instead of Objaverse (user decision; the paper's own §4.4 ablation).
-   - The paper's RLBench clouds fuse 4 cameras.
-   - Ours are random 1-6 camera subsets: single-camera clouds are the RL input.
+   - The paper's RLBench clouds fuse 4 cameras; ours fuse all 6 training cameras of our rig (the original fused
+     multi-camera setting, user decision 2026-10-14).
+   - RL condition B (single camera) is our added condition: its single-view clouds are sparser than any
+     pretraining cloud. Condition A (three fused cameras) is closer to, but still sparser than, pretraining.
 2. **Size-matched encoder** (user decision): see "Size".
 3. **Renderer: a pure-PyTorch replacement for RVT-1's renderer.** RVT-1 uses PyTorch3D's point rasteriser and
    `NormWeightedCompositor` (`renderer.py:296-330`); RVT-2 uses a CUDA point renderer. Neither PyTorch3D nor the
@@ -262,15 +264,17 @@ MAE parts:
 Data adapter:
 
 - shapes and value ranges;
-- subsets are keyed (deterministic), cover sizes 1-6, and single-camera clouds occur at a rate of 1/6;
+- every sample fuses all six training cameras, independent of the sample key, and other camera counts are rejected;
 - camera convention: lifted pixels land on the scene planes and re-project to the pixel centres;
 - the seeded epoch batches resume mid-epoch.
 
 Export and RL:
 
 - export/reload identity;
-- the RL backbone through `VisionEncoderAdapter` with the dict observation (rgb/depth/K/c2w) equals the manual
-  pipeline, is frozen, and rejects a config without depth;
+- for both RL conditions (3 fused cameras, 1 camera), the RL backbone through `VisionEncoderAdapter` with the dict
+  observation (rgb/depth/K/c2w) equals the manual pipeline, is frozen, carries its condition label, and rejects a
+  config without depth or with another camera count;
+- the two RL condition configs share the encoder and agent settings and differ only in `env.views`;
 - DrM end to end with the frozen encoder (the encoder stays bit-identical).
 
 Trainer and size:
@@ -321,12 +325,14 @@ The tiny model leaves most of the GPU idle, so several tasks can share one GPU.
 All panels show hammer validation episode ep010, t = 40 (`scripts/mvp3d_figures.py`).
 
 - `input_cameras.png`: the six training-camera images.
-- `views_6cam.png` and `views_1cam.png`: the five virtual views (columns top, front, back, left, right; rows RGB,
-  depth, xyz) at 48 px. One panel uses the 6-camera cloud, the other the single-camera cloud from training camera 1,
-  as at RL time.
+- `views_6cam.png`, `views_3cam.png` and `views_1cam.png`: the five virtual views (columns top, front, back, left,
+  right; rows RGB, depth, xyz) at 48 px of the fused 6-camera cloud (pretraining), a 3-camera cloud (training cameras
+  1, 2, 4; RL condition A) and the single-camera cloud from training camera 1 (RL condition B). The 3-camera panel is
+  new and is regenerated with the next smoke.
 - `views_6cam_220px.png`: the same 6-camera cloud at the paper's 220 px, which shows the conventions more clearly.
-- `reconstruction.png`: the smoke checkpoint (step 1000) on the 6-camera (top) and 1-camera (bottom) cloud. Rows:
-  RGB, masked RGB input, reconstruction, depth, reconstructed depth.
+- `reconstruction.png`: the smoke checkpoint on the 6-, 3- and 1-camera clouds. Rows: RGB, masked RGB input,
+  reconstruction, depth, reconstructed depth. The existing panel is from the superseded random-subset smoke (step
+  1000, 6- and 1-camera clouds) and is replaced by the next smoke.
 
 At 1000 steps the reconstructions are blurry but place the table, box, hammer and arm correctly. The right view's
 predicted-depth speckle comes from RVT's encoding: its empty value -1 lies close to that view's nearest true depths.
@@ -335,7 +341,8 @@ predicted-depth speckle comes from RVT's encoding: its empty value -1 lies close
 
 ```bash
 CUDA_VISIBLE_DEVICES=<uuid> .venv/bin/python -I scripts/train_mvp3d.py --config configs/baselines/mvp3d/hammer.yaml --name mvp3d-hammer
-scripts/train_rl.py --encoder mvp3d --set vision.export_path=runs/pretrain/mvp3d-hammer/encoder.pt
+scripts/train_rl.py --encoder mvp3d_multiview --set vision.export_path=runs/pretrain/mvp3d-hammer/encoder.pt  # A
+scripts/train_rl.py --encoder mvp3d_single --set vision.export_path=runs/pretrain/mvp3d-hammer/encoder.pt     # B
 ```
 
 The run writes these outputs:
@@ -345,5 +352,24 @@ The run writes these outputs:
 - `encoder_init.pt`: the same encoder at the run's random initialisation, for the pretrained-vs-random check;
 - `checkpoints/latest.pt`, used by `--resume auto` (the default).
 
-The encoder config `configs/rl/encoders/mvp3d.yaml` requests `env: {views: 1, depth: true, cameras: true}`. Runs over
-1000 steps require a passing `docs/tests.json` for the current sources.
+## RL input conditions (user decision, 2026-10-14)
+
+One pretrained encoder per task feeds two RL conditions, both on all 8 tasks x seeds 2000-2002 with the same adapter,
+projection head and state size, 3-frame handling, proprio, DrM and full evaluation protocol as every other baseline.
+Results are reported as two separate rows with these labels:
+
+| Condition | Encoder config | Training camera protocol | Viewpoint-shift evaluation |
+|---|---|---|---|
+| A: **3D-MVP, multi-view RGB-D + extrinsics (privileged)** | `configs/rl/encoders/mvp3d_multiview.yaml` (`env.views: 3`) | per episode 3 of the 6 training cameras, drawn at random and fixed within the episode, fused into one cloud (SNeRL's protocol) | keep 2 of the 3 input cameras and replace the third by its perturbed counterpart (near/trajectory held-out sets) or the moving trajectory (`s4d/rl/evaluate.py` `multiview_groups`, shared with SNeRL) |
+| B: **3D-MVP, single RGB-D + extrinsics (privileged)** | `configs/rl/encoders/mvp3d_single.yaml` (`env.views: 1`) | one random training camera per episode, as for the single-camera methods | the single-camera methods' protocol |
+
+B is our added single-camera condition: it sees sparser single-view clouds than the fused six-camera clouds of
+pretraining. Both labels are also "reimplemented" (no official 3D-MVP code). The encoder's FLOPs per frame do not
+depend on the condition (always five virtual views per frame); only the point lifting and rendering scale with the
+number of fused cameras.
+
+Hammer sanity: pretrained-frozen versus random-frozen (the saved `encoder_init.pt`) for condition A, three RL seeds,
+400k agent steps; condition B with the pretrained encoder for one seed to confirm the pipeline. Same priority and
+placement as the other new baselines.
+
+Runs over 1000 steps require a passing `docs/tests.json` for the current sources.

@@ -1,12 +1,12 @@
 """3D-MVP pretraining data from our Meta-World HDF5 files (the paper's in-domain "pretrain on RLBench point clouds"
 ablation, §4.4, with our data in place of RLBench).
 
-One sample is one time step of a training-split episode and a random non-empty subset of the six training cameras:
-its RGB-D images, K (continuous pixel coordinates, principal point W/2) and OpenCV c2w as stored. The subset size is
-uniform in 1..6 and the subset uniform given its size, so single-camera clouds (the RL input) and the full 6-camera
-cloud (closest to RVT's fused multi-camera input) each make up 1/6 of the samples. The point cloud itself is built on
-the GPU (``renderer.render_rgbd``). Per-sample randomness is keyed by a global sample id from the sampler, so the
-data order and content depend only on (seed, epoch, position) and a resumed run continues the same sequence.
+One sample is one time step of a training-split episode in the original fused multi-camera setting (user decision,
+2026-10-14): the RGB-D images of **all six training cameras**, with K (continuous pixel coordinates, principal point
+W/2) and OpenCV c2w as stored, fused into one point cloud on the GPU (``renderer.render_rgbd``). There are no random
+camera subsets and no single-camera clouds. Both RL conditions (3 fused cameras, single camera) use the same encoder.
+The data order depends only on (seed, epoch, position) through ``EpochBatches``, so a resumed run continues the same
+sequence.
 """
 
 from __future__ import annotations
@@ -19,12 +19,6 @@ from torch.utils.data import Sampler
 from s4d.baselines.data import _EpisodeFile
 
 
-def camera_subset(rng: np.random.Generator, num_views: int) -> np.ndarray:
-    """Sorted indices of a random non-empty camera subset: size ~ U{1..num_views}, then a uniform subset."""
-    k = int(rng.integers(1, num_views + 1))
-    return np.sort(rng.choice(num_views, size=k, replace=False))
-
-
 class MVPTimeSteps(_EpisodeFile):
     """Every time step of ``episodes`` (reference caps ``max_episodes`` / ``max_frames_per_demo``)."""
 
@@ -33,13 +27,12 @@ class MVPTimeSteps(_EpisodeFile):
         path,
         episodes: list[str],
         num_views: int = 6,
-        seed: int = 0,
         max_episodes: int | None = None,
         max_frames_per_demo: int | None = None,
     ):
         super().__init__(path, episodes, max_episodes, max_frames_per_demo)
-        if num_views > self.num_train_cams:
-            raise ValueError(f"num_views={num_views} exceeds the {self.num_train_cams} training cameras")
+        if num_views != self.num_train_cams:
+            raise ValueError(f"num_views={num_views}: pretraining fuses all {self.num_train_cams} training cameras")
         with h5py.File(self.path, "r") as f:
             cams = f["cameras"]
             train = np.where(cams["is_train"][:].astype(bool))[0]
@@ -48,7 +41,7 @@ class MVPTimeSteps(_EpisodeFile):
             self.K = torch.from_numpy(cams["K"][:][:num_views].astype(np.float32))
             self.c2w = torch.from_numpy(cams["c2w"][:][:num_views].astype(np.float32))
             self.depth_unit_m = float(f.attrs["depth_unit_m"])
-        self.num_views, self.seed = int(num_views), int(seed)
+        self.num_views = int(num_views)
         self.indices = [(ep, t) for ep in self.episodes for t in range(self.lengths[ep])]
 
     def __len__(self) -> int:
@@ -60,22 +53,16 @@ class MVPTimeSteps(_EpisodeFile):
         return self._file["episodes"][ep]
 
     def __getitem__(self, item) -> dict:
-        """``item``: (index, sample key) from ``EpochBatches``, or a plain index (key = index)."""
-        index, key = item if isinstance(item, tuple) else (item, item)
+        """``item``: (index, sample key) from ``EpochBatches``, or a plain index."""
+        index = item[0] if isinstance(item, tuple) else item
         ep, t = self.indices[int(index)]
-        cams = camera_subset(np.random.default_rng([self.seed, int(key)]), self.num_views)
         group = self._episode(ep)
-        H, W = group["rgb"].shape[2:4]
-        rgb = np.zeros((self.num_views, H, W, 3), np.uint8)
-        depth = np.zeros((self.num_views, H, W), np.float32)
-        rgb[cams] = group["rgb"][t, cams.tolist()]
-        depth[cams] = group["depth"][t, cams.tolist()].astype(np.float32) * np.float32(self.depth_unit_m)
-        view_mask = np.zeros(self.num_views, bool)
-        view_mask[cams] = True
+        rgb = group["rgb"][t, : self.num_views]
+        depth = group["depth"][t, : self.num_views].astype(np.float32) * np.float32(self.depth_unit_m)
         return {
-            "rgb": torch.from_numpy(rgb),  # (V, H, W, 3) uint8, zero for cameras outside the subset
-            "depth": torch.from_numpy(depth),  # (V, H, W) metres, 0 = invalid
-            "view_mask": torch.from_numpy(view_mask),
+            "rgb": torch.from_numpy(np.ascontiguousarray(rgb)),  # (V, H, W, 3) uint8, all training cameras
+            "depth": torch.from_numpy(np.ascontiguousarray(depth)),  # (V, H, W) metres, 0 = invalid
+            "view_mask": torch.ones(self.num_views, dtype=torch.bool),
             "K": self.K.clone(),
             "c2w": self.c2w.clone(),
             "episode": ep,

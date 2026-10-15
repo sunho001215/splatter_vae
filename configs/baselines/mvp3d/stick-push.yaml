@@ -3,7 +3,7 @@
 # scaled to at most SinCro's RL-time encoder size by user decision. Every value and its source: docs/baselines_mvp3d.md.
 dataset:
   hdf5_path: /home/ws/data/metaworld/splatter4d_v1/stick-push.hdf5
-  num_views: 6              # training cameras; each sample uses a random non-empty subset
+  num_views: 6              # all training cameras fused per sample (original in-domain setting)
   max_episodes: null
   max_frames_per_demo: null
   num_workers: 8

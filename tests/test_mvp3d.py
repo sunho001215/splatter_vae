@@ -23,7 +23,7 @@ import torch.nn.functional as F
 import yaml
 
 from s4d.baselines.mvp3d import rvt
-from s4d.baselines.mvp3d.data import EpochBatches, MVPTimeSteps, batch_to_device, camera_subset, fixed_items
+from s4d.baselines.mvp3d.data import EpochBatches, MVPTimeSteps, batch_to_device, fixed_items
 from s4d.baselines.mvp3d.model import (
     MVP3D,
     SCENE_BOUNDS,
@@ -384,17 +384,20 @@ def test_pretraining_step_is_finite_and_updates_encoder_and_decoder():
 
 
 # --------------------------------------------------------------------------------------------- data adapter
-def test_data_adapter_shapes_ranges_subsets_and_camera_convention(tmp_path):
+def test_data_adapter_fuses_all_six_cameras_with_our_camera_convention(tmp_path):
     path, manifest = write_dataset(tmp_path)
-    ds = MVPTimeSteps(path, json.loads(manifest.read_text())["train"], num_views=6, seed=3)
+    episodes = json.loads(manifest.read_text())["train"]
+    ds = MVPTimeSteps(path, episodes, num_views=6)
     assert len(ds) == 2 * 6
     s = ds[(4, 17)]
     assert s["rgb"].shape == (6, SIZE, SIZE, 3) and s["rgb"].dtype == torch.uint8 and s["depth"].shape == (6, SIZE, SIZE)
     sel = s["view_mask"]
-    assert sel.any() and (s["depth"][sel] > 0).all() and (s["depth"][~sel] == 0).all() and (s["rgb"][~sel] == 0).all()
-    assert torch.equal(ds[(4, 17)]["view_mask"], sel), "the subset is a function of the sample key"
-    sizes = {int(ds[(0, k)]["view_mask"].sum()) for k in range(200)}
-    assert sizes == set(range(1, 7)), "single-camera clouds up to all six cameras"
+    assert sel.all() and (s["depth"] > 0).all(), "every sample is the fused cloud of all six training cameras"
+    for k in range(50):  # no random camera subsets, independent of the sample key
+        other = ds[(4, k)]
+        assert other["view_mask"].all() and torch.equal(other["rgb"], s["rgb"]) and torch.equal(other["depth"], s["depth"])
+    with pytest.raises(ValueError, match="fuses all 6 training cameras"):
+        MVPTimeSteps(path, episodes, num_views=3)
     rig = camera_rig(SIZE, SIZE)
     assert torch.allclose(s["K"], torch.from_numpy(rig["K"][:6]))
     assert torch.allclose(s["c2w"], torch.from_numpy(rig["c2w"][:6]))
@@ -407,10 +410,6 @@ def test_data_adapter_shapes_ranges_subsets_and_camera_convention(tmp_path):
     torch.testing.assert_close(uv, centres.reshape(-1, 2), atol=1e-3, rtol=0)
     batch = batch_to_device(torch.utils.data.default_collate([ds[(i, i)] for i in range(3)]), "cpu")
     assert batch["rgb"].shape == (3, 6, 3, SIZE, SIZE) and 0 <= batch["rgb"].min() and batch["rgb"].max() <= 1
-    rng = np.random.default_rng(0)
-    subsets = [camera_subset(rng, 6) for _ in range(600)]
-    assert all(len(c) >= 1 and np.all(np.diff(c) > 0) for c in subsets)
-    assert abs(np.mean([len(c) == 1 for c in subsets]) - 1 / 6) < 0.05
 
 
 def test_epoch_batches_are_seeded_permutations_and_resume_mid_epoch():
@@ -446,34 +445,39 @@ def rl_cfg(export: Path, **env) -> dict:
     }
 
 
-def dict_observation(n: int, rng: np.random.Generator) -> dict[str, np.ndarray]:
-    """(n, T=3, V=1, ...) RGB-D + camera observations of the synthetic scene from random training cameras."""
+def dict_observation(n: int, rng: np.random.Generator, views: int = 1) -> dict[str, np.ndarray]:
+    """(n, T=3, V=views, ...) RGB-D + camera observations of the synthetic scene; each episode's ``views`` distinct
+    training cameras are drawn at random and fixed over the history (the RL camera protocol)."""
     rig = camera_rig(SIZE, SIZE)
     obs = {"rgb": [], "depth": [], "K": [], "c2w": []}
     for _ in range(n):
         frames = {k: [] for k in obs}
+        cams = rng.choice(6, size=views, replace=False)
         for _t in range(3):
-            cam = int(rng.integers(6))
             depth, rgb = table_scene(rig, SIZE, box_x=float(rng.uniform(-0.3, 0.3)))
-            frames["rgb"].append(rgb[cam].permute(2, 0, 1)[None].numpy())
-            frames["depth"].append(depth[cam][None].numpy())
-            frames["K"].append(rig["K"][cam][None])
-            frames["c2w"].append(rig["c2w"][cam][None])
+            frames["rgb"].append(rgb[cams].permute(0, 3, 1, 2).numpy())
+            frames["depth"].append(depth[cams].numpy())
+            frames["K"].append(rig["K"][cams])
+            frames["c2w"].append(rig["c2w"][cams])
         for k in obs:
             obs[k].append(np.stack(frames[k]))
     return {k: np.stack(v) for k, v in obs.items()}
 
 
-def test_rl_backbone_reads_the_dict_observation_and_matches_the_pipeline(tmp_path):
+@pytest.mark.parametrize("views", [1, 3])
+def test_rl_backbone_reads_the_dict_observation_and_matches_the_pipeline(tmp_path, views):
+    from s4d.baselines.mvp3d.rl import CONDITIONS
     from s4d.rl.encoders import VisionEncoderAdapter
 
     torch.manual_seed(0)
     enc = build_encoder(TINY).eval()
     save_export(tmp_path / "e.pt", enc, asdict(TINY), RENDER, 0)
-    adapter = VisionEncoderAdapter(rl_cfg(tmp_path / "e.pt"))
+    adapter = VisionEncoderAdapter(rl_cfg(tmp_path / "e.pt", views=views))
+    assert adapter.backbone.observation == {"views": views, "depth": True, "cameras": True}
+    assert adapter.backbone.label == CONDITIONS[views]
     assert adapter.replay_atom_shape == (5 * TINY.attn_dim,) and adapter.replay_atom_is_feature
     assert not adapter.backbone.training and not any(p.requires_grad for p in adapter.backbone.parameters())
-    obs = dict_observation(2, np.random.default_rng(0))
+    obs = dict_observation(2, np.random.default_rng(0), views)
     feat = adapter.extract_cacheable_feature({k: torch.as_tensor(v) for k, v in obs.items()})
     assert feat.shape == (2, 3, 5 * TINY.attn_dim) and feat.dtype == torch.float16
     for b, t in ((0, 0), (1, 2)):
@@ -482,11 +486,23 @@ def test_rl_backbone_reads_the_dict_observation_and_matches_the_pipeline(tmp_pat
         with torch.no_grad():
             images = render_rgbd(frame["rgb"], frame["depth"], frame["K"], frame["c2w"], SCENE_BOUNDS, TINY.img_size)
             expected = enc.global_feature(enc(images))[0]
-        assert (images[0, :, 6] != -1).any(), "the single-camera cloud is rendered"
+        assert (images[0, :, 6] != -1).any(), "the fused cloud of the episode's cameras is rendered"
         torch.testing.assert_close(feat[b, t].float(), expected, atol=2e-2, rtol=2e-3)
     assert adapter(feat, is_feature=True).shape == (2, adapter.repr_dim)
     with pytest.raises(ValueError, match="needs env observation"):
-        VisionEncoderAdapter(rl_cfg(tmp_path / "e.pt", depth=False))
+        VisionEncoderAdapter(rl_cfg(tmp_path / "e.pt", views=views, depth=False))
+    with pytest.raises(ValueError, match="input conditions use"):
+        VisionEncoderAdapter(rl_cfg(tmp_path / "e.pt", views=2))
+
+
+def test_rl_condition_configs_share_the_encoder_and_differ_only_in_views():
+    a = yaml.safe_load((REPO / "configs/rl/encoders/mvp3d_multiview.yaml").read_text())
+    b = yaml.safe_load((REPO / "configs/rl/encoders/mvp3d_single.yaml").read_text())
+    assert a["env"] == {"views": 3, "depth": True, "cameras": True}
+    assert b["env"] == {"views": 1, "depth": True, "cameras": True}
+    assert a["vision"] == b["vision"] == {"encoder_type": "mvp3d", "export_path": None}
+    assert a["agent"] == b["agent"]
+    assert not (REPO / "configs/rl/encoders/mvp3d.yaml").exists(), "each run names its input condition"
 
 
 def test_drm_end_to_end_with_the_frozen_mvp3d_encoder(tmp_path):

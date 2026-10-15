@@ -102,9 +102,9 @@ def main() -> None:
 
     manifest = interface["split_manifest"]
     num_views = int(ds_cfg["num_views"])
-    train_set = MVPTimeSteps(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), num_views, seed,
+    train_set = MVPTimeSteps(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), num_views,
                              ds_cfg.get("max_episodes"), ds_cfg.get("max_frames_per_demo"))
-    val_set = MVPTimeSteps(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), num_views, seed)
+    val_set = MVPTimeSteps(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), num_views)
     val_items = fixed_items(len(val_set), int(train_cfg["val_samples"]))
     steps_per_epoch = len(train_set) // batch_size
     max_steps = train_cfg.get("max_steps")
