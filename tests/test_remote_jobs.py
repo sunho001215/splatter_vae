@@ -738,6 +738,24 @@ def test_backend_snapshot_persists_reachability_without_discarding_last_state(tm
     assert current["checked_at"] >= previous["checked_at"]
 
 
+def test_refused_launcher_preserves_bounded_redacted_diagnostics(tmp_path, monkeypatch):
+    class SecretClient(FakeClient):
+        def _redact(self, text):
+            return text.replace("test-password", "[REDACTED]")
+
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", SecretClient())
+    monkeypatch.setattr(remote.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
+        [], 1, "x" * 9000 + "test-password", "GPU admission refused test-password"))
+    path = tmp_path / "job.json"
+    with pytest.raises(remote.RemoteJobError, match="requires reconciliation"):
+        backend.launch(path)
+    diagnostic = json.loads(path.with_suffix(".launch-error.json").read_text())
+    assert diagnostic["returncode"] == 1 and len(diagnostic["stdout"]) == 8000
+    assert diagnostic["stdout"].endswith("[REDACTED]")
+    assert diagnostic["stderr"] == "GPU admission refused [REDACTED]"
+    assert "test-password" not in json.dumps(diagnostic)
+
+
 def test_backend_launcher_response_unknown_is_not_a_second_launch(tmp_path, monkeypatch):
     backend = remote.RemoteBackend(REPO, tmp_path / "runs", FakeClient())
     monkeypatch.setattr(remote.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess([], 75, "", ""))

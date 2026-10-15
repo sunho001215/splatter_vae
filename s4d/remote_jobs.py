@@ -405,6 +405,10 @@ class RemoteBackend:
             self._save_snapshot(reachable=False, query_ok=False)
             raise RemoteUnreachable("Remote launch response unknown; reconcile its deterministic container")
         if result.returncode:
+            diagnostic = {"returncode": result.returncode,
+                          "stdout": self.client._redact(result.stdout)[-8000:],
+                          "stderr": self.client._redact(result.stderr)[-8000:]}
+            path.with_suffix(".launch-error.json").write_text(json.dumps(diagnostic, indent=2) + "\n")
             raise RemoteJobError(f"Remote launcher exited {result.returncode}; launch outcome requires reconciliation")
         try:
             payload = json.loads(result.stdout)
