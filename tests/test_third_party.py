@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -94,6 +96,33 @@ def test_source_tree_is_the_checkout_or_a_patched_copy_never_an_edit(superprojec
     (repo / "third_party/upstream/model.py").write_text("WIDTH = 5\n")
     with pytest.raises(RuntimeError, match="clean checkout"):
         third_party.source_tree("upstream", repo, tmp_path / "cache")
+
+
+def test_concurrent_source_tree_builds_publish_one_cached_copy(superproject, tmp_path, monkeypatch):
+    repo, _ = superproject
+    (repo / "third_party/patches/upstream/fix.patch").write_text(
+        "--- a/model.py\n+++ b/model.py\n@@ -1 +1 @@\n-WIDTH = 1\n+WIDTH = 9\n"
+    )
+    start = threading.Barrier(8)
+    calls = []
+    git_call = third_party._git
+
+    def counted_git(repo, *args):
+        if args[0] == "archive":
+            calls.append(args)
+        return git_call(repo, *args)
+
+    monkeypatch.setattr(third_party, "_git", counted_git)
+
+    def build(_):
+        start.wait(timeout=30)
+        return third_party.source_tree("upstream", repo, tmp_path / "cache")
+
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        trees = list(workers.map(build, range(8)))
+    assert len(set(trees)) == len(calls) == 1
+    assert (trees[0] / "model.py").read_text() == "WIDTH = 9\n"
+    assert sorted(p.name for p in trees[0].parent.iterdir()) == [f".{trees[0].name}.lock", trees[0].name]
 
 
 def test_git_format_patches_to_subdirectories_apply_inside_a_repository(superproject):

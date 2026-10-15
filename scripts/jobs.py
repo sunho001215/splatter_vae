@@ -346,7 +346,10 @@ def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> N
                     or report.get("arguments") != state.get("args")):
                 raise RemoteJobError("Final remote data/config argument identity mismatch")
             normalized = report.get("numeric_config")
-            if Path(state.get("script", "")).name in {"train.py", "train_rl.py", "train_sincro.py", "train_reviwo.py"}:
+            if Path(state.get("script", "")).name in {
+                "train.py", "train_rl.py", "train_sincro.py", "train_reviwo.py",
+                "train_snerl.py", "train_dynamo.py", "train_mvp3d.py",
+            }:
                 if not isinstance(normalized, dict) or not normalized:
                     raise RemoteJobError("Final training numerical config is missing")
             if normalized is not None:

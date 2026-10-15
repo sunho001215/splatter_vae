@@ -74,6 +74,7 @@ def source_tree(name: str, repo: Path | None = None, cache_root: Path | None = N
     ``third_party/patches/<name>/``, a copy of the pinned commit with those patches applied, built once under the
     cache root (``S4D_CACHE_ROOT`` or ``<repo>/.cache``) and keyed by commit and patch contents. Never edits the
     checkout; refuses a checkout that is missing, moved or dirty."""
+    import fcntl
     import io
     import json
     import os
@@ -97,27 +98,27 @@ def source_tree(name: str, repo: Path | None = None, cache_root: Path | None = N
     target = cache / f"{name}-{pinned[:12]}-{digest[:12]}"
     record = {"submodule": path, "commit": pinned, "patches": [p.name for p in patches], "patches_sha256": digest}
     marker = target / ".s4d-patched.json"
-    if marker.is_file() and json.loads(marker.read_text()) == record:
-        return target
     cache.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=cache))
-    try:
-        with tarfile.open(fileobj=io.BytesIO(_git(repo / path, "archive", "--format=tar", pinned))) as archive:
-            archive.extractall(staging, filter="data")
-        # Outside any repository (ceiling at the cache): inside one, git-format paths resolve against its top level
-        # and fall outside the staging directory, so git apply would skip them silently.
-        env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(cache.resolve())}
-        for patch in patches:
-            subprocess.run(["git", "apply", "--whitespace=nowarn", str(patch)], cwd=staging, env=env,
-                           capture_output=True, check=True)
-            # proof that it took effect: the applied patch must reverse cleanly
-            subprocess.run(["git", "apply", "--check", "--reverse", str(patch)], cwd=staging, env=env,
-                           capture_output=True, check=True)
-        (staging / ".s4d-patched.json").write_text(json.dumps(record, indent=2))
-        if target.exists():  # a stale or concurrent build: replace it atomically enough for single-writer use
-            shutil.rmtree(target)
-        os.replace(staging, target)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+    with (cache / f".{target.name}.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if marker.is_file() and json.loads(marker.read_text()) == record:
+            return target
+        staging = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=cache))
+        try:
+            with tarfile.open(fileobj=io.BytesIO(_git(repo / path, "archive", "--format=tar", pinned))) as archive:
+                archive.extractall(staging, filter="data")
+            # git-format paths are silently skipped when git apply discovers the enclosing superproject.
+            env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(cache.resolve())}
+            for patch in patches:
+                subprocess.run(["git", "apply", "--whitespace=nowarn", str(patch)], cwd=staging, env=env,
+                               capture_output=True, check=True)
+                subprocess.run(["git", "apply", "--check", "--reverse", str(patch)], cwd=staging, env=env,
+                               capture_output=True, check=True)
+            (staging / ".s4d-patched.json").write_text(json.dumps(record, indent=2))
+            if target.exists():
+                shutil.rmtree(target)
+            os.replace(staging, target)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
     return target
