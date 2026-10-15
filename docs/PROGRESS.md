@@ -1,54 +1,91 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-13 02:10 +09:00. Concise current state; chronology and evidence are in
-`docs/EXPERIMENT_LOG.md`, failures in `docs/RESULTS.md`, the full earlier version of this file in commit `01e303b`.
+Last updated: 2026-10-15 20:54 +09:00. Eight local Stage2/crop pretrains are healthy (118.8GB cgroup charge).
+All eight newly placed remote pretrains have actual running containers and finite fresh metrics (20:52 observation),
+two per authorized GPU. Three refused attempts were reset only after proven non-execution, never because of an outage.
+[Standalone handoff and shutdown ledger](HANDOFF.md) is prepared; final local stop/verification remains pending
+(target08:45 on10-16). Exact placement/resources/ETA assumptions: `runs/setup/servers-filled-20261015.json`.
+Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
 
 ## Current phase
-- **Done:** Phase A, Phase B (8 tasks: bin-picking, coffee-push, door-open, hammer, peg-insert-side,
-  peg-unplug-side, pick-place, stick-push), Phase C, Stage 0, Stage 4 prep (SinCro, ReViWo ported), review items
-  1-5, S1 (C remains the base: synthetic near views as invariance positives and render targets).
-- **Stage 1 — item 1 decided 23:10: D0 stays** (registered rule over all 20 verified results; D2 and D1 fail
-    their utilisation and PSNR gates). Table in RESULTS; output `runs/setup/item1-decision-20261011.txt`.
-- **Item 2 decided 2026-10-12: M3D adopted** (12/16 motion pairs better, no guard worse; RL 0.756 vs 0.666 over 6
-  hammer seeds). No M3D seed collapsed (dynamic share 0.93–0.96 at 100k), so later comparisons default to one seed.
-  Table in RESULTS; output `runs/setup/item2-decision-20261012.txt`.
-- **User decisions 2026-10-12:** item 1e skipped (term contributions measured by the Stage 2 ablations); 2c smoke only.
-- **2c done (smoke level) and bundled with the M3D-only training path on `review-items`** (3cdad57, 75e2f5d, 28c8f6c,
-  6e976f8; not integrated). DROID batches now carry 3D track arrays and gripper FK points; contract checks pass on
-  the local sample; M3D probe loss -46 % over 300 steps (-39 % on one fixed batch). Details in EXPERIMENT_LOG.
-  Next: one full native suite on the bundle, then integration.
-- **Length study running** (C + D0 + M3D, one seed): A200 = i2-m3d-seed0-<task> continued 100k -> 200k, A300 new
-  300k runs; then 8 full evaluations, 16 RL proxies, the pre-registered rule, `method-frozen-v1`.
-- **Stage 4 CNN DrM complete** (24 runs, 8-task mean last-5 success 0.698; table in RESULTS).
-- Pretraining lengths: ours default 300k (final L chosen on hammer/pick-place before the freeze); SinCro 300k;
-  ReViWo 100 001.
+- **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,
+  door-open, hammer, peg-insert-side, peg-unplug-side, pick-place, stick-push.
+- **Frozen method: C + D0 + M3D, 200k.** C retains synthetic near views as invariance positives/render targets;
+  D0 retained by the registered item-1 rule; M3D adopted after the paired representation and six-seed hammer checks.
+  No M3D seed collapsed at 100k (dynamic share 0.93-0.96); downstream unregistered pretraining defaults to seed 0.
+- **Length study complete:** all eight full evaluations and sixteen RL proxy closeouts verified. A300 wins 5/40,
+  loses 1/40; hammer RL +0.074722 < registered margin 0.201791. **L = 200,000** for every final task/ours ablation.
+  Evidence: `runs/setup/length-verification-20261013.json`; scores and unchanged rule in RESULTS.
+- **`method-frozen-v1` tagged and pushed:** accepted source226d8ae, full eight-task config embedded in the tag
+  annotation and `runs/setup/method-frozen-v1.json`. No unaccepted baseline code is frozen into the method.
+- **Stage 3 registered:** six fresh 200k pretraining jobs, six guarded exports, 24 DrM trainers + companions
+  (eight tasks, seeds2000-2002, 1M agent steps). Reuse verified A200 hammer/pick-place encoders. Speculative300k
+  attempts remain context only; no further speculative300k admissions. Registration evidence under `runs/setup/`.
+- **Stage 2 attribution registered, now split across hosts** (item 1e skipped; host-neutral decision below). Margins were recorded
+  before registration (`runs/setup/stage2-reporting-margins-20261013.json`). 108 jobs: 10 variants x 2 dev tasks at
+  200k seed 0, 20 full-split evaluations, 8 exports, and 30 DrM 1M pairs (seeds 1000-1002; full method + T=1/no-motion/
+  pure-no-InfoNCE/single-group). Attribution only; the frozen method does not change. 2c smoke-only/M3D-only bundle
+  integrated (d81cbca); no DROID campaign training.
+- **Final comparison complete:** ours24/24, SinCro/ReViWo48/48, CNN24/24. All16 accepted baseline pretrains complete;
+  lengths unchanged: SinCro300k, ReViWo100,001. Success **and return**, last-5/final/AUC, per-task seed means/95% CIs:
+  `runs/setup/rl-report-20261015-203425.json`; no frozen-method change follows from final results.
 
-## Rules in force (user decisions 2026-10-11)
-- Local <= 150 GB full cgroup charge; admit job by job with measured footprints (item-1 trainer 10.77 GB PSS);
-  no group or all-or-nothing admission. Host reserve 60 GiB, disk floor 300 GB. Remote <= 1 TB.
-- Comparability = same code, config, data and protocol on one host, or after a passed cross-host check; runs need
-  not start together. Decisions wait until every run in the comparison has finished.
-- Health entries only when something changes.
+## Rules in force
+- Local <=150GB full cgroup charge; measured job-by-job admission (trainer10.77GB PSS plus dataset page cache),
+  no group/all-or-nothing requirement. Host reserve60GiB, local disk floor300GB. Remote <=1TB and >=15% free disk.
+- **Host-neutral placement (user, 2026-10-15 20:09):** either host may run any job or checkpoint continuation;
+  compared arms may span hosts and existing references stay valid. No host-equivalence or migration-comparison
+  gate. Record every run's host; GPU/security/resource restrictions remain. Earlier placement rules are superseded.
+- Frozen method/hyperparameters do not change; six non-development RL tasks never inform method decisions.
+- Health notes only on change. Completed replays are currently retained: automatic runtime-computed deletion
+  was removed after a permission gate. Disk reservations/floors remain enforced; W&B never blocks numerical work.
 
 ## Source and remote status
-- Main `5a7177e` (pushed, deployed): portability repairs, cross-host v2 producer, remote W&B offline and RL
-  evaluation `--output-dir`; local and remote native suites 728/0/0/0; four remote isolation checks passed.
-- Cross-host v2: step 0 bit-identical; 200-update RMSE 4.687e-5 vs same-host 4.588e-5 (ratio 1.02, registered
-  criterion not met) — **accepted as equivalent by the user**; acceptance manifest `runs/remote/acceptance/5a7177e/`.
-- Remote W&B: offline in each run folder; pulled and uploaded by `runs/setup/tools/sync_wandb_remote.py`
-  (status `runs/remote/wandb/status.json`). W&B never blocks decisions.
-- Global `experiments/HOLD` stays: it blocks the scheduler from relaunching old held jobs (S3 base/synth300k,
-  s1v seed-1 runs); current work is dispatched through scoped queues in `runs/setup/`.
+- Main sourcec5a7571 is integrated/pushed: intentional-stop accounting/refused-launch reconciliation plus bounded,
+  redacted launcher diagnostics. Full native **764/0/0/0** (310.65s), all214 fingerprints verified against the commit;
+  `runs/setup/native-tests-launch-diagnostics-20261015.json`. The preceding accounting-only suite passed763.
+  Remote training remains accepted226d8ae / immutable image c3ffea7… (760/0/0/0 + four GPU isolation checks).
+  No model/config/GPU-guard changes, so no healthy trainer was stopped for this scheduler-only integration.
+- Historical cross-host characterization is not a placement gate after the20:09 user decision. Runtime source/image,
+  dataset/checksum and GPU isolation safeguards remain: `runs/remote/acceptance/226d8ae/manifest.json`.
+- Permission layer denied stopping/restarting old scheduler PID2819571; it remains under HOLD with its old imported
+  reducer. Scoped drivers use the tested fix. Renewed permission is required to stop that daemon for final shutdown.
+- Offline W&B stays in each remote run folder, pulled/uploaded by `runs/setup/tools/sync_wandb_remote.py`;
+  status `runs/remote/wandb/status.json`. No remote login/key and no visualization gate on decisions.
+- `experiments/HOLD` remains. All current admissions use scoped queues through `scripts/jobs.py`.
+  Durable controller: `runs/setup/tools/remote_campaign_driver.py`, every5min; only the controller was restarted,
+  no trainer/evaluator stopped. Configuration/dispatch fixtures100passed; not a new native-suite acceptance.
+- Review-only SNeRL/DynaMo/3D-MVP bundle remains unaccepted and upstream execution permission-blocked.
+  Optional ports do not delay the freeze or existing campaign.
 
-## Running jobs
-| id | host / GPU | status | log |
+## Campaign jobs (placement/progress verified 2026-10-15 20:52–20:54)
+| work | host | state | evidence/log |
 |---|---|---|---|
-| ls-a300-m3d-seed0-{hammer,pick-place} | local GPU 5 | ~176k / ~167k of 300k at 02:07 (~12:00 done) | runs/pretrain/ls-a300-*/ |
-| A200 arm | local + remote | complete: trainers, both full-split evaluations, 8/8 proxies verified | runs/remote/finished/ |
-| SinCro pretraining (8) | remote GPU 0-3 | ~200 steps/min each; first 5 ~14:00 Oct 13, last 3 ~02:00 Oct 14 | runs/setup/remote-driver-20261012.log |
-| ReViWo pretraining | remote | 6 of 8 done; bin-picking, stick-push ~09:30 Oct 13 | same |
-| baseline RL (48 + companions) | remote | ReViWo hammer/pick-place s2000 running (~2400 steps/min); rest as capacity frees | same |
-| queued | — | 8 A300 proxies (after A300), 8 speculative Stage 3 | same |
+| A200/A300 length study | local representation / remote RL | complete:8 full evaluations,16 proxies | runs/setup/length-verification-20261013.json |
+| SinCro pretraining | remote four allowed GPUs | **8/8 complete** (stick-push at 23:42) | runs/setup/remote-driver-20261012.log |
+| ReViWo pretraining | remote |8/8 complete | same |
+| SinCro/ReViWo RL | remote | **Complete: 48/48** (8 tasks x seeds 2000-2002 x 2 methods). Two genuine DrM dormant-ratio failures, checked and recorded as is: ReViWo stick-push s2001 (0.000) and SinCro stick-push s2002 (0.017); see EXPERIMENT_LOG 10-14 21:23 and 10-15 08:20. Seed 2002 (last-5): ReViWo hammer 0.722, bin-picking 0.300, pick-place 0.000, coffee-push 0.397, door-open 0.925, peg-insert-side 0.000, peg-unplug-side 0.653, stick-push 0.888; SinCro hammer 0.025, bin-picking 0.795, pick-place 0.257, coffee-push 0.402, door-open 0.883, peg-insert-side 0.030, peg-unplug-side 0.707, stick-push 0.017 | runs/remote/finished/s4-drm-*.json |
+| final Stage3 200k | remote | **Complete: 24/24** (8 tasks x seeds 2000-2002, 1M). Final comparison (pre-registered protocol) vs SinCro/ReViWo/CNN reported 08:41: IQM training-camera final success ours 0.76, SinCro 0.44, ReViWo 0.31, CNN 0.72; held-out cameras ours 0.13 vs <= 0.01; trajectories ours 0.72, CNN 0.76. See RESULTS "Final in-domain comparison" | runs/setup/final-comparison-20261015-084143.json |
+| Stage2 attribution | local GPUs4/5 + remote GPUs0–3 | **RL complete:30/30**, all eight comparisons reported. Eight of20 ablation pretrains closed out; four local no-synth/no-consistency runs at78.9–90.0k, eight remote pretrain-only runs at1.1–8.3k. Remote variants: no-lambda-dyn, no-coverage, misscaled-none, misscaled-scale, both tasks. Exact inventory below | runs/setup/stage2-driver-20261013.log; runs/setup/servers-filled-20261015.json |
+| Crop follow-up | pretraining local GPUs4/5; downstream remote-eligible | Historical four re-evaluations reported. Crop hammer119.5k / pick115.45k; cropnosynth hammer107.6k / pick104.65k. Then verified full eval/export and12 DrM trainer/companion pairs, subject to deadline/headroom | runs/setup/crop-reeval-report-20261015.json; runs/setup/stage2-crop-registration-20261015.json |
+
+### Placement and completion estimates (all10-16 KST, not guarantees)
+- Local GPU4: crop pick-place, cropnosynth pick-place, no-synth hammer, no-consistency hammer.
+  GPU5: crop hammer, cropnosynth hammer, no-synth pick-place, no-consistency pick-place.
+- Recent45-minute wall-clock extrapolations (including validation/sharing): crop hammer05:54, crop pick06:50,
+  cropnosynth hammer07:30, cropnosynth pick08:24; no-synth pick09:22/hammer10:00, no-consistency hammer09:48/pick10:55.
+  These are **uninterrupted training** ETAs, not permission to overrun shutdown or promises of completed closeout.
+  Reassess06:40 and losslessly pause anything that cannot train **and** close out safely before~08:00.
+- Remote GPU0: no-lambda-dyn hammer + misscaled-none hammer; GPU1: their pick-place runs.
+  GPU2: no-coverage hammer + misscaled-scale hammer; GPU3: their pick-place runs.
+  Early measured step times imply **08:12–09:33 training-only** endpoints; planning allowance of25% for validation/
+  checkpointing/sharing gives roughly**11:03–12:43**. No first10k validation had yet completed at observation, so
+  allowance is not a measured confidence bound; later RL sharing may delay further. Full evaluations follow only
+  while the local dispatcher is alive, or after reconnect. Already-running remote containers survive local downtime.
+- Remote observations:~60.4GiB summed container RAM, all four GPUs9.24–9.33GiB used (nvidia-smi MiB converted),
+  SSD3.397TB free of7.529TB (~45.1%), host available1.496TB. Local full cgroup118.8GB, below150GB.
+- Eight remote pretrains use2.0/GPU of2.8 load ceiling. **At most four crop RL trainer/evaluator pairs fit alongside**
+  (one/GPU), and only after verified encoders/resources. Some of12 registered pairs may stay pending during downtime.
 
 ## Disk
 | time | free on /home/ws |
@@ -135,9 +172,122 @@ Last updated: 2026-10-13 02:10 +09:00. Concise current state; chronology and evi
 | 2026-10-13 00:54 | remote 3.77 TB (ls-proxy-a200-hammer-s1004 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
 | 2026-10-13 01:06 | remote 3.77 TB (ls-proxy-a200-hammer-s1003 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
 | 2026-10-13 01:25 | remote 3.77 TB (ls-proxy-a200-hammer-s1005 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 08:18 | remote 3.77 TB (s4-drm-reviwo-hammer-s2000 completed with final eval at 1000k; deleted its remote replay/, 2.1 GB) |
+| 2026-10-13 08:40 | remote 3.77 TB (s4-drm-reviwo-pick-place-s2000 completed with final eval at 1000k; deleted its remote replay/, 2.1 GB) |
+| 2026-10-13 12:44 | remote 3.75 TB (ls-proxy-a300-pick-place-s1000 completed with final eval at 200k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 12:50 | remote 3.75 TB (ls-proxy-a300-pick-place-s1001 completed with final eval at 200k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 13:25 | remote 3.75 TB (ls-proxy-a300-hammer-s1003 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 13:30 | remote 3.75 TB (ls-proxy-a300-hammer-s1000 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 13:30 | remote 3.75 TB (ls-proxy-a300-hammer-s1002 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 13:38 | remote 3.75 TB (ls-proxy-a300-hammer-s1001 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 13:38 | remote 3.75 TB (ls-proxy-a300-hammer-s1004 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 13:47 | remote 3.75 TB (ls-proxy-a300-hammer-s1005 completed with final eval at 400k; deleted its remote replay/, 0.6 GB) |
+| 2026-10-13 15:57 | remote 3.74 TB (s4-drm-reviwo-coffee-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 16:05 | remote 3.74 TB (s4-drm-reviwo-door-open-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 20:28 | remote 3.72 TB (s4-drm-reviwo-bin-picking-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 20:37 | remote 3.72 TB (s4-drm-reviwo-peg-insert-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 22:17 | remote 3.71 TB (s4-drm-sincro-coffee-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 22:45 | remote 3.71 TB (s4-drm-reviwo-peg-unplug-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 23:19 | remote 3.70 TB (s4-drm-sincro-hammer-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-13 23:53 | remote 3.70 TB (s4-drm-sincro-door-open-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 04:47 | remote 3.67 TB (s4-drm-sincro-pick-place-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 04:47 | remote 3.67 TB (s4-drm-sincro-bin-picking-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 04:47 | remote 3.67 TB (s4-drm-sincro-peg-insert-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 05:21 | remote 3.67 TB (s4-drm-reviwo-stick-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 07:25 | remote 3.65 TB (s4-drm-sincro-peg-unplug-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 08:04 | remote 3.65 TB (s4-drm-sincro-stick-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 09:22 | remote 3.64 TB (s3-drm-splatter4d-hammer-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 10:02 | remote 3.63 TB (s3-drm-splatter4d-pick-place-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 11:20 | remote 3.62 TB (s4-drm-reviwo-hammer-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 11:45 | remote 3.62 TB (s4-drm-sincro-hammer-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 12:10 | remote 3.61 TB (s3-drm-splatter4d-bin-picking-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 13:05 | remote 3.60 TB (s3-drm-splatter4d-coffee-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 13:47 | remote 3.60 TB (s4-drm-reviwo-pick-place-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 13:47 | remote 3.60 TB (s3-drm-splatter4d-door-open-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 14:20 | 4.7TB (s2rl-full-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 14:24 | remote 3.59 TB (s4-drm-sincro-pick-place-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 14:24 | remote 3.59 TB (s4-drm-sincro-bin-picking-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 15:19 | remote 3.58 TB (s4-drm-reviwo-bin-picking-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 16:06 | remote 3.57 TB (s3-drm-splatter4d-peg-insert-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 16:26 | remote 3.57 TB (s4-drm-reviwo-coffee-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 16:35 | remote 3.57 TB (s4-drm-sincro-coffee-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 16:52 | 4.6TB (s2rl-noinfonce-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 16:58 | 4.6TB (s2rl-t1-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 17:17 | 4.6TB (s2rl-nomotion-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 17:24 | 4.6TB (s2rl-singlegroup-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 17:28 | remote 3.56 TB (s4-drm-sincro-door-open-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 17:41 | remote 3.56 TB (s4-drm-reviwo-door-open-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 17:49 | remote 3.55 TB (s3-drm-splatter4d-peg-unplug-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 18:46 | 4.5TB (s2rl-full-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 18:57 | 4.5TB (s2rl-t1-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 19:12 | remote 3.54 TB (s3-drm-splatter4d-stick-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 19:30 | remote 3.54 TB (s4-drm-reviwo-peg-insert-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 19:42 | remote 3.54 TB (s4-drm-sincro-peg-insert-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 19:50 | remote 3.54 TB (s4-drm-reviwo-peg-unplug-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 20:36 | remote 3.53 TB (s3-drm-splatter4d-hammer-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 20:41 | remote 3.53 TB (s4-drm-sincro-peg-unplug-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 20:50 | remote 3.53 TB (s3-drm-splatter4d-pick-place-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 20:50 | remote 3.53 TB (s3-drm-splatter4d-bin-picking-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 21:14 | remote 3.52 TB (s4-drm-sincro-stick-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 21:22 | remote 3.52 TB (s4-drm-reviwo-stick-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 21:50 | remote 3.51 TB (s3-drm-splatter4d-coffee-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 22:19 | remote 3.51 TB (s3-drm-splatter4d-door-open-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 22:19 | remote 3.51 TB (s3-drm-splatter4d-peg-insert-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 23:11 | 4.5TB (s2rl-full-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:21 | 4.5TB (s2rl-noinfonce-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:21 | 4.5TB (s2rl-noinfonce-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:27 | 4.5TB (s2rl-nomotion-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:33 | 4.5TB (s2rl-nomotion-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:38 | remote 3.49 TB (s3-drm-splatter4d-peg-unplug-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-14 23:49 | 4.5TB (s2rl-t1-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:49 | 4.5TB (s2rl-singlegroup-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:49 | 4.5TB (s2rl-full-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-14 23:59 | remote 3.49 TB (s3-drm-splatter4d-stick-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 00:57 | 4.5TB (s2rl-nomotion-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 01:02 | 4.5TB (s2rl-t1-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 01:21 | remote 3.48 TB (s4-drm-reviwo-hammer-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 02:14 | remote 3.47 TB (s4-drm-reviwo-bin-picking-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 02:22 | remote 3.46 TB (s4-drm-sincro-hammer-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 02:22 | remote 3.46 TB (s4-drm-reviwo-pick-place-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 02:51 | remote 3.45 TB (s4-drm-sincro-bin-picking-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 03:14 | remote 3.45 TB (s4-drm-reviwo-coffee-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 03:22 | remote 3.45 TB (s4-drm-sincro-pick-place-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 03:22 | remote 3.45 TB (s4-drm-reviwo-door-open-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 03:59 | 4.5TB (s2rl-full-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 04:02 | remote 3.44 TB (s4-drm-sincro-coffee-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 04:10 | remote 3.44 TB (s4-drm-sincro-door-open-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 04:27 | remote 3.44 TB (s4-drm-sincro-peg-insert-side-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 04:45 | 4.5TB (s2rl-noinfonce-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 04:56 | 4.5TB (s2rl-nomotion-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 05:07 | 4.5TB (s2rl-noinfonce-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 05:14 | 4.5TB (s2rl-t1-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 05:15 | remote 3.43 TB (s4-drm-reviwo-peg-insert-side-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 05:31 | 4.5TB (s2rl-singlegroup-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 06:15 | remote 3.42 TB (s4-drm-sincro-peg-unplug-side-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 06:46 | remote 3.42 TB (s3-drm-splatter4d-hammer-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 06:51 | remote 3.42 TB (s4-drm-reviwo-peg-unplug-side-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 07:07 | remote 3.42 TB (s3-drm-splatter4d-bin-picking-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 07:17 | remote 3.42 TB (s3-drm-splatter4d-pick-place-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 07:48 | remote 3.42 TB (s4-drm-reviwo-stick-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 07:48 | remote 3.42 TB (s3-drm-splatter4d-door-open-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 07:54 | remote 3.42 TB (s3-drm-splatter4d-coffee-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 07:59 | remote 3.42 TB (s3-drm-splatter4d-peg-insert-side-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 08:01 | 4.5TB (s2rl-full-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 08:06 | 4.5TB (s2rl-singlegroup-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 08:19 | remote 3.42 TB (s4-drm-sincro-stick-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 08:25 | remote 3.42 TB (s3-drm-splatter4d-peg-unplug-side-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 08:40 | remote 3.42 TB (s3-drm-splatter4d-stick-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-15 09:22 | 4.5TB (s2rl-singlegroup-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 09:27 | 4.5TB (s2rl-t1-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 09:58 | 4.5TB (s2rl-nomotion-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 09:58 | 4.5TB (s2rl-noinfonce-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-15 10:23 | 4.5TB (s2rl-singlegroup-pick-place-s1002 completed with final eval at 1000k; replay retained) |
 
 ## Next actions
-1. Length study: A200 trainers ~22:00 -> local evaluations + exports -> proxies on the remote; A300 ~12:30 Oct 13;
-   decision ~17:00 Oct 13, then `method-frozen-v1`.
-2. Remote driver (every 5 min): proxies > baselines > baseline RL > speculative Stage 3; finishing, W&B, replay.
-3. Stage 2 ablations and Stage 3 RL after the freeze.
+1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
+   frees, full numerical result sync, offline W&B attempt, completed replay retained. Old speculative300k stays out.
+2. Stage3: six final200k encoders -> guarded exports -> eight-task RL seeds2000-2002; two dev encoders reused.
+3. Stage2 local driver (`runs/setup/tools/stage2_local_driver.py`, every5min): verified closeouts -> eval configs/
+   exports -> RL; job-by-job below the140GB admission ceiling. Report against the recorded margins once each
+   comparison's runs are all complete; no post-freeze method/hyperparameter selection.
+4. Continue SinCro/ReViWo Stage4. New SNeRL/DynaMo/3D-MVP execution remains blocked; no unaccepted release or long run.

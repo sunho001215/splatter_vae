@@ -2624,3 +2624,595 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   0.417 GFLOPs per frame, 1024 per frame.
 - Infrastructure on `review-items` (1a2233c, not yet integrated): source identity covers pinned submodule commits,
   `.gitmodules` and patch files; remote releases bundle each pinned submodule and verify the checkout.
+
+## 2026-10-13 — Length decision and method-frozen-v1
+
+- **Selected L = 200,000** by the registered C + D0 + M3D A200/A300 rule, unchanged. All eight full-split
+  evaluations and sixteen trainer/evaluator proxy closeouts completed; endpoint hashes, full-split counts,
+  final synced numerical provenance and every last-five score independently verified. A300 wins 5/40
+  (hammer 3, pick-place 2), loses 1/40; hammer RL means A200 0.696111 and A300 0.770833, difference +0.074722,
+  below the registered margin 0.201791. Pick-place RL and A300 interim checkpoints remain context only.
+- Decision evidence: `runs/setup/length-decision-20261013.txt`; independent verification
+  `runs/setup/length-verification-20261013.json`, SHA-256
+  `1cfd70b71e6c0604872e9221063255d3c74f6550a98bcbe1fcc64520e94bce18`; details and per-seed scores in RESULTS.
+- **Annotated tag `method-frozen-v1` created and pushed**, pointing to accepted source
+  `226d8ae89b6f65097d372e597e0a7734d2eee3e0` (tag object `943d073e33a14c290728363996e27ebfa2e96a9a`).
+  The tag annotation embeds the full eight-task configuration manifest, also saved as
+  `runs/setup/method-frozen-v1.json`, SHA-256
+  `65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9`. Main HEAD 6a48200 has identical
+  s4d/scripts/tests/configs/dependency sources; no unaccepted baseline port is part of the freeze.
+- Frozen overrides: `train.steps=200000`, `train.seed=0`, `aug.synth_views=2`, `aug.synth_render=true`,
+  `loss.depth_valid_far=true`, `loss.motion_space=gaussian`; other method hyperparameters unchanged.
+  Warmup 10k and cosine annealing terminate at 200k. The historical base default of 300k is not a final-run setting.
+  The manifest's hammer and pick-place configurations equal their saved A200 configurations after removing
+  runtime metadata and the historical stop-step field.
+- Stage 3 uses the two verified A200 development-task encoders; six remaining tasks receive fresh 200k pretraining
+  with seed 0. Frozen-encoder DrM is unchanged: all eight tasks, RL seeds 2000-2002, 1M agent steps and the existing
+  full evaluation protocol. Stage 2 ours ablations also use 200k. No non-development RL result informed the freeze.
+- Speculative 300k runs/attempts remain context only and are not adopted as final jobs. Further speculative 300k
+  admissions are unnecessary after this length decision. Existing baseline jobs continue unchanged.
+- Accepted release 226d8ae/image c3ffea7… retains its local and remote 760/0/0/0 suites and four remote GPU
+  isolation checks; no source or GPU guard change was made for this transition. New SNeRL/DynaMo/RVT execution
+  remains permission-blocked and does not delay the method freeze.
+- Final Stage 3 registered in `experiments/queue.yaml`: six pretraining jobs, six exports and 24 RL trainers plus
+  24 companions; evidence `runs/setup/stage3-final-registration-20261013.json`. Verified task data is available;
+  development exports are already checksum-verified on the remote. Each new trainer requires synced 200k final
+  checkpoint evidence, then a guarded export and verified export/config/checkpoint identity before RL admission.
+- Dispatcher now resides at `runs/setup/tools/remote_campaign_driver.py`; it uses accepted226d8ae exclusively,
+  admits each trainer/evaluator separately, prioritizes active companions and interleaves fresh RL seeds across
+  methods. Scoped queue admission still goes through `scripts/jobs.py`; pending jobs wait for measured headroom.
+  Final pretraining precedes remaining RL fill work; old speculative300k work is not newly admitted.
+- Initial candidate YAML insertion failed before the authoritative queue changed; corrected insertion passed
+  exact old-content/config comparison and atomic publication. Dispatcher/configuration fixtures:100passed,
+  `runs/setup/stage3-dispatch-checks-20261013.json`; this is not a new full-native-suite claim.
+- A permission gate rejected preserving runtime-computed replay deletion. Automatic deletion was removed;
+  subsequent verified closeouts retain their replays, record `df` space and attempt offline W&B upload. The
+  durable dispatcher then passed the gate. Only the owned controller loop was restarted; no trainer/evaluator
+  was stopped. Disk floors still gate admission. Blocked new-baseline execution remains untouched.
+
+## 2026-10-13 — Prospective Stage 2 frozen-method attribution margins
+
+- Recorded before registration/launch at 2026-10-13T15:01:02.475308+09:00; fixed M3D seed0/1 full-split 100k references, with all four summary hashes independently checked against their completion proofs.
+- Exact unrounded per-stride values, seed spreads, floors and primary-reader margins: `runs/setup/stage2-reporting-margins-20261013.json` (SHA-256 `5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677`).
+- These are reporting margins for attribution, not new method-selection gates or replacements for the completed length rule. The frozen C + D0 + M3D method remains 200k, seed0; no non-development RL is consulted for method decisions.
+- Existing floors and formula remain unchanged (2026-10-09 validation standard); motion/hand-velocity metrics use stride6, all other listed metrics use the stride2/6 mean; Chamfer is symmetric p90 with relative spread divided by the reference-pair mean. Aggregate margins are calculated after reading each seed, not averaged from per-stride margins.
+- SSIM, depth errors, oracle coverage and raw losses remain descriptive diagnostics: no invented reporting threshold. Zero-weight InfoNCE/consistency terms remain calculated/logged, and lambda_dyn=0 gives uniform pixel weights; no synthetic skips synthetic generation/encoding/rendering but retains real-view invariance.
+- Planned registration: ten variants x two development tasks, seed0,200k;20 full-split endpoint evaluations;8 guarded exports for T=1/no-motion/pure-no-InfoNCE/single-group;24 ablation RL trainers and companions plus6 matched full-method reference trainers and companions, all1M agent steps/seeds1000-1002. All comparisons stay local, within the150GB full-charge cap. Existing400k length proxies are not1M reference runs.
+- Pure no InfoNCE changes only loss.invariance=0 and retains loss.consistency=0.5; the legacy no_infonce.yaml disables both terms and will not be silently used as a single-term ablation. Mis-scaled variants retain the planned independent teacher-depth factors[0.7,1.4], with none/scale alignment; raw M3D depth targets are not corrupted.
+
+| primary metric | hammer margin | pick-place margin |
+|---|---|---|
+| psnr | 0.40960929813359925 | 0.2 |
+| psnr_moving | 0.6052634620680202 | 0.2209657601908468 |
+| psnr_traj | 0.2708660579782425 | 0.2 |
+| retrieval_traj | 0.03 | 0.03 |
+| r2_pos_traj | 0.05 | 0.05 |
+| r2_vel_traj | 0.05947470571628677 | 0.05 |
+| r2_vel_train | 0.05 | 0.05 |
+| rel_epe | 0.03541882841143085 | 0.03107224836438227 |
+| relepe_bin1 | 0.04201427724956208 | 0.16331752727659088 |
+| relepe_bin2 | 0.03959520174352965 | 0.03 |
+| relepe_bin3 | 0.030245983714513258 | 0.03 |
+| epe_mm | 1.407105495779609 | 1.0 |
+| dyn_share | 0.05 | 0.05 |
+| utilisation | 0.04217046076978004 | 0.04206836397637548 |
+| hidden | 0.038434334393507186 | 0.022924248832025373 |
+| floater | 0.02 | 0.02 |
+| cd_render_traj | 0.06551006133159368 | 0.05 |
+| cd_centers_vis | 0.05 | 0.05 |
+| cd_motion_dyn | 0.05 | 0.4722541317434684 |
+| psnr_near | 0.4772341180600783 | 0.2 |
+| psnr_near_covered | 0.4906556555757007 | 0.2 |
+| psnr_traj_covered | 0.486388946153248 | 0.2 |
+| psnr_heldout | 0.2 | 0.2744133723717752 |
+| psnr_heldout_covered | 0.36774117182830324 | 0.2 |
+| retrieval_train | 0.03 | 0.03 |
+| retrieval_near | 0.03 | 0.03 |
+| retrieval_heldout | 0.05436197916666663 | 0.041015624999999944 |
+| r2_pos_train | 0.05 | 0.05 |
+| r2_pos_near | 0.05 | 0.05 |
+| r2_obj_pos_traj | 0.05 | 0.05 |
+| r2_vel_near | 0.0783806147507643 | 0.05 |
+| cd_centers | 0.05 | 0.05 |
+
+## 2026-10-13 — Stage 2 attribution registered and first local admissions
+
+- Registered 108 local Stage 2 jobs (`runs/setup/stage2-registration-20261013.json`) after recording the margins
+  above. There are 20 pretraining runs (10 variants x hammer/pick-place, seed 0, 200k, frozen overrides plus only the
+  variant's intended keys), 20 full-split evaluations, 8 exports, and 30 DrM 1M trainers plus 30 companions (seeds
+  1000-1002; full method on the reused A200 encoders and T=1/no-motion/pure-no-InfoNCE/single-group).
+- Local driver `runs/setup/tools/stage2_local_driver.py` runs every 5 min through `scripts/jobs.py`. It verifies
+  pretraining completion/config, evaluation summaries, export provenance and exact RL step sequences before releasing
+  dependents. It admits job by job below a 140 GB ceiling: full charge + 10-min ramp + non-resident dataset cache
+  + trainer 10.77 GB PSS / declared RL RAM. The ceiling sits 10 GB under the 150 GB hard cap. The driver never
+  deletes anything; RL replays are retained and free disk is recorded.
+- 15:10:23: the first pass admitted the seven RL-critical pretraining runs (T=1, no-motion and pure-no-InfoNCE on both
+  tasks; single-group on hammer). The rest follow as headroom allows.
+- Remote: SinCro hammer pretraining completed; final Stage 3 `s3-m3d-seed0-bin-picking-200k` was admitted at 14:34 on
+  GPU-ca65. Its config matches the freeze exactly, and it was training normally at step 4100
+  (`runs/setup/stage3-first-normal-start-20261013.json`).
+
+## 2026-10-14 — First final Stage 3 encoders
+
+- Final 200k pretraining of bin-picking, coffee-push and door-open finished on the remote (exit 0, synced
+  06:41-07:10). Each final post-exit sync, including all checkpoints, held the scheduler registry lock for ~10-20 min.
+  Live mirrors of other remote jobs paused meanwhile; the remote jobs themselves were unaffected.
+- `s3-m3d-seed0-bin-picking-200k` closeout (06:41): saved config equals the frozen task config, 200,000/200,000
+  steps, final checkpoint SHA-256 `1d4d464d…`; W&B upload complete with media.
+- First guarded export `s3-export-m3d-seed0-bin-picking-200k` closed out 07:25. Encoder SHA-256 `6fdaf015…`, format
+  `splatter4d-encoder-v1`, step 200000, strides [2,4,6], encoder config equal to the freeze, source checkpoint hash
+  equal to the pretraining closeout. Independently re-verified locally. Bin-picking final RL (seeds 2000-2002) is now
+  dependency-eligible. This is the first real run of the final-pretrain/export closeout path, previously fixture-tested only.
+- Final RL hammer/pick-place s2000 (reused A200 encoders) running since 04:41/05:0x.
+- 2026-10-14 09:18-09:20 (Stage 2): first two ablation encoder exports verified (T=1 and no-motion pick-place;
+  format/step 200k/source checkpoint hash/encoder config vs registration). First checkpoint-paused job resumed:
+  `s2rl-full-hammer-s1000` attempt 2 logged `resumed` at step 50000. `train.jsonl` continues at 51000 with no
+  duplicate or missing step, so the pause was lossless. Its evaluator and the other paused jobs resume as the
+  growth-aware 140 GB admission allows.
+- 2026-10-14 13:44-14:56: all six final 200k pretrains closed out; all six guarded exports verified (stick-push last, ~14:56)
+  against the frozen config, step 200k and the closeout checkpoint hash. Final RL s2000 closed out so far: hammer 0.865,
+  pick-place 0.543, coffee-push 0.545, door-open 0.945, bin-picking 0.000. These are single seeds: no comparison, and
+  non-development tasks never inform method decisions. Remote link was unstable 13:48-14:12 (repeated short drops; scheduler
+  checks failing ~8 min at most; user notified 14:01). Remote jobs stayed unknown, never failed or relaunched; result
+  syncs resumed after reconnection. Stage 2: full-method hammer RL reference s1000 closed out (last-5 0.962) after a
+  lossless pause and resume.
+
+## 2026-10-14 — User decision: 3D-MVP pretraining and RL input conditions
+
+- Supersedes the earlier 3D-MVP pretraining-subset and RL-input instructions; the size cap (<= SinCro's encoder) is
+  unchanged.
+- **Pretraining:** the original in-domain fused setting. Every sample's point cloud is fused from all 6 training
+  cameras (RGB-D + extrinsics), rendered into the virtual views and trained with the 3D-MVP MAE objective. No random
+  camera subsets and no single-camera clouds. One pretraining per task; the same encoder serves both RL conditions.
+- **RL, two conditions, both on all 8 tasks x seeds 2000-2002:**
+  - A, "3D-MVP, multi-view RGB-D + extrinsics (privileged)": SNeRL's camera protocol. Per episode 3 of the 6 training
+    cameras are drawn at random and fixed within the episode, then fused. Shift evaluation keeps 2 of the 3 inputs
+    and replaces the third by its perturbed counterpart (near/trajectory sets) or the moving trajectory.
+  - B, "3D-MVP, single RGB-D + extrinsics (privileged)": one random training camera per episode, with the
+    single-camera methods' shift evaluation. This is our added condition; it sees sparser single-view clouds than in
+    pretraining.
+  - Everything else is identical to the other baselines: adapter, projection head, state size, 3-frame handling,
+    proprio, DrM, full evaluation.
+- **Reporting:** A and B are separate rows with their input labels in every table.
+- **Hammer smoke:** pretrained-vs-random for A; B one seed to confirm the pipeline. Same priority and placement as the
+  other new baselines.
+- **Applied (review-only, unaccepted, uncommitted):**
+  - `bx-mvp3d`: the data sampler fuses all six cameras; the RL backbone takes 1 or 3 fused cameras;
+    `configs/rl/encoders/mvp3d_{multiview,single}.yaml`; tests, panels and notes updated.
+  - review `docs/BASELINES.md`.
+  - Checks: static compile/lint, plus a data-only check on real hammer data (all six cameras, key-independent,
+    other counts rejected; no RVT import).
+  - The model/RL tests import the pinned NVlabs/RVT modules, whose execution remains permission-blocked: they have
+    not been run, and no 3D-MVP training has started.
+
+### 2026-10-14 19:13 — final Stage 3 seed 2000 complete on all eight tasks
+- `s3-drm-splatter4d-stick-push-s2000` closed out by the remote driver: 1,000,000 agent steps, 100 evaluation points,
+  last-5 training-camera success 0.998 (`runs/remote/finished/s3-drm-splatter4d-stick-push-s2000.json`), W&B sync
+  exit 0, remote free 3.54 TB.
+- Seed 2000 last-5 for the frozen method: hammer 0.865, pick-place 0.543, coffee-push 0.545, door-open 0.945,
+  bin-picking 0.000, peg-insert-side 0.127, peg-unplug-side 0.848, stick-push 0.998. Per-seed record only; no
+  comparison or decision is drawn before seeds 2001-2002.
+- A 32 s remote drop at 19:00 recovered without intervention; no job was relaunched.
+
+### 2026-10-14 21:23 — SinCro/ReViWo seed 2001 complete (16/16); ReViWo stick-push s2001 collapsed
+- All sixteen seed-2001 baseline pairs closed out by the remote driver (`runs/remote/finished/s4-drm-*-s2001.json`).
+  Last-5 training-camera success, seed 2001 (seed 2000 in parentheses):
+  - SinCro: bin-picking 0.505 (0.603), coffee-push 0.383 (0.413), door-open 0.982 (0.975), hammer 0.065 (0.032),
+    peg-insert-side 0.058 (0.027), peg-unplug-side 0.662 (0.685), pick-place 0.223 (0.378), stick-push 0.922 (0.822).
+  - ReViWo: bin-picking 0.000 (0.000), coffee-push 0.378 (0.298), door-open 0.953 (0.733), hammer 0.750 (0.633),
+    peg-insert-side 0.000 (0.000), peg-unplug-side 0.670 (0.580), pick-place 0.000 (0.000), stick-push 0.000 (0.988).
+- ReViWo stick-push s2001 (0.000 vs 0.988 at s2000) was checked as a possible pipeline fault and is a genuine DrM
+  training collapse: same verified encoder export as s2000, 1,000,000 steps, 100 evaluation points, no non-finite
+  values. Critic loss spiked early (594 at 31k vs 4 for s2000); the actor dormant ratio then rose to 0.41-0.46
+  (s2000: 0.01-0.07); DrM's dormant-ratio response engaged (perturb factor 0.2, exploration stddev back to ~0.9) but the
+  policy did not recover (eval success 0.21 at 10k, 0 from 100k on; training return ~2). Recorded as is: no rerun, no
+  seed change, baseline hyperparameters unchanged. It enters the seed mean like any other seed.
+
+### 2026-10-15 00:00 — final Stage 3 seed 2001 complete on all eight tasks
+- All eight `s3-drm-splatter4d-*-s2001` pairs closed out by the remote driver (1,000,000 steps, 100 evaluation points
+  each; `runs/remote/finished/s3-drm-splatter4d-*-s2001.json`). Last-5 training-camera success, seed 2001 (seed 2000
+  in parentheses): bin-picking 0.900 (0.000), coffee-push 0.397 (0.545), door-open 0.992 (0.945), hammer 0.872
+  (0.865), peg-insert-side 0.010 (0.127), peg-unplug-side 0.828 (0.848), pick-place 0.368 (0.543), stick-push 1.000
+  (0.998). Per-seed record only; seed 2002 (eight pairs) is pending and no comparison is drawn before it completes.
+
+### 2026-10-15 00:05 — refused remote evaluator launch reconciled (no container ever existed)
+- 2026-10-14 23:54 the remote launcher exited non-zero before `docker run` for
+  `s4-drm-sincro-peg-unplug-side-s2002-eval` (attempt 1, GPU 6122); its trainer launched normally. The scheduler recorded
+  "launch outcome requires reconciliation", then "container missing from confirmed snapshot", and by design neither
+  relaunches nor allows `jobs.py reset` on an active remote job. Same pattern as `s4-drm-cnn-stick-push-s2000-eval` on
+  2026-10-11 (relaunched, completed normally).
+- Read-only remote checks: GPU 6122 healthy (7.7/97.9 GB, 75 %), no foreign compute process on it, no container with the
+  deterministic name in any state, no remote evaluator output directory.
+- New tool `runs/setup/tools/reconcile_unlaunched_remote.py` (no deletion, evaluator launches only): under the registry
+  lock it requires the job to be remote/launching/unknown with one of those two reasons, the attempt to be >= 600 s old,
+  and two remote checks 5 s apart showing no such container, no evaluator output and an existing trainer run directory;
+  it then appends a `reset` event carrying that evidence. First invocation correctly refused (381 s old); the second
+  (674 s) reconciled it: `runs/setup/reconcile-s4-drm-sincro-peg-unplug-side-s2002-eval-20261015-000537.json`.
+- The dispatcher relaunched it at 00:11 as attempt 2 (GPU 4391). The evaluator scores saved snapshots of its trainer, so
+  the delayed start loses nothing.
+- Process note: at 23:56 one watcher was started detached (outside a tracked background task), contrary to the watcher
+  rule; it had already exited, and a single tracked watcher replaced it.
+
+### 2026-10-15 02:15-02:40 — Crop follow-up (user request): step 1 registered, step 2 candidate prepared (not launched)
+- **Request:** report and register only the described work; no change to existing runs; the frozen method does not
+  change.
+- **Step 1 (report only):** re-evaluate the 2026-10-09 crop screen and its base reference at 100k (hammer, pick-place)
+  with the current evaluator. M2D-era single-seed results.
+  - Sources: `s1-pretrain-{task}-base` and `s2-screen-crop-{task}`, `checkpoints/step_0100000.pt`, read only, with
+    SHA-256 recorded at registration and re-checked at closeout.
+  - Compatibility: all four checkpoints load strictly into the current model built from their own configs (every
+    encoder and decoder key matched; CPU check).
+  - Configs equal the 10-09 full-split evaluation configs apart from the run name. They lack the later keys, which
+    take code defaults: no synthetic views, no far-depth mask; the motion loss space is Gaussian, which affects only
+    validation losses, not the reported metrics.
+  - Jobs: `creval-{base,crop}-{hammer,pick-place}-100k` (`runs/setup/crop-reeval-registration-20261015.json`).
+  - Admission and closeout: through the Stage 2 local driver, the single local admission path, under the same cap
+    and ranked with the other evaluations. The driver was extended with a separate report-only closeout; the previous
+    version is kept as `stage2_local_driver.before-crop-reeval-20261015.py`. Dry runs before and after were identical
+    for Stage 2.
+  - Report tool: `runs/setup/tools/crop_reeval_report.py`. Each difference is compared with the Stage 2 reporting
+    margins (fixed M3D seed pair) and, where defined, the S1 margins (C seed pair).
+- **Step 2 (candidate only, awaiting the user):** `runs/setup/stage2-crop-registration-candidate-20261015.json`.
+  - Variants: `crop` = frozen config plus 10-08 crop; `cropnosynth` = `aug.synth_views=0`, `aug.synth_render=false`,
+    plus the same crop. Each was asserted to differ from the frozen config only in those keys.
+  - Jobs (36): 4 pretrains, 4 full-split evaluations, 4 exports, and 12 DrM pairs (seeds 1000-1002, 1M steps). Job
+    definitions mirror Stage 2.
+  - Estimated cost: 128-164 job-hours excluding RL evaluator companions, from measured Stage 2 durations on this
+    host.
+  - Not in the queue; nothing launched.
+
+### 2026-10-15 — Crop follow-up step 2 approved (middle rank) and registered; driver extended
+- **User approval:** register the crop variants at a middle rank and keep everything local, on the same host as the
+  Stage 2 references:
+  - after the pending original Stage 2 seed-1002 RL pairs, so the 3-seed Stage 2 comparison finishes first;
+  - ahead of the 12 pending pretrain-only variants.
+- **Registration:** `runs/setup/stage2-crop-registration-20261015.json` (36 jobs).
+  - Built from v2 of the candidate. It differs from the version shown to the user only by
+    `stage2_admission_rank: middle` on every job; the tool asserts this, and both candidate files are kept.
+  - The queue snapshot before registration is kept.
+- **Stage 2 local driver** (previous version kept as `stage2_local_driver.before-crop-stage2-20261015.py`):
+  - Loads the crop registration as further Stage 2 jobs with the same closeouts: pretraining config equals the
+    registration, evaluation summaries, guarded exports, RL 1M closeouts.
+  - Strict ordering gates:
+    - crop pretrains and crop RL are admissible only after every original Stage 2 RL job has been admitted;
+    - the pretrain-only variants are admissible only after all four crop pretrains have been admitted;
+    - crop evaluations and exports keep the evaluation rank.
+  - Rank 2.5 places crop work after the original RL pairs (2) and before the pretrain-only variants (3).
+- **Checks:**
+  - The candidate's dry run was identical to the live driver's before publishing.
+  - After publishing, the dry run showed both gates closed: original Stage 2 RL is pending, and the crop pretrains
+    are pending. Candidates were the four re-evaluations, then the original seed-1002 pick-place RL pairs.
+  - Committed local memory was 142.3 GB, above the 140 GB admission ceiling, so nothing was admitted.
+
+### 2026-10-15 04:57 — Stage 2 attribution report: first complete comparisons (attribution only)
+- Tool `runs/setup/tools/stage2_report.py`; output `runs/setup/stage2-report-20261015-045744.json`. It reports only
+  comparisons whose runs are all driver-verified.
+- **Representation:** the variant's 200k full-split evaluation (seed 0) is compared with the full method's own 200k
+  evaluation `fulleval-ls-a200-m3d-seed0-<task>-200k`, on all 32 metrics, using the prospective reporting margins
+  (SHA-256 `5fadd04f…`) and their readers.
+- **RL:** last-5 success on training cameras, held-out cameras and trajectories, seeds 1000-1002, against the
+  full-method reference on the same seeds. Margin = max(0.10, 2 x SE of the difference), the RL rule adopted on
+  2026-10-09. No separate Stage 2 RL margin was registered, so that existing rule is applied unchanged. Training-camera
+  success is its decision quantity; held-out and trajectory success are reported as context.
+- **Representation, metrics beyond margin (worse / better):**
+  - pure no-InfoNCE: hammer 21/0, pick-place 25/1.
+    - Retrieval collapses: trajectory 0.815 -> 0.414 (hammer) and 0.865 -> 0.404 (pick-place); training cameras
+      0.955 -> 0.733 and 0.942 -> 0.658.
+    - Object position R², trajectory: 0.936 -> 0.387 and 0.877 -> 0.486.
+    - PSNR drops by 2.3 and 2.9 dB.
+  - no-motion: hammer 15/0, pick-place 23/0.
+    - Mostly motion metrics: relative EPE 0.248 -> 0.506 and 0.224 -> 0.574; EPE 6.5 -> 14.2 mm and
+      5.8 -> 15.9 mm; trajectory hand-velocity R² 0.854 -> 0.625 and 0.879 -> 0.652.
+    - Hammer retrieval and hand-position R² are within margin; on pick-place they fall by 0.03-0.05.
+  - T=1: hammer 24/0, pick-place 22/1. Motion is undefined by construction (relative EPE 1.000; the motion loss is
+    off). Velocity R², trajectory: 0.854 -> 0.355 and 0.879 -> 0.200. Trajectory retrieval -0.07 and -0.06.
+  - single-group: hammer 6/0 (utilisation 0.617 -> 0.429, hidden fraction +0.063, dynamic Chamfer +18 %, held-out
+    retrieval -0.059). Pick-place: evaluation not yet admitted.
+- **RL, complete: no-motion vs full, hammer (seeds 1000-1002):**
+  - training cameras 0.967 [0.935, 0.990, 0.977] vs 0.935 [0.962, 0.883, 0.960]: +0.032, margin 0.100, within margin;
+  - held-out cameras 0.132 vs 0.149: -0.017, margin 0.104, within;
+  - trajectories 0.980 vs 0.882: +0.098, margin 0.100, within (borderline).
+  - The other RL comparisons wait for seed 1002 and for the single-group pick-place seeds.
+- Single-seed representation results; the frozen method does not change.
+- Process note: at 04:55 a second watcher was started with a trailing `&` (untracked), contrary to the watcher rule.
+  I stopped it (pid 304423) after 11 s. No registry event occurred in that window; one tracked watcher remains.
+
+### 2026-10-15 05:08 — Stage 2 RL: pure no-InfoNCE vs full method, hammer, complete (attribution only)
+- Report `runs/setup/stage2-report-20261015-050839.json`; same rule as the 04:57 entry.
+- Last-5 success, seeds 1000-1002, full method vs pure no-InfoNCE:
+  - training cameras: 0.935 [0.962, 0.883, 0.960] vs 0.575 [0.377, 0.722, 0.627]; -0.360, margin 0.212, **worse**;
+  - held-out cameras: 0.149 vs 0.045; -0.104, margin 0.100, **worse**;
+  - trajectories: 0.882 vs 0.203; -0.678, margin 0.109, **worse**.
+- This matches the representation result: trajectory retrieval 0.815 -> 0.414 and object position R² 0.936 -> 0.387.
+  Removing the InfoNCE invariance term costs RL success on every camera condition on hammer. The frozen method does
+  not change.
+
+### 2026-10-15 05:14 — Stage 2 RL: T=1 vs full method, hammer, complete (attribution only)
+- Report `runs/setup/stage2-report-20261015-051450.json`; same rule as the 04:57 entry.
+- Last-5 success, seeds 1000-1002, full method vs T=1:
+  - training cameras: 0.935 vs 0.933 [0.842, 0.965, 0.993]; -0.002, margin 0.106, within margin;
+  - held-out cameras: 0.149 vs 0.066; -0.083, margin 0.100, within;
+  - trajectories: 0.882 vs 0.907; +0.025, margin 0.148, within.
+- On hammer RL the single-frame encoder is indistinguishable from the full method within margin, although its motion
+  and velocity representation metrics are far worse (velocity R² trajectory 0.854 -> 0.355). Hammer RL success does
+  not resolve the motion/temporal component; pick-place comparisons follow.
+
+### 2026-10-15 05:31 — Stage 2 RL: single-group vs full method, hammer, complete; all four hammer arms done
+- Report `runs/setup/stage2-report-20261015-053153.json`; same rule as the 04:57 entry.
+- Last-5 success, seeds 1000-1002, full method vs single-group:
+  - training cameras: 0.935 vs 0.901 [0.788, 0.932, 0.982]; -0.034, margin 0.127, within margin;
+  - held-out cameras: 0.149 vs 0.057; -0.092, margin 0.100, within;
+  - trajectories: 0.882 vs 0.890; +0.008, margin 0.103, within.
+- Hammer RL summary over all four arms: only pure no-InfoNCE is worse beyond margin (training cameras -0.360,
+  held-out -0.104, trajectories -0.678). No-motion, T=1 and single-group are within margin on all three measures.
+- Context: held-out-camera success is low for every arm, 0.045-0.149 against 0.88-0.98 on trajectories. All four
+  ablations are below the full method on held-out cameras (-0.017 to -0.104), but only no-InfoNCE beyond margin.
+
+### 2026-10-15 08:20 — SinCro/ReViWo RL complete (48/48 runs); SinCro stick-push s2002 failed to learn (checked)
+- With `s4-drm-sincro-stick-push-s2002` (closed out after its evaluator synced 100/100 points), all SinCro and ReViWo
+  DrM runs are finished: 8 tasks x 3 seeds x 2 methods.
+- SinCro stick-push s2002, last-5: training cameras 0.017, held-out 0.005, trajectories 0.010. Seeds 2000 and 2001
+  reached 0.822 and 0.922. I checked it as a possible pipeline fault; it is a genuine DrM failure to learn:
+  - same verified encoder export as s2001 (`runs/s4-sincro-stick-push/encoder.pt`);
+  - 1,000,000 steps, completed, 100 evaluation points, no non-finite values;
+  - the actor dormant ratio was already 0.386 at 11k and stayed at 0.17-0.25 (s2001: 0.004-0.049), and training
+    return stayed at about 3-9;
+  - DrM's perturbation engaged (factor 0.51 at the end) without recovery; evaluation success peaked at 0.17 and was
+    0 at most points.
+- This is the same failure mode as ReViWo stick-push s2001. Recorded as is: no rerun, no seed change, baseline
+  hyperparameters unchanged. It enters the seed mean.
+
+### 2026-10-15 08:41 — Final in-domain comparison: ours vs SinCro, ReViWo, CNN (pre-registered protocol)
+- Final Stage 3 is complete: 24/24 runs (8 tasks x seeds 2000-2002, 1M agent steps; driver closeouts present).
+- Report `runs/setup/final-comparison-20261015-084143.json` from `runs/setup/tools/final_comparison.py`, following
+  `docs/RL_PROTOCOL.md` "Reported metrics":
+  - final success (last evaluation, 1M) and success AUC (mean over 100 points);
+  - training cameras, held-out cameras and trajectories reported separately;
+  - per task: mean and 95 % bootstrap CI over the three seeds;
+  - aggregate: IQM and probability of improvement (rliable definitions implemented without new dependencies),
+    stratified bootstrap, 10,000 resamples, seed 0.
+- Every run's input is verified: final.json at 1M, evaluations at exactly 10k..1M, closeout record, eval.jsonl
+  SHA-256 recorded. Methods: ours (frozen C + D0 + M3D, 200k), SinCro, ReViWo, CNN. SNeRL, DynaMo and 3D-MVP have no
+  runs (upstream execution permission-blocked).
+- Caveats carried with the data:
+  - CNN pick-place s2000 was OOM-resumed at 650k;
+  - CNN bin-picking s2000 is attempt r4;
+  - two baseline seeds collapsed (ReViWo stick-push s2001, SinCro stick-push s2002) and are included as recorded.
+- Aggregate IQM [95 % CI], ours / SinCro / ReViWo / CNN:
+
+| condition | ours | SinCro | ReViWo | CNN | P(ours > SinCro / ReViWo / CNN) |
+|---|---|---|---|---|---|
+| training cameras, final | 0.76 [0.67, 0.81] | 0.44 [0.34, 0.53] | 0.31 [0.22, 0.40] | 0.72 [0.66, 0.76] | 0.82 / 0.94 / 0.49 [0.36, 0.62] |
+| training cameras, AUC | 0.51 [0.47, 0.56] | 0.25 | 0.26 | 0.41 [0.36, 0.45] | 0.83 / 0.92 / 0.67 [0.58, 0.75] |
+| held-out cameras, final | 0.13 [0.11, 0.16] | 0.00 | 0.00 | 0.00 [0.00, 0.01] | 0.88 / 0.86 / 0.86 [0.82, 0.88] |
+| held-out cameras, AUC | 0.10 [0.10, 0.11] | 0.00 | 0.01 | 0.01 | 0.90 / 0.92 / 0.92 [0.84, 0.99] |
+| trajectories, final | 0.72 [0.65, 0.78] | 0.10 | 0.20 | 0.76 [0.72, 0.81] | 0.92 / 0.97 / 0.38 [0.26, 0.48] |
+| trajectories, AUC | 0.51 [0.47, 0.55] | 0.09 | 0.17 | 0.44 [0.40, 0.49] | 0.93 / 0.97 / 0.60 [0.49, 0.71] |
+
+- **Reading (report only; no method decision follows from it):**
+  - Against the two frozen pretrained baselines, ours is ahead on every condition; every probability of improvement
+    is >= 0.82 and every CI excludes 0.5.
+  - Against the end-to-end CNN:
+    - training-camera final success is level, P = 0.49;
+    - ours is ahead in sample efficiency (training AUC, P = 0.67, CI above 0.5);
+    - ours is clearly ahead on held-out cameras, where every baseline is near zero;
+    - CNN is ahead on trajectory final success (P = 0.38, CI below 0.5).
+  - Per task, CNN leads on peg-insert-side and coffee-push, ours on hammer and peg-unplug-side.
+  - Held-out-camera success is low for every method; ours reaches 0.41 at most (door-open).
+
+### 2026-10-15 09:28 — Full-split evaluation admission footprint: measured 8.00 GB PSS, reserve 10.0 GB
+- The singlegroup pick-place full-split evaluation (admitted 09:23, exit 0 at 09:27) peaked at 8.00 GB session PSS,
+  sampled every 5 s over the whole run.
+- The Stage 2 driver now reserves 10.0 GB (+25 %) per `scripts/evaluate.py` job instead of the declared 12 GiB,
+  under the measured-footprint admission rule. Details and backup in RESULTS.md.
+
+### 2026-10-15 09:28 — Stage 2: T=1 vs full method, pick-place RL complete; single-group pick-place representation
+- Report `runs/setup/stage2-report-20261015-092828.json`; same rules as the 04:57 entry.
+- T=1 vs full, pick-place, seeds 1000-1002, last-5:
+  - training cameras: 0.664 [0.703, 0.605, 0.683] vs 0.463 [0.380, 0.340, 0.668]; +0.201, margin 0.215, within;
+  - held-out cameras: 0.025 vs 0.011; +0.014, margin 0.100, within;
+  - trajectories: 0.612 vs 0.423; +0.188, margin 0.164, **better**.
+  - The single-frame encoder is not worse on pick-place RL and is better on moving-camera trajectories, although its
+    motion representation is undefined by construction (relative EPE 1.0). The full-method pick-place reference
+    seeds vary (0.34-0.67), which widens the margin.
+- Single-group vs full, pick-place representation (200k, seed 0): 14 of 32 metrics worse beyond margin, 1 better.
+  - Worse: PSNR -0.6 dB; utilisation 0.655 -> 0.489; dynamic Chamfer +131 %; relative EPE 0.224 -> 0.277.
+  - Better: centre Chamfer -7 %.
+  - Retrieval and position/velocity R² stay within margin. Single-group pick-place RL waits for seed 1002.
+
+### 2026-10-15 09:39 — Crop follow-up step 1 report: crop vs base at 100k, re-evaluated (M2D era, single seed)
+- Report `runs/setup/crop-reeval-report-20261015.json`; all four re-evaluations driver-verified, with source
+  checkpoints unchanged.
+- Margins: Stage 2 reporting margins (S2) for every metric; S1 margins where defined (trajectory retrieval, trajectory
+  hand-position R², trajectory hand-velocity R² at s6, CD-render).
+- Re-evaluated values match the 10-09 table, e.g. hammer trajectory retrieval 0.33/0.37 and trajectory hand-position
+  R² 0.48/0.82.
+- **Hammer, crop - base:**
+  - better beyond both margins: trajectory retrieval +0.041; trajectory hand-position R² +0.343; trajectory
+    hand-velocity R² +0.190;
+  - better beyond S2 (no S1 margin): object position R² trajectory +0.203; near hand-velocity R² +0.119;
+  - worse beyond S2: training-camera retrieval -0.138; near retrieval -0.035;
+  - within noise: hand-position R² train/near, hand-velocity R² train, CD-render -6.1 %.
+- **Pick-place, crop - base:**
+  - better beyond both: trajectory hand-position R² +0.099; trajectory hand-velocity R² +0.167;
+  - better beyond S2: object position R² trajectory +0.178; hand-velocity R² train +0.071 and near +0.112;
+  - worse beyond S2: training-camera retrieval -0.034; near retrieval -0.035; CD-render +15.3 % (S2 margin 5 %;
+    within the S1 margin of 19.7 %);
+  - within noise: trajectory retrieval, hand-position R² train/near.
+- **Reading:** crop consistently improves linear position/velocity decoding from moving-camera (trajectory) views
+  and object position. It lowers retrieval among training and near cameras on both tasks. Its trajectory-retrieval
+  effect is small (+0.04 hammer, -0.01 pick-place).
+- Caveats: the margins were measured on later configurations (S2: the M3D seed pair; S1: the C seed pair), so they
+  approximate this M2D configuration's seed noise. Retrieval differences of 0.03-0.04 sit at the floor margin.
+  Report only; the Stage 2 crop variants test crop on the frozen method.
+
+### 2026-10-15 09:58 — Stage 2 pick-place RL: pure no-InfoNCE and no-motion complete; crop pretrains started
+- Reports `runs/setup/stage2-report-20261015-095819.json` and `-095837.json`; same rules as the 04:57 entry.
+- **Pure no-InfoNCE vs full, pick-place** (last-5, seeds 1000-1002):
+  - training cameras 0.012 [0.007, 0.013, 0.015] vs 0.463: -0.451, margin 0.207, **worse**;
+  - held-out cameras 0.006 vs 0.011: within;
+  - trajectories 0.015 vs 0.423: -0.408, margin 0.111, **worse**.
+  - Without InfoNCE, pick-place is not learned at all, matching the hammer result.
+- **No-motion vs full, pick-place:** training cameras 0.433 [0.517, 0.222, 0.560] vs 0.463 (-0.030, margin 0.297),
+  held-out 0.006 vs 0.011, trajectories 0.412 vs 0.423. All within margin; the margins are wide because both arms vary
+  across seeds.
+- **Crop variants** (middle rank, both ordering gates honoured): `s2ab-crop-seed0-hammer` and
+  `s2ab-crop-seed0-pick-place` admitted after the last original Stage 2 RL job; `s2ab-cropnosynth-seed0-hammer`
+  admitted at 09:58. They train normally (crop runs at step ~5k at 09:58). `s2ab-cropnosynth-seed0-pick-place` follows
+  when headroom allows; the pretrain-only variants stay gated until it is admitted.
+
+### 2026-10-15 10:24 — Stage 2 RL attribution complete (30/30 runs, 8 comparisons); crop pretrains all running
+- Report `runs/setup/stage2-report-20261015-102432.json`. Single-group vs full, pick-place, last-5:
+  - training cameras 0.546 [0.522, 0.547, 0.570] vs 0.463: +0.083, margin 0.209, within;
+  - held-out cameras 0.008 vs 0.011: within;
+  - trajectories 0.492 vs 0.423: +0.068, margin 0.129, within.
+- Summary, last-5 success vs the full method (seeds 1000-1002; rule max(0.10, 2 SE); verdict for training cameras /
+  held-out cameras / trajectories):
+
+| arm | hammer | pick-place |
+|---|---|---|
+| pure no-InfoNCE | **worse / worse / worse** (0.575 vs 0.935 training cameras) | **worse** / within / **worse** (0.012 vs 0.463) |
+| no-motion | within / within / within (0.967) | within / within / within (0.433) |
+| T=1 | within / within / within (0.933) | within / within / **better** (0.664; trajectories 0.612 vs 0.423) |
+| single-group | within / within / within (0.901) | within / within / within (0.546) |
+
+- **Reading:**
+  - Only the InfoNCE invariance term matters for RL on the development tasks: removing it is worse beyond margin on
+    both tasks.
+  - Removing motion supervision, temporal input (T=1) or the scene/dynamic split is not detectably worse for RL. T=1
+    is better on pick-place trajectories. These components do show in representation metrics.
+  - Held-out-camera success is near zero on pick-place for every arm, so it cannot separate the arms there.
+- The 10 representation-only variants report as their pretrains finish (12 pretrain-only jobs; their gate opened
+  10:24, once all four crop pretrains were admitted). Attribution only; the frozen method does not change.
+
+### 2026-10-15 11:15 — Page-cache eviction extended to finished RL runs (charge 120.1 -> 84.9 GB)
+- With only the four crop pretrains running, the local charge was 119.7 GB: 91.6 GB file cache (63.9 GB inactive),
+  24.8 GB anon, 14.9 GB shmem. Admission headroom was 7.8 GB, so none of the 12 pretrain-only Stage 2 variants
+  (10.8 GB each) could be admitted.
+- fincore attribution of the cache:
+  - datasets 34.9 GB (in active use; kept);
+  - policy snapshots of finished RL runs ~21 GB (100 x 13 MB per run, read only by their evaluator);
+  - saved replays of finished RL runs 12.9 GB;
+  - checkpoints ~2.8 GB.
+- `runs/setup/tools/evict_partial_cache.py` (the 15-min loop) gained a second section. For every run whose trainer and
+  evaluation companion are both done in the registry and that has `final.json`, it applies POSIX_FADV_DONTNEED to the
+  files in `snapshots/` and `replay/`.
+  - Files are neither modified nor deleted.
+  - Datasets, active runs and pretraining checkpoints are untouched.
+  - The previous version is kept as `evict_partial_cache.before-finished-rl-20261015.py`.
+- First run (11:15): 189 finished RL runs, 4,700 files; charge 120.1 -> 84.9 GB. The cap rule is unchanged: the full
+  charge still counts, and only clean, unused cache is released.
+
+### 2026-10-15 19:56 — Planned local shutdown (user decision, hardware update): Phase 1 plan in effect
+- Deadline: every local process of ours stopped by 09:00 KST on 10-16 (target 08:45). The remote is not shut down.
+- **Local admission hold.** `runs/setup/stage2-admission-hold.json` is read by the Stage 2 driver (previous driver
+  kept as `stage2_local_driver.before-shutdown-hold-20261015.py`).
+  - Only the 8 crop full-split evaluations and exports may be admitted, and nothing after 07:15.
+  - The 8 never-started pretrain-only variants and all 12 crop DrM pairs stay registered for the next session.
+  - Closeouts continue.
+- **Running pretrains, at about 8k steps/h each with 8 sharing GPUs 4/5:**
+  - `s2ab-crop-seed0-hammer` finishes around 06:30, then its eval and export;
+  - `s2ab-crop-seed0-pick-place` (projected around 07:30-07:45) is kept only if it reaches 200k by 07:50;
+  - all others get a lossless checkpoint pause, armed around 06:45, each at its next 10k boundary.
+  - `pause_pretrain_at_checkpoint.py` gained `--reason`. Pause events now carry `intentional_stop: true` and the
+    checkpoint step/hash. The reducer in `scripts/jobs.py` still counts the following exit as one failure, which is
+    still within max_restarts.
+- **Remote:** all registered remote work is finished (final 24/24, SinCro/ReViWo 48/48, CNN 24/24, exports). The only
+  pending remote jobs are the 8 context-only speculative-300k jobs, which the freeze excludes. SNeRL/DynaMo/3D-MVP are
+  permission-blocked. Stage 2 and crop variants must stay on the local reference host, so nothing moves to the
+  remote. All 269 remote job results are synced and verified; W&B has 243 runs uploaded, and
+  `s3-m3d-seed0-peg-unplug-side-200k` is retried in the final pass.
+
+### 2026-10-15 20:00 — RL reporting standard (success and return: last-5, final, AUC) and Stage 2 diagnosis
+- Tool `runs/setup/tools/rl_reporting.py`; report `runs/setup/rl-report-20261015-200032.json` (per run, per task, per
+  arm). It covers 96 final-comparison runs (ours/SinCro/ReViWo/CNN x 8 tasks x seeds 2000-2002) and 30 Stage 2 runs.
+- Aggregate returns are plain means over camera paths, the same convention as the stored aggregate successes
+  (asserted). Returns are task-scaled, so they are reported per task only; IQMs are for success.
+- **Final comparison, IQM of training-camera success** (last-5 / final / AUC):
+  - ours 0.76 / 0.76 / 0.51; SinCro 0.44 / 0.44 / 0.25; ReViWo 0.39 / 0.31 / 0.26; CNN 0.72 / 0.72 / 0.41.
+  - Held-out: ours 0.13 / 0.13 / 0.10; every baseline <= 0.01.
+  - Trajectories: ours 0.72 / 0.72 / 0.51; CNN 0.77 / 0.76 / 0.44; SinCro 0.10; ReViWo 0.20-0.23.
+- **Final comparison, training-camera returns, per task (last-5):**
+  - ours highest on hammer (1782; ReViWo 1438, CNN 1290) and bin-picking (1155; CNN 1078, SinCro 1052);
+  - CNN highest on coffee-push (984 vs ours 141), peg-insert-side (1077 vs 475), peg-unplug-side (1418 vs 999),
+    pick-place (920 vs 782), and narrowly on stick-push (1782 vs 1704) and door-open (1872 vs SinCro 1834, ours 1796).
+  - Return rankings broadly agree with the success rankings per task.
+- **Stage 2 seed means, training-camera success and return** (last-5 / final / AUC): the arm ordering under the
+  success metrics holds for returns. Pure no-InfoNCE: hammer return 1336 vs full 1857; pick-place 25 vs 689. All
+  other arms are within roughly ±10 % of full on hammer return. T=1 is higher on pick-place: 878 vs 689.
+- **Stage 2 fairness checks** (all 30 runs):
+  - resolved RL configs differ from the full-method run of the same task and seed only in `vision.export_path`;
+  - all 30 were run locally at commit 6a48200;
+  - 240 evaluation episodes at every one of the 100 points;
+  - encoder exports differ from the full method only in `num_frames` (3 -> 1) for T=1, which is the intended
+    difference; T=1 still feeds the 3-frame stack to the policy;
+  - three full-method reference runs were checkpoint-paused at 50k on 10-13 and resumed losslessly;
+  - median throughput 50-58 fps per arm.
+  - No asymmetry beyond the intended encoder difference was found.
+
+### 2026-10-15 20:09 — User decision: host-neutral experiment placement (supersedes earlier host criteria)
+- The local and remote servers are equivalent experiment machines. Removed: the same-host rule for compared arms,
+  cross-host equivalence gates, checkpoint-resume comparison gates for migration, and rules assigning experiment
+  types to particular hosts. Any registered job may run on either host; checkpoint continuation may change hosts;
+  comparison arms may be split across hosts. Existing references remain valid regardless of host.
+- Host provenance is still recorded for every run. The frozen method, prospective registration of comparison rules,
+  seed/reporting policies and the success **and return**, last-5/final/AUC standard are unchanged.
+- Shared-server safeguards remain: authorized guarded GPU UUIDs only, remote writes only under `~/kaist/sunho`, no
+  host/VPN actions, local <=150 GB RAM, remote <=1 TB RAM and the SSD floor. Existing security/credential, isolated
+  runtime and no-foreign-process restrictions remain. Upstream execution permission blocks are not lifted.
+- The user delegates job selection, placement, registration and launch without further approval; new sets must
+  briefly record their purpose and reporting plan here. Avoid duplicate/low-value runs. Local shutdown is unchanged:
+  dispatcher stops by 08:45 KST on 10-16; remote work during downtime must be launched beforehand.
+- Immediate placement plan: the eight never-started Stage 2 pretrain-only jobs (no lambda-dyn, no coverage,
+  misscaled-none, misscaled-scale; hammer/pick-place) and their full-split evaluations move to the remote. Existing
+  eight local pretrains continue without interruption. Crop downstream work may use the remote once its verified
+  encoder exists. Original scientific registrations/margins remain immutable; a separate placement record captures
+  host/path/resource changes only. These are existing attribution questions, not new comparisons or method tuning.
+
+### 2026-10-15 20:40 — Host-neutral execution overlay, shutdown accounting and handoff draft
+- Published `runs/setup/stage2-placement-20261015.json`:40 existing jobs (8 pretrains,8 full evaluations,12 crop DrM
+  trainers +12 companions). Only host/runtime paths/reservations/result requirements change, not model configs,
+  seeds, lengths, registered margins or reporting. The original declarations remain embedded for exact comparison.
+- Initial first remote launch was correctly refused because `config.yaml` is not an admissible numerical completion
+  artifact. Corrected all40 requirements, validated their exact remote spec shapes, retained v1 and amendment
+  provenance. Corrected the amendment's stale queue hash explicitly; effective jobs stayed unchanged. Current hash
+  `592c35277ae71635add22a46083a7d593cb5113f9478b4688b9f24827f07367c`.
+- Two ambiguous launches were reconciled only after >=600s and two confirmed direct checks of absent deterministic
+  containers AND absent run directories, with an existing accepted-release directory as positive control. First
+  reconciliation invocation timed out waiting for a held registry lock; no reset was recorded by that invocation.
+  The longer tracked invocation succeeded. No outage-driven reset, remote container deletion or failure refund.
+- Integrated/pushed scheduler-only `7a14773` after763/0/0/0 full native results and214 verified source fingerprints.
+  Handles intentional-stop accounting and the daemon exit-before-hash race; proven never-launched reconciliation
+  alone can release a stale job-definition fingerprint. No baseline WIP merged and no healthy trainer stopped.
+- The permission layer denied reloading the old daemon PID2819571; left untouched, HOLD retained. This requires
+  renewed permission for the final shutdown. New scoped driver processes already load the corrected reducer.
+- `rl-report-20261015-203425.json` completes per-task bootstrap intervals for success AND return, all three summaries;
+  no point estimate or aggregate success IQM changes. Reporting-only, no comparison-rule or frozen-method changes.
+- Wrote `docs/HANDOFF.md` and linked it from PROGRESS: standalone goals, code map, precise job families, resource/
+  security rules, latest host-neutral decision, remote runtime/access/sync, WIP refs, restart commands and pitfalls.
+  It remains a live draft until actual final checkpoint/stop verification is appended on10-16.
+
+### 2026-10-15 20:58 — Both servers filled; verified inventory and handoff preservation
+- Directly verified all eight actual remote containers, finite fresh metrics and authorized UUID placement at20:52;
+  local eight runs also healthy, full cgroup118.8GB. Exact IDs, PID/container attempts, progress, resource readings
+  and explicit ETA assumptions: `runs/setup/servers-filled-20261015.json`. No new scientific comparison is registered.
+- Local recent45-minute wall-clock training ETAs: crop hammer05:54/pick06:50, cropnosynth hammer07:30/pick08:24;
+  four other ablations09:22–10:55. These are uninterrupted training estimates, not completed closeout or deadline
+  extensions. Reassess06:40 and pause anything without time to finish training+closeout before~08:00.
+- Remote measured pre-first-validation step times imply08:12–09:33 training-only;25% planning overhead gives
+  11:03–12:43 on10-16, not a statistical confidence bound. Additional RL sharing may delay these times further.
+  Two pretrains/GPU leave room for at most four crop DrM trainer/companion pairs alongside; pending pairs cannot
+  start while the local dispatcher is stopped. Only verified exports release them; no promise all12 launch tonight.
+- Third refused attempt (misscaled-scale pick) reconciled after646s and two strong absence/positive-control checks;
+  attempt2 actually started. Brief~2-minute SSH interruption recovered, never used as evidence for a restart.
+  Earlier non-config refusal causes remain unestablished; no host/VPN fix or foreign-process action was attempted.
+- Diagnostic-only `c5a7571` integrated/pushed after764/0/0/0 full native suite (310.65s),214 commit fingerprints verified.
+  Bounded redacted launcher evidence is now retained; transport-unknown/reconciliation behavior unchanged. Latest
+  `docs/tests.json` and `runs/setup/native-tests-launch-diagnostics-20261015.json` preserve the proof; accepted
+  remote training stays226d8ae and the immutable image. No unaccepted baseline WIP merged.
+- HANDOFF prepared/linked with exact families, decisions, restart commands and known issues. Selected queue,
+  append-only registry snapshot, registrations/manifests, reports, accepted runtime proof and operational tools
+  are being preserved explicitly; no checkpoints/replays/access credentials or bulk `runs/` staging.
+- Local HOLD description updated to the current shutdown/resource rules, removing superseded host-equivalence/
+  migration-comparison wording while retaining the hold itself. Scheduler PID2819571 remains untouched after its
+  denied stop; renewed permission is still needed for all-local shutdown. No automatic deadline backstop is claimed.

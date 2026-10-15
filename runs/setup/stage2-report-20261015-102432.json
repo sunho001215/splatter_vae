@@ -1,0 +1,2743 @@
+{
+  "recorded_local": "2026-10-15T10:24:32.793915+09:00",
+  "margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+  "purpose": "attribution only; the frozen method does not change",
+  "comparisons": {
+    "noinfonce/hammer": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-noinfonce-seed0-hammer-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-hammer-200k",
+        "reference_summary_sha256": "581c8e045ba41346ddb83794319bca28e0ca48ee147cf7c418dc3fc91f9f4ae4",
+        "metrics": {
+          "psnr": {
+            "variant": 26.67480489389183,
+            "reference": 28.98215959460358,
+            "delta": -2.3073547007117483,
+            "relative": false,
+            "margin": 0.40960929813359925,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 24.76532849330283,
+            "reference": 26.511498102301577,
+            "delta": -1.7461696089987448,
+            "relative": false,
+            "margin": 0.6052634620680202,
+            "verdict": "worse"
+          },
+          "psnr_traj": {
+            "variant": 21.973976975563776,
+            "reference": 23.101626389954944,
+            "delta": -1.1276494143911684,
+            "relative": false,
+            "margin": 0.2708660579782425,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.4136284722222222,
+            "reference": 0.8149956597222222,
+            "delta": -0.4013671875,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "r2_pos_traj": {
+            "variant": 0.7231373164227886,
+            "reference": 0.9164726705880897,
+            "delta": -0.19333535416530112,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_traj": {
+            "variant": 0.7246607137889687,
+            "reference": 0.8540527190105077,
+            "delta": -0.12939200522153904,
+            "relative": false,
+            "margin": 0.05947470571628677,
+            "verdict": "worse"
+          },
+          "r2_vel_train": {
+            "variant": 0.9389641950083958,
+            "reference": 0.9114940449733965,
+            "delta": 0.027470150034999308,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "rel_epe": {
+            "variant": 0.3688752228135241,
+            "reference": 0.2476061505347698,
+            "delta": 0.12126907227875428,
+            "relative": false,
+            "margin": 0.03541882841143085,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 0.6404733685389303,
+            "reference": 0.41941907278203466,
+            "delta": 0.22105429575689567,
+            "relative": false,
+            "margin": 0.04201427724956208,
+            "verdict": "worse"
+          },
+          "relepe_bin2": {
+            "variant": 0.44700027189505454,
+            "reference": 0.3233931223658201,
+            "delta": 0.12360714952923446,
+            "relative": false,
+            "margin": 0.03959520174352965,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 0.224638110853818,
+            "reference": 0.13704125268781817,
+            "delta": 0.08759685816599982,
+            "relative": false,
+            "margin": 0.030245983714513258,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 10.269233634376949,
+            "reference": 6.481956657615391,
+            "delta": 3.787276976761558,
+            "relative": false,
+            "margin": 1.407105495779609,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.9592219553865272,
+            "reference": 0.967017375075521,
+            "delta": -0.007795419688993777,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "utilisation": {
+            "variant": 0.6478902253731624,
+            "reference": 0.6171690846931919,
+            "delta": 0.03072114067997056,
+            "relative": false,
+            "margin": 0.04217046076978004,
+            "verdict": "within margin"
+          },
+          "hidden": {
+            "variant": 0.8251454916906685,
+            "reference": 0.8029880345913047,
+            "delta": 0.022157457099363786,
+            "relative": false,
+            "margin": 0.038434334393507186,
+            "verdict": "within margin"
+          },
+          "floater": {
+            "variant": 0.025026650269717392,
+            "reference": 0.020105610751065883,
+            "delta": 0.004921039518651509,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.02316507580690086,
+            "reference": 0.021632648073136806,
+            "delta": 0.07083865685713286,
+            "relative": true,
+            "margin": 0.06551006133159368,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.1549738310277462,
+            "reference": 0.15448031201958656,
+            "delta": 0.003194704889624145,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.21043103747069836,
+            "reference": 0.20789469592273235,
+            "delta": 0.012200126302927217,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "psnr_near": {
+            "variant": 23.160102264116652,
+            "reference": 24.566875832660166,
+            "delta": -1.4067735685435139,
+            "relative": false,
+            "margin": 0.4772341180600783,
+            "verdict": "worse"
+          },
+          "psnr_near_covered": {
+            "variant": 26.626522302117543,
+            "reference": 28.87877203337112,
+            "delta": -2.2522497312535776,
+            "relative": false,
+            "margin": 0.4906556555757007,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 25.958237313150647,
+            "reference": 27.996933693971695,
+            "delta": -2.0386963808210474,
+            "relative": false,
+            "margin": 0.486388946153248,
+            "verdict": "worse"
+          },
+          "psnr_heldout": {
+            "variant": 16.235121210954876,
+            "reference": 16.574522682782213,
+            "delta": -0.3394014718273368,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_heldout_covered": {
+            "variant": 21.630087881512363,
+            "reference": 22.70852411381959,
+            "delta": -1.0784362323072259,
+            "relative": false,
+            "margin": 0.36774117182830324,
+            "verdict": "worse"
+          },
+          "retrieval_train": {
+            "variant": 0.7333333333333334,
+            "reference": 0.9546874999999999,
+            "delta": -0.22135416666666652,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_near": {
+            "variant": 0.5584852430555556,
+            "reference": 0.8605685763888888,
+            "delta": -0.30208333333333326,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_heldout": {
+            "variant": 0.03450520833333333,
+            "reference": 0.23046875,
+            "delta": -0.19596354166666669,
+            "relative": false,
+            "margin": 0.05436197916666663,
+            "verdict": "worse"
+          },
+          "r2_pos_train": {
+            "variant": 0.9900772374725613,
+            "reference": 0.9740677262963712,
+            "delta": 0.016009511176190094,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9454751615518555,
+            "reference": 0.95130362183956,
+            "delta": -0.005828460287704451,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.3866002202737986,
+            "reference": 0.9356641606026705,
+            "delta": -0.549063940328872,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_near": {
+            "variant": 0.868542327014839,
+            "reference": 0.8861436715571908,
+            "delta": -0.017601344542351738,
+            "relative": false,
+            "margin": 0.0783806147507643,
+            "verdict": "within margin"
+          },
+          "cd_centers": {
+            "variant": 0.21927644312381744,
+            "reference": 0.216005215421319,
+            "delta": 0.015144207032769419,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-noinfonce-hammer-s1000",
+            "s2rl-full-hammer-s1000"
+          ],
+          "1001": [
+            "s2rl-noinfonce-hammer-s1001",
+            "s2rl-full-hammer-s1001"
+          ],
+          "1002": [
+            "s2rl-noinfonce-hammer-s1002",
+            "s2rl-full-hammer-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.3766666666666667,
+              0.7216666666666667,
+              0.6266666666666667
+            ],
+            "reference_seeds": [
+              0.9616666666666667,
+              0.8833333333333332,
+              0.9600000000000002
+            ],
+            "arm_mean": 0.5750000000000001,
+            "reference_mean": 0.9349999999999999,
+            "delta": -0.3599999999999999,
+            "se_difference": 0.10608347516792475,
+            "margin": 0.2121669503358495,
+            "verdict": "worse"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.0,
+              0.042499999999999996,
+              0.0925
+            ],
+            "reference_seeds": [
+              0.21000000000000002,
+              0.0725,
+              0.16499999999999998
+            ],
+            "arm_mean": 0.045000000000000005,
+            "reference_mean": 0.14916666666666667,
+            "delta": -0.10416666666666666,
+            "se_difference": 0.04850544070285083,
+            "margin": 0.1,
+            "verdict": "worse"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.3,
+              0.16499999999999998,
+              0.14499999999999996
+            ],
+            "reference_seeds": [
+              0.8600000000000001,
+              0.8549999999999999,
+              0.93
+            ],
+            "arm_mean": 0.20333333333333328,
+            "reference_mean": 0.8816666666666667,
+            "delta": -0.6783333333333335,
+            "se_difference": 0.05436502143433365,
+            "margin": 0.1087300428686673,
+            "verdict": "worse"
+          }
+        }
+      }
+    },
+    "noinfonce/pick-place": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-noinfonce-seed0-pick-place-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-pick-place-200k",
+        "reference_summary_sha256": "0136c09936774f8e027bf2c949975a821ed44627c055eef4aa34e928f26f125d",
+        "metrics": {
+          "psnr": {
+            "variant": 25.333200867887925,
+            "reference": 28.23050617628165,
+            "delta": -2.897305308393726,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 16.61996136511677,
+            "reference": 21.661764183952034,
+            "delta": -5.041802818835265,
+            "relative": false,
+            "margin": 0.2209657601908468,
+            "verdict": "worse"
+          },
+          "psnr_traj": {
+            "variant": 21.258244089702593,
+            "reference": 23.077574045720226,
+            "delta": -1.8193299560176328,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.4041883680555556,
+            "reference": 0.8646918402777778,
+            "delta": -0.4605034722222222,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "r2_pos_traj": {
+            "variant": 0.7761388852209078,
+            "reference": 0.9479075678720725,
+            "delta": -0.17176868265116474,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_traj": {
+            "variant": 0.7690936893888995,
+            "reference": 0.8793627052646485,
+            "delta": -0.110269015875749,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_train": {
+            "variant": 0.9383950860306883,
+            "reference": 0.920563526462606,
+            "delta": 0.017831559568082356,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "rel_epe": {
+            "variant": 0.39038320586341596,
+            "reference": 0.22412677578456938,
+            "delta": 0.16625643007884658,
+            "relative": false,
+            "margin": 0.03107224836438227,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 0.5345716346516503,
+            "reference": 0.44984641453976293,
+            "delta": 0.08472522011188732,
+            "relative": false,
+            "margin": 0.16331752727659088,
+            "verdict": "within margin"
+          },
+          "relepe_bin2": {
+            "variant": 0.4300083514176696,
+            "reference": 0.25548933095644,
+            "delta": 0.17451902046122958,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 0.31541500472093664,
+            "reference": 0.13075072484660383,
+            "delta": 0.18466427987433282,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 12.001453579312749,
+            "reference": 5.772509028717995,
+            "delta": 6.228944550594753,
+            "relative": false,
+            "margin": 1.0,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.8693892832659801,
+            "reference": 0.9606174103301802,
+            "delta": -0.09122812706420014,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "utilisation": {
+            "variant": 0.7177396583332996,
+            "reference": 0.6546779093491464,
+            "delta": 0.06306174898415318,
+            "relative": false,
+            "margin": 0.04206836397637548,
+            "verdict": "better"
+          },
+          "hidden": {
+            "variant": 0.8664962185255531,
+            "reference": 0.823299728482107,
+            "delta": 0.04319649004344617,
+            "relative": false,
+            "margin": 0.022924248832025373,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.042945209286032,
+            "reference": 0.020137840274172737,
+            "delta": 0.022807369011859265,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "worse"
+          },
+          "cd_render_traj": {
+            "variant": 0.02343473583459854,
+            "reference": 0.019033360993489623,
+            "delta": 0.23124527731147504,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.17514684796333313,
+            "reference": 0.16538095474243164,
+            "delta": 0.05905089395638763,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.18841711711138487,
+            "reference": 0.11703279986977577,
+            "delta": 0.6099513753498125,
+            "relative": true,
+            "margin": 0.4722541317434684,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 22.608649425228176,
+            "reference": 24.8475588517118,
+            "delta": -2.238909426483623,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_near_covered": {
+            "variant": 25.294533116805475,
+            "reference": 28.165316872108356,
+            "delta": -2.870783755302881,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 24.87619131458609,
+            "reference": 27.30273812970485,
+            "delta": -2.4265468151187584,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_heldout": {
+            "variant": 16.506571185494526,
+            "reference": 16.67173504726367,
+            "delta": -0.16516386176914466,
+            "relative": false,
+            "margin": 0.2744133723717752,
+            "verdict": "within margin"
+          },
+          "psnr_heldout_covered": {
+            "variant": 20.871235791171404,
+            "reference": 22.410296168167676,
+            "delta": -1.5390603769962716,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_train": {
+            "variant": 0.6575520833333333,
+            "reference": 0.9416666666666667,
+            "delta": -0.2841145833333334,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_near": {
+            "variant": 0.5391710069444444,
+            "reference": 0.8859592013888888,
+            "delta": -0.3467881944444444,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_heldout": {
+            "variant": 0.1201171875,
+            "reference": 0.37076822916666663,
+            "delta": -0.25065104166666663,
+            "relative": false,
+            "margin": 0.041015624999999944,
+            "verdict": "worse"
+          },
+          "r2_pos_train": {
+            "variant": 0.9849145954896602,
+            "reference": 0.9858780587148035,
+            "delta": -0.0009634632251432906,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9374742972663423,
+            "reference": 0.971276865699988,
+            "delta": -0.0338025684336456,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.4864516035842103,
+            "reference": 0.8767278114492865,
+            "delta": -0.39027620786507616,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_near": {
+            "variant": 0.8618711345587007,
+            "reference": 0.9018682909883384,
+            "delta": -0.03999715642963775,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_centers": {
+            "variant": 0.23698832467198372,
+            "reference": 0.21823689714074135,
+            "delta": 0.08592235216371114,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-noinfonce-pick-place-s1000",
+            "s2rl-full-pick-place-s1000"
+          ],
+          "1001": [
+            "s2rl-noinfonce-pick-place-s1001",
+            "s2rl-full-pick-place-s1001"
+          ],
+          "1002": [
+            "s2rl-noinfonce-pick-place-s1002",
+            "s2rl-full-pick-place-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.006666666666666666,
+              0.013333333333333332,
+              0.015
+            ],
+            "reference_seeds": [
+              0.38,
+              0.34,
+              0.6683333333333333
+            ],
+            "arm_mean": 0.011666666666666665,
+            "reference_mean": 0.46277777777777773,
+            "delta": -0.4511111111111111,
+            "se_difference": 0.10345572202518856,
+            "margin": 0.20691144405037712,
+            "verdict": "worse"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.0025,
+              0.005,
+              0.01
+            ],
+            "reference_seeds": [
+              0.0025,
+              0.017499999999999998,
+              0.0125
+            ],
+            "arm_mean": 0.005833333333333334,
+            "reference_mean": 0.010833333333333334,
+            "delta": -0.005,
+            "se_difference": 0.0049300664859163465,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.005,
+              0.015000000000000003,
+              0.025
+            ],
+            "reference_seeds": [
+              0.43,
+              0.325,
+              0.5149999999999999
+            ],
+            "arm_mean": 0.015000000000000001,
+            "reference_mean": 0.42333333333333334,
+            "delta": -0.4083333333333333,
+            "se_difference": 0.05525194818083589,
+            "margin": 0.11050389636167178,
+            "verdict": "worse"
+          }
+        }
+      }
+    },
+    "nomotion/hammer": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-nomotion-seed0-hammer-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-hammer-200k",
+        "reference_summary_sha256": "581c8e045ba41346ddb83794319bca28e0ca48ee147cf7c418dc3fc91f9f4ae4",
+        "metrics": {
+          "psnr": {
+            "variant": 28.5213908009453,
+            "reference": 28.98215959460358,
+            "delta": -0.4607687936582785,
+            "relative": false,
+            "margin": 0.40960929813359925,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 26.028934485855657,
+            "reference": 26.511498102301577,
+            "delta": -0.48256361644591905,
+            "relative": false,
+            "margin": 0.6052634620680202,
+            "verdict": "within margin"
+          },
+          "psnr_traj": {
+            "variant": 22.793609845893883,
+            "reference": 23.101626389954944,
+            "delta": -0.3080165440610614,
+            "relative": false,
+            "margin": 0.2708660579782425,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.8151041666666667,
+            "reference": 0.8149956597222222,
+            "delta": 0.0001085069444445308,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "r2_pos_traj": {
+            "variant": 0.928054879970827,
+            "reference": 0.9164726705880897,
+            "delta": 0.011582209382737352,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_traj": {
+            "variant": 0.6247815993957451,
+            "reference": 0.8540527190105077,
+            "delta": -0.22927111961476265,
+            "relative": false,
+            "margin": 0.05947470571628677,
+            "verdict": "worse"
+          },
+          "r2_vel_train": {
+            "variant": 0.7752722141511225,
+            "reference": 0.9114940449733965,
+            "delta": -0.13622183082227401,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "rel_epe": {
+            "variant": 0.506218033807028,
+            "reference": 0.2476061505347698,
+            "delta": 0.2586118832722582,
+            "relative": false,
+            "margin": 0.03541882841143085,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 0.7446013298135579,
+            "reference": 0.41941907278203466,
+            "delta": 0.3251822570315232,
+            "relative": false,
+            "margin": 0.04201427724956208,
+            "verdict": "worse"
+          },
+          "relepe_bin2": {
+            "variant": 0.6465427557457435,
+            "reference": 0.3233931223658201,
+            "delta": 0.3231496333799234,
+            "relative": false,
+            "margin": 0.03959520174352965,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 0.3270384515323178,
+            "reference": 0.13704125268781817,
+            "delta": 0.18999719884449964,
+            "relative": false,
+            "margin": 0.030245983714513258,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 14.167742309401815,
+            "reference": 6.481956657615391,
+            "delta": 7.685785651786424,
+            "relative": false,
+            "margin": 1.407105495779609,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.8710690075726302,
+            "reference": 0.967017375075521,
+            "delta": -0.09594836750289082,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "utilisation": {
+            "variant": 0.5906732361359608,
+            "reference": 0.6171690846931919,
+            "delta": -0.026495848557231083,
+            "relative": false,
+            "margin": 0.04217046076978004,
+            "verdict": "within margin"
+          },
+          "hidden": {
+            "variant": 0.8937793486504857,
+            "reference": 0.8029880345913047,
+            "delta": 0.09079131405918095,
+            "relative": false,
+            "margin": 0.038434334393507186,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.007671566065598472,
+            "reference": 0.020105610751065883,
+            "delta": -0.01243404468546741,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.023774906061589718,
+            "reference": 0.021632648073136806,
+            "delta": 0.09902892984761968,
+            "relative": true,
+            "margin": 0.06551006133159368,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.1615289654582739,
+            "reference": 0.15448031201958656,
+            "delta": 0.045628166764665856,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.22923922166228294,
+            "reference": 0.20789469592273235,
+            "delta": 0.10266989085418343,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 24.089645308425375,
+            "reference": 24.566875832660166,
+            "delta": -0.4772305242347912,
+            "relative": false,
+            "margin": 0.4772341180600783,
+            "verdict": "within margin"
+          },
+          "psnr_near_covered": {
+            "variant": 28.38599671383689,
+            "reference": 28.87877203337112,
+            "delta": -0.4927753195342319,
+            "relative": false,
+            "margin": 0.4906556555757007,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 27.6134509710066,
+            "reference": 27.996933693971695,
+            "delta": -0.3834827229650948,
+            "relative": false,
+            "margin": 0.486388946153248,
+            "verdict": "within margin"
+          },
+          "psnr_heldout": {
+            "variant": 16.42661074870395,
+            "reference": 16.574522682782213,
+            "delta": -0.14791193407826242,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "within margin"
+          },
+          "psnr_heldout_covered": {
+            "variant": 22.559026480887063,
+            "reference": 22.70852411381959,
+            "delta": -0.14949763293252616,
+            "relative": false,
+            "margin": 0.36774117182830324,
+            "verdict": "within margin"
+          },
+          "retrieval_train": {
+            "variant": 0.9559895833333334,
+            "reference": 0.9546874999999999,
+            "delta": 0.0013020833333334814,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_near": {
+            "variant": 0.8462456597222222,
+            "reference": 0.8605685763888888,
+            "delta": -0.01432291666666663,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_heldout": {
+            "variant": 0.2041015625,
+            "reference": 0.23046875,
+            "delta": -0.0263671875,
+            "relative": false,
+            "margin": 0.05436197916666663,
+            "verdict": "within margin"
+          },
+          "r2_pos_train": {
+            "variant": 0.963054272433172,
+            "reference": 0.9740677262963712,
+            "delta": -0.011013453863199185,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9486325273727872,
+            "reference": 0.95130362183956,
+            "delta": -0.0026710944667727166,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.9397771978510576,
+            "reference": 0.9356641606026705,
+            "delta": 0.004113037248387075,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_near": {
+            "variant": 0.7084936234498262,
+            "reference": 0.8861436715571908,
+            "delta": -0.1776500481073645,
+            "relative": false,
+            "margin": 0.0783806147507643,
+            "verdict": "worse"
+          },
+          "cd_centers": {
+            "variant": 0.21845253929495811,
+            "reference": 0.216005215421319,
+            "delta": 0.011329929552235996,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-nomotion-hammer-s1000",
+            "s2rl-full-hammer-s1000"
+          ],
+          "1001": [
+            "s2rl-nomotion-hammer-s1001",
+            "s2rl-full-hammer-s1001"
+          ],
+          "1002": [
+            "s2rl-nomotion-hammer-s1002",
+            "s2rl-full-hammer-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.9349999999999999,
+              0.99,
+              0.9766666666666668
+            ],
+            "reference_seeds": [
+              0.9616666666666667,
+              0.8833333333333332,
+              0.9600000000000002
+            ],
+            "arm_mean": 0.9672222222222221,
+            "reference_mean": 0.9349999999999999,
+            "delta": 0.03222222222222215,
+            "se_difference": 0.03069161625985149,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.07999999999999999,
+              0.1925,
+              0.12500000000000003
+            ],
+            "reference_seeds": [
+              0.21000000000000002,
+              0.0725,
+              0.16499999999999998
+            ],
+            "arm_mean": 0.13249999999999998,
+            "reference_mean": 0.14916666666666667,
+            "delta": -0.01666666666666669,
+            "se_difference": 0.05202830426262656,
+            "margin": 0.10405660852525311,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.9400000000000001,
+              1.0,
+              1.0
+            ],
+            "reference_seeds": [
+              0.8600000000000001,
+              0.8549999999999999,
+              0.93
+            ],
+            "arm_mean": 0.98,
+            "reference_mean": 0.8816666666666667,
+            "delta": 0.09833333333333327,
+            "se_difference": 0.03140240613569463,
+            "margin": 0.1,
+            "verdict": "within margin"
+          }
+        }
+      }
+    },
+    "nomotion/pick-place": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-nomotion-seed0-pick-place-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-pick-place-200k",
+        "reference_summary_sha256": "0136c09936774f8e027bf2c949975a821ed44627c055eef4aa34e928f26f125d",
+        "metrics": {
+          "psnr": {
+            "variant": 27.804927771692775,
+            "reference": 28.23050617628165,
+            "delta": -0.42557840458887597,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 20.583716925600584,
+            "reference": 21.661764183952034,
+            "delta": -1.0780472583514502,
+            "relative": false,
+            "margin": 0.2209657601908468,
+            "verdict": "worse"
+          },
+          "psnr_traj": {
+            "variant": 22.741064918954372,
+            "reference": 23.077574045720226,
+            "delta": -0.3365091267658542,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.8186848958333333,
+            "reference": 0.8646918402777778,
+            "delta": -0.04600694444444453,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "r2_pos_traj": {
+            "variant": 0.9462620803312625,
+            "reference": 0.9479075678720725,
+            "delta": -0.0016454875408100644,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_traj": {
+            "variant": 0.6517090979394362,
+            "reference": 0.8793627052646485,
+            "delta": -0.22765360732521234,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_train": {
+            "variant": 0.745048098519089,
+            "reference": 0.920563526462606,
+            "delta": -0.17551542794351693,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "rel_epe": {
+            "variant": 0.5735310857456336,
+            "reference": 0.22412677578456938,
+            "delta": 0.3494043099610642,
+            "relative": false,
+            "margin": 0.03107224836438227,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 0.8631419803369226,
+            "reference": 0.44984641453976293,
+            "delta": 0.41329556579715965,
+            "relative": false,
+            "margin": 0.16331752727659088,
+            "verdict": "worse"
+          },
+          "relepe_bin2": {
+            "variant": 0.6779381747551286,
+            "reference": 0.25548933095644,
+            "delta": 0.42244884379868863,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 0.4035456202652623,
+            "reference": 0.13075072484660383,
+            "delta": 0.2727948954186585,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 15.851384139607104,
+            "reference": 5.772509028717995,
+            "delta": 10.078875110889108,
+            "relative": false,
+            "margin": 1.0,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.901165487934087,
+            "reference": 0.9606174103301802,
+            "delta": -0.059451922396093204,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "utilisation": {
+            "variant": 0.5600107838674697,
+            "reference": 0.6546779093491464,
+            "delta": -0.09466712548167666,
+            "relative": false,
+            "margin": 0.04206836397637548,
+            "verdict": "worse"
+          },
+          "hidden": {
+            "variant": 0.938892688667248,
+            "reference": 0.823299728482107,
+            "delta": 0.11559296018514098,
+            "relative": false,
+            "margin": 0.022924248832025373,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.005983002879153533,
+            "reference": 0.020137840274172737,
+            "delta": -0.014154837395019205,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.021036447025835514,
+            "reference": 0.019033360993489623,
+            "delta": 0.10524079446772694,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.16698170453310013,
+            "reference": 0.16538095474243164,
+            "delta": 0.009679166462435385,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.25389789789915085,
+            "reference": 0.11703279986977577,
+            "delta": 1.1694593155223751,
+            "relative": true,
+            "margin": 0.4722541317434684,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 24.421119650245707,
+            "reference": 24.8475588517118,
+            "delta": -0.42643920146609204,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_near_covered": {
+            "variant": 27.886319265340425,
+            "reference": 28.165316872108356,
+            "delta": -0.2789976067679305,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 27.14331298629523,
+            "reference": 27.30273812970485,
+            "delta": -0.15942514340962077,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "within margin"
+          },
+          "psnr_heldout": {
+            "variant": 16.566336520424258,
+            "reference": 16.67173504726367,
+            "delta": -0.1053985268394122,
+            "relative": false,
+            "margin": 0.2744133723717752,
+            "verdict": "within margin"
+          },
+          "psnr_heldout_covered": {
+            "variant": 22.125664455488142,
+            "reference": 22.410296168167676,
+            "delta": -0.28463171267953413,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_train": {
+            "variant": 0.9369791666666667,
+            "reference": 0.9416666666666667,
+            "delta": -0.004687499999999956,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_near": {
+            "variant": 0.8550347222222223,
+            "reference": 0.8859592013888888,
+            "delta": -0.03092447916666652,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_heldout": {
+            "variant": 0.32779947916666663,
+            "reference": 0.37076822916666663,
+            "delta": -0.04296875,
+            "relative": false,
+            "margin": 0.041015624999999944,
+            "verdict": "worse"
+          },
+          "r2_pos_train": {
+            "variant": 0.9723129363135415,
+            "reference": 0.9858780587148035,
+            "delta": -0.013565122401261953,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9598267096355202,
+            "reference": 0.971276865699988,
+            "delta": -0.011450156064467754,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.8904377378642605,
+            "reference": 0.8767278114492865,
+            "delta": 0.013709926414974039,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_near": {
+            "variant": 0.7140544052581044,
+            "reference": 0.9018682909883384,
+            "delta": -0.18781388573023405,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_centers": {
+            "variant": 0.24035109765827656,
+            "reference": 0.21823689714074135,
+            "delta": 0.1013311718012273,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-nomotion-pick-place-s1000",
+            "s2rl-full-pick-place-s1000"
+          ],
+          "1001": [
+            "s2rl-nomotion-pick-place-s1001",
+            "s2rl-full-pick-place-s1001"
+          ],
+          "1002": [
+            "s2rl-nomotion-pick-place-s1002",
+            "s2rl-full-pick-place-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.5166666666666666,
+              0.22166666666666668,
+              0.56
+            ],
+            "reference_seeds": [
+              0.38,
+              0.34,
+              0.6683333333333333
+            ],
+            "arm_mean": 0.43277777777777776,
+            "reference_mean": 0.46277777777777773,
+            "delta": -0.02999999999999997,
+            "se_difference": 0.14830732189745408,
+            "margin": 0.29661464379490815,
+            "verdict": "within margin"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.0075000000000000015,
+              0.0025,
+              0.0075000000000000015
+            ],
+            "reference_seeds": [
+              0.0025,
+              0.017499999999999998,
+              0.0125
+            ],
+            "arm_mean": 0.005833333333333334,
+            "reference_mean": 0.010833333333333334,
+            "delta": -0.005,
+            "se_difference": 0.004714045207910317,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.5199999999999999,
+              0.22000000000000003,
+              0.495
+            ],
+            "reference_seeds": [
+              0.43,
+              0.325,
+              0.5149999999999999
+            ],
+            "arm_mean": 0.4116666666666666,
+            "reference_mean": 0.42333333333333334,
+            "delta": -0.011666666666666714,
+            "se_difference": 0.11070481270277073,
+            "margin": 0.22140962540554146,
+            "verdict": "within margin"
+          }
+        }
+      }
+    },
+    "singlegroup/hammer": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-singlegroup-seed0-hammer-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-hammer-200k",
+        "reference_summary_sha256": "581c8e045ba41346ddb83794319bca28e0ca48ee147cf7c418dc3fc91f9f4ae4",
+        "metrics": {
+          "psnr": {
+            "variant": 28.70968316378235,
+            "reference": 28.98215959460358,
+            "delta": -0.27247643082122863,
+            "relative": false,
+            "margin": 0.40960929813359925,
+            "verdict": "within margin"
+          },
+          "psnr_moving": {
+            "variant": 26.13260958036723,
+            "reference": 26.511498102301577,
+            "delta": -0.3788885219343463,
+            "relative": false,
+            "margin": 0.6052634620680202,
+            "verdict": "within margin"
+          },
+          "psnr_traj": {
+            "variant": 22.76598958205722,
+            "reference": 23.101626389954944,
+            "delta": -0.33563680789772476,
+            "relative": false,
+            "margin": 0.2708660579782425,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.80859375,
+            "reference": 0.8149956597222222,
+            "delta": -0.00640190972222221,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "r2_pos_traj": {
+            "variant": 0.9469067210608741,
+            "reference": 0.9164726705880897,
+            "delta": 0.03043405047278447,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_traj": {
+            "variant": 0.8313933986713157,
+            "reference": 0.8540527190105077,
+            "delta": -0.022659320339192046,
+            "relative": false,
+            "margin": 0.05947470571628677,
+            "verdict": "within margin"
+          },
+          "r2_vel_train": {
+            "variant": 0.90697847274405,
+            "reference": 0.9114940449733965,
+            "delta": -0.0045155722293465095,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "rel_epe": {
+            "variant": 0.27748203121642884,
+            "reference": 0.2476061505347698,
+            "delta": 0.02987588068165903,
+            "relative": false,
+            "margin": 0.03541882841143085,
+            "verdict": "within margin"
+          },
+          "relepe_bin1": {
+            "variant": 0.5069413218770739,
+            "reference": 0.41941907278203466,
+            "delta": 0.0875222490950392,
+            "relative": false,
+            "margin": 0.04201427724956208,
+            "verdict": "worse"
+          },
+          "relepe_bin2": {
+            "variant": 0.35767674031320074,
+            "reference": 0.3233931223658201,
+            "delta": 0.03428361794738066,
+            "relative": false,
+            "margin": 0.03959520174352965,
+            "verdict": "within margin"
+          },
+          "relepe_bin3": {
+            "variant": 0.14522434268336437,
+            "reference": 0.13704125268781817,
+            "delta": 0.008183089995546206,
+            "relative": false,
+            "margin": 0.030245983714513258,
+            "verdict": "within margin"
+          },
+          "epe_mm": {
+            "variant": 7.050935404799125,
+            "reference": 6.481956657615391,
+            "delta": 0.568978747183734,
+            "relative": false,
+            "margin": 1.407105495779609,
+            "verdict": "within margin"
+          },
+          "dyn_share": {
+            "variant": 1.0000000000000187,
+            "reference": 0.967017375075521,
+            "delta": 0.03298262492449766,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "utilisation": {
+            "variant": 0.42916593609735687,
+            "reference": 0.6171690846931919,
+            "delta": -0.188003148595835,
+            "relative": false,
+            "margin": 0.04217046076978004,
+            "verdict": "worse"
+          },
+          "hidden": {
+            "variant": 0.8655240991134439,
+            "reference": 0.8029880345913047,
+            "delta": 0.06253606452213911,
+            "relative": false,
+            "margin": 0.038434334393507186,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.011777996385232295,
+            "reference": 0.020105610751065883,
+            "delta": -0.008327614365833588,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.022488802671432495,
+            "reference": 0.021632648073136806,
+            "delta": 0.03957696697145696,
+            "relative": true,
+            "margin": 0.06551006133159368,
+            "verdict": "within margin"
+          },
+          "cd_centers_vis": {
+            "variant": 0.15802036225795746,
+            "reference": 0.15448031201958656,
+            "delta": 0.022915866702302168,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.24609544035047293,
+            "reference": 0.20789469592273235,
+            "delta": 0.18375045240181853,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 24.228534602716035,
+            "reference": 24.566875832660166,
+            "delta": -0.33834122994413107,
+            "relative": false,
+            "margin": 0.4772341180600783,
+            "verdict": "within margin"
+          },
+          "psnr_near_covered": {
+            "variant": 28.694673335896333,
+            "reference": 28.87877203337112,
+            "delta": -0.1840986974747878,
+            "relative": false,
+            "margin": 0.4906556555757007,
+            "verdict": "within margin"
+          },
+          "psnr_traj_covered": {
+            "variant": 27.80452408592142,
+            "reference": 27.996933693971695,
+            "delta": -0.19240960805027285,
+            "relative": false,
+            "margin": 0.486388946153248,
+            "verdict": "within margin"
+          },
+          "psnr_heldout": {
+            "variant": 16.710101561201604,
+            "reference": 16.574522682782213,
+            "delta": 0.1355788784193912,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "within margin"
+          },
+          "psnr_heldout_covered": {
+            "variant": 22.636816083446817,
+            "reference": 22.70852411381959,
+            "delta": -0.07170803037277196,
+            "relative": false,
+            "margin": 0.36774117182830324,
+            "verdict": "within margin"
+          },
+          "retrieval_train": {
+            "variant": 0.9546874999999999,
+            "reference": 0.9546874999999999,
+            "delta": 0.0,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_near": {
+            "variant": 0.8541666666666666,
+            "reference": 0.8605685763888888,
+            "delta": -0.00640190972222221,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_heldout": {
+            "variant": 0.17122395833333334,
+            "reference": 0.23046875,
+            "delta": -0.05924479166666666,
+            "relative": false,
+            "margin": 0.05436197916666663,
+            "verdict": "worse"
+          },
+          "r2_pos_train": {
+            "variant": 0.9793693734200597,
+            "reference": 0.9740677262963712,
+            "delta": 0.005301647123688524,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.967524156108277,
+            "reference": 0.95130362183956,
+            "delta": 0.016220534268717057,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.9451202886427845,
+            "reference": 0.9356641606026705,
+            "delta": 0.009456128040113976,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_near": {
+            "variant": 0.8834552721270982,
+            "reference": 0.8861436715571908,
+            "delta": -0.0026883994300925806,
+            "relative": false,
+            "margin": 0.0783806147507643,
+            "verdict": "within margin"
+          },
+          "cd_centers": {
+            "variant": 0.21380009315907955,
+            "reference": 0.216005215421319,
+            "delta": -0.010208652869507562,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-singlegroup-hammer-s1000",
+            "s2rl-full-hammer-s1000"
+          ],
+          "1001": [
+            "s2rl-singlegroup-hammer-s1001",
+            "s2rl-full-hammer-s1001"
+          ],
+          "1002": [
+            "s2rl-singlegroup-hammer-s1002",
+            "s2rl-full-hammer-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.7883333333333333,
+              0.9316666666666666,
+              0.9816666666666667
+            ],
+            "reference_seeds": [
+              0.9616666666666667,
+              0.8833333333333332,
+              0.9600000000000002
+            ],
+            "arm_mean": 0.9005555555555556,
+            "reference_mean": 0.9349999999999999,
+            "delta": -0.03444444444444439,
+            "se_difference": 0.06343802263666,
+            "margin": 0.12687604527332,
+            "verdict": "within margin"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.08,
+              0.0375,
+              0.052500000000000005
+            ],
+            "reference_seeds": [
+              0.21000000000000002,
+              0.0725,
+              0.16499999999999998
+            ],
+            "arm_mean": 0.056666666666666664,
+            "reference_mean": 0.14916666666666667,
+            "delta": -0.0925,
+            "se_difference": 0.042344486719708335,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.82,
+              0.875,
+              0.975
+            ],
+            "reference_seeds": [
+              0.8600000000000001,
+              0.8549999999999999,
+              0.93
+            ],
+            "arm_mean": 0.89,
+            "reference_mean": 0.8816666666666667,
+            "delta": 0.008333333333333304,
+            "se_difference": 0.051424162068471724,
+            "margin": 0.10284832413694345,
+            "verdict": "within margin"
+          }
+        }
+      }
+    },
+    "singlegroup/pick-place": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-singlegroup-seed0-pick-place-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-pick-place-200k",
+        "reference_summary_sha256": "0136c09936774f8e027bf2c949975a821ed44627c055eef4aa34e928f26f125d",
+        "metrics": {
+          "psnr": {
+            "variant": 27.630548184679903,
+            "reference": 28.23050617628165,
+            "delta": -0.5999579916017481,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 20.60013892502881,
+            "reference": 21.661764183952034,
+            "delta": -1.0616252589232253,
+            "relative": false,
+            "margin": 0.2209657601908468,
+            "verdict": "worse"
+          },
+          "psnr_traj": {
+            "variant": 22.58644386234384,
+            "reference": 23.077574045720226,
+            "delta": -0.49113018337638437,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.8471137152777778,
+            "reference": 0.8646918402777778,
+            "delta": -0.017578125,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "r2_pos_traj": {
+            "variant": 0.9521580386338291,
+            "reference": 0.9479075678720725,
+            "delta": 0.004250470761756553,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_traj": {
+            "variant": 0.848210653082299,
+            "reference": 0.8793627052646485,
+            "delta": -0.03115205218234951,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_train": {
+            "variant": 0.9086774630261398,
+            "reference": 0.920563526462606,
+            "delta": -0.011886063436466143,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "rel_epe": {
+            "variant": 0.27716988039123425,
+            "reference": 0.22412677578456938,
+            "delta": 0.053043104606664865,
+            "relative": false,
+            "margin": 0.03107224836438227,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 0.5296879252678269,
+            "reference": 0.44984641453976293,
+            "delta": 0.079841510728064,
+            "relative": false,
+            "margin": 0.16331752727659088,
+            "verdict": "within margin"
+          },
+          "relepe_bin2": {
+            "variant": 0.3159132749091266,
+            "reference": 0.25548933095644,
+            "delta": 0.060423943952686576,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 0.16984777638540552,
+            "reference": 0.13075072484660383,
+            "delta": 0.03909705153880169,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 7.337226447517212,
+            "reference": 5.772509028717995,
+            "delta": 1.5647174187992166,
+            "relative": false,
+            "margin": 1.0,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.9999999999999959,
+            "reference": 0.9606174103301802,
+            "delta": 0.03938258966981567,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "utilisation": {
+            "variant": 0.4893456702166482,
+            "reference": 0.6546779093491464,
+            "delta": -0.16533223913249817,
+            "relative": false,
+            "margin": 0.04206836397637548,
+            "verdict": "worse"
+          },
+          "hidden": {
+            "variant": 0.8899669804745014,
+            "reference": 0.823299728482107,
+            "delta": 0.06666725199239443,
+            "relative": false,
+            "margin": 0.022924248832025373,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.014271629192112894,
+            "reference": 0.020137840274172737,
+            "delta": -0.005866211082059843,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.020885027013719082,
+            "reference": 0.019033360993489623,
+            "delta": 0.09728528875498244,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.1632495541125536,
+            "reference": 0.16538095474243164,
+            "delta": -0.012887823952870137,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.2704388340935111,
+            "reference": 0.11703279986977577,
+            "delta": 1.3107952163362118,
+            "relative": true,
+            "margin": 0.4722541317434684,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 24.217018164583557,
+            "reference": 24.8475588517118,
+            "delta": -0.6305406871282422,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_near_covered": {
+            "variant": 27.690089483266412,
+            "reference": 28.165316872108356,
+            "delta": -0.4752273888419438,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 27.02823558575814,
+            "reference": 27.30273812970485,
+            "delta": -0.2745025439467099,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_heldout": {
+            "variant": 16.859318114035837,
+            "reference": 16.67173504726367,
+            "delta": 0.18758306677216652,
+            "relative": false,
+            "margin": 0.2744133723717752,
+            "verdict": "within margin"
+          },
+          "psnr_heldout_covered": {
+            "variant": 22.271483452319373,
+            "reference": 22.410296168167676,
+            "delta": -0.13881271584830301,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "within margin"
+          },
+          "retrieval_train": {
+            "variant": 0.9325520833333334,
+            "reference": 0.9416666666666667,
+            "delta": -0.00911458333333326,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_near": {
+            "variant": 0.8771701388888888,
+            "reference": 0.8859592013888888,
+            "delta": -0.0087890625,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_heldout": {
+            "variant": 0.3515625,
+            "reference": 0.37076822916666663,
+            "delta": -0.01920572916666663,
+            "relative": false,
+            "margin": 0.041015624999999944,
+            "verdict": "within margin"
+          },
+          "r2_pos_train": {
+            "variant": 0.9819257506190288,
+            "reference": 0.9858780587148035,
+            "delta": -0.003952308095774737,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9726790029133072,
+            "reference": 0.971276865699988,
+            "delta": 0.0014021372133192767,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.8902325936675994,
+            "reference": 0.8767278114492865,
+            "delta": 0.013504782218312972,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_near": {
+            "variant": 0.8873531543158154,
+            "reference": 0.9018682909883384,
+            "delta": -0.014515136672523021,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_centers": {
+            "variant": 0.2018339429050684,
+            "reference": 0.21823689714074135,
+            "delta": -0.0751612328189154,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "better"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-singlegroup-pick-place-s1000",
+            "s2rl-full-pick-place-s1000"
+          ],
+          "1001": [
+            "s2rl-singlegroup-pick-place-s1001",
+            "s2rl-full-pick-place-s1001"
+          ],
+          "1002": [
+            "s2rl-singlegroup-pick-place-s1002",
+            "s2rl-full-pick-place-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.5216666666666667,
+              0.5466666666666667,
+              0.5700000000000001
+            ],
+            "reference_seeds": [
+              0.38,
+              0.34,
+              0.6683333333333333
+            ],
+            "arm_mean": 0.5461111111111111,
+            "reference_mean": 0.46277777777777773,
+            "delta": 0.08333333333333337,
+            "se_difference": 0.10436166932687191,
+            "margin": 0.20872333865374382,
+            "verdict": "within margin"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.01,
+              0.0025,
+              0.0125
+            ],
+            "reference_seeds": [
+              0.0025,
+              0.017499999999999998,
+              0.0125
+            ],
+            "arm_mean": 0.008333333333333333,
+            "reference_mean": 0.010833333333333334,
+            "delta": -0.0025000000000000005,
+            "se_difference": 0.005335936864527374,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.44000000000000006,
+              0.4800000000000001,
+              0.555
+            ],
+            "reference_seeds": [
+              0.43,
+              0.325,
+              0.5149999999999999
+            ],
+            "arm_mean": 0.4916666666666667,
+            "reference_mean": 0.42333333333333334,
+            "delta": 0.06833333333333336,
+            "se_difference": 0.06446359868604569,
+            "margin": 0.12892719737209138,
+            "verdict": "within margin"
+          }
+        }
+      }
+    },
+    "t1/hammer": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-t1-seed0-hammer-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-hammer-200k",
+        "reference_summary_sha256": "581c8e045ba41346ddb83794319bca28e0ca48ee147cf7c418dc3fc91f9f4ae4",
+        "metrics": {
+          "psnr": {
+            "variant": 26.92943819596572,
+            "reference": 28.98215959460358,
+            "delta": -2.0527213986378605,
+            "relative": false,
+            "margin": 0.40960929813359925,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 22.963974374540832,
+            "reference": 26.511498102301577,
+            "delta": -3.547523727760744,
+            "relative": false,
+            "margin": 0.6052634620680202,
+            "verdict": "worse"
+          },
+          "psnr_traj": {
+            "variant": 22.053055202273683,
+            "reference": 23.101626389954944,
+            "delta": -1.0485711876812616,
+            "relative": false,
+            "margin": 0.2708660579782425,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.7450086805555556,
+            "reference": 0.8149956597222222,
+            "delta": -0.06998697916666663,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "r2_pos_traj": {
+            "variant": 0.8957518198281984,
+            "reference": 0.9164726705880897,
+            "delta": -0.020720850759891274,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_traj": {
+            "variant": 0.3552398084453249,
+            "reference": 0.8540527190105077,
+            "delta": -0.49881291056518284,
+            "relative": false,
+            "margin": 0.05947470571628677,
+            "verdict": "worse"
+          },
+          "r2_vel_train": {
+            "variant": 0.559765869749541,
+            "reference": 0.9114940449733965,
+            "delta": -0.35172817522385547,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "rel_epe": {
+            "variant": 1.0,
+            "reference": 0.2476061505347698,
+            "delta": 0.7523938494652302,
+            "relative": false,
+            "margin": 0.03541882841143085,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 1.0,
+            "reference": 0.41941907278203466,
+            "delta": 0.5805809272179654,
+            "relative": false,
+            "margin": 0.04201427724956208,
+            "verdict": "worse"
+          },
+          "relepe_bin2": {
+            "variant": 1.0,
+            "reference": 0.3233931223658201,
+            "delta": 0.6766068776341799,
+            "relative": false,
+            "margin": 0.03959520174352965,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 1.0,
+            "reference": 0.13704125268781817,
+            "delta": 0.8629587473121818,
+            "relative": false,
+            "margin": 0.030245983714513258,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 41.346369102784,
+            "reference": 6.481956657615391,
+            "delta": 34.86441244516861,
+            "relative": false,
+            "margin": 1.407105495779609,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.6837899063896501,
+            "reference": 0.967017375075521,
+            "delta": -0.2832274686858709,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "utilisation": {
+            "variant": 0.6225046545657146,
+            "reference": 0.6171690846931919,
+            "delta": 0.005335569872522705,
+            "relative": false,
+            "margin": 0.04217046076978004,
+            "verdict": "within margin"
+          },
+          "hidden": {
+            "variant": 0.902088079436475,
+            "reference": 0.8029880345913047,
+            "delta": 0.09910004484517021,
+            "relative": false,
+            "margin": 0.038434334393507186,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.004038497642431994,
+            "reference": 0.020105610751065883,
+            "delta": -0.016067113108633888,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.02511709090322256,
+            "reference": 0.021632648073136806,
+            "delta": 0.1610733377765572,
+            "relative": true,
+            "margin": 0.06551006133159368,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.15644788928329945,
+            "reference": 0.15448031201958656,
+            "delta": 0.012736750968391553,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.24664459004998207,
+            "reference": 0.20789469592273235,
+            "delta": 0.18639193248899333,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 23.413051573589804,
+            "reference": 24.566875832660166,
+            "delta": -1.1538242590703618,
+            "relative": false,
+            "margin": 0.4772341180600783,
+            "verdict": "worse"
+          },
+          "psnr_near_covered": {
+            "variant": 26.930295474445764,
+            "reference": 28.87877203337112,
+            "delta": -1.948476558925357,
+            "relative": false,
+            "margin": 0.4906556555757007,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 26.28745595610109,
+            "reference": 27.996933693971695,
+            "delta": -1.7094777378706034,
+            "relative": false,
+            "margin": 0.486388946153248,
+            "verdict": "worse"
+          },
+          "psnr_heldout": {
+            "variant": 16.307744828262862,
+            "reference": 16.574522682782213,
+            "delta": -0.26677785451935065,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_heldout_covered": {
+            "variant": 21.882794486783723,
+            "reference": 22.70852411381959,
+            "delta": -0.8257296270358658,
+            "relative": false,
+            "margin": 0.36774117182830324,
+            "verdict": "worse"
+          },
+          "retrieval_train": {
+            "variant": 0.9242187500000001,
+            "reference": 0.9546874999999999,
+            "delta": -0.030468749999999822,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_near": {
+            "variant": 0.7644314236111112,
+            "reference": 0.8605685763888888,
+            "delta": -0.09613715277777768,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_heldout": {
+            "variant": 0.14778645833333331,
+            "reference": 0.23046875,
+            "delta": -0.08268229166666669,
+            "relative": false,
+            "margin": 0.05436197916666663,
+            "verdict": "worse"
+          },
+          "r2_pos_train": {
+            "variant": 0.9425136098606017,
+            "reference": 0.9740677262963712,
+            "delta": -0.03155411643576944,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9256996866837712,
+            "reference": 0.95130362183956,
+            "delta": -0.025603935155788737,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.924469474024909,
+            "reference": 0.9356641606026705,
+            "delta": -0.01119468657776157,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_near": {
+            "variant": 0.4704945465002278,
+            "reference": 0.8861436715571908,
+            "delta": -0.41564912505696294,
+            "relative": false,
+            "margin": 0.0783806147507643,
+            "verdict": "worse"
+          },
+          "cd_centers": {
+            "variant": 0.20814679004251957,
+            "reference": 0.216005215421319,
+            "delta": -0.036380720546360656,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-t1-hammer-s1000",
+            "s2rl-full-hammer-s1000"
+          ],
+          "1001": [
+            "s2rl-t1-hammer-s1001",
+            "s2rl-full-hammer-s1001"
+          ],
+          "1002": [
+            "s2rl-t1-hammer-s1002",
+            "s2rl-full-hammer-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.8416666666666668,
+              0.9649999999999999,
+              0.9933333333333334
+            ],
+            "reference_seeds": [
+              0.9616666666666667,
+              0.8833333333333332,
+              0.9600000000000002
+            ],
+            "arm_mean": 0.9333333333333332,
+            "reference_mean": 0.9349999999999999,
+            "delta": -0.0016666666666667052,
+            "se_difference": 0.05324645702002327,
+            "margin": 0.10649291404004654,
+            "verdict": "within margin"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.1075,
+              0.05750000000000001,
+              0.0325
+            ],
+            "reference_seeds": [
+              0.21000000000000002,
+              0.0725,
+              0.16499999999999998
+            ],
+            "arm_mean": 0.06583333333333334,
+            "reference_mean": 0.14916666666666667,
+            "delta": -0.08333333333333333,
+            "se_difference": 0.04609018936341611,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.77,
+              0.95,
+              1.0
+            ],
+            "reference_seeds": [
+              0.8600000000000001,
+              0.8549999999999999,
+              0.93
+            ],
+            "arm_mean": 0.9066666666666666,
+            "reference_mean": 0.8816666666666667,
+            "delta": 0.02499999999999991,
+            "se_difference": 0.07391812287178895,
+            "margin": 0.1478362457435779,
+            "verdict": "within margin"
+          }
+        }
+      }
+    },
+    "t1/pick-place": {
+      "representation": {
+        "variant_eval": "fulleval-s2ab-t1-seed0-pick-place-200k",
+        "reference_eval": "fulleval-ls-a200-m3d-seed0-pick-place-200k",
+        "reference_summary_sha256": "0136c09936774f8e027bf2c949975a821ed44627c055eef4aa34e928f26f125d",
+        "metrics": {
+          "psnr": {
+            "variant": 26.310052870574953,
+            "reference": 28.23050617628165,
+            "delta": -1.9204533057066975,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_moving": {
+            "variant": 17.89850056593908,
+            "reference": 21.661764183952034,
+            "delta": -3.763263618012953,
+            "relative": false,
+            "margin": 0.2209657601908468,
+            "verdict": "worse"
+          },
+          "psnr_traj": {
+            "variant": 22.072910277720517,
+            "reference": 23.077574045720226,
+            "delta": -1.004663767999709,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_traj": {
+            "variant": 0.8074001736111112,
+            "reference": 0.8646918402777778,
+            "delta": -0.05729166666666663,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "r2_pos_traj": {
+            "variant": 0.9183890351725061,
+            "reference": 0.9479075678720725,
+            "delta": -0.02951853269956639,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_traj": {
+            "variant": 0.20019966906599262,
+            "reference": 0.8793627052646485,
+            "delta": -0.6791630361986559,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "r2_vel_train": {
+            "variant": 0.26053132819361846,
+            "reference": 0.920563526462606,
+            "delta": -0.6600321982689875,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "rel_epe": {
+            "variant": 1.0,
+            "reference": 0.22412677578456938,
+            "delta": 0.7758732242154306,
+            "relative": false,
+            "margin": 0.03107224836438227,
+            "verdict": "worse"
+          },
+          "relepe_bin1": {
+            "variant": 1.0,
+            "reference": 0.44984641453976293,
+            "delta": 0.5501535854602371,
+            "relative": false,
+            "margin": 0.16331752727659088,
+            "verdict": "worse"
+          },
+          "relepe_bin2": {
+            "variant": 1.0,
+            "reference": 0.25548933095644,
+            "delta": 0.74451066904356,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "relepe_bin3": {
+            "variant": 1.0,
+            "reference": 0.13075072484660383,
+            "delta": 0.8692492751533962,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "epe_mm": {
+            "variant": 38.04306681384049,
+            "reference": 5.772509028717995,
+            "delta": 32.27055778512249,
+            "relative": false,
+            "margin": 1.0,
+            "verdict": "worse"
+          },
+          "dyn_share": {
+            "variant": 0.045331777577853685,
+            "reference": 0.9606174103301802,
+            "delta": -0.9152856327523266,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "utilisation": {
+            "variant": 0.6427220531133493,
+            "reference": 0.6546779093491464,
+            "delta": -0.011955856235797091,
+            "relative": false,
+            "margin": 0.04206836397637548,
+            "verdict": "within margin"
+          },
+          "hidden": {
+            "variant": 0.9510044954507471,
+            "reference": 0.823299728482107,
+            "delta": 0.12770476696864008,
+            "relative": false,
+            "margin": 0.022924248832025373,
+            "verdict": "worse"
+          },
+          "floater": {
+            "variant": 0.0034142901283641617,
+            "reference": 0.020137840274172737,
+            "delta": -0.016723550145808577,
+            "relative": false,
+            "margin": 0.02,
+            "verdict": "within margin"
+          },
+          "cd_render_traj": {
+            "variant": 0.0255703660659492,
+            "reference": 0.019033360993489623,
+            "delta": 0.3434498549518168,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_centers_vis": {
+            "variant": 0.15700244344770908,
+            "reference": 0.16538095474243164,
+            "delta": -0.050661887324156885,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "better"
+          },
+          "cd_motion_dyn": {
+            "variant": 0.37421686947345734,
+            "reference": 0.11703279986977577,
+            "delta": 2.197538381461046,
+            "relative": true,
+            "margin": 0.4722541317434684,
+            "verdict": "worse"
+          },
+          "psnr_near": {
+            "variant": 23.568663616653545,
+            "reference": 24.8475588517118,
+            "delta": -1.278895235058254,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_near_covered": {
+            "variant": 26.46814633719677,
+            "reference": 28.165316872108356,
+            "delta": -1.697170534911585,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_traj_covered": {
+            "variant": 25.935434050098785,
+            "reference": 27.30273812970485,
+            "delta": -1.3673040796060647,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "psnr_heldout": {
+            "variant": 16.41254569571657,
+            "reference": 16.67173504726367,
+            "delta": -0.2591893515471,
+            "relative": false,
+            "margin": 0.2744133723717752,
+            "verdict": "within margin"
+          },
+          "psnr_heldout_covered": {
+            "variant": 21.658470572833828,
+            "reference": 22.410296168167676,
+            "delta": -0.7518255953338482,
+            "relative": false,
+            "margin": 0.2,
+            "verdict": "worse"
+          },
+          "retrieval_train": {
+            "variant": 0.92734375,
+            "reference": 0.9416666666666667,
+            "delta": -0.01432291666666663,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "within margin"
+          },
+          "retrieval_near": {
+            "variant": 0.8460286458333334,
+            "reference": 0.8859592013888888,
+            "delta": -0.03993055555555547,
+            "relative": false,
+            "margin": 0.03,
+            "verdict": "worse"
+          },
+          "retrieval_heldout": {
+            "variant": 0.3180338541666667,
+            "reference": 0.37076822916666663,
+            "delta": -0.052734374999999944,
+            "relative": false,
+            "margin": 0.041015624999999944,
+            "verdict": "worse"
+          },
+          "r2_pos_train": {
+            "variant": 0.956686456766295,
+            "reference": 0.9858780587148035,
+            "delta": -0.02919160194850845,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_pos_near": {
+            "variant": 0.9416480564015319,
+            "reference": 0.971276865699988,
+            "delta": -0.029628809298456016,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_obj_pos_traj": {
+            "variant": 0.8776718660406411,
+            "reference": 0.8767278114492865,
+            "delta": 0.0009440545913546039,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "within margin"
+          },
+          "r2_vel_near": {
+            "variant": 0.24470687097982124,
+            "reference": 0.9018682909883384,
+            "delta": -0.6571614200085172,
+            "relative": false,
+            "margin": 0.05,
+            "verdict": "worse"
+          },
+          "cd_centers": {
+            "variant": 0.2168139684945345,
+            "reference": 0.21823689714074135,
+            "delta": -0.006520110324374717,
+            "relative": true,
+            "margin": 0.05,
+            "verdict": "within margin"
+          }
+        }
+      },
+      "rl": {
+        "seeds": [
+          1000,
+          1001,
+          1002
+        ],
+        "jobs": {
+          "1000": [
+            "s2rl-t1-pick-place-s1000",
+            "s2rl-full-pick-place-s1000"
+          ],
+          "1001": [
+            "s2rl-t1-pick-place-s1001",
+            "s2rl-full-pick-place-s1001"
+          ],
+          "1002": [
+            "s2rl-t1-pick-place-s1002",
+            "s2rl-full-pick-place-s1002"
+          ]
+        },
+        "success_last5": {
+          "train": {
+            "arm_seeds": [
+              0.7033333333333334,
+              0.605,
+              0.6833333333333332
+            ],
+            "reference_seeds": [
+              0.38,
+              0.34,
+              0.6683333333333333
+            ],
+            "arm_mean": 0.6638888888888889,
+            "reference_mean": 0.46277777777777773,
+            "delta": 0.20111111111111113,
+            "se_difference": 0.1076889668454801,
+            "margin": 0.2153779336909602,
+            "verdict": "within margin"
+          },
+          "heldout": {
+            "arm_seeds": [
+              0.0325,
+              0.017499999999999998,
+              0.025
+            ],
+            "reference_seeds": [
+              0.0025,
+              0.017499999999999998,
+              0.0125
+            ],
+            "arm_mean": 0.025000000000000005,
+            "reference_mean": 0.010833333333333334,
+            "delta": 0.014166666666666671,
+            "se_difference": 0.006180165405913053,
+            "margin": 0.1,
+            "verdict": "within margin"
+          },
+          "traj": {
+            "arm_seeds": [
+              0.575,
+              0.53,
+              0.7300000000000001
+            ],
+            "reference_seeds": [
+              0.43,
+              0.325,
+              0.5149999999999999
+            ],
+            "arm_mean": 0.6116666666666667,
+            "reference_mean": 0.42333333333333334,
+            "delta": 0.18833333333333335,
+            "se_difference": 0.08178562764256865,
+            "margin": 0.1635712552851373,
+            "verdict": "better"
+          }
+        }
+      }
+    }
+  }
+}

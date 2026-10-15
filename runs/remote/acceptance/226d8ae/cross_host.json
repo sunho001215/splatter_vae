@@ -1,0 +1,64 @@
+{
+  "acceptance_basis": "User decision 2026-10-11 16:2x (for the e267ba8 measurement) after seeing the result: accept as equivalent. The registered criterion cross_host_rmse <= same_host_rmse was not met (ratio 1.022); step 0, initial state and batch sequence were bit-identical.",
+  "carried_over": {
+    "basis": "Host characterisation carried over, not re-measured. Since e267ba8: remote launcher environment (W&B offline, CPU thread limit), RL evaluation output directory, and the bundle (M3D-only training path, DROID track arrays). The measured D0 configuration then used the image-space motion loss, which no longer exists; the M3D path is numerically identical to before the bundle (bitwise on CPU, identical loss on CUDA). All current comparisons keep their compared arms on one host, so they do not rely on this check.",
+    "source_differences": [
+      "s4d/data/contract.py",
+      "s4d/data/droid/convert.py",
+      "s4d/data/droid/dataset.py",
+      "s4d/data/droid/inspect.py",
+      "s4d/data/droid/pointworld.py",
+      "s4d/data/droid/rlds.py",
+      "s4d/losses/motion3d.py",
+      "s4d/remote_jobs.py",
+      "s4d/remote_launch.py",
+      "s4d/train/evaluate.py",
+      "s4d/train/loop.py",
+      "scripts/convert_droid_sample.py",
+      "scripts/droid_track_smoke.py",
+      "scripts/eval_rl.py",
+      "scripts/validate_droid_loader.py",
+      "tests/conftest.py",
+      "tests/test_contract.py",
+      "tests/test_droid.py",
+      "tests/test_droid_protocols.py",
+      "tests/test_motion3d.py",
+      "tests/test_remote_launch.py",
+      "tests/test_review_options.py",
+      "tests/test_rl_cli.py"
+    ],
+    "to_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0"
+  },
+  "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+  "data_identity": "56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1",
+  "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+  "local_reference": {
+    "path": "runs/rel/e267ba8/runs/v2-local/equivalenceb/equivalence.json",
+    "sha256": "a0000fec7f578f50a0a4bbfdd28be6dc3b1c418e33ffaf43f01178f69a0137d8"
+  },
+  "measured": {
+    "cross_host_max_abs": 0.0001926422119140625,
+    "cross_host_rmse": 4.686941799921732e-05,
+    "ratio": 1.0215653617879188,
+    "same_host_max_abs": 0.00017309188842773438,
+    "same_host_repeat_rmse": 4.5879999217267514e-05
+  },
+  "measured_at_commit": "e267ba8cb438a768e4f5a9e29c009d1e5a308f3c",
+  "mode": "fresh",
+  "original_report": {
+    "passed": false,
+    "path": "runs/verify-v2-remote-e267ba8-20261011/evidence/equivalence.json",
+    "sha256": "e375bf40844ab9e2e0c4f7a97ae23bbc43e702a75b1df66cf0c4b36a7ec5ac48"
+  },
+  "passed": true,
+  "protocol": "meta-world-cross-host-v2",
+  "recorded_at": "2026-10-12T16:17:13.328285+09:00",
+  "registered_criterion": "unsmoothed-total-loss-rmse<=remote-same-host-repeat-rmse",
+  "registered_criterion_met": false,
+  "seed": 0,
+  "short_run_within_noise": true,
+  "step0_identical": true,
+  "steps": 200,
+  "task": "hammer",
+  "variant": "d0"
+}

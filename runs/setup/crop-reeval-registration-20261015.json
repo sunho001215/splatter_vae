@@ -1,0 +1,119 @@
+{
+  "registered_at": "2026-10-15T02:18:22.904818+09:00",
+  "request": "crop follow-up step 1 (user, 2026-10-15): report only; M2D-era single-seed results; no change to existing runs",
+  "source_commit": "6a482004f32389312c1ab28d5dfc0a51b94e2e29",
+  "queue_sha256_before": "db7366651aa6a3451d917189c4fa262ea2fce6fce639eef36ce0659dc21ff8b3",
+  "queue_sha256_after": "a6119290133671b7c32077f5e76d2f40177fc2faad20c515eb73175f891f8b2c",
+  "checkpoints_read_only": {
+    "creval-base-hammer-100k": {
+      "source_run": "s1-pretrain-hammer-base",
+      "checkpoint": "runs/pretrain/s1-pretrain-hammer-base/checkpoints/step_0100000.pt",
+      "sha256": "8bae8f8094c36337dbafd91acfff7a090ffb8c213068244a8536a445c3c49067",
+      "source_config_sha256": "1cee05b69293d093c3832e188711d41c735f83463898eeab2e6904610d9009c1"
+    },
+    "creval-base-pick-place-100k": {
+      "source_run": "s1-pretrain-pick-place-base",
+      "checkpoint": "runs/pretrain/s1-pretrain-pick-place-base/checkpoints/step_0100000.pt",
+      "sha256": "ec72343a50574c478f0f18141569dd0b287cc92c85cc67412afaa3a3bd400e55",
+      "source_config_sha256": "7e1056c58ee2050e2be1e58fdc3725acbc16a9c06abf8bccedee0f61e4f7ffbb"
+    },
+    "creval-crop-hammer-100k": {
+      "source_run": "s2-screen-crop-hammer",
+      "checkpoint": "runs/pretrain/s2-screen-crop-hammer/checkpoints/step_0100000.pt",
+      "sha256": "bffa8325b9f72be2c48f83cf1a32b4d933eeb10c18e3bb8fb992b6cab1325ce0",
+      "source_config_sha256": "398920703a9a99a48c340abde2efaf8c4cdc622401608e6d20c46fce10c48ba4"
+    },
+    "creval-crop-pick-place-100k": {
+      "source_run": "s2-screen-crop-pick-place",
+      "checkpoint": "runs/pretrain/s2-screen-crop-pick-place/checkpoints/step_0100000.pt",
+      "sha256": "984bc7c49eab65ecc4ee1759c2d614408bd296a430eea5975a6b33ddbd9ee586",
+      "source_config_sha256": "c65400b68a7f403a697ff5dfa5b910d352b1983cda88c1af00eda093a6387701"
+    }
+  },
+  "eval_configs": {
+    "creval-base-hammer-100k": "de8202461a019b197f74cbd3ac98f8613536ad867fcafe9b69713b535511efdd",
+    "creval-base-pick-place-100k": "10f2ff9ba4dc149e31cdf877b8798182797e0d8052d07d251e6d9c54138e6f3a",
+    "creval-crop-hammer-100k": "6cf2fbbdd4867ae3efb19d2f914c19f9e30650a016200015173dce47cd0fcc71",
+    "creval-crop-pick-place-100k": "2f8657c0bbc6ef390b1ef0aafb861a8c3aac6f39e671c202f61c0bc923010fd2"
+  },
+  "compatibility": "all four checkpoints load strictly (every encoder and decoder key matched) into the current model built from their own config, checked on CPU before registration",
+  "jobs": [
+    {
+      "id": "creval-base-hammer-100k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/creval-base-hammer-100k",
+        "--checkpoint",
+        "runs/pretrain/s1-pretrain-hammer-base/checkpoints/step_0100000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "crop_followup": "step1-reeval",
+      "report_only": true
+    },
+    {
+      "id": "creval-base-pick-place-100k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/creval-base-pick-place-100k",
+        "--checkpoint",
+        "runs/pretrain/s1-pretrain-pick-place-base/checkpoints/step_0100000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "crop_followup": "step1-reeval",
+      "report_only": true
+    },
+    {
+      "id": "creval-crop-hammer-100k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/creval-crop-hammer-100k",
+        "--checkpoint",
+        "runs/pretrain/s2-screen-crop-hammer/checkpoints/step_0100000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "crop_followup": "step1-reeval",
+      "report_only": true
+    },
+    {
+      "id": "creval-crop-pick-place-100k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/creval-crop-pick-place-100k",
+        "--checkpoint",
+        "runs/pretrain/s2-screen-crop-pick-place/checkpoints/step_0100000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "crop_followup": "step1-reeval",
+      "report_only": true
+    }
+  ],
+  "admission": "Stage 2 local driver, job by job under the local full-charge cap"
+}

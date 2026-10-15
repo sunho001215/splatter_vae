@@ -1,0 +1,26 @@
+{
+  "recorded_local": "2026-10-15T20:37:13.518417+09:00",
+  "job_id": "s2ab-nocoverage-seed0-pick-place",
+  "attempt": 1,
+  "container": "s4d-s2ab-nocoverage-seed0-pick-place-a1",
+  "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 825.6,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/s2ab-nocoverage-seed0-pick-place",
+  "accepted_release_dir": "/home/compu/kaist/sunho/releases/226d8ae89b6f65097d372e597e0a7734d2eee3e0/code",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-10-15T11:37:08Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-10-15T11:37:13Z"
+    }
+  ],
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}

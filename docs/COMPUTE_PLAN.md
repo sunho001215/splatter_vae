@@ -166,9 +166,10 @@ This is a snapshot, not a measured lifetime peak or exclusive attribution of all
 Tiers (finish in order if compute runs short): 1 = Ours vs CNN on all 8 tasks; 2 = SinCro and ReViWo on all 8 tasks;
 3 = RL ablations; 4 = remaining representation ablations, K sweep, extra seeds.
 
-**Pretraining lengths (user update, 2026-10-08).** Ours: 300k steps by default; the final length L is chosen on
-hammer and pick-place before `method-frozen-v1` (200k, 300k or 400k by the pre-registered rule in
-`docs/EXPERIMENT_LOG.md`) and used for all 8 tasks and every ablation. SinCro: exactly 300k steps on every task.
+**Pretraining lengths (decision, 2026-10-13).** Ours: **L = 200k**, selected by the unchanged registered
+C + D0 + M3D A200/A300 rule (RESULTS; `runs/setup/length-verification-20261013.json`), fixed for all eight tasks and
+every ours ablation. The historical 300k base default is overridden explicitly for all final runs. Reuse the two
+verified A200 development encoders; pretrain the remaining six tasks at 200k. SinCro: exactly 300k steps on every task.
 ReViWo: 100 001 steps (reference). Costs below assume L = 300k; measured pretraining speed under sharing is
 0.25-0.35 s/step, i.e. ~21-29 h of wall-clock per 300k run with 2-3 runs per GPU (~12-18 GPU-hours each).
 

@@ -1,0 +1,2096 @@
+{
+  "registered_at": "2026-10-13T14:19:27.532099+09:00",
+  "source_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+  "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+  "method_tag": "method-frozen-v1",
+  "queue_sha256_before": "4d559250598f3a379322e95f88e93a87b8c44e107087a9eaa8053809e0383ca7",
+  "queue_sha256_after": "d51cab8d12faed12013773f95466d90626006788546ac39149e8cc5ae26ae285",
+  "job_count": 60,
+  "pretraining_jobs": 6,
+  "export_jobs": 6,
+  "rl_trainers": 24,
+  "rl_evaluators": 24,
+  "rl_agent_steps": 1000000,
+  "encoders": {
+    "hammer": {
+      "export": "runs/exports/ls-a200-m3d-seed0-hammer-200k.pt",
+      "dependency": "export-ls-a200-hammer-200k",
+      "reused": true,
+      "sha256": "20cb356a6cfbac8522502d350938422955cab11ea9303dee86673388ab7e788c"
+    },
+    "pick-place": {
+      "export": "runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt",
+      "dependency": "export-ls-a200-pick-place-200k",
+      "reused": true,
+      "sha256": "57e1b821f219817dc034afb152b0a00b7805c7c447c439ccfde3e08246e8f362"
+    },
+    "bin-picking": {
+      "export": "runs/s3-export-m3d-seed0-bin-picking-200k/encoder.pt",
+      "dependency": "s3-export-m3d-seed0-bin-picking-200k",
+      "reused": false,
+      "trainer": "s3-m3d-seed0-bin-picking-200k"
+    },
+    "coffee-push": {
+      "export": "runs/s3-export-m3d-seed0-coffee-push-200k/encoder.pt",
+      "dependency": "s3-export-m3d-seed0-coffee-push-200k",
+      "reused": false,
+      "trainer": "s3-m3d-seed0-coffee-push-200k"
+    },
+    "door-open": {
+      "export": "runs/s3-export-m3d-seed0-door-open-200k/encoder.pt",
+      "dependency": "s3-export-m3d-seed0-door-open-200k",
+      "reused": false,
+      "trainer": "s3-m3d-seed0-door-open-200k"
+    },
+    "peg-insert-side": {
+      "export": "runs/s3-export-m3d-seed0-peg-insert-side-200k/encoder.pt",
+      "dependency": "s3-export-m3d-seed0-peg-insert-side-200k",
+      "reused": false,
+      "trainer": "s3-m3d-seed0-peg-insert-side-200k"
+    },
+    "peg-unplug-side": {
+      "export": "runs/s3-export-m3d-seed0-peg-unplug-side-200k/encoder.pt",
+      "dependency": "s3-export-m3d-seed0-peg-unplug-side-200k",
+      "reused": false,
+      "trainer": "s3-m3d-seed0-peg-unplug-side-200k"
+    },
+    "stick-push": {
+      "export": "runs/s3-export-m3d-seed0-stick-push-200k/encoder.pt",
+      "dependency": "s3-export-m3d-seed0-stick-push-200k",
+      "reused": false,
+      "trainer": "s3-m3d-seed0-stick-push-200k"
+    }
+  },
+  "jobs": [
+    {
+      "id": "s3-m3d-seed0-bin-picking-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "--name",
+        "s3-m3d-seed0-bin-picking-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 16,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "stage": 3,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-export-m3d-seed0-bin-picking-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/s3-m3d-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/s3-m3d-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/s3-export-m3d-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "s3-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-m3d-seed0-coffee-push-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/coffee-push.yaml",
+        "--name",
+        "s3-m3d-seed0-coffee-push-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 16,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "stage": 3,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-export-m3d-seed0-coffee-push-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/s3-m3d-seed0-coffee-push-200k",
+        "--checkpoint",
+        "runs/s3-m3d-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/s3-export-m3d-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "s3-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-m3d-seed0-door-open-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "--name",
+        "s3-m3d-seed0-door-open-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 16,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "stage": 3,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-export-m3d-seed0-door-open-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/s3-m3d-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/s3-m3d-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/s3-export-m3d-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "s3-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-m3d-seed0-peg-insert-side-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/peg-insert-side.yaml",
+        "--name",
+        "s3-m3d-seed0-peg-insert-side-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 16,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "stage": 3,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-export-m3d-seed0-peg-insert-side-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/s3-m3d-seed0-peg-insert-side-200k",
+        "--checkpoint",
+        "runs/s3-m3d-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/s3-export-m3d-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "s3-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-m3d-seed0-peg-unplug-side-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/peg-unplug-side.yaml",
+        "--name",
+        "s3-m3d-seed0-peg-unplug-side-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 16,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "stage": 3,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-export-m3d-seed0-peg-unplug-side-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/s3-m3d-seed0-peg-unplug-side-200k",
+        "--checkpoint",
+        "runs/s3-m3d-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/s3-export-m3d-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "s3-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-m3d-seed0-stick-push-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/stick-push.yaml",
+        "--name",
+        "s3-m3d-seed0-stick-push-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 16,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "stage": 3,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "id": "s3-export-m3d-seed0-stick-push-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/s3-m3d-seed0-stick-push-200k",
+        "--checkpoint",
+        "runs/s3-m3d-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/s3-export-m3d-seed0-stick-push-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "s3-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-hammer-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-hammer-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-hammer-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-pick-place-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-pick-place-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-bin-picking-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-coffee-push-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-coffee-push-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-coffee-push-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-door-open-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-door-open-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-insert-side-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-insert-side-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-peg-insert-side-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-unplug-side-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-unplug-side-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-peg-unplug-side-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-stick-push-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-stick-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-stick-push-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2000",
+        "--train-job",
+        "s3-drm-splatter4d-stick-push-s2000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-hammer-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-hammer-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-hammer-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-hammer-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-pick-place-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-bin-picking-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-coffee-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-coffee-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-coffee-push-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-door-open-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-door-open-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-insert-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-insert-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-peg-insert-side-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-unplug-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-unplug-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-peg-unplug-side-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-stick-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-stick-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-stick-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2001",
+        "--train-job",
+        "s3-drm-splatter4d-stick-push-s2001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-hammer-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/ls-a200-m3d-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-hammer-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-hammer-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-hammer-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/ls-a200-m3d-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "export-ls-a200-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-pick-place-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-bin-picking-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-coffee-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-coffee-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-coffee-push-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-coffee-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-door-open-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-door-open-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-insert-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-insert-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-peg-insert-side-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-peg-insert-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-unplug-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-peg-unplug-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-peg-unplug-side-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-peg-unplug-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-stick-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s3-export-m3d-seed0-stick-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 300,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s3-export-m3d-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 3,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "id": "s3-drm-splatter4d-stick-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2002",
+        "--train-job",
+        "s3-drm-splatter4d-stick-push-s2002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s3-drm-splatter4d-stick-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 5,
+      "oom_score_adj": 400,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    }
+  ],
+  "speculative_300k_adopted": false,
+  "admission": "job by job through scripts/jobs.py"
+}

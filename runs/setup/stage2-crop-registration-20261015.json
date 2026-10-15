@@ -1,0 +1,1803 @@
+{
+  "prepared_at": "2026-10-15T02:28:41.012003+09:00",
+  "request": "crop follow-up step 2 (user, 2026-10-15)",
+  "source_commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+  "method_tag": "method-frozen-v1",
+  "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+  "reporting_margins": "runs/setup/stage2-reporting-margins-20261013.json",
+  "reporting_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+  "host": "local (same host as the other Stage 2 runs)",
+  "pretraining_steps": 200000,
+  "pretraining_seed": 0,
+  "rl_seeds": [
+    1000,
+    1001,
+    1002
+  ],
+  "rl_agent_steps": 1000000,
+  "variants": {
+    "crop": {
+      "overrides": [
+        "aug.crop.prob=0.5",
+        "aug.crop.scale=[0.8,1.0]",
+        "aug.crop.ratio=[0.95,1.05]"
+      ],
+      "expected_difference": {
+        "aug.crop.prob": 0.5,
+        "aug.crop.scale": [
+          0.8,
+          1.0
+        ],
+        "aug.crop.ratio": [
+          0.95,
+          1.05
+        ]
+      }
+    },
+    "cropnosynth": {
+      "overrides": [
+        "aug.synth_views=0",
+        "aug.synth_render=false",
+        "aug.crop.prob=0.5",
+        "aug.crop.scale=[0.8,1.0]",
+        "aug.crop.ratio=[0.95,1.05]"
+      ],
+      "expected_difference": {
+        "aug.synth_views": 0,
+        "aug.synth_render": false,
+        "aug.crop.prob": 0.5,
+        "aug.crop.scale": [
+          0.8,
+          1.0
+        ],
+        "aug.crop.ratio": [
+          0.95,
+          1.05
+        ]
+      }
+    }
+  },
+  "rl_arms": [
+    "crop",
+    "cropnosynth"
+  ],
+  "encoders": {
+    "crop/hammer": {
+      "export": "runs/exports/s2ab-crop-seed0-hammer-200k.pt",
+      "dependency": "export-s2ab-crop-seed0-hammer-200k"
+    },
+    "crop/pick-place": {
+      "export": "runs/exports/s2ab-crop-seed0-pick-place-200k.pt",
+      "dependency": "export-s2ab-crop-seed0-pick-place-200k"
+    },
+    "cropnosynth/hammer": {
+      "export": "runs/exports/s2ab-cropnosynth-seed0-hammer-200k.pt",
+      "dependency": "export-s2ab-cropnosynth-seed0-hammer-200k"
+    },
+    "cropnosynth/pick-place": {
+      "export": "runs/exports/s2ab-cropnosynth-seed0-pick-place-200k.pt",
+      "dependency": "export-s2ab-cropnosynth-seed0-pick-place-200k"
+    }
+  },
+  "counts": {
+    "scripts/train.py": 4,
+    "scripts/evaluate.py": 4,
+    "scripts/export_encoder.py": 4,
+    "scripts/train_rl.py": 12,
+    "scripts/eval_rl.py": 12
+  },
+  "estimate": {
+    "basis": "measured job wall-clock hours of completed Stage 2 jobs on this host, GPUs shared as now; cropnosynth pretraining ~3-8 % faster per step (10-09 crop vs synth screens, run side by side)",
+    "per_job_hours": {
+      "pretrain_200k": [
+        17.65,
+        20.73
+      ],
+      "fulleval": [
+        0.08,
+        0.23
+      ],
+      "export": [
+        0.02,
+        0.04
+      ],
+      "rl_trainer_1M": [
+        4.78,
+        6.69
+      ],
+      "rl_evaluator_1M": [
+        1.57,
+        6.48
+      ]
+    },
+    "gpu_job_hours_excluding_evaluators": [
+      128.4,
+      164.3
+    ],
+    "rl_evaluator_companion_hours": [
+      18.8,
+      77.8
+    ]
+  },
+  "configs": {
+    "s2ab-crop-seed0-hammer": {
+      "data": {
+        "regime": "metaworld",
+        "root": "/home/ws/data/metaworld/splatter4d_v1",
+        "task": "hammer",
+        "train_ratio": 0.96,
+        "strides": [
+          2,
+          4,
+          6
+        ],
+        "val_strides": [
+          2,
+          6
+        ],
+        "episodes": null
+      },
+      "model": {
+        "encoder": {
+          "backbone": "scratch",
+          "image_height": 128,
+          "image_width": 128,
+          "patch_size": 16,
+          "width": 128,
+          "depth": 8,
+          "heads": 8,
+          "num_slots": 1,
+          "slot_dim": 256,
+          "num_frames": 3,
+          "mask_ratio": 0.5,
+          "motion_patch_threshold": 0.05,
+          "drop_path": 0.1
+        },
+        "decoder": {
+          "dim": 128,
+          "depth": 2,
+          "heads": 4,
+          "motion_max": 0.25,
+          "scene": {
+            "parents": 768,
+            "children": 8,
+            "offset_scale": 0.15,
+            "child_radius": 0.06,
+            "scale_min": 0.001,
+            "scale_max": 0.08
+          },
+          "dynamic": {
+            "parents": 256,
+            "children": 8,
+            "offset_scale": 0.4,
+            "child_radius": 0.04,
+            "scale_min": 0.0005,
+            "scale_max": 0.03
+          },
+          "single_group": false
+        },
+        "anchor_stats": "/home/ws/data/metaworld/splatter4d_v1/workspace_stats/hammer.json",
+        "single_frame": false
+      },
+      "render": {
+        "near": 0.05,
+        "far": 3.0
+      },
+      "loss": {
+        "rgb": 1.0,
+        "ssim_weight": 0.2,
+        "lambda_dyn": 1.0,
+        "coverage": 0.1,
+        "depth_l1": 1.0,
+        "depth_grad": 0.5,
+        "depth_hard": 0.5,
+        "depth_align": "none",
+        "depth_align_warmup_steps": 0,
+        "motion": 5.0,
+        "motion_huber": 0.01,
+        "invariance": 1.0,
+        "consistency": 0.5,
+        "temperature": 0.1,
+        "visibility": 1.0,
+        "ramp_steps": 20000,
+        "teacher_scale_jitter": null,
+        "depth_valid_far": true,
+        "motion_space": "gaussian"
+      },
+      "train": {
+        "steps": 200000,
+        "batch_size": 16,
+        "lr": 0.0005,
+        "min_lr": 1e-05,
+        "weight_decay": 0.01,
+        "warmup_steps": 10000,
+        "grad_clip": 1.0,
+        "bf16": true,
+        "seed": 0,
+        "num_workers": 6,
+        "prefetch_factor": 2,
+        "log_every": 50,
+        "eval_every": 5000,
+        "save_every": 10000,
+        "eval_at_start": true
+      },
+      "eval": {
+        "max_batches": 8,
+        "probe_every": 10000,
+        "probe_batches": 24,
+        "orbit_center": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "orbit_distance": 1.0,
+        "orbit_elevation": -45.0
+      },
+      "wandb": {
+        "enabled": true,
+        "project": "splatter4d-metaworld"
+      },
+      "aug": {
+        "synth_views": 2,
+        "synth_render": true,
+        "crop": {
+          "prob": 0.5,
+          "scale": [
+            0.8,
+            1.0
+          ],
+          "ratio": [
+            0.95,
+            1.05
+          ]
+        }
+      }
+    },
+    "s2ab-crop-seed0-pick-place": {
+      "data": {
+        "regime": "metaworld",
+        "root": "/home/ws/data/metaworld/splatter4d_v1",
+        "task": "pick-place",
+        "train_ratio": 0.96,
+        "strides": [
+          2,
+          4,
+          6
+        ],
+        "val_strides": [
+          2,
+          6
+        ],
+        "episodes": null
+      },
+      "model": {
+        "encoder": {
+          "backbone": "scratch",
+          "image_height": 128,
+          "image_width": 128,
+          "patch_size": 16,
+          "width": 128,
+          "depth": 8,
+          "heads": 8,
+          "num_slots": 1,
+          "slot_dim": 256,
+          "num_frames": 3,
+          "mask_ratio": 0.5,
+          "motion_patch_threshold": 0.05,
+          "drop_path": 0.1
+        },
+        "decoder": {
+          "dim": 128,
+          "depth": 2,
+          "heads": 4,
+          "motion_max": 0.25,
+          "scene": {
+            "parents": 768,
+            "children": 8,
+            "offset_scale": 0.15,
+            "child_radius": 0.06,
+            "scale_min": 0.001,
+            "scale_max": 0.08
+          },
+          "dynamic": {
+            "parents": 256,
+            "children": 8,
+            "offset_scale": 0.4,
+            "child_radius": 0.04,
+            "scale_min": 0.0005,
+            "scale_max": 0.03
+          },
+          "single_group": false
+        },
+        "anchor_stats": "/home/ws/data/metaworld/splatter4d_v1/workspace_stats/pick-place.json",
+        "single_frame": false
+      },
+      "render": {
+        "near": 0.05,
+        "far": 3.0
+      },
+      "loss": {
+        "rgb": 1.0,
+        "ssim_weight": 0.2,
+        "lambda_dyn": 1.0,
+        "coverage": 0.1,
+        "depth_l1": 1.0,
+        "depth_grad": 0.5,
+        "depth_hard": 0.5,
+        "depth_align": "none",
+        "depth_align_warmup_steps": 0,
+        "motion": 5.0,
+        "motion_huber": 0.01,
+        "invariance": 1.0,
+        "consistency": 0.5,
+        "temperature": 0.1,
+        "visibility": 1.0,
+        "ramp_steps": 20000,
+        "teacher_scale_jitter": null,
+        "depth_valid_far": true,
+        "motion_space": "gaussian"
+      },
+      "train": {
+        "steps": 200000,
+        "batch_size": 16,
+        "lr": 0.0005,
+        "min_lr": 1e-05,
+        "weight_decay": 0.01,
+        "warmup_steps": 10000,
+        "grad_clip": 1.0,
+        "bf16": true,
+        "seed": 0,
+        "num_workers": 6,
+        "prefetch_factor": 2,
+        "log_every": 50,
+        "eval_every": 5000,
+        "save_every": 10000,
+        "eval_at_start": true
+      },
+      "eval": {
+        "max_batches": 8,
+        "probe_every": 10000,
+        "probe_batches": 24,
+        "orbit_center": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "orbit_distance": 1.0,
+        "orbit_elevation": -45.0
+      },
+      "wandb": {
+        "enabled": true,
+        "project": "splatter4d-metaworld"
+      },
+      "aug": {
+        "synth_views": 2,
+        "synth_render": true,
+        "crop": {
+          "prob": 0.5,
+          "scale": [
+            0.8,
+            1.0
+          ],
+          "ratio": [
+            0.95,
+            1.05
+          ]
+        }
+      }
+    },
+    "s2ab-cropnosynth-seed0-hammer": {
+      "data": {
+        "regime": "metaworld",
+        "root": "/home/ws/data/metaworld/splatter4d_v1",
+        "task": "hammer",
+        "train_ratio": 0.96,
+        "strides": [
+          2,
+          4,
+          6
+        ],
+        "val_strides": [
+          2,
+          6
+        ],
+        "episodes": null
+      },
+      "model": {
+        "encoder": {
+          "backbone": "scratch",
+          "image_height": 128,
+          "image_width": 128,
+          "patch_size": 16,
+          "width": 128,
+          "depth": 8,
+          "heads": 8,
+          "num_slots": 1,
+          "slot_dim": 256,
+          "num_frames": 3,
+          "mask_ratio": 0.5,
+          "motion_patch_threshold": 0.05,
+          "drop_path": 0.1
+        },
+        "decoder": {
+          "dim": 128,
+          "depth": 2,
+          "heads": 4,
+          "motion_max": 0.25,
+          "scene": {
+            "parents": 768,
+            "children": 8,
+            "offset_scale": 0.15,
+            "child_radius": 0.06,
+            "scale_min": 0.001,
+            "scale_max": 0.08
+          },
+          "dynamic": {
+            "parents": 256,
+            "children": 8,
+            "offset_scale": 0.4,
+            "child_radius": 0.04,
+            "scale_min": 0.0005,
+            "scale_max": 0.03
+          },
+          "single_group": false
+        },
+        "anchor_stats": "/home/ws/data/metaworld/splatter4d_v1/workspace_stats/hammer.json",
+        "single_frame": false
+      },
+      "render": {
+        "near": 0.05,
+        "far": 3.0
+      },
+      "loss": {
+        "rgb": 1.0,
+        "ssim_weight": 0.2,
+        "lambda_dyn": 1.0,
+        "coverage": 0.1,
+        "depth_l1": 1.0,
+        "depth_grad": 0.5,
+        "depth_hard": 0.5,
+        "depth_align": "none",
+        "depth_align_warmup_steps": 0,
+        "motion": 5.0,
+        "motion_huber": 0.01,
+        "invariance": 1.0,
+        "consistency": 0.5,
+        "temperature": 0.1,
+        "visibility": 1.0,
+        "ramp_steps": 20000,
+        "teacher_scale_jitter": null,
+        "depth_valid_far": true,
+        "motion_space": "gaussian"
+      },
+      "train": {
+        "steps": 200000,
+        "batch_size": 16,
+        "lr": 0.0005,
+        "min_lr": 1e-05,
+        "weight_decay": 0.01,
+        "warmup_steps": 10000,
+        "grad_clip": 1.0,
+        "bf16": true,
+        "seed": 0,
+        "num_workers": 6,
+        "prefetch_factor": 2,
+        "log_every": 50,
+        "eval_every": 5000,
+        "save_every": 10000,
+        "eval_at_start": true
+      },
+      "eval": {
+        "max_batches": 8,
+        "probe_every": 10000,
+        "probe_batches": 24,
+        "orbit_center": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "orbit_distance": 1.0,
+        "orbit_elevation": -45.0
+      },
+      "wandb": {
+        "enabled": true,
+        "project": "splatter4d-metaworld"
+      },
+      "aug": {
+        "synth_views": 0,
+        "synth_render": false,
+        "crop": {
+          "prob": 0.5,
+          "scale": [
+            0.8,
+            1.0
+          ],
+          "ratio": [
+            0.95,
+            1.05
+          ]
+        }
+      }
+    },
+    "s2ab-cropnosynth-seed0-pick-place": {
+      "data": {
+        "regime": "metaworld",
+        "root": "/home/ws/data/metaworld/splatter4d_v1",
+        "task": "pick-place",
+        "train_ratio": 0.96,
+        "strides": [
+          2,
+          4,
+          6
+        ],
+        "val_strides": [
+          2,
+          6
+        ],
+        "episodes": null
+      },
+      "model": {
+        "encoder": {
+          "backbone": "scratch",
+          "image_height": 128,
+          "image_width": 128,
+          "patch_size": 16,
+          "width": 128,
+          "depth": 8,
+          "heads": 8,
+          "num_slots": 1,
+          "slot_dim": 256,
+          "num_frames": 3,
+          "mask_ratio": 0.5,
+          "motion_patch_threshold": 0.05,
+          "drop_path": 0.1
+        },
+        "decoder": {
+          "dim": 128,
+          "depth": 2,
+          "heads": 4,
+          "motion_max": 0.25,
+          "scene": {
+            "parents": 768,
+            "children": 8,
+            "offset_scale": 0.15,
+            "child_radius": 0.06,
+            "scale_min": 0.001,
+            "scale_max": 0.08
+          },
+          "dynamic": {
+            "parents": 256,
+            "children": 8,
+            "offset_scale": 0.4,
+            "child_radius": 0.04,
+            "scale_min": 0.0005,
+            "scale_max": 0.03
+          },
+          "single_group": false
+        },
+        "anchor_stats": "/home/ws/data/metaworld/splatter4d_v1/workspace_stats/pick-place.json",
+        "single_frame": false
+      },
+      "render": {
+        "near": 0.05,
+        "far": 3.0
+      },
+      "loss": {
+        "rgb": 1.0,
+        "ssim_weight": 0.2,
+        "lambda_dyn": 1.0,
+        "coverage": 0.1,
+        "depth_l1": 1.0,
+        "depth_grad": 0.5,
+        "depth_hard": 0.5,
+        "depth_align": "none",
+        "depth_align_warmup_steps": 0,
+        "motion": 5.0,
+        "motion_huber": 0.01,
+        "invariance": 1.0,
+        "consistency": 0.5,
+        "temperature": 0.1,
+        "visibility": 1.0,
+        "ramp_steps": 20000,
+        "teacher_scale_jitter": null,
+        "depth_valid_far": true,
+        "motion_space": "gaussian"
+      },
+      "train": {
+        "steps": 200000,
+        "batch_size": 16,
+        "lr": 0.0005,
+        "min_lr": 1e-05,
+        "weight_decay": 0.01,
+        "warmup_steps": 10000,
+        "grad_clip": 1.0,
+        "bf16": true,
+        "seed": 0,
+        "num_workers": 6,
+        "prefetch_factor": 2,
+        "log_every": 50,
+        "eval_every": 5000,
+        "save_every": 10000,
+        "eval_at_start": true
+      },
+      "eval": {
+        "max_batches": 8,
+        "probe_every": 10000,
+        "probe_batches": 24,
+        "orbit_center": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "orbit_distance": 1.0,
+        "orbit_elevation": -45.0
+      },
+      "wandb": {
+        "enabled": true,
+        "project": "splatter4d-metaworld"
+      },
+      "aug": {
+        "synth_views": 0,
+        "synth_render": false,
+        "crop": {
+          "prob": 0.5,
+          "scale": [
+            0.8,
+            1.0
+          ],
+          "ratio": [
+            0.95,
+            1.05
+          ]
+        }
+      }
+    }
+  },
+  "jobs": [
+    {
+      "id": "s2ab-crop-seed0-hammer",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "--name",
+        "s2ab-crop-seed0-hammer",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian",
+        "aug.crop.prob=0.5",
+        "aug.crop.scale=[0.8,1.0]",
+        "aug.crop.ratio=[0.95,1.05]"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 6,
+      "oom_score_adj": 0,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "fulleval-s2ab-crop-seed0-hammer-200k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/fulleval-s2ab-crop-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/s2ab-crop-seed0-hammer/checkpoints/step_0200000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [
+        "s2ab-crop-seed0-hammer"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "export-s2ab-crop-seed0-hammer-200k",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/s2ab-crop-seed0-hammer",
+        "--checkpoint",
+        "runs/pretrain/s2ab-crop-seed0-hammer/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/exports/s2ab-crop-seed0-hammer-200k.pt",
+        "--wait"
+      ],
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 4,
+      "priority": 0,
+      "deps": [
+        "s2ab-crop-seed0-hammer"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "s2ab-crop-seed0-pick-place",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "--name",
+        "s2ab-crop-seed0-pick-place",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian",
+        "aug.crop.prob=0.5",
+        "aug.crop.scale=[0.8,1.0]",
+        "aug.crop.ratio=[0.95,1.05]"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 6,
+      "oom_score_adj": 0,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "fulleval-s2ab-crop-seed0-pick-place-200k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/fulleval-s2ab-crop-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/s2ab-crop-seed0-pick-place/checkpoints/step_0200000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [
+        "s2ab-crop-seed0-pick-place"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "export-s2ab-crop-seed0-pick-place-200k",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/s2ab-crop-seed0-pick-place",
+        "--checkpoint",
+        "runs/pretrain/s2ab-crop-seed0-pick-place/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/exports/s2ab-crop-seed0-pick-place-200k.pt",
+        "--wait"
+      ],
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 4,
+      "priority": 0,
+      "deps": [
+        "s2ab-crop-seed0-pick-place"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "s2ab-cropnosynth-seed0-hammer",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "--name",
+        "s2ab-cropnosynth-seed0-hammer",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian",
+        "aug.synth_views=0",
+        "aug.synth_render=false",
+        "aug.crop.prob=0.5",
+        "aug.crop.scale=[0.8,1.0]",
+        "aug.crop.ratio=[0.95,1.05]"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 6,
+      "oom_score_adj": 0,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "fulleval-s2ab-cropnosynth-seed0-hammer-200k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/fulleval-s2ab-cropnosynth-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/s2ab-cropnosynth-seed0-hammer/checkpoints/step_0200000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [
+        "s2ab-cropnosynth-seed0-hammer"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "export-s2ab-cropnosynth-seed0-hammer-200k",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/s2ab-cropnosynth-seed0-hammer",
+        "--checkpoint",
+        "runs/pretrain/s2ab-cropnosynth-seed0-hammer/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/exports/s2ab-cropnosynth-seed0-hammer-200k.pt",
+        "--wait"
+      ],
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 4,
+      "priority": 0,
+      "deps": [
+        "s2ab-cropnosynth-seed0-hammer"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "s2ab-cropnosynth-seed0-pick-place",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "--name",
+        "s2ab-cropnosynth-seed0-pick-place",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "aug.synth_views=2",
+        "aug.synth_render=true",
+        "loss.depth_valid_far=true",
+        "loss.motion_space=gaussian",
+        "aug.synth_views=0",
+        "aug.synth_render=false",
+        "aug.crop.prob=0.5",
+        "aug.crop.scale=[0.8,1.0]",
+        "aug.crop.ratio=[0.95,1.05]"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 6,
+      "oom_score_adj": 0,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "fulleval-s2ab-cropnosynth-seed0-pick-place-200k",
+      "script": "scripts/evaluate.py",
+      "args": [
+        "--run",
+        "runs/fulleval-s2ab-cropnosynth-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/s2ab-cropnosynth-seed0-pick-place/checkpoints/step_0200000.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 5,
+      "ram_gb": 12,
+      "priority": 1,
+      "deps": [
+        "s2ab-cropnosynth-seed0-pick-place"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "id": "export-s2ab-cropnosynth-seed0-pick-place-200k",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/s2ab-cropnosynth-seed0-pick-place",
+        "--checkpoint",
+        "runs/pretrain/s2ab-cropnosynth-seed0-pick-place/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/exports/s2ab-cropnosynth-seed0-pick-place-200k.pt",
+        "--wait"
+      ],
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 4,
+      "priority": 0,
+      "deps": [
+        "s2ab-cropnosynth-seed0-pick-place"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-hammer-s1000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/s2rl-crop-hammer-s1000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-crop-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-hammer-s1000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-crop-hammer-s1000",
+        "--train-job",
+        "s2rl-crop-hammer-s1000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-hammer-s1000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/s2rl-cropnosynth-hammer-s1000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-cropnosynth-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-hammer-s1000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-cropnosynth-hammer-s1000",
+        "--train-job",
+        "s2rl-cropnosynth-hammer-s1000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-pick-place-s1000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/s2rl-crop-pick-place-s1000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-crop-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-pick-place-s1000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-crop-pick-place-s1000",
+        "--train-job",
+        "s2rl-crop-pick-place-s1000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-pick-place-s1000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/s2rl-cropnosynth-pick-place-s1000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-cropnosynth-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-pick-place-s1000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-cropnosynth-pick-place-s1000",
+        "--train-job",
+        "s2rl-cropnosynth-pick-place-s1000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-hammer-s1001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/s2rl-crop-hammer-s1001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-crop-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-hammer-s1001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-crop-hammer-s1001",
+        "--train-job",
+        "s2rl-crop-hammer-s1001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-hammer-s1001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/s2rl-cropnosynth-hammer-s1001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-cropnosynth-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-hammer-s1001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-cropnosynth-hammer-s1001",
+        "--train-job",
+        "s2rl-cropnosynth-hammer-s1001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-pick-place-s1001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/s2rl-crop-pick-place-s1001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-crop-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-pick-place-s1001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-crop-pick-place-s1001",
+        "--train-job",
+        "s2rl-crop-pick-place-s1001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-pick-place-s1001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/s2rl-cropnosynth-pick-place-s1001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-cropnosynth-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-pick-place-s1001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-cropnosynth-pick-place-s1001",
+        "--train-job",
+        "s2rl-cropnosynth-pick-place-s1001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-hammer-s1002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/s2rl-crop-hammer-s1002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-crop-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-hammer-s1002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-crop-hammer-s1002",
+        "--train-job",
+        "s2rl-crop-hammer-s1002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-hammer-s1002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/s2rl-cropnosynth-hammer-s1002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-cropnosynth-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-hammer-s1002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-cropnosynth-hammer-s1002",
+        "--train-job",
+        "s2rl-cropnosynth-hammer-s1002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-pick-place-s1002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/s2rl-crop-pick-place-s1002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-crop-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-crop-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "crop",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-crop-pick-place-s1002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-crop-pick-place-s1002",
+        "--train-job",
+        "s2rl-crop-pick-place-s1002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-pick-place-s1002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/s2rl-cropnosynth-pick-place-s1002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-cropnosynth-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_admission_rank": "middle"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-cropnosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "cropnosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "crop-20261015",
+      "id": "s2rl-cropnosynth-pick-place-s1002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-cropnosynth-pick-place-s1002",
+        "--train-job",
+        "s2rl-cropnosynth-pick-place-s1002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_admission_rank": "middle"
+    }
+  ],
+  "purpose": "attribution only; not a method-selection gate; the frozen method and its hyperparameters do not change",
+  "admission": "Stage 2 local driver, job by job under the local full-charge cap",
+  "admission_rank": "middle: admitted after every original Stage 2 RL job has been admitted, and before the pretrain-only Stage 2 variants (user approval 2026-10-15); local, same host as the Stage 2 references",
+  "registered_at": "2026-10-15T02:30:02.091968+09:00",
+  "candidate_sha256": "4c15c966c3f3ab928d6779fdf3ab6bd8d5d60b9dc1892d055b2eff846ffda3bb",
+  "shown_candidate_sha256": "524c8d45b659de308a36150c20173cf09608fae8cb4d1fdf9a2dd094c45c5684",
+  "difference_from_shown": "stage2_admission_rank=middle on every job (user approval 2026-10-15)",
+  "queue_sha256_before": "a6119290133671b7c32077f5e76d2f40177fc2faad20c515eb73175f891f8b2c",
+  "queue_sha256_after": "187b7b5caacd9071cd1605542f11e77cff8c4150bb798156462678d637e154df"
+}

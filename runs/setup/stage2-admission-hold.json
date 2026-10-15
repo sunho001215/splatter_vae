@@ -1,0 +1,10 @@
+{
+  "reason": "planned local shutdown 2026-10-16 09:00 KST (user decision 2026-10-15): only jobs that finish before ~08:00 KST",
+  "admit_until": "2026-10-16T07:15:00+09:00",
+  "allow": [
+    "fulleval-s2ab-crop-seed0-hammer-200k", "export-s2ab-crop-seed0-hammer-200k",
+    "fulleval-s2ab-crop-seed0-pick-place-200k", "export-s2ab-crop-seed0-pick-place-200k",
+    "fulleval-s2ab-cropnosynth-seed0-hammer-200k", "export-s2ab-cropnosynth-seed0-hammer-200k",
+    "fulleval-s2ab-cropnosynth-seed0-pick-place-200k", "export-s2ab-cropnosynth-seed0-pick-place-200k"
+  ]
+}

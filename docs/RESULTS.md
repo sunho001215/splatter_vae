@@ -4,6 +4,239 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Shutdown accounting / reporting verification (2026-10-15 20:40)
+
+- Scheduler-only patch `7a14773`: **763 passed, 0 failed/errors/skips**,293.05s in the full native suite;
+  all214 recorded source fingerprints matched the tested commit before integration/push. Evidence:
+  `runs/setup/native-tests-intentional-stop-20261015.json` (original `runs/nv/i/runs/u/tests.json`). No model/config,
+  scientific threshold or GPU selection changed. Intentional checkpoint/deadline exits do not consume restarts,
+  including when exit observation precedes the stop proof. Ordinary remote resets still retain identity fingerprints;
+  only a proved never-executed launch can release its corrected job-definition fingerprint.
+- An initial suite invocation was **rejected by the runtime-output guard before collection**, because it requested an
+  output outside its checkout's approved runtime root. It is not a test pass. The short checkout/output paths fixed
+  the invocation; the first accounting-only candidate passed761, then the expanded candidate passed763 as above.
+- Initial remote Stage2 admission was correctly refused before Docker because `config.yaml` was listed as a required
+  numerical artifact. All40 placement definitions were amended to omit it; configs remain automatically synced and
+  scientifically verified. All40 exact remote spec shapes then validated. Later ambiguous launch responses remain
+  unknown until two direct absence checks, never treated as failures or blindly relaunched. Evidence:
+  `runs/setup/reconcile-s2ab-nolambdadyn-seed0-hammer-20261015-203706.json` and
+  `reconcile-s2ab-nocoverage-seed0-pick-place-20261015-203713.json`; subsequent attempts actually started.
+- RL report `runs/setup/rl-report-20261015-203425.json` adds per-task seed-mean95% bootstrap intervals to **both
+  success and return, last-5/final/AUC** (10,000 resamples,RNG0), for all96 final and30 original Stage2 runs, with
+  camera sets separate. Point estimates and aggregate success IQMs match the20:00 report; returns are never pooled
+  into a raw cross-task IQM. SHA-256 `dcdbd66f4e8640b13762333cff496479b0137322546f13e926b701f05b498d8c`.
+- Permission layer **denied stopping/restarting scheduler PID2819571**. It was not stopped or bypassed; this remains
+  an explicit final-shutdown blocker pending renewed permission. Scoped new driver processes use the tested reducer.
+
+### Remote launch diagnostics verification (2026-10-15 20:54)
+
+- Additional diagnostic-only candidate `c5a7571`: **764 passed,0 failed/errors/skips**,310.65s full native suite.
+  All214 recorded source fingerprints independently matched the tested commit before integration/push.
+  Evidence `runs/setup/native-tests-launch-diagnostics-20261015.json` (original `runs/nv/i/runs/v/tests.json`).
+- Failed non-transport launcher responses now retain bounded, redacted stdout/stderr beside the immutable attempt
+  spec. No automatic retry, failure-budget waiver, host repair, source/image change to training or scientific change.
+- Third refused attempt `s2ab-misscaled-scale-seed0-pick-place` reconciled only after646s and two direct absence checks
+  with positive control, then actually started as attempt2. Proof `runs/setup/reconcile-s2ab-misscaled-scale-seed0-pick-place-20261015-204300.json`.
+  All eight remote containers showed finite fresh training metrics at20:52; exact inventory/ETA caveats in
+  `runs/setup/servers-filled-20261015.json`. Earlier non-config refusal causes remain unestablished, not assigned to
+  NVML or foreign activity. A brief SSH interruption recovered without outage-driven relaunch.
+
+### Final pretraining length: 200k selected (2026-10-13 13:52)
+
+Registered C + D0 + M3D A200/A300 rule applied unchanged after all 8 full-split evaluations and all 16 proxy
+trainer/evaluator closeouts completed. One pretraining seed 0 per arm/task; compared representation runs local,
+all RL arms on the same remote host. Independently rechecked endpoint/checkpoint hashes, full-split batch counts,
+configuration equality except schedule length, final synced numerical provenance/checksums and every last-5 score.
+
+- A300 wins **5/40** counted comparisons (hammer 3, pick-place 2), loses **1/40** (hammer trajectory hand-velocity
+  R² at stride 2), with 34 ties. Wins: hammer training moving PSNR at strides 2/6 and relative EPE at stride 2;
+  pick-place training and trajectory hand-velocity R² at stride 2.
+- Hammer 400k-agent-step RL, seeds 1000-1005: A200 **0.696111**, A300 **0.770833**, difference **+0.074722**;
+  SE(diff) **0.100895**, registered margin **max(0.10, 2 x SE) = 0.201791**. A300 is not better beyond the margin.
+  Per-seed scores below are rounded; the decision uses full-precision synced values.
+
+| Arm | s1000 | s1001 | s1002 | s1003 | s1004 | s1005 | Mean |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| A200 | 0.898 | 0.610 | 0.540 | 0.837 | 0.368 | 0.923 | 0.696111 |
+| A300 | 0.910 | 0.590 | 0.792 | 0.798 | 0.750 | 0.785 | 0.770833 |
+
+The 200k condition holds (wins <= 8 and RL not better beyond the margin); the 400k condition fails. **Use exactly
+200,000 pretraining steps, warmup 10k plus cosine to that endpoint, for every final task and ours ablation.**
+Pick-place RL is context only: A200 0.016667 versus A300 0.003333 (two seeds, 200k agent steps); it is not counted.
+
+Decision: `runs/setup/length-decision-20261013.txt`. Independent verification:
+`runs/setup/length-verification-20261013.json` (SHA-256
+`1cfd70b71e6c0604872e9221063255d3c74f6550a98bcbe1fcc64520e94bce18`). Speculative 300k work remains context only,
+not final Stage 3. No thresholds, seeds or protocols were changed after seeing the results.
+
+### Frozen Stage 3 registration and dispatch checks (2026-10-13)
+
+`method-frozen-v1` is an annotated tag on accepted `226d8ae89b6f65097d372e597e0a7734d2eee3e0`, pushed to origin.
+Its annotation embeds all eight frozen task configurations and the length-evidence identity. Local copy:
+`runs/setup/method-frozen-v1.json` (SHA-256
+`65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9`). No unaccepted baseline code is included.
+
+Registered six fresh 200k pretraining jobs, six guarded exports and 24 DrM trainers plus 24 companions (eight tasks,
+RL seeds 2000-2002, 1M agent steps). Hammer/pick-place reuse their verified A200 exports. Each new pretraining
+completion requires its synced final 200k checkpoint; exports require verified pretraining closeout and retain
+encoder/config/checkpoint provenance before releasing RL dependencies. Speculative 300k schedules and evidence
+are preserved, but no further speculative 300k admissions occur after the 200k decision.
+
+The first generated candidate queue failed YAML parsing: appending after the entire document placed new sequence
+entries after trailing top-level resource fields, not within `jobs`. **The authoritative queue was unchanged.**
+The corrected insertion uses the parsed jobs-sequence boundary and asserts exact equality of every old job and host
+field before atomic publication. Failed candidate retained as
+`runs/setup/stage3-final-registered-20261013.yaml`; corrected candidate uses the `-v2.yaml` suffix.
+
+Registration evidence: `runs/setup/stage3-final-registration-20261013.json`. Configuration and isolated dispatcher
+fixture checks: **100 passed**, `runs/setup/stage3-dispatch-checks-20261013.json`. They cover exact frozen overrides,
+seeds, verified data/export gates, 300k exclusion, GPU/RAM ceilings, independent trainer/evaluator admission and
+later companion admission. They execute no native model substitution or new upstream code and are **not** a new
+full-suite acceptance claim. Campaign jobs continue through `scripts/jobs.py` on the unchanged accepted release;
+no GPU guard/selection change or rerun of isolation occurred.
+
+A separate permission gate blocked copying the dispatcher while it retained automatic runtime-computed remote
+replay deletion. That deletion path was removed, the non-deletion dispatcher checks reran (100 passed), and the
+safe durable copy/start was permitted. Only the owned controller loop was restarted; trainers/evaluators were
+not stopped. Subsequent completed replays are retained, with free disk recorded and admission floors enforced.
+
+### Stage 2 attribution registration (2026-10-13)
+
+Reporting margins were written before registration: `runs/setup/stage2-reporting-margins-20261013.json`
+(SHA-256 `5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677`). They come from the fixed M3D
+seed 0/1 full-split 100k references; all four summary hashes were checked against their completion proofs. They
+are attribution reporting margins, not new method-selection gates.
+
+Registered 108 local jobs: 10 variants x 2 development tasks (seed 0, 200k), 20 full-split evaluations, 8 guarded
+exports, and 30 DrM trainers with 30 companions. RL is 1M agent steps, seeds 1000-1002, for the full method (reused
+A200 encoders) and the T=1, no-motion, pure no-InfoNCE and single-group variants. Registration asserts that each
+variant config differs from the frozen config only in its intended keys. Pure no-InfoNCE sets only
+`loss.invariance=0`; the legacy joint `no_infonce.yaml` is not used. Evidence:
+`runs/setup/stage2-registration-20261013.json`.
+
+The first candidate queue failed YAML parsing: PyYAML wrote shared `deps` lists as `&id001` anchors, which collide
+with an anchor already in the queue. **The authoritative queue was unchanged.** The failed candidate is retained as
+`runs/setup/stage2-registered-20261013.yaml`. The published `-v2.yaml` candidate uses alias-free job copies and the
+same old-job equality checks.
+
+**Local over-admission (my driver defect, 15:21).** The first Stage 2 driver counted a new job's footprint only
+for 10 minutes after launch. The seven pretrains admitted at 15:10 were still at ~3-4 GB PSS at 15:21, so a pass
+then admitted an 8th pretrain plus five full-method RL reference jobs (three trainers, two evaluators). Under the
+measured-footprint rule (base charge ~59 GB + 8 x 10.77 GB + 5.5 GB uncached data) the 8th pretrain alone breaks
+the 150 GB hard cap; the previous 4-hour recording (settled 8.2-9.9 GB per trainer) projects ~151 GB. Peak observed
+charge was 131.9 GB; the cap was not crossed. A pass started at 15:32 was cut off by stopping the driver loop and
+launched nothing. Remediation:
+- Under the standing checkpoint-pause authorization, the three RL trainers were paused right after publishing their
+  50k checkpoint (`checkpoint_paused` events, hashes in `runs/<id>/checkpoint_pause.json`). Their evaluators pause
+  after evaluating through 50k. The 8th pretrain (`s2ab-singlegroup-seed0-pick-place`) pauses at its 10k checkpoint,
+  after the 10k validation is logged and before step 10,050. No logged step or evaluation is lost; all resume through
+  `scripts/jobs.py`.
+- The driver now reserves each running job's remaining growth (footprint minus current session PSS) instead of a
+  10-minute ramp, and treats checkpoint-paused jobs as restartable. The first evaluator-pause attempt refused to signal:
+  its identity check expected the evaluator job id in the command line, but local evaluators carry only
+  `--train-job <trainer>`. That check was corrected and the trainers were not touched again.
+
+**Stage 2 RL footprints switched to measured values (2026-10-14 11:58).** The driver reserved the declared 6 GiB for
+every DrM trainer and evaluator, contrary to the measured-footprint admission rule. Measured splatter4d DrM peaks:
+trainer RSS <= 2.65 GB at 1M agent steps (`runs/s3-drm-splatter4d-{hammer,pick-place}-s2000/final.json`) and local
+session PSS 2.80 GB at 667k; evaluator session PSS 3.5-3.8 GB. The driver now reserves 3.5 GB per trainer and
+4.5 GB per evaluator (~25% margin). The growth-aware accounting (footprint minus current PSS), the 140 GB admission
+ceiling, the 150 GB hard cap and the 147 GB alert are unchanged.
+
+**Stage 2 attribution, first complete comparisons (2026-10-15 04:57; attribution only).** Report
+`runs/setup/stage2-report-20261015-045744.json`, from `runs/setup/tools/stage2_report.py`. Representation is
+compared at 200k, seed 0, against the full method's own 200k evaluation, using the prospective margins; RL uses the
+existing rule max(0.10, 2 x SE). Metrics beyond margin, worse/better:
+
+| variant | hammer | pick-place |
+|---|---|---|
+| pure no-InfoNCE | 21/0 | 25/1 |
+| no-motion | 15/0 | 23/0 |
+| T=1 | 24/0 | 22/1 |
+| single-group | 6/0 | evaluation pending |
+
+- Pure no-InfoNCE loses retrieval and object position: trajectory retrieval 0.815 -> 0.414 on hammer.
+- No-motion mainly loses motion: hammer relative EPE 0.248 -> 0.506.
+- T=1 has undefined motion by construction (relative EPE 1.0) and loses velocity R².
+- Single-group mostly loses utilisation and dynamic Chamfer.
+- First complete RL comparison, no-motion vs full on hammer (seeds 1000-1002):
+  - training cameras 0.967 vs 0.935 (+0.032, margin 0.100, within margin);
+  - held-out cameras 0.132 vs 0.149 (within);
+  - trajectories 0.980 vs 0.882 (+0.098, margin 0.100, within; borderline).
+- Second complete RL comparison, pure no-InfoNCE vs full on hammer (05:08,
+  `runs/setup/stage2-report-20261015-050839.json`), all three measures worse beyond margin:
+  - training cameras 0.575 vs 0.935 (-0.360, margin 0.212);
+  - held-out cameras 0.045 vs 0.149 (-0.104, margin 0.100);
+  - trajectories 0.203 vs 0.882 (-0.678, margin 0.109).
+- Third complete RL comparison, T=1 vs full on hammer (05:14,
+  `runs/setup/stage2-report-20261015-051450.json`), all within margin:
+  - training cameras 0.933 vs 0.935 (-0.002, margin 0.106);
+  - held-out cameras 0.066 vs 0.149 (-0.083, margin 0.100);
+  - trajectories 0.907 vs 0.882 (+0.025, margin 0.148).
+- So on hammer, RL is affected only by removing InfoNCE; the temporal and motion components show in
+  representation metrics but not in hammer RL success.
+- Fourth complete RL comparison, single-group vs full on hammer (05:31), all within margin:
+  - training cameras 0.901 vs 0.935 (-0.034, margin 0.127);
+  - held-out cameras 0.057 vs 0.149 (-0.092, margin 0.100);
+  - trajectories 0.890 vs 0.882 (+0.008, margin 0.103).
+- All four hammer arms are now complete; only pure no-InfoNCE is worse beyond margin.
+- First complete pick-place RL comparison, T=1 vs full (09:28,
+  `runs/setup/stage2-report-20261015-092828.json`):
+  - training cameras 0.664 vs 0.463 (+0.201, margin 0.215, within);
+  - held-out cameras 0.025 vs 0.011 (within);
+  - trajectories 0.612 vs 0.423 (+0.188, margin 0.164, **better**).
+- Single-group pick-place representation: 14 of 32 metrics worse, 1 better (utilisation, dynamic Chamfer,
+  PSNR); retrieval and R² stay within margin.
+- Pick-place RL (09:58):
+  - pure no-InfoNCE: training cameras 0.012 vs 0.463 (-0.451, margin 0.207, worse); trajectories 0.015 vs
+    0.423 (worse);
+  - no-motion: training cameras 0.433 vs 0.463 (-0.030, margin 0.297, within); held-out and trajectories also
+    within.
+- Single-group vs full, pick-place RL (10:24): training cameras 0.546 vs 0.463, within; held-out and
+  trajectories within. **Stage 2 RL is complete (30/30).**
+- Only pure no-InfoNCE is worse beyond margin on both development tasks. No-motion, T=1 and single-group are
+  within margin on both; T=1 is better on pick-place trajectories.
+- The representation results are single seed. The frozen method does not change.
+
+**Full-split evaluation footprint switched to a measured value (2026-10-15 09:28).** The Stage 2 driver
+reserved the declared 12 GiB (12.9 GB) for every `scripts/evaluate.py` job. Under job-by-job admission, smaller RL
+jobs kept taking the freed headroom first, so `fulleval-s2ab-singlegroup-seed0-pick-place-200k` and the four crop
+re-evaluations waited from about 02:20 to 09:23.
+
+Sampling every 5 s over the whole run of that evaluation measured a session PSS peak of 8.00 GB. Its data page cache
+is reserved separately as non-resident dataset cache. The driver now reserves 10.0 GB per evaluation (+25 %, as for
+RL). The 140 GB admission ceiling, the 150 GB hard cap and the 147 GB alert are unchanged.
+
+The previous driver is kept as `runs/setup/tools/stage2_local_driver.before-eval-footprint-20261015.py`. Both
+versions' dry runs proposed the same next admission.
+
+**Live mirror lag of final pretraining runs (observed 23:08).** The accepted live result sync downloads every changed
+file and rejects it if the remote file changed during transfer. The final 200k pretrains append `metrics.jsonl`
+about every 20 s and also sync checkpoints, so many live syncs end with "live result sync unavailable". The local
+mirror then lags: `s3-m3d-seed0-coffee-push-200k` showed step 88,000 locally while the remote file had 93,500 and was
+written 3 s earlier; the container was running. Training, scheduler state and the final post-exit sync (static
+files, before/after manifest equality) are unaffected. Each failed attempt leaves a checksum-named partial download
+(1,101 files, 2.1 GB at 23:08). These are retained under the no-deletion rule; disk is far above the floor. Health
+checks for these jobs read the remote metrics directly. No sync code was changed mid-campaign.
+By 2026-10-14 04:08 the partials had reached 1,611 files and 7.5 GB, growing ~1.3 GB/h. Their freshly written pages
+stayed in page cache and counted toward the local full-charge rule: the charge rose ~3 GB/h to 131.7 GB while
+trainer PSS was flat. `runs/setup/tools/evict_partial_cache.py` releases only the clean cached pages
+(`POSIX_FADV_DONTNEED`) of partials untouched for 10 minutes; no file is modified or deleted. The first run cut the
+charge from 130.8 to 123.7 GB; it now repeats every 15 minutes (`runs/setup/evict-partial-cache-20261014.log`).
+
+### Baseline-expansion infrastructure verification and blocked gates (2026-10-13)
+
+The review-only cache/scheduler subset first returned **209 passed, 1 failed**: the new concurrent-cache test
+matched the intentional persistent flock file as leftover staging data. The single-build and patched-content
+assertions passed. The fixture now requires exactly one published tree and its persistent lock, rejecting all other
+residue; no model assertion or threshold changed. Rerun: **210 passed**, ruff and whitespace checks passed. Evidence:
+`runs/setup/baseline-infrastructure-{first,verified}-20261013.log`. This is not full native bundle acceptance.
+
+Execution/testing of the pinned RVT, DynaMo and SNeRL upstream code is permission-blocked. The SNeRL port was asked
+to pause upstream execution and preserve evidence. The 3D-MVP copied trunk remains unaccepted pending a thin wrapper
+around the actual pinned RVT trunk. No new-baseline release or long campaign run was admitted; existing accepted
+campaign jobs continue unchanged.
+
 ### Stage 4 CNN DrM baseline: all 24 runs complete (2026-10-12 14:52)
 
 8 tasks x RL seeds 2000-2002, 1M agent steps; pick-place s2000 local, the other 23 trainer/evaluator pairs on the
@@ -22,6 +255,81 @@ deleted, all 46 remote W&B runs uploaded. Mean last-5 training-camera success (n
 | stick-push | 1.000 | 0.997 | 0.838 | 0.945 |
 
 8-task mean 0.698. Per-run records: `runs/remote/stage4-finished/*.json`.
+
+### Final in-domain comparison: ours vs SinCro, ReViWo, CNN (2026-10-15 08:41; pre-registered protocol)
+
+All runs: 8 tasks x RL seeds 2000-2002 x 1M agent steps, the full evaluation protocol. Ours is the frozen C + D0 + M3D
+200k encoder. Per `docs/RL_PROTOCOL.md`: final success is the 1M evaluation and AUC is the mean over 100 evaluation
+points. Aggregates are IQM and probability of improvement with stratified-bootstrap 95 % CIs. Report:
+`runs/setup/final-comparison-20261015-084143.json`. SNeRL, DynaMo and 3D-MVP have not been run (upstream execution
+permission-blocked).
+
+| IQM [95 % CI] | ours | SinCro | ReViWo | CNN |
+|---|---|---|---|---|
+| training cameras, final | 0.76 [0.67, 0.81] | 0.44 [0.34, 0.53] | 0.31 [0.22, 0.40] | 0.72 [0.66, 0.76] |
+| training cameras, AUC | 0.51 [0.47, 0.56] | 0.25 [0.18, 0.32] | 0.26 [0.19, 0.33] | 0.41 [0.36, 0.45] |
+| held-out cameras, final | 0.13 [0.11, 0.16] | 0.00 [0.00, 0.00] | 0.00 [0.00, 0.00] | 0.00 [0.00, 0.01] |
+| trajectories, final | 0.72 [0.65, 0.78] | 0.10 [0.06, 0.13] | 0.20 [0.15, 0.25] | 0.76 [0.72, 0.81] |
+| trajectories, AUC | 0.51 [0.47, 0.55] | 0.09 [0.07, 0.11] | 0.17 [0.14, 0.20] | 0.44 [0.40, 0.49] |
+
+Probability that ours beats each baseline:
+- SinCro: 0.82-0.93 on all conditions.
+- ReViWo: 0.86-0.97 on all conditions.
+- CNN:
+  - training final 0.49 [0.36, 0.62] (level);
+  - training AUC 0.67 [0.58, 0.75];
+  - held-out final 0.86 [0.82, 0.88];
+  - trajectory final 0.38 [0.26, 0.48] (CNN ahead);
+  - trajectory AUC 0.60 [0.49, 0.71].
+
+Per task, CNN leads on peg-insert-side and coffee-push; ours leads on hammer, peg-unplug-side and held-out cameras on
+every task with non-zero success. Every method's held-out-camera success is low; ours peaks at 0.41 on door-open.
+
+Caveats:
+- CNN pick-place s2000 was OOM-resumed at 650k; CNN bin-picking s2000 is attempt r4.
+- Two baseline seeds collapsed (ReViWo stick-push s2001, SinCro stick-push s2002; checked, recorded as is).
+- Bootstrap CIs over three seeds are coarse.
+
+### RL reporting standard and Stage 2 diagnosis (2026-10-15 20:00)
+
+Success and return are reported as last-5, final (1M) and AUC, for training cameras, held-out cameras and
+trajectories. Report: `runs/setup/rl-report-20261015-200032.json`, from `runs/setup/tools/rl_reporting.py`.
+
+| IQM of success (last-5 / final / AUC) | ours | SinCro | ReViWo | CNN |
+|---|---|---|---|---|
+| training cameras | 0.76 / 0.76 / 0.51 | 0.44 / 0.44 / 0.25 | 0.39 / 0.31 / 0.26 | 0.72 / 0.72 / 0.41 |
+| held-out cameras | 0.13 / 0.13 / 0.10 | 0.00 / 0.00 / 0.00 | 0.00 / 0.00 / 0.01 | 0.01 / 0.00 / 0.01 |
+| trajectories | 0.72 / 0.72 / 0.51 | 0.10 / 0.10 / 0.09 | 0.23 / 0.20 / 0.17 | 0.77 / 0.76 / 0.44 |
+
+Returns are reported per task, since their scale differs by task, and they agree with the success rankings.
+
+Stage 2 fairness:
+- All 30 RL runs ran locally at the same commit.
+- Their RL configs differ from the full method only in the encoder export.
+- Every evaluation point has 240 episodes.
+- The only encoder difference besides the intended keys is T=1's `num_frames`.
+- Pure no-InfoNCE is also far lower in return: hammer 1336 vs 1857, pick-place 25 vs 689.
+
+### Crop follow-up step 1: 10-09 crop screen re-evaluated with the current evaluator (2026-10-15 09:39)
+
+M2D-era single-seed results: base vs crop at 100k (base 200k schedule), seed 0; report only. Report:
+`runs/setup/crop-reeval-report-20261015.json`.
+
+| metric | hammer base -> crop | beyond margin | pick-place base -> crop | beyond margin |
+|---|---|---|---|---|
+| retrieval, trajectory | 0.331 -> 0.372 | S2+S1, better | 0.355 -> 0.349 | no |
+| retrieval, near | 0.527 -> 0.492 | S2, worse | 0.533 -> 0.498 | S2, worse |
+| retrieval, training cameras | 0.908 -> 0.770 | S2, worse | 0.782 -> 0.748 | S2, worse |
+| hand-position R², train / near | 0.958 / 0.871 -> 0.958 / 0.911 | no | 0.957 / 0.912 -> 0.965 / 0.919 | no |
+| hand-position R², trajectory | 0.480 -> 0.823 | S2+S1, better | 0.677 -> 0.776 | S2+S1, better |
+| object-position R², trajectory | 0.657 -> 0.861 | S2, better | 0.602 -> 0.780 | S2, better |
+| hand-velocity R², train | 0.679 -> 0.678 | no | 0.354 -> 0.426 | S2, better |
+| hand-velocity R², near | 0.492 -> 0.610 | S2, better | 0.274 -> 0.386 | S2, better |
+| hand-velocity R², trajectory | 0.251 -> 0.441 | S2+S1, better | -0.033 -> 0.134 | S2+S1, better |
+| CD-render, trajectory | -6.1 % | no | +15.3 % | S2 (worse), within S1 |
+
+S2 = Stage 2 reporting margins; S1 = S1 margins, defined only for four metrics. Both margins were measured on later
+configurations, so they approximate the seed noise of this configuration.
 
 ### 2c DROID 3D track arrays: smoke check only (2026-10-12; code on `review-items`, not integrated)
 

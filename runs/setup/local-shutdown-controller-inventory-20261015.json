@@ -1,0 +1,52 @@
+{
+  "recorded_local": "2026-10-15T20:43:15.079990+09:00",
+  "boot_id": "9442c251-dc7f-4558-b088-f425768d0279",
+  "purpose": "inventory only; not a stop command or a watchdog",
+  "controllers": [
+    {
+      "pid": 3600420,
+      "role": "Stage2 local driver loop",
+      "start_ticks": 439535020,
+      "session": 3600420,
+      "group": 3600420,
+      "cmdline_sha256": "c9177a622aff667465bc4df7592df18a1572bb2b945502a1f098c62e7a20bcf4",
+      "stop_permission_blocked": false
+    },
+    {
+      "pid": 1860610,
+      "role": "remote dispatcher loop (local process only)",
+      "start_ticks": 458464296,
+      "session": 1860610,
+      "group": 1860610,
+      "cmdline_sha256": "071baed9f9f020d313ef3741c41aaa8074d5fe8a8a0328d3c43f80142c8c89a6",
+      "stop_permission_blocked": false
+    },
+    {
+      "pid": 326907,
+      "role": "clean-page cache loop",
+      "start_ticks": 443993296,
+      "session": 326907,
+      "group": 326907,
+      "cmdline_sha256": "2a6720719f8815f0835b1ebe4110b6b38978fc300a72cbc569a9d47ac0a96879",
+      "stop_permission_blocked": false
+    },
+    {
+      "pid": 1561687,
+      "role": "memory alert loop",
+      "start_ticks": 456525575,
+      "session": 1561687,
+      "group": 1561687,
+      "cmdline_sha256": "50ee1a7726247de60d679dc1038a2c5761a25630bfd59fa5e0f4a3a61941241b",
+      "stop_permission_blocked": false
+    },
+    {
+      "pid": 2819571,
+      "role": "scheduler daemon \u2014 stop permission denied",
+      "start_ticks": 415518078,
+      "session": 2819571,
+      "group": 2819571,
+      "cmdline_sha256": "5d9dbd8465eae385235888e3b589d6014e1c6b3395a12f1ab70c7116ca7960f9",
+      "stop_permission_blocked": true
+    }
+  ]
+}

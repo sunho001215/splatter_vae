@@ -1,0 +1,51 @@
+# generated 2026-10-13T13:52:21.259070+09:00
+Representation (A300 at 300k vs A200 at 200k), 40 counted comparisons
+  hammer     psnr_moving_train  s2  A200   27.7136  A300   28.4877  delta +0.7741  threshold 0.3  WIN
+  hammer     psnr_moving_train  s6  A200   25.3094  A300   25.8950  delta +0.5856  threshold 0.3  WIN
+  hammer     psnr_traj          s2  A200   23.0983  A300   23.2592  delta +0.1609  threshold 0.2  =
+  hammer     psnr_traj          s6  A200   23.1049  A300   23.2488  delta +0.1438  threshold 0.2  =
+  hammer     rel_epe_02         s2  A200    0.2524  A300    0.2072  delta -0.0453  threshold 0.03  WIN
+  hammer     rel_epe_02         s6  A200    0.2476  A300    0.2223  delta -0.0253  threshold 0.03  =
+  hammer     retrieval_train    s2  A200    0.9417  A300    0.9563  delta +0.0146  threshold 0.02  =
+  hammer     retrieval_train    s6  A200    0.9677  A300    0.9760  delta +0.0083  threshold 0.02  =
+  hammer     r2_hand_vel_train  s2  A200    0.8913  A300    0.9025  delta +0.0112  threshold 0.03  =
+  hammer     r2_hand_vel_train  s6  A200    0.9115  A300    0.9246  delta +0.0131  threshold 0.03  =
+  hammer     cd_render_traj     s2  A200    0.0217  A300    0.0227  rel delta +0.0506  threshold 0.1  =
+  hammer     cd_render_traj     s6  A200    0.0216  A300    0.0227  rel delta +0.0507  threshold 0.1  =
+  hammer     retrieval_near     s2  A200    0.8353  A300    0.8474  delta +0.0122  threshold 0.02  =
+  hammer     retrieval_near     s6  A200    0.8859  A300    0.9036  delta +0.0178  threshold 0.02  =
+  hammer     retrieval_traj     s2  A200    0.7812  A300    0.8003  delta +0.0191  threshold 0.02  =
+  hammer     retrieval_traj     s6  A200    0.8487  A300    0.8589  delta +0.0102  threshold 0.02  =
+  hammer     r2_hand_pos_traj   s2  A200    0.9041  A300    0.9302  delta +0.0261  threshold 0.03  =
+  hammer     r2_hand_pos_traj   s6  A200    0.9289  A300    0.9362  delta +0.0074  threshold 0.03  =
+  hammer     r2_hand_vel_traj   s2  A200    0.7592  A300    0.7104  delta -0.0487  threshold 0.03  LOSS
+  hammer     r2_hand_vel_traj   s6  A200    0.8541  A300    0.8617  delta +0.0077  threshold 0.03  =
+  pick-place psnr_moving_train  s2  A200   20.9230  A300   20.9440  delta +0.0211  threshold 0.3  =
+  pick-place psnr_moving_train  s6  A200   22.4006  A300   22.5180  delta +0.1174  threshold 0.3  =
+  pick-place psnr_traj          s2  A200   23.0353  A300   22.9115  delta -0.1238  threshold 0.2  =
+  pick-place psnr_traj          s6  A200   23.1198  A300   22.9631  delta -0.1567  threshold 0.2  =
+  pick-place rel_epe_02         s2  A200    0.2240  A300    0.2079  delta -0.0162  threshold 0.03  =
+  pick-place rel_epe_02         s6  A200    0.2241  A300    0.1992  delta -0.0249  threshold 0.03  =
+  pick-place retrieval_train    s2  A200    0.9370  A300    0.9323  delta -0.0047  threshold 0.02  =
+  pick-place retrieval_train    s6  A200    0.9464  A300    0.9573  delta +0.0109  threshold 0.02  =
+  pick-place r2_hand_vel_train  s2  A200    0.8375  A300    0.9160  delta +0.0785  threshold 0.03  WIN
+  pick-place r2_hand_vel_train  s6  A200    0.9206  A300    0.9417  delta +0.0211  threshold 0.03  =
+  pick-place cd_render_traj     s2  A200    0.0190  A300    0.0192  rel delta +0.0061  threshold 0.1  =
+  pick-place cd_render_traj     s6  A200    0.0190  A300    0.0192  rel delta +0.0083  threshold 0.1  =
+  pick-place retrieval_near     s2  A200    0.8685  A300    0.8678  delta -0.0007  threshold 0.02  =
+  pick-place retrieval_near     s6  A200    0.9034  A300    0.9071  delta +0.0037  threshold 0.02  =
+  pick-place retrieval_traj     s2  A200    0.8442  A300    0.8494  delta +0.0052  threshold 0.02  =
+  pick-place retrieval_traj     s6  A200    0.8852  A300    0.8874  delta +0.0022  threshold 0.02  =
+  pick-place r2_hand_pos_traj   s2  A200    0.9471  A300    0.9461  delta -0.0010  threshold 0.03  =
+  pick-place r2_hand_pos_traj   s6  A200    0.9487  A300    0.9555  delta +0.0068  threshold 0.03  =
+  pick-place r2_hand_vel_traj   s2  A200    0.7872  A300    0.8292  delta +0.0420  threshold 0.03  WIN
+  pick-place r2_hand_vel_traj   s6  A200    0.8794  A300    0.8957  delta +0.0163  threshold 0.03  =
+  wins 5/40 (hammer 3, pick-place 2); losses 1/40 (hammer 1, pick-place 0)
+RL (hammer, 400k agent steps, mean last-5 training-camera success, 6 seeds per arm)
+  A200 0.6961 [0.898, 0.61, 0.54, 0.837, 0.368, 0.923]
+  A300 0.7708 [0.91, 0.59, 0.792, 0.798, 0.75, 0.785]
+  difference +0.0747  SE(diff) 0.1009  margin 0.2018
+RL pick-place (reported, not counted): A200 0.0167 [0.013, 0.02]  A300 0.0033 [0.005, 0.002]
+200k condition: (wins <= 8 or losses > wins) = True, A300 RL not better by more than the margin = True -> True
+400k condition: wins >= 24 = False, >= 8 per task = False, A300 RL not worse by more than the margin = True -> False
+DECISION: 200k

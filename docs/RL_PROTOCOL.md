@@ -127,7 +127,7 @@ ablation encoder receives only the newest frame.
 
 | Encoder | Pretraining steps | Notes |
 |---|---|---|
-| splatter4d (ours) | default 300 000; final value chosen on hammer and pick-place before `method-frozen-v1` from A200 vs A300 of the final configuration (after items 1-2, 6-seed hammer proxies) | warmup 10k + cosine decay to `train.steps`; the chosen value is used for all 8 tasks and every ablation of our method (rule and evidence: `docs/EXPERIMENT_LOG.md`, "Pretraining length") |
+| splatter4d (ours) | **200 000**, selected 2026-10-13 by the registered C + D0 + M3D A200/A300 rule (5/40 wins, hammer RL improvement below the six-seed margin) | warmup 10k + cosine decay to `train.steps=200000`; fixed for all 8 tasks and every ours ablation. Explicit override supersedes the historical 300k base default; evidence in `docs/RESULTS.md` and `runs/setup/length-verification-20261013.json`. |
 | SinCro | exactly 300 000 on every task | user decision; reference 500 001; other reference hyperparameters unchanged (`docs/BASELINES.md`, deviation 9) |
 | ReViWo | 100 001 (reference) | reference hyperparameters unchanged |
 
@@ -161,11 +161,16 @@ pick-place is solvable under this protocol; it counts as a Stage 4 seed only if 
 
 ## Reported metrics
 
-`runs/<id>/eval.jsonl` records success and return for each training camera, each held-out camera and both
-trajectories at every evaluation point; `train.jsonl` records dormant ratios, noise, lambda and losses. Final success
-is the last evaluation (1M agent steps); success AUC is the mean success over all evaluation points. Per task: mean
-and 95% bootstrap CI over seeds. Aggregate: interquartile mean (IQM) and probability of improvement over tasks and
-seeds (rliable-style), with training cameras, held-out cameras and trajectories reported separately.
+`runs/<id>/eval.jsonl` (or a remote companion's `runs/<id>-eval/eval.jsonl`) records success and return for each
+training camera, each held-out camera and both trajectories at every evaluation point; `train.jsonl` records dormant
+ratios, noise, lambda and losses. **Report both success and return as last-5, final and AUC** (user, 2026-10-15):
+last-5 is the arithmetic mean of the final five evaluations, final is the 1M evaluation, and AUC is the arithmetic
+mean of the 100 equally spaced evaluations from 10k through 1M. Report the six training cameras, four held-out
+cameras and two moving-camera trajectories separately; condition-level return is the mean of its camera/path
+returns. Per task: per-seed values, mean and 95% bootstrap CI. Aggregate success: interquartile mean (IQM) and
+probability of improvement over tasks and seeds (rliable-style), with 10,000 stratified seed-within-task bootstrap
+samples (RNG seed 0). Returns have task-dependent scales: report per task, not a raw-return cross-task IQM.
+`runs/setup/tools/rl_reporting.py` produces the complete per-run/per-task report.
 
 ## Measurements
 

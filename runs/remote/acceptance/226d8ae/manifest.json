@@ -1,0 +1,34 @@
+{
+  "commit": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+  "cross_host": {
+    "path": "runs/remote/acceptance/226d8ae/cross_host.json",
+    "sha256": "e0aced4d550fe5bcde6d36a0a89b64ab0306a317f9c27d4ee1b72066b8d27d1a"
+  },
+  "data": {
+    "path": "runs/remote/acceptance/226d8ae/data.json",
+    "sha256": "13443df7b72f2ea841e7344766207b341fdf793a60fe3750248e2591d701f969"
+  },
+  "full_suite": {
+    "path": "runs/remote/acceptance/226d8ae/tests.json",
+    "sha256": "515ed1ef40ccfef7b8bb7cdcf5683f1c4acefd52fc434c735d250c966f371d99"
+  },
+  "gpu_isolation": {
+    "GPU-4391fcee-537f-d408-d138-10d8a3866eea": {
+      "path": "runs/remote/acceptance/226d8ae/isolation-GPU-4391fcee-537f-d408-d138-10d8a3866eea.json",
+      "sha256": "a2e7c1fb423e76a538b756e2ae3f171512eae664eeeb89fb70cd1d7be6309bc3"
+    },
+    "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea": {
+      "path": "runs/remote/acceptance/226d8ae/isolation-GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea.json",
+      "sha256": "0b8c87ef1dee462349916b599f9198229eba9897544581e3f140003d87a97dac"
+    },
+    "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79": {
+      "path": "runs/remote/acceptance/226d8ae/isolation-GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79.json",
+      "sha256": "59af3cb7e6b09ace4bee1f49e57b118484f8804c573e50652820432d97736299"
+    },
+    "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1": {
+      "path": "runs/remote/acceptance/226d8ae/isolation-GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1.json",
+      "sha256": "ed59cb1c52b6354b355b8e670249552deb8faa19cf7dea8c06e716dbd04f80e4"
+    }
+  },
+  "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7"
+}
