@@ -1,9 +1,9 @@
 # splatter4d campaign handoff — planned local hardware shutdown
 
-**Handoff finalized for publication 2026-10-16 08:00 KST; final local controller stop still pending below. All times are KST.**
+**Phase3 permitted controllers stopped by 2026-10-16 08:26:16 KST; final local verification08:28:31. All-local shutdown remains BLOCKED by the denied scheduler-daemon stop. All times are KST.**
 Repository `/home/ws/ws/splatter4d`, branch `splatter4d`, origin
 `https://github.com/sunho001215/splatter_vae.git`. Start with this document, `PROGRESS.md`, then the append-only
-`experiments/registry.jsonl`. Do not infer a finished shutdown or a stopped remote run from this draft.
+`experiments/registry.jsonl`. Do not infer an all-local shutdown: PID2819571 and its transport activity remain; remote containers were not stopped.
 
 ## 1. Goal, frozen method and evidence
 
@@ -104,33 +104,37 @@ verified. Report `runs/setup/stage2-report-20261016-062420.json`, SHA-256
 Standard crop has0 gains beyond the registered representation margins and6/3 degradations (hammer/pick-place);
 cropnosynth has24/22 degradations with3/2 isolated gains. These are single-seed descriptive margins, not statistical
 significance/equivalence tests, and cropnosynth bundles multiple changes. See RESULTS tables; frozen method unchanged.
-**07:59:22–07:59:42 handoff refresh:** all14 actual remote containers are running, with complete finite metric rows
-and progress beyond07:12; zero charged failures. Twelve cached registry `unknown` flags still lag the successful direct
-read; leave reconciliation to the existing dispatcher, never reset/relaunch from an outage. Three crop hammer DrM pairs:
-`s2rl-crop-hammer-s{1000,1001,1002}[-eval]`, attempt1. Container names `s4d-<job-id>-a1`; accepted source/image unchanged.
+**08:27:43–08:27:44 post-controller-stop refresh:** all14 actual remote containers remain running, with advancing
+complete records and finite training losses/gradients. The no-coverage pick-place log has an undefined
+`metric/relepe_bin3_12` at190900 with bin count0; the source deliberately emits NaN for an empty diagnostic region,
+not loss divergence. Earlier08:19 checks found the same empty-bin case in two other pick-place logs; no restart.
+Proof `runs/setup/local-shutdown-remote-survival-20261016.json` records exact container IDs/start times/metrics.
+Cached `unknown` flags may lag direct observations: reconcile after restart, never reset/relaunch from an outage.
+Three crop hammer DrM pairs: `s2rl-crop-hammer-s{1000,1001,1002}[-eval]`, attempt1; accepted source/image unchanged.
 
-| Seed | Trainer GPU | Evaluator GPU | Trainer / evaluator progress (07:59, finite) |
+| Seed | Trainer GPU | Evaluator GPU | Trainer / evaluator progress (08:27) |
 |---|---|---|---|
-| 1000 | remote0 /4391 | remote1 /6122 | 403000 /390000 |
-| 1001 | remote2 /9e9f | remote3 /ca65 | 405000 /400000 |
-| 1002 | remote1 /6122 | remote3 /ca65 | 397000 /390000 |
+| 1000 | remote0 /4391 | remote1 /6122 | 493000 /480000 |
+| 1001 | remote2 /9e9f | remote3 /ca65 | 491000 /480000 |
+| 1002 | remote1 /6122 | remote3 /ca65 | 487000 /480000 |
 
 | Remote pretrain variant | Hammer step | Pick-place step | GPUs hammer / pick |
 |---|---:|---:|---|
-| no-lambda-dyn | 182600 | 189400 | 0 /1 |
-| no-coverage | 180450 | 184000 | 2 /3 |
-| misscaled-none | 182500 | 180250 | 0 /1 |
-| misscaled-scale | 182750 | 174650 | 2 /3 |
+| no-lambda-dyn | 189700 | 196000 | 0 /1 |
+| no-coverage | 187450 | 191500 | 2 /3 |
+| misscaled-none | 189400 | 187250 | 0 /1 |
+| misscaled-scale | 190000 | 181800 | 2 /3 |
 
-All eight pretrains are still incomplete; full evaluations pending. Container start times remain10-15, before this
-connectivity episode. A reconciliation `launched` re-announcement or watcher restart label is not proof of a new
-container/training restart. Remote numerical mirrors remain unverified under the failed07:30 batch below.
+All eight pretrains are still incomplete; full evaluations pending. Container start times remain10-15. A reconciliation
+`launched` re-announcement or watcher restart label is not proof of a new container/training restart. Remote numerical
+mirrors remain unverified under the failed07:30 batch below. Remote SSD3,359,475,376,128bytes free of7,528,923,684,864
+(~44.6%), above the15% floor; no fresh remote RAM reading is claimed here.
 
-Full authorized UUIDs are in section5. Per-GPU measured load is2.5/2.8/2.5/2.6; no GPU currently has the0.5
-headroom needed for another trainer, despite fragmented aggregate headroom. Nine crop pairs remain pending.
-Initial trainer rates suggest roughly11:00–11:25 completion, training-only; evaluator closeout/sharing may delay
-this, and no final success/return is available. Running remote containers continue across local downtime; pending
-admissions require this local dispatcher before08:45 or a restarted dispatcher after reconnect.
+Full authorized UUIDs are in section5. Last per-GPU measured load is2.5/2.8/2.5/2.6; no GPU had the0.5 headroom
+needed for another trainer, despite fragmented aggregate headroom. Nine crop pairs remain pending. Initial trainer
+rates suggested11:00–11:25 completion, training-only; evaluator closeout/sharing may delay this, and no final
+success/return is available. Remote containers continue across local downtime. **Both local driver loops are now
+stopped and scoped admissions held; pending jobs require a safely restarted dispatcher after reconnect.**
 
 **Analysis already done; do not recompute to select methods:**
 - Original Stage 2: `runs/setup/stage2-report-20261015-102432.json`. Pure no-InfoNCE degrades both tasks; no-motion,
@@ -157,10 +161,12 @@ admissions require this local dispatcher before08:45 or a restarted dispatcher a
 No new long local work. `runs/setup/stage2-admission-hold.json` admits only crop full evaluations/exports and the two
 already-registered no-synth full evaluations before07:15 (short-job whitelist extended06:41; comparable evaluations
 ~10minutes). All other local admissions withheld. Keep this file and `experiments/HOLD` until restart checks are complete.
+Phase3 also created **`runs/setup/HOLD`**, which blocks all scoped local/remote admissions; explicitly clear it only
+after reconciling survivors and checking resources/provenance/checkpoints on restart.
 Controller identity inventory: `runs/setup/local-shutdown-controller-inventory-20261015.json` (PID/start_ticks/session/
-boot ID and command hash; inventory only, **not an automatic shutdown watchdog**). Session-only scheduled prompts:
-06:40 ETA/pause review,07:30 late sync/W&B,08:00 handoff commit,08:25 Phase3; hourly health at minute7. If this CLI
-session dies these prompts do not survive. Re-establish the deadline handling before resuming any local controller.
+boot ID and command hash; inventory only, **not an automatic shutdown watchdog**). All one-shot deadline prompts have
+fired; hourly health cron `2ba15fda` was cancelled during Phase3 and CronList is empty. Do not re-arm the watcher or
+controllers during this shutdown. This one-time shutdown is not a permanent cancellation of the research campaign.
 
 The following eight jobs were running at20:54 on10-15; all logs fresh and finite, full cgroup118.8GB.
 Exact PID/start-ticks/session, steps, GPU placement and recent45-minute ETAs: `runs/setup/servers-filled-20261015.json`.
@@ -372,8 +378,9 @@ cat /sys/fs/cgroup/memory.current
 scripts/remote/check_tunnel.sh
 ```
 
-If `experiments/HOLD` is absent on a fresh clone, create it **before** starting any daemon or driver. The HOLD file
-is local operational state, not restored by cloning. Check authorized GPU UUID visibility/NVML and any foreign usage, host RAM/disk floors, dataset hashes/paths and
+If `experiments/HOLD` is absent on a fresh clone, create it **before** starting any daemon or driver. Also create or
+retain `runs/setup/HOLD` until scoped queues are safe to admit; a restored scoped HOLD is intentional, not a scheduler
+fault. Check authorized GPU UUID visibility/NVML and any foreign usage, host RAM/disk floors, dataset hashes/paths and
 `.venv`. Check `docs/tests.json` fingerprints against actual source; new source needs a full native suite, not a
 mock or a threshold relaxation. Full suite (use short output paths inside its checkout):
 
@@ -438,5 +445,53 @@ run's identity with a local identity. No same-next-step cross-host diagnostic is
 
 ## Final shutdown verification
 
-**PENDING — this document is currently a live draft.** Final line must give actual local stop/verification time,
-checkpoint ledger and surviving remote inventory; then commit/push if the network permits.
+**PARTIAL / BLOCKED — not an all-local-process shutdown.** Phase3 permitted controller stops were complete by
+**2026-10-16T08:26:16.090524+09:00**; final local process/registry inventory was taken at
+**2026-10-16T08:28:31.774707+09:00**. Identity checks before stopping matched boot ID, start ticks and command hashes.
+
+| Local workload / monitor | Actual handling |
+|---|---|
+| Stage2 driver `b4dyxt2gb`, PID3600420 | Intentionally stopped; PID/session absent |
+| Remote dispatcher `b0zf288b4`, PID1860610 | Local loop intentionally stopped; remote containers untouched |
+| Cache loop `b8mmcvqt8`, PID326907 | Intentionally stopped; PID/session absent |
+| Memory alert `b00cd94fv`, PID2082985/child2082986 | Intentionally stopped; both PIDs absent |
+| Watcher `bqo04rfe4`, PID2807957 | Intentionally stopped; PID absent; do not re-arm |
+| Hourly health cron `2ba15fda` | Cancelled; CronList empty, no remaining one-shots |
+| Scheduler daemon PID2819571, start_ticks415518078 | **Still alive: prior stop permission denial; no retry/signal** |
+
+No local scientific job remains active. Seven local pretrains completed200k; no-consistency pick-place remains a
+lossless intentional180k pause with the checkpoint/hash ledger in section4, matching registry proof and zero charged
+failures. At08:27:49.695172 both authorized local UUIDs were queried successfully (`nvidia-smi` return0, empty compute
+process list): **GPUs4/5 had no compute processes, including ours**. Local cgroup52.71GB at08:28:31, below150GB.
+
+`experiments/HOLD` is retained; Phase3 created `runs/setup/HOLD` to prevent scoped local/remote admissions, and the
+expired short-job hold remains. All known tracked campaign background tasks are stopped; current publication tools
+are transient and excluded from the workload inventory. No other reachable agent/session was listed. Unknown or
+interactive shell/CLI candidates were not assumed owned and were not signalled.
+
+**Remaining blocker:** the unchanged denied daemon and its local rsync/sshpass/SSH activity remain. The shared local
+SSH multiplex master PID2573436 was also left untouched rather than disrupt the daemon indirectly. No foreign process
+or remote container was stopped. Explicit renewed permission for the denied daemon is required to finish all-local
+shutdown; this scheduled Phase3 prompt does not clear the earlier denial. Do not claim the08:45 all-process target met.
+
+Controller intentional-stop evidence is durable in `runs/setup/local-shutdown-verification-20261016.json`, including
+`pending_registry_event`. The existing daemon holds `experiments/registry.lock`; a nonblocking acquisition and one
+bounded25s lock wait could not acquire it. **The controller event has not been appended to the registry**; do not bypass
+the lock. After the daemon is safely stopped/the lock is released, append that exact operational event under the lock
+once. It uses `__host_local__`, not a scientific job, and must not charge failures. The scientific180k pause event is
+already recorded correctly; its accounting is not pending.
+
+Surviving remote inventory at08:27:44: **all14 containers running and advancing**, exact IDs/start times/steps above;
+eight pretrains and three crop DrM trainer/companion pairs. Finite training losses/gradients; one empty-bin diagnostic
+NaN has zero supporting count and is not a training failure. Remote SSD3.359TB free (~44.6%); no new RAM measurement
+or final numerical sync is claimed. Both local driver loops are stopped, so pending jobs wait for a safely restarted
+dispatcher. Never stop the surviving containers as part of local cleanup.
+
+Evidence published with this ledger:
+- `runs/setup/local-shutdown-verification-20261016.json`: intentional control stops, remaining process identities,
+  holds, scientific pause accounting and deferred operational registry event.
+- `runs/setup/local-shutdown-gpu-verification-20261016.json`: successful UUID-only query, no compute processes.
+- `runs/setup/local-shutdown-remote-survival-20261016.json`: read-only post-controller-stop container/metric snapshot.
+
+Actual permitted-controller stop verified **08:26:16 KST**; final local inventory **08:28:31 KST**. **Full local shutdown
+remains blocked by PID2819571 and transport activity; it has not been verified complete.**

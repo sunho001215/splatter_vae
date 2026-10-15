@@ -1,0 +1,11 @@
+{
+  "verified_local": "2026-10-16T08:27:49.695172+09:00",
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "",
+  "authorized_uuids": [
+    "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+    "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+  ],
+  "all_processes_absent": true
+}

@@ -1,16 +1,20 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-16 08:11 +09:00 (W&B batch timeout recorded; handoff published, remote state refreshed07:59). **All four crop/cropnosynth pretrains,
-full evaluations and exports are complete/driver-verified**; representation report done. Both original no-synth200k
-pretrains/full evaluations also closed out:27/24 representation degradations beyond registered margins (hammer/pick).
-Single-seed caveats/details in RESULTS; frozen method unchanged. No-consistency hammer **completed200k and driver closeout**;
-pick-place intentionally paused180k, checkpoint/session/no-loss proof verified, zero charged failures. No local scientific
-jobs/processes remain at07:49; controllers still running, final shutdown not complete. **Three hammer crop DrM pairs
-(seeds1000–1002) are placed remotely**; all14 actual remote containers verified running with finite metrics and progress
-at07:59. Cached registry `unknown` flags still lag the direct check; existing dispatcher reconciles, no reset/relaunch.
-Nine pairs pending under per-GPU load limits. No crop RL comparison is complete yet.
-[Standalone handoff and shutdown ledger](HANDOFF.md) records all four checkpoint hashes; final local stop/verification is pending
-(target08:45 today). Original placement/ETA assumptions: `runs/setup/servers-filled-20261015.json` (not current ETAs).
+Last updated: 2026-10-16 08:29 +09:00 (Phase3 permitted controller stops verified; all-local shutdown still BLOCKED).
+Stage2/remote driver loops, watcher, cache loop and memory alert stopped by08:26:16; hourly cron cancelled, no schedules
+remain. No local scientific job is active; GPUs4/5 have no compute processes (successful UUID query08:27:49).
+**Scheduler PID2819571 remains alive under the prior stop denial, with transfer children/SSH transport; no retry or
+indirect stop was attempted. An all-local-process shutdown cannot be certified.** `experiments/HOLD`, scoped
+`runs/setup/HOLD` and expired local short-job hold remain. Detailed proof/blocker in [HANDOFF](HANDOFF.md#final-shutdown-verification).
+All14 actual remote containers remain running/advancing08:27:44; trainer losses/gradients finite, empty motion-bin
+NaNs are diagnostic undefined values, not loss divergence. No remote or foreign process stopped. Remote SSD3.359TB
+free/7.529TB (~44.6%). Three hammer crop DrM pairs continue, nine pairs pending; local dispatch is now stopped.
+**All four crop/cropnosynth pretrains, full evaluations and exports are complete/driver-verified**; representation report
+done. Both original no-synth200k pretrains/full evaluations closed out:27/24 representation degradations beyond registered
+margins (hammer/pick). Frozen method unchanged. No-consistency hammer completed200k/driver closeout; pick-place
+intentionally paused180k, checkpoint/session/no-loss proof verified, zero charged failures. No crop RL comparison complete.
+The handoff records checkpoint hashes and restart steps; original placement/ETA assumptions:
+`runs/setup/servers-filled-20261015.json` (not current ETAs).
 Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
 
 ## Current phase
@@ -58,9 +62,11 @@ Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
   reducer. Scoped drivers use the tested fix. Renewed permission is required to stop that daemon for final shutdown.
 - Offline W&B stays in each remote run folder, pulled/uploaded by `runs/setup/tools/sync_wandb_remote.py`;
   status `runs/remote/wandb/status.json`. No remote login/key and no visualization gate on decisions.
-- `experiments/HOLD` remains. All current admissions use scoped queues through `scripts/jobs.py`.
-  Durable controller: `runs/setup/tools/remote_campaign_driver.py`, every5min; only the controller was restarted,
-  no trainer/evaluator stopped. Configuration/dispatch fixtures100passed; not a new native-suite acceptance.
+- `experiments/HOLD` and Phase3 `runs/setup/HOLD` remain. Both driver loops and all known tracked campaign
+  monitoring tasks are stopped; hourly cron cancelled, no schedules remain. `remote_campaign_driver.py` is the
+  restart controller, not currently running. The denied daemon still reconciles under global HOLD and holds the
+  registry lock; controller-stop operational event is preserved in the verification JSON for locked append later.
+  Scientific180k pause already recorded/zero failures. Configuration/dispatch fixtures100passed; no new native suite.
 - Review-only SNeRL/DynaMo/3D-MVP bundle remains unaccepted and upstream execution permission-blocked.
   Optional ports do not delay the freeze or existing campaign.
 

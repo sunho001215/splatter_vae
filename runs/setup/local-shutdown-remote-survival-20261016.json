@@ -1,0 +1,359 @@
+{
+  "started_local": "2026-10-16T08:27:43.681353+09:00",
+  "finished_local": "2026-10-16T08:27:44.006173+09:00",
+  "returncode": 0,
+  "registry_active_count": 14,
+  "containers": [
+    {
+      "name": "s4d-s2ab-nolambdadyn-seed0-hammer-a2",
+      "container_id": "d2e7da340045418e18058cf154deb5f238e4a08a253347f57b8bd90102a2f720",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2769980,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:39:19.114857648Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-nolambdadyn-seed0-pick-place-a1",
+      "container_id": "96554fbf54d7b22e465c82c1cd507e7b02ccd8c3c823b8ecd5ecf73587b3cb56",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2683510,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:22:48.011762652Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-nocoverage-seed0-hammer-a1",
+      "container_id": "c159c7d763f21630ae66332201dcd05688c56ea1a2cf31b10c46e4b80f06d2a6",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2685533,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:23:20.977054063Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-nocoverage-seed0-pick-place-a2",
+      "container_id": "ab258611899ca378a367dcbd4a82189df08d673f9ff970a25b90042316eb7d6e",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2772455,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:39:53.913976297Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-misscaled-none-seed0-hammer-a1",
+      "container_id": "96424680642c4da9822ec2849e41ea372b7760081f6ef084db0cab97a2a6c198",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2726669,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:30:08.936900596Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-misscaled-none-seed0-pick-place-a1",
+      "container_id": "7e62c5e1dbd35cb10d498233364d913c1b569dd8376db0517d7b4d1c45300686",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2729184,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:31:15.663409474Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-misscaled-scale-seed0-hammer-a1",
+      "container_id": "3ce1ea1ae5c4856e5f44b131abaaf745ffaee557fe3b66fca50b09782120645b",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2731570,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:32:06.419836179Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2ab-misscaled-scale-seed0-pick-place-a2",
+      "container_id": "267dfa701ea978de44759f353a17a25a875e6fbddac3e5f1984ac3db7fc491d5",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 2802379,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T11:46:46.108378193Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2rl-crop-hammer-s1000-a1",
+      "container_id": "9c3a04e6a9de402f74a337a04eb97dc46e162f763aa8fb54549bddfb8af719bf",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 503467,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T20:54:20.797452082Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2rl-crop-hammer-s1000-eval-a1",
+      "container_id": "f9452adb9c3b989f9cfa0ac6757663fa6a420fc5ca17aca42dba6da89be0cf7e",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 506081,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T20:54:54.796846146Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2rl-crop-hammer-s1001-a1",
+      "container_id": "ed5a93cb1a0f9b46b0f284041d468f12aab50fb96487bc68aaccaf8f75c21f56",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 508739,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T20:55:28.925494132Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2rl-crop-hammer-s1001-eval-a1",
+      "container_id": "702a54fb0b900dbd5821806fc96d2236eb92fd5423e69700832d60a9ffe1e042",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 511530,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T20:56:03.805312087Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2rl-crop-hammer-s1002-a1",
+      "container_id": "6d705e5321ebf09b5c5f21b135f9ce41172a91054cdaf60e4c995beb386d1ffb",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 514299,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T20:56:38.622715523Z",
+        "Status": "running"
+      }
+    },
+    {
+      "name": "s4d-s2rl-crop-hammer-s1002-eval-a1",
+      "container_id": "1aa13f7aa66375f583eddbd6b17559fc5b7078c7e734ba7d5e6a7ed967ce02ec",
+      "state": {
+        "Dead": false,
+        "Error": "",
+        "ExitCode": 0,
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "OOMKilled": false,
+        "Paused": false,
+        "Pid": 519206,
+        "Restarting": false,
+        "Running": true,
+        "StartedAt": "2026-10-15T20:57:13.934867628Z",
+        "Status": "running"
+      }
+    }
+  ],
+  "metrics": [
+    {
+      "job": "s2ab-nolambdadyn-seed0-hammer",
+      "step": 189700,
+      "log_age_seconds": 0.6,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2ab-nolambdadyn-seed0-pick-place",
+      "step": 196000,
+      "log_age_seconds": 3.4,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2ab-nocoverage-seed0-hammer",
+      "step": 187450,
+      "log_age_seconds": 1.7,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2ab-nocoverage-seed0-pick-place",
+      "step": 191500,
+      "log_age_seconds": 6.0,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": [
+        {
+          "step": 190900,
+          "field": "metric/relepe_bin3_12",
+          "bin3_12_count": 0.0
+        }
+      ]
+    },
+    {
+      "job": "s2ab-misscaled-none-seed0-hammer",
+      "step": 189400,
+      "log_age_seconds": 4.5,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2ab-misscaled-none-seed0-pick-place",
+      "step": 187250,
+      "log_age_seconds": 4.1,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2ab-misscaled-scale-seed0-hammer",
+      "step": 190000,
+      "log_age_seconds": 10.3,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2ab-misscaled-scale-seed0-pick-place",
+      "step": 181800,
+      "log_age_seconds": 1.6,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2rl-crop-hammer-s1000",
+      "step": 493000,
+      "log_age_seconds": 2.0,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2rl-crop-hammer-s1000-eval",
+      "step": 480000,
+      "log_age_seconds": 179.8,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2rl-crop-hammer-s1001",
+      "step": 491000,
+      "log_age_seconds": 4.7,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2rl-crop-hammer-s1001-eval",
+      "step": 480000,
+      "log_age_seconds": 140.0,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2rl-crop-hammer-s1002",
+      "step": 487000,
+      "log_age_seconds": 1.2,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    },
+    {
+      "job": "s2rl-crop-hammer-s1002-eval",
+      "step": 480000,
+      "log_age_seconds": 46.8,
+      "finite_training_losses_and_gradients": true,
+      "nonfinite_diagnostics": []
+    }
+  ],
+  "disk": {
+    "remote_disk_free_bytes": 3359475376128,
+    "remote_disk_total_bytes": 7528923684864
+  },
+  "stderr": "",
+  "read_only": true,
+  "remote_containers_stopped": false
+}

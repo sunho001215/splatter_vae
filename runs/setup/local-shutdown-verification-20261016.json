@@ -1,0 +1,270 @@
+{
+  "phase": "planned_local_shutdown_20261016_phase3",
+  "verified_local": "2026-10-16T08:28:31.774707+09:00",
+  "authorized_controller_stops_verified_by": "2026-10-16T08:26:16.090524+09:00",
+  "all_local_campaign_processes_stopped": false,
+  "status": "blocked_by_prior_scheduler_stop_permission_denial",
+  "boot_id": "9442c251-dc7f-4558-b088-f425768d0279",
+  "stopped": [
+    {
+      "role": "Stage2 local driver loop",
+      "pid": 3600420,
+      "start_ticks": 439535020,
+      "task_id": "b4dyxt2gb",
+      "method": "TaskStop",
+      "intentional_stop": true,
+      "pid_absent": true
+    },
+    {
+      "role": "remote dispatcher loop (local process only)",
+      "pid": 1860610,
+      "start_ticks": 458464296,
+      "task_id": "b0zf288b4",
+      "method": "TaskStop",
+      "intentional_stop": true,
+      "pid_absent": true
+    },
+    {
+      "role": "clean-page cache loop",
+      "pid": 326907,
+      "start_ticks": 443993296,
+      "task_id": "b8mmcvqt8",
+      "method": "TaskStop",
+      "intentional_stop": true,
+      "pid_absent": true
+    },
+    {
+      "role": "memory alert loop",
+      "pid": 2082985,
+      "start_ticks": 459410033,
+      "task_id": "b00cd94fv",
+      "method": "TaskStop",
+      "intentional_stop": true,
+      "pid_absent": true
+    },
+    {
+      "role": "event watcher",
+      "pid": 2807957,
+      "task_id": "bqo04rfe4",
+      "method": "TaskStop",
+      "intentional_stop": true,
+      "pid_absent": true
+    }
+  ],
+  "memory_monitor_child_pid_absent": true,
+  "admission_holds": {
+    "experiments/HOLD": true,
+    "runs/setup/HOLD": true,
+    "runs/setup/stage2-admission-hold.json": true
+  },
+  "hourly_cron_cancelled": "2ba15fda",
+  "remaining_schedules": 0,
+  "known_background_workload_tasks_remaining": [],
+  "current_publication_session_excluded": true,
+  "remaining_process_candidates": [
+    {
+      "pid": 8484,
+      "ppid": 7400,
+      "session": 8484,
+      "start_ticks": 381029036,
+      "state": "S",
+      "executable": "bash",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d",
+      "cmdline_sha256": "0a1cd3d4b2ea8536fb109d2d24472228cbf18ab2879191c2fa63cb4b14b300d9",
+      "classification": "unknown_or_interactive_untouched"
+    },
+    {
+      "pid": 2573436,
+      "ppid": 1,
+      "session": 2573436,
+      "start_ticks": 461645275,
+      "state": "S",
+      "executable": "cm-05f77f6ec00742da45e32d0c91ec019c839a55bf [mux]",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d",
+      "cmdline_sha256": "02a25f7503747f6a6d376d997270431ab5953087f8e7cfa887d8609c98a74f50",
+      "classification": "local_transfer_or_ssh_transport_untouched"
+    },
+    {
+      "pid": 2600029,
+      "ppid": 8792,
+      "session": 2600029,
+      "start_ticks": 449897665,
+      "state": "S",
+      "executable": "-bash",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d",
+      "cmdline_sha256": "70458f7ab64acaa2f17d502161ce831a64212cf7493447837f259e696b0f6cf1",
+      "classification": "unknown_or_interactive_untouched"
+    },
+    {
+      "pid": 2600576,
+      "ppid": 9125,
+      "session": 2600576,
+      "start_ticks": 449900308,
+      "state": "S",
+      "executable": "claude",
+      "scripts": [],
+      "cwd": "/root",
+      "cmdline_sha256": "1123055bdec541b8b900931cdd823e5b196019051ce590012374b965e0a56835",
+      "classification": "unknown_or_interactive_untouched"
+    },
+    {
+      "pid": 2817777,
+      "ppid": 2819571,
+      "session": 2819571,
+      "start_ticks": 462826186,
+      "state": "S",
+      "executable": "rsync",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d/runs/s2ab-misscaled-scale-seed0-pick-place",
+      "cmdline_sha256": "e50d38a393a020fd3722aedc164cc72e7b4509207b4635c49e4627b1f64f7ef6",
+      "classification": "local_transfer_or_ssh_transport_untouched"
+    },
+    {
+      "pid": 2817778,
+      "ppid": 2817777,
+      "session": 2819571,
+      "start_ticks": 462826186,
+      "state": "S",
+      "executable": "sshpass",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d",
+      "cmdline_sha256": "c3a4841dfdbd9542ee4b0c05ec754570a36b0fbfd6db98896f15ad6b6e68f478",
+      "classification": "local_transfer_or_ssh_transport_untouched"
+    },
+    {
+      "pid": 2817779,
+      "ppid": 2817778,
+      "session": 2817779,
+      "start_ticks": 462826186,
+      "state": "S",
+      "executable": "ssh",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d",
+      "cmdline_sha256": "066cd492143473cb303c3581d6469c002e5b586f0ef81ac1a24fee47f3faa1ad",
+      "classification": "local_transfer_or_ssh_transport_untouched"
+    },
+    {
+      "pid": 2817780,
+      "ppid": 2817777,
+      "session": 2819571,
+      "start_ticks": 462826198,
+      "state": "S",
+      "executable": "rsync",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d/runs/s2ab-misscaled-scale-seed0-pick-place",
+      "cmdline_sha256": "e50d38a393a020fd3722aedc164cc72e7b4509207b4635c49e4627b1f64f7ef6",
+      "classification": "local_transfer_or_ssh_transport_untouched"
+    },
+    {
+      "pid": 2819571,
+      "ppid": 1,
+      "session": 2819571,
+      "start_ticks": 415518078,
+      "state": "S",
+      "executable": "python",
+      "scripts": [
+        "jobs.py"
+      ],
+      "cwd": "/home/ws/ws/splatter4d",
+      "cmdline_sha256": "5d9dbd8465eae385235888e3b589d6014e1c6b3395a12f1ab70c7116ca7960f9",
+      "classification": "permission_blocked_scheduler_daemon"
+    },
+    {
+      "pid": 3145212,
+      "ppid": 7400,
+      "session": 3145212,
+      "start_ticks": 437960493,
+      "state": "S",
+      "executable": "bash",
+      "scripts": [],
+      "cwd": "/home/ws/ws/splatter4d/s4d",
+      "cmdline_sha256": "0a1cd3d4b2ea8536fb109d2d24472228cbf18ab2879191c2fa63cb4b14b300d9",
+      "classification": "unknown_or_interactive_untouched"
+    }
+  ],
+  "local_active_scientific_jobs": [],
+  "intentional_scientific_pause": {
+    "id": "s2ab-nocons-seed0-pick-place",
+    "status": "crashed",
+    "failures": 0,
+    "intentional_stops": [
+      {
+        "attempt": 1,
+        "checkpoint_step": 180000,
+        "checkpoint_sha256": "b4e3a3328927afdf2945e432f0671ed8c1941259b689ebea6eb7bdc471e4e357",
+        "reason": "planned_local_shutdown_20261016"
+      }
+    ]
+  },
+  "local_gpu_verification": "runs/setup/local-shutdown-gpu-verification-20261016.json",
+  "remote_survival_verification": "runs/setup/local-shutdown-remote-survival-20261016.json",
+  "memory_current_bytes": 52712767488,
+  "remote_containers_stopped": false,
+  "foreign_processes_stopped": false,
+  "denied_daemon_signal_retried": false,
+  "registry_control_stop_record": "deferred; existing denied daemon holds registry.lock",
+  "registry_lock_wait_seconds": 25,
+  "registry_lock_wait_exit_code": 124,
+  "pending_registry_event": {
+    "event": "local_control_plane_intentional_stop",
+    "id": "__host_local__",
+    "host": "local",
+    "reason": "planned_local_shutdown_20261016",
+    "intentional_stop": true,
+    "checkpoint_step": null,
+    "checkpoint_sha256": null,
+    "stopped": [
+      {
+        "role": "Stage2 local driver loop",
+        "pid": 3600420,
+        "start_ticks": 439535020,
+        "task_id": "b4dyxt2gb",
+        "method": "TaskStop",
+        "intentional_stop": true,
+        "pid_absent": true
+      },
+      {
+        "role": "remote dispatcher loop (local process only)",
+        "pid": 1860610,
+        "start_ticks": 458464296,
+        "task_id": "b0zf288b4",
+        "method": "TaskStop",
+        "intentional_stop": true,
+        "pid_absent": true
+      },
+      {
+        "role": "clean-page cache loop",
+        "pid": 326907,
+        "start_ticks": 443993296,
+        "task_id": "b8mmcvqt8",
+        "method": "TaskStop",
+        "intentional_stop": true,
+        "pid_absent": true
+      },
+      {
+        "role": "memory alert loop",
+        "pid": 2082985,
+        "start_ticks": 459410033,
+        "task_id": "b00cd94fv",
+        "method": "TaskStop",
+        "intentional_stop": true,
+        "pid_absent": true
+      },
+      {
+        "role": "event watcher",
+        "pid": 2807957,
+        "task_id": "bqo04rfe4",
+        "method": "TaskStop",
+        "intentional_stop": true,
+        "pid_absent": true
+      }
+    ],
+    "verified_local": "2026-10-16T08:28:31.774707+09:00",
+    "all_local_campaign_processes_stopped": false,
+    "blocked_pid": 2819571,
+    "proof": "runs/setup/local-shutdown-verification-20261016.json"
+  }
+}

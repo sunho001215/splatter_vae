@@ -1,0 +1,1 @@
+Planned local shutdown 2026-10-16, Phase 3. Hold all scoped queue admissions on both hosts while local controllers stop. Preserve experiments/HOLD and stage2-admission-hold.json. Reconcile surviving remote runs and verify resources, provenance and paused checkpoints before explicitly clearing this hold after restart. Remote containers must not be stopped.
