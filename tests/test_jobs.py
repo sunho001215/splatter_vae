@@ -71,6 +71,37 @@ def test_intentional_checkpoint_stop_is_restartable_and_not_a_failure(tmp_path):
     assert jobs.read_registry(registry)["b"]["failures"] == 1  # legacy pause records without the flag still count
 
 
+def test_intentional_pause_after_observed_exit_refunds_only_that_attempt(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    jobs.record({"event": "launched", "id": "a", "pid": 1, "gpu": GPU4, "attempt": 1}, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 1, "code": -1}, registry)
+    jobs.record({"event": "failed", "id": "a"}, registry)
+    pause = {"event": "checkpoint_paused", "id": "a", "attempt": 1, "intentional_stop": True,
+             "checkpoint_step": 10000, "checkpoint_sha256": "0" * 64, "reason": "planned_shutdown"}
+    jobs.record(pause, registry)
+    jobs.record(pause, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "crashed" and state["failures"] == 0 and state["failed_attempts"] == []
+
+
+def test_only_proven_refused_launch_can_release_its_job_fingerprint(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 1,
+                 "job_sha256": "0" * 64}, registry)
+    jobs.record({"event": "reset", "id": "a"}, registry)
+    assert jobs.read_registry(registry)["a"]["job_sha256"] == "0" * 64
+    jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 2,
+                 "job_sha256": "0" * 64}, registry)
+    proof = {"conclusion": "launch refused before docker run; deterministic container never existed", "attempt": 2,
+             "checks": [{"containers_with_name": 0, "remote_output": "absent"}] * 2}
+    jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "pending" and "job_sha256" not in state and state["failures"] == 0
+    jobs.record({"event": "reset", "id": "a", "reconciliation": proof}, registry)
+    with pytest.raises(ValueError, match="invalid refused-launch"):
+        jobs.read_registry(registry)
+
+
 def test_audited_infrastructure_failure_replay_is_append_only_and_idempotent(tmp_path):
     registry = tmp_path / "registry.jsonl"
     events = [

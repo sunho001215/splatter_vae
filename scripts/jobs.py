@@ -133,13 +133,20 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                                for item in job["failed_attempts"]):
                         job["failed_attempts"].append(failure)
                         job["failures"] += 1
-            elif kind == "checkpoint_paused" and event.get("intentional_stop") is True:
+            elif kind in {"checkpoint_paused", "intentional_stopped"} and event.get("intentional_stop") is True:
                 # recorded by runs/setup/tools/pause_*_at_checkpoint.py after the checkpoint was published and
                 # verified; the following non-zero exit of the same attempt is then not charged as a failure
                 stop = {key: event[key] for key in ("attempt", "checkpoint_step", "checkpoint_sha256", "reason")
                         if key in event}
                 if stop not in job.setdefault("intentional_stops", []):
                     job["intentional_stops"].append(stop)
+                    # The daemon can observe the signal exit before the pause tool finishes hashing the checkpoint.
+                    matching = [failure for failure in job["failed_attempts"] if failure["attempt"] == stop["attempt"]]
+                    job["failed_attempts"] = [failure for failure in job["failed_attempts"]
+                                              if failure["attempt"] != stop["attempt"]]
+                    job["failures"] -= len(matching)
+                    if matching and job["status"] == FAILED:
+                        job["status"] = "crashed"
             elif kind == "infrastructure_failure":
                 start, end = event.get("incident_started"), event.get("incident_ended")
                 if (event.get("reason") not in {"cuda_init_unavailable", "nvml_init_unavailable"}
@@ -162,6 +169,16 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
             elif kind == "failed":
                 job.update(status=FAILED)
             elif kind == "reset":
+                reconciliation = event.get("reconciliation", {})
+                if reconciliation.get("conclusion") == "launch refused before docker run; deterministic container never existed":
+                    checks = reconciliation.get("checks", [])
+                    if (job["status"] != "launching" or job.get("host") != "remote"
+                            or reconciliation.get("attempt") != job.get("attempt") or len(checks) != 2
+                            or any(check.get("containers_with_name") != 0 or check.get("remote_output") != "absent"
+                                   for check in checks)):
+                        raise ValueError(f"invalid refused-launch reconciliation for {event['id']}")
+                    # There was no execution or checkpoint: a corrected launch specification is not a run retry.
+                    job.pop("job_sha256", None)
                 job.update(status=PENDING)
             elif kind == "host_unreachable":
                 job.update(status="unreachable", host=event["host"], outage_started=event["time"])
