@@ -1,0 +1,10 @@
+{
+  "job_id": "s2ab-crop-seed0-hammer",
+  "verified_local": "2026-10-16T05:30:33.237607+09:00",
+  "completion": {
+    "status": "completed",
+    "steps": 200000
+  },
+  "config_equals_registration": true,
+  "checkpoint_sha256": "58d9ff4808739902c0039eb668fbb518783e4470a84ae4a7da7132e7eab90b00"
+}

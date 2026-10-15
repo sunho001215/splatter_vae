@@ -1,0 +1,8 @@
+{
+  "job_id": "export-s2ab-crop-seed0-hammer-200k",
+  "verified_local": "2026-10-16T05:41:31.266836+09:00",
+  "encoder_sha256": "e2fa6819ff98a0c72fb5e39973751e0f5038297cc9c8f9cd6106b3bdf55dd38e",
+  "step": 200000,
+  "source_job": "s2ab-crop-seed0-hammer",
+  "source_checkpoint_sha256": "58d9ff4808739902c0039eb668fbb518783e4470a84ae4a7da7132e7eab90b00"
+}

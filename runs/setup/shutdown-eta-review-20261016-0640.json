@@ -1,0 +1,68 @@
+{
+  "recorded_local": "2026-10-16T06:41:45.456808+09:00",
+  "purpose": "local shutdown ETA review; no scientific/configuration change",
+  "method": "last ten minutes timestamped wall-clock step rate, plus measured maximum recent checkpoint/validation overhead per remaining boundary and ten minutes pretrain driver closeout reserve",
+  "closeout_reserve_seconds": 600,
+  "training_cutoff_local": "2026-10-16T07:50:00+09:00",
+  "closeout_target_local": "2026-10-16T08:00:00+09:00",
+  "jobs": {
+    "s2ab-nosynth-seed0-hammer": {
+      "last_logged_step": 200000,
+      "last_logged_local": "2026-10-16T06:41:26+09:00",
+      "wall_window_start_step": 197600,
+      "wall_window_start_local": "2026-10-16T06:31:37+09:00",
+      "wall_seconds_per_step": 0.24541666666666667,
+      "recent_boundary_overheads_seconds": [
+        83.1,
+        86.55,
+        90.3,
+        89.5,
+        69.1
+      ],
+      "per_boundary_overhead_seconds": 90.3,
+      "remaining_boundaries": 0,
+      "training_including_boundaries_eta_local": "2026-10-16T06:41:45.456808+09:00",
+      "pretrain_closeout_eta_local": "2026-10-16T06:51:45.456808+09:00",
+      "decision": "keep_to_200k",
+      "next_checkpoint_step": 210000
+    },
+    "s2ab-nocons-seed0-hammer": {
+      "last_logged_step": 186150,
+      "last_logged_local": "2026-10-16T06:41:38+09:00",
+      "wall_window_start_step": 183850,
+      "wall_window_start_local": "2026-10-16T06:31:40+09:00",
+      "wall_seconds_per_step": 0.26,
+      "recent_boundary_overheads_seconds": [
+        86.25,
+        92.2,
+        101.6,
+        218.3
+      ],
+      "per_boundary_overhead_seconds": 218.3,
+      "remaining_boundaries": 2,
+      "training_including_boundaries_eta_local": "2026-10-16T07:49:03.056808+09:00",
+      "pretrain_closeout_eta_local": "2026-10-16T07:59:03.056808+09:00",
+      "decision": "keep_to_200k",
+      "next_checkpoint_step": 190000
+    },
+    "s2ab-nocons-seed0-pick-place": {
+      "last_logged_step": 175900,
+      "last_logged_local": "2026-10-16T06:41:45+09:00",
+      "wall_window_start_step": 173600,
+      "wall_window_start_local": "2026-10-16T06:31:46+09:00",
+      "wall_seconds_per_step": 0.2604347826086956,
+      "recent_boundary_overheads_seconds": [
+        89.1,
+        131.6,
+        70.25
+      ],
+      "per_boundary_overhead_seconds": 131.6,
+      "remaining_boundaries": 3,
+      "training_including_boundaries_eta_local": "2026-10-16T08:32:56.735069+09:00",
+      "pretrain_closeout_eta_local": "2026-10-16T08:42:56.735069+09:00",
+      "decision": "checkpoint_pause_next_10k",
+      "next_checkpoint_step": 180000
+    }
+  },
+  "crop_state": "all four pretrains, full evaluations and exports complete/driver-verified by06:24; no crop pause required"
+}

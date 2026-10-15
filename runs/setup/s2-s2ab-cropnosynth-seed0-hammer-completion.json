@@ -1,0 +1,10 @@
+{
+  "job_id": "s2ab-cropnosynth-seed0-hammer",
+  "verified_local": "2026-10-16T05:30:33.237607+09:00",
+  "completion": {
+    "status": "completed",
+    "steps": 200000
+  },
+  "config_equals_registration": true,
+  "checkpoint_sha256": "33b7fda352240b52d1599ac0d7b2907927fdb105e7806f7b1f4bcd33789012ae"
+}

@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-s2ab-nosynth-seed0-pick-place-200k",
+  "verified_local": "2026-10-16T07:03:13.308211+09:00",
+  "summary_sha256": "5abc4477f1a3f695f421c0bb6e9e11909b9988006411f7b17e2bc7debea65a69",
+  "num_batches": {
+    "2": 125,
+    "6": 120
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "75642a46be60a6f993d62318d911f9714e1e7e7241630c8c9c119b23cd6c485f",
+  "variant_comparison_performed": false
+}

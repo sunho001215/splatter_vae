@@ -1,0 +1,10 @@
+{
+  "job_id": "s2ab-crop-seed0-pick-place",
+  "verified_local": "2026-10-16T05:41:31.266836+09:00",
+  "completion": {
+    "status": "completed",
+    "steps": 200000
+  },
+  "config_equals_registration": true,
+  "checkpoint_sha256": "0bc4f8e5da640426a477891fbb892644fce04815961bc2c4d4691866543b2620"
+}

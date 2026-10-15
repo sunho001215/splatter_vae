@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-s2ab-crop-seed0-pick-place-200k",
+  "verified_local": "2026-10-16T06:10:27.291668+09:00",
+  "summary_sha256": "2ff78ab339d2cb8e722977dac83d34ff87eb33a8e5394bacf0b588d31c2abdf0",
+  "num_batches": {
+    "2": 125,
+    "6": 120
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "0bc4f8e5da640426a477891fbb892644fce04815961bc2c4d4691866543b2620",
+  "variant_comparison_performed": false
+}

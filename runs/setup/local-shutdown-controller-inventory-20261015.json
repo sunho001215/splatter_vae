@@ -31,12 +31,24 @@
       "stop_permission_blocked": false
     },
     {
-      "pid": 1561687,
+      "pid": 2082985,
       "role": "memory alert loop",
-      "start_ticks": 456525575,
-      "session": 1561687,
-      "group": 1561687,
-      "cmdline_sha256": "50ee1a7726247de60d679dc1038a2c5761a25630bfd59fa5e0f4a3a61941241b",
+      "start_ticks": 459410033,
+      "session": 2082985,
+      "group": 2082985,
+      "cmdline_sha256": "9aec3dcd2af68e46e97290b942094e52efb0e8d5093e561b76bb128b49ed9cab",
+      "task_id": "b00cd94fv",
+      "monitor_pid": 2082986,
+      "monitor_group": 2082986,
+      "deadline_local": "2026-10-16T08:45:00+09:00",
+      "replaces": {
+        "pid": 1561687,
+        "start_ticks": 456525575,
+        "session": 1561687,
+        "group": 1561687,
+        "cmdline_sha256": "50ee1a7726247de60d679dc1038a2c5761a25630bfd59fa5e0f4a3a61941241b",
+        "reason": "eight-hour monitoring window completed normally without alert; rearmed at 2026-10-15 22:58 KST"
+      },
       "stop_permission_blocked": false
     },
     {

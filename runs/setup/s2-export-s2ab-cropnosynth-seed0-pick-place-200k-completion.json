@@ -1,0 +1,8 @@
+{
+  "job_id": "export-s2ab-cropnosynth-seed0-pick-place-200k",
+  "verified_local": "2026-10-16T06:23:47.162364+09:00",
+  "encoder_sha256": "5881b4fa0ef65b0b76e978547f285250d0d00ff806d9828c1e1b28967be4c2bf",
+  "step": 200000,
+  "source_job": "s2ab-cropnosynth-seed0-pick-place",
+  "source_checkpoint_sha256": "11426bf2152b52ebed438a05830b6ac32b8807bfa585dee5834bc5331d1934bc"
+}

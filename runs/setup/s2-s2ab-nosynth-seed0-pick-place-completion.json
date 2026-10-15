@@ -1,0 +1,10 @@
+{
+  "job_id": "s2ab-nosynth-seed0-pick-place",
+  "verified_local": "2026-10-16T06:34:05.854804+09:00",
+  "completion": {
+    "status": "completed",
+    "steps": 200000
+  },
+  "config_equals_registration": true,
+  "checkpoint_sha256": "75642a46be60a6f993d62318d911f9714e1e7e7241630c8c9c119b23cd6c485f"
+}

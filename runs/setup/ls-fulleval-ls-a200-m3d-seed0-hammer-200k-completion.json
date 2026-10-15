@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-ls-a200-m3d-seed0-hammer-200k",
+  "verified_local": "2026-10-12T22:15:37.125571+09:00",
+  "summary_sha256": "581c8e045ba41346ddb83794319bca28e0ca48ee147cf7c418dc3fc91f9f4ae4",
+  "num_batches": {
+    "2": 129,
+    "6": 124
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "aae2381d2183eebb0bec0094c031ea3dc1d082b9df0b7895d47ae4c8013d3fc5",
+  "variant_comparison_performed": false
+}

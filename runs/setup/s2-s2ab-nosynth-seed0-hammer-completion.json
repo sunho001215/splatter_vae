@@ -1,0 +1,10 @@
+{
+  "job_id": "s2ab-nosynth-seed0-hammer",
+  "verified_local": "2026-10-16T06:53:52.504538+09:00",
+  "completion": {
+    "status": "completed",
+    "steps": 200000
+  },
+  "config_equals_registration": true,
+  "checkpoint_sha256": "0079c165cbc97f0453b5a849f845977430d42880200524ff921823bf0a14cc11"
+}

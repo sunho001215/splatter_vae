@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-s2ab-cropnosynth-seed0-pick-place-200k",
+  "verified_local": "2026-10-16T06:23:47.162364+09:00",
+  "summary_sha256": "c5ac6e3925ceb36b963996842df1142a34c3c8ffbb123c8ad7b1020a1400a194",
+  "num_batches": {
+    "2": 125,
+    "6": 120
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "11426bf2152b52ebed438a05830b6ac32b8807bfa585dee5834bc5331d1934bc",
+  "variant_comparison_performed": false
+}

@@ -1,10 +1,16 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-15 20:54 +09:00. Eight local Stage2/crop pretrains are healthy (118.8GB cgroup charge).
-All eight newly placed remote pretrains have actual running containers and finite fresh metrics (20:52 observation),
-two per authorized GPU. Three refused attempts were reset only after proven non-execution, never because of an outage.
-[Standalone handoff and shutdown ledger](HANDOFF.md) is prepared; final local stop/verification remains pending
-(target08:45 on10-16). Exact placement/resources/ETA assumptions: `runs/setup/servers-filled-20261015.json`.
+Last updated: 2026-10-16 08:00 +09:00 (handoff publication; actual remote state refreshed07:59). **All four crop/cropnosynth pretrains,
+full evaluations and exports are complete/driver-verified**; representation report done. Both original no-synth200k
+pretrains/full evaluations also closed out:27/24 representation degradations beyond registered margins (hammer/pick).
+Single-seed caveats/details in RESULTS; frozen method unchanged. No-consistency hammer **completed200k and driver closeout**;
+pick-place intentionally paused180k, checkpoint/session/no-loss proof verified, zero charged failures. No local scientific
+jobs/processes remain at07:49; controllers still running, final shutdown not complete. **Three hammer crop DrM pairs
+(seeds1000–1002) are placed remotely**; all14 actual remote containers verified running with finite metrics and progress
+at07:59. Cached registry `unknown` flags still lag the direct check; existing dispatcher reconciles, no reset/relaunch.
+Nine pairs pending under per-GPU load limits. No crop RL comparison is complete yet.
+[Standalone handoff and shutdown ledger](HANDOFF.md) records all four checkpoint hashes; final local stop/verification is pending
+(target08:45 today). Original placement/ETA assumptions: `runs/setup/servers-filled-20261015.json` (not current ETAs).
 Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
 
 ## Current phase
@@ -66,16 +72,24 @@ Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
 | ReViWo pretraining | remote |8/8 complete | same |
 | SinCro/ReViWo RL | remote | **Complete: 48/48** (8 tasks x seeds 2000-2002 x 2 methods). Two genuine DrM dormant-ratio failures, checked and recorded as is: ReViWo stick-push s2001 (0.000) and SinCro stick-push s2002 (0.017); see EXPERIMENT_LOG 10-14 21:23 and 10-15 08:20. Seed 2002 (last-5): ReViWo hammer 0.722, bin-picking 0.300, pick-place 0.000, coffee-push 0.397, door-open 0.925, peg-insert-side 0.000, peg-unplug-side 0.653, stick-push 0.888; SinCro hammer 0.025, bin-picking 0.795, pick-place 0.257, coffee-push 0.402, door-open 0.883, peg-insert-side 0.030, peg-unplug-side 0.707, stick-push 0.017 | runs/remote/finished/s4-drm-*.json |
 | final Stage3 200k | remote | **Complete: 24/24** (8 tasks x seeds 2000-2002, 1M). Final comparison (pre-registered protocol) vs SinCro/ReViWo/CNN reported 08:41: IQM training-camera final success ours 0.76, SinCro 0.44, ReViWo 0.31, CNN 0.72; held-out cameras ours 0.13 vs <= 0.01; trajectories ours 0.72, CNN 0.76. See RESULTS "Final in-domain comparison" | runs/setup/final-comparison-20261015-084143.json |
-| Stage2 attribution | local GPUs4/5 + remote GPUs0–3 | **RL complete:30/30**, all eight comparisons reported. Eight of20 ablation pretrains closed out; four local no-synth/no-consistency runs at78.9–90.0k, eight remote pretrain-only runs at1.1–8.3k. Remote variants: no-lambda-dyn, no-coverage, misscaled-none, misscaled-scale, both tasks. Exact inventory below | runs/setup/stage2-driver-20261013.log; runs/setup/servers-filled-20261015.json |
-| Crop follow-up | pretraining local GPUs4/5; downstream remote-eligible | Historical four re-evaluations reported. Crop hammer119.5k / pick115.45k; cropnosynth hammer107.6k / pick104.65k. Then verified full eval/export and12 DrM trainer/companion pairs, subject to deadline/headroom | runs/setup/crop-reeval-report-20261015.json; runs/setup/stage2-crop-registration-20261015.json |
+| Stage2 attribution (10-16 08:00) | local GPUs4/5 + remote GPUs0–3 | **RL complete:30/30**.11/20 original ablation pretrains and10/20 full evaluations closed out (including both no-synth reports); no-consistency hammer completed200k, pick-place intentionally paused180k. Eight remote pretrain-only containers verified running/finite/advanced07:59; late-sync mirrors still unverified | runs/setup/stage2-report-20261016-070832.json; HANDOFF ledger |
+| Crop follow-up (10-16 06:24) | pretraining/evaluation local GPUs4/5; DrM remote | Historical four re-evaluations reported. **4/4 pretrains, full evaluations and exports complete/driver-verified**. Representation endpoint report done, single-seed caveats in RESULTS. Three hammer crop DrM trainer/evaluator pairs run remotely, seeds1000–1002; nine pairs pending, no completed crop RL comparison | runs/setup/stage2-report-20261016-062420.json; HANDOFF tables |
 
 ### Placement and completion estimates (all10-16 KST, not guarantees)
-- Local GPU4: crop pick-place, cropnosynth pick-place, no-synth hammer, no-consistency hammer.
-  GPU5: crop hammer, cropnosynth hammer, no-synth pick-place, no-consistency pick-place.
-- Recent45-minute wall-clock extrapolations (including validation/sharing): crop hammer05:54, crop pick06:50,
-  cropnosynth hammer07:30, cropnosynth pick08:24; no-synth pick09:22/hammer10:00, no-consistency hammer09:48/pick10:55.
-  These are **uninterrupted training** ETAs, not permission to overrun shutdown or promises of completed closeout.
-  Reassess06:40 and losslessly pause anything that cannot train **and** close out safely before~08:00.
+- All crop/cropnosynth pretraining/evaluation/export work completed locally by06:24, superseding earlier crop ETAs.
+  Both no-synth pretrains/full evaluations completed/closed out by07:08. No local scientific jobs/processes remain
+  at07:49, but controllers/monitoring still run; this is not final all-process shutdown.
+- No-consistency hammer completed200k normally; registered config, checkpoint ZIP/hash and final loss verified,
+  driver closeout07:43:48. Pick-place **intentionally paused180k**; checkpoint hash/payloads, owned-session exit and
+  no-steps-lost proof verified, zero charged failures reverified07:30. Reducer status `crashed` plus matching
+  `intentional_stops` denotes a restartable intentional pause, not ordinary failure. Hash/resume ledger in HANDOFF;
+  both no-consistency full evaluations pending under the expired07:15 local whitelist. Earlier ETA artifact
+  `runs/setup/shutdown-eta-review-20261016-0640.json` is historical, superseded by actual hammer completion.
+  No deadline extension, new local admission, remote stop or retry of denied scheduler-daemon stop.
+- Late numerical sync completed07:48:39: **0/14 verified live snapshots**, nine checksum/change verification errors,
+  five RemoteUnreachable errors. Report `runs/setup/late-remote-result-sync-20261016-0730.json`; all `final=False`,
+  partial mirrors unverified, no restart authorization. Brief reconnect events do not prove trainer failure. W&B
+  retry/pull task `ba1a6vvlo` still pending, including peg-unplug-side; previous accepted completed results remain valid.
 - Remote GPU0: no-lambda-dyn hammer + misscaled-none hammer; GPU1: their pick-place runs.
   GPU2: no-coverage hammer + misscaled-scale hammer; GPU3: their pick-place runs.
   Early measured step times imply **08:12–09:33 training-only** endpoints; planning allowance of25% for validation/

@@ -1,0 +1,106 @@
+{
+  "started_local": "2026-10-16T07:31:38.969888+09:00",
+  "finished_local": "2026-10-16T07:48:39.171834+09:00",
+  "scope": "late pre-shutdown live result snapshots; no active remote run is claimed final",
+  "runs": [
+    {
+      "id": "s2ab-misscaled-none-seed0-hammer",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 61.30618950817734
+    },
+    {
+      "id": "s2ab-misscaled-none-seed0-pick-place",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 96.12312835548073
+    },
+    {
+      "id": "s2ab-misscaled-scale-seed0-hammer",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 286.6466514831409
+    },
+    {
+      "id": "s2ab-misscaled-scale-seed0-pick-place",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 75.21738069318235
+    },
+    {
+      "id": "s2ab-nocoverage-seed0-hammer",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 177.60783310048282
+    },
+    {
+      "id": "s2ab-nocoverage-seed0-pick-place",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 14.56859531532973
+    },
+    {
+      "id": "s2ab-nolambdadyn-seed0-hammer",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 92.4377303859219
+    },
+    {
+      "id": "s2ab-nolambdadyn-seed0-pick-place",
+      "verified": false,
+      "final": false,
+      "error": "RemoteUnreachable: Remote SSH endpoint unreachable; remote jobs remain unknown, not failed",
+      "seconds": 129.1107076331973
+    },
+    {
+      "id": "s2rl-crop-hammer-s1000",
+      "verified": false,
+      "final": false,
+      "error": "RemoteUnreachable: Remote SSH endpoint unreachable; remote jobs remain unknown, not failed",
+      "seconds": 3.0136465094983578
+    },
+    {
+      "id": "s2rl-crop-hammer-s1000-eval",
+      "verified": false,
+      "final": false,
+      "error": "RemoteUnreachable: Remote SSH endpoint unreachable; remote jobs remain unknown, not failed",
+      "seconds": 3.0167219741269946
+    },
+    {
+      "id": "s2rl-crop-hammer-s1001",
+      "verified": false,
+      "final": false,
+      "error": "RemoteUnreachable: Remote SSH endpoint unreachable; remote jobs remain unknown, not failed",
+      "seconds": 3.0169072654098272
+    },
+    {
+      "id": "s2rl-crop-hammer-s1001-eval",
+      "verified": false,
+      "final": false,
+      "error": "RemoteUnreachable: Remote SSH endpoint unreachable; remote jobs remain unknown, not failed",
+      "seconds": 3.0166211649775505
+    },
+    {
+      "id": "s2rl-crop-hammer-s1002",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 34.843084923923016
+    },
+    {
+      "id": "s2rl-crop-hammer-s1002-eval",
+      "verified": false,
+      "final": false,
+      "error": "RemoteCommandError: Downloaded file changed or failed checksum verification",
+      "seconds": 40.27566491998732
+    }
+  ],
+  "notes": "live files may change during checksum synchronization; unsuccessful checks never authorize a relaunch or final-result acceptance"
+}

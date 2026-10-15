@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-ls-a200-m3d-seed0-pick-place-200k",
+  "verified_local": "2026-10-12T21:54:14.643906+09:00",
+  "summary_sha256": "0136c09936774f8e027bf2c949975a821ed44627c055eef4aa34e928f26f125d",
+  "num_batches": {
+    "2": 125,
+    "6": 120
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "556696e97fd27707c60485ddd0bd240bddf18f48c992871b4bdcd64652ee1ecc",
+  "variant_comparison_performed": false
+}

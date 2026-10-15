@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-s2ab-crop-seed0-hammer-200k",
+  "verified_local": "2026-10-16T05:51:32.764473+09:00",
+  "summary_sha256": "f78b8b403d74a6355353ea1320bf73e15bc4e569d1641ed03502dee04a3cfe6b",
+  "num_batches": {
+    "2": 129,
+    "6": 124
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "58d9ff4808739902c0039eb668fbb518783e4470a84ae4a7da7132e7eab90b00",
+  "variant_comparison_performed": false
+}

@@ -1,6 +1,6 @@
 # splatter4d campaign handoff — planned local hardware shutdown
 
-**Prepared 2026-10-15 KST; live draft until the final stop entry below. All times in this document are KST.**
+**Handoff finalized for publication 2026-10-16 08:00 KST; final local controller stop still pending below. All times are KST.**
 Repository `/home/ws/ws/splatter4d`, branch `splatter4d`, origin
 `https://github.com/sunho001215/splatter_vae.git`. Start with this document, `PROGRESS.md`, then the append-only
 `experiments/registry.jsonl`. Do not infer a finished shutdown or a stopped remote run from this draft.
@@ -81,13 +81,13 @@ placement manifest give the individual records. Preserve IDs, seeds, schedules a
 | Earlier development / Stage 1 | Complete; paired representation seeds and six-seed decision proxies where registered | `RESULTS.md`, registered margins and chronological log |
 | Stage 2 original RL attribution | **30/30 trainers + 30/30 companions complete**, eight comparisons | `s2rl-{full,t1,nomotion,noinfonce,singlegroup}-{hammer,pick-place}-s{1000,1001,1002}[-eval]` |
 | Stage 2 representation, RL arms | 8/8 ablation pretrains/evals/exports complete | `s2ab-{t1,nomotion,noinfonce,singlegroup}-seed0-{hammer,pick-place}` and `fulleval-<id>-200k`, `export-<id>-200k` |
-| Stage 2 pretrain-only, already local | Four running before shutdown pauses | `s2ab-{nosynth,nocons}-seed0-{hammer,pick-place}`; corresponding full evaluations pending |
+| Stage 2 pretrain-only, already local | Both no-synth pretrains/full evaluations complete/reported; no-consistency hammer completed200k/driver closeout, pick-place intentionally paused180k | `s2ab-{nosynth,nocons}-seed0-{hammer,pick-place}`; no-consistency full evaluations pending |
 | Stage 2 pretrain-only, newly remote | Eight registered jobs placed remotely, then full evaluations | `s2ab-{nolambdadyn,nocoverage,misscaled-none,misscaled-scale}-seed0-{hammer,pick-place}`; `fulleval-<id>-200k` |
 | Stage 3 final method | **24/24 RL runs complete**; six fresh pretrains/exports complete | `s3-drm-splatter4d-<task>-s{2000,2001,2002}[-eval]`; fresh `s3-m3d-seed0-<task>-200k` except hammer/pick-place |
 | Stage 4 SinCro/ReViWo | **16/16 pretrains; 48/48 RL runs complete** | `s4-{sincro,reviwo}-<task>`; `s4-drm-{sincro,reviwo}-<task>-s{2000,2001,2002}[-eval]` (queue is authoritative for pretrain suffixes) |
 | Stage 4 CNN | **24/24 RL runs complete** | `s4-drm-cnn-<task>-s{2000,2001,2002}`; bin-picking seed2000 uses `s4-drm-cnn-bin-picking-s2000-r4`; pick-place2000 local eval is in trainer dir |
 | Crop step 1 | **4/4 read-only 100k re-evaluations complete**, reported | `creval-{base,crop}-{hammer,pick-place}-100k`; historical M2D-era single seed, not frozen-method evidence |
-| Crop step 2 | Four pretrains already running before shutdown request; downstream registered | `s2ab-{crop,cropnosynth}-seed0-{hammer,pick-place}`, eval/export `-200k`; `s2rl-{crop,cropnosynth}-{hammer,pick-place}-s{1000,1001,1002}[-eval]` |
+| Crop step 2 (10-16 06:24) | **4/4 pretrains, full evaluations and exports complete/driver-verified**; representation report done;3/12 DrM pairs running remotely,9 pending | `s2ab-{crop,cropnosynth}-seed0-{hammer,pick-place}`, eval/export `-200k`; `s2rl-{crop,cropnosynth}-{hammer,pick-place}-s{1000,1001,1002}[-eval]` |
 | New baselines SNeRL/DynaMo/3D-MVP | Review-only, unaccepted, upstream execution permission-blocked | WIP branch table below; no final campaign results |
 
 Stage 2 original registration: `runs/setup/stage2-registration-20261013.json` (108 jobs).
@@ -96,6 +96,41 @@ Crop registration: `stage2-crop-registration-20261015.json` (36), report-only re
 job definitions: eight pretrains, eight evaluations, 12 crop RL trainer/companion pairs). Original configs/margins
 are immutable; path/host/resource changes are recorded separately. v1 is preserved; v2 removes `config.yaml` from
 required numerical artifacts (config is still synced/verified), after a launch was correctly refused before Docker.
+
+**10-16 06:24 downstream update:** all four full evaluations/exports have driver closeout proofs. Full counts,
+console-summary equality, unchanged source checkpoints, native export metadata and proof hashes independently
+verified. Report `runs/setup/stage2-report-20261016-062420.json`, SHA-256
+`cad9fafe3bec90d968e7d568497ec6081f2faa17512cded07f4f0aacbe744421`; all128 crop metric calculations rechecked.
+Standard crop has0 gains beyond the registered representation margins and6/3 degradations (hammer/pick-place);
+cropnosynth has24/22 degradations with3/2 isolated gains. These are single-seed descriptive margins, not statistical
+significance/equivalence tests, and cropnosynth bundles multiple changes. See RESULTS tables; frozen method unchanged.
+**07:59:22–07:59:42 handoff refresh:** all14 actual remote containers are running, with complete finite metric rows
+and progress beyond07:12; zero charged failures. Twelve cached registry `unknown` flags still lag the successful direct
+read; leave reconciliation to the existing dispatcher, never reset/relaunch from an outage. Three crop hammer DrM pairs:
+`s2rl-crop-hammer-s{1000,1001,1002}[-eval]`, attempt1. Container names `s4d-<job-id>-a1`; accepted source/image unchanged.
+
+| Seed | Trainer GPU | Evaluator GPU | Trainer / evaluator progress (07:59, finite) |
+|---|---|---|---|
+| 1000 | remote0 /4391 | remote1 /6122 | 403000 /390000 |
+| 1001 | remote2 /9e9f | remote3 /ca65 | 405000 /400000 |
+| 1002 | remote1 /6122 | remote3 /ca65 | 397000 /390000 |
+
+| Remote pretrain variant | Hammer step | Pick-place step | GPUs hammer / pick |
+|---|---:|---:|---|
+| no-lambda-dyn | 182600 | 189400 | 0 /1 |
+| no-coverage | 180450 | 184000 | 2 /3 |
+| misscaled-none | 182500 | 180250 | 0 /1 |
+| misscaled-scale | 182750 | 174650 | 2 /3 |
+
+All eight pretrains are still incomplete; full evaluations pending. Container start times remain10-15, before this
+connectivity episode. A reconciliation `launched` re-announcement or watcher restart label is not proof of a new
+container/training restart. Remote numerical mirrors remain unverified under the failed07:30 batch below.
+
+Full authorized UUIDs are in section5. Per-GPU measured load is2.5/2.8/2.5/2.6; no GPU currently has the0.5
+headroom needed for another trainer, despite fragmented aggregate headroom. Nine crop pairs remain pending.
+Initial trainer rates suggest roughly11:00–11:25 completion, training-only; evaluator closeout/sharing may delay
+this, and no final success/return is available. Running remote containers continue across local downtime; pending
+admissions require this local dispatcher before08:45 or a restarted dispatcher after reconnect.
 
 **Analysis already done; do not recompute to select methods:**
 - Original Stage 2: `runs/setup/stage2-report-20261015-102432.json`. Pure no-InfoNCE degrades both tasks; no-motion,
@@ -110,12 +145,18 @@ required numerical artifacts (config is still synced/verified), after a launch w
   Keep genuine nonlearning seeds (ReViWo stick2001, SinCro stick2002); do not reseed after seeing results.
 - Crop re-evaluation: `crop-reeval-report-20261015.json`, read-only source hashes verified. Trajectory probes improve
   in places, retrieval tradeoffs and pick-place CD-render degradation; it is a historical M2D-era single seed.
+- Original no-synth representation: `stage2-report-20261016-070832.json`, SHA-256
+  `3a438a17eeebedd525c9777cd316fe373589d578b08a128d7d8f148983033699`. Both full evaluations have driver proofs;
+  all64 metric calculations independently rechecked. Beyond-margin better/worse/within counts1/27/4 hammer and
+  1/24/7 pick-place, broad retrieval/trajectory-probe/appearance/CD-render damage. Single-seed attribution only;
+  bundled synthetic-view/rendering removal, no crop, no registered RL arm or method-selection consequence.
 
 ## 4. Local shutdown and resume ledger
 
 **Hard deadline: 2026-10-16 09:00; target final stop 08:45. Phase 3 begins 08:25. Never stop remote containers.**
-No new long local work. `runs/setup/stage2-admission-hold.json` admits only crop full evaluations/exports before
-07:15. All other local admissions withheld. Keep this file and `experiments/HOLD` until restart checks are complete.
+No new long local work. `runs/setup/stage2-admission-hold.json` admits only crop full evaluations/exports and the two
+already-registered no-synth full evaluations before07:15 (short-job whitelist extended06:41; comparable evaluations
+~10minutes). All other local admissions withheld. Keep this file and `experiments/HOLD` until restart checks are complete.
 Controller identity inventory: `runs/setup/local-shutdown-controller-inventory-20261015.json` (PID/start_ticks/session/
 boot ID and command hash; inventory only, **not an automatic shutdown watchdog**). Session-only scheduled prompts:
 06:40 ETA/pause review,07:30 late sync/W&B,08:00 handoff commit,08:25 Phase3; hourly health at minute7. If this CLI
@@ -128,16 +169,40 @@ These are not completed closeout or permission to overrun the deadline. Reassess
 training AND closeout before~08:00. **These are not final shutdown states.** Final checkpoint step/hash, actual
 finish/pause, process identity and resume instructions will replace this table.
 
-| Job | Planned handling before 08:00 |
+| Job | Latest verified state / handling before 08:00 |
 |---|---|
-| `s2ab-crop-seed0-hammer` | Finish 200k if ETA permits, then full evaluation/export |
-| `s2ab-crop-seed0-pick-place` | At 06:40 keep only if 200k and closeout achievable before ~08:00; otherwise checkpoint pause |
-| `s2ab-cropnosynth-seed0-hammer` | Next 10k lossless pause armed ~06:45 unless already finishing safely |
-| `s2ab-cropnosynth-seed0-pick-place` | Same |
-| `s2ab-nosynth-seed0-hammer` | Same |
-| `s2ab-nosynth-seed0-pick-place` | Same |
-| `s2ab-nocons-seed0-hammer` | Same |
-| `s2ab-nocons-seed0-pick-place` | Same |
+| `s2ab-crop-seed0-hammer` | **Completed200k**, full evaluation/export verified; DrM seeds1000–1002 running remotely |
+| `s2ab-crop-seed0-pick-place` | **Completed200k**, full evaluation independently verified/export driver-verified; DrM pending |
+| `s2ab-cropnosynth-seed0-hammer` | **Completed200k**, full evaluation/export driver-verified; DrM pending |
+| `s2ab-cropnosynth-seed0-pick-place` | **Completed200k**, full evaluation/export driver-verified; DrM pending |
+| `s2ab-nosynth-seed0-hammer` | **Completed200k**, config/checkpoint verified; SHA-256 `0079c165cbc97f0453b5a849f845977430d42880200524ff921823bf0a14cc11`. Pretrain/full-evaluation closeouts done; representation report07:08 complete |
+| `s2ab-nosynth-seed0-pick-place` | **Completed200k**, config/checkpoint verified; SHA-256 `75642a46be60a6f993d62318d911f9714e1e7e7241630c8c9c119b23cd6c485f`. Pretrain and full-evaluation driver closeouts done; independent full evaluation verified |
+| `s2ab-nocons-seed0-hammer` | **Completed200k normally**, config/checkpoint ZIP/hash/finite final loss verified07:43; driver closeout07:43:48. SHA-256 `23b15625c6d050f63417599ca2cb0d607fe740b50e67a69834f854dde4774ef5`; loss0.2051568180322647. Original session fully exited, zero failures. Full evaluation/config prepared but admission held past07:15 |
+| `s2ab-nocons-seed0-pick-place` | **Intentionally paused180k**, proof/session exit/checkpoint payloads independently verified07:02; SHA-256 `b4e3a3328927afdf2945e432f0671ed8c1941259b689ebea6eb7bdc471e4e357`. No logged steps lost, zero charged failures. Reducer status `crashed` with matching `intentional_stops` proof, not an ordinary crash. Remains held; resume via scheduler `--resume auto` |
+
+**10-16 06:24 completion update:** all four crop/cropnosynth pretrains finished200k normally; registered configs,
+checkpoint ZIP integrity/hashes and finite final losses verified independently. All four pretrain driver closeout
+proofs are present: `runs/setup/s2-s2ab-{crop,cropnosynth}-seed0-{hammer,pick-place}-completion.json`.
+All four full evaluations and exports are independently verified with driver closeouts. Representation endpoint
+report is complete (section3/RESULTS); three hammer crop RL pairs run remotely, nine pending. These actual completions
+supersede all earlier crop training ETA/pause plans, without changing any deadline.
+
+| Completed local job | Checkpoint step | SHA-256 of `checkpoints/step_0200000.pt` |
+|---|---|---|
+| `s2ab-crop-seed0-hammer` | 200000 | `58d9ff4808739902c0039eb668fbb518783e4470a84ae4a7da7132e7eab90b00` |
+| `s2ab-cropnosynth-seed0-hammer` | 200000 | `33b7fda352240b52d1599ac0d7b2907927fdb105e7806f7b1f4bcd33789012ae` |
+| `s2ab-crop-seed0-pick-place` | 200000 | `0bc4f8e5da640426a477891fbb892644fce04815961bc2c4d4691866543b2620` |
+| `s2ab-cropnosynth-seed0-pick-place` | 200000 | `11426bf2152b52ebed438a05830b6ac32b8807bfa585dee5834bc5331d1934bc` |
+
+**07:49 local scientific closeout check:** all seven completed local pretrains have driver proofs; no-consistency
+pick-place is intentionally paused180k. Registry has no active local scientific jobs; process inventory found no
+train/eval/export/RL/baseline workers, and original hammer session1358017 is empty. Full cgroup51.04GB at07:43.
+Controllers/monitoring still run and final all-process shutdown remains pending, including the denied daemon blocker.
+No-consistency hammer full-evaluation config is prepared, but both no-consistency evaluations remain held after07:15.
+
+Memory alert task `b00cd94fv` replaced normally expired `bgv08dcyq` at22:58 on10-15, without an alert. Updated
+controller inventory identifies outer PID2082985 and monitor PID2082986, deadline08:45. Reverify identities before
+stopping; this monitoring replacement does not clear the separate scheduler-daemon stop denial below.
 
 Pause evidence: `runs/<id>/checkpoint_pause-planned_local_shutdown_20261016.json` and `checkpoint_paused` registry
 records. Checkpoints are in `runs/pretrain/<id>/checkpoints/step_<7-digit-step>.pt` and `latest.pt`. Verify SHA-256
@@ -207,8 +272,20 @@ stop for the final all-local-processes shutdown; the prior denied action did not
   not established. A brief~2-minute SSH outage recovered; it did not authorize resets or relaunches.
 - W&B **offline on remote**, never disabled; never send W&B credentials there. Main-host procedure:
   `.venv/bin/python -I runs/setup/tools/sync_wandb_remote.py [--run ID ...]` (or `--no-upload` for pull only).
-  Checksummed W&B directories are in `runs/remote/wandb/`, status `status.json`; then `wandb sync` runs here.
-  Last pre-shutdown baseline: 243 uploaded; retry `s3-m3d-seed0-peg-unplug-side-200k`. Failures never block numerics.
+  Checksummed W&B directories are pulled into `runs/<id>/wandb/`, status `runs/remote/wandb/status.json`; then
+  `wandb sync` runs here. Last pre-shutdown baseline:243 uploaded; failures never block numerics.
+- **07:30 late-sync phase:** W&B task `ba1a6vvlo` retries `s3-m3d-seed0-peg-unplug-side-200k` first, then
+  checksum-pulls all14 active remote jobs; only finished runs upload. Bounded batch2400s, W&B outcome still pending.
+  Numerical result-sync task `b82ry3ven` **completed07:48:39 with0/14 verified live snapshots**: nine checksum/change
+  verification errors and five RemoteUnreachable errors. Report `runs/setup/late-remote-result-sync-20261016-0730.json`.
+  All requests were `final=False`, checkpoints/replay excluded. Live files may change mid-sync; exact cause of every
+  checksum failure is unestablished. Partial mirrors are unverified, not final/decision-ready evidence; previous
+  completed accepted results remain valid. No restart/reset/threshold relaxation. Watcher recorded brief9.4s/3.6s
+  reconnects, not a proven continuous10-minute outage. W&B task is local owned and must finish/stop before shutdown.
+- 07:30 pause checkpoint hash/session exit and matching intentional-stop accounting reverified, zero charged failures.
+  Completed analyses are preserved: final/Stage2 success+return last5/final/AUC with CIs, historical crop report,
+  frozen-method crop report and no-synth report. No-consistency/remote representation and crop RL remain incomplete;
+  do not finalize them from partial training or retune the method.
 
 ## 6. Rules and latest decisions (precedence matters)
 
@@ -257,6 +334,8 @@ Unaccepted work is pushed, not merged:
 | `wip/bx-dynamo-20261016` | `119ffb6` | clean already-committed DynaMo/review bundle preserved |
 | `wip/intentional-stop-reducer-20261016` | `c5a7571` | scheduler accounting/race/refused-launch + redacted diagnostics, tested/integrated/pushed |
 
+At08:00 all five worktrees were rechecked: no tracked changes or untracked non-run source work. All five WIP refs
+above match their published origin tips exactly; no empty preservation commits or unaccepted merges are needed.
 Worktrees `.worktrees/{bx-mvp3d,bx-snerl,bx-dynamo,review,intentional-stop}` remain on disk. WIP smoke figures/logs
 are historical evidence, not accepted results or proof that the current pinned upstream adapter has passed tests.
 Do not execute permission-blocked upstream code to fill idle GPUs. The old `.claude/worktrees/agent-*` branch is an

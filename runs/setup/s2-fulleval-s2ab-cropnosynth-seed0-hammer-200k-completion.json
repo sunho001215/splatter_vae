@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-s2ab-cropnosynth-seed0-hammer-200k",
+  "verified_local": "2026-10-16T06:23:47.162364+09:00",
+  "summary_sha256": "f765be3ad17d8196ce6cbb466144bb246b6a17927f0aed76f5dda2de6f443a45",
+  "num_batches": {
+    "2": 129,
+    "6": 124
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "33b7fda352240b52d1599ac0d7b2907927fdb105e7806f7b1f4bcd33789012ae",
+  "variant_comparison_performed": false
+}

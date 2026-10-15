@@ -1,0 +1,12 @@
+{
+  "job_id": "fulleval-s2ab-nosynth-seed0-hammer-200k",
+  "verified_local": "2026-10-16T07:08:17.720417+09:00",
+  "summary_sha256": "55c4d294c6cb0325a84e22ba14669447dc45d7af4d4e6833d41d9abeecc601e7",
+  "num_batches": {
+    "2": 129,
+    "6": 124
+  },
+  "console_equals_summary": true,
+  "checkpoint_sha256": "0079c165cbc97f0453b5a849f845977430d42880200524ff921823bf0a14cc11",
+  "variant_comparison_performed": false
+}

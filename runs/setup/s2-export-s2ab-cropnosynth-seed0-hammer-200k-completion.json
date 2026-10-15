@@ -1,0 +1,8 @@
+{
+  "job_id": "export-s2ab-cropnosynth-seed0-hammer-200k",
+  "verified_local": "2026-10-16T06:10:27.291668+09:00",
+  "encoder_sha256": "bf1c361554a232ab3563d4ce12bdc976c2339fbd0cc69fbd562eec4995cbb16d",
+  "step": 200000,
+  "source_job": "s2ab-cropnosynth-seed0-hammer",
+  "source_checkpoint_sha256": "33b7fda352240b52d1599ac0d7b2907927fdb105e7806f7b1f4bcd33789012ae"
+}

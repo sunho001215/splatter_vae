@@ -5,6 +5,7 @@
     "fulleval-s2ab-crop-seed0-hammer-200k", "export-s2ab-crop-seed0-hammer-200k",
     "fulleval-s2ab-crop-seed0-pick-place-200k", "export-s2ab-crop-seed0-pick-place-200k",
     "fulleval-s2ab-cropnosynth-seed0-hammer-200k", "export-s2ab-cropnosynth-seed0-hammer-200k",
-    "fulleval-s2ab-cropnosynth-seed0-pick-place-200k", "export-s2ab-cropnosynth-seed0-pick-place-200k"
+    "fulleval-s2ab-cropnosynth-seed0-pick-place-200k", "export-s2ab-cropnosynth-seed0-pick-place-200k",
+    "fulleval-s2ab-nosynth-seed0-hammer-200k", "fulleval-s2ab-nosynth-seed0-pick-place-200k"
   ]
 }

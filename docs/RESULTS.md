@@ -4,6 +4,81 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Late pre-shutdown live-sync verification failures (2026-10-16 07:48)
+
+The bounded14-run numerical sync check completed with **0/14 verified live snapshots**: nine checksum/change
+verification errors and five RemoteUnreachable errors. Evidence: `runs/setup/late-remote-result-sync-20261016-0730.json`.
+All requests used `final=False`; active files may change during synchronization, but the exact cause of every checksum
+failure is not established. These partial mirrors are not final/decision-ready results. No threshold was relaxed, no
+job was reset/relaunched, and previously accepted completed results remain valid. Remote outages mean unknown, not
+failed. W&B synchronization is separate and never gates numerical progress.
+
+### Frozen-method crop follow-up: representation endpoints (2026-10-16 06:24)
+
+All four seed0 pretrains completed200k; all four full evaluations and native encoder exports have verified driver
+closeouts. Registered configs, final checkpoint integrity/hashes, full evaluation counts (hammer129/124 batches,
+pick-place125/120 at strides2/6), console-summary equality and unchanged source hashes were checked independently.
+Report: `runs/setup/stage2-report-20261016-062420.json`, SHA-256
+`cad9fafe3bec90d968e7d568497ec6081f2faa17512cded07f4f0aacbe744421`.
+All128 crop metric calculations and four export proofs were independently rechecked, as were both fixed reference
+summaries against their length-study closeout proofs. Detailed source/export hashes are in the closeout records.
+
+Comparison is against the frozen full-method A200/M3D seed0 endpoint for the same task, not the historical100k
+M2D crop screen. Crop is encoder-input-only during pretraining; never RL. Cropnosynth additionally removes synthetic
+views **and** synthetic rendering, so its effects cannot be attributed to crop alone. Readers/margins are unchanged
+from `stage2-reporting-margins-20261013.json`: stride6 velocity/motion; otherwise mean strides2/6; symmetric p90
+CD-render. These are single-seed descriptive margin comparisons, not confidence intervals or significance tests.
+
+Deltas below are variant minus full reference; camera groups stay separate. Retrieval uses the established distinct-
+episode cross-camera pool, not a new unseen-episode generalization claim.
+
+| Arm / task | Retrieval train | near | trajectory | Hand-position R² train | near | trajectory |
+|---|---:|---:|---:|---:|---:|---:|
+| crop / hammer | -0.009 | -0.003 | -0.004 | +0.001 | +0.013 | +0.028 |
+| crop / pick-place | -0.001 | -0.009 | -0.046 | -0.004 | -0.001 | -0.003 |
+| cropnosynth / hammer | -0.097 | -0.284 | -0.365 | -0.004 | -0.025 | -0.129 |
+| cropnosynth / pick-place | -0.116 | -0.309 | -0.457 | -0.011 | -0.038 | -0.168 |
+
+| Arm / task | Hand-velocity R² train | near | trajectory | Object-position R² trajectory | CD-render trajectory relative Δ |
+|---|---:|---:|---:|---:|---:|
+| crop / hammer | -0.054 | -0.039 | -0.061 | +0.018 | +5.6% |
+| crop / pick-place | -0.011 | -0.005 | -0.006 | +0.021 | +2.1% |
+| cropnosynth / hammer | -0.044 | -0.077 | -0.197 | -0.070 | +86.7% |
+| cropnosynth / pick-place | +0.021 | -0.003 | -0.096 | -0.076 | +109.7% |
+
+Across all32 registered metrics, crop hammer is better/worse/within margin **0/6/26**, crop pick-place **0/3/29**;
+cropnosynth hammer **3/24/5**, cropnosynth pick-place **2/22/8**. Standard crop has no improvement beyond these margins;
+hammer train/trajectory velocity, hidden/visible-center/dynamic-motion geometry and held-out PSNR degrade, while
+pick-place trajectory retrieval and center geometry degrade. Both standard-crop CD-render changes are within margin.
+Cropnosynth has broad appearance/retrieval/trajectory-probe degradation despite isolated utilization/geometry gains.
+Within-margin differences do not establish equivalence or absence of a real effect; the hammer trajectory-velocity
+crossing is small (-0.060674 versus margin0.059475), not evidence of a precisely established effect size.
+
+**RL comparison remains incomplete.** Three crop hammer trainer/evaluator pairs run remotely; nine registered pairs
+remain pending. Report success **and return**, last-5/final/AUC, with separate training/held-out/trajectory conditions
+and per-task seed-mean95% CIs only after the required runs close out. No method selection, new seeds or retuning follows.
+
+### No-synthetic-view attribution: representation endpoints (2026-10-16 07:08)
+
+Both original `s2ab-nosynth-seed0-{hammer,pick-place}` pretrains and full evaluations completed200k with driver
+closeouts and independent config/checkpoint/count/console/hash checks. This arm sets synthetic views0 and synthetic
+rendering false, **without crop**; no new seed, schedule or protocol. Fixed full-method200k references and the same
+prospective representation margins/readers as above. Report `runs/setup/stage2-report-20261016-070832.json`, SHA-256
+`3a438a17eeebedd525c9777cd316fe373589d578b08a128d7d8f148983033699`; all64 no-synth metric calculations and both
+reference/evaluation proof hashes independently verified. Single-seed descriptive attribution only, not method selection.
+
+| Task | Retrieval Δ train / near / trajectory | Hand-position R² Δ train / near / trajectory | Hand-velocity R² Δ train / near / trajectory | Object-position R² Δ trajectory | CD-render trajectory relative Δ |
+|---|---|---|---|---:|---:|
+| hammer | -0.039 / -0.300 / -0.463 | -0.009 / -0.033 / -0.295 | -0.051 / -0.162 / -0.316 | -0.239 | +83.9% |
+| pick-place | -0.180 / -0.311 / -0.465 | -0.017 / -0.040 / -0.169 | -0.001 / -0.060 / -0.229 | -0.364 | +81.8% |
+
+Of32 registered metrics per task, better/worse/within-margin counts are **1/27/4 hammer** and **1/24/7 pick-place**.
+Appearance also degrades: moving PSNR-2.096/-4.477dB and trajectory PSNR-0.839/-1.248dB (hammer/pick-place), all
+beyond registered margins. Both train/near hand-position probes remain within margin, not proof of equivalence;
+trajectory position/velocity, near velocity, retrieval and CD-render degrade beyond margin on both tasks. These
+findings support broad representation damage from this bundled removal, not a causal separation of synthetic
+positives from synthetic rendering. No RL arm was registered for this pretrain-only variant; do not infer an RL effect.
+
 ### Shutdown accounting / reporting verification (2026-10-15 20:40)
 
 - Scheduler-only patch `7a14773`: **763 passed, 0 failed/errors/skips**,293.05s in the full native suite;

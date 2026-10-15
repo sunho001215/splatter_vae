@@ -1,0 +1,8 @@
+{
+  "job_id": "export-s2ab-crop-seed0-pick-place-200k",
+  "verified_local": "2026-10-16T05:51:32.764473+09:00",
+  "encoder_sha256": "46d6f3f5f1335a0d03706e90c309396c7ceb6840c19885382ac8d3ae734a8647",
+  "step": 200000,
+  "source_job": "s2ab-crop-seed0-pick-place",
+  "source_checkpoint_sha256": "0bc4f8e5da640426a477891fbb892644fce04815961bc2c4d4691866543b2620"
+}

@@ -3216,3 +3216,153 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
 - Local HOLD description updated to the current shutdown/resource rules, removing superseded host-equivalence/
   migration-comparison wording while retaining the hold itself. Scheduler PID2819571 remains untouched after its
   denied stop; renewed permission is still needed for all-local shutdown. No automatic deadline backstop is claimed.
+
+### 2026-10-16 05:31 — First two frozen-method crop pretrains complete
+- Hammer crop and cropnosynth finished200k normally. Registered configurations match exactly; final checkpoint ZIP
+  integrity and SHA-256 verified independently. Driver closeout proofs at05:30:
+  `runs/setup/s2-s2ab-{crop,cropnosynth}-seed0-hammer-completion.json`. Hashes are recorded in HANDOFF.
+- Both pick-place pretrains are still finishing. Hammer full-evaluation configs are prepared; existing measured
+  job-by-job driver handles evaluations/exports, then the registered remote-eligible DrM seeds1000–1002. No new
+  scientific comparison, hyperparameter change, local long-job admission or healthy trainer restart.
+- Local full cgroup102.3GB at05:31 before evaluator admission; disk4.5TB free. Single watcher rearmed after the two
+  completion events. PROGRESS/HANDOFF updated for actual completions; final shutdown ledger remains pending.
+- Controller inventory now records the replacement memory alert task (`b00cd94fv`, outer PID2082985, monitor
+  PID2082986) after the previous eight-hour window expired without alert at22:58. Scheduler PID2819571 remains
+  untouched and its denied stop still requires renewed permission; remote containers will not be stopped.
+
+### 2026-10-16 05:37 — All four crop pretrains complete; first full evaluation launched
+- Both pick-place crop variants completed200k normally, making4/4 pretrains complete. Registered configs, finite
+  final losses and final checkpoint ZIP integrity/SHA-256 verified independently; all four hashes are in HANDOFF.
+- The existing driver launched `fulleval-s2ab-crop-seed0-hammer-200k` at05:36 on authorized GPU5 (PID2613943), with
+  native GPU-guard evidence and full validation window counts2058/1978 for strides2/6. Other evaluations are queued.
+- The corresponding encoder export artifact exists with native format/step/source verified, SHA-256
+  `e2fa6819ff98a0c72fb5e39973751e0f5038297cc9c8f9cd6106b3bdf55dd38e`; driver closeout/registry reconciliation
+  still pending. Its short-lived process finished before a direct PID probe; this is not a charged training failure.
+- Full evaluation/export closeouts release the registered follow-ups through the existing measured admission path.
+  No frozen-method changes, healthy trainer interruption, outage reset or new scientific comparison. Local full
+  cgroup91.73GB after pretrains exited; watcher rearmed. Shutdown targets/hold and daemon-stop permission block remain.
+
+### 2026-10-16 05:59 — Two crop full evaluations complete; first three DrM pairs verified remotely
+- Standard-crop hammer/pick-place full evaluations completed with full batch counts129/124 and125/120 (strides2/6),
+  exact console-summary equality and unchanged final source checkpoints. Summary hashes respectively:
+  `f78b8b403d74a6355353ea1320bf73e15bc4e569d1641ed03502dee04a3cfe6b` and
+  `2ff78ab339d2cb8e722977dac83d34ff87eb33a8e5394bacf0b588d31c2abdf0`. Both encoder exports have driver closeouts.
+- Actual remote containers for `s2rl-crop-hammer-s{1000,1001,1002}[-eval]` verified running, attempt1, no unknown/
+  failure. Trainers have fresh finite metrics at15k/11k/7k. Initial51.56–56.25steps/s implies roughly11:00–11:25
+  training-only completion; evaluator closeout and sharing may delay this. No final RL result/comparison yet.
+- Placements: seed1000 trainerGPU0/evaluatorGPU1;1001 trainerGPU2/evaluatorGPU3;1002 trainerGPU1/evaluatorGPU3.
+  Load2.5/2.8/2.5/2.6 across authorized GPUs; fragmented residual headroom fits no extra0.5 trainer. Nine crop pairs
+  remain pending. Cropnosynth full evaluations/exports are also queued; existing drivers retain measured admission.
+- No changed method/seeds/protocol or numerical-equivalence/migration gate. Remote containers will continue through
+  local downtime; the local dispatcher still stops08:45. PROGRESS/HANDOFF updated and single watcher rearmed.
+
+### 2026-10-16 06:24 — All crop representation closeouts complete; registered endpoint report
+- Four full evaluations and four native encoder exports now have driver closeouts. Both cropnosynth summaries passed
+  independent full-count/console/source-checkpoint checks; hashes hammer
+  `f765be3ad17d8196ce6cbb466144bb246b6a17927f0aed76f5dda2de6f443a45`, pick-place
+  `c5ac6e3925ceb36b963996842df1142a34c3c8ffbb123c8ad7b1020a1400a194`. Fourth export verified at06:22,
+  SHA-256 `5881b4fa0ef65b0b76e978547f285250d0d00ff806d9828c1e1b28967be4c2bf`; all four export proof hashes match.
+- Existing report-only tool produced `runs/setup/stage2-report-20261016-062420.json`, SHA-256
+  `cad9fafe3bec90d968e7d568497ec6081f2faa17512cded07f4f0aacbe744421`. Independently recomputed all128 crop metric
+  values/deltas/margins/verdicts, checked finite values, immutable margin hash and both A200/M3D reference closeouts.
+  No source change or new acceptance suite was needed for this report-only execution.
+- Of32 metrics per endpoint, better/worse/within: crop hammer0/6/26, crop pick0/3/29, cropnosynth hammer3/24/5,
+  cropnosynth pick2/22/8. Standard crop has no beyond-margin gain, with velocity/geometry or trajectory-retrieval
+  degradations; standard-crop CD-render changes+5.6%/+2.1% remain within margin. Cropnosynth has broad degradation:
+  trajectory retrieval-0.365/-0.457, hand-position R²-0.129/-0.168, velocity R²-0.197/-0.096, CD-render+86.7%/+109.7%.
+  These are single-seed descriptive margin findings, not significance/equivalence tests; cropnosynth bundles crop
+  with removal of synthetic views/rendering. Detailed condition-separated tables are in RESULTS. No method retuning.
+- Complete06:12 health check found no stalls/unknown states/charged failures: four remaining local pretrains and eight
+  remote pretrains advanced with fresh finite losses; three crop hammer RL trainers at57k/56k/51k and evaluator
+  companions at50k/50k/40k, all actual containers running. Local full cgroup99.83GB then88.64GB after evaluator exits;
+  local disk4.5TB free. Remote owned-container memory~84.55GiB, SSD3.364TB free (~44.7%), host available~1.470TB.
+- Three remote crop RL pairs remain active; nine pending because no individual GPU has0.5 trainer load headroom.
+  RL success/return last-5/final/AUC comparison is still incomplete, not inferred from representation/startup data.
+  Single watcher `b24r4u491` rearmed after the fourth export; closeout-report waiter completed normally. Existing
+  06:40 pause review/shutdown schedule and daemon-stop permission blocker remain unchanged.
+
+### 2026-10-16 06:41 — Shutdown ETA review and lossless pause armed
+- All four crop pretrains/full evaluations/exports already have verified closeouts; crop pick-place does not need a
+  pause. No-synth pick-place completed200k with exact config/finite final loss/checkpoint ZIP verified; hash
+  `75642a46be60a6f993d62318d911f9714e1e7e7241630c8c9c119b23cd6c485f`. No-synth hammer reached200k and is finalizing.
+- Measured ten-minute wall-log rate plus maximum recent checkpoint/validation overhead per remaining boundary and
+  ten-minute pretrain closeout reserve: no-consistency hammer186150 -> training07:49, closeout07:59, keep with an
+  additional06:55 ETA review because slack is small; pick-place175900 -> training08:33, closeout08:43, pause required.
+  Evidence `runs/setup/shutdown-eta-review-20261016-0640.json`; these are estimates, not deadline extensions.
+- Launched `pause_pretrain_at_checkpoint.py --reason planned_local_shutdown_20261016 s2ab-nocons-seed0-pick-place` as
+  tracked background task `btteuzr9q`, next checkpoint180k. At06:43 it is waiting for the registry lock before its armed
+  confirmation (PID2702066/start462186297); bounded startup waiter `bgvmlfddf` is active. Pause is not yet complete; checkpoint validation/hash,
+  owned-session exit and no-steps-lost proof must follow. Existing source verifies PID/session/start ticks and writes
+  intentional-stop registry evidence; no failure/restart charge is intended. No remote container or denied daemon touched.
+- Before any new evaluation result, extend only the operational short-job whitelist to the two already-registered
+  no-synth full evaluations. Existing07:15 admission cutoff, measured memory/resource checks and all training/scientific
+  settings stay unchanged. Recent comparable full evaluations took~10minutes; these two can close out before~08:00.
+  No new long local training admission; no-consistency evaluations remain pending across downtime if not admitted.
+- 06:45:33 registry lock released naturally and pick-place pause worker confirmed armed180k; matching intentional
+  request/attempt1 verified, zero failures. No daemon stop/retry. Both no-synth pretrains are now complete; hammer
+  independently verified06:46 (exact config, finite final loss0.123832, checkpoint ZIP), SHA-256
+  `0079c165cbc97f0453b5a849f845977430d42880200524ff921823bf0a14cc11`. Its driver proof remains pending.
+  All ten short-whitelist IDs match registered queue definitions; cutoff remains07:15. Watcher rearmed once.
+
+### 2026-10-16 07:02 — No-consistency pick-place losslessly paused at180k
+- Tracked pause worker `btteuzr9q` finished normally. Independently verified checkpoint SHA-256
+  `b4e3a3328927afdf2945e432f0671ed8c1941259b689ebea6eb7bdc471e4e357`, ZIP integrity, step180k, identical member
+  payloads in `latest.pt`, logged validation/boundary, no next logged step and complete owned-session exit.
+  Initial ad-hoc byte-equality assertion for latest/checkpoint was too strict: PyTorch ZIP prefixes are `latest/`
+  versus `step_0180000/`, but all corresponding members match CRC/size and both step metadata are180k. No source or
+  test threshold was changed. The pause utility's original step/integrity/no-loss checks passed.
+- Proof `runs/s2ab-nocons-seed0-pick-place/checkpoint_pause-planned_local_shutdown_20261016.json` matches the
+  append-only registry `checkpoint_paused` event/attempt1. Reducer has `intentional_stops` evidence and zero failures;
+  status `crashed` is restartable intentional pause, not a charged crash. Keep held; resume through scheduler with
+  existing `--resume auto` after shutdown/restart checks, never direct training/reseeding.
+- Hammer06:56 safeguard forecast improved to training07:44/closeout07:54, including validation overhead and ten-minute
+  reserve; kept to200k. No duplicate pause worker, remote container stop or denied scheduler-daemon action.
+- No-synth pick-place full evaluation completed and independently verified06:55: full125/120 batches, console equality,
+  unchanged source checkpoint; summary SHA-256 `5abc4477f1a3f695f421c0bb6e9e11909b9988006411f7b17e2bc7debea65a69`.
+  Both no-synth pretrain closeouts present; hammer evaluation prepared by existing driver. Local full cgroup64.76GB
+  at07:02 after pause. Handoff/progress ledgers updated; final shutdown remains pending.
+
+### 2026-10-16 07:08 — Both original no-synth full evaluations closed out and reported
+- Hammer full evaluation independently verified07:07 (129/124 batches, exact console equality, unchanged checkpoint),
+  summary SHA-256 `55c4d294c6cb0325a84e22ba14669447dc45d7af4d4e6833d41d9abeecc601e7`. Both no-synth full-evaluation
+  driver proofs now exist; completed report-only waiter `bxgkeog7l` produced `stage2-report-20261016-070832.json`,
+  SHA-256 `3a438a17eeebedd525c9777cd316fe373589d578b08a128d7d8f148983033699`. All64 metric calculations and both
+  fixed reference/variant summary-proof hashes independently rechecked; frozen prospective margins unchanged.
+- Better/worse/within across32 representation metrics: no-synth hammer1/27/4, pick-place1/24/7. Trajectory retrieval
+  deltas-0.463/-0.465; hand-position R²-0.295/-0.169; hand-velocity R²-0.316/-0.229; object-position R²-0.239/-0.364;
+  CD-render+83.9%/+81.8%. Train/near hand-position remain within margin. Broad degradation from bundled removal of
+  synthetic views/rendering, without crop; single-seed attribution, not significance/equivalence or an RL-effect claim.
+- No RL arm was registered for this pretrain-only variant, and no new one was added after seeing its representation
+  outcomes. Method/seeds/settings unchanged. RESULTS condition-separated table and PROGRESS/HANDOFF updated;
+  pending no-consistency/remote/crop-RL work preserved, watcher rearmed once as `bf7mgts3a`.
+
+### 2026-10-16 07:50 — Last local pretrain complete; late live-sync failures preserved
+- No-consistency hammer completed200k normally. Registered config, completion record, checkpoint ZIP integrity/SHA-256
+  `23b15625c6d050f63417599ca2cb0d607fe740b50e67a69834f854dde4774ef5`, finite final loss0.2051568180322647 and
+  driver proof `s2-s2ab-nocons-seed0-hammer-completion.json` verified; closeout timestamp07:43:48. Original owned
+  session fully exited, registry done/zero failures. No local scientific registry jobs or processes remain at07:49.
+  Both no-consistency full evaluations remain pending under the expired07:15 whitelist; no new local admission.
+  Local controllers still running: this is not the final all-process shutdown.
+- Reverified no-consistency pick-place180k pause at07:30: checkpoint SHA/session exit/matching intentional-stop
+  accounting, zero charged failures. Keep held for scheduler `--resume auto` after restart checks.
+- Bounded numerical late-sync task `b82ry3ven` completed07:48:39, report
+  `runs/setup/late-remote-result-sync-20261016-0730.json`: **0/14 live snapshots verified**, nine checksum/change
+  verification errors and five RemoteUnreachable errors. No unfinished run was requested/claimed final, no threshold
+  relaxed and no restart/reset triggered. Preserve partial mirrors only as unverified data; completed accepted results
+  remain valid. Watcher reported brief9.4s/3.6s reconnects; these do not establish training failure or a10-minute outage.
+- W&B retry/pull batch `ba1a6vvlo` remains pending; no upload-success claim. No VPN/host action, remote container stop
+  or retry of the denied scheduler-daemon stop. Handoff/progress updated; final shutdown verification remains pending.
+
+### 2026-10-16 08:00 — Handoff publication refresh; remote survival and WIP verified
+- Direct07:59:22–07:59:42 read verified all14 remote containers running with finite complete metric rows and progress
+  beyond07:12: eight pretrains174650–189400, three crop hammer RL trainers397000–405000, companions390000–400000.
+  Zero charged failures. Twelve cached registry unknown flags lagged this successful read; existing dispatcher
+  reconciles, never reset/relaunch from outage evidence. Container starts remain10-15, no new training restart.
+- Local final scientific ledger: seven pretrains naturally completed200k, one intentional180k pause; none active.
+  Both no-consistency full evaluations remain held. Handoff records hashes/resume commands, incomplete comparisons,
+  failed late numerical sync, pending W&B batch and the still-binding scheduler-daemon stop denial. Final controller
+  shutdown verification is explicitly pending, not inferred from the absence of trainers.
+- Five WIP worktrees have no tracked changes or untracked non-run source work; each named wip/*20261016 tip matches
+  origin exactly. Already committed/pushed/unmerged preservation needs no duplicate empty commits. Main publication
+  selects docs/operational state, small reports/closeout proofs/summaries and a complete append-only registry prefix;
+  no checkpoints/replays/access credentials, source changes or unaccepted baseline merge. Native764 acceptance unchanged.
