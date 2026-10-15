@@ -12,7 +12,8 @@ coordinates (pixel ``i`` covers [i, i+1)), cameras 1.0 m from the rig look-at po
 - poses: ``c2w_gl = c2w_cv @ diag(1, -1, -1, 1)``, re-centred on ``LOOKAT`` and scaled by ``POSE_SCALE`` = 4 (camera
   distance 4, the official geometry, so the official near/far 2/6 are 0.5 m / 1.5 m camera-z depth); the same
   normalised, flattened 4x4 matrix is the encoder's pose input in pretraining and RL;
-- intrinsics: principal point ``W/2 - 0.5`` in the official convention, so official rays pass through our pixel centres;
+- intrinsics: the rig K is used unchanged (principal point ``W/2``), as directed; official rays sample integer
+  coordinates without +0.5, so they differ by half a pixel from our other continuous-pixel render/lift convention;
 - semantics: body ids -> 4 classes (``SEMANTIC_CLASSES``) by a per-task table built from the file's ``body_names``;
   the official 5-way semantic head is kept, class 4 is never a target;
 - no background compositing: our renders are full scenes without alpha (the official data was masked to white with
@@ -107,11 +108,8 @@ def denormalise_c2w(c2w: torch.Tensor, lookat=LOOKAT, scale: float = POSE_SCALE)
 
 
 def official_K(K_cv: np.ndarray) -> np.ndarray:
-    """Our continuous-pixel K -> the official ``get_rays`` convention (integer pixel centres): cx, cy minus 0.5."""
-    K = np.array(K_cv, dtype=np.float64)
-    K[..., 0, 2] -= 0.5
-    K[..., 1, 2] -= 0.5
-    return K
+    """Per-camera rig K unchanged: the official rays have no half-pixel offset (user-directed convention)."""
+    return np.array(K_cv, dtype=np.float64, copy=True)
 
 
 def file_class_lookup(path: str | Path) -> np.ndarray:

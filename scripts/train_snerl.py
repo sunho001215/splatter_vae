@@ -148,20 +148,15 @@ def main() -> None:
     resume = args_cli.resume == "auto" and latest.is_file()
     if resume and args_cli.export_init_only:
         raise SystemExit("--export-init-only needs a fresh run directory (or --resume never)")
-    if not resume:  # initialisation: re-draw while a NeRF starts with dead density (live_density_fractions)
+    if not resume:
+        model = create(nerf_cfg, device)  # one official initialisation at the configured seed; never redraw silently
         probe = to_device_scene(train_set[0], device)
         train_set.close()
-        attempts = []
-        for attempt in range(int(train_cfg["init_attempts"])):
-            torch.manual_seed(seed + attempt)
-            model = create(nerf_cfg, device)
-            coarse, fine = live_density_fractions(model, probe)
-            attempts.append({"torch_seed": seed + attempt, "live_coarse": coarse, "live_fine": fine})
-            if min(coarse, fine) > 0:
-                break
-        else:
-            raise RuntimeError(f"every initialisation had a NeRF with dead density: {attempts}")
+        coarse, fine = live_density_fractions(model, probe)
+        attempts = [{"torch_seed": seed, "live_coarse": coarse, "live_fine": fine}]
         (run_dir / "init.json").write_text(json.dumps({"attempts": attempts}, indent=1))
+        if min(coarse, fine) == 0:
+            print("warning: NeRF density is zero on the probe; initialization is kept unchanged", file=sys.stderr)
         save_export(run_dir / "encoder_init.pt", model.encoder, 0, num_inputs, lookat, scale, random_init=True)
         if args_cli.export_init_only:
             return
@@ -227,7 +222,7 @@ def main() -> None:
         window += 1
         if global_step % print_every == 0:
             elapsed, tick = time.time() - tick, time.time()
-            record = {f"train/{k}": float(v) for k, v in terms.items()}
+            record = {f"train/{k}": float(v.detach()) for k, v in terms.items()}
             record.update({"train/lr": lr, "train/step_time": elapsed / window})
             if device.type == "cuda":
                 record["train/gpu_mem_gb"] = torch.cuda.max_memory_allocated() / 2**30

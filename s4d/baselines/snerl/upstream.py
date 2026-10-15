@@ -140,6 +140,7 @@ def dino_extractor(device: torch.device | str, weights: str | Path | None = None
     the checkpointed random stream; without ``pretrained`` the random teacher is seeded (0)."""
     vit_extractor = official("dino")["dino"].ViTExtractor
     with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(0)
+        # Only the CPU generator is seeded: torch.manual_seed also resets CUDA, including a restored checkpoint RNG.
+        torch.random.default_generator.manual_seed(0)
         vit = load_dino_vits8(weights, pretrained)
     return vit_extractor("dino_vits8", 4, model=vit, device=str(torch.device(device)))

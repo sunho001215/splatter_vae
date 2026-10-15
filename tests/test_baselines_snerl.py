@@ -157,10 +157,9 @@ def project_cv(K: np.ndarray, c2w_cv: np.ndarray, x: np.ndarray) -> tuple[np.nda
     return np.array([K[0, 0] * cam[0] / cam[2] + K[0, 2], K[1, 1] * cam[1] / cam[2] + K[1, 2]]), float(cam[2])
 
 
-def test_official_get_rays_with_our_cameras_pass_through_pixel_centres_at_camera_z_depth():
-    """Official ``get_rays`` with our converted K and pose: the ray of pixel (i, j) hits our OpenCV pixel centre
-    (i + 0.5, j + 0.5); its parameter is camera-z depth in normalised units (metres x 4), so near/far bracket
-    0.5-1.5 m; the rays at the image centre pass through the look-at point."""
+def test_official_get_rays_keep_rig_intrinsics_and_integer_samples_at_camera_z_depth():
+    """User-directed rig K (principal point W/2) is unchanged. Official get_rays samples (i, j), not the continuous
+    pixel centre (i+0.5, j+0.5); its parameter is camera-z depth x4. The optical-axis ray hits the look-at point."""
     get_rays = U.official("run_nerf")["run_nerf"].get_rays
     rig = camera_rig(SIZE, SIZE)
     cams = all_cameras_cv()
@@ -168,16 +167,17 @@ def test_official_get_rays_with_our_cameras_pass_through_pixel_centres_at_camera
     for v in range(len(cams)):
         K_cv = rig["K"][0].astype(np.float64)
         c2w = D.normalise_c2w(torch.from_numpy(cams[v])).float()
+        np.testing.assert_array_equal(D.official_K(K_cv), K_cv)
         rays_o, rays_d = get_rays(SIZE, SIZE, D.official_K(K_cv), c2w[:3, :4])
         for i, j in pixels:
             s = 3.0
             x = (rays_o[j, i] + s * rays_d[j, i]).double()
             world = (x / D.POSE_SCALE + torch.tensor(LOOKAT, dtype=torch.float64)).numpy()
             uv, z = project_cv(K_cv, cams[v], world)
-            assert np.allclose(uv, [i + 0.5, j + 0.5], atol=2e-3), (v, i, j, uv)
+            assert np.allclose(uv, [i, j], atol=2e-3), (v, i, j, uv)
             assert math.isclose(z, s / D.POSE_SCALE, rel_tol=1e-5), "ray parameter = camera-z depth x pose scale"
-        if v < 10:  # rig cameras aim at the look-at point: it lies between the four central pixel rays
-            centre = rays_d[SIZE // 2 - 1: SIZE // 2 + 1, SIZE // 2 - 1: SIZE // 2 + 1].reshape(4, 3).mean(0)
+        if v < 10:  # official integer-coordinate optical-axis ray (cx=cy=64), not the four-pixel average
+            centre = rays_d[SIZE // 2, SIZE // 2]
             o = rays_o[0, 0]
             closest = o - (o @ centre) / (centre @ centre) * centre
             assert float(closest.norm()) < 1e-3
@@ -295,6 +295,18 @@ def test_dino_teacher_is_the_official_extractor_with_the_official_weights():
     torch.testing.assert_close(ours, expected, atol=1e-4, rtol=1e-4)
 
 
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_teacher_construction_preserves_cpu_and_cuda_rng(device):
+    torch.manual_seed(135)
+    torch.cuda.manual_seed(246)
+    cpu_rng, cuda_rng = torch.get_rng_state().clone(), torch.cuda.get_rng_state().clone()
+    extractor = U.dino_extractor(device, pretrained=False)
+    assert torch.equal(torch.get_rng_state(), cpu_rng)
+    assert torch.equal(torch.cuda.get_rng_state(), cuda_rng), "teacher initialization must not reset resumed CUDA RNG"
+    other = U.dino_extractor(device, pretrained=False)
+    assert all(torch.equal(v, other.model.state_dict()[k]) for k, v in extractor.model.state_dict().items())
+
+
 def official_namespace(model: M.SNeRL, extractor, scene: dict, ds: D.SNeRLScenes, step: int) -> dict:
     """Variables of the official loop (run_nerf.py:687-768) for one of our scenes."""
     run_nerf, helpers = U.official("run_nerf", "run_nerf_helpers").values()
@@ -342,7 +354,7 @@ def test_training_step_is_the_official_loop_body(tmp_path, step):
         assert torch.equal(terms[key], ns[key]), key
     ns["loss"].backward()
     assert all(torch.equal(a, p.grad) for a, p in zip(grads, model.encoder.parameters()))
-    assert all(math.isfinite(float(v)) for v in terms.values())
+    assert all(math.isfinite(float(v.detach())) for v in terms.values())
 
 
 def test_official_compositing_matches_the_volume_rendering_equation():
@@ -504,6 +516,23 @@ def test_drm_end_to_end_with_the_frozen_snerl_encoder(tmp_path):
     assert agent.act(policy_inputs(agent, observation(2)), np.zeros((2, 4)), 5000, True).shape == (2, 4)
 
 
+def test_heldout_semantic_ground_truth_is_native_stored_state_replay():
+    from s4d.data import METAWORLD_ROOT
+    from scripts.render_snerl import replay_classes
+
+    episode = split_episodes(METAWORLD_ROOT / "splits/hammer_seed0.json", "validation")[0]
+    ds = D.SNeRLScenes(METAWORLD_ROOT / "hammer.hdf5", [episode], seed=0)
+    t = int(ds.lengths[0]) // 2
+    classes, provenance = replay_classes(ds, episode, t, (0, 1, 6))
+    assert classes.shape == (3, SIZE, SIZE) and set(np.unique(classes)) == {0, 1, 2, 3}
+    with h5py.File(ds.path, "r") as f:
+        for k, v in enumerate((0, 1)):
+            np.testing.assert_array_equal(classes[k], ds.lut[f["episodes"][episode]["body_id"][t, v]])
+    assert provenance["source"] == "native stored-state replay"
+    assert provenance["checks"]["cam0"]["body_ids_exact"] and provenance["checks"]["cam1"]["body_ids_exact"]
+    assert "cam6" in provenance["checks"]
+
+
 # ------------------------------------------------------------------------------------------- trainer and resume
 def run_trainer(config: Path, root: Path, name: str, *overrides: str) -> None:
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": os.environ["CUDA_VISIBLE_DEVICES"].split(",")[0]}
@@ -513,13 +542,14 @@ def run_trainer(config: Path, root: Path, name: str, *overrides: str) -> None:
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-4000:]
 
 
-def test_trainer_runs_exports_and_resumes_losslessly(tmp_path):
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_trainer_runs_exports_and_resumes_losslessly(tmp_path, device):
     path, manifest = write_task_file(tmp_path)
     cfg = yaml.safe_load((REPO / "configs/baselines/snerl/hammer.yaml").read_text())
     cfg["dataset"].update(hdf5_path=str(path), num_workers=1)
     cfg["data_interface"]["split_manifest"] = str(manifest)
     cfg["nerf"].update(TINY_NERF)
-    cfg["train"].update(device="cpu", max_steps=4, i_print=1, eval_every=2, save_every=2, eval_scenes=1,
+    cfg["train"].update(device=device, max_steps=4, i_print=1, eval_every=2, save_every=2, eval_scenes=1,
                         render_chunk=4096)
     cfg["dino"]["pretrained"] = False
     config = tmp_path / "snerl.yaml"
@@ -544,4 +574,10 @@ def test_trainer_runs_exports_and_resumes_losslessly(tmp_path):
     export = torch.load(resumed / "encoder.pt", map_location="cpu", weights_only=True)
     assert export["step"] == 4 and not export["random_init"]
     attempts = json.loads((straight / "init.json").read_text())["attempts"]
-    assert min(attempts[-1]["live_coarse"], attempts[-1]["live_fine"]) > 0
+    assert len(attempts) == 1 and attempts[0]["torch_seed"] == cfg["train"]["seed"], "no initialization redraw"
+    for key in ("torch_rng", "cuda_rng"):
+        assert (a[key] is None and b[key] is None) or torch.equal(a[key], b[key]), key
+    assert a["model"]["optimizer_state_dict"]["param_groups"] == b["model"]["optimizer_state_dict"]["param_groups"]
+    for parameter, state in a["model"]["optimizer_state_dict"]["state"].items():
+        for key, value in state.items():
+            assert torch.equal(value, b["model"]["optimizer_state_dict"]["state"][parameter][key]), (parameter, key)

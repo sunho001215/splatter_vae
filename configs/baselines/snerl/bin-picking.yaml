@@ -49,7 +49,6 @@ train:
   save_every: 10000      # official i_weights
   eval_every: 10000
   eval_scenes: 4
-  init_attempts: 20     # re-draw the initialisation while a NeRF has dead density (see docs)
   render_chunk: 4096     # rays per render chunk at evaluation (memory only)
 wandb:
   project: splatter4d-baselines

@@ -1,0 +1,58 @@
+{
+ "run": "/home/ws/ws/splatter4d/.worktrees/bx-snerl/runs/smoke/snerl-hammer-final",
+ "step": 1000,
+ "episode": "ep010",
+ "t": 81,
+ "inputs": [
+  0,
+  2,
+  4
+ ],
+ "semantic_ground_truth": {
+  "source": "native stored-state replay",
+  "checks": {
+   "cam0": {
+    "rgb_fraction_over_8": 0.0,
+    "depth_fraction_over_1mm": 0.0,
+    "body_ids_exact": true
+   },
+   "cam1": {
+    "rgb_fraction_over_8": 0.0,
+    "depth_fraction_over_1mm": 0.0,
+    "body_ids_exact": true
+   },
+   "cam6": {
+    "rgb_fraction_over_8": 0.0,
+    "depth_fraction_over_1mm": 0.0
+   }
+  }
+ },
+ "ray_intrinsics": "rig K unchanged; no half-pixel offset",
+ "cam0": {
+  "camera": 0,
+  "kind": "input",
+  "psnr": 19.982211589813232,
+  "depth_mae_m": 0.2082965075969696,
+  "depth_within_near_far": 0.95068359375,
+  "dino_mse": 0.12839661538600922,
+  "semantic_acc": 0.8983154296875
+ },
+ "cam1": {
+  "camera": 1,
+  "kind": "non-input training",
+  "psnr": 20.713958740234375,
+  "depth_mae_m": 0.2680811882019043,
+  "depth_within_near_far": 0.947509765625,
+  "dino_mse": 0.13987450301647186,
+  "semantic_acc": 0.83404541015625
+ },
+ "cam6": {
+  "camera": 6,
+  "kind": "held-out",
+  "psnr": 14.098659753799438,
+  "depth_mae_m": 0.4667843282222748,
+  "depth_within_near_far": 0.5557485884469815,
+  "dino_mse": 0.19234877824783325,
+  "semantic_acc": 0.5330810546875
+ }
+}

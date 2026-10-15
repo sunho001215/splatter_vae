@@ -1,0 +1,378 @@
+{
+ "hammer": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "hammerbody",
+   "hammer",
+   "nail_link"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall",
+   "box",
+   "hammerblock"
+  ]
+ },
+ "pick-place": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "obj"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall"
+  ]
+ },
+ "bin-picking": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "obj",
+   "objA"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall",
+   "bin_start",
+   "binA",
+   "bin_goal",
+   "binB"
+  ]
+ },
+ "coffee-push": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "obj",
+   "mug"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall",
+   "coffee_machine",
+   "coffeemachine",
+   "cm_link",
+   "cmbutton"
+  ]
+ },
+ "door-open": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "door_link"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall",
+   "door",
+   "doorlockB"
+  ]
+ },
+ "peg-insert-side": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "peg"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall",
+   "box",
+   "body35"
+  ]
+ },
+ "peg-unplug-side": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "plug1",
+   "plug"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall",
+   "box",
+   "plug_wall"
+  ]
+ },
+ "stick-push": {
+  "background": [
+   "world"
+  ],
+  "robot": [
+   "base",
+   "controller_box",
+   "pedestal_feet",
+   "torso",
+   "pedestal",
+   "right_arm_base_link",
+   "right_l0",
+   "head",
+   "screen",
+   "head_camera",
+   "right_torso_itb",
+   "right_l1",
+   "right_l2",
+   "right_l3",
+   "right_l4",
+   "right_arm_itb",
+   "right_l5",
+   "right_hand_camera",
+   "right_wrist",
+   "right_l6",
+   "right_hand",
+   "hand",
+   "rightclaw",
+   "rightpad",
+   "leftclaw",
+   "leftpad",
+   "right_l4_2",
+   "right_l2_2",
+   "right_l1_2",
+   "mocap"
+  ],
+  "object": [
+   "stick",
+   "body34",
+   "object",
+   "body36"
+  ],
+  "fixture": [
+   "tablelink",
+   "RetainingWall"
+  ]
+ }
+}

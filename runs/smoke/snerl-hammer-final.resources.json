@@ -1,0 +1,27 @@
+{
+  "command": [
+    "timeout",
+    "240",
+    "/home/ws/ws/splatter4d/.venv/bin/python",
+    "-I",
+    "/home/ws/ws/splatter4d/.worktrees/bx-snerl/scripts/train_snerl.py",
+    "--config",
+    "/home/ws/ws/splatter4d/.worktrees/bx-snerl/configs/baselines/snerl/hammer.yaml",
+    "--name",
+    "snerl-hammer-final",
+    "--output-root",
+    "/home/ws/ws/splatter4d/.worktrees/bx-snerl/runs/smoke",
+    "--no-wandb",
+    "--set",
+    "train.seed=1",
+    "train.max_steps=1000",
+    "train.eval_every=0",
+    "train.save_every=1000",
+    "train.i_print=100"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 94.56090858671814,
+  "maximum_child_rss_kib": 2210224,
+  "user_seconds": 2437.521735,
+  "system_seconds": 69.42932
+}
