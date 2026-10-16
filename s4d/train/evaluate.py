@@ -78,6 +78,12 @@ def _spread_windows(episodes: list[str], t0s: list[int], n: int = RETRIEVAL_STAT
     return chosen[:n]
 
 
+def frame_interval(batch: dict) -> torch.Tensor:
+    """(B,) adjacent-frame time interval of every window in seconds (stride x simulator dt)."""
+    B = len(batch["meta"]["stride"])
+    return torch.as_tensor(batch["meta"]["stride"]) * torch.as_tensor(batch["meta"].get("dt_seconds", [1.0] * B))
+
+
 def orbit_w2c(center, distance: float, elevation_deg: float, frames: int, device) -> torch.Tensor:
     mats = [
         np.linalg.inv(opengl_to_opencv_c2w(orbit_c2w_opengl(center, distance, az, elevation_deg)))
@@ -147,7 +153,6 @@ class Evaluator:
     @torch.no_grad()
     def evaluate_stride(self, model: Model, step: int, full: bool, stride: int, loader) -> tuple[dict, int]:
         model.eval()
-        probe_loader = self.probe_loaders.get(stride)
         sums: dict[str, float] = defaultdict(float)
         count = 0
         counts = defaultdict(int)
@@ -199,7 +204,7 @@ class Evaluator:
                     metrics.update(self.oracle_metrics(batch, prefix, name, Hp, target))
                     if prefix == "traj":
                         window_rows.append(render_chamfer(rendered, batch, 0, prefix, self.far))
-                group_states[name].append(_cpu(encode_states(model, batch[f"{prefix}_images"]).flatten(2)))
+                group_states[name].append(self.states(model, batch, prefix))
             if self.heldout_diag:
                 window_rows.append(chamfer_metrics(batch, gs, 0, self.far, used=out.get("used")))
             for k, v in metrics.items():
@@ -226,9 +231,7 @@ class Evaluator:
             t0s.extend(int(t[0]) for t in batch["meta"]["t_indices"])
             if "probe_state" in batch:
                 probe_states.append(_cpu(batch["probe_state"]))
-            strides.append(
-                torch.as_tensor(batch["meta"]["stride"]) * torch.as_tensor(batch["meta"].get("dt_seconds", [1.0] * B))
-            )
+            strides.append(frame_interval(batch))
             if i == 0:
                 ones = torch.ones(B * T * V, 1, *batch["images"].shape[-2:], dtype=torch.bool, device=self.device)
                 psnr_b = masked_psnr(out["rgb"].flatten(0, 2), (batch["images"].float() / 255).flatten(0, 2), ones)
@@ -248,21 +251,40 @@ class Evaluator:
                 {f"metric/{k}": float(torch.tensor([row.get(k, float("nan")) for row in window_rows]).nanmean()) for k in keys}
             )
             summary["metric/cd_windows"] = float(sum("cd_centers_p2g_mean" in row for row in window_rows))
+        periodic = full or (self.probe_every > 0 and step % self.probe_every == 0)
+        summary.update(self.representation(model, stride, loader, states, group_states, probe_states, strides, periodic))
+        if first is not None:
+            self.panels(model, first, step, summary, tag=f"s{stride}")
+        model.train()
+        return summary, count
+
+    def states(self, model, batch: dict, group: str = "") -> torch.Tensor:
+        """(B,V,D) CPU states of one camera group of a batch: the training cameras (``group`` "") or a held-out
+        group (a ``HELDOUT_GROUPS`` prefix). Every retrieval and probe state comes from here; a baseline evaluator
+        overrides it (``s4d/baselines/representation.py``)."""
+        images = batch[f"{group}_images" if group else "images"].to(self.device)
+        return _cpu(encode_states(model, images).flatten(2))
+
+    def representation(
+        self, model, stride: int, loader, states: list, group_states: dict, probe_states: list, strides: list,
+        periodic: bool,
+    ) -> dict:
+        """Retrieval, state statistics and linear probes of one stride from the validation states collected over the
+        loader: ``states`` (M,V,D) training-camera batches, ``group_states`` held-out name -> batches, ``probe_states``
+        and ``strides`` (``frame_interval``) per batch."""
+        summary: dict = {}
         all_states = torch.cat(states)  # (M,V,D)
         held = {name: torch.cat(rows) for name, rows in group_states.items() if rows}
-        periodic = full or (self.probe_every > 0 and step % self.probe_every == 0)
         if periodic:
             summary.update(self.retrieval(model, stride))
             if self.heldout_diag:
                 summary.update(self.retrieval_sets(model, stride, loader))
         summary.update({f"metric/{k}_val": float(v) for k, v in state_statistics(all_states).items()})
+        probe_loader = self.probe_loaders.get(stride)
         if probe_loader is not None and probe_states and periodic:
             probe = self.probes(model, probe_loader, all_states, held, torch.cat(probe_states), torch.cat(strides))
             summary.update({f"metric/{k}": v for k, v in probe.items()})
-        if first is not None:
-            self.panels(model, first, step, summary, tag=f"s{stride}")
-        model.train()
-        return summary, count
+        return summary
 
     def oracle_metrics(self, batch: dict, prefix: str, name: str, rendered: torch.Tensor, target: torch.Tensor) -> dict:
         """Oracle sanity (training-camera GT fused and splatted into the held-out cameras) and the model's held-out
@@ -290,9 +312,9 @@ class Evaluator:
             return {}
         groups: dict[str, list] = defaultdict(list)
         for batch in DataLoader(Subset(dataset, indices), batch_size=8, collate_fn=collate):
-            groups["train"].append(encode_states(model, batch["images"].to(self.device)).flatten(2).cpu())
+            groups["train"].append(self.states(model, batch))
             for prefix, name in HELDOUT_GROUPS.items():
-                groups[name].append(encode_states(model, batch[f"{prefix}_images"].to(self.device)).flatten(2).cpu())
+                groups[name].append(self.states(model, batch, prefix))
         train = torch.cat(groups.pop("train"))
         result = {
             "metric/retrieval_top1_train_val": cross_view_retrieval(train, self.n_train)["retrieval_top1_train"],
@@ -321,8 +343,8 @@ class Evaluator:
             return result
         views = []
         for batch in DataLoader(Subset(ds, indices), batch_size=8, collate_fn=collate):
-            training = encode_states(model, batch["images"].to(self.device)).flatten(2).cpu()
-            heldout = encode_states(model, batch["eval_images"].to(self.device)).flatten(2).cpu()
+            training = self.states(model, batch)
+            heldout = self.states(model, batch, "eval")
             views.append(torch.cat((training, heldout), dim=1))
         states = torch.cat(views)
         result.update({f"metric/{k}": v for k, v in cross_view_retrieval(states, self.n_train).items()})
@@ -348,13 +370,10 @@ class Evaluator:
             if i >= int(get(self.cfg, "eval.probe_batches", 24)):
                 break
             batch = move_batch(raw, self.device)
-            s = encode_states(model, batch["images"]).flatten(2).cpu()  # (B,V,D)
+            s = self.states(model, batch)  # (B,V,D)
             B, V, D = s.shape
             xs.append(s.reshape(B * V, D))
-            tg = probe_targets(
-                batch["probe_state"].cpu(),
-                torch.as_tensor(batch["meta"]["stride"]) * torch.as_tensor(batch["meta"].get("dt_seconds", [1.0] * B)),
-            )
+            tg = probe_targets(batch["probe_state"].cpu(), frame_interval(batch))
             ys.append({k: v.repeat_interleave(V, 0) for k, v in tg.items()})
         train_x = torch.cat(xs)
         train_y = {k: torch.cat([y[k] for y in ys]) for k in ys[0]}

@@ -90,6 +90,14 @@ FLOPs. These bounds must survive the official-trunk correction. The renderer's r
 4. Full-split retrieval and probes for every new baseline, rendering additionally for SNeRL. For SNeRL camera
    shifts replace one input view and hold the other two fixed; never silently alter the existing campaign's
    evaluation protocol.
+   Tool: `scripts/eval_baseline_representation.py` (`s4d/baselines/representation.py`). It loads the export through
+   the RL adapter of each RL encoder config (the 3D-MVP conditions are `mvp3d_multiview` and `mvp3d_single`) and runs
+   our `Evaluator`'s retrieval, probes and state statistics, with our splits, windows, camera groups and targets.
+   Only the encoder call differs. A window's state is the fp16 feature the agent caches: the per-frame features of
+   the three frames, concatenated (`--feature stack`, the RL head's input). Multi-view columns follow
+   `s4d/rl/evaluate.py`: training column i uses cameras (i, i+1, i+3) mod 6, and a held-out column replaces the
+   first camera of its nearest training camera's column. The pretrained and `encoder_init.pt` arms are separate
+   outputs. SNeRL rendering is not implemented yet.
 5. Report adaptation, final sizes/costs, deviations, hammer sanity and panels once, then proceed to all eight tasks
    (3D-MVP: one pretraining per task, then conditions A and B, each 8 tasks x 3 seeds). Same priority and placement
    as the other new baselines.
