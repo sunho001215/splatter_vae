@@ -3531,3 +3531,17 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
 - 17:19 no-synth RL arm reported (RESULTS "No-synthetic-view RL arm"): worse beyond the registered margin on hammer
   training/held-out/trajectories and pick-place training/trajectories; pick-place held-out is within margin (near
   zero for both arms). Fairness checks are clean. Attribution only; single pretraining seed; bundled removal.
+
+### 2026-10-16 17:45 — Pre-registered: RL arms for no-consistency and misscaled-none (local, idle MIG capacity)
+- Local GPUs became idle: the no-synth arm finished and the baseline sanity set moved to the remote. Two more
+  completed pretrain-only variants get the Stage 2 RL treatment, chosen before any RL result:
+  - no-consistency, a method component with no RL evidence yet;
+  - misscaled-none, whose representation metrics improved beyond margin; does that carry over to RL?
+- Jobs: guarded 200k exports plus DrM seeds 1000-1002 at 1M on hammer and pick-place, 28 jobs
+  (`runs/setup/stage2-extra-rl-registration-20261016.json`). They copy the registered T=1 arm templates; only
+  id/export/run-dir change.
+- Rule fixed now: the existing Stage 2 RL rule (seed-mean last-5 success, margin max(0.10, 2 x SE), training /
+  held-out / trajectory conditions) against the completed `s2rl-full-*` references. Reporting follows the RL
+  standard (success and return, last-5/final/AUC, 95% CIs). Attribution only; no method change.
+- The remaining pretrain-only variants (no-lambda-dyn, no-coverage, misscaled-scale) get no RL arm. Their
+  representation changes were small or mixed (0-5 metrics beyond margin), so RL would add little.

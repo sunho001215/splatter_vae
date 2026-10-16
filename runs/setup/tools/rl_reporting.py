@@ -36,7 +36,7 @@ FINAL_SEEDS = (2000, 2001, 2002)
 S2_TASKS, S2_SEEDS = ('hammer', 'pick-place'), (1000, 1001, 1002)
 S2_ARMS = ('full', 't1', 'nomotion', 'noinfonce', 'singlegroup')
 # Later Stage 2 RL arms (crop follow-up 2026-10-15; no-synth arm 2026-10-16), reported per task once all seeds closed out.
-EXTRA_ARMS = ('crop', 'cropnosynth', 'nosynth')
+EXTRA_ARMS = ('crop', 'cropnosynth', 'nosynth', 'nocons', 'misscaled-none')
 B = 10000
 
 
