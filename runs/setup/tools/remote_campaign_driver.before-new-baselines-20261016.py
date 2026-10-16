@@ -1,0 +1,385 @@
+"""One pass of the accepted remote campaign dispatcher, serialized by flock."""
+import copy
+import fcntl
+import hashlib
+import json
+import shlex
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import yaml
+
+REPO = Path('/home/ws/ws/splatter4d')
+sys.path.insert(0, str(REPO))
+from scripts import jobs
+from s4d.remote_access import RemoteClient
+from s4d.remote_jobs import RemoteBackend
+
+IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
+FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
+# Admission release (2026-10-16): cffa071 adds the new baselines and typed verification; model/loss/train/data code
+# is identical to the frozen source and the single-camera RL path is unchanged (runs/remote/acceptance/cffa071).
+COMMIT = 'cffa071d2db27f507b56a3847454067fb24e6c30'
+MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
+ROOT = '/home/compu/kaist/sunho'
+CAP = 1_000_000_000_000
+GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
+    if (REPO / 'runs/setup/remote-gpu-load-limit.txt').exists() else 2.0
+MAX_REVIWO = 8
+GPUS = ('GPU-4391fcee-537f-d408-d138-10d8a3866eea', 'GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea',
+        'GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79', 'GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1')
+FINISHED = REPO / 'runs/remote/finished'
+DATA_LOGS = ['stage4-baseline-data-sync-20261012.log', 'remote-data-sync-w1-20261012.log',
+             'remote-data-sync-w2-20261012.log', 'remote-data-sync-w3-20261012.log', 'remote-data-sync-w4-20261012.log']
+INITIAL_MANIFEST = '56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1'
+DRY = '--dry-run' in sys.argv
+stamp = datetime.now().astimezone()
+tag = stamp.strftime('%Y%m%d-%H%M%S')
+FINISHED.mkdir(parents=True, exist_ok=True)
+_lock = open(REPO / 'runs/setup/remote-driver.lock', 'w')
+try:
+    fcntl.flock(_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print('REMOTE_DRIVER another pass is running; skipped')
+    raise SystemExit(0)
+
+
+PLACEMENT_PATH = REPO / 'runs/setup/stage2-placement-20261015.json'
+placement = json.loads(PLACEMENT_PATH.read_text()) if PLACEMENT_PATH.exists() else {'effective_jobs': {}}
+S2_REMOTE = placement['effective_jobs']
+S2_KINDS = {'scripts/train.py': 's2_pretrain', 'scripts/evaluate.py': 's2_eval',
+            'scripts/train_rl.py': 's2_rl', 'scripts/eval_rl.py': 's2_rl'}
+
+
+def kind(job_id):
+    if job_id in S2_REMOTE:
+        return S2_KINDS[S2_REMOTE[job_id]['script']]
+    if job_id.startswith('ls-proxy-'):
+        return 'proxy'
+    if job_id.startswith('s4-drm-') and not job_id.startswith('s4-drm-cnn-'):
+        return 'brl'
+    if job_id.startswith(('s4-sincro-', 's4-reviwo-')):
+        return 'baseline'
+    if job_id.startswith('s3spec-'):
+        return 'stage3'
+    if job_id.startswith('s3-export-m3d-'):
+        return 'final_export'
+    if job_id.startswith('s3-drm-splatter4d-'):
+        return 'orl'
+    if job_id.startswith('s3-m3d-'):
+        return 'final_pretrain'
+    return None
+
+
+def load(job):
+    jid = job['id']
+    if kind(jid) == 'final_export':
+        return 0.1
+    if kind(jid) == 's2_eval':
+        return 0.6
+    if jid.endswith('-eval'):
+        return 0.3
+    if kind(jid) in ('proxy', 'brl', 'orl', 's2_rl'):
+        return 0.5
+    if jid.startswith('s4-reviwo-'):
+        return 0.4
+    return 1.0
+
+
+def pretrain_target(job):
+    steps = [int(a.split('=', 1)[1]) for a in job['args'] if a.startswith('train.steps=')]
+    assert len(steps) == 1, job['id']
+    return steps[0]
+
+
+queue = jobs.load_queue()
+state = jobs.read_registry()
+by_id = {j['id']: j for j in queue['jobs']}
+remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
+freeze_path = REPO / 'runs/setup/method-frozen-v1.json'
+freeze = json.loads(freeze_path.read_text()) if freeze_path.exists() else None
+if freeze:
+    assert freeze['source_commit'] == FROZEN_COMMIT
+    freeze_sha = hashlib.sha256(freeze_path.read_bytes()).hexdigest()
+    for job in remote:
+        if kind(job['id']) in ('final_pretrain', 'final_export', 'orl'):
+            assert job['frozen_method'] == freeze['tag'] and job['freeze_manifest_sha256'] == freeze_sha
+            if kind(job['id']) == 'final_pretrain':
+                assert job['args'][job['args'].index('--set') + 1:] == freeze['overrides']
+client = RemoteClient()
+messages = []
+
+for job in remote:
+    jid = job['id']
+    if kind(jid).startswith('s2_'):
+        # Scientific Stage 2 closeouts are verified by the Stage 2 driver, including remote result checksums.
+        proof = REPO / 'runs/setup' / f's2-{jid}-completion.json'
+        if (not jid.endswith('-eval') and state.get(jid, {}).get('status') == jobs.DONE and proof.exists()
+                and not (FINISHED / f'{jid}.json').exists()):
+            ids = [jid, f'{jid}-eval'] if kind(jid) == 's2_rl' else [jid]
+            # W&B never blocks numerical work (user rule): offline runs are uploaded by the separate
+            # sync_wandb_remote.py batch, not inline before admission (2026-10-16; status runs/remote/wandb/status.json).
+            record = {'job_id': jid, 'finished_local': stamp.isoformat(), 'stage2_closeout': str(proof),
+                      'wandb': 'deferred to the sync_wandb_remote.py batch', 'wandb_runs': ids}
+            if not DRY:
+                (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+            messages.append(f'STAGE2_FINISHED {jid}')
+        continue
+    if jid.endswith('-eval') or state.get(jid, {}).get('status') != jobs.DONE or (FINISHED / f'{jid}.json').exists():
+        continue
+    run = REPO / 'runs' / jid
+    record = {'job_id': jid, 'finished_local': stamp.isoformat()}
+    jobs._verify_synced_exit(jid, state[jid], state[jid]['sync'], REPO / 'runs')
+    if kind(jid) == 'final_export':
+        import torch
+
+        export = run / 'encoder.pt'
+        payload = torch.load(export, map_location='cpu', weights_only=True)
+        source = job['deps'][0]
+        task = by_id[source]['args'][by_id[source]['args'].index('--config') + 2].rsplit('/', 1)[1].removesuffix('.yaml')
+        assert payload['format'] == 'splatter4d-encoder-v1' and payload['step'] == freeze['pretraining_steps']
+        assert payload['run_name'] == source and payload['frame_strides'] == freeze['task_configs'][task]['data']['strides']
+        assert payload['source_checkpoint'] == job['args'][job['args'].index('--checkpoint') + 1]
+        assert all(payload['encoder_config'][key] == value
+                   for key, value in freeze['task_configs'][task]['model']['encoder'].items())
+        checkpoint = REPO / payload['source_checkpoint']
+        expected = state[source]['sync']['files']['checkpoints/step_0200000.pt']
+        assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == expected
+        record.update(encoder_sha256=hashlib.sha256(export.read_bytes()).hexdigest(),
+                      step=payload['step'], source_checkpoint_sha256=expected, source_job=source)
+        (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+        messages.append(f'EXPORT_VERIFIED {jid}')
+        continue
+    if kind(jid) in ('proxy', 'brl', 'orl'):
+        if state.get(f'{jid}-eval', {}).get('status') != jobs.DONE:
+            continue
+        jobs._verify_synced_exit(f'{jid}-eval', state[f'{jid}-eval'], state[f'{jid}-eval']['sync'], REPO / 'runs')
+        final = json.loads((run / 'final.json').read_text())
+        evals = [json.loads(line) for line in (REPO / 'runs' / f'{jid}-eval' / 'eval.jsonl').read_text().splitlines()]
+        steps = [r['step'] for r in evals]
+        target = next(int(a.split('=')[1]) for a in job['args'] if a.startswith('train.num_train_steps=')) \
+            if any(a.startswith('train.num_train_steps=') for a in job['args']) else 1000000
+        assert final['completed'] is True and final['steps'] == target, (jid, final)
+        assert steps == list(range(10000, target + 1, 10000)), (jid, steps)
+        record.update(final_steps=final['steps'], eval_points=len(steps),
+                      last5_train_success=sum(r['train_cameras_success'] for r in evals[-5:]) / 5)
+        ids = [jid, f'{jid}-eval']
+        out = client.checked_ssh(
+            f'df -B1 --output=avail {shlex.quote(ROOT)} | tail -1',
+            wait=False, timeout=600, idempotent=True).stdout.strip()
+        record.update(remote_replay='retained', remote_free_bytes=int(out))
+    else:
+        rows = [json.loads(line) for line in (run / 'metrics.jsonl').read_text().splitlines() if line.strip()]
+        last = max(r.get('step', 0) for r in rows)
+        if kind(jid) in ('stage3', 'final_pretrain'):
+            completion = json.loads((run / 'completion.json').read_text())
+            target = pretrain_target(job)
+            assert completion['status'] == 'completed' and completion['steps'] == target, (jid, completion)
+            if kind(jid) == 'final_pretrain':
+                cfg = yaml.safe_load((run / 'config.yaml').read_text())
+                cfg.pop('run')
+                assert cfg == freeze['task_configs'][cfg['data']['task']], jid
+                record['final_checkpoint_sha256'] = state[jid]['sync']['files']['checkpoints/step_0200000.pt']
+        else:
+            target = 300000 if '-sincro-' in jid else 100001
+            assert (run / 'encoder.pt').is_file(), jid
+        assert last >= target - 1000, (jid, last)
+        record.update(last_metrics_step=last, configured_steps=target)
+        ids = [jid]
+    try:
+        wandb = subprocess.run([sys.executable, '-I', str(REPO / 'runs/setup/tools/sync_wandb_remote.py'),
+                                *[a for i in ids for a in ('--run', i)]], capture_output=True, text=True, timeout=7200)
+        record['wandb_tool_exit'] = wandb.returncode
+    except subprocess.TimeoutExpired:
+        record['wandb_tool_exit'] = 124
+        record['wandb_error'] = 'sync timed out; numerical closeout continues'
+    status = json.loads((REPO / 'runs/remote/wandb/status.json').read_text())
+    record['wandb'] = {i: {k: status.get(i, {}).get(k) for k in ('upload', 'media', 'errors')} for i in ids}
+    (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+    if 'remote_free_bytes' in record:
+        row = (f"| {stamp.strftime('%Y-%m-%d %H:%M')} | remote {record['remote_free_bytes'] / 1e12:.2f} TB ({jid} "
+               f"completed with final eval at {record['final_steps'] // 1000}k; remote replay retained) |\n")
+        progress = REPO / 'docs/PROGRESS.md'
+        text = progress.read_text()
+        anchor = text.index('\n## Next actions')
+        progress.write_text(text[:anchor].rstrip('\n') + '\n' + row + text[anchor:])
+    messages.append(f'FINISHED {jid}')
+
+uploaded = set()
+for job in queue['jobs']:
+    if not job['id'].startswith(('export-ls-', 'export-s2ab-crop')):
+        continue
+    if job['id'].startswith('export-s2ab-crop') and not (
+            REPO / 'runs/setup' / f"s2-{job['id']}-completion.json").exists():
+        continue
+    out = job['args'][job['args'].index('--out') + 1]
+    marker = REPO / 'runs/remote/exports' / (Path(out).name + '.json')
+    if marker.exists():
+        assert json.loads(marker.read_text())['sha256'] == hashlib.sha256((REPO / out).read_bytes()).hexdigest()
+        uploaded.add(out)
+        continue
+    if state.get(job['id'], {}).get('status') != jobs.DONE:
+        continue
+    local = REPO / out
+    digest = hashlib.sha256(local.read_bytes()).hexdigest()
+    client.rsync_upload(local, f'{ROOT}/{out}')
+    assert hashlib.sha256(local.read_bytes()).hexdigest() == digest
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({'export': out, 'sha256': digest, 'uploaded': stamp.isoformat()}, indent=2) + '\n')
+    uploaded.add(out)
+    messages.append(f'EXPORT_UPLOADED {out}')
+
+targets = set()
+for name in DATA_LOGS:
+    path = REPO / 'runs/setup' / name
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if line.startswith('MANIFEST '):
+                manifest = json.loads((REPO / 'runs/remote/data' / f'{line.split()[1]}.json').read_text())
+                targets |= {f['target'].split('/splatter4d_v1/', 1)[1] for f in manifest['files']}
+manifest = json.loads((REPO / 'runs/remote/data' / f'{INITIAL_MANIFEST}.json').read_text())
+targets |= {f['target'].split('/splatter4d_v1/', 1)[1] for f in manifest['files']}
+
+
+def task_of(job):
+    args = job['args']
+    if '--task' in args:
+        return args[args.index('--task') + 1]
+    config = next(a for a in args if a.startswith('configs/'))
+    return config.rsplit('/', 1)[1].removesuffix('.yaml') if 'baselines' in config else \
+        next(a for a in args if a.startswith('configs/metaworld/tasks/')).rsplit('/', 1)[1].removesuffix('.yaml')
+
+
+def ready(job):
+    jid = job['id']
+    k = kind(jid)
+    if k == 's2_eval':
+        proof = REPO / 'runs/setup' / f"s2-{job['deps'][0]}-completion.json"
+        config = REPO / 'runs' / jid / 'config.yaml'
+        if not proof.is_file() or not config.is_file():
+            return False
+        marker = REPO / 'runs/setup' / f'{jid}-remote-config.json'
+        digest = hashlib.sha256(config.read_bytes()).hexdigest()
+        if marker.exists():
+            assert json.loads(marker.read_text())['sha256'] == digest
+        else:
+            client.rsync_upload(config, f'{ROOT}/runs/{jid}/config.yaml')
+            marker.write_text(json.dumps({'sha256': digest, 'uploaded': stamp.isoformat()}) + '\n')
+        return True
+    if k in ('proxy', 'orl', 's2_rl'):
+        trainer = by_id[jid.removesuffix('-eval')]
+        export = next(a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path='))
+        if export in uploaded:
+            return True
+        if k == 'orl':
+            proof = FINISHED / f"{trainer['deps'][0]}.json"
+            return proof.is_file() and hashlib.sha256((REPO / export).read_bytes()).hexdigest() == \
+                json.loads(proof.read_text())['encoder_sha256']
+        return False
+    if k == 'brl':
+        return True
+    if k == 'final_export':
+        return (FINISHED / f"{job['deps'][0]}.json").is_file()
+    if k == 'stage3' and freeze and freeze['pretraining_steps'] != 300000:
+        return False
+    task = task_of(job)
+    need = {f'{task}.hdf5', f'splits/{task}_seed0.json'}
+    if k in ('stage3', 'final_pretrain', 's2_pretrain'):
+        need |= {f'heldout_sets/{task}.hdf5', f'workspace_stats/{task}.json'}
+    return need <= targets
+
+
+RANK = {'proxy': 0, 'final_export': 0, 's2_eval': 0, 's2_rl': 0.5, 'baseline': 1,
+        'final_pretrain': 1, 'brl': 2, 'orl': 2, 's2_pretrain': 2.5, 'stage3': 3}
+
+
+def dispatch_key(job):
+    trainer = by_id[job['id'].removesuffix('-eval')]
+    is_evaluator = job['id'].endswith('-eval')
+    trainer_status = state.get(trainer['id'], {}).get('status', jobs.PENDING)
+    companion = is_evaluator and trainer_status in jobs.ACTIVE | {jobs.DONE}
+    seed = int(trainer['args'][trainer['args'].index('--seed') + 1]) if '--seed' in trainer['args'] else 0
+    return RANK[kind(job['id'])], not companion, seed, [j['id'] for j in remote].index(job['id'])
+
+
+candidates = [j for j in jobs.eligible(remote, state) if ready(j)]
+if (REPO / 'runs/setup/remote-hold-admissions').exists():
+    messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
+    candidates = []
+candidates.sort(key=dispatch_key)
+active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.ACTIVE}
+reserved = sum(int(float(by_id.get(i, {}).get('ram_gb', 0)) * 2**30) for i in active)
+gpu_load = {g: 0.0 for g in GPUS}
+gpu_mem = {g: 0.0 for g in GPUS}
+for i, s in active.items():
+    if s.get('gpu') in gpu_load and i in by_id:
+        gpu_load[s['gpu']] += load(by_id[i])
+        gpu_mem[s['gpu']] += float(by_id[i]['mem_gb'])
+reviwo = sum(1 for i in active if i.startswith('s4-reviwo-'))
+chosen, total, taken = [], reserved, set()
+
+
+def place(job):
+    fitting = [g for g in GPUS
+               if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' else 0.0) + 1e-9
+               and gpu_mem[g] + float(job['mem_gb']) <= 90]
+    return min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g])) if fitting else None
+
+
+for job in candidates:
+    if job['id'].endswith('-eval'):
+        trainer = job['id'].removesuffix('-eval')
+        if state.get(trainer, {}).get('status') not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
+            continue
+    if job['id'].startswith('s4-reviwo-') and reviwo >= MAX_REVIWO:
+        continue
+    need = int(float(job['ram_gb']) * 2**30)
+    if total + need > CAP:
+        continue
+    gpu = place(job)
+    if gpu is None:
+        continue
+    gpu_load[gpu] += load(job)
+    gpu_mem[gpu] += float(job['mem_gb'])
+    chosen.append({**copy.deepcopy(job), 'gpu': gpu})
+    taken.add(job['id'])
+    total += need
+    reviwo += job['id'].startswith('s4-reviwo-')
+if chosen and DRY:
+    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8]) for j in chosen]}, reserved {total} bytes")
+if chosen and not DRY:
+    host = copy.deepcopy(queue['hosts']['remote'])
+    host.update(enabled=True, commit=COMMIT, image_digest=IMAGE, evidence_manifest=MANIFEST)
+    qpath = REPO / 'runs/setup' / f'remote-dispatch-{tag}.yaml'
+    with qpath.open('x') as stream:
+        yaml.safe_dump({'hosts': {'local': {'enabled': False}, 'remote': host}, 'jobs': chosen}, stream, sort_keys=False)
+    with (REPO / 'runs/setup' / f'remote-dispatch-{tag}.json').open('x') as stream:
+        json.dump({'recorded_local': stamp.isoformat(), 'commit': COMMIT, 'image_digest': IMAGE,
+                   'gpu_load_limit': GPU_LOAD_LIMIT, 'max_reviwo': MAX_REVIWO, 'cap_bytes': CAP,
+                   'reserved_before_bytes': reserved, 'reserved_after_bytes': total,
+                   'admission': 'job by job', 'freeze_manifest_sha256': freeze_sha if freeze else None,
+                   'admitted': {j['id']: j['gpu'] for j in chosen}, 'gpu_load_after': gpu_load, 'queue': str(qpath)},
+                  stream, indent=2)
+    messages.append(f"ADMITTING {[(j['id'], j['gpu'][4:8]) for j in chosen]}")
+    backend = RemoteBackend(REPO, REPO / 'runs')
+    messages += jobs.tick(queue_path=qpath, remote_backend=backend)
+state = jobs.read_registry()
+counts = {}
+for job in remote:
+    if job['id'].endswith('-eval'):
+        continue
+    k = kind(job['id'])
+    s = state.get(job['id'], {}).get('status', jobs.PENDING)
+    c = counts.setdefault(k, {'finished': 0, 'active': 0, 'pending': 0, 'other': 0})
+    if (FINISHED / f"{job['id']}.json").exists():
+        c['finished'] += 1
+    elif s in jobs.ACTIVE:
+        c['active'] += 1
+    elif s == jobs.PENDING:
+        c['pending'] += 1
+    else:
+        c['other'] += 1
+print('\n'.join(messages))
+print('REMOTE', json.dumps(counts), 'gpu_load', {g[4:8]: round(v, 1) for g, v in gpu_load.items()})

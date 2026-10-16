@@ -3491,3 +3491,27 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   on remote GPU 0) is running. GPU isolation on all four GPUs follows, then the acceptance manifest for `efa152a`.
 - The SNeRL hammer pretrain runs locally (step ~12k, measured 2 GB PSS against its 20 GB declaration); it may move
   to the remote after acceptance (checkpoint continuation, host recorded).
+
+### 2026-10-16 16:50 — Release cffa071 accepted remotely; baseline sanity set moved to the remote
+- Typed verification in the accepted image (c3ffea7…) on release `cffa071`: native suite **918/0/0/0** on remote
+  GPU0, then one-UUID CUDA/EGL isolation passed on all four authorized GPUs. All checksum-synced closeouts.
+  Acceptance manifest `runs/remote/acceptance/cffa071/manifest.json` (SHA-256 `44a94e8e…`) validated by
+  `s4d.remote_jobs.acceptance_manifest`. The data identity (56bd8ce9…) is unchanged. The cross-host record is the
+  226d8ae carry-over of the e267ba8 measurement (registered criterion not met, user-accepted), labelled as not a new
+  measurement: the 10-15 decision removed that gate.
+- Getting there took two more source fixes, each through the full native suite (918/0/0/0) before integration
+  (`cffa071`). The verification entry keeps its `S4D_VERIFICATION_*` bounds out of the suite's environment (the
+  first real remote suite was 902/8: inherited bounds, a test assuming the default cache root, MIG tests using the
+  host allowlist). The official DINO ViT-S/8 weights are now in the remote runtime cache (hash checked). The
+  scheduler daemon was restarted once to load the verification reconcile path; it only reconciles under the
+  global HOLD.
+- `remote_campaign_driver.py` now admits on `cffa071` (`FROZEN_COMMIT` 226d8ae still checks the freeze manifest).
+  Model/loss/train/data code is identical to the frozen source; the single-camera RL path is unchanged
+  (`stack_observations([obs]) == obs[None]`, same camera-sampler RNG calls). New kinds cover the new baselines.
+  W&B pulls are deferred to the separate batch for every kind. Earlier versions are kept.
+- **Placement change (host-neutral, before any result):** the hammer sanity set runs remotely as
+  `runs/setup/baselines-sanity-remote-registration-20261016.json` (39 jobs), with the same definitions and
+  criterion as the local registration. The local `s4-snerl-hammer` start (~15k of 2.4M steps; ~6 days on one MIG
+  instance) was stopped as superseded (recorded intentional stop). Random arms use the seeded init exports;
+  `s4-snerl-hammer-init/encoder_init.pt` is byte-identical to the pretrain run's own. The completed local
+  `bxs-dynamo-hammer-rand-s1000` pair is kept (host recorded). Local baseline admission is off.

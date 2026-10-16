@@ -18,7 +18,10 @@ from s4d.remote_access import RemoteClient
 from s4d.remote_jobs import RemoteBackend
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
-COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'
+FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
+# Admission release (2026-10-16): cffa071 adds the new baselines and typed verification; model/loss/train/data code
+# is identical to the frozen source and the single-camera RL path is unchanged (runs/remote/acceptance/cffa071).
+COMMIT = 'cffa071d2db27f507b56a3847454067fb24e6c30'
 MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
@@ -55,6 +58,11 @@ def kind(job_id):
         return S2_KINDS[S2_REMOTE[job_id]['script']]
     if job_id.startswith('ls-proxy-'):
         return 'proxy'
+    # New baselines (registration runs/setup/baselines-sanity-remote-registration-20261016.json)
+    if job_id.startswith(('s4-dynamo-', 's4-snerl-', 's4-mvp3d-')) and job_id.endswith('-rem'):
+        return 'nbaseline'
+    if job_id.startswith('bxs-') and (job_id.endswith('-rem') or job_id.endswith('-rem-eval')):
+        return 'nbrl'
     if job_id.startswith('s4-drm-') and not job_id.startswith('s4-drm-cnn-'):
         return 'brl'
     if job_id.startswith(('s4-sincro-', 's4-reviwo-')):
@@ -78,7 +86,7 @@ def load(job):
         return 0.6
     if jid.endswith('-eval'):
         return 0.3
-    if kind(jid) in ('proxy', 'brl', 'orl', 's2_rl'):
+    if kind(jid) in ('proxy', 'brl', 'orl', 's2_rl', 'nbrl'):
         return 0.5
     if jid.startswith('s4-reviwo-'):
         return 0.4
@@ -98,7 +106,7 @@ remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id']
 freeze_path = REPO / 'runs/setup/method-frozen-v1.json'
 freeze = json.loads(freeze_path.read_text()) if freeze_path.exists() else None
 if freeze:
-    assert freeze['source_commit'] == COMMIT
+    assert freeze['source_commit'] == FROZEN_COMMIT
     freeze_sha = hashlib.sha256(freeze_path.read_bytes()).hexdigest()
     for job in remote:
         if kind(job['id']) in ('final_pretrain', 'final_export', 'orl'):
@@ -149,7 +157,7 @@ for job in remote:
         (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
         messages.append(f'EXPORT_VERIFIED {jid}')
         continue
-    if kind(jid) in ('proxy', 'brl', 'orl'):
+    if kind(jid) in ('proxy', 'brl', 'orl', 'nbrl'):
         if state.get(f'{jid}-eval', {}).get('status') != jobs.DONE:
             continue
         jobs._verify_synced_exit(f'{jid}-eval', state[f'{jid}-eval'], state[f'{jid}-eval']['sync'], REPO / 'runs')
@@ -170,7 +178,13 @@ for job in remote:
     else:
         rows = [json.loads(line) for line in (run / 'metrics.jsonl').read_text().splitlines() if line.strip()]
         last = max(r.get('step', 0) for r in rows)
-        if kind(jid) in ('stage3', 'final_pretrain'):
+        if kind(jid) == 'nbaseline':
+            completion = json.loads((run / 'completion.json').read_text())
+            assert completion.get('status') == 'completed', (jid, completion)
+            assert (run / 'encoder.pt').is_file() and (run / 'encoder_init.pt').is_file(), jid
+            target = last + 1000  # the recipe's own length (epochs or steps) is recorded in completion.json
+            record['completion'] = completion
+        elif kind(jid) in ('stage3', 'final_pretrain'):
             completion = json.loads((run / 'completion.json').read_text())
             target = pretrain_target(job)
             assert completion['status'] == 'completed' and completion['steps'] == target, (jid, completion)
@@ -185,15 +199,10 @@ for job in remote:
         assert last >= target - 1000, (jid, last)
         record.update(last_metrics_step=last, configured_steps=target)
         ids = [jid]
-    try:
-        wandb = subprocess.run([sys.executable, '-I', str(REPO / 'runs/setup/tools/sync_wandb_remote.py'),
-                                *[a for i in ids for a in ('--run', i)]], capture_output=True, text=True, timeout=7200)
-        record['wandb_tool_exit'] = wandb.returncode
-    except subprocess.TimeoutExpired:
-        record['wandb_tool_exit'] = 124
-        record['wandb_error'] = 'sync timed out; numerical closeout continues'
-    status = json.loads((REPO / 'runs/remote/wandb/status.json').read_text())
-    record['wandb'] = {i: {k: status.get(i, {}).get(k) for k in ('upload', 'media', 'errors')} for i in ids}
+    # W&B never blocks numerical closeout and must not saturate the link during dispatch (2026-10-16): offline runs
+    # are pulled/uploaded by the separate sync_wandb_remote.py batch (status runs/remote/wandb/status.json).
+    record['wandb'] = 'deferred to the sync_wandb_remote.py batch'
+    record['wandb_runs'] = ids
     (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
     if 'remote_free_bytes' in record:
         row = (f"| {stamp.strftime('%Y-%m-%d %H:%M')} | remote {record['remote_free_bytes'] / 1e12:.2f} TB ({jid} "
@@ -265,6 +274,22 @@ def ready(job):
             client.rsync_upload(config, f'{ROOT}/runs/{jid}/config.yaml')
             marker.write_text(json.dumps({'sha256': digest, 'uploaded': stamp.isoformat()}) + '\n')
         return True
+    if k == 'nbrl':
+        trainer = by_id[jid.removesuffix('-eval')]
+        export = trainer['baseline_export']
+        if not export.startswith('runs/pretrain/'):
+            return True  # a remote pretraining output, released by the dependency on that run
+        marker = REPO / 'runs/remote/exports' / (export.replace('/', '__') + '.json')
+        digest = hashlib.sha256((REPO / export).read_bytes()).hexdigest()
+        if marker.exists():
+            return json.loads(marker.read_text())['sha256'] == digest
+        client.rsync_upload(REPO / export, f'{ROOT}/{export}')
+        remote = client.checked_ssh(f'sha256sum {shlex.quote(ROOT + "/" + export)}', wait=False, idempotent=True,
+                                    timeout=600).stdout.split()[0]
+        assert remote == digest, export
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({'export': export, 'sha256': digest, 'uploaded': stamp.isoformat()}) + '\n')
+        return True
     if k in ('proxy', 'orl', 's2_rl'):
         trainer = by_id[jid.removesuffix('-eval')]
         export = next(a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path='))
@@ -289,7 +314,7 @@ def ready(job):
 
 
 RANK = {'proxy': 0, 'final_export': 0, 's2_eval': 0, 's2_rl': 0.5, 'baseline': 1,
-        'final_pretrain': 1, 'brl': 2, 'orl': 2, 's2_pretrain': 2.5, 'stage3': 3}
+        'final_pretrain': 1, 'nbaseline': 1.5, 'brl': 2, 'orl': 2, 'nbrl': 2.2, 's2_pretrain': 2.5, 'stage3': 3}
 
 
 def dispatch_key(job):

@@ -1,0 +1,1382 @@
+{
+  "prepared_at": "2026-10-16T16:43:15.179976+09:00",
+  "purpose": "Remote placement of the new-baseline hammer sanity set (host-neutral, user 2026-10-15; registered 2026-10-16 before\nany result). Same scientific definitions as runs/setup/baselines-sanity-registration-20261016.json (recipes, seeds,\n400k agent steps, development RL seeds 1000-1002, criterion), executed on the remote release accepted as cffa071:",
+  "same_scientific_definitions_as": "runs/setup/baselines-sanity-registration-20261016.json",
+  "criterion": "pretrained-frozen mean last-5 training-camera success above random-frozen on hammer; otherwise investigate before the eight-task runs; no recipe retuning",
+  "release": "cffa071d2db27f507b56a3847454067fb24e6c30",
+  "init_uploads": {
+    "dynamo": {
+      "path": "runs/pretrain/s4-dynamo-hammer-init/encoder_init.pt",
+      "sha256": "f73a4ec42afb96a551fb159a65a911d7fa203d5dc835e1e50517de6aebcabe0f"
+    },
+    "snerl": {
+      "path": "runs/pretrain/s4-snerl-hammer-init/encoder_init.pt",
+      "sha256": "40c6f5356fddfb0055046fdf8726890aa975f35db68ee3f4ef9c3891fa1c5381"
+    }
+  },
+  "kept_local": [
+    "bxs-dynamo-hammer-rand-s1000"
+  ],
+  "jobs": [
+    {
+      "id": "s4-dynamo-hammer-rem",
+      "host": "remote",
+      "script": "scripts/train_dynamo.py",
+      "args": [
+        "--config",
+        "configs/baselines/dynamo/hammer.yaml",
+        "--name",
+        "s4-dynamo-hammer-rem",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 48,
+      "disk_gb": 20,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "dynamo",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "s4-snerl-hammer-rem",
+      "host": "remote",
+      "script": "scripts/train_snerl.py",
+      "args": [
+        "--config",
+        "configs/baselines/snerl/hammer.yaml",
+        "--name",
+        "s4-snerl-hammer-rem",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 16,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "snerl",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "id": "s4-mvp3d-hammer-rem",
+      "host": "remote",
+      "script": "scripts/train_mvp3d.py",
+      "args": [
+        "--config",
+        "configs/baselines/mvp3d/hammer.yaml",
+        "--name",
+        "s4-mvp3d-hammer-rem",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "mvp3d",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-pre-s1000-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-pre-s1000-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-dynamo-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-pre-s1000-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-pre-s1000-rem",
+        "--train-job",
+        "bxs-dynamo-hammer-pre-s1000-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-pre-s1000-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-pre-s1001-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-pre-s1001-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-dynamo-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-pre-s1001-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-pre-s1001-rem",
+        "--train-job",
+        "bxs-dynamo-hammer-pre-s1001-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-pre-s1001-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-pre-s1002-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-pre-s1002-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-dynamo-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-pre-s1002-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-pre-s1002-rem",
+        "--train-job",
+        "bxs-dynamo-hammer-pre-s1002-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-pre-s1002-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-rand-s1001-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-rand-s1001-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/pretrain/s4-dynamo-hammer-init/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/pretrain/s4-dynamo-hammer-init/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-rand-s1001-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-rand-s1001-rem",
+        "--train-job",
+        "bxs-dynamo-hammer-rand-s1001-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-rand-s1001-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-rand-s1002-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-rand-s1002-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/pretrain/s4-dynamo-hammer-init/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/pretrain/s4-dynamo-hammer-init/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-dynamo-hammer-rand-s1002-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-rand-s1002-rem",
+        "--train-job",
+        "bxs-dynamo-hammer-rand-s1002-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-rand-s1002-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-pre-s1000-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-snerl-hammer-pre-s1000-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-snerl-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-snerl-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-pre-s1000-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-snerl-hammer-pre-s1000-rem",
+        "--train-job",
+        "bxs-snerl-hammer-pre-s1000-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-snerl-hammer-pre-s1000-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-pre-s1001-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-snerl-hammer-pre-s1001-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-snerl-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-snerl-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-pre-s1001-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-snerl-hammer-pre-s1001-rem",
+        "--train-job",
+        "bxs-snerl-hammer-pre-s1001-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-snerl-hammer-pre-s1001-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-pre-s1002-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-snerl-hammer-pre-s1002-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-snerl-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-snerl-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-pre-s1002-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-snerl-hammer-pre-s1002-rem",
+        "--train-job",
+        "bxs-snerl-hammer-pre-s1002-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-snerl-hammer-pre-s1002-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-rand-s1000-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-snerl-hammer-rand-s1000-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/pretrain/s4-snerl-hammer-init/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/pretrain/s4-snerl-hammer-init/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-rand-s1000-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-snerl-hammer-rand-s1000-rem",
+        "--train-job",
+        "bxs-snerl-hammer-rand-s1000-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-snerl-hammer-rand-s1000-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-rand-s1001-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-snerl-hammer-rand-s1001-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/pretrain/s4-snerl-hammer-init/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/pretrain/s4-snerl-hammer-init/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-rand-s1001-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-snerl-hammer-rand-s1001-rem",
+        "--train-job",
+        "bxs-snerl-hammer-rand-s1001-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-snerl-hammer-rand-s1001-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-rand-s1002-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-snerl-hammer-rand-s1002-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/pretrain/s4-snerl-hammer-init/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/pretrain/s4-snerl-hammer-init/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "baseline": "snerl",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-snerl-hammer-rand-s1002-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-snerl-hammer-rand-s1002-rem",
+        "--train-job",
+        "bxs-snerl-hammer-rand-s1002-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-snerl-hammer-rand-s1002-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-pre-s1000-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1000-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-pre-s1000-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1000-rem",
+        "--train-job",
+        "bxs-mvp3d-multiview-hammer-pre-s1000-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1000-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-pre-s1001-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1001-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-pre-s1001-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1001-rem",
+        "--train-job",
+        "bxs-mvp3d-multiview-hammer-pre-s1001-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1001-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-pre-s1002-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1002-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-pre-s1002-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1002-rem",
+        "--train-job",
+        "bxs-mvp3d-multiview-hammer-pre-s1002-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-multiview-hammer-pre-s1002-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-rand-s1000-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1000-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-rand-s1000-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1000-rem",
+        "--train-job",
+        "bxs-mvp3d-multiview-hammer-rand-s1000-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1000-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-rand-s1001-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1001-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-rand-s1001-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1001-rem",
+        "--train-job",
+        "bxs-mvp3d-multiview-hammer-rand-s1001-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1001-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-rand-s1002-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1002-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder_init.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder_init.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "rand",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-multiview-hammer-rand-s1002-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1002-rem",
+        "--train-job",
+        "bxs-mvp3d-multiview-hammer-rand-s1002-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-multiview-hammer-rand-s1002-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-single-hammer-pre-s1000-rem",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-mvp3d-single-hammer-pre-s1000-rem",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-mvp3d-hammer-rem/encoder.pt"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_arm": "pre",
+      "stage": 4,
+      "baseline_expansion": "hammer-sanity-remote-20261016",
+      "id": "bxs-mvp3d-single-hammer-pre-s1000-rem-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-mvp3d-single-hammer-pre-s1000-rem",
+        "--train-job",
+        "bxs-mvp3d-single-hammer-pre-s1000-rem",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-mvp3d-single-hammer-pre-s1000-rem-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    }
+  ],
+  "superseded_local": [
+    "bxs-dynamo-hammer-pre-s1000",
+    "bxs-dynamo-hammer-pre-s1000-eval",
+    "bxs-dynamo-hammer-pre-s1001",
+    "bxs-dynamo-hammer-pre-s1001-eval",
+    "bxs-dynamo-hammer-pre-s1002",
+    "bxs-dynamo-hammer-pre-s1002-eval",
+    "bxs-dynamo-hammer-rand-s1000-eval",
+    "bxs-dynamo-hammer-rand-s1001",
+    "bxs-dynamo-hammer-rand-s1001-eval",
+    "bxs-dynamo-hammer-rand-s1002",
+    "bxs-dynamo-hammer-rand-s1002-eval",
+    "bxs-mvp3d-multiview-hammer-pre-s1000",
+    "bxs-mvp3d-multiview-hammer-pre-s1000-eval",
+    "bxs-mvp3d-multiview-hammer-pre-s1001",
+    "bxs-mvp3d-multiview-hammer-pre-s1001-eval",
+    "bxs-mvp3d-multiview-hammer-pre-s1002",
+    "bxs-mvp3d-multiview-hammer-pre-s1002-eval",
+    "bxs-mvp3d-multiview-hammer-rand-s1000",
+    "bxs-mvp3d-multiview-hammer-rand-s1000-eval",
+    "bxs-mvp3d-multiview-hammer-rand-s1001",
+    "bxs-mvp3d-multiview-hammer-rand-s1001-eval",
+    "bxs-mvp3d-multiview-hammer-rand-s1002",
+    "bxs-mvp3d-multiview-hammer-rand-s1002-eval",
+    "bxs-mvp3d-single-hammer-pre-s1000",
+    "bxs-mvp3d-single-hammer-pre-s1000-eval",
+    "bxs-snerl-hammer-pre-s1000",
+    "bxs-snerl-hammer-pre-s1000-eval",
+    "bxs-snerl-hammer-pre-s1001",
+    "bxs-snerl-hammer-pre-s1001-eval",
+    "bxs-snerl-hammer-pre-s1002",
+    "bxs-snerl-hammer-pre-s1002-eval",
+    "bxs-snerl-hammer-rand-s1000",
+    "bxs-snerl-hammer-rand-s1000-eval",
+    "bxs-snerl-hammer-rand-s1001",
+    "bxs-snerl-hammer-rand-s1001-eval",
+    "bxs-snerl-hammer-rand-s1002",
+    "bxs-snerl-hammer-rand-s1002-eval",
+    "s4-dynamo-hammer",
+    "s4-mvp3d-hammer",
+    "s4-snerl-hammer"
+  ],
+  "registered_at": "2026-10-16T16:43:17.910867+09:00",
+  "queue_sha256_before": "ca5855d8dd06e5bcbdd131ae8f2a4de51d9ca00ee5c15bf073c581a744113b27",
+  "queue_sha256_after": "d552d54dfaa40c17ee38d32648cdcb1d39b406cf7014e2c418f253bb4cf4ced9"
+}

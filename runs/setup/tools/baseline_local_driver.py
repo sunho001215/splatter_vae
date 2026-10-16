@@ -20,7 +20,8 @@ sys.path.insert(0, str(ROOT))
 from scripts import jobs  # noqa: E402
 
 CAP = 140_000_000_000
-REGISTRATIONS = ['baselines-sanity-registration-20261016.json']
+# The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json); nothing new admitted here.
+REGISTRATIONS = []
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
 DRY = '--dry-run' in sys.argv
 SETUP = ROOT / 'runs/setup'
@@ -42,6 +43,9 @@ for name in REGISTRATIONS:
         assert [by_queue[j['id']] for j in record['jobs']] == record['jobs'], f'{name}: jobs changed in the queue'
         registered += record['jobs']
 by_id = {j['id']: j for j in registered}
+if not registered:
+    print('BASELINES nothing registered for local admission')
+    raise SystemExit(0)
 state = jobs.read_registry()
 messages = []
 
