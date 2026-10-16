@@ -456,7 +456,10 @@ class RemoteClient:
                 idempotent=True, timeout=300)
             released[path] = {"commit": pinned, "bundle_sha256": sha256(bundle)}
         if pins:  # every submodule at its pin (no '-', '+' or 'U' prefix) and the superproject clean
-            self.checked_ssh("set -eu; s=\"$(" + git + " submodule status)\"; test -n \"$s\"; "
+            # `submodule init` only registers the .gitmodules entries in the release's .git/config (no fetch); without
+            # it `submodule status` reports the checked-out pins as uninitialised ('-').
+            self.checked_ssh("set -eu; export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null; " + git
+                             + " submodule init --quiet; s=\"$(" + git + " submodule status)\"; test -n \"$s\"; "
                              + "test -z \"$(printf '%s\\n' \"$s\" | grep -v '^ ')\"; test -z \"$(" + git
                              + " status --porcelain --untracked-files=all)\"", idempotent=True)
         return released
