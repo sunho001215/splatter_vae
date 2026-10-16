@@ -3515,3 +3515,16 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   instance) was stopped as superseded (recorded intentional stop). Random arms use the seeded init exports;
   `s4-snerl-hammer-init/encoder_init.pt` is byte-identical to the pretrain run's own. The completed local
   `bxs-dynamo-hammer-rand-s1000` pair is kept (host recorded). Local baseline admission is off.
+
+### 2026-10-16 17:20 — Release e4206f1 accepted; new-baseline jobs re-registered as `-b`
+- On cffa071 all six admitted new-baseline containers refused themselves in the campaign entry ("Remote release has
+  tracked changes"): releases after the shutdown publication track runs/setup records (148 files; 226d8ae had 0),
+  and the container's runs/ bind mount hides them. `e4206f1` excludes the generated roots from the in-container
+  tracked-diff checks; the launcher still checks the whole release on the host. It adds a regression test and passed
+  the full native suite 919/0/0/0. The same typed verification chain then accepted it remotely (native suite and
+  four one-UUID isolation checks; manifest SHA-256 `69bdaa9d…`).
+- The remote driver admits on e4206f1. Because retries of a job whose commit changed are held, the 39 remote sanity
+  jobs were re-registered under `-b` ids with only names/paths/dependencies renamed (validated), and the old ids
+  were marked failed with that reason (`baselines-sanity-remote-b-registration-20261016.json`). Remote admissions
+  were held from 17:10 to 17:20 so the old ids could not burn restarts.
+- No-synth RL arm: all 12 jobs completed locally; the registered report follows the driver closeouts.

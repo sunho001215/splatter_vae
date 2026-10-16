@@ -21,7 +21,7 @@ IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7
 FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
 # Admission release (2026-10-16): cffa071 adds the new baselines and typed verification; model/loss/train/data code
 # is identical to the frozen source and the single-camera RL path is unchanged (runs/remote/acceptance/cffa071).
-COMMIT = 'cffa071d2db27f507b56a3847454067fb24e6c30'
+COMMIT = 'e4206f1e3106cfd115517d4e33fb967199f2e74a'  # e4206f1: cffa071 + in-container identity mount fix
 MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
@@ -59,9 +59,9 @@ def kind(job_id):
     if job_id.startswith('ls-proxy-'):
         return 'proxy'
     # New baselines (registration runs/setup/baselines-sanity-remote-registration-20261016.json)
-    if job_id.startswith(('s4-dynamo-', 's4-snerl-', 's4-mvp3d-')) and job_id.endswith('-rem'):
+    if job_id.startswith(('s4-dynamo-', 's4-snerl-', 's4-mvp3d-')) and job_id.endswith(('-rem', '-rem-b')):
         return 'nbaseline'
-    if job_id.startswith('bxs-') and (job_id.endswith('-rem') or job_id.endswith('-rem-eval')):
+    if job_id.startswith('bxs-') and job_id.endswith(('-rem', '-rem-eval', '-rem-b', '-rem-b-eval')):
         return 'nbrl'
     if job_id.startswith('s4-drm-') and not job_id.startswith('s4-drm-cnn-'):
         return 'brl'

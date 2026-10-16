@@ -313,6 +313,11 @@ diff inline.
 | 2026-10-16 13:13 | remote 3.36TB (s2rl-crop-hammer-s1000 completed with final eval at 1000k; replay retained) |
 | 2026-10-16 13:13 | remote 3.36TB (s2rl-crop-hammer-s1001 completed with final eval at 1000k; replay retained) |
 | 2026-10-16 13:13 | remote 3.36TB (s2rl-crop-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 17:03 | 4.2TB (s2rl-nosynth-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 17:03 | 4.2TB (s2rl-nosynth-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 17:08 | 4.2TB (s2rl-nosynth-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 17:08 | 4.2TB (s2rl-nosynth-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 17:08 | 4.2TB (s2rl-nosynth-pick-place-s1002 completed with final eval at 1000k; replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
