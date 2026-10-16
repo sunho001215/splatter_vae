@@ -3461,3 +3461,17 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   single-seed attribution result with no method consequence. The report tools now include the later arms:
   `stage2_report.py` reads the no-synth RL registration, and `rl_reporting.py` reports crop/cropnosynth/no-synth per
   task once all seeds have closeout proofs. The earlier versions are kept.
+
+### 2026-10-16 15:05 — Transient local CUDA-init outage; baseline admission now yields to Stage 2
+- 14:46-14:51: newly started local processes saw 0 CUDA devices (guard refusal "torch sees 0 CUDA devices"). The
+  running trainers were unaffected, and fresh processes initialised CUDA and ran kernels normally from ~14:51. All six
+  no-synth evaluation companions crashed while opening their EnvPool workers, after 37 completed evaluation points
+  each; one Stage 2 pass's GPU query also failed (no launch). Recorded as `infrastructure_failure`
+  (cuda_init_unavailable) with console evidence via `runs/setup/tools/record_cuda_init_outage.py`, so no retry is
+  charged. The companions resume from their saved snapshots (no evaluation point lost). No host action was taken;
+  report if it recurs.
+- No-consistency pick-place finished 200k after its lossless resume; its full evaluation is waiting for local headroom.
+- The baseline driver had taken the freed headroom for `s4-snerl-hammer` (launched 14:56; kept running). It now yields
+  while any local Stage 2 job is waiting (baselines rank below Stage 2 per the 2026-10-13 decision). The previous
+  version is kept as `baseline_local_driver.before-stage2-yield-20261016.py`.
+- The verification port (`.worktrees/verify`) passed the full native suite 918/0/0/0; the Codex review is pending.

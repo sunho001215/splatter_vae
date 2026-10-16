@@ -77,8 +77,22 @@ def footprint(job):
     return int(float(job['ram_gb']) * 2**30)
 
 
+# Baselines rank below the registered Stage 2 work (user 2026-10-13): yield while any local Stage 2 job is waiting
+# (pending with its dependencies done, or crashed but restartable).
+stage2_waiting = []
+for job in queue['jobs']:
+    if job.get('stage') != 2 or job.get('host', 'local') != 'local':
+        continue
+    current = state.get(job['id'], {})
+    restartable = current.get('status') == 'crashed' and current['failures'] <= int(job.get('max_restarts', 1))
+    if restartable or (current.get('status', jobs.PENDING) == jobs.PENDING
+                       and all(state.get(d, {}).get('status') == jobs.DONE for d in job.get('deps', []))):
+        stage2_waiting.append(job['id'])
 view = {i: {**s, 'status': status(i)} for i, s in state.items() if i in by_id}
 candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local') == 'local']
+if stage2_waiting:
+    messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
+    candidates = []
 candidates.sort(key=lambda j: (j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
 charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
 files = sorted({f for j in registered for f in task_files(j) if f.is_file()})
