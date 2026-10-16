@@ -3600,3 +3600,13 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   feature dimension differs from ours (ridge probes on 3840-d with 2304 samples are near-underdetermined), and
   multi-view columns share cameras (inflates multi-view retrieval; SNeRL protocol per user 2026-10-14). Descriptive
   only; no recipe, checkpoint or protocol choice follows from these numbers.
+- 04:07 Baseline step 4 on hammer (DynaMo, 3D-MVP A/B; local MIG, 5dd5a83; outputs `runs/bxrepr/*`), descriptive.
+  Stride 2, newest-frame feature, pretrained / random init; our A200 seed-0 reference in brackets:
+  retrieval train-cams [0.94] DynaMo 0.014/0.030, 3D-MVP A 0.029/0.787, B 0.019/0.297; trajectory-cams [0.78]
+  0.026/0.094, 0.088/0.771, 0.024/0.349; hand-position R² train-cams [0.97] 0.516/0.466, 0.826/0.838, 0.527/0.574;
+  object-position R² trajectory [0.94] 0.203/0.477, 0.587/0.358, 0.054/0.381. Effective rank falls sharply with
+  pretraining for both baselines (DynaMo 249 -> 49; 3D-MVP A 475 -> 41). The primary RL-input-stack probes give large
+  negative R² (down to -140) for the 1536/3840-d stacks: the pre-registered underdetermination caveat (ridge λ=1e-2
+  on standardised inputs, 2304 samples), so the stack probes are not interpretable; stack retrieval matches the
+  newest-frame pattern. Random-init 3D-MVP A retrieval is high because its virtual views are rendered from a fused
+  world-frame cloud and columns share cameras (pre-registered caveat). No recipe, checkpoint or protocol change.
