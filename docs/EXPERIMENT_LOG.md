@@ -3560,3 +3560,13 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   matched only `./encoder.pt` and `exports/*` among .pt files, so `s4-mvp3d-hammer-rem-b` (completed 21:30, 270690
   steps) stayed sync_pending and its RL arms blocked. Added `./encoder_init.pt` to the manifest (full native suite
   919/0/0/0), merged, daemon restarted. Remote release e4206f1 unchanged (local-side sync code only).
+
+## 2026-10-17 — DynaMo sanity arms; kept local evaluator re-admitted
+
+- All DynaMo hammer sanity arms closed out remotely except the kept local pair's evaluator. Pretrained-frozen last-5
+  training success: 0.193 / 0.520 / 0.333 (mean 0.349), seeds 1000-1002.
+- `bxs-dynamo-hammer-rand-s1000-eval` had never run: emptying the local baseline driver's REGISTRATIONS when the
+  sanity set moved remote also dropped this kept pair's evaluator. The driver now admits only that job
+  (`ONLY`; dependency states included in its eligibility view; previous version kept as
+  `baseline_local_driver.before-kept-eval-20261017.py`). No definition changed. The criterion is evaluated once all
+  three seeds of both arms exist.

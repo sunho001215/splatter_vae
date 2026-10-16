@@ -20,8 +20,10 @@ sys.path.insert(0, str(ROOT))
 from scripts import jobs  # noqa: E402
 
 CAP = 140_000_000_000
-# The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json); nothing new admitted here.
-REGISTRATIONS = []
+# The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json). Only the evaluator of the
+# kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
+REGISTRATIONS = ['baselines-sanity-registration-20261016.json']
+ONLY = {'bxs-dynamo-hammer-rand-s1000-eval'}
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
 DRY = '--dry-run' in sys.argv
 SETUP = ROOT / 'runs/setup'
@@ -42,6 +44,7 @@ for name in REGISTRATIONS:
         record = json.loads((SETUP / name).read_text())
         assert [by_queue[j['id']] for j in record['jobs']] == record['jobs'], f'{name}: jobs changed in the queue'
         registered += record['jobs']
+registered = [j for j in registered if j['id'] in ONLY]
 by_id = {j['id']: j for j in registered}
 if not registered:
     print('BASELINES nothing registered for local admission')
@@ -92,7 +95,8 @@ for job in queue['jobs']:
     if restartable or (current.get('status', jobs.PENDING) == jobs.PENDING
                        and all(state.get(d, {}).get('status') == jobs.DONE for d in job.get('deps', []))):
         stage2_waiting.append(job['id'])
-view = {i: {**s, 'status': status(i)} for i, s in state.items() if i in by_id}
+deps = {d for j in registered for d in j.get('deps', [])}
+view = {i: ({**s, 'status': status(i)} if i in by_id else s) for i, s in state.items() if i in by_id or i in deps}
 candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local') == 'local']
 if stage2_waiting:
     messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
