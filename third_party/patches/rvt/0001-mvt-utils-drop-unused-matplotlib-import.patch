@@ -1,0 +1,14 @@
+rvt/mvt/utils.py imports matplotlib.pyplot at module level but never uses it; matplotlib is not in our locked
+environment. Removing the import is the only change: place_pc_in_cube is used unmodified (3D-MVP port,
+s4d/baselines/mvp3d/rvt.py).
+
+--- a/rvt/mvt/utils.py
++++ b/rvt/mvt/utils.py
+@@ -10,7 +10,6 @@
+ 
+ import torch
+ import numpy as np
+-import matplotlib.pyplot as plt
+ 
+ 
+ def place_pc_in_cube(

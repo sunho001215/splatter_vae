@@ -210,6 +210,7 @@ BACKBONES = {
     "reviwo": ReViWoFrameEncoder,
     "dynamo": DynaMoFrameEncoder,
     "snerl": SNeRLFrameEncoder,
+    "mvp3d": lambda cfg: __import__("s4d.baselines.mvp3d.rl", fromlist=["rl"]).MVP3DFrameEncoder(cfg),
 }
 
 
