@@ -1,21 +1,25 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-16 08:29 +09:00 (Phase3 permitted controller stops verified; all-local shutdown still BLOCKED).
-Stage2/remote driver loops, watcher, cache loop and memory alert stopped by08:26:16; hourly cron cancelled, no schedules
-remain. No local scientific job is active; GPUs4/5 have no compute processes (successful UUID query08:27:49).
-**Scheduler PID2819571 remains alive under the prior stop denial, with transfer children/SSH transport; no retry or
-indirect stop was attempted. An all-local-process shutdown cannot be certified.** `experiments/HOLD`, scoped
-`runs/setup/HOLD` and expired local short-job hold remain. Detailed proof/blocker in [HANDOFF](HANDOFF.md#final-shutdown-verification).
-All14 actual remote containers remain running/advancing08:27:44; trainer losses/gradients finite, empty motion-bin
-NaNs are diagnostic undefined values, not loss divergence. No remote or foreign process stopped. Remote SSD3.359TB
-free/7.529TB (~44.6%). Three hammer crop DrM pairs continue, nine pairs pending; local dispatch is now stopped.
-**All four crop/cropnosynth pretrains, full evaluations and exports are complete/driver-verified**; representation report
-done. Both original no-synth200k pretrains/full evaluations closed out:27/24 representation degradations beyond registered
-margins (hammer/pick). Frozen method unchanged. No-consistency hammer completed200k/driver closeout; pick-place
-intentionally paused180k, checkpoint/session/no-loss proof verified, zero charged failures. No crop RL comparison complete.
-The handoff records checkpoint hashes and restart steps; original placement/ETA assumptions:
-`runs/setup/servers-filled-20261015.json` (not current ETAs).
-Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
+Last updated: 2026-10-16 13:40 +09:00 (restart after the hardware update).
+**Restarted.** Local devices are now 12 MIG 1g.24gb instances (GPUs 4/5/6); guard/EGL/scheduler adapted on main
+(`756dc9b`, `d95e863`), isolation passed on all 12 (CUDA+EGL), native suite 778/0/0/0. Old daemon PID2819571 is gone
+(container restart); one scheduler daemon, one watcher (venv python), Stage 2 and remote driver loops, memory alert
+(147 GB) and cache-eviction loop run as tracked tasks. `experiments/HOLD` stays (scoped drivers admit); the Phase 3
+`runs/setup/HOLD` and the expired shutdown whitelist were cleared after reconciliation (renamed `*.cleared/expired-20261016`).
+All 14 remote jobs that survived the downtime exited 0 and were final-synced with verified checksums (8 pretrain-only
+variants, 3 crop-hammer DrM pairs). No-consistency pick-place resumed losslessly from its 180k checkpoint on MIG.
+New registration: Stage 2 RL arm for no-synth (rule pre-registered in EXPERIMENT_LOG 10-16 12:35). New baselines
+SNeRL/DynaMo/3D-MVP integrate cleanly; pinned upstream code now executes (863/0/0/0 on the integration branch).
+Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`; restart state: `HANDOFF.md` (shutdown ledger is historical).
+
+## Codex jobs (until integrated or discarded)
+Codex cannot run shell commands in this container (bwrap namespace denied); reviews run as read-only tasks with the
+diff inline.
+| id | purpose | worktree | outcome |
+|---|---|---|---|
+| review / adversarial-review (2 runs) | MIG guard/scheduler | `.worktrees/mig` | blocked by sandbox, no findings possible |
+| task-mvafnh17-iday3i | MIG guard/scheduler review (inline diff) | `.worktrees/mig` | 1 finding (unavailable process listing read as idle), fixed `d95e863`, integrated |
+| task-mvafyrt7-0bpdom | baseline bundle review (inline code) | `.worktrees/bx-int` | 1 P0 claim (multi-view shift keeps 2 fixed views) = registered user protocol, not changed; caveat in reports |
 
 ## Current phase
 - **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,
@@ -304,6 +308,9 @@ Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`.
 | 2026-10-15 09:58 | 4.5TB (s2rl-nomotion-pick-place-s1002 completed with final eval at 1000k; replay retained) |
 | 2026-10-15 09:58 | 4.5TB (s2rl-noinfonce-pick-place-s1002 completed with final eval at 1000k; replay retained) |
 | 2026-10-15 10:23 | 4.5TB (s2rl-singlegroup-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 13:13 | remote 3.36TB (s2rl-crop-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 13:13 | remote 3.36TB (s2rl-crop-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 13:13 | remote 3.36TB (s2rl-crop-hammer-s1002 completed with final eval at 1000k; replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity

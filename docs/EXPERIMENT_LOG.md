@@ -3377,3 +3377,48 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   this bounded failure; inspect local sync markers and retry pending directories after restart.
 - Handoff/RESULTS/PROGRESS updated. Main handoff/evidence publication already pushed asab31ea0; all five WIP branches
   published/unmerged. Final08:25/08:45 local controller stop still pending, denied daemon unchanged.
+
+### 2026-10-16 12:35–13:30 — Restart after the hardware update: MIG devices, reconciliation, new registrations
+- **State at restart.** The container restarted (boot ~11:41). The old scheduler daemon PID2819571 no longer exists, so
+  the deferred controller-stop event from `local-shutdown-verification-20261016.json` was appended once under the
+  registry lock (`__host_local__`, not a scientific job). Before the restart that daemon kept reconciling remote jobs
+  until ~09:50. All 14 remote containers had exited 0 by then (8 pretrain-only variants, 3 crop-hammer DrM pairs).
+  One reconcile-only tick under the global HOLD is checksum-syncing their final results (`restart-reconcile-tick-20261016.log`).
+- **Local GPUs (user, 2026-10-16): 12 MIG 1g.24gb instances on GPUs 4/5/6 replace the two full-GPU allowlist.** Minimal
+  adaptation only (`756dc9b`, `d95e863` on main): the guard accepts exactly the 12 MIG UUIDs, one per process, and matches
+  the CUDA-reported parent GPU UUID. EGL takes the instance's position among the parent's EGL devices; on this
+  host EGL lists one device per MIG instance in `nvidia-smi -L` order, all reporting CUDA ordinal 0. I verified this
+  by rendering on each candidate EGL device and watching FB memory rise only on that MIG instance. Scheduler and
+  watcher read per-instance processes/memory from one bounded `nvidia-smi -q -i <parents>` query, because the CSV
+  compute-apps query returns "Insufficient Permissions" under MIG. Remote acceptance accepts rejection of any local device
+  ID. No new checks were added. The existing isolation check passed CUDA and MuJoCo/EGL on all 12 instances; each
+  child appears as C+G only on its own GPU instance (`runs/setup/gpu-isolation-mig-20261016.json`). Full native
+  suite 778/0/0/0 (156 s) on the final sources (`runs/setup/native-tests-mig-20261016.json`, now `docs/tests.json`).
+- **Codex** cannot run shell commands in this container (bwrap namespace denied), so its native reviews could not read the
+  diff. A read-only task with the diff inline found one real defect: a `Processes : <error>` header would read as idle.
+  Fixed to fail closed, with a test, before the suite above.
+- **Queue:** local limits are now the 12 instances at `max_jobs` 3 and `max_mem_gb` 22 (24 GB each); `max_jobs` will be
+  adjusted from measured throughput. 84 historical non-active jobs pinned to the old full-GPU UUIDs became `gpu: any`;
+  job fingerprints are unchanged. RAM cap (150 GB, admission ceiling 140 GB), reserves and floors are unchanged.
+- **New registration (delegated, before any of its results): Stage 2 RL arm for the completed no-synth pretrains.**
+  Purpose: attribute the synthetic-view component C, the method's camera-invariance mechanism, in RL, including
+  held-out-camera transfer. So far it is attributed only in representation metrics (27/24 degradations); cropnosynth
+  RL confounds it with crop. Jobs: `export-s2ab-nosynth-seed0-{hammer,pick-place}-200k` and
+  `s2rl-nosynth-{hammer,pick-place}-s{1000,1001,1002}[-eval]`. Definitions copy the registered T=1 arm with only
+  id/export/run-dir changed. Rule fixed now: per task and camera condition (training, held-out, trajectories), the
+  seed-mean last-5 success difference versus the completed `s2rl-full-<task>-s100x` references, with margin
+  max(0.10, 2 x SE), i.e. the existing Stage 2 RL rule. Reporting follows the RL standard: success and return,
+  last-5/final/AUC, 95% bootstrap CIs, condition-separated. Attribution only; no method change, reseeding or tuning.
+  Placed locally (MIG); registration `runs/setup/stage2-nosynth-rl-registration-20261016.json`. No RL arms are added
+  for the other pretrain-only variants (lower value: they are not the camera-invariance mechanism).
+- **New baselines:** the three WIP branches merge cleanly into `bx-integration` on top of the MIG change (small import
+  and registry conflicts). The pinned upstream code now executes; no permission-layer denial occurred.
+  Third-party/DynaMo/SNeRL/3D-MVP tests pass: 64, with the hash-checked official DINO weights. The 3D-MVP trunk is a
+  transcription of RVT-1 `MVTSingle.forward` built from RVT's own layer classes. Its output is bit-identical
+  (`torch.equal`) to the official pinned `MVTSingle` trunk under the same weights, so I accept it as the thin RVT adaptation,
+  because RVT's package layout cannot be imported in-process without global module names. The full suite and one
+  Codex review of the bundle are running; acceptance then proceeds as in BASELINES ("Acceptance and scientific order").
+- **Placement plan.** Remote: the pending registered work, i.e. 8 pretrain-only full evaluations and 9 crop DrM
+  pairs, on the accepted release 226d8ae as soon as reconciliation finishes. Local MIG: the no-consistency pick-place
+  resume (180k checkpoint SHA-256 re-verified, matches the ledger), both no-consistency full evaluations, then the
+  no-synth RL arm; new-baseline hammer sanity follows acceptance.

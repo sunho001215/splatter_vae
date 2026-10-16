@@ -1,0 +1,457 @@
+{
+  "prepared_at": "2026-10-16T13:12:48.086117+09:00",
+  "request": "host-neutral delegated registration (user 2026-10-15/16): RL arm for the completed no-synth pretrains, registered before any RL result of this arm exists",
+  "source_commit_frozen": "226d8ae89b6f65097d372e597e0a7734d2eee3e0",
+  "source_commit_head": "d95e863f0b286c7e9b21078b04b21534caf40bd8",
+  "method_tag": "method-frozen-v1",
+  "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+  "reporting_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+  "rl_seeds": [
+    1000,
+    1001,
+    1002
+  ],
+  "rl_agent_steps": 1000000,
+  "rule": {
+    "reference_arm": "full (s2rl-full-<task>-s1000..s1002, existing completed runs on the reused A200 encoders)",
+    "decision_quantity": "per task and camera condition (training cameras, held-out cameras, trajectories): mean over RL seeds 1000-1002 of the last-5 success; difference variant minus full",
+    "margin": "max(0.10, 2 x standard error of the difference of seed means), the existing Stage 2 RL rule (runs/setup/tools/stage2_report.py)",
+    "reporting": "success and return, last-5 / final (1M) / AUC (100 points), per task seed values, mean and 95% bootstrap CI (10,000 resamples, RNG 0), via runs/setup/tools/rl_reporting.py; camera conditions separate",
+    "interpretation": "attribution of the synthetic-view component (C) for RL, including held-out-camera transfer; within-margin is not evidence of no effect; no method selection, reseeding or retuning"
+  },
+  "counts": {
+    "scripts/export_encoder.py": 2,
+    "scripts/train_rl.py": 6,
+    "scripts/eval_rl.py": 6
+  },
+  "configs": {},
+  "jobs": [
+    {
+      "id": "export-s2ab-nosynth-seed0-hammer-200k",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/s2ab-nosynth-seed0-hammer",
+        "--checkpoint",
+        "runs/pretrain/s2ab-nosynth-seed0-hammer/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/exports/s2ab-nosynth-seed0-hammer-200k.pt",
+        "--wait"
+      ],
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 4,
+      "priority": 0,
+      "deps": [
+        "s2ab-nosynth-seed0-hammer"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "nosynth-rl-20261016",
+      "stage2_variant": "nosynth"
+    },
+    {
+      "id": "export-s2ab-nosynth-seed0-pick-place-200k",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/s2ab-nosynth-seed0-pick-place",
+        "--checkpoint",
+        "runs/pretrain/s2ab-nosynth-seed0-pick-place/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/exports/s2ab-nosynth-seed0-pick-place-200k.pt",
+        "--wait"
+      ],
+      "gpu": "any",
+      "mem_gb": 1,
+      "ram_gb": 4,
+      "priority": 0,
+      "deps": [
+        "s2ab-nosynth-seed0-pick-place"
+      ],
+      "max_restarts": 1,
+      "oom_score_adj": 300,
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "stage2_extension": "nosynth-rl-20261016",
+      "stage2_variant": "nosynth"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-hammer-s1000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/s2rl-nosynth-hammer-s1000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-nosynth-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-hammer-s1000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-nosynth-hammer-s1000",
+        "--train-job",
+        "s2rl-nosynth-hammer-s1000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-pick-place-s1000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/s2rl-nosynth-pick-place-s1000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-nosynth-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-pick-place-s1000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-nosynth-pick-place-s1000",
+        "--train-job",
+        "s2rl-nosynth-pick-place-s1000",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-hammer-s1001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/s2rl-nosynth-hammer-s1001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-nosynth-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-hammer-s1001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-nosynth-hammer-s1001",
+        "--train-job",
+        "s2rl-nosynth-hammer-s1001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-pick-place-s1001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/s2rl-nosynth-pick-place-s1001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-nosynth-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-pick-place-s1001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-nosynth-pick-place-s1001",
+        "--train-job",
+        "s2rl-nosynth-pick-place-s1001",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-hammer-s1002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/s2rl-nosynth-hammer-s1002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-nosynth-seed0-hammer-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-hammer-s1002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-nosynth-hammer-s1002",
+        "--train-job",
+        "s2rl-nosynth-hammer-s1002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-pick-place-s1002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/s2rl-nosynth-pick-place-s1002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/exports/s2ab-nosynth-seed0-pick-place-200k.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "oom_score_adj": 300,
+      "stage2_extension": "nosynth-rl-20261016"
+    },
+    {
+      "gpu": "any",
+      "priority": 1,
+      "deps": [
+        "export-s2ab-nosynth-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage2_variant": "nosynth",
+      "stage": 2,
+      "frozen_method": "method-frozen-v1",
+      "freeze_manifest_sha256": "65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9",
+      "stage2_margins_sha256": "5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677",
+      "id": "s2rl-nosynth-pick-place-s1002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s2rl-nosynth-pick-place-s1002",
+        "--train-job",
+        "s2rl-nosynth-pick-place-s1002",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 6,
+      "oom_score_adj": 400,
+      "stage2_extension": "nosynth-rl-20261016"
+    }
+  ],
+  "templates": "export-s2ab-t1-seed0-<task>-200k and s2rl-t1-<task>-s<seed>[-eval] of the 2026-10-13 registration, with only id, export path, run dir, train job and dependency changed",
+  "admission": "Stage 2 local driver, job by job under the local full-charge cap (host-neutral)",
+  "registered_at": "2026-10-16T13:12:50.445913+09:00",
+  "queue_sha256_before": "daabb0a83f60a1580c3447173e368710708f005fe96b04c2307d097a42728a2e",
+  "queue_sha256_after": "2fd4c897750cb7ac6af29cf3fcc31112fa6cc10ac32dd10298cf6971b0bf355c"
+}

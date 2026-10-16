@@ -116,15 +116,12 @@ for job in remote:
         if (not jid.endswith('-eval') and state.get(jid, {}).get('status') == jobs.DONE and proof.exists()
                 and not (FINISHED / f'{jid}.json').exists()):
             ids = [jid, f'{jid}-eval'] if kind(jid) == 's2_rl' else [jid]
-            record = {'job_id': jid, 'finished_local': stamp.isoformat(), 'stage2_closeout': str(proof)}
-            try:
-                result = subprocess.run([sys.executable, '-I', str(REPO / 'runs/setup/tools/sync_wandb_remote.py'),
-                                         *[a for i in ids for a in ('--run', i)]],
-                                        capture_output=True, text=True, timeout=7200)
-                record['wandb_tool_exit'] = result.returncode
-            except subprocess.TimeoutExpired:
-                record['wandb_tool_exit'] = 124
-            (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+            # W&B never blocks numerical work (user rule): offline runs are uploaded by the separate
+            # sync_wandb_remote.py batch, not inline before admission (2026-10-16; status runs/remote/wandb/status.json).
+            record = {'job_id': jid, 'finished_local': stamp.isoformat(), 'stage2_closeout': str(proof),
+                      'wandb': 'deferred to the sync_wandb_remote.py batch', 'wandb_runs': ids}
+            if not DRY:
+                (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
             messages.append(f'STAGE2_FINISHED {jid}')
         continue
     if jid.endswith('-eval') or state.get(jid, {}).get('status') != jobs.DONE or (FINISHED / f'{jid}.json').exists():

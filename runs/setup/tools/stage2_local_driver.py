@@ -63,7 +63,8 @@ registration = json.loads((SETUP / 'stage2-registration-20261013.json').read_tex
 original = {j['id'] for j in registration['jobs']}  # the 108 Stage 2 jobs registered 2026-10-13
 # Later Stage 2 registrations with the same job structure and closeouts: the crop variants (user approval
 # 2026-10-15), admitted at the "middle" rank (see admissible/rank below).
-for name in ['stage2-crop-registration-20261015.json']:
+# ... and the RL arm of the completed no-synth pretrains (registered 2026-10-16 before any of its RL results).
+for name in ['stage2-crop-registration-20261015.json', 'stage2-nosynth-rl-registration-20261016.json']:
     if (SETUP / name).is_file():
         later = json.loads((SETUP / name).read_text())
         assert not set(later['configs']) & set(registration['configs'])
