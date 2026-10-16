@@ -40,7 +40,16 @@ with open(jobs.REGISTRY.with_suffix('.lock'), 'a') as lock:
     assert container == f"s4d-{job_id}-a{current['attempt']}", container
     args = current['args']
     client = RemoteClient()
-    if '--output-dir' in args and '--run-dir' in args:
+    if current.get('verification_purpose') is not None:
+        # Typed verification: its only outputs are the attempt directory and runs/<id>; neither may exist.
+        from s4d.remote_verification import verification_output  # noqa: PLC0415
+
+        remote_dir = verification_output(current['verification_purpose'], job_id, current['attempt'])
+        control_dir = client.remote_path(f"releases/{current['commit']}/code")
+        control_kind = 'accepted_release_dir'
+        output_test = (f"if [ -e {shlex.quote(remote_dir)} ] || [ -e {shlex.quote(client.remote_path(f'runs/{job_id}'))} ]; "
+                       "then echo exists; else echo absent; fi; ")
+    elif '--output-dir' in args and '--run-dir' in args:
         remote_dir = client.remote_path(args[args.index('--output-dir') + 1])
         control_dir = client.remote_path(args[args.index('--run-dir') + 1])
         control_kind = 'trainer_run_dir'
@@ -66,7 +75,7 @@ with open(jobs.REGISTRY.with_suffix('.lock'), 'a') as lock:
         remote_dir = client.remote_path(f'runs/{job_id}')
         control_dir = client.remote_path(f"releases/{current['commit']}/code")
         control_kind = 'accepted_release_dir'
-    if current.get('script') != 'scripts/evaluate.py':
+    if current.get('script') != 'scripts/evaluate.py' and current.get('verification_purpose') is None:
         output_test = f"test -e {shlex.quote(remote_dir)} && echo exists || echo absent; "
     # A failed Docker query must fail the check, not look like an empty container listing.
     command = (f"set -e; matches=$(docker ps -a --no-trunc --filter name=^/{container}$ --format '{{{{.ID}}}}'); "

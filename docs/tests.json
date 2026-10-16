@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-16T06:09:35.141536+00:00",
+  "started_utc": "2026-10-16T06:33:58.740514+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -14,15 +14,15 @@
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/relfix/tests",
+    "/home/ws/ws/splatter4d/.worktrees/vfix/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/relfix/runs/t/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/vfix/runs/t/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/relfix/runs/t/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/.worktrees/vfix/runs/t/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 306.46052941699963,
+  "duration_seconds": 307.00846060000003,
   "counts": {
     "passed": 918,
     "error": 0,
@@ -114,7 +114,7 @@
     "s4d/remote_access.py": "ad122c223d4523e8ac3c818519ce344abb674ef418f1c41a73b4b4ac93a0d71d",
     "s4d/remote_jobs.py": "5d9a67268ce2d23f4a30c2b663d296d5845ee065864221381ad448bc5be2fd72",
     "s4d/remote_launch.py": "797bf008b28e4e27e13d7d6295a1232b0dd7811db25d12d84051d2a2f561a7bb",
-    "s4d/remote_verification.py": "0294c0495d09398a7cef78addd370a633d3a35acc6f7cd467a577999b26354fa",
+    "s4d/remote_verification.py": "1c9426ccd92029c872dd49a01efe6d308ff9e4fafea11e19319a1474d4ddd600",
     "s4d/rl/__init__.py": "3a4dfbe72092286ae5b7c3f85e520c425de1e5384177c392eda936967964c01e",
     "s4d/rl/agent.py": "6791e32c1b3332167bcb98b0c659f26ee6de31327958dbe4a6db2187cf0e464a",
     "s4d/rl/encoders.py": "0d019afbba89d0b99ab4936b530c4a871582a9bd64c4cd27bb5853b0564d06dc",
@@ -401,7 +401,7 @@
     "s4d/remote_access.py": "ad122c223d4523e8ac3c818519ce344abb674ef418f1c41a73b4b4ac93a0d71d",
     "s4d/remote_jobs.py": "5d9a67268ce2d23f4a30c2b663d296d5845ee065864221381ad448bc5be2fd72",
     "s4d/remote_launch.py": "797bf008b28e4e27e13d7d6295a1232b0dd7811db25d12d84051d2a2f561a7bb",
-    "s4d/remote_verification.py": "0294c0495d09398a7cef78addd370a633d3a35acc6f7cd467a577999b26354fa",
+    "s4d/remote_verification.py": "1c9426ccd92029c872dd49a01efe6d308ff9e4fafea11e19319a1474d4ddd600",
     "s4d/rl/__init__.py": "3a4dfbe72092286ae5b7c3f85e520c425de1e5384177c392eda936967964c01e",
     "s4d/rl/agent.py": "6791e32c1b3332167bcb98b0c659f26ee6de31327958dbe4a6db2187cf0e464a",
     "s4d/rl/encoders.py": "0d019afbba89d0b99ab4936b530c4a871582a9bd64c4cd27bb5853b0564d06dc",
