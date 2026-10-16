@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-16T05:39:56.037307+00:00",
+  "started_utc": "2026-10-16T06:09:35.141536+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -14,15 +14,15 @@
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/verify/tests",
+    "/home/ws/ws/splatter4d/.worktrees/relfix/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/verify/runs/t/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/relfix/runs/t/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/verify/runs/t/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/.worktrees/relfix/runs/t/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 328.75260426599925,
+  "duration_seconds": 306.46052941699963,
   "counts": {
     "passed": 918,
     "error": 0,
@@ -111,7 +111,7 @@
     "s4d/model/encoder.py": "346045218986a854f8a57727cbc4ada8a959565e4e15f7bc72155b25a42d1298",
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "fe26bd68723cc7850a19f8817d8b58ca967625a47727d6a239e4e37dd4a59a6a",
-    "s4d/remote_access.py": "b56872ed89855e9add4df7c659d690a219dfa14da09ae7f6e16a0cd0739c2a74",
+    "s4d/remote_access.py": "ad122c223d4523e8ac3c818519ce344abb674ef418f1c41a73b4b4ac93a0d71d",
     "s4d/remote_jobs.py": "5d9a67268ce2d23f4a30c2b663d296d5845ee065864221381ad448bc5be2fd72",
     "s4d/remote_launch.py": "797bf008b28e4e27e13d7d6295a1232b0dd7811db25d12d84051d2a2f561a7bb",
     "s4d/remote_verification.py": "0294c0495d09398a7cef78addd370a633d3a35acc6f7cd467a577999b26354fa",
@@ -398,7 +398,7 @@
     "s4d/model/encoder.py": "346045218986a854f8a57727cbc4ada8a959565e4e15f7bc72155b25a42d1298",
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "fe26bd68723cc7850a19f8817d8b58ca967625a47727d6a239e4e37dd4a59a6a",
-    "s4d/remote_access.py": "b56872ed89855e9add4df7c659d690a219dfa14da09ae7f6e16a0cd0739c2a74",
+    "s4d/remote_access.py": "ad122c223d4523e8ac3c818519ce344abb674ef418f1c41a73b4b4ac93a0d71d",
     "s4d/remote_jobs.py": "5d9a67268ce2d23f4a30c2b663d296d5845ee065864221381ad448bc5be2fd72",
     "s4d/remote_launch.py": "797bf008b28e4e27e13d7d6295a1232b0dd7811db25d12d84051d2a2f561a7bb",
     "s4d/remote_verification.py": "0294c0495d09398a7cef78addd370a633d3a35acc6f7cd467a577999b26354fa",
