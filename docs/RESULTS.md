@@ -4,6 +4,36 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Crop and crop+no-synth RL arms: crop within margin; crop+no-synth worse (2026-10-16 19:00; attribution only)
+
+Pre-registered Stage 2 RL rule (seed-mean last-5 success, margin max(0.10, 2 x SE), per camera condition);
+`s2rl-{crop,cropnosynth}-{hammer,pick-place}-s1000..s1002` against the completed full-method references. All 12
+pairs ran remotely at 226d8ae and have driver closeouts. Reports: `runs/setup/stage2-report-20261016-190026.json`, RL
+standard `runs/setup/rl-report-20261016-190029.json`.
+
+| task / condition | full | crop | delta (margin) | cropnosynth | delta (margin) |
+|---|---:|---:|---|---:|---|
+| hammer training | 0.935 | 0.970 | +0.035 (0.100) within | 0.720 | -0.215 (0.201) **worse** |
+| hammer held-out | 0.149 | 0.228 | +0.079 (0.100) within | 0.072 | -0.077 (0.100) within |
+| hammer trajectories | 0.882 | 0.917 | +0.035 (0.100) within | 0.488 | -0.393 (0.155) **worse** |
+| pick-place training | 0.463 | 0.455 | -0.008 (0.229) within | 0.108 | -0.355 (0.247) **worse** |
+| pick-place held-out | 0.011 | 0.005 | -0.006 (0.100) within | 0.000 | -0.011 (0.100) within (near zero) |
+| pick-place trajectories | 0.423 | 0.387 | -0.037 (0.140) within | 0.037 | -0.387 (0.117) **worse** |
+
+RL standard, training cameras (seed mean [95% bootstrap CI]):
+- **crop:** hammer success last-5 0.970 [0.925, 1.0], AUC 0.765 (full 0.652); return last-5 1937 [1849, 2005] (full 1857).
+  Pick-place success 0.455 [0.362, 0.530], AUC 0.279; return 597 [556, 636] (full 689).
+- **cropnosynth:** hammer success 0.720 [0.577, 0.905], AUC 0.503; return 1545 [1368, 1824].
+  Pick-place success 0.108 [0.015, 0.240], AUC 0.047; return 172 [65, 309].
+
+Fairness: the RL configs differ only in the encoder export (no unexpected differences); 240 episodes per point; host
+recorded (remote, 226d8ae).
+
+**Interpretation (attribution only).** Crop is within margin on every condition of both tasks. This is not proof of
+equivalence: hammer held-out (+0.079) approaches the margin. Crop+no-synth is clearly worse on training and trajectory
+cameras of both tasks, close to the no-synth arm without crop (hammer 0.553, pick-place 0.037). So crop does not
+replace synthetic views. No method, seed or hyperparameter change follows.
+
 ### No-synthetic-view RL arm: large RL degradation on both development tasks (2026-10-16 17:19; attribution only)
 
 Registered 2026-10-16 12:35, before any result (Stage 2 RL rule: seed-mean last-5 success, margin
@@ -133,9 +163,7 @@ Cropnosynth has broad appearance/retrieval/trajectory-probe degradation despite 
 Within-margin differences do not establish equivalence or absence of a real effect; the hammer trajectory-velocity
 crossing is small (-0.060674 versus margin0.059475), not evidence of a precisely established effect size.
 
-**RL comparison remains incomplete.** Three crop hammer trainer/evaluator pairs run remotely; nine registered pairs
-remain pending. Report success **and return**, last-5/final/AUC, with separate training/held-out/trajectory conditions
-and per-task seed-mean95% CIs only after the required runs close out. No method selection, new seeds or retuning follows.
+**RL comparison complete (2026-10-16 19:00):** see "Crop and crop+no-synth RL arms" above.
 
 ### No-synthetic-view attribution: representation endpoints (2026-10-16 07:08)
 

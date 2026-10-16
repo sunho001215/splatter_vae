@@ -3545,3 +3545,11 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   standard (success and return, last-5/final/AUC, 95% CIs). Attribution only; no method change.
 - The remaining pretrain-only variants (no-lambda-dyn, no-coverage, misscaled-scale) get no RL arm. Their
   representation changes were small or mixed (0-5 metrics beyond margin), so RL would add little.
+
+## 2026-10-16 19:00 — Crop / crop+no-synth RL arms closed out
+
+- All 12 `s2rl-{crop,cropnosynth}-*` pairs completed remotely (226d8ae) with driver closeouts. Reports
+  `runs/setup/stage2-report-20261016-190026.json` and `runs/setup/rl-report-20261016-190029.json`. Two duplicate
+  stage2 reports from an accidental re-run (identical comparisons) were removed.
+- Crop is within margin on all 6 conditions. Crop+no-synth is worse on training and trajectories of both tasks
+  (hammer 0.720 vs 0.935, pick-place 0.108 vs 0.463), close to no-synth. RESULTS updated; no method change.

@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-crop-pick-place-s1000",
+  "verified_local": "2026-10-16T18:24:36.113447+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.47333333333333333,
+  "eval_jsonl_sha256": "16345e71171bc3c6f1c72251fbc82231b86e60409d3b5767c804f793f85337f7",
+  "replay": "retained",
+  "free_home_ws": "remote 3.32T",
+  "progress_recorded": true
+}

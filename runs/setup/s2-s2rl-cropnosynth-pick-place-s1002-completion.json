@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-cropnosynth-pick-place-s1002",
+  "verified_local": "2026-10-16T19:00:02.816763+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.015,
+  "eval_jsonl_sha256": "51835ff769197f382757bc69b0cd9a0a28594157aa8ed9f4a24a22b7d5d1bc03",
+  "replay": "retained",
+  "free_home_ws": "remote 3.32T",
+  "progress_recorded": true
+}

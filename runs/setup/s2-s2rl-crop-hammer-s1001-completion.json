@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-crop-hammer-s1001",
+  "verified_local": "2026-10-16T13:13:05.307757+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.9850000000000001,
+  "eval_jsonl_sha256": "0bdcb0c4722d277f85fdd3a91dd4b4e32046fa50e108f21072868a6b35e0fb4d",
+  "replay": "retained",
+  "free_home_ws": "remote 3.36T",
+  "progress_recorded": true
+}

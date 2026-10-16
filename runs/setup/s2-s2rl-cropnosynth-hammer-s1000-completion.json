@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-cropnosynth-hammer-s1000",
+  "verified_local": "2026-10-16T18:19:32.412468+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.6783333333333333,
+  "eval_jsonl_sha256": "efa025574274e839f8ed9d1d40be21e04e1d0ee6271ec4d3ebdeb9d6ffccd6cd",
+  "replay": "retained",
+  "free_home_ws": "remote 3.32T",
+  "progress_recorded": true
+}
