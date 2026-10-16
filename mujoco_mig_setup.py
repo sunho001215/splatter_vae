@@ -6,7 +6,7 @@ import ctypes
 import os
 from ctypes import byref, c_char_p, c_int, c_uint32, c_void_p
 
-from s4d.gpu_guard import GPUIsolationError, visible_device_uuids
+from s4d.gpu_guard import MIG_DEVICES, GPUIsolationError, visible_device_uuids
 
 EGL_NO_DISPLAY = c_void_p(0)
 EGL_TRUE = 1
@@ -73,6 +73,14 @@ def _find_egl_device_index_for_visible_cuda(visible_cuda_idx: int = 0) -> int | 
             matching.append(index)
     if not matching:
         return None
+    uuid = _single_visible_uuid()
+    if uuid in MIG_DEVICES:
+        # Every MIG instance of the parent GPU is its own EGL device mapping to the same CUDA ordinal, listed in
+        # MIG device order: select this instance's position among them.
+        parent, _, slot = MIG_DEVICES[uuid]
+        if len(matching) != sum(item[0] == parent for item in MIG_DEVICES.values()):
+            raise GPUIsolationError(f"{len(matching)} EGL devices map to {uuid}'s parent GPU; refusing EGL order.")
+        return matching[slot]
     if len(matching) != 1:
         raise GPUIsolationError(f"Multiple EGL devices map to visible CUDA ordinal {visible_cuda_idx}; refusing EGL order.")
     return matching[0]

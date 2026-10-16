@@ -95,8 +95,25 @@ def test_ambiguous_cuda_mapping_refuses_egl_order(helper, monkeypatch):
         return 1
 
     monkeypatch.setattr(helper, "_get_egl_ext_function", lambda *args: synthetic_query)
-    with pytest.raises(GPUIsolationError, match="Multiple EGL devices"):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ALLOWED_GPU_UUIDS[0])
+    with pytest.raises(GPUIsolationError, match="refusing EGL order"):
         helper._find_egl_device_index_for_visible_cuda()
+
+
+@pytest.mark.parametrize("index", range(len(ALLOWED_GPU_UUIDS)))
+def test_mig_instance_selects_its_position_among_the_parent_egl_devices(helper, monkeypatch, index):
+    # Six EGL devices: one of another GPU, then the four MIG instances of the visible parent, then another.
+    devices = [object() for _ in range(6)]
+    monkeypatch.setattr(helper, "_load_egl", lambda: object())
+    monkeypatch.setattr(helper, "_query_egl_devices_ctypes", lambda: devices)
+
+    def synthetic_query(device, attribute, result):
+        result._obj.value = 0 if 1 <= devices.index(device) <= 4 else -1
+        return 1
+
+    monkeypatch.setattr(helper, "_get_egl_ext_function", lambda *args: synthetic_query)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ALLOWED_GPU_UUIDS[index])
+    assert helper._find_egl_device_index_for_visible_cuda() == 1 + index % 4
 
 
 @pytest.mark.parametrize("selected", [None, "", "-1", "default", "0.0", "²"])

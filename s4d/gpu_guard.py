@@ -16,9 +16,20 @@ import yaml
 
 APPROVED_HOST_GPUS = MappingProxyType(
     {
+        # MIG 1g.24gb instances of local GPUs 4/5/6 (user, 2026-10-16), in nvidia-smi -L order.
         "local": (
-            "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
-            "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+            "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+            "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+            "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+            "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+            "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+            "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+            "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+            "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+            "MIG-f30be823-f40d-5292-9474-427746dd3703",
+            "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+            "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+            "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
         ),
         "remote": (
             "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
@@ -26,6 +37,19 @@ APPROVED_HOST_GPUS = MappingProxyType(
             "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
             "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
         ),
+    }
+)
+LOCAL_MIG_PARENTS = (
+    "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+    "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+    "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b",
+)
+# MIG UUID -> (parent GPU UUID, GPU instance ID, MIG device index on the parent). CUDA reports the parent GPU's
+# UUID for a MIG device, and EGL lists one device per MIG instance in this order, all mapping to CUDA ordinal 0.
+MIG_DEVICES = MappingProxyType(
+    {
+        uuid: (LOCAL_MIG_PARENTS[index // 4], 3 + index % 4, index % 4)
+        for index, uuid in enumerate(APPROVED_HOST_GPUS["local"])
     }
 )
 APPROVED_RUNTIME_ROOTS = MappingProxyType({"local": None, "remote": Path("/home/compu/kaist/sunho")})
@@ -39,6 +63,11 @@ class GPUIsolationError(RuntimeError):
 def _normalize_uuid(value: str) -> str:
     value = str(value).strip().lower()
     return value[4:] if value.startswith("gpu-") else value
+
+
+def cuda_uuid(entry: str) -> str:
+    """The UUID CUDA reports for a CUDA_VISIBLE_DEVICES entry: a MIG device reports its parent GPU's UUID."""
+    return MIG_DEVICES[entry][0] if entry in MIG_DEVICES else entry
 
 
 def _die(message: str) -> None:
@@ -106,10 +135,12 @@ def visible_device_uuids() -> list[str]:
         _die(f"CUDA_VISIBLE_DEVICES={raw!r} contains an empty entry.")
     allowed = {_normalize_uuid(u) for u in ALLOWED_GPU_UUIDS}
     for item in entries:
-        if not item.startswith("GPU-") or _normalize_uuid(item) not in allowed:
+        if not item.startswith(("GPU-", "MIG-")) or _normalize_uuid(item) not in allowed:
             _die(f"CUDA_VISIBLE_DEVICES entry {item!r} is not an allowed GPU UUID. Allowed: {list(ALLOWED_GPU_UUIDS)}.")
     if len({_normalize_uuid(item) for item in entries}) != len(entries):
         _die(f"CUDA_VISIBLE_DEVICES={raw!r} lists a device twice.")
+    if len(entries) > 1 and any(item in MIG_DEVICES for item in entries):
+        _die(f"CUDA_VISIBLE_DEVICES={raw!r}: CUDA exposes only one MIG device per process.")
     return entries
 
 
@@ -126,16 +157,17 @@ def enforce_allowed_gpus(verbose: bool = True) -> list[dict]:
         _die(f"torch sees {count} CUDA devices but CUDA_VISIBLE_DEVICES lists {len(entries)}.")
     if count == 0:
         _die("torch.cuda.device_count() is 0; CUDA is not available in this process.")
-    allowed = {_normalize_uuid(u) for u in ALLOWED_GPU_UUIDS}
+    allowed = {_normalize_uuid(cuda_uuid(u)) for u in ALLOWED_GPU_UUIDS}
     mapping = []
     for index in range(count):
         props = torch.cuda.get_device_properties(index)
         uuid = _normalize_uuid(str(props.uuid))
         if uuid not in allowed:
             _die(f"Visible CUDA device {index} has UUID {uuid} which is not allowed.")
-        if uuid != _normalize_uuid(entries[index]):
+        if uuid != _normalize_uuid(cuda_uuid(entries[index])):
             _die(f"Visible CUDA device {index} is {uuid} but CUDA_VISIBLE_DEVICES[{index}] is {entries[index]}.")
-        mapping.append({"index": index, "uuid": f"GPU-{uuid}", "name": props.name})
+        mapping.append({"index": index, "uuid": entries[index] if entries[index] in MIG_DEVICES else f"GPU-{uuid}",
+                        "name": props.name})
     if verbose:
         for item in mapping:
             print(f"[gpu_guard] cuda:{item['index']} -> {item['uuid']} ({item['name']})")

@@ -157,6 +157,66 @@ def query_output(command: list[str], state_dir: Path, timeout: float = 60) -> st
             os.close(descriptor)
 
 
+def _mib(value: str) -> float:
+    number = value.split()[0] if value.split() else ""
+    return float(number) if number.replace(".", "", 1).isdigit() else 0.0
+
+
+def parse_mig_query(text: str) -> dict[tuple[str, int], dict]:
+    """Parse ``nvidia-smi -q -i <parent GPUs>``: (parent GPU UUID, GPU instance ID) -> FB total/used MiB and its
+    (pid, MiB) processes. Process PIDs must be numeric (``int`` raises otherwise): unavailable ownership fails closed."""
+    found: dict[tuple[str, int], dict] = {}
+    gpu: dict[int, dict] = {}
+    section = sub = gpu_instance = pid = None
+
+    def publish(uuid):
+        if gpu and not (isinstance(uuid, str) and uuid.startswith("GPU-")):
+            raise ValueError("MIG query section without its GPU UUID")
+        found.update({(uuid, instance): item for instance, item in gpu.items()})
+
+    uuid = None
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        key, separator, value = (part.strip() for part in line.partition(":"))
+        if indent == 0:
+            if key.startswith("GPU "):
+                publish(uuid)
+                gpu, uuid = {}, None
+            section = None
+        elif indent <= 4:
+            section, sub, gpu_instance, pid = key, None, None, None
+            if key == "GPU UUID":
+                uuid = value
+        elif section == "MIG Device":
+            if key == "GPU Instance ID":
+                gpu_instance = int(value)
+                gpu.setdefault(gpu_instance, {"processes": []})
+            elif indent == 8 and not separator:
+                sub = key
+            elif sub == "FB Memory Usage" and key in ("Total", "Used") and gpu_instance is not None:
+                gpu[gpu_instance][f"{key.lower()}_mib"] = float(value.split()[0])
+        elif section == "Processes":
+            if key == "GPU instance ID":
+                gpu_instance = int(value)
+            elif key == "Process ID":
+                pid = int(value)
+            elif key == "Used GPU Memory" and pid is not None:
+                gpu.setdefault(gpu_instance, {"processes": []})["processes"].append((pid, _mib(value)))
+                pid = None
+    publish(uuid)
+    return found
+
+
+def mig_query(mig_devices, state_dir: Path, timeout: float = 60) -> dict[str, dict]:
+    """Per allowed MIG UUID: {"processes": [(pid, MiB)], "total_mib", "used_mib"}, from one bounded query."""
+    parents = ",".join(dict.fromkeys(item[0] for item in mig_devices.values()))
+    found = parse_mig_query(query_output(["nvidia-smi", "-q", "-i", parents], state_dir, timeout=timeout))
+    return {device: {"processes": [], **found.get((parent, instance), {})}
+            for device, (parent, instance, _) in mig_devices.items()}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--child", action="store_true", required=True)

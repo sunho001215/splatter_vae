@@ -23,6 +23,19 @@ def load(name: str):
     return module
 
 
+def mig_text(watch, used: dict) -> str:
+    """nvidia-smi -q layout for the authorized MIG instances, with the given used MiB of 24192."""
+    lines = []
+    for parent in dict.fromkeys(owner for owner, _, _ in watch.MIG_DEVICES.values()):
+        lines.append("GPU 00000000:00:00.0")
+        for uuid, (owner, instance, _) in watch.MIG_DEVICES.items():
+            if owner == parent:
+                lines += ["    MIG Device", f"        GPU Instance ID : {instance}", "        FB Memory Usage",
+                          "            Total : 24192 MiB", f"            Used : {used.get(uuid, 64)} MiB"]
+        lines.append(f"    GPU UUID : {parent}")
+    return "\n".join(lines) + "\n"
+
+
 def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
     watch = load("watch_events")
     for name, value in {
@@ -35,7 +48,7 @@ def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
     }.items():
         monkeypatch.setattr(watch, name, value)
     gpu = watch.ALLOWED[0]
-    smi = {"out": f"{watch.ALLOWED[0]}, 1000, 97887\n{watch.ALLOWED[1]}, 2000, 97887\nGPU-other, 97000, 97887\n"}
+    smi = {"out": mig_text(watch, {watch.ALLOWED[0]: 1000, watch.ALLOWED[1]: 2000})}
 
     def fake_query(command, state_dir, timeout):
         assert command[0] == "nvidia-smi" and state_dir == tmp_path / "experiments"
@@ -71,7 +84,7 @@ def test_watcher_reports_each_event_once_across_restarts(tmp_path, monkeypatch):
     assert "line=Traceback" in events[1]
     watch.save_state(state)
     assert watch.poll(watch.load_state()) == []
-    smi["out"] = f"{watch.ALLOWED[1]}, 91000, 97887\n"  # 93% of memory on an authorized GPU
+    smi["out"] = mig_text(watch, {watch.ALLOWED[1]: 22500})  # 93% of memory on an authorized MIG instance
     state = watch.load_state()
     assert [e.split()[0] for e in watch.poll(state)] == ["GPU_MEMORY_HIGH"] and watch.poll(state) == []
 
@@ -159,7 +172,7 @@ def test_hung_query_survives_watcher_rearm_without_blocking_other_events(tmp_pat
         assert len(created) == 1 and deferred_kills == [stuck.pid] and disk["polls"] == 6
         actual_kills[0]()
         stuck.wait(timeout=5)
-        command = [sys.executable, "-I", "-c", f"print({f'{gpu}, 95000, 100000'!r})"]
+        command = [sys.executable, "-I", "-c", f"print({mig_text(watch, {gpu: 23000})!r})"]
         assert [event.split()[0] for event in watch.poll(state)] == ["GPU_MEMORY_HIGH"]
         assert len(created) == 2 and state["gpu_query_failures"] == 0 and disk["polls"] == 7
     finally:
@@ -227,6 +240,9 @@ def test_watcher_internal_error_prints_marker(tmp_path):
     script = tmp_path / "scripts" / "watch_events.py"
     script.write_text((REPO / "scripts/watch_events.py").read_text())
     (tmp_path / "scripts/_nvidia_query.py").write_text((REPO / "scripts/_nvidia_query.py").read_text())
+    for name in ("s4d/__init__.py", "s4d/gpu_guard.py", "configs/hosts/local.yaml"):  # the allowlist source
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text((REPO / name).read_text())
     (tmp_path / "experiments").mkdir()
     (tmp_path / "experiments" / "watch_state.json").write_text("{")
     env = {**os.environ, "PATH": str(tmp_path)}

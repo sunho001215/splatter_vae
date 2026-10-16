@@ -154,8 +154,23 @@ def test_cuda_environment_rejects_duplicates_and_accepts_selected_set(monkeypatc
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", f"{uuid},{uuid}")
     with pytest.raises(guard.GPUIsolationError, match="twice"):
         guard.visible_device_uuids()
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ",".join(guard.ALLOWED_GPU_UUIDS))
-    assert guard.visible_device_uuids() == list(guard.ALLOWED_GPU_UUIDS)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", uuid)
+    assert guard.visible_device_uuids() == [uuid]
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ",".join(guard.ALLOWED_GPU_UUIDS[:2]))
+    with pytest.raises(guard.GPUIsolationError, match="one MIG device"):
+        guard.visible_device_uuids()
+
+
+def test_local_mig_instances_map_to_their_parent_gpus(monkeypatch):
+    assert tuple(guard.MIG_DEVICES) == guard.APPROVED_HOST_GPUS["local"]
+    assert len(guard.MIG_DEVICES) == 12 and len(set(guard.MIG_DEVICES)) == 12
+    for index, (uuid, (parent, instance, slot)) in enumerate(guard.MIG_DEVICES.items()):
+        assert uuid.startswith("MIG-") and parent == guard.LOCAL_MIG_PARENTS[index // 4]
+        assert (instance, slot) == (3 + index % 4, index % 4) and guard.cuda_uuid(uuid) == parent
+    for parent in guard.LOCAL_MIG_PARENTS:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", parent)
+        with pytest.raises(guard.GPUIsolationError, match="not an allowed"):
+            guard.visible_device_uuids()
 
 
 def test_repository_cache_and_evidence_paths_are_constrained(tmp_path, monkeypatch):

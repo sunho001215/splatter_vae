@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS
+from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from s4d.remote_access import RemoteClient, RemoteUnreachable
 
 GIB = 2**30
@@ -20,6 +20,8 @@ COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 ROOT = "/home/compu/kaist/sunho"
+# A local device ID (MIG instance or its parent GPU) that the remote isolation check must reject.
+LOCAL_DEVICES = set(APPROVED_HOST_GPUS["local"]) | set(LOCAL_MIG_PARENTS)
 
 
 class RemoteJobError(RuntimeError):
@@ -283,7 +285,7 @@ def acceptance_manifest(host: dict, repo: Path) -> dict:
                 or matches[0].get("gpus_seen") != [uuid]
                 or [item.get("uuid") for item in child.get("mapping", [])] != [uuid]
                 or child.get("native_cuda_passed") is not True or child.get("native_egl_passed") is not True
-                or not {"0", None, APPROVED_HOST_GPUS["local"][0]} <= rejected):
+                or not {"0", None} <= rejected or not LOCAL_DEVICES & rejected):
             raise RemoteJobError("Remote GPU isolation is not accepted")
     data = _artifact(manifest.get("data"), repo, commit, image)
     if (not SHA256.fullmatch(str(data.get("identity_sha256", ""))) or not data.get("files")

@@ -325,3 +325,65 @@ def test_unreadable_or_malformed_identity_information_fails_closed(tmp_path, mon
     with pytest.raises(query.QueryUnavailable):
         query.query_output(HELD_COMMAND, tmp_path)
     assert state_path.exists()
+
+
+MIG_QUERY = """
+==============NVSMI LOG==============
+
+Attached GPUs                                          : 8
+GPU 00000000:C5:00.0
+    MIG Mode
+        Current                                        : Enabled
+    MIG Device
+        Index                                          : 0
+        GPU Instance ID                                : 3
+        Compute Instance ID                            : 0
+        FB Memory Usage
+            Total                                      : 24192 MiB
+            Reserved                                   : 0 MiB
+            Used                                       : 314 MiB
+            Free                                       : 23877 MiB
+        BAR1 Memory
+            Total                                      : 8327 MiB
+            Used                                       : 0 MiB
+    MIG Device
+        Index                                          : 1
+        GPU Instance ID                                : 4
+        Compute Instance ID                            : 0
+        FB Memory Usage
+            Total                                      : 24192 MiB
+            Used                                       : 64 MiB
+    FB Memory Usage
+        Total                                          : Insufficient Permissions
+        Used                                           : Insufficient Permissions
+    Processes
+        GPU instance ID                   : 3
+        Compute instance ID               : 0
+        Process ID                        : 35337
+            Type                          : C
+            Name                          : .venv/bin/python
+            Used GPU Memory               : 242 MiB
+    GPU UUID                                           : GPU-p
+    Capabilities
+        EGM                                            : disabled
+"""
+
+
+def test_mig_query_attributes_processes_and_memory_per_gpu_instance(tmp_path, monkeypatch):
+    query = load_query()
+    parsed = query.parse_mig_query(MIG_QUERY + MIG_QUERY.replace("GPU-p", "GPU-q").replace(": 35337", ": 7"))
+    assert parsed == {("GPU-p", 3): {"processes": [(35337, 242.0)], "total_mib": 24192.0, "used_mib": 314.0},
+                      ("GPU-p", 4): {"processes": [], "total_mib": 24192.0, "used_mib": 64.0},
+                      ("GPU-q", 3): {"processes": [(7, 242.0)], "total_mib": 24192.0, "used_mib": 314.0},
+                      ("GPU-q", 4): {"processes": [], "total_mib": 24192.0, "used_mib": 64.0}}
+    with pytest.raises(ValueError):
+        query.parse_mig_query(MIG_QUERY.replace(": 35337", ": Insufficient Permissions"))
+    with pytest.raises(ValueError, match="UUID"):
+        query.parse_mig_query(MIG_QUERY.replace("GPU UUID", "Serial"))
+    devices = {"MIG-a": ("GPU-p", 3, 0), "MIG-b": ("GPU-p", 4, 1), "MIG-c": ("GPU-p", 5, 2), "MIG-d": ("GPU-q", 3, 0)}
+    calls = []
+    monkeypatch.setattr(query, "query_output", lambda command, state_dir, timeout: calls.append(command) or MIG_QUERY)
+    found = query.mig_query(devices, tmp_path)
+    assert calls == [["nvidia-smi", "-q", "-i", "GPU-p,GPU-q"]]
+    assert found["MIG-a"]["processes"] == [(35337, 242.0)] and found["MIG-b"]["used_mib"] == 64.0
+    assert found["MIG-c"] == found["MIG-d"] == {"processes": []}

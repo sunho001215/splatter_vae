@@ -457,12 +457,12 @@ def test_local_nvml_failure_does_not_block_remote(tmp_path, monkeypatch, failure
     if remote_status == "running":
         backend.value.usage[REMOTE] = [(123, 5)]
 
-    def query(command, state_dir, timeout):
-        assert command == ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory", "--format=csv,noheader,nounits"]
+    def query(devices, state_dir, timeout):
+        assert devices is jobs.MIG_DEVICES
         assert state_dir == REPO / "experiments" and timeout == 60
         raise failure
 
-    monkeypatch.setattr(jobs, "query_output", query)
+    monkeypatch.setattr(jobs, "mig_query", query)
     monkeypatch.setattr(jobs, "launch", lambda *args: pytest.fail("failed local GPU query admitted a local job"))
     messages = jobs.tick(queued, tmp_path / "registry.jsonl", tmp_path / "runs", available_gb=200,
                          disk_bytes=(2000 * GIB, 1000 * GIB), remote_backend=backend)

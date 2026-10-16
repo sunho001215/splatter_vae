@@ -17,7 +17,7 @@ REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("jobs", REPO / "scripts/jobs.py")
 jobs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(jobs)
-GPU4, GPU5 = jobs.APPROVED_HOST_GPUS["local"]
+GPU4, GPU5 = jobs.APPROVED_HOST_GPUS["local"][:2]
 
 
 @pytest.fixture(autouse=True)
@@ -301,10 +301,10 @@ def test_gpu_query_failure_reconciles_exits_but_launches_nothing(tmp_path, monke
     jobs.record({"event": "launched", "id": "done", "pid": 2**30, "gpu": GPU4, "attempt": 1}, registry)
     (runs / "done").mkdir(parents=True)
     (runs / "done/exit_code").write_text("0")
-    probes = iter([failure, ""])
+    probes = iter([failure, {uuid: {"processes": []} for uuid in jobs.MIG_DEVICES}])
 
-    def query(command, state_dir, timeout):
-        assert command == ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory", "--format=csv,noheader,nounits"]
+    def query(devices, state_dir, timeout):
+        assert devices is jobs.MIG_DEVICES
         assert state_dir == REPO / "experiments" and timeout == 60
         result = next(probes)
         if isinstance(result, Exception):
@@ -317,7 +317,7 @@ def test_gpu_query_failure_reconciles_exits_but_launches_nothing(tmp_path, monke
         launched.append(job["id"])
         return 2**30
 
-    monkeypatch.setattr(jobs, "query_output", query)
+    monkeypatch.setattr(jobs, "mig_query", query)
     monkeypatch.setattr(jobs, "launch", launch)
     messages = jobs.tick(queue, registry, runs, available_gb=100)
     assert any("done exited with 0" in message for message in messages)

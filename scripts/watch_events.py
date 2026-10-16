@@ -1,7 +1,7 @@
 """Experiment event watcher: one flushed line per meaningful event.
 
 Sources: ``experiments/registry.jsonl`` (scheduler events), the environment build log, the console logs of
-running jobs, nvidia-smi memory of the two authorized GPUs, and free disk on /home/ws. Event lines:
+running jobs, nvidia-smi memory of the authorized MIG instances, and free disk on /home/ws. Event lines:
 
     EVENT JOB_COMPLETED id=<id> gpu=<uuid> log=<path>
     EVENT JOB_CRASHED id=<id> gpu=<uuid> code=<exit> log=<path>
@@ -34,9 +34,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from scripts._nvidia_query import query_output  # noqa: E402
+from s4d.gpu_guard import APPROVED_HOST_GPUS, MIG_DEVICES  # noqa: E402
+from scripts._nvidia_query import parse_mig_query, query_output  # noqa: E402
 
-ALLOWED = ("GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce", "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639")
+ALLOWED = APPROVED_HOST_GPUS["local"]
 REGISTRY = REPO / "experiments/registry.jsonl"
 STATE = REPO / "experiments/watch_state.json"
 ALIVE = REPO / "experiments/watcher.alive"
@@ -172,17 +173,20 @@ def build_events(state: dict) -> list[str]:
 
 
 def gpu_query_output() -> str:
-    return query_output(
-        ["nvidia-smi", "--query-gpu=uuid,memory.used,memory.total", "--format=csv,noheader,nounits"],
-        REPO / "experiments", timeout=GPU_QUERY_TIMEOUT,
-    )
+    """One ``uuid, used MiB, total MiB`` line per authorized MIG instance."""
+    parents = ",".join(dict.fromkeys(item[0] for item in MIG_DEVICES.values()))
+    found = parse_mig_query(query_output(["nvidia-smi", "-q", "-i", parents], REPO / "experiments",
+                                         timeout=GPU_QUERY_TIMEOUT))
+    return "\n".join(f"{uuid}, {item['used_mib']}, {item['total_mib']}" for uuid, item in
+                     ((uuid, found.get(device[:2], {})) for uuid, device in MIG_DEVICES.items())
+                     if "used_mib" in item and "total_mib" in item)
 
 
 def gpu_events(state: dict) -> list[str]:
     """A slow nvidia-smi under heavy load skips this check; only 5 consecutive failures become an event."""
     try:
         out = gpu_query_output()
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError) as exc:
         state["gpu_query_failures"] = state.get("gpu_query_failures", 0) + 1
         if state["gpu_query_failures"] == 5:
             return [f"GPU_QUERY_FAILING consecutive=5 reason={type(exc).__name__}"]

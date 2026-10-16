@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import ALLOWED_GPU_UUIDS, APPROVED_HOST_GPUS, HOST_NAME, validate_runtime_path  # noqa: E402
+from s4d.gpu_guard import ALLOWED_GPU_UUIDS, APPROVED_HOST_GPUS, HOST_NAME, MIG_DEVICES, validate_runtime_path  # noqa: E402
 
 CHILD = r"""
 import os, sys, json
@@ -91,9 +91,12 @@ def pid_gpus(pid: int, index_to_uuid: dict[str, str]) -> tuple[set[str], str, st
             in_processes = True
             continue
         if in_processes:
-            match = re.match(r"\|\s+(\d+)\s+\S+\s+\S+\s+(\d+)\s+([CG+]+)\s", line)
-            if match and int(match.group(2)) == pid:
-                found.add(index_to_uuid[match.group(1)])
+            match = re.match(r"\|\s+(\d+)\s+(\S+)\s+\S+\s+(\d+)\s+([CG+]+)\s", line)
+            if match and int(match.group(3)) == pid:
+                parent = index_to_uuid[match.group(1)]
+                mig = [uuid for uuid, (owner, instance, _) in MIG_DEVICES.items()
+                       if owner == parent and str(instance) == match.group(2)]
+                found.add(mig[0] if mig else parent)
     return found, table, apps
 
 

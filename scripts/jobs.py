@@ -20,10 +20,10 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH  # noqa: E402
+from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
 from s4d.remote_access import sha256 as file_sha256  # noqa: E402
 from s4d.remote_jobs import RemoteBackend, RemoteJobError, RemoteUnreachable, validate_container  # noqa: E402
-from scripts._nvidia_query import query_output  # noqa: E402
+from scripts._nvidia_query import mig_query  # noqa: E402
 
 QUEUE = REPO / "experiments/queue.yaml"
 REGISTRY = REPO / "experiments/registry.jsonl"
@@ -216,18 +216,10 @@ def session_id(pid: int) -> int | None:
 
 
 def gpu_usage() -> dict[str, list[tuple[int, float]]]:
-    out = query_output(
-        ["nvidia-smi", "--query-compute-apps=gpu_uuid,pid,used_memory", "--format=csv,noheader,nounits"],
-        state_dir=REPO / "experiments", timeout=60,
-    )
-    usage: dict[str, list[tuple[int, float]]] = {uuid: [] for uuid in APPROVED_HOST_GPUS["local"]}
-    for line in out.splitlines():
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) == 3 and parts[0] in usage:
-            if not parts[1].isdigit():
-                raise ValueError(f"GPU process ownership unavailable for {parts[0]}")
-            usage[parts[0]].append((int(parts[1]), float(parts[2]) if parts[2].replace(".", "").isdigit() else 0.0))
-    return usage
+    # Local devices are MIG instances: the compute-apps CSV query cannot attribute their processes, the per-GPU
+    # detailed query can (GPU instance ID + PID).
+    found = mig_query(MIG_DEVICES, state_dir=REPO / "experiments", timeout=60)
+    return {uuid: found[uuid]["processes"] for uuid in APPROVED_HOST_GPUS["local"]}
 
 
 def check_guarded(script: str) -> Path:

@@ -9,7 +9,7 @@ import shlex
 import sys
 from pathlib import Path, PurePosixPath
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS
+from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from s4d.remote_access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
 
 CONTAINER_REPO = "/workspace/splatter4d"
@@ -20,6 +20,8 @@ MAX_CPU_THREADS = 64
 ORIGIN_URL = "https://github.com/sunho001215/splatter_vae.git"
 HEX40 = re.compile(r"[0-9a-f]{40}")
 HEX64 = re.compile(r"[0-9a-f]{64}")
+# A local device ID (MIG instance or its parent GPU) that the remote isolation check must reject.
+LOCAL_DEVICES = set(APPROVED_HOST_GPUS["local"]) | set(LOCAL_MIG_PARENTS)
 
 
 def _text(value, name: str) -> str:
@@ -204,7 +206,7 @@ def evidence_artifacts(spec: dict, repository: Path) -> tuple[list[tuple[Path, s
                 or [item.get("uuid") for item in child.get("mapping", [])] != [uuid]):
             raise ValueError("Native CUDA/EGL isolation has not passed")
         rejections = [item.get("cuda_visible_devices") for item in results if item.get("rejected") is True]
-        if "0" not in rejections or None not in rejections or not set(APPROVED_HOST_GPUS["local"]).intersection(rejections):
+        if "0" not in rejections or None not in rejections or not LOCAL_DEVICES.intersection(rejections):
             raise ValueError("GPU isolation rejection checks are incomplete")
     data = payloads["data.json"]
     identity, files = data.get("identity_sha256"), data.get("files")
