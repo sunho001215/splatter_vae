@@ -3553,3 +3553,10 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   stage2 reports from an accidental re-run (identical comparisons) were removed.
 - Crop is within margin on all 6 conditions. Crop+no-synth is worse on training and trajectories of both tasks
   (hammer 0.720 vs 0.935, pick-place 0.108 vs 0.463), close to no-synth. RESULTS updated; no method change.
+- 19:41 `bxs-dynamo-hammer-rand-s1001-rem-b-eval`: the 17:26 launch never created a container (remote link gap
+  17:21-17:28). Reconciled with `reconcile_unlaunched_remote.py` (no container, no output dir; evidence
+  `runs/setup/reconcile-bxs-dynamo-hammer-rand-s1001-rem-b-eval-20261016-194153.json`); the dispatcher relaunches it.
+- 21:45 Remote sync fix 75d5f73: baseline pretrains require `encoder_init.pt`, but the non-checkpoint result manifest
+  matched only `./encoder.pt` and `exports/*` among .pt files, so `s4-mvp3d-hammer-rem-b` (completed 21:30, 270690
+  steps) stayed sync_pending and its RL arms blocked. Added `./encoder_init.pt` to the manifest (full native suite
+  919/0/0/0), merged, daemon restarted. Remote release e4206f1 unchanged (local-side sync code only).
