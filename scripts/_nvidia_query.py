@@ -189,6 +189,8 @@ def parse_mig_query(text: str) -> dict[tuple[str, int], dict]:
             section, sub, gpu_instance, pid = key, None, None, None
             if key == "GPU UUID":
                 uuid = value
+            elif key == "Processes" and value not in ("", "None"):
+                raise ValueError(f"GPU process listing unavailable: {value}")
         elif section == "MIG Device":
             if key == "GPU Instance ID":
                 gpu_instance = int(value)

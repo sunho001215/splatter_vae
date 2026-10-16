@@ -378,6 +378,11 @@ def test_mig_query_attributes_processes_and_memory_per_gpu_instance(tmp_path, mo
                       ("GPU-q", 4): {"processes": [], "total_mib": 24192.0, "used_mib": 64.0}}
     with pytest.raises(ValueError):
         query.parse_mig_query(MIG_QUERY.replace(": 35337", ": Insufficient Permissions"))
+    with pytest.raises(ValueError, match="listing unavailable"):
+        query.parse_mig_query(MIG_QUERY.split("    Processes")[0] + "    Processes : Insufficient Permissions\n")
+    assert query.parse_mig_query(MIG_QUERY.split("    Processes")[0] + "    Processes : None\n    GPU UUID : GPU-p\n") \
+        == {("GPU-p", 3): {"processes": [], "total_mib": 24192.0, "used_mib": 314.0},
+            ("GPU-p", 4): {"processes": [], "total_mib": 24192.0, "used_mib": 64.0}}
     with pytest.raises(ValueError, match="UUID"):
         query.parse_mig_query(MIG_QUERY.replace("GPU UUID", "Serial"))
     devices = {"MIG-a": ("GPU-p", 3, 0), "MIG-b": ("GPU-p", 4, 1), "MIG-c": ("GPU-p", 5, 2), "MIG-d": ("GPU-q", 3, 0)}
