@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-misscaled-none-hammer-s1001",
+  "verified_local": "2026-10-16T21:32:00.864811+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.9866666666666667,
+  "eval_jsonl_sha256": "a01f86a0810fa07219f9bc4000b2036438a0e2c10d86cdd10423d015f20a3141",
+  "replay": "retained",
+  "free_home_ws": "4.0T",
+  "progress_recorded": true
+}

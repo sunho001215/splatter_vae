@@ -4,6 +4,36 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### No-consistency and misscaled-none RL arms: within margin on every condition (2026-10-17 01:20; attribution only)
+
+Registered 2026-10-16 17:42, before any result of these arms (`runs/setup/stage2-extra-rl-registration-20261016.json`;
+existing Stage 2 RL rule: seed-mean last-5 success, margin max(0.10, 2 x SE), per camera condition) against the
+completed full-method references. `s2rl-{nocons,misscaled-none}-{hammer,pick-place}-s1000..s1002`, 12 pairs, all with
+driver closeouts. Reports: `runs/setup/stage2-report-20261017-012034.json`, RL standard
+`runs/setup/rl-report-20261017-012038.json`.
+
+| task / condition | full | nocons | delta (margin) | misscaled-none | delta (margin) |
+|---|---:|---:|---|---:|---|
+| hammer training | 0.935 | 0.960 | +0.025 (0.100) within | 0.956 | +0.021 (0.100) within |
+| hammer held-out | 0.149 | 0.056 | -0.093 (0.100) within | 0.083 | -0.067 (0.100) within |
+| hammer trajectories | 0.882 | 0.968 | +0.087 (0.100) within | 0.917 | +0.035 (0.100) within |
+| pick-place training | 0.463 | 0.376 | -0.087 (0.331) within | 0.466 | +0.003 (0.310) within |
+| pick-place held-out | 0.011 | 0.007 | -0.003 (0.100) within | 0.004 | -0.007 (0.100) within |
+| pick-place trajectories | 0.423 | 0.375 | -0.048 (0.288) within | 0.443 | +0.020 (0.156) within |
+
+RL standard, training cameras (seed means, last-5 / final / AUC): nocons hammer success 0.96/0.96/0.71, return
+1793/1820/1337; pick-place 0.38/0.40/0.22, return 637/690/339. Misscaled-none hammer 0.96/0.96/0.69, return
+1855/1858/1370; pick-place 0.47/0.47/0.34, return 672/656/409. Per-seed values and 95% CIs are in the RL report.
+
+Fairness: the RL configs differ only in the encoder export (no unexpected differences); 240 episodes per point. Host
+recorded: local MIG at ae44474/c60c0d6. The RL code there differs from the references' 6a48200 only by multi-view
+baseline support, which leaves single-view (views=1) behaviour unchanged.
+
+**Interpretation (attribution only).** Neither variant is beyond margin on any condition of either task. That is not
+evidence of equivalence. The pick-place margins are wide (0.31-0.33) because seeds vary a lot, and nocons hammer
+held-out (-0.093) is close to its margin. Misscaled-none's representation advantage (better on 10 metrics per task,
+single seed) does not show up as an RL difference beyond these margins. No method, seed or hyperparameter change follows.
+
 ### Crop and crop+no-synth RL arms: crop within margin; crop+no-synth worse (2026-10-16 19:00; attribution only)
 
 Pre-registered Stage 2 RL rule (seed-mean last-5 success, margin max(0.10, 2 x SE), per camera condition);

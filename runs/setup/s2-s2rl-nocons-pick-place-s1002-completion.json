@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-nocons-pick-place-s1002",
+  "verified_local": "2026-10-16T21:48:27.157443+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.4833333333333334,
+  "eval_jsonl_sha256": "d1d5aaf39cb445cb4c384ed2439b1e97b2b27e0652b6b3e31fdee6f2ce7bc7c7",
+  "replay": "retained",
+  "free_home_ws": "4.0T",
+  "progress_recorded": true
+}

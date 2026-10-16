@@ -3575,3 +3575,5 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   shows shrinking embedding spread (obs_enc_mean_std 0.158 -> 0.010, norm 19 -> 4.8) and rising held-out dynamics
   loss after ~34k steps. Per the rule: investigate before the eight-task runs, no recipe retuning. Read-only
   investigation started (export/load plumbing, official-recipe fidelity, feature health).
+- 01:20 nocons / misscaled-none RL arms closed out (12 pairs, local MIG). All conditions within margin on both
+  tasks (reports `stage2-report-20261017-012034.json`, `rl-report-20261017-012038.json`). RESULTS updated.

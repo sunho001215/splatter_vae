@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-misscaled-none-pick-place-s1001",
+  "verified_local": "2026-10-16T21:43:24.260816+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.5150000000000001,
+  "eval_jsonl_sha256": "4410ca99b56f5ac24ee878096bf69fd6a23d320006a002fef159a901776a56b2",
+  "replay": "retained",
+  "free_home_ws": "4.0T",
+  "progress_recorded": true
+}

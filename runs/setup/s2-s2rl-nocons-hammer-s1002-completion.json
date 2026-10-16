@@ -1,0 +1,11 @@
+{
+  "job_id": "s2rl-nocons-hammer-s1002",
+  "verified_local": "2026-10-16T21:26:57.484711+09:00",
+  "final_steps": 1000000,
+  "eval_points": 100,
+  "last5_train_success": 0.9833333333333334,
+  "eval_jsonl_sha256": "584ed8a474d394c9e142cab40cbe0c43e2a4bc4a93237a20eee8eb5a2df6ce53",
+  "replay": "retained",
+  "free_home_ws": "4.0T",
+  "progress_recorded": true
+}
