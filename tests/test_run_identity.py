@@ -141,6 +141,21 @@ def test_remote_release_rejects_untracked_and_ignored_sources(release, path):
         verify_remote_identity(repo, env)
 
 
+def test_tracked_records_hidden_by_the_runs_mount_do_not_fail_the_release(release):
+    repo, env, _, _ = release
+    record = repo / "runs/setup/record.json"  # committed campaign evidence, hidden by the bind mount in the container
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text("{}\n")
+    git(repo, "add", "runs/setup/record.json")
+    git(repo, "commit", "-qm", "record")
+    env = {**env, "S4D_EXPECTED_COMMIT": git(repo, "rev-parse", "HEAD")}
+    record.unlink()
+    verify_clean_release(repo, env["S4D_EXPECTED_COMMIT"])
+    (repo / "scripts" / "train.py").write_text("changed = True\n")
+    with pytest.raises(RunIdentityError, match="tracked changes"):
+        verify_clean_release(repo, env["S4D_EXPECTED_COMMIT"])
+
+
 def test_remote_release_allows_only_generated_runtime_roots(release):
     repo, env, _, _ = release
     for folder in ("runs/remote-test", "outputs/train", ".cache"):

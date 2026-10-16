@@ -70,9 +70,12 @@ def verify_clean_release(repo: Path, commit: str) -> None:
         raise RunIdentityError("Remote release must be the checkout root")
     if _git(repo, "rev-parse", "HEAD") != commit:
         raise RunIdentityError("Remote HEAD differs from S4D_EXPECTED_COMMIT")
-    if _git(repo, "diff", "--name-only", "HEAD", "--"):
+    # The generated roots are the container's bind mounts; runs/ also holds tracked campaign records that the mount
+    # hides. The launcher checks the whole release clean on the host before docker run.
+    mounted = [f":(exclude){root}" for root in sorted(GENERATED_ROOTS)]
+    if _git(repo, "diff", "--name-only", "HEAD", "--", ".", *mounted):
         raise RunIdentityError("Remote release has tracked changes")
-    if _git(repo, "diff", "--name-only", "--", "."):
+    if _git(repo, "diff", "--name-only", "--", ".", *mounted):
         raise RunIdentityError("Remote release has unstaged changes")
     untracked = _git(repo, "ls-files", "--others", "--exclude-standard", "-z")
     ignored = _git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
