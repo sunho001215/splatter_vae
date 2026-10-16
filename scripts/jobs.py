@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO))
 from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
 from s4d.remote_access import sha256 as file_sha256  # noqa: E402
 from s4d.remote_jobs import RemoteBackend, RemoteJobError, RemoteUnreachable, validate_container  # noqa: E402
+from s4d.remote_verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 from scripts._nvidia_query import mig_query  # noqa: E402
 
@@ -92,6 +93,7 @@ def load_queue(path: Path = QUEUE) -> dict:
             value = float(job.get(key, 0))
             if not math.isfinite(value) or value < 0:
                 raise ValueError(f"job {job_id}: invalid {key}")
+        validate_verification(job, queued=True)
     return queue
 
 
@@ -263,6 +265,12 @@ def job_fingerprint(job: dict) -> str:
     payload = {"script": job["script"], "args": list(map(str, job.get("args", []))),
                "required_results": job.get("required_results", []),
                "expected_config_sha256": job.get("expected_config_sha256")}
+    purpose = validate_verification(job, queued=True)
+    if purpose is not None:
+        payload.update(verification_purpose=purpose, campaign_eligible=False,
+                       verification_timeout_seconds=verification_resources(job, purpose),
+                       verification_resources={key: job.get(key, 8 if key == "cpu_threads" else None)
+                                               for key in ("ram_gb", "mem_gb", "disk_gb", "cpu_threads")})
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -337,8 +345,15 @@ def _unknown(job_id: str, registry: Path, reason: str, messages: list[str]) -> N
 
 
 def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> None:
+    purpose = validate_verification({**state, "id": run_id, "attempt": state["attempts"]})
+    campaign_eligible = purpose is None
+    if (("verification_purpose" in result and (purpose is None or result["verification_purpose"] != purpose))
+            or result.get("campaign_eligible", campaign_eligible) is not campaign_eligible):
+        raise RemoteJobError("Remote result synchronization job kind differs")
     expected = {"host": "remote", "job_id": run_id, "attempt": state["attempts"],
                 "git_commit": state["commit"], "image_digest": state["image_digest"], "gpu_uuids": [state["gpu"]]}
+    if purpose is not None:
+        expected.update(verification_purpose=purpose, campaign_eligible=False)
     required = state.get("required_results")
     if not required or not any(name not in {"exit.json", "provenance.json"} for name in required):
         raise RemoteJobError("Remote numerical result requirements are missing")
@@ -356,6 +371,8 @@ def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> N
         if hashlib.sha256(payload).hexdigest() != result.get("files", {}).get(name):
             raise RemoteJobError("Final remote exit/provenance checksums are missing or changed")
         report = json.loads(payload)
+        if purpose is None and ("verification_purpose" in report or report.get("campaign_eligible", True) is not True):
+            raise RemoteJobError("Verification results cannot complete a campaign job")
         if any(report.get(key) != value for key, value in expected.items()):
             raise RemoteJobError("Final remote exit/provenance identity mismatch")
         if name == "exit.json" and (type(report.get("code")) is not int or report["code"] != 0):
@@ -379,6 +396,12 @@ def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> N
             if (state.get("expected_config_sha256") is not None
                     and report.get("config_sha256") != state["expected_config_sha256"]):
                 raise RemoteJobError("Final remote numerical config differs from declared config")
+    if purpose is not None:
+        if not isinstance(state.get("source_sha256"), dict) or not state["source_sha256"]:
+            raise RemoteJobError("Verification source identity is missing")
+        name = "tests.json" if purpose == "native_suite" else "gpu_isolation.json"
+        validate_report(purpose, json.loads((root / "evidence" / name).read_text()), state["source_sha256"],
+                        state["commit"], state["image_digest"], state["gpu"])
 
 
 def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path,
@@ -406,7 +429,10 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
                         "commit": current["commit"], "image_digest": current["image_digest"],
                         "gpu_backend": current["gpu_backend"]}, registry)
             try:
-                backend.sync_results(job_id, final=False)
+                if current.get("verification_purpose") is not None:
+                    backend.sync_verification_results(job_id, current, final=False)
+                else:
+                    backend.sync_results(job_id, final=False)
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 reachable = False
@@ -427,11 +453,15 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             record({"event": "remote_exited", "id": job_id, "host": "remote", "code": 0,
                     "container_id": item["Id"]}, registry)
         try:
-            if any(Path(name).parts[0] == "checkpoints" for name in current.get("required_results", [])):
+            if current.get("verification_purpose") is not None:
+                synced = backend.sync_verification_results(job_id, current, final=True)
+            elif any(Path(name).parts[0] == "checkpoints" for name in current.get("required_results", [])):
                 synced = backend.sync_results(job_id, final=True, checkpoints=True)
             else:
                 synced = backend.sync_results(job_id, final=True)
             _verify_synced_exit(job_id, current, synced, runs)
+            if current.get("verification_purpose") is not None:
+                synced = {**synced, "verification_purpose": current["verification_purpose"], "campaign_eligible": False}
         except RemoteUnreachable:
             _host_reachability(registry, False, "RemoteUnreachable")
             reachable = False
@@ -458,6 +488,12 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     queue = load_queue(queue_path)
     jobs = {job["id"]: job for job in queue.get("jobs", [])}
     state, messages = read_registry(registry), []
+    for job_id, current in state.items():
+        if job_id in jobs and "attempt" in current:
+            purpose = validate_verification(jobs[job_id], queued=True)
+            if (purpose != current.get("verification_purpose")
+                    or (purpose is not None and current.get("campaign_eligible") is not False)):
+                raise ValueError(f"job {job_id} verification/campaign identity changed")
     for job_id, current in state.items():
         if current.get("host", "local") != "local" or current["status"] != RUNNING:
             continue
@@ -547,7 +583,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 resource["disk_free"] -= reservation(current, jobs.get(job_id, {}), "disk_gb") * GIB
         for uuid in resource["foreign"]:
             messages.append(f"foreign processes on {host_name}/{uuid}; not launching there")
-    evidence, remote_ready_checked, identity = None, False, None
+    campaign_evidence, remote_ready_checked, identity = None, False, None
+    verification_evidence = {}
     for job in eligible(list(jobs.values()), state):
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
@@ -573,12 +610,23 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             continue
         attempt = state.get(job["id"], {}).get("attempts", 0) + 1
         if host_name == "remote":
-            if not remote_ready_checked:
-                remote_ready_checked = True
-                try:
-                    evidence = remote_backend.ready(host)
-                except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-                    messages.append("remote: acceptance/pushed-commit evidence invalid; admission held")
+            purpose = validate_verification(job, queued=True)
+            if purpose is not None:
+                if purpose not in verification_evidence:
+                    verification_evidence[purpose] = None
+                    try:
+                        verification_evidence[purpose] = remote_backend.ready_verification(host, job)
+                    except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                        messages.append(f"remote: {purpose} bootstrap/pushed-commit evidence invalid; admission held")
+                evidence = verification_evidence[purpose]
+            else:
+                if not remote_ready_checked:
+                    remote_ready_checked = True
+                    try:
+                        campaign_evidence = remote_backend.ready(host)
+                    except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                        messages.append("remote: acceptance/pushed-commit evidence invalid; admission held")
+                evidence = campaign_evidence
             if evidence is None:
                 continue
             previous = state.get(job["id"], {})
@@ -588,7 +636,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                     or previous.get("data_identity", evidence["data_identity"]) != evidence["data_identity"]):
                 messages.append(f"{job['id']}: retry code/image/config/data changed; admission held")
                 continue
-            check_guarded(job["script"])
+            if purpose is None:
+                check_guarded(job["script"])
             path, spec = remote_backend.prepare(job, gpu, attempt, host, evidence)
             event = {"id": job["id"], "host": "remote", "gpu": gpu, "attempt": attempt,
                      "container": spec["container"], "commit": spec["commit"], "image_digest": spec["image_digest"],
@@ -598,6 +647,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                      "script": job["script"], "args": list(map(str, job.get("args", []))),
                      "job_sha256": job_fingerprint(job), "expected_config_sha256": job.get("expected_config_sha256"),
                      "mem_gb": float(job["mem_gb"]), "ram_gb": need, "disk_gb": float(job.get("disk_gb", 0))}
+            if purpose is not None:
+                event.update(verification_purpose=purpose, campaign_eligible=False, args=spec["args"],
+                             verification_timeout_seconds=spec["verification_timeout_seconds"],
+                             cpu_threads=spec.get("cpu_threads", 8), source_sha256=evidence["source_sha256"])
             record({"event": "launching", **event}, registry)
             resource["available"] -= need
             resource["disk_free"] -= disk_need

@@ -1,4 +1,4 @@
-"""Detached Docker entry for verified remote campaign jobs."""
+"""Detached Docker entry for remote campaign and typed verification jobs."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO))
 sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
+from s4d.remote_verification import entry_verification, run_verification  # noqa: E402
 from s4d.run_identity import (  # noqa: E402
     RunIdentityError,
     record_remote_exit,
@@ -40,13 +41,14 @@ def guarded_script(relative: str) -> Path:
     return path
 
 
-def run_child(script: Path, arguments: list[str], console) -> int:
+def run_child(script: Path, arguments: list[str], console, *, timeout_seconds=None, environment=None) -> int:
     child = subprocess.Popen(
         [sys.executable, "-I", str(script), *arguments],
         cwd=REPO,
         stdout=console,
         stderr=subprocess.STDOUT,
         start_new_session=True,
+        env=environment,
     )
 
     def forward(signum, _frame):
@@ -57,7 +59,16 @@ def run_child(script: Path, arguments: list[str], console) -> int:
 
     previous = {signum: signal.signal(signum, forward) for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
     try:
-        code = child.wait()
+        try:
+            code = child.wait() if timeout_seconds is None else child.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            forward(signal.SIGTERM, None)
+            try:
+                child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                forward(signal.SIGKILL, None)
+                child.wait(timeout=10)
+            code = 124
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
@@ -70,6 +81,9 @@ def main() -> int:
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
+    verification = entry_verification(os.environ, args.script, arguments)
+    if verification is not None:
+        return run_verification(REPO, verification, run_child)
     identity = verify_remote_identity(REPO)
     script = guarded_script(args.script)
     run_dir = start_remote_run(REPO, identity, str(script.relative_to(REPO)), arguments)

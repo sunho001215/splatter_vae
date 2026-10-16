@@ -453,3 +453,197 @@ def test_cpu_thread_limit_defaults_to_eight_and_follows_the_job():
     spec = job_spec()
     spec["cpu_threads"] = 16
     assert validate_spec(spec)["cpu_threads"] == 16
+
+def _rv_launch_spec(purpose="native_suite"):
+    from s4d.gpu_guard import APPROVED_HOST_GPUS
+    from s4d.remote_jobs import labels
+    from s4d.remote_verification import POLICIES, ROOT, canonical_arguments
+
+    script, timeout, ram, memory, reports = POLICIES[purpose]
+    gpu, job_id = next(iter(APPROVED_HOST_GPUS["remote"])), "verify-" + purpose
+    commit, image = "a" * 40, "sha256:" + "b" * 64
+    return {"version": 1, "host": "remote", "id": job_id, "attempt": 1, "container": f"s4d-{job_id}-a1",
+            "root": ROOT, "host_config": "configs/hosts/remote.yaml", "commit": commit, "image_digest": image,
+            "gpu": gpu, "gpu_backend": "cdi", "script": script,
+            "args": canonical_arguments(purpose, job_id, 1, gpu),
+            "verification_purpose": purpose, "campaign_eligible": False, "verification_timeout_seconds": timeout,
+            "ram_gb": ram, "mem_gb": memory, "disk_gb": 1, "disk_floor_gb": 0, "disk_floor_fraction": 0.15,
+            "host_ram_reserve_gb": 120, "host_ram_ramp_minutes": 10, "max_mem_gb": 90, "max_jobs": 20,
+            "required_results": ["evidence/" + name for name in reports],
+            "labels": {**labels(job_id, 1, commit, image),
+                       "s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"},
+            "evidence": {"commit": commit, "image_digest": image, "verification_purpose": purpose,
+                         "campaign_eligible": False, "data": {"sha256": "d" * 64},
+                         **({"full_suite": {"sha256": "e" * 64}} if purpose == "gpu_isolation" else {})}}
+
+
+@pytest.mark.parametrize("purpose", ["native_suite", "gpu_isolation"])
+@pytest.mark.parametrize("mutation", [
+    {"verification_purpose": "other"}, {"verification_purpose": None}, {"campaign_eligible": True},
+    {"campaign_eligible": 0}, {"script": "scripts/train.py"}, {"host": "local"},
+    {"args": []}, {"required_results": ["exit.json"]}, {"verification_timeout_seconds": 0},
+    {"verification_timeout_seconds": True}, {"verification_timeout_seconds": 7201},
+    {"ram_gb": 1024}, {"mem_gb": 90}, {"disk_gb": 17}, {"cpu_threads": 9},
+])
+def test_verification_launch_spec_is_a_fixed_bounded_allowlist(purpose, mutation):
+    from s4d.remote_launch import validate_spec
+
+    spec = _rv_launch_spec(purpose)
+    validate_spec(spec)
+    spec.update(mutation)
+    with pytest.raises(ValueError):
+        validate_spec(spec)
+
+
+@pytest.mark.parametrize("purpose", ["native_suite", "gpu_isolation"])
+def test_verification_requires_explicit_non_campaign_flag_and_reports(purpose):
+    from s4d.remote_launch import validate_spec
+    from s4d.remote_verification import validate_verification
+
+    spec = _rv_launch_spec(purpose)
+    for missing in ("campaign_eligible", "verification_timeout_seconds", "required_results"):
+        incomplete = {key: value for key, value in spec.items() if key != missing}
+        with pytest.raises(ValueError):
+            validate_spec(incomplete)
+    queued = {**spec, "args": []}
+    assert validate_verification(queued, queued=True) == purpose
+    queued["args"] = ["--other"]
+    with pytest.raises(ValueError):
+        validate_verification(queued, queued=True)
+    spec["args"].append("--other")
+    with pytest.raises(ValueError):
+        validate_spec(spec)
+
+
+@pytest.mark.parametrize("direction", ["bootstrap_as_campaign", "campaign_as_bootstrap"])
+def test_launch_evidence_cannot_change_job_kind(tmp_path, monkeypatch, direction):
+    import s4d.remote_launch as launcher
+
+    spec = _rv_launch_spec()
+    monkeypatch.setattr(launcher, "commit_source_sha256", lambda *_: {"s4d/example.py": "c" * 64})
+    if direction == "bootstrap_as_campaign":
+        for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
+            spec.pop(key)
+    else:
+        spec["evidence"] = {"commit": spec["commit"], "image_digest": spec["image_digest"],
+                            "full_suite": {}, "gpu_isolation": {}, "data": {}, "cross_host": {}}
+    with pytest.raises(ValueError):
+        launcher.evidence_artifacts(spec, tmp_path)
+
+
+@pytest.mark.parametrize("purpose", ["native_suite", "gpu_isolation"])
+def test_verification_command_binds_output_limits_and_child_environment(purpose):
+    import shlex
+
+    from s4d.remote_launch import build_remote_command
+    from s4d.remote_verification import ROOT, entry_verification
+
+    spec = _rv_launch_spec(purpose)
+    command = build_remote_command(spec, "1" * 64, "2" * 40, "3" * 64, {"binding-data.json": "d" * 64},
+                                   [(ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "4" * 64)])
+    docker_line = next(line for line in command.splitlines() if line.startswith("cid=$("))
+    argv = shlex.split(docker_line[len("cid=$("):-1])
+    environment = dict(argv[index + 1].split("=", 1) for index, value in enumerate(argv) if value == "--env")
+    assert entry_verification(environment, spec["script"], spec["args"])["verification_purpose"] == purpose
+    assert argv[argv.index("--memory") + 1] == str(spec["ram_gb"] * 2**30)
+    assert argv[argv.index("--memory-swap") + 1] == str(spec["ram_gb"] * 2**30)
+    assert argv[argv.index("--cpus") + 1] == "8"
+    assert environment["S4D_TEST_EVIDENCE_DIR"].endswith(f"/{spec['id']}/a1/evidence")
+    assert f"s4d.verification_purpose={purpose}" in argv and "s4d.campaign_eligible=false" in argv
+    assert argv[-len(spec["args"]):] == spec["args"]
+    if purpose == "gpu_isolation":
+        assert spec["args"][-3:] == ["--gpu", spec["gpu"], "--host-pid-namespace"]
+
+
+def test_campaign_specs_cannot_use_the_verification_namespace():
+    from s4d.remote_launch import build_remote_command
+
+    spec = _rv_launch_spec()
+    for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
+        spec.pop(key)
+    with pytest.raises(ValueError, match="reserved"):
+        build_remote_command(spec, "1" * 64, "2" * 40, "3" * 64, {}, [])
+
+
+@pytest.mark.parametrize("campaign_launch", [False])
+def test_existing_container_of_other_kind_is_refused_before_reuse(campaign_launch):
+    import shlex
+    import subprocess
+
+    from s4d.remote_launch import build_remote_command
+    from s4d.remote_verification import ROOT
+
+    spec = _rv_launch_spec()
+    actual_labels = dict(spec["labels"])
+    target = spec["labels"] if campaign_launch else actual_labels
+    for key in ("s4d.verification_purpose", "s4d.campaign_eligible"):
+        target.pop(key)
+    if campaign_launch:
+        for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
+            spec.pop(key)
+    command = build_remote_command(spec, "1" * 64, "2" * 40, "3" * 64, {"binding-data.json": "d" * 64},
+                                   [(ROOT + "/data/hammer.hdf5", "4" * 64)])
+    existing = command[command.index("existing()"):command.index("if existing; then exit 0; fi")]
+    cases = []
+    for key in ("s4d.managed", "s4d.run_id", "s4d.attempt", "s4d.host", "s4d.commit",
+                "s4d.image_digest", "s4d.verification_purpose", "s4d.campaign_eligible"):
+        template = '{{index .Config.Labels "' + key + '"}}'
+        cases.append(shlex.quote(template) + ") printf '%s\\n' " + shlex.quote(actual_labels.get(key, "")) + ";;")
+    shell = ("set -eu\ncontainer=" + shlex.quote(spec["container"]) + "\n"
+             + "docker() {\nif [ \"$1\" = ps ]; then printf '%s\\n' \"$container\"; return; fi\n"
+             + 'case "$3" in\n' + "\n".join(cases)
+             + "\n*'range $key'*) printf '%s\\n' verificationeligible:false;;\n"
+             + "*) printf '%s\\n' unexpected-later-inspect >&2; return 99;;\nesac\n}\n"
+             + existing + "\nexisting\n")
+    result = subprocess.run(["bash", "-c", shell], capture_output=True, text=True)
+    assert result.returncode != 0 and "unexpected-later-inspect" not in result.stderr
+
+
+def test_ordinary_campaign_docker_flags_environment_and_arguments_are_preserved():
+    import shlex
+
+    from s4d.remote_launch import build_remote_command
+    from s4d.remote_verification import ROOT
+
+    spec = _rv_launch_spec()
+    for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
+        spec.pop(key)
+    for key in ("s4d.verification_purpose", "s4d.campaign_eligible"):
+        spec["labels"].pop(key)
+    spec["id"] = "campaign-job"
+    spec["container"] = f"s4d-campaign-job-a{spec['attempt']}"
+    spec["labels"]["s4d.run_id"] = spec["id"]
+    spec["script"] = "scripts/train.py"
+    spec["args"] = ["--name", spec["id"], "--output-root", "runs"]
+    spec["evidence"] = {}
+    command = build_remote_command(spec, "1" * 64, "2" * 40, "3" * 64, {"tests.json": "5" * 64},
+                                   [(ROOT + "/data/hammer.hdf5", "4" * 64)])
+    docker_line = next(line for line in command.splitlines() if line.startswith("cid=$("))
+    argv = shlex.split(docker_line[len("cid=$("):-1])
+    assert "--memory" not in argv and "--memory-swap" not in argv and "--cpus" not in argv
+    assert not any(value.startswith("S4D_VERIFICATION_") for value in argv)
+    assert "WANDB_MODE=offline" in argv and "OMP_NUM_THREADS=8" in argv
+    assert "NVIDIA_VISIBLE_DEVICES=void" in argv and argv[-len(spec["args"]):] == spec["args"]
+    assert "S4D_TEST_EVIDENCE_DIR=" + ROOT + "/runtime/acceptance/" + spec["commit"] + "-" + spec["image_digest"][7:] in argv
+
+
+def test_verification_child_timeout_terminates_its_process_group(monkeypatch):
+    import signal
+    import subprocess
+    from pathlib import Path
+
+    from scripts.remote import entry
+
+    waits, signals = [], []
+    class Child:
+        pid = 123
+        def wait(self, timeout=None):
+            waits.append(timeout)
+            if len(waits) == 1:
+                raise subprocess.TimeoutExpired("verification", timeout)
+            return -signal.SIGTERM
+    monkeypatch.setattr(entry.subprocess, "Popen", lambda *args, **kwargs: Child())
+    monkeypatch.setattr(entry.signal, "signal", lambda *args: None)
+    monkeypatch.setattr(entry.os, "killpg", lambda pid, signum: signals.append((pid, signum)))
+    assert entry.run_child(Path("scripts/run_tests.py"), [], None, timeout_seconds=1, environment={}) == 124
+    assert waits == [1, 10] and signals == [(123, signal.SIGTERM)]

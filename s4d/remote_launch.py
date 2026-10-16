@@ -11,6 +11,8 @@ from pathlib import Path, PurePosixPath
 
 from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from s4d.remote_access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
+from s4d.remote_jobs import commit_source_sha256
+from s4d.remote_verification import validate_verification, verification_artifacts, verification_output
 
 CONTAINER_REPO = "/workspace/splatter4d"
 RAM_RESERVE_BYTES = 120 * 1024**3
@@ -78,6 +80,7 @@ def validate_output_arguments(script: str, arguments: list[str], job_id: str) ->
 def validate_spec(spec: dict) -> dict:
     if not isinstance(spec, dict) or spec.get("version") != 1 or spec.get("host") != "remote":
         raise ValueError("Expected a version-1 remote job spec")
+    purpose = validate_verification(spec)
     job_id = _text(spec.get("id"), "job id")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,179}", job_id):
         raise ValueError("Unsafe job id")
@@ -116,6 +119,8 @@ def validate_spec(spec: dict) -> dict:
         "s4d.managed": "true", "s4d.run_id": job_id, "s4d.attempt": str(attempt), "s4d.host": "remote",
         "s4d.commit": commit, "s4d.image_digest": image,
     }
+    if purpose is not None:
+        expected_labels.update({"s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"})
     if spec.get("labels") != expected_labels:
         raise ValueError("Container ownership labels differ from the job identity")
     if not isinstance(spec.get("evidence"), dict):
@@ -155,6 +160,11 @@ def evidence_artifacts(spec: dict, repository: Path) -> tuple[list[tuple[Path, s
     evidence = spec["evidence"]
     if evidence.get("commit") != spec["commit"] or evidence.get("image_digest") != spec["image_digest"]:
         raise ValueError("Acceptance identity differs from the job")
+    purpose = validate_verification(spec)
+    if purpose is not None:
+        return verification_artifacts(evidence, purpose, repository, commit_source_sha256(repository, spec["commit"]))
+    if "verification_purpose" in evidence or evidence.get("campaign_eligible", True) is not True:
+        raise ValueError("Verification bootstrap cannot replace campaign acceptance")
     records = [(evidence.get("full_suite"), "tests.json"), (evidence.get("data"), "data.json"),
                (evidence.get("cross_host"), "cross_host.json")]
     isolation = evidence.get("gpu_isolation")
@@ -273,6 +283,10 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
     docker = ["docker", "run", "-d", "--name", name, "--read-only", "--pid=host", "--user", "1000:1000",
               "--oom-score-adj", str(spec["oom_score_adj"]),
               "--workdir", CONTAINER_REPO, "--init", "--shm-size", "8g"]
+    purpose = spec.get("verification_purpose")
+    if purpose is not None:
+        docker += ["--memory", str(spec["ram_bytes"]), "--memory-swap", str(spec["ram_bytes"]),
+                   "--cpus", str(spec["cpu_threads"])]
     if spec["gpu_backend"] == "cdi":
         docker += ["--device", f"nvidia.com/gpu={spec['gpu']}"]
     else:
@@ -297,6 +311,20 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
         # oversubscribe the CPU (ReViWo measured ~130 busy cores each). Thread count is not a hyperparameter.
         **{name: str(spec["cpu_threads"]) for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")},
     }
+    if purpose is not None:
+        environment.update({
+            "S4D_TEST_EVIDENCE_DIR": verification_output(purpose, spec["id"], spec["attempt"]),
+            "S4D_VERIFICATION_PURPOSE": purpose,
+            "S4D_VERIFICATION_TIMEOUT_SECONDS": str(spec["verification_timeout_seconds"]),
+            "S4D_VERIFICATION_RAM_BYTES": str(spec["ram_bytes"]),
+            "S4D_VERIFICATION_GPU_BYTES": str(spec["gpu_bytes"]),
+            "S4D_VERIFICATION_DISK_BYTES": str(spec["disk_bytes"]),
+            "S4D_VERIFICATION_CPU_THREADS": str(spec["cpu_threads"]),
+            "S4D_VERIFICATION_ACCEPTANCE_DIR": acceptance,
+            "S4D_VERIFICATION_DATA_SHA256": spec["evidence"]["data"]["sha256"],
+        })
+        if purpose == "gpu_isolation":
+            environment["S4D_VERIFICATION_SUITE_SHA256"] = spec["evidence"]["full_suite"]["sha256"]
     if spec["gpu_backend"] == "cdi":
         environment["NVIDIA_VISIBLE_DEVICES"] = "void"
     else:
@@ -319,6 +347,26 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
     for key, value in spec["labels"].items():
         template = '{{index .Config.Labels "' + key + '"}}'
         lines.append(f'  test "$(docker inspect --format {q(template)} "$container")" = {q(value)} || exit 1')
+    if purpose is not None:
+        for key, value in (("ram_bytes", spec["ram_bytes"]), ("mem_bytes", spec["gpu_bytes"]),
+                           ("disk_bytes", spec["disk_bytes"]), ("gpu", spec["gpu"])):
+            template = '{{index .Config.Labels "s4d.' + key + '"}}'
+            lines.append('  test "$(docker inspect --format ' + q(template) + ' "$container")" = '
+                         + q(str(value)) + ' || exit 1')
+        for key, value in environment.items():
+            if key.startswith("S4D_"):
+                lines.append('  docker inspect --format \'{{range .Config.Env}}{{println .}}{{end}}\' "$container" '
+                             '| grep -Fxq -- ' + q(f"{key}={value}") + ' || exit 1')
+        for field, value in (("HostConfig.Memory", str(spec["ram_bytes"])),
+                             ("HostConfig.MemorySwap", str(spec["ram_bytes"])),
+                             ("HostConfig.NanoCpus", str(spec["cpu_threads"] * 10**9)),
+                             ("Config.Entrypoint", json.dumps(["python"], separators=(",", ":"))),
+                             ("Config.Cmd", json.dumps(["-I", f"{CONTAINER_REPO}/scripts/remote/entry.py",
+                                                       "--script", spec["script"], "--", *spec["args"]],
+                                                      separators=(",", ":")))):
+            template = "{{json ." + field + "}}" if field.startswith("Config.") else "{{." + field + "}}"
+            lines.append('  test "$(docker inspect --format ' + q(template) + ' "$container")" = '
+                         + q(value) + ' || exit 1')
     expected_mounts = "\n".join(sorted(f"bind|{source}|{target}|{'false' if readonly else 'true'}"
                                       for source, target, readonly in mounts))
     mount_template = '{{range .Mounts}}{{printf "%s|%s|%s|%t\\n" .Type .Source .Destination .RW}}{{end}}'
@@ -416,6 +464,9 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               f'test "$((available-ramp_ram-{spec["ram_bytes"]}))" -ge {spec["reserve_bytes"]}',
               f'test "$gpu_jobs" -lt {spec["max_jobs"]}',
               f'test "$((gpu_reserved+{spec["gpu_bytes"]}))" -le {spec["gpu_cap_bytes"]}']
+    if purpose is not None:
+        output = verification_output(purpose, spec["id"], spec["attempt"])
+        lines += ["bounded " + q(output), "mkdir -p -- " + q(str(PurePosixPath(output).parent))]
     for directory in (f"{root}/runs", f"{root}/outputs", cache, f"{cache}/home", f"{cache}/tmp"):
         lines.append("bounded " + q(directory))
         lines.append("mkdir -p -- " + q(directory))

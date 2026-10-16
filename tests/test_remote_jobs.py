@@ -781,3 +781,301 @@ def test_backend_launcher_response_unknown_is_not_a_second_launch(tmp_path, monk
     monkeypatch.setattr(remote.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess([], 75, "", ""))
     with pytest.raises(remote.RemoteUnreachable):
         backend.launch(tmp_path / "job.json")
+
+def _rv_setup(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    from types import SimpleNamespace
+
+    from s4d import remote_jobs
+    from s4d.gpu_guard import APPROVED_HOST_GPUS
+    from s4d.remote_verification import POLICIES, ROOT
+
+    gpu, commit, image = next(iter(APPROVED_HOST_GPUS["remote"])), "a" * 40, "sha256:" + "b" * 64
+    source = {"s4d/example.py": "c" * 64, "third_party/example": "d" * 64}
+    monkeypatch.setattr(remote_jobs, "commit_source_sha256", lambda *_: source)
+    files = [{"target": f"{ROOT}/data/metaworld/splatter4d_v1/{relative}", "sha256": "e" * 64, "bytes": 1}
+             for task in ("hammer", "pick-place")
+             for relative in (f"{task}.hdf5", f"heldout_sets/{task}.hdf5",
+                              f"splits/{task}_seed0.json", f"workspace_stats/{task}.json")]
+    normalized = [{**item, "target": item["target"][len(ROOT) + 1:]} for item in files]
+    normalized.sort(key=lambda item: item["target"])
+    identity = hashlib.sha256(json.dumps(normalized, sort_keys=True).encode()).hexdigest()
+    binding = tmp_path / "data.json"
+    binding.write_text(json.dumps({"commit": commit, "image_digest": image,
+                                   "report": {"identity_sha256": identity, "files": files}}))
+    manifest = {"schema_version": 1, "verification_purpose": "native_suite", "campaign_eligible": False,
+                "commit": commit, "image_digest": image, "source_sha256": source,
+                "data": {"path": "data.json", "sha256": hashlib.sha256(binding.read_bytes()).hexdigest()}}
+    manifest_path = tmp_path / "verification.json"
+    manifest_path.write_text(json.dumps(manifest))
+    evidence = {**manifest, "data_identity": identity,
+                "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest()}
+    host = {"commit": commit, "image_digest": image, "gpu_backend": "cdi",
+            "verification_manifests": {"native_suite": "verification.json"},
+            "host_ram_reserve_gb": 120, "host_ram_ramp_minutes": 10,
+            "limits": {gpu: {"max_jobs": 20, "max_mem_gb": 90}}}
+    job = {"id": "verify-suite", "host": "remote", "gpu": gpu, "script": POLICIES["native_suite"][0],
+           "args": [], "verification_purpose": "native_suite", "campaign_eligible": False,
+           "ram_gb": 32, "mem_gb": 12, "disk_gb": 1,
+           "required_results": ["evidence/" + name for name in POLICIES["native_suite"][4]]}
+    script = tmp_path / job["script"]
+    script.parent.mkdir(exist_ok=True)
+    script.write_text("pass\n")  # the suite is allowed only through its typed entry
+    backend = remote_jobs.RemoteBackend(tmp_path, tmp_path / "runs", SimpleNamespace(root=ROOT))
+    return backend, host, job, evidence
+
+
+def _rv_inspect(spec, identity):
+    from s4d.remote_verification import ROOT
+
+    runtime = ROOT + "/runtime"
+    acceptance = f"{runtime}/acceptance/{spec['commit']}-{spec['image_digest'][7:]}"
+    proof = f"{ROOT}/releases/{spec['commit']}/provenance.json"
+    repo = "/workspace/splatter4d"
+    env = {"CUDA_VISIBLE_DEVICES": spec["gpu"], "NVIDIA_VISIBLE_DEVICES": "void",
+           "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics",
+           "S4D_JOB_ID": spec["id"], "S4D_ATTEMPT": str(spec["attempt"]),
+           "S4D_EXPECTED_COMMIT": spec["commit"], "S4D_IMAGE_DIGEST": spec["image_digest"],
+           "S4D_DATA_ID": identity, "S4D_TEST_EVIDENCE_DIR": spec["args"][1],
+           "S4D_VERIFICATION_PURPOSE": "native_suite", "S4D_VERIFICATION_TIMEOUT_SECONDS": "7200",
+           "S4D_VERIFICATION_RAM_BYTES": str(32 * 2**30), "S4D_VERIFICATION_GPU_BYTES": str(12 * 2**30),
+           "S4D_VERIFICATION_DISK_BYTES": str(2**30), "S4D_VERIFICATION_CPU_THREADS": "8",
+           "S4D_VERIFICATION_ACCEPTANCE_DIR": acceptance, "S4D_VERIFICATION_DATA_SHA256": spec["evidence"]["data"]["sha256"]}
+    mounts = [(repo, f"{ROOT}/releases/{spec['commit']}/code", False),
+              (repo + "/runs", ROOT + "/runs", True), (repo + "/outputs", ROOT + "/outputs", True),
+              (repo + "/.cache", runtime + "/cache", True), (runtime, runtime, True),
+              (acceptance, acceptance, False), (proof, proof, False),
+              ("/home/ws/data/metaworld/splatter4d_v1", ROOT + "/data/metaworld/splatter4d_v1", False)]
+    labels = {**spec["labels"], "s4d.ram_bytes": str(32 * 2**30),
+              "s4d.mem_bytes": str(12 * 2**30), "s4d.disk_bytes": str(2**30), "s4d.gpu": spec["gpu"]}
+    return {"Name": "/" + spec["container"], "Id": "f" * 64, "Image": spec["image_digest"], "pids": {123},
+            "State": {"Status": "running", "ExitCode": 0},
+            "Config": {"Labels": labels, "Env": [f"{key}={value}" for key, value in env.items()],
+                       "Entrypoint": ["python"],
+                       "Cmd": ["-I", repo + "/scripts/remote/entry.py", "--script", spec["script"], "--", *spec["args"]]},
+            "HostConfig": {"Privileged": False, "ReadonlyRootfs": True, "PidMode": "host", "ShmSize": 8 * 2**30,
+                           "Memory": 32 * 2**30, "MemorySwap": 32 * 2**30, "NanoCpus": 8 * 10**9,
+                           "Devices": [], "DeviceRequests": [{"Driver": "cdi", "Count": 0,
+                               "DeviceIDs": ["nvidia.com/gpu=" + spec["gpu"]], "Capabilities": [], "Options": {}}]},
+            "Mounts": [{"Destination": target, "Source": source, "RW": rw, "Type": "bind"}
+                       for target, source, rw in mounts]}
+
+
+def test_verification_ready_without_campaign_acceptance(tmp_path, monkeypatch):
+    import subprocess
+
+    from s4d import remote_jobs
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    calls = []
+    def pushed(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/splatter4d\n", "")
+    monkeypatch.setattr(remote_jobs.subprocess, "run", pushed)
+    assert backend.ready_verification(host, job) == evidence
+    assert len(calls) == 2 and "ls-remote" in calls[0] and "merge-base" in calls[1]
+    with pytest.raises(remote_jobs.RemoteJobError, match="acceptance manifest"):
+        backend.ready(host)
+    host["evidence_manifest"] = "verification.json"
+    with pytest.raises(remote_jobs.RemoteJobError, match="bootstrap"):
+        backend.ready(host)
+
+
+def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeypatch):
+    import json
+    import subprocess
+
+    import yaml
+
+    from s4d import remote_jobs
+    from s4d.gpu_guard import APPROVED_HOST_GPUS
+    from scripts import jobs as scheduler
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(scheduler, "REPO", tmp_path)
+    monkeypatch.setattr(remote_jobs.subprocess, "run", lambda command, **kwargs:
+                        subprocess.CompletedProcess(command, 0, host["commit"] + "\trefs/heads/splatter4d\n", ""))
+    launches = []
+    monkeypatch.setattr(backend, "snapshot", lambda: remote_jobs.RemoteSnapshot(
+        {gpu: [] for gpu in APPROVED_HOST_GPUS["remote"]}, 200, 1000 * 2**30, 800 * 2**30, {}))
+    monkeypatch.setattr(backend, "launch", lambda path: launches.append(json.loads(path.read_text())) or {"container_id": "f" * 64})
+    campaign = {"id": "campaign", "host": "remote", "script": "scripts/worker.py", "gpu": job["gpu"],
+                "ram_gb": 10, "mem_gb": 5, "disk_gb": 1, "required_results": ["completion.json"]}
+    queue = tmp_path / "queue.yaml"
+    queue.write_text(yaml.safe_dump({"hosts": {"remote": {**host, "enabled": True}}, "jobs": [campaign, job]}))
+    scheduler.tick(queue, tmp_path / "registry.jsonl", tmp_path / "runs",
+                   usage={gpu: [] for gpu in APPROVED_HOST_GPUS["local"]}, available_gb=200,
+                   disk_bytes=(1000 * 2**30, 800 * 2**30), remote_backend=backend)
+    assert [item["id"] for item in launches] == ["verify-suite"]
+    current = scheduler.read_registry(tmp_path / "registry.jsonl")["verify-suite"]
+    assert current["campaign_eligible"] is False and current["verification_purpose"] == "native_suite"
+    assert current["args"] == launches[0]["args"] and current["source_sha256"] == evidence["source_sha256"]
+
+
+@pytest.mark.parametrize("direction", ["verification_as_campaign", "campaign_as_verification"])
+def test_reconcile_refuses_mixed_job_kinds(tmp_path, monkeypatch, direction):
+    from types import SimpleNamespace
+
+    from scripts import jobs as scheduler
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    _, spec = backend.prepare(job, job["gpu"], 1, host, evidence)
+    current = {**spec, "attempts": 1, "status": "running", "data_identity": evidence["data_identity"]}
+    item = _rv_inspect(spec, evidence["data_identity"])
+    backend_value = SimpleNamespace(sync_results=lambda *args, **kwargs: pytest.fail("mixed identity was synced"))
+    if direction == "verification_as_campaign":
+        for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
+            current.pop(key)
+    else:
+        for key in ("s4d.verification_purpose", "s4d.campaign_eligible"):
+            item["Config"]["Labels"].pop(key)
+        item["Config"]["Env"] = [value for value in item["Config"]["Env"] if not value.startswith("S4D_VERIFICATION_")]
+    registry = tmp_path / "registry.jsonl"
+    owned, reachable = scheduler._reconcile_remote(backend_value, SimpleNamespace(containers={spec["container"]: item}),
+                                                   {job["id"]: current}, registry, tmp_path / "runs", [])
+    assert not owned and reachable and scheduler.read_registry(registry)[job["id"]]["unknown"]
+
+
+@pytest.mark.parametrize("fault", [None, "arguments", "memory", "timeout"])
+def test_verification_container_bounds_are_reconciled(tmp_path, monkeypatch, fault):
+    from s4d import remote_jobs
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    _, spec = backend.prepare(job, job["gpu"], 1, host, evidence)
+    current = {**spec, "attempts": 1, "data_identity": evidence["data_identity"]}
+    item = _rv_inspect(spec, evidence["data_identity"])
+    if fault == "arguments":
+        item["Config"]["Cmd"].append("--other")
+    elif fault == "memory":
+        item["HostConfig"]["Memory"] += 1
+    elif fault == "timeout":
+        item["Config"]["Env"] = [value.replace("TIMEOUT_SECONDS=7200", "TIMEOUT_SECONDS=7199")
+                                for value in item["Config"]["Env"]]
+    if fault:
+        with pytest.raises(remote_jobs.RemoteJobError):
+            remote_jobs.validate_container(item, job["id"], current)
+    else:
+        remote_jobs.validate_container(item, job["id"], current)
+
+
+@pytest.mark.parametrize("kind", ["matching", "verification_as_campaign", "campaign_as_verification", "failed_report"])
+def test_synced_verification_requires_typed_wrappers_and_passing_report(tmp_path, monkeypatch, kind):
+    import hashlib
+    import json
+
+    from s4d import remote_jobs
+    from scripts import jobs as scheduler
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    _, spec = backend.prepare(job, job["gpu"], 1, host, evidence)
+    current = {**spec, "attempts": 1, "data_identity": evidence["data_identity"],
+               "source_sha256": evidence["source_sha256"]}
+    root = tmp_path / "runs" / job["id"]
+    (root / "evidence").mkdir(parents=True)
+    suite = {"host": "remote", "full_suite_passed": kind != "failed_report", "exit_code": 0,
+             "counts": {"passed": 1, "failed": 0, "error": 0, "skipped": 0},
+             "expected_commit": host["commit"], "expected_image_digest": host["image_digest"],
+             "source_sha256": evidence["source_sha256"], "source_sha256_before": evidence["source_sha256"],
+             "source_changed_during_suite": False}
+    (root / "evidence/tests.json").write_text(json.dumps(suite))
+    (root / "evidence/tests.log").write_text("passed\n")
+    (root / "evidence/tests.junit.xml").write_text("<testsuite tests='1' failures='0'/>\n")
+    identity = {"host": "remote", "job_id": job["id"], "attempt": 1, "git_commit": host["commit"],
+                "image_digest": host["image_digest"], "gpu_uuids": [job["gpu"]],
+                "verification_purpose": "native_suite", "campaign_eligible": False}
+    if kind == "campaign_as_verification":
+        identity.pop("verification_purpose")
+        identity.pop("campaign_eligible")
+    if kind == "verification_as_campaign":
+        for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
+            current.pop(key)
+    (root / "exit.json").write_text(json.dumps({**identity, "code": 0}))
+    (root / "provenance.json").write_text(json.dumps({**identity, "data_id": evidence["data_identity"],
+                                                    "script": job["script"], "arguments": spec["args"]}))
+    files = {name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+             for name in [*spec["required_results"], "exit.json", "provenance.json"]}
+    if kind == "matching":
+        scheduler._verify_synced_exit(job["id"], current, {"files": files}, tmp_path / "runs")
+    else:
+        with pytest.raises((remote_jobs.RemoteJobError, ValueError)):
+            scheduler._verify_synced_exit(job["id"], current, {"files": files}, tmp_path / "runs")
+
+
+def test_campaign_prepare_and_fingerprint_remain_unchanged(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    from s4d import remote_jobs
+    from scripts import jobs as scheduler
+
+    backend, host, _, evidence = _rv_setup(tmp_path, monkeypatch)
+    script = tmp_path / "scripts/worker.py"
+    script.write_text("guard_gpus()\n")
+    job = {"id": "ordinary", "host": "remote", "script": "scripts/worker.py", "args": [0, "a; $(false)"],
+           "mem_gb": 5, "ram_gb": 10, "disk_gb": 1, "required_results": ["completion.json"]}
+    campaign = {"commit": host["commit"], "image_digest": host["image_digest"], "data_identity": evidence["data_identity"]}
+    _, spec = backend.prepare(job, next(iter(host["limits"])), 1, host, campaign)
+    assert spec["args"] == ["0", "a; $(false)"] and spec["labels"] == remote_jobs.labels(
+        job["id"], 1, host["commit"], host["image_digest"])
+    assert not {"verification_purpose", "campaign_eligible", "verification_timeout_seconds"} & spec.keys()
+    original = {"script": job["script"], "args": ["0", "a; $(false)"],
+                "required_results": job["required_results"], "expected_config_sha256": None}
+    assert scheduler.job_fingerprint(job) == hashlib.sha256(
+        json.dumps(original, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+
+def test_verification_sync_uses_attempt_output_and_rejects_campaign_state(tmp_path, monkeypatch):
+    import hashlib
+    from types import SimpleNamespace
+
+    from s4d.remote_jobs import RemoteJobError
+    from s4d.remote_verification import verification_output
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    _, spec = backend.prepare(job, job["gpu"], 2, host, evidence)
+    state = {**spec, "attempts": 2}
+    output = verification_output("native_suite", job["id"], 2)
+    contents = {f"{output}/{name.split('/')[-1]}": b"original report bytes"
+                for name in spec["required_results"]}
+    contents.update({f"{backend.client.root}/runs/{job['id']}/{name}": b"wrapper bytes"
+                     for name in ("provenance.json", "console.log", "exit.json")})
+    def checked(command, **kwargs):
+        return SimpleNamespace(stdout="".join(hashlib.sha256(value).hexdigest() + "  " + path + "\n"
+                                             for path, value in contents.items()))
+    backend.client = SimpleNamespace(checked_ssh=checked,
+                                    rsync_download=lambda source, target, **kwargs: target.write_bytes(contents[source]))
+    synced = backend.sync_verification_results(job["id"], state, final=True)
+    assert synced["campaign_eligible"] is False and synced["verification_purpose"] == "native_suite"
+    assert (tmp_path / "runs/verify-suite/evidence/tests.json").read_bytes() == b"original report bytes"
+    state = {key: value for key, value in state.items()
+             if key not in {"verification_purpose", "campaign_eligible", "verification_timeout_seconds"}}
+    with pytest.raises((RemoteJobError, ValueError)):
+        backend.sync_verification_results(job["id"], state, final=True)
+
+
+def test_isolation_bootstrap_requires_passing_suite_for_same_release(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    from s4d.remote_verification import POLICIES, verification_artifacts
+
+    backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
+    suite = {"host": "remote", "full_suite_passed": True, "exit_code": 0,
+             "counts": {"passed": 1, "failed": 0, "error": 0, "skipped": 0},
+             "expected_commit": host["commit"], "expected_image_digest": host["image_digest"],
+             "source_sha256": evidence["source_sha256"], "source_sha256_before": evidence["source_sha256"],
+             "source_changed_during_suite": False}
+    path = tmp_path / "suite.json"
+    path.write_text(json.dumps({"commit": host["commit"], "image_digest": host["image_digest"], "report": suite}))
+    evidence.update(verification_purpose="gpu_isolation",
+                    full_suite={"path": "suite.json", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    job.update(id="verify-isolation", verification_purpose="gpu_isolation", script=POLICIES["gpu_isolation"][0],
+               ram_gb=8, mem_gb=4, required_results=["evidence/gpu_isolation.json"])
+    (tmp_path / job["script"]).write_text("pass\n")
+    _, spec = backend.prepare(job, job["gpu"], 1, host, evidence)
+    assert spec["args"][-3:] == ["--gpu", job["gpu"], "--host-pid-namespace"]
+    evidence.pop("full_suite")
+    with pytest.raises(ValueError):
+        verification_artifacts(evidence, "gpu_isolation", tmp_path, evidence["source_sha256"])

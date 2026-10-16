@@ -14,6 +14,15 @@ from pathlib import Path
 from s4d import third_party
 from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from s4d.remote_access import RemoteClient, RemoteUnreachable
+from s4d.remote_verification import (
+    POLICIES,
+    canonical_arguments,
+    entry_verification,
+    validate_verification,
+    verification_artifacts,
+    verification_output,
+    verification_resources,
+)
 
 GIB = 2**30
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
@@ -172,6 +181,39 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
             or env.get("CUDA_VISIBLE_DEVICES") != state["gpu"] or not request_ok
             or not {"compute", "utility", "graphics"} <= set(env.get("NVIDIA_DRIVER_CAPABILITIES", "").split(","))):
         raise RemoteJobError(f"Remote container identity/isolation mismatch for {run_id}")
+    try:
+        purpose = validate_verification({**state, "id": run_id, "attempt": state["attempts"]})
+        if purpose is None:
+            if ("s4d.verification_purpose" in actual or any(key.startswith("S4D_VERIFICATION_") for key in env)
+                    or actual.get("s4d.campaign_eligible", "true") != "true"):
+                raise ValueError("Verification container cannot reconcile as a campaign job")
+        else:
+            arguments = canonical_arguments(purpose, run_id, state["attempts"], state["gpu"])
+            bound = entry_verification(env, POLICIES[purpose][0], arguments)
+            if (bound is None or bound["id"] != run_id or bound["attempt"] != state["attempts"]
+                    or bound["verification_purpose"] != purpose
+                    or actual.get("s4d.verification_purpose") != purpose or actual.get("s4d.campaign_eligible") != "false"
+                    or env.get("S4D_EXPECTED_COMMIT") != state["commit"]
+                    or env.get("S4D_IMAGE_DIGEST") != state["image_digest"]
+                    or env.get("S4D_DATA_ID") != state["data_identity"]
+                    or actual.get("s4d.gpu") != state["gpu"]
+                    or config.get("Memory") != math.ceil(state["ram_gb"] * GIB)
+                    or config.get("MemorySwap") != config["Memory"]
+                    or config.get("Memory") != int(env["S4D_VERIFICATION_RAM_BYTES"])
+                    or config.get("NanoCpus") != state.get("cpu_threads", 8) * 10**9
+                    or bound["verification_timeout_seconds"] != state["verification_timeout_seconds"]
+                    or bound["cpu_threads"] != state.get("cpu_threads", 8)
+                    or int(env["S4D_VERIFICATION_GPU_BYTES"]) != math.ceil(state["mem_gb"] * GIB)
+                    or int(env["S4D_VERIFICATION_DISK_BYTES"]) != math.ceil(state["disk_gb"] * GIB)
+                    or any(actual.get("s4d." + label) != env["S4D_VERIFICATION_" + suffix]
+                           for label, suffix in (("ram_bytes", "RAM_BYTES"), ("mem_bytes", "GPU_BYTES"),
+                                                 ("disk_bytes", "DISK_BYTES")))
+                    or item["Config"].get("Entrypoint") != ["python"]
+                    or item["Config"].get("Cmd") != ["-I", "/workspace/splatter4d/scripts/remote/entry.py",
+                                                   "--script", POLICIES[purpose][0], "--", *arguments]):
+                raise ValueError("Verification container bound identity differs")
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RemoteJobError("Remote verification/campaign identity or bounds mismatch") from exc
     if (config.get("Privileged") is not False or config.get("ReadonlyRootfs") is not True
             or config.get("PidMode") != "host" or config.get("ShmSize") != 8 * GIB):
         raise RemoteJobError(f"Remote container runtime isolation mismatch for {run_id}")
@@ -258,6 +300,8 @@ def acceptance_manifest(host: dict, repo: Path) -> dict:
         raise RemoteJobError("Remote acceptance manifest is missing")
     manifest_bytes = path.read_bytes()
     manifest = json.loads(manifest_bytes)
+    if "verification_purpose" in manifest or manifest.get("campaign_eligible", True) is not True:
+        raise RemoteJobError("Verification bootstrap cannot replace campaign acceptance")
     if manifest.get("commit") != commit or manifest.get("image_digest") != image:
         raise RemoteJobError("Remote acceptance manifest code/image identity mismatch")
     suite = _artifact(manifest.get("full_suite"), repo, commit, image)
@@ -352,14 +396,57 @@ class RemoteBackend:
                        capture_output=True, text=True, check=True, timeout=60)
         return evidence
 
+    def ready_verification(self, host: dict, job: dict) -> dict:
+        purpose = validate_verification(job, queued=True)
+        if purpose is None:
+            raise RemoteJobError("Verification readiness requires an explicit typed purpose")
+        commit, image = host.get("commit", ""), host.get("image_digest", "")
+        if not isinstance(commit, str) or not COMMIT.fullmatch(commit) or not isinstance(image, str) or not DIGEST.fullmatch(image):
+            raise RemoteJobError("Verification requires an immutable commit and image")
+        manifests = host.get("verification_manifests", {})
+        if not isinstance(manifests, dict):
+            raise RemoteJobError("Verification manifests must be purpose-specific")
+        reference = manifests.get(purpose)
+        if not isinstance(reference, str) or not reference:
+            raise RemoteJobError("Purpose-specific verification manifest is missing")
+        raw = Path(reference)
+        path = raw if raw.is_absolute() else self.repo / raw
+        if self.repo not in path.parents or path.resolve() != path or not path.is_file():
+            raise RemoteJobError("Verification manifest must be a symlink-free repository file")
+        payload = path.read_bytes()
+        manifest = json.loads(payload)
+        if not isinstance(manifest, dict) or manifest.get("commit") != commit or manifest.get("image_digest") != image:
+            raise RemoteJobError("Verification manifest immutable identity differs")
+        _, identity, _ = verification_artifacts(manifest, purpose, self.repo, commit_source_sha256(self.repo, commit))
+        result = subprocess.run(
+            ["git", "-C", str(self.repo), "-c", "credential.helper=", "-c",
+             "credential.helper=!gh auth git-credential", "ls-remote", "origin", "refs/heads/splatter4d"],
+            capture_output=True, text=True, timeout=60, check=True,
+        )
+        advertised = result.stdout.split()
+        if len(advertised) != 2 or not COMMIT.fullmatch(advertised[0]):
+            raise RemoteJobError("Cannot verify pushed verification source")
+        subprocess.run(["git", "-C", str(self.repo), "merge-base", "--is-ancestor", commit, advertised[0]],
+                       capture_output=True, text=True, timeout=60, check=True)
+        return {**manifest, "manifest_sha256": hashlib.sha256(payload).hexdigest(), "data_identity": identity}
+
     def prepare(self, job: dict, gpu: str, attempt: int, host: dict, evidence: dict) -> tuple[Path, dict]:
+        purpose = validate_verification(job, queued=True)
+        if purpose is None:
+            if "verification_purpose" in evidence or evidence.get("campaign_eligible", True) is not True:
+                raise RemoteJobError("Campaign preparation cannot reuse bootstrap evidence")
+        else:
+            if evidence.get("commit") != host["commit"] or evidence.get("image_digest") != host["image_digest"]:
+                raise RemoteJobError("Verification preparation immutable identity differs")
+            verification_artifacts(evidence, purpose, self.repo, commit_source_sha256(self.repo, host["commit"]))
         name = container_name(job["id"], attempt)
         if gpu not in APPROVED_HOST_GPUS["remote"]:
             raise ValueError("Remote launch GPU is not authorized")
         script = Path(job["script"])
         if script.is_absolute() or ".." in script.parts or not (self.repo / script).is_file():
             raise ValueError("Remote job script must be repository-relative")
-        args = list(map(str, job.get("args", [])))
+        args = (canonical_arguments(purpose, job["id"], attempt, gpu) if purpose is not None
+                else list(map(str, job.get("args", []))))
         if any("\x00" in value for value in args):
             raise ValueError("NUL in remote job arguments")
         adj = int(job.get("oom_score_adj", 0))
@@ -382,6 +469,11 @@ class RemoteBackend:
                 "evidence": evidence, "labels": labels(job["id"], attempt, host["commit"], host["image_digest"])}
         if "cpu_threads" in job:
             spec["cpu_threads"] = job["cpu_threads"]
+        if purpose is not None:
+            spec.update(verification_purpose=purpose, campaign_eligible=False,
+                        verification_timeout_seconds=verification_resources(job, purpose))
+            spec["labels"].update({"s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"})
+            validate_verification(spec)
         if any(not math.isfinite(spec[key]) or spec[key] < 0 for key in ("ram_gb", "disk_gb", "disk_floor_gb")):
             raise ValueError("Invalid remote resource reservation")
         folder = self.runs / "remote/jobs"
@@ -433,3 +525,50 @@ class RemoteBackend:
                 or any(not SHA256.fullmatch(value) for value in result["files"].values())):
             raise RemoteJobError("Remote result synchronization returned no checksum evidence")
         return result
+
+    def sync_verification_results(self, run_id: str, state: dict, *, final: bool = False) -> dict:
+        purpose = validate_verification({**state, "id": run_id, "attempt": state["attempts"]})
+        if purpose is None:
+            raise RemoteJobError("Verification sync cannot handle campaign jobs")
+        output = verification_output(purpose, run_id, state["attempts"])
+        names = ["provenance.json", "console.log"]
+        if final:
+            names += ["exit.json", *state["required_results"]]
+        sources = {name: (f"{output}/{Path(name).name}" if name.startswith("evidence/")
+                          else f"{ROOT}/runs/{run_id}/{name}") for name in names}
+        lines = ["set -eu"]
+        for source in sources.values():
+            quoted = shlex.quote(source)
+            lines += [f'test "$(realpath -e -- {quoted})" = {quoted}', f"test -f {quoted}",
+                      f"sha256sum -- {quoted}"]
+        command = "\n".join(lines)
+
+        def checksums():
+            response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=60)
+            found = {}
+            for line in response.stdout.splitlines():
+                parts = line.split()
+                if len(parts) != 2 or not SHA256.fullmatch(parts[0]) or parts[1] not in sources.values() or parts[1] in found:
+                    raise RemoteJobError("Verification sync checksum identity differs")
+                found[parts[1]] = parts[0]
+            if set(found) != set(sources.values()):
+                raise RemoteJobError("Verification sync checksums are incomplete")
+            return {name: found[source] for name, source in sources.items()}
+
+        try:
+            before = checksums()
+            for name, source in sources.items():
+                target = self.runs / run_id / name
+                if target.resolve() != target:
+                    raise RemoteJobError("Verification sync destination must be symlink-free")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                self.client.rsync_download(source, target, wait=False)
+                if target.resolve() != target or not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != before[name]:
+                    raise RemoteJobError("Downloaded verification result checksum differs")
+            if checksums() != before:
+                raise RemoteJobError("Remote verification results changed during synchronization")
+        except RemoteUnreachable:
+            self._save_snapshot(reachable=False, query_ok=False)
+            raise
+        return {"run_id": run_id, "host": "remote", "final": final, "verified": True, "files": before,
+                "verification_purpose": purpose, "campaign_eligible": False}
