@@ -283,7 +283,11 @@ def run_verification(repository: Path, spec: dict, run_child) -> int:
     if env.get("S4D_RELEASE_PROOF") != str(proof) or proof.resolve() != proof:
         raise ValueError("Verification release proof path differs")
     origin = validate_release_proof(json.loads(proof.read_text()), commit)
-    if git("rev-parse", "HEAD") != commit or git("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"):
+    # runs/, outputs/ and .cache are the container's bind mounts (runs/ also holds tracked campaign records); the
+    # launcher checks the whole release clean on the host before docker run, so they are excluded only here.
+    mounted = (":(exclude)runs", ":(exclude)outputs", ":(exclude).cache")
+    if git("rev-parse", "HEAD") != commit or git("status", "--porcelain", "--untracked-files=all",
+                                                 "--ignore-submodules=none", "--", ".", *mounted):
         raise ValueError("Verification release code differs from its clean commit")
     git("merge-base", "--is-ancestor", commit, origin)
     if third_party.working_tree_identity(repository) != third_party.commit_identity(repository, commit):
