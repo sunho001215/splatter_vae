@@ -1,0 +1,61 @@
+# SNeRL pretraining on hammer. Official recipe (jayLEE0301/snerl_official @ d01533b): nerf_pretrain/configs/hammer.txt
+# (identical for every official task except expname), run_nerf.py config_parser defaults and train() constants, all
+# unchanged except white_bkgd (our renders have no alpha). Data interface: our HDF5 file, saved split manifest, pose
+# normalisation. See docs/baselines_snerl.md.
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/hammer.hdf5
+  num_inputs: 3          # encoder input views per scene, drawn from the 6 training cameras (run_nerf.py:694)
+  num_workers: 4
+  prefetch_factor: 4
+nerf:
+  # configs/hammer.txt
+  dataset_type: blender
+  no_batching: true
+  use_viewdirs: true
+  white_bkgd: false      # official true (alpha-composited white background); our full-scene renders have no alpha
+  lrate_decay: 500       # lr 5e-4 * 0.1^(step / 500k)
+  N_samples: 64
+  N_importance: 128
+  N_rand: 1024
+  precrop_iters: 500
+  precrop_frac: 0.5
+  half_res: false
+  # run_nerf.py config_parser defaults
+  netdepth: 8
+  netwidth: 256
+  netdepth_fine: 8
+  netwidth_fine: 256
+  lrate: 0.0005
+  chunk: 32768
+  netchunk: 65536
+  perturb: 1.0
+  i_embed: 0
+  multires: 10
+  multires_views: 4
+  raw_noise_std: 0.0
+  no_ndc: false
+  lindisp: false
+  # train() constants for dataset_type blender (run_nerf.py:550-551)
+  near: 2.0
+  far: 6.0
+loss:                    # run_nerf.py:759, 767
+  semantic_weight: 0.004
+  dino_weight: 0.04
+train:
+  max_steps: 2399999     # official loop range(1, 100*60*400) (run_nerf.py:655, 668)
+  seed: 0                # official: np.random.seed(0) at import, torch unseeded
+  device: cuda
+  i_print: 100           # official i_print
+  save_every: 10000      # official i_weights
+  eval_every: 10000
+  eval_scenes: 4
+  render_chunk: 4096     # rays per render chunk at evaluation (memory only)
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/hammer_seed0.json
+  lookat: [0.0, 0.6, 0.0]   # rig look-at point (s4d/data/metaworld/cameras.py), the normalised scene origin
+  pose_scale: 4.0           # metres -> official units: cameras 1.0 m -> 4 from the origin, near/far 0.5 m / 1.5 m
+dino:
+  weights: null          # default <cache>/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth (sha256-checked)
+  pretrained: true       # false only in plumbing tests (randomly initialised teacher)

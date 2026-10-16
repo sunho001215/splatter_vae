@@ -1,0 +1,67 @@
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/hammer.hdf5
+  num_inputs: 3
+  num_workers: 4
+  prefetch_factor: 4
+nerf:
+  dataset_type: blender
+  no_batching: true
+  use_viewdirs: true
+  white_bkgd: false
+  lrate_decay: 500
+  N_samples: 64
+  N_importance: 128
+  N_rand: 1024
+  precrop_iters: 500
+  precrop_frac: 0.5
+  half_res: false
+  netdepth: 8
+  netwidth: 256
+  netdepth_fine: 8
+  netwidth_fine: 256
+  lrate: 0.0005
+  chunk: 32768
+  netchunk: 65536
+  perturb: 1.0
+  i_embed: 0
+  multires: 10
+  multires_views: 4
+  raw_noise_std: 0.0
+  no_ndc: false
+  lindisp: false
+  near: 2.0
+  far: 6.0
+loss:
+  semantic_weight: 0.004
+  dino_weight: 0.04
+train:
+  max_steps: 1000
+  seed: 1
+  device: cuda
+  i_print: 100
+  save_every: 1000
+  eval_every: 0
+  eval_scenes: 4
+  render_chunk: 4096
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/hammer_seed0.json
+  lookat:
+  - 0.0
+  - 0.6
+  - 0.0
+  pose_scale: 4.0
+dino:
+  weights: null
+  pretrained: true
+run:
+  gpus:
+  - index: 0
+    uuid: GPU-d09f0338-71b9-d915-3c7f-e99754a3b639
+    name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+  dir: /home/ws/ws/splatter4d/.worktrees/bx-snerl/runs/smoke/snerl-hammer-final
+  host: local
+  git_commit: cf65a8606df403951e49087f9ae4559d7ec4b51d
+  source_dirty: true
+  config_sha256: b8350e2bc1134b51e94947e45ffe1ebb1f3d53e3f703e1a83faead50fdcbf716

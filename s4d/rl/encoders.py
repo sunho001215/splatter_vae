@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from s4d.baselines.dynamo.rl import DynaMoFrameEncoder
+from s4d.baselines.snerl.encoder import SNeRLFrameEncoder
 
 
 def weight_init(m: nn.Module) -> None:
@@ -208,6 +209,7 @@ BACKBONES = {
     "sincro": SinCroStateEncoder,
     "reviwo": ReViWoFrameEncoder,
     "dynamo": DynaMoFrameEncoder,
+    "snerl": SNeRLFrameEncoder,
 }
 
 

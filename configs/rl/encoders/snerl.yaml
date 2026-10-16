@@ -1,0 +1,11 @@
+# Frozen SNeRL encoder (multi-view RGB input, privileged): per RL time step three training cameras drawn at random for
+# the episode, with their extrinsics -> 63-d scene latent (LayerNorm output) -> FrameMLPStackHead over 3 frames,
+# feature_dim 256, no image augmentation. See docs/baselines_snerl.md.
+vision:
+  encoder_type: snerl
+  export_path: null   # set on the command line: vision.export_path=<runs/pretrain/<name>/encoder.pt>
+env:
+  views: 3
+  cameras: true
+agent:
+  feature_dim: 256

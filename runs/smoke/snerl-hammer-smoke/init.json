@@ -1,0 +1,14 @@
+{
+ "attempts": [
+  {
+   "torch_seed": 0,
+   "live_coarse": 0.0,
+   "live_fine": 0.04345703125
+  },
+  {
+   "torch_seed": 1,
+   "live_coarse": 0.99530029296875,
+   "live_fine": 0.00115966796875
+  }
+ ]
+}
