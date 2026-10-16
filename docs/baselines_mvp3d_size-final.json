@@ -1,0 +1,95 @@
+{
+ "budget": {
+  "params": 9064704,
+  "flops_per_frame": 1786078891
+ },
+ "rows": {
+  "RVT-1 MVT encoder part (220 px, patch 11, 512 wide, 8x64 heads)": {
+   "config": {
+    "img_size": 220,
+    "img_patch_size": 11,
+    "im_channels": 64,
+    "attn_dim": 512,
+    "attn_heads": 8,
+    "attn_dim_head": 64,
+    "depth": 8,
+    "attn_dropout": 0.1,
+    "activation": "lrelu",
+    "num_img": 5,
+    "decoder_depth": 2,
+    "decoder_dim": 512,
+    "decoder_heads": 8,
+    "decoder_dim_head": 64,
+    "mask_ratio": 0.75,
+    "mask_fill": 0.0
+   },
+   "tokens": 2000,
+   "encoder_params": 34269568,
+   "encoder_flops_per_frame": 175962624000,
+   "decoder_params": 9938916,
+   "decoder_flops_per_frame": 45424640000,
+   "latent_size": 1024000,
+   "feature_size": 2560
+  },
+  "3D-MVP paper (220 px, patch 10, 1024 wide, 8x128 heads)": {
+   "config": {
+    "img_size": 220,
+    "img_patch_size": 10,
+    "im_channels": 64,
+    "attn_dim": 1024,
+    "attn_heads": 8,
+    "attn_dim_head": 128,
+    "depth": 8,
+    "attn_dropout": 0.1,
+    "activation": "lrelu",
+    "num_img": 5,
+    "decoder_depth": 2,
+    "decoder_dim": 1024,
+    "decoder_heads": 8,
+    "decoder_dim_head": 128,
+    "mask_ratio": 0.75,
+    "mask_fill": 0.0
+   },
+   "tokens": 2420,
+   "encoder_params": 134964352,
+   "encoder_flops_per_frame": 767364730880,
+   "decoder_params": 37522832,
+   "decoder_flops_per_frame": 198246400000,
+   "latent_size": 2478080,
+   "feature_size": 5120
+  },
+  "3D-MVP size-matched (48 px, patch 12, 256 wide, 8x32 heads)": {
+   "config": {
+    "img_size": 48,
+    "img_patch_size": 12,
+    "im_channels": 64,
+    "attn_dim": 256,
+    "attn_heads": 8,
+    "attn_dim_head": 32,
+    "depth": 8,
+    "attn_dropout": 0.1,
+    "activation": "lrelu",
+    "num_img": 5,
+    "decoder_depth": 2,
+    "decoder_dim": 256,
+    "decoder_heads": 8,
+    "decoder_dim_head": 32,
+    "mask_ratio": 0.75,
+    "mask_fill": 0.0
+   },
+   "tokens": 80,
+   "encoder_params": 9029760,
+   "encoder_flops_per_frame": 1485373440,
+   "decoder_params": 2339136,
+   "decoder_flops_per_frame": 377487360,
+   "latent_size": 20480,
+   "feature_size": 1280
+  }
+ },
+ "rl_time_per_frame": {
+  "rl_params": 9029760,
+  "encoder_flops_per_frame": 1485373440,
+  "render_flops_per_frame": 1769472,
+  "feature_size": 1280
+ }
+}

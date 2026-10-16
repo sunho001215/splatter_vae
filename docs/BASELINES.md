@@ -111,6 +111,38 @@ Seed 0's dead coarse density remains a documented risk, not grounds for automati
 smoke held-out panel has PSNR 14.10 dB and depth MAE 0.467 m, with only 55.6% valid depth inside its near/far bounds;
 novel-view quality is weak. The existing accepted campaign continues independently.
 
+### Hammer acceptance report: DynaMo and 3D-MVP (steps 3-5, 2026-10-17)
+
+The upstream-permission paragraph above is historical. Release e4206f1 was accepted remotely: native suite and GPU
+isolation in the image. All hammer runs used it. SNeRL is reported separately once its 2.4M-step pretraining
+completes.
+
+| | DynaMo | 3D-MVP |
+|---|---|---|
+| RL-time encoder | 11,176,512 params, 1.184 GFLOPs/frame, 512-d/frame (official size) | 9,029,760 params, 1.485 GFLOPs/frame (+0.0018 render), 1,280-d/frame; scaled to <= SinCro |
+| Hammer pretraining | 194,960 steps (40 epochs), 4.99 h on one remote GPU | 270,690 steps, 3.04 h on one remote GPU |
+| Eight-task estimate | ~40 GPU-h | ~24 GPU-h |
+| Sanity: last-5 train success, pretrained vs random (seeds 1000-1002) | 0.349 vs 0.516: **failed** | A: 0.328 vs 0.268, passed (narrow); B: 0.328 (one seed) |
+| Step 4 retrieval, train cams, newest frame (ours 0.94) | 0.014 (random 0.030) | A 0.029 (random 0.787); B 0.019 (random 0.297) |
+| Step 4 hand-position R², train cams (ours 0.97) | 0.516 (random 0.466) | A 0.826 (0.838); B 0.527 (0.574) |
+| Effective rank, pretrained vs random | 49 vs 249 | A 41 vs 475 |
+
+- **Deviations:** none beyond those already documented (`docs/baselines_dynamo.md`, the 3D-MVP size and input sections
+  above).
+- **DynaMo investigation:** there was no plumbing bug. The run is faithful but weak: the representation partially
+  collapses (effective rank 3.7 vs 10.7 within trajectories) and over-trains (probe R² 0.835 at epoch 9, 0.673 at
+  the final epoch). Evidence: `runs/setup/baselines/dynamo-sanity-investigation-20261017.md`. The final-epoch encoder
+  is kept; choosing a checkpoint would be retuning.
+- **Panels:** `docs/figures/baselines/dynamo/final/` and `docs/figures/baselines/mvp3d/final/`.
+  - DynaMo same-camera nearest-neighbour state error is 2.1 cm trained vs 0.8 cm at random init (chance 20 cm).
+  - The 3D-MVP MAE reconstruction is faithful for 6- and 3-camera clouds and noisier for one camera.
+  - The 3D-MVP size measurement is in `docs/baselines_mvp3d_size-final.json`.
+- **Caveats:**
+  - The RL-input-stack probes (1536/3840-d) are not interpretable: they are underdetermined, which was pre-registered.
+  - Multi-view columns share cameras, and 3D-MVP renders a fused world-frame cloud. Random-init multi-view retrieval
+    is therefore inflated.
+  - The sanity differences are small relative to the spread between seeds.
+
 The remainder documents the already-accepted SinCro/ReViWo adaptations. Their rule is **upstream code, original
 hyperparameters, changes only at the data interface**; exceptions are listed explicitly.
 
