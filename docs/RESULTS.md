@@ -4,6 +4,42 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### No-synthetic-view RL arm: large RL degradation on both development tasks (2026-10-16 17:19; attribution only)
+
+Registered 2026-10-16 12:35, before any result (Stage 2 RL rule: seed-mean last-5 success, margin
+max(0.10, 2 x SE), per camera condition). `s2rl-nosynth-{hammer,pick-place}-s1000..s1002` used the 200k
+`s2ab-nosynth-seed0` encoders (aug.synth_views=0, aug.synth_render=false, no crop) against the completed full-method
+references. Reports: `runs/setup/stage2-report-20261016-171915.json`, RL standard
+`runs/setup/rl-report-20261016-171918.json`.
+
+| task / condition | full | no-synth (seeds) | delta | margin | verdict |
+|---|---:|---|---:|---:|---|
+| hammer training | 0.935 | 0.553 (0.697, 0.648, 0.315) | -0.382 | 0.245 | worse |
+| hammer held-out | 0.149 | 0.043 | -0.106 | 0.100 | worse |
+| hammer trajectories | 0.882 | 0.465 | -0.417 | 0.102 | worse |
+| pick-place training | 0.463 | 0.037 (0.008, 0.100, 0.003) | -0.426 | 0.216 | worse |
+| pick-place held-out | 0.011 | 0.002 | -0.009 | 0.100 | within (both near zero) |
+| pick-place trajectories | 0.423 | 0.043 | -0.380 | 0.116 | worse |
+
+RL standard, no-synth vs full (seed mean [95% bootstrap CI]):
+- **hammer training success:** last-5 0.553 [0.315, 0.697] vs 0.935; final 0.550 vs 0.931; AUC 0.383 vs 0.652.
+- **hammer training return:** last-5 1248 [1222, 1298] vs 1857; AUC 887 vs 1378.
+- **pick-place training success:** last-5 0.037 [0.003, 0.100] vs 0.463; AUC 0.013 vs 0.278.
+- **pick-place training return:** last-5 17 vs 689.
+
+Fairness: the RL configs differ only in the encoder export; the encoder configs are identical; 240 episodes per
+point. Host is recorded: no-synth ran on local MIG at d95e863 (MIG device change only; RL code identical to the
+references' 6a48200).
+
+**Interpretation (attribution only).** Removing synthetic near views and their rendering is the single largest RL
+effect measured in Stage 2. It is comparable to pure no-InfoNCE: hammer 0.575, pick-place 0.012. The
+representation damage (27/24 metrics worse) carries over to RL on both development tasks. Caveats:
+- single pretraining seed;
+- synthetic positives and synthetic rendering are removed together;
+- held-out success is low for both arms.
+
+No method, seed or protocol change follows.
+
 ### Stage 2 pretrain-only variants and crop-hammer RL (2026-10-16 14:33; attribution only)
 
 All eight remote pretrain-only full evaluations (no-lambda-dyn, no-coverage, misscaled-none, misscaled-scale; hammer and

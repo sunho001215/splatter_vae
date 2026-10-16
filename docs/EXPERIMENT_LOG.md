@@ -3528,3 +3528,6 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   were marked failed with that reason (`baselines-sanity-remote-b-registration-20261016.json`). Remote admissions
   were held from 17:10 to 17:20 so the old ids could not burn restarts.
 - No-synth RL arm: all 12 jobs completed locally; the registered report follows the driver closeouts.
+- 17:19 no-synth RL arm reported (RESULTS "No-synthetic-view RL arm"): worse beyond the registered margin on hammer
+  training/held-out/trajectories and pick-place training/trajectories; pick-place held-out is within margin (near
+  zero for both arms). Fairness checks are clean. Attribution only; single pretraining seed; bundled removal.
