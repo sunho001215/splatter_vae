@@ -3570,3 +3570,8 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   (`ONLY`; dependency states included in its eligibility view; previous version kept as
   `baseline_local_driver.before-kept-eval-20261017.py`). No definition changed. The criterion is evaluated once all
   three seeds of both arms exist.
+- 01:11 DynaMo hammer sanity **failed** the pre-registered criterion: pretrained-frozen last-5 training success
+  0.193/0.520/0.333 (mean 0.349) vs random-frozen 0.313/0.635/0.598 (mean 0.516); AUC 0.145 vs 0.213. Pretraining
+  shows shrinking embedding spread (obs_enc_mean_std 0.158 -> 0.010, norm 19 -> 4.8) and rising held-out dynamics
+  loss after ~34k steps. Per the rule: investigate before the eight-task runs, no recipe retuning. Read-only
+  investigation started (export/load plumbing, official-recipe fidelity, feature health).
