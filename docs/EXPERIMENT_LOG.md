@@ -3588,3 +3588,6 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
 - Decision: faithful-but-weak, not a bug. DynaMo keeps the official final-epoch encoder for the eight-task runs as
   pre-registered (choosing an earlier checkpoint would be recipe retuning). The gap is borderline with n=3 (paired
   t ≈ 3.4, p ≈ 0.08). Reported to the user with the sanity summary; an epoch-9 diagnostic arm is offered, not run.
+- 03:04 3D-MVP hammer sanity **passed**: multiview (condition A) pretrained-frozen last-5 training success
+  0.323/0.133/0.527 (mean 0.328) vs random-frozen 0.373/0.260/0.172 (mean 0.268); AUC 0.183 vs 0.178. Narrow, with
+  large seed spread. Single-view (condition B, one seed by design) pretrained 0.328. All runs remote, e4206f1.
