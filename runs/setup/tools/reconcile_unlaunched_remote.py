@@ -44,6 +44,21 @@ with open(jobs.REGISTRY.with_suffix('.lock'), 'a') as lock:
         remote_dir = client.remote_path(args[args.index('--output-dir') + 1])
         control_dir = client.remote_path(args[args.index('--run-dir') + 1])
         control_kind = 'trainer_run_dir'
+    elif current.get('script') == 'scripts/train_rl.py':
+        # A DrM trainer writes only into its --run-dir; its companion evaluator may already exist and is not touched.
+        assert args[args.index('--run-dir') + 1] == f'runs/{job_id}', args
+        remote_dir = client.remote_path(f'runs/{job_id}')
+        control_dir = client.remote_path(f"releases/{current['commit']}/code")
+        control_kind = 'accepted_release_dir'
+    elif current.get('script') == 'scripts/evaluate.py':
+        # The remote driver uploads only runs/<id>/config.yaml before a full-split evaluation launches; "absent"
+        # then means no other file exists in the run directory (no evaluation output was ever produced).
+        assert args[:2] == ['--run', f'runs/{job_id}'], args
+        remote_dir = client.remote_path(f'runs/{job_id}')
+        control_dir = client.remote_path(f"releases/{current['commit']}/code")
+        control_kind = 'accepted_release_dir'
+        output_test = (f"if [ -z \"$(find {shlex.quote(remote_dir)} -mindepth 1 ! -path {shlex.quote(remote_dir + '/config.yaml')} "
+                       f"-print -quit 2>/dev/null)\" ]; then echo absent; else echo exists; fi; ")
     else:
         declared = next(job for job in jobs.load_queue()['jobs'] if job['id'] == job_id)
         assert declared['script'] == 'scripts/train.py' and '--output-root' in args and '--name' in args
@@ -51,10 +66,12 @@ with open(jobs.REGISTRY.with_suffix('.lock'), 'a') as lock:
         remote_dir = client.remote_path(f'runs/{job_id}')
         control_dir = client.remote_path(f"releases/{current['commit']}/code")
         control_kind = 'accepted_release_dir'
+    if current.get('script') != 'scripts/evaluate.py':
+        output_test = f"test -e {shlex.quote(remote_dir)} && echo exists || echo absent; "
     # A failed Docker query must fail the check, not look like an empty container listing.
     command = (f"set -e; matches=$(docker ps -a --no-trunc --filter name=^/{container}$ --format '{{{{.ID}}}}'); "
                'if [ -n "$matches" ]; then printf \'%s\\n\' "$matches" | wc -l; else echo 0; fi; '
-               f"test -e {shlex.quote(remote_dir)} && echo exists || echo absent; "
+               + output_test +
                f"test -d {shlex.quote(control_dir)} && echo exists || echo absent; date -u +%FT%TZ")
     checks = []
     for _ in range(2):
@@ -69,6 +86,8 @@ with open(jobs.REGISTRY.with_suffix('.lock'), 'a') as lock:
     evidence = {'job_id': job_id, 'attempt': current['attempt'], 'container': container, 'gpu': current['gpu'],
                 'reason': current['reason'], 'launch_attempt_age_seconds': round(age, 1),
                 'remote_output_dir': remote_dir, control_kind: control_dir, 'checks': checks,
+                'output_rule': ('no file besides the driver-uploaded config.yaml'
+                                if current.get('script') == 'scripts/evaluate.py' else 'directory absent'),
                 'conclusion': 'launch refused before docker run; deterministic container never existed'}
     jobs.record({'event': 'reset', 'id': job_id, 'reconciliation': evidence})
 stamp = datetime.now().astimezone()

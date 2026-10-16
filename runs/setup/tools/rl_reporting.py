@@ -35,6 +35,8 @@ FINAL_TASKS = ('bin-picking', 'coffee-push', 'door-open', 'hammer', 'peg-insert-
 FINAL_SEEDS = (2000, 2001, 2002)
 S2_TASKS, S2_SEEDS = ('hammer', 'pick-place'), (1000, 1001, 1002)
 S2_ARMS = ('full', 't1', 'nomotion', 'noinfonce', 'singlegroup')
+# Later Stage 2 RL arms (crop follow-up 2026-10-15; no-synth arm 2026-10-16), reported per task once all seeds closed out.
+EXTRA_ARMS = ('crop', 'cropnosynth', 'nosynth')
 B = 10000
 
 
@@ -50,10 +52,18 @@ def final_run(method, task, seed):
     return f's4-drm-{method}-{task}-s{seed}'
 
 
-def eval_rows(rid):
+def eval_path(rid):
     path = RUNS / f'{rid}-eval' / 'eval.jsonl'
-    if not path.is_file():
-        path = RUNS / rid / 'eval.jsonl'
+    return path if path.is_file() else RUNS / rid / 'eval.jsonl'
+
+
+def closed_out(rid):
+    """A run counts only after its trainer/companion closeout proof (Stage 2 driver) exists."""
+    return (ROOT / 'runs/setup' / f's2-{rid}-completion.json').is_file()
+
+
+def eval_rows(rid):
+    path = eval_path(rid)
     rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     assert [r['step'] for r in rows] == STEPS, rid
     final = json.loads((RUNS / rid / 'final.json').read_text())
@@ -128,8 +138,11 @@ for (method, metric, stat), x in grid.items():
         entry['iqm'], entry['iqm_ci95'] = iqm_with_ci(x, rng)
 
 # Stage 2 RL
-for arm in S2_ARMS:
-    for task in S2_TASKS:
+S2_CELLS = [(arm, task) for arm in S2_ARMS for task in S2_TASKS] + [
+    (arm, task) for arm in EXTRA_ARMS for task in S2_TASKS
+    if all(closed_out(f's2rl-{arm}-{task}-s{seed}') for seed in S2_SEEDS)]
+for arm, task in S2_CELLS:
+    if True:
         per_seed = {}
         for seed in S2_SEEDS:
             rid = f's2rl-{arm}-{task}-s{seed}'
@@ -155,7 +168,7 @@ config_diffs, commits, episodes, gpus, fps, pauses = {}, Counter(), Counter(), {
 for task in S2_TASKS:
     for seed in S2_SEEDS:
         ref = flat(yaml.safe_load((RUNS / f's2rl-full-{task}-s{seed}/config.yaml').read_text()))
-        for arm in S2_ARMS:
+        for arm in [a for a, t in S2_CELLS if t == task]:
             rid = f's2rl-{arm}-{task}-s{seed}'
             cfg = flat(yaml.safe_load((RUNS / rid / 'config.yaml').read_text()))
             diff = sorted(k for k in set(cfg) | set(ref) if cfg.get(k) != ref.get(k) and not k.startswith('run.'))
@@ -163,7 +176,7 @@ for task in S2_TASKS:
             assert cfg['seed'] == seed and cfg['task'] == task, rid
             prov = json.loads((RUNS / rid / 'provenance.json').read_text())
             commits[(prov['git_commit'], prov['host'])] += 1
-            rows = [json.loads(line) for line in (RUNS / rid / 'eval.jsonl').read_text().splitlines() if line.strip()]
+            rows = [json.loads(line) for line in eval_path(rid).read_text().splitlines() if line.strip()]
             episodes[tuple(sorted({r['episodes'] for r in rows}))] += 1
             gpus[rid] = [e.get('gpu', '')[-12:] for e in launches.get(rid, [])]
             train = [json.loads(line) for line in (RUNS / rid / 'train.jsonl').read_text().splitlines()
@@ -181,8 +194,8 @@ fair['median_fps'] = fps
 fair['checkpoint_pauses'] = {k: [{'step': e.get('checkpoint_step'), 'reason': e.get('reason')} for e in v]
                              for k, v in pauses.items() if v}
 encoders = {}
-for task in S2_TASKS:
-    for arm in S2_ARMS:
+for arm, task in S2_CELLS:
+    if True:
         path = yaml.safe_load((RUNS / f's2rl-{arm}-{task}-s1000/config.yaml').read_text())['vision']['export_path']
         import torch  # noqa: E402
         payload = torch.load(ROOT / path, map_location='cpu', weights_only=True)
@@ -234,5 +247,5 @@ print('evaluation episodes per point:', fair['evaluation_episodes_per_point'])
 print('encoder config differences from full:', fair['encoder_config_differences_from_full'])
 print('checkpoint pauses:', fair['checkpoint_pauses'])
 print('median fps by arm:', {arm: round(float(np.median([v for k, v in fps.items() if f'-{arm}-' in k])), 1)
-                             for arm in S2_ARMS})
+                             for arm in dict.fromkeys(a for a, _ in S2_CELLS)})
 print('\nREPORT', out, sha(out))

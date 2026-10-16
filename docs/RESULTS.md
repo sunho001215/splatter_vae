@@ -4,6 +4,43 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Stage 2 pretrain-only variants and crop-hammer RL (2026-10-16 14:33; attribution only)
+
+All eight remote pretrain-only full evaluations (no-lambda-dyn, no-coverage, misscaled-none, misscaled-scale; hammer and
+pick-place) and the no-consistency hammer evaluation closed out with driver proofs. Fixed full-method 200k references
+and the prospective margins/readers. Report `runs/setup/stage2-report-20261016-143246.json` (SHA-256
+`c173e0a5ade65ec51074ca51b194f76c0d83c212e719957d5f1f2ec268acf49a`). Single-seed descriptive margin comparisons, not
+significance or equivalence tests. Of 32 metrics, better/worse/within:
+
+| variant | hammer | pick-place | beyond-margin metrics |
+|---|---|---|---|
+| no lambda_dyn | 0/0/32 | 0/5/27 | pick-place: moving PSNR -0.61 dB, held-out covered PSNR, floaters, centre Chamfer |
+| no coverage | 2/1/29 | 2/4/26 | PSNR (trajectory/near/moving) worse; hidden/centre Chamfer or motion Chamfer better |
+| misscaled-none | **10/0/22** | **10/2/20** | PSNR +0.99/+0.41 dB, held-out PSNR, utilisation, hidden/visible/dynamic Chamfer better; pick-place trajectory retrieval -0.035, CD-render +11.7% worse |
+| misscaled-scale | 1/2/29 | 1/2/29 | small mixed changes; scale alignment absorbs most of the corruption |
+| no consistency (hammer) | 2/4/26 | pending (pretrain resumed at 180k) | trajectory position/velocity/object R² and held-out retrieval worse |
+
+Misscaled-none corrupts every depth target by an independent factor U[0.7, 1.4] per sample, time and view, with no
+alignment. M3D motion targets stay uncorrupted. The config differs from the freeze only in that key, and the
+far-plane validity mask is computed on the scaled depth. Its gains are appearance/geometry utilisation metrics, not
+retrieval or state probes. A plausible reading is that inconsistent per-view targets weaken the depth term. This is a
+single-seed attribution result: no method, hyperparameter or seed change follows, and no RL arm was registered for it.
+
+**First crop RL comparison complete: crop vs full, hammer, DrM 1M, seeds 1000-1002** (Stage 2 rule, margin
+max(0.10, 2 x SE)): training 0.970 vs 0.935 (+0.035, within), held-out 0.228 vs 0.149 (+0.079, margin 0.100, within),
+trajectories 0.917 vs 0.882 (+0.035, within). RL standard (`runs/setup/rl-report-20261016-143359.json`), seed mean
+[95% bootstrap CI], crop vs full:
+
+| condition | success last-5 | success final | success AUC | return last-5 | return AUC |
+|---|---|---|---|---|---|
+| training | 0.970 [0.925, 1.000] vs 0.935 [0.883, 0.962] | 0.969 vs 0.931 | 0.765 vs 0.652 | 1937 vs 1857 | 1473 vs 1378 |
+| held-out | 0.228 [0.197, 0.245] vs 0.149 [0.072, 0.210] | 0.225 vs 0.146 | 0.178 vs 0.108 | 343 vs 296 | 322 vs 271 |
+| trajectories | 0.917 [0.870, 0.960] vs 0.882 [0.855, 0.930] | 0.900 vs 0.883 | 0.728 vs 0.631 | 1528 vs 1613 | 1194 vs 1224 |
+
+Fairness: RL configs differ only in the encoder export, 240 episodes per point. Crop ran on the remote at the accepted
+226d8ae, the references locally at 6a48200 (host-neutral rule; host recorded). Crop pick-place and all cropnosynth
+pairs are still running. The within-margin difference is not evidence of no effect, and the frozen method is unchanged.
+
 ### Late pre-shutdown live-sync verification failures (2026-10-16 07:48)
 
 The bounded14-run numerical sync check completed with **0/14 verified live snapshots**: nine checksum/change

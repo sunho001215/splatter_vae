@@ -20,6 +20,7 @@ diff inline.
 | review / adversarial-review (2 runs) | MIG guard/scheduler | `.worktrees/mig` | blocked by sandbox, no findings possible |
 | task-mvafnh17-iday3i | MIG guard/scheduler review (inline diff) | `.worktrees/mig` | 1 finding (unavailable process listing read as idle), fixed `d95e863`, integrated |
 | task-mvafyrt7-0bpdom | baseline bundle review (inline code) | `.worktrees/bx-int` | 1 P0 claim (multi-view shift keeps 2 fixed views) = registered user protocol, not changed; caveat in reports |
+| task-mvahby60-5isaes | patch proposal: port the remote verification bootstrap (native suite + GPU isolation in the image) from WIP `8f8f952` | proposal only, applied in a worktree | running |
 
 ## Current phase
 - **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,

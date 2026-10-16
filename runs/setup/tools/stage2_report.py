@@ -84,7 +84,8 @@ def rl_compare(arm, ref):
 
 assert sha(MARGINS) == MARGINS_SHA
 margins = json.loads(MARGINS.read_text())
-NAMES = ('stage2-registration-20261013.json', 'stage2-crop-registration-20261015.json')
+NAMES = ('stage2-registration-20261013.json', 'stage2-crop-registration-20261015.json',
+         'stage2-nosynth-rl-registration-20261016.json')
 registrations = [json.loads((SETUP / n).read_text()) for n in NAMES if (SETUP / n).is_file()]
 variants = {}
 for registration in registrations:

@@ -3422,3 +3422,42 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   pairs, on the accepted release 226d8ae as soon as reconciliation finishes. Local MIG: the no-consistency pick-place
   resume (180k checkpoint SHA-256 re-verified, matches the ledger), both no-consistency full evaluations, then the
   no-synth RL arm; new-baseline hammer sanity follows acceptance.
+
+### 2026-10-16 13:35 — Baselines integrated on main; hammer sanity set registered (before any result)
+- Integration `0e9f353` (MIG change + `wip/review-items`, `wip/bx-snerl`, `wip/bx-mvp3d-input-conditions`) passed the
+  full native suite 863/0/0/0 on the exact merged tree and was fast-forwarded to main with matching `docs/tests.json`
+  (284 fingerprints, now including the third-party pins/patches); pushed with the restart docs as `852c71e`.
+  Submodules are checked out at their pins in main; the official DINO ViT-S/8 weights (hash-checked by the code)
+  are in `.cache/torch/hub/checkpoints/`.
+- Codex reviewed the bundle (code inline). Its single P0 is the multi-view viewpoint-shift protocol (two of three
+  views stay fixed), which is the user's 2026-10-14 decision for SNeRL / 3D-MVP A and stays unchanged; every table
+  will label those rows privileged and state that their shifted-camera numbers are not like-for-like with
+  single-camera robustness. No other material defects reported; DynaMo/SNeRL/3D-MVP pretraining, rendering, pins and
+  the unchanged single-camera RL path were judged clean.
+- Registered `runs/setup/baselines-sanity-registration-20261016.json` (43 jobs; acceptance step 3 of BASELINES):
+  `s4-{dynamo,snerl,mvp3d}-hammer` pretraining at the unchanged recipes, seed 0 (the final hammer encoders, not side
+  runs); init-only exports `s4-{dynamo,snerl}-hammer-init` (same seed; hash compared with the pretrain's own
+  `encoder_init.pt` before reporting; 3D-MVP's random arm uses its pretrain run's `encoder_init.pt`); DrM hammer
+  400k agent steps, development seeds 1000-1002, pretrained vs random-frozen for DynaMo, SNeRL and 3D-MVP condition
+  A, plus 3D-MVP condition B pretrained seed 1000. Criterion fixed now: pretrained mean last-5 training-camera
+  success above random; otherwise investigate before the eight tasks, never by retuning recipes. Admission:
+  new `runs/setup/tools/baseline_local_driver.py` (same accounting/ceiling as the Stage 2 driver, shared lock).
+  Reservations are declared (DynaMo 30 GB, SNeRL/3D-MVP 20 GB, RL 8/10 GB) until measured. Local first; SNeRL's
+  2.4M-step recipe should move to a full remote GPU once a release containing the baselines is accepted remotely.
+
+### 2026-10-16 14:35 — Remote pretrain-only evaluations and crop-hammer RL reported; link saturation found
+- The VPN link dropped every 1-2 min (3-164 s) from 13:27, while my W&B pull batch (offline folders of 7-8 GB) ran
+  alongside the drivers. After stopping that batch at 14:03 there were no further drops, and the remote passes then
+  admitted 5 evaluations and 2 crop pairs. W&B pulls must not run concurrently with dispatch; they are deferred to a
+  quiet window (visualisation only, never blocking numerics). The Stage 2 W&B syncs were also taken out of the
+  remote driver pass (`remote_campaign_driver.before-wandb-deferral-20261016.py` keeps the old version).
+- Two launches needed reconciliation, both proven never executed (two absence checks, release-dir positive control).
+  `fulleval-s2ab-nocoverage-seed0-pick-place-200k` lost its launch response; the tool gained the evaluation case,
+  where only the driver-uploaded config.yaml may exist. `s2rl-cropnosynth-pick-place-s1000` was refused by the
+  launcher's pre-launch memory accounting (`awk` read a vanished /proc/<pid>/smaps_rollup); the tool gained the
+  RL-trainer case. Both relaunch as attempt 2 with no failure charged.
+- Results are in RESULTS ("Stage 2 pretrain-only variants and crop-hammer RL"). misscaled-none is better beyond margin
+  on 10 metrics per task; I checked the config and the code path, and it is the registered corruption only, a
+  single-seed attribution result with no method consequence. The report tools now include the later arms:
+  `stage2_report.py` reads the no-synth RL registration, and `rl_reporting.py` reports crop/cropnosynth/no-synth per
+  task once all seeds have closeout proofs. The earlier versions are kept.
