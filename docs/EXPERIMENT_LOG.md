@@ -3577,3 +3577,14 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   investigation started (export/load plumbing, official-recipe fidelity, feature health).
 - 01:20 nocons / misscaled-none RL arms closed out (12 pairs, local MIG). All conditions within margin on both
   tasks (reports `stage2-report-20261017-012034.json`, `rl-report-20261017-012038.json`). RESULTS updated.
+- 01:31 DynaMo sanity investigation (read-only; report `runs/setup/baselines/dynamo-sanity-investigation-20261017.md`):
+  **no plumbing bug.** `encoder.pt` = epoch-39 export (step 194960), differs from `encoder_init.pt`; RL runs record
+  the matching export hashes; pretraining/RL preprocessing identical (128x128 RGB, same rig, ImageNet norm inside the
+  official module, frozen eval mode). Recipe matches the official SimSiam configs; all deviations already documented
+  in `docs/baselines_dynamo.md`. **Feature health:** final encoder is partially collapsed vs random init (within-
+  trajectory effective rank 3.65 vs 10.66; hand/hammer-xyz linear probe R² 0.673 final vs 0.794 random vs 0.835 at
+  epoch 9), i.e. upstream's scale-invariant cosine loss + covariance term without variance floor over-trains on this
+  data (train loss falls, held-out rises). RL head LayerNorms remove scale, so scale is not the cause.
+- Decision: faithful-but-weak, not a bug. DynaMo keeps the official final-epoch encoder for the eight-task runs as
+  pre-registered (choosing an earlier checkpoint would be recipe retuning). The gap is borderline with n=3 (paired
+  t ≈ 3.4, p ≈ 0.08). Reported to the user with the sanity summary; an epoch-9 diagnostic arm is offered, not run.
