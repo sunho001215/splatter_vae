@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-16T07:53:41.528696+00:00",
+  "started_utc": "2026-10-16T12:40:15.476771+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -14,15 +14,15 @@
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/idfix/tests",
+    "/home/ws/ws/splatter4d/.worktrees/syncinit/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/idfix/runs/t/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/syncinit/docs/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/idfix/runs/t/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/.worktrees/syncinit/docs/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 305.81150628600153,
+  "duration_seconds": 308.2089430459964,
   "counts": {
     "passed": 919,
     "error": 0,
@@ -111,7 +111,7 @@
     "s4d/model/encoder.py": "346045218986a854f8a57727cbc4ada8a959565e4e15f7bc72155b25a42d1298",
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "fe26bd68723cc7850a19f8817d8b58ca967625a47727d6a239e4e37dd4a59a6a",
-    "s4d/remote_access.py": "ad122c223d4523e8ac3c818519ce344abb674ef418f1c41a73b4b4ac93a0d71d",
+    "s4d/remote_access.py": "ea1baee443a6a07ef591a08eaca07185db4abef7c6a588c9910d99344d12cd0e",
     "s4d/remote_jobs.py": "5d9a67268ce2d23f4a30c2b663d296d5845ee065864221381ad448bc5be2fd72",
     "s4d/remote_launch.py": "797bf008b28e4e27e13d7d6295a1232b0dd7811db25d12d84051d2a2f561a7bb",
     "s4d/remote_verification.py": "646d33778b5133ecba4b85403bd2d50152cf109a32f75092649a2cc286cd6dc0",
@@ -218,7 +218,7 @@
     "tests/test_mvp3d.py": "8b338d3ce0356f9bfb904d5576b4ccce1365147e7edfaffbd3a9a11b2135d73b",
     "tests/test_nvidia_query.py": "af64530981a970b9d07aa827a12223361d8b527b53fdd3859f16c8d939df6e49",
     "tests/test_occlusion.py": "a448c77d13305a356a166db8f9534693d4541c25c944a9ef3f90792d93457c9e",
-    "tests/test_remote_access.py": "6bd0024bbd34f5bfe6490265fff1ba70ae9b0bc94c67f989bf95632992d79aec",
+    "tests/test_remote_access.py": "6373e0c88eac773e857ed85a1fdec71c130b737fb95d6bff9b21161e6d9d9675",
     "tests/test_remote_jobs.py": "eac04a5770b4f9e1d73a75a00edef7e3c31214b9e47976edf66d331b4603f747",
     "tests/test_remote_launch.py": "25a1dbba10b787883fe6d5b2dc9c0f8cb65ece51992277fb57f89f9af19f896f",
     "tests/test_remote_runtime.py": "cf971b616b29c9765d9d7cc71e8b53f7aec198e02c8754ffabcfbe3276a00b14",
@@ -398,7 +398,7 @@
     "s4d/model/encoder.py": "346045218986a854f8a57727cbc4ada8a959565e4e15f7bc72155b25a42d1298",
     "s4d/model/gaussians.py": "8195501fbb54ed187a9362bb848a6f2d0975189a3bf3980dde194b7d3d868b88",
     "s4d/model/render.py": "fe26bd68723cc7850a19f8817d8b58ca967625a47727d6a239e4e37dd4a59a6a",
-    "s4d/remote_access.py": "ad122c223d4523e8ac3c818519ce344abb674ef418f1c41a73b4b4ac93a0d71d",
+    "s4d/remote_access.py": "ea1baee443a6a07ef591a08eaca07185db4abef7c6a588c9910d99344d12cd0e",
     "s4d/remote_jobs.py": "5d9a67268ce2d23f4a30c2b663d296d5845ee065864221381ad448bc5be2fd72",
     "s4d/remote_launch.py": "797bf008b28e4e27e13d7d6295a1232b0dd7811db25d12d84051d2a2f561a7bb",
     "s4d/remote_verification.py": "646d33778b5133ecba4b85403bd2d50152cf109a32f75092649a2cc286cd6dc0",
@@ -505,7 +505,7 @@
     "tests/test_mvp3d.py": "8b338d3ce0356f9bfb904d5576b4ccce1365147e7edfaffbd3a9a11b2135d73b",
     "tests/test_nvidia_query.py": "af64530981a970b9d07aa827a12223361d8b527b53fdd3859f16c8d939df6e49",
     "tests/test_occlusion.py": "a448c77d13305a356a166db8f9534693d4541c25c944a9ef3f90792d93457c9e",
-    "tests/test_remote_access.py": "6bd0024bbd34f5bfe6490265fff1ba70ae9b0bc94c67f989bf95632992d79aec",
+    "tests/test_remote_access.py": "6373e0c88eac773e857ed85a1fdec71c130b737fb95d6bff9b21161e6d9d9675",
     "tests/test_remote_jobs.py": "eac04a5770b4f9e1d73a75a00edef7e3c31214b9e47976edf66d331b4603f747",
     "tests/test_remote_launch.py": "25a1dbba10b787883fe6d5b2dc9c0f8cb65ece51992277fb57f89f9af19f896f",
     "tests/test_remote_runtime.py": "cf971b616b29c9765d9d7cc71e8b53f7aec198e02c8754ffabcfbe3276a00b14",

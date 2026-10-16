@@ -479,6 +479,7 @@ class RemoteAccessTests(unittest.TestCase):
             self.assertEqual(result["files"], {"encoder.pt": access.sha256(remote / "encoder.pt")})
             self.assertNotIn("-name '*.pt'", snapshots.call_args.args[0])
             self.assertIn("-path './encoder.pt'", snapshots.call_args.args[0])
+            self.assertIn("-path './encoder_init.pt'", snapshots.call_args.args[0])
             with_checkpoints = self.client.sync_results("baseline", checkpoints=True, final=True)
         self.assertEqual(set(with_checkpoints["files"]), set(weights) - {"replay/encoder.pt"})
         self.assertFalse((self.repo / "runs/baseline/replay/encoder.pt").exists())

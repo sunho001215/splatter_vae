@@ -541,7 +541,7 @@ class RemoteClient:
             names += ["*.pt", "*.pth", "*.ckpt"]
         pruned = " -o ".join("-name " + shlex.quote(name) for name in excluded)
         patterns = " -o ".join("-name " + shlex.quote(name) for name in names)
-        patterns += " -o -path './encoder.pt' -o -path './exports/*'"
+        patterns += " -o -path './encoder.pt' -o -path './encoder_init.pt' -o -path './exports/*'"
         manifest_cmd = ("set -eu; cd " + shlex.quote(remote) + "; find . -type d \\( " + pruned
                         + " \\) -prune -o -type f \\( " + patterns + " \\) -exec sha256sum -- {} +")
         before = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
