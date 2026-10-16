@@ -125,7 +125,8 @@ def test_concurrent_source_tree_builds_publish_one_cached_copy(superproject, tmp
     assert sorted(p.name for p in trees[0].parent.iterdir()) == [f".{trees[0].name}.lock", trees[0].name]
 
 
-def test_git_format_patches_to_subdirectories_apply_inside_a_repository(superproject):
+def test_git_format_patches_to_subdirectories_apply_inside_a_repository(superproject, monkeypatch):
+    monkeypatch.delenv("S4D_CACHE_ROOT", raising=False)  # the remote runtime sets a shared cache root
     repo, first = superproject
     module = repo / "third_party/upstream"
     (module / "pkg").mkdir()

@@ -157,8 +157,12 @@ def test_cuda_environment_rejects_duplicates_and_accepts_selected_set(monkeypatc
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", uuid)
     assert guard.visible_device_uuids() == [uuid]
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ",".join(guard.ALLOWED_GPU_UUIDS[:2]))
-    with pytest.raises(guard.GPUIsolationError, match="one MIG device"):
-        guard.visible_device_uuids()
+    if uuid in guard.MIG_DEVICES:  # local host: MIG instances, one per process
+        with pytest.raises(guard.GPUIsolationError, match="one MIG device"):
+            guard.visible_device_uuids()
+    else:  # remote host: full GPUs may be selected together
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ",".join(guard.ALLOWED_GPU_UUIDS))
+        assert guard.visible_device_uuids() == list(guard.ALLOWED_GPU_UUIDS)
 
 
 def test_local_mig_instances_map_to_their_parent_gpus(monkeypatch):

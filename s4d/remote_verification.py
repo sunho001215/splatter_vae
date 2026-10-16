@@ -317,7 +317,9 @@ def run_verification(repository: Path, spec: dict, run_child) -> int:
     with (run_dir / "console.log").open("a", buffering=1) as console:
         try:
             enforce_allowed_gpus()
-            child_env = dict(env)
+            # The S4D_VERIFICATION_* bounds are for this entry only; a child that inherits them (e.g. the suite's own
+            # entry-point tests) would otherwise be treated as a verification run.
+            child_env = {key: value for key, value in env.items() if not key.startswith("S4D_VERIFICATION_")}
             if purpose == "native_suite":
                 child_env.pop("S4D_JOB_ID", None)
             else:

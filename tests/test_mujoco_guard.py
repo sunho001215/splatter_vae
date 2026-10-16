@@ -11,7 +11,7 @@ from types import ModuleType
 
 import pytest
 
-from s4d.gpu_guard import ALLOWED_GPU_UUIDS, GPUIsolationError
+from s4d.gpu_guard import ALLOWED_GPU_UUIDS, MIG_DEVICES, GPUIsolationError
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -100,7 +100,7 @@ def test_ambiguous_cuda_mapping_refuses_egl_order(helper, monkeypatch):
         helper._find_egl_device_index_for_visible_cuda()
 
 
-@pytest.mark.parametrize("index", range(len(ALLOWED_GPU_UUIDS)))
+@pytest.mark.parametrize("index", range(len(MIG_DEVICES)))
 def test_mig_instance_selects_its_position_among_the_parent_egl_devices(helper, monkeypatch, index):
     # Six EGL devices: one of another GPU, then the four MIG instances of the visible parent, then another.
     devices = [object() for _ in range(6)]
@@ -112,7 +112,8 @@ def test_mig_instance_selects_its_position_among_the_parent_egl_devices(helper, 
         return 1
 
     monkeypatch.setattr(helper, "_get_egl_ext_function", lambda *args: synthetic_query)
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ALLOWED_GPU_UUIDS[index])
+    mig = list(MIG_DEVICES)[index]  # host-independent: the selection logic only, not this host's allowlist
+    monkeypatch.setattr(helper, "_single_visible_uuid", lambda: mig)
     assert helper._find_egl_device_index_for_visible_cuda() == 1 + index % 4
 
 
