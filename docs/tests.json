@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-16T12:40:15.476771+00:00",
+  "started_utc": "2026-10-16T18:33:42.756954+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -14,22 +14,22 @@
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/syncinit/tests",
+    "/home/ws/ws/splatter4d/.worktrees/bx-repr/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/syncinit/docs/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/bx-repr/docs/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/syncinit/docs/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/.worktrees/bx-repr/docs/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 308.2089430459964,
+  "duration_seconds": 288.4463838800002,
   "counts": {
-    "passed": 919,
+    "passed": 927,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 919,
+  "total": 927,
   "full_suite_passed": true,
   "source_sha256": {
     "mujoco_mig_setup.py": "5fe3af1ebccfbfde5345a92fde874e574ca9da04cdc8fd3521e823d8e147238c",
@@ -51,6 +51,7 @@
     "s4d/baselines/mvp3d/rvt_derived.py": "4c3819d6dc921479c9c5eee0c9bc132d4c2b5eb3c1c5532eabf47dbd21fc09ca",
     "s4d/baselines/mvp3d/size.py": "9f2c5fdcd8260c8f1aaaa7af98eaeecd61af3a0005dbf195b9c3174e32ef4e34",
     "s4d/baselines/mvp3d/viz.py": "c934e2c6641258bcb563d8be482a99b99f9f567a8a15dd56ba57b3a6d23a7a4d",
+    "s4d/baselines/representation.py": "d345bcb5c8f5e3f36234e4e5ea9ab691816b8050e4eaf720a3f239ca7b95fb6f",
     "s4d/baselines/reviwo/__init__.py": "e0b82329b13813a08ff0ab7d5a2fef1931a797ed043bd3362037083b6b0255a1",
     "s4d/baselines/reviwo/configs.py": "e6eb48c1411755cc2c887259d46ae21e2256d75fffad9bcf1f89edbc5b97fdd6",
     "s4d/baselines/reviwo/model.py": "298301ed10ff752c556bd1ddd4c6b13bdcbd4adf4f0f5e744cc0bc0906d23177",
@@ -129,7 +130,7 @@
     "s4d/train/augment.py": "f08532057374144cc9ce9d438f283354955b5538c9153fcd28e52045b085698f",
     "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
     "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
-    "s4d/train/evaluate.py": "680dd0ae515a5c44434592a5f08fc4d1a4da1a16eb3d0e32bc18b7092726c17c",
+    "s4d/train/evaluate.py": "c3bf865cb5780e7f26aec000b15425e5de78d40f4669bcb77168f9e2adf81f66",
     "s4d/train/loop.py": "c20c679157e8512229a1c7e9818c5dd9b1ebdb35391fdfbe4daf94a09d278209",
     "s4d/train/workers.py": "10d24b41be48aa1f9230ad176848638167fa7cabf4f6906365897a84732a4a08",
     "scripts/_bootstrap.py": "feb5ad9b387212f2220dde60eb4e8b8f76ab9ec44c4fce11966772b8a5c35c81",
@@ -149,6 +150,7 @@
     "scripts/droid_track_smoke.py": "5bfe961bea05ace87c1c15b518ba3676901bb52b33691c02ef6c2adff29fb1cd",
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
     "scripts/dynamo_panels.py": "338e5b2e35a3ebd458cf77802424c334804431941bd9ac99dc0bbd0bcf5a6391",
+    "scripts/eval_baseline_representation.py": "d6a5219b59bdeda7e04bc1cac0f05096acdaa1a259c52c52882d99b264876952",
     "scripts/eval_rl.py": "3b38b282caabfd6913fabd610e21fa67464b79d5df29e5f77a305c8f9b7d423f",
     "scripts/evaluate.py": "b6f16353d54247b71e4ea6b49f496d1345725421104a03305a161fcca7bbcc9d",
     "scripts/export_encoder.py": "f6c982f77be256c11da8ab07685224723de7ca1dca9b75d74ce13e0a325bf843",
@@ -189,6 +191,7 @@
     "tests/_mvp3d_rvt_worker.py": "cdfd0cc1ef06fe7ef5a2b738b15c46e48a492d465585944685c9d224a323c8c6",
     "tests/_rl_env_worker.py": "a43311fb7c86be797b6bc4b9890f80822d1350531ba3686c49fe3c228096310c",
     "tests/conftest.py": "ed07d4adb44ad5399a7e29c38d7f0b095c68558f2d7d2d9e7648dfec5253cae0",
+    "tests/test_baseline_representation.py": "391a1d123df91891c780887b7425a81f6bbe91c396653e88223fb305a25eb21b",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
     "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
@@ -338,6 +341,7 @@
     "s4d/baselines/mvp3d/rvt_derived.py": "4c3819d6dc921479c9c5eee0c9bc132d4c2b5eb3c1c5532eabf47dbd21fc09ca",
     "s4d/baselines/mvp3d/size.py": "9f2c5fdcd8260c8f1aaaa7af98eaeecd61af3a0005dbf195b9c3174e32ef4e34",
     "s4d/baselines/mvp3d/viz.py": "c934e2c6641258bcb563d8be482a99b99f9f567a8a15dd56ba57b3a6d23a7a4d",
+    "s4d/baselines/representation.py": "d345bcb5c8f5e3f36234e4e5ea9ab691816b8050e4eaf720a3f239ca7b95fb6f",
     "s4d/baselines/reviwo/__init__.py": "e0b82329b13813a08ff0ab7d5a2fef1931a797ed043bd3362037083b6b0255a1",
     "s4d/baselines/reviwo/configs.py": "e6eb48c1411755cc2c887259d46ae21e2256d75fffad9bcf1f89edbc5b97fdd6",
     "s4d/baselines/reviwo/model.py": "298301ed10ff752c556bd1ddd4c6b13bdcbd4adf4f0f5e744cc0bc0906d23177",
@@ -416,7 +420,7 @@
     "s4d/train/augment.py": "f08532057374144cc9ce9d438f283354955b5538c9153fcd28e52045b085698f",
     "s4d/train/checkpoint.py": "4f2af6cad1031d5290e3a3f32a5b927b4e0f3d68a7214a792a1a19dd2c8aecb0",
     "s4d/train/ddp.py": "24d21389928e7737c0509d6e13356e1c3c7c36cd308f378e55bb5a411e3b51ab",
-    "s4d/train/evaluate.py": "680dd0ae515a5c44434592a5f08fc4d1a4da1a16eb3d0e32bc18b7092726c17c",
+    "s4d/train/evaluate.py": "c3bf865cb5780e7f26aec000b15425e5de78d40f4669bcb77168f9e2adf81f66",
     "s4d/train/loop.py": "c20c679157e8512229a1c7e9818c5dd9b1ebdb35391fdfbe4daf94a09d278209",
     "s4d/train/workers.py": "10d24b41be48aa1f9230ad176848638167fa7cabf4f6906365897a84732a4a08",
     "scripts/_bootstrap.py": "feb5ad9b387212f2220dde60eb4e8b8f76ab9ec44c4fce11966772b8a5c35c81",
@@ -436,6 +440,7 @@
     "scripts/droid_track_smoke.py": "5bfe961bea05ace87c1c15b518ba3676901bb52b33691c02ef6c2adff29fb1cd",
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
     "scripts/dynamo_panels.py": "338e5b2e35a3ebd458cf77802424c334804431941bd9ac99dc0bbd0bcf5a6391",
+    "scripts/eval_baseline_representation.py": "d6a5219b59bdeda7e04bc1cac0f05096acdaa1a259c52c52882d99b264876952",
     "scripts/eval_rl.py": "3b38b282caabfd6913fabd610e21fa67464b79d5df29e5f77a305c8f9b7d423f",
     "scripts/evaluate.py": "b6f16353d54247b71e4ea6b49f496d1345725421104a03305a161fcca7bbcc9d",
     "scripts/export_encoder.py": "f6c982f77be256c11da8ab07685224723de7ca1dca9b75d74ce13e0a325bf843",
@@ -476,6 +481,7 @@
     "tests/_mvp3d_rvt_worker.py": "cdfd0cc1ef06fe7ef5a2b738b15c46e48a492d465585944685c9d224a323c8c6",
     "tests/_rl_env_worker.py": "a43311fb7c86be797b6bc4b9890f80822d1350531ba3686c49fe3c228096310c",
     "tests/conftest.py": "ed07d4adb44ad5399a7e29c38d7f0b095c68558f2d7d2d9e7648dfec5253cae0",
+    "tests/test_baseline_representation.py": "391a1d123df91891c780887b7425a81f6bbe91c396653e88223fb305a25eb21b",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
     "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
@@ -764,6 +770,24 @@
       "_flops",
       "encoder_cost",
       "rl_cost"
+    ],
+    "s4d/baselines/representation.py": [
+      "<dictcomp>",
+      "<listcomp>",
+      "<module>",
+      "BaselineEvaluator",
+      "__call__",
+      "__init__",
+      "camera_pool",
+      "column_observations",
+      "evaluate_stride",
+      "input_columns",
+      "input_views",
+      "load_adapter",
+      "nearest_training_cameras",
+      "states",
+      "training",
+      "window_state"
     ],
     "s4d/baselines/reviwo/__init__.py": [
       "<module>"
@@ -1111,6 +1135,7 @@
       "HeldoutSets",
       "__contains__",
       "__init__",
+      "heldout_path",
       "window"
     ],
     "s4d/data/metaworld/heldout_render.py": [
@@ -1637,13 +1662,16 @@
       "_spread_windows",
       "encode_states",
       "evaluate_stride",
+      "frame_interval",
       "image_plane_flow",
       "oracle_metrics",
       "orbit_w2c",
       "panels",
       "probes",
+      "representation",
       "retrieval",
-      "retrieval_sets"
+      "retrieval_sets",
+      "states"
     ],
     "s4d/train/loop.py": [
       "<dictcomp>",
@@ -1754,6 +1782,15 @@
       "run",
       "tensor_fingerprint",
       "write_record"
+    ],
+    "scripts/eval_baseline_representation.py": [
+      "<dictcomp>",
+      "<lambda>",
+      "<listcomp>",
+      "<module>",
+      "main",
+      "sha256",
+      "split_identity"
     ],
     "scripts/evaluate.py": [
       "<module>",

@@ -366,10 +366,16 @@ def test_entry_point_writes_both_arms_with_provenance(tmp_path, monkeypatch):
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
     out = tmp_path / "out"
+    # main() sets process-wide cudnn.benchmark and CPU threads; restore both so later tests keep their numerics.
+    monkeypatch.setattr(torch.backends.cudnn, "benchmark", torch.backends.cudnn.benchmark)
+    threads = torch.get_num_threads()
     monkeypatch.setattr(sys, "argv", ["eval_baseline_representation.py", "--task", "hammer", "--encoder", "dynamo",
                                       "--export", str(tmp_path / "encoder.pt"), "--output", str(out), "--config",
                                       str(tmp_path / "config.yaml"), "--device", "cpu", "--cpu-threads", "2"])
-    script.main()
+    try:
+        script.main()
+    finally:
+        torch.set_num_threads(threads)
     combined = json.loads((out / "summary.json").read_text())
     assert set(combined) == {"dynamo/pretrained", "dynamo/random_init"}
     pre, init = (json.loads((out / "dynamo" / arm / "summary.json").read_text()) for arm in script.ARMS)
