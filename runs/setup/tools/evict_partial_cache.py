@@ -4,7 +4,10 @@ read simply comes from disk again.
 1. Leftover live-sync partial downloads (runs/**/*.s4d-partial-*) not modified for 10 minutes.
 2. (2026-10-15) Finished RL runs: the policy snapshots and the saved replay of runs whose trainer and evaluation
    companion are both done in the registry (runs/<id>/snapshots/*, runs/<id>/replay/*). Datasets, active runs and
-   pretraining checkpoints are never touched."""
+   pretraining checkpoints are never touched.
+3. (2026-10-16) Files nothing reads again after they are written: source worktrees and their test outputs
+   (.worktrees/, runs/nv/, runs/rel/; their .venv links are skipped), release bundles (runs/remote/bundles/) and pulled
+   offline W&B folders (runs/<id>/wandb/), which `wandb sync` re-reads from disk."""
 import json
 import os
 import sys
@@ -54,6 +57,19 @@ for jid in finished:
                 rl_files += 1
             except OSError as exc:
                 print(f'skip {path}: {exc}', file=sys.stderr)
+stale_files = 0
+for root in [ROOT / '.worktrees', ROOT / 'runs/nv', ROOT / 'runs/rel', ROOT / 'runs/remote/bundles',
+             *(ROOT / 'runs').glob('*/wandb')]:
+    for dirpath, dirnames, names in os.walk(root, followlinks=False):
+        dirnames[:] = [d for d in dirnames if d != '.venv']
+        for name in names:
+            try:
+                path = Path(dirpath) / name
+                if not path.is_symlink():
+                    evict(path)
+                    stale_files += 1
+            except OSError:
+                pass
 after = int(Path('/sys/fs/cgroup/memory.current').read_text())
 print(json.dumps({'time': time.strftime('%F %T'), 'files': count, 'bytes': size, 'finished_rl_runs': len(finished),
-                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'charge_before': before, 'charge_after': after}))
+                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'charge_before': before, 'charge_after': after}))

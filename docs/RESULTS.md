@@ -7,7 +7,7 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 ### Stage 2 pretrain-only variants and crop-hammer RL (2026-10-16 14:33; attribution only)
 
 All eight remote pretrain-only full evaluations (no-lambda-dyn, no-coverage, misscaled-none, misscaled-scale; hammer and
-pick-place) and the no-consistency hammer evaluation closed out with driver proofs. Fixed full-method 200k references
+pick-place) and both no-consistency evaluations (pick-place after its lossless 180k resume) closed out with driver proofs; with these, all ten pretrain-only representation comparisons are complete (latest report `runs/setup/stage2-report-20261016-155627.json`). Fixed full-method 200k references
 and the prospective margins/readers. Report `runs/setup/stage2-report-20261016-143246.json` (SHA-256
 `c173e0a5ade65ec51074ca51b194f76c0d83c212e719957d5f1f2ec268acf49a`). Single-seed descriptive margin comparisons, not
 significance or equivalence tests. Of 32 metrics, better/worse/within:
@@ -18,7 +18,7 @@ significance or equivalence tests. Of 32 metrics, better/worse/within:
 | no coverage | 2/1/29 | 2/4/26 | PSNR (trajectory/near/moving) worse; hidden/centre Chamfer or motion Chamfer better |
 | misscaled-none | **10/0/22** | **10/2/20** | PSNR +0.99/+0.41 dB, held-out PSNR, utilisation, hidden/visible/dynamic Chamfer better; pick-place trajectory retrieval -0.035, CD-render +11.7% worse |
 | misscaled-scale | 1/2/29 | 1/2/29 | small mixed changes; scale alignment absorbs most of the corruption |
-| no consistency (hammer) | 2/4/26 | pending (pretrain resumed at 180k) | trajectory position/velocity/object R² and held-out retrieval worse |
+| no consistency | 2/4/26 | 0/6/26 | hammer: trajectory position/velocity/object R² and held-out retrieval worse; pick-place: PSNR (all/moving/near/trajectory/held-out covered) and dynamic-motion Chamfer worse |
 
 Misscaled-none corrupts every depth target by an independent factor U[0.7, 1.4] per sample, time and view, with no
 alignment. M3D motion targets stay uncorrupted. The config differs from the freeze only in that key, and the

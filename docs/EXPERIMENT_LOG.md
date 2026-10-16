@@ -3475,3 +3475,19 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   while any local Stage 2 job is waiting (baselines rank below Stage 2 per the 2026-10-13 decision). The previous
   version is kept as `baseline_local_driver.before-stage2-yield-20261016.py`.
 - The verification port (`.worktrees/verify`) passed the full native suite 918/0/0/0; the Codex review is pending.
+
+### 2026-10-16 15:45 — Hourly check: cache charge, release fixes, remote verification under way
+- Local charge reached 98 GB with only ~20 GB of job PSS; the rest was clean file cache: the two training datasets
+  (23 GB, expected) plus ~50 GB of files nothing reads again (worktree test outputs, release bundles, pulled W&B
+  folders). The 140 GB admission ceiling therefore held back four restartable no-synth evaluators. A clean-page
+  `POSIX_FADV_DONTNEED` pass over those trees (no file modified or deleted) brought the charge to 74 GB.
+  `evict_partial_cache.py` now covers them every 15 min (previous version kept). No cap or accounting rule changed.
+- Making the baselines runnable remotely took two release fixes, each with a full native suite (918/0/0/0) before
+  integration. `15cf6e3`: released submodules are registered (`git submodule init`) before the status check; this
+  was the first real release with pins, simulated locally first. `efa152a`: the in-container clean-release check of
+  typed verification excludes the bind mounts (runs/, outputs/, .cache); the launcher still checks the whole release
+  on the host. The `verify-native-15cf6e3` attempts are kept as evidence: refused once by the launcher's PID race,
+  then refused by the entry itself before any test ran. `verify-native-efa152a` (native suite in the accepted image
+  on remote GPU 0) is running. GPU isolation on all four GPUs follows, then the acceptance manifest for `efa152a`.
+- The SNeRL hammer pretrain runs locally (step ~12k, measured 2 GB PSS against its 20 GB declaration); it may move
+  to the remote after acceptance (checkpoint continuation, host recorded).
