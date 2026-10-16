@@ -60,7 +60,10 @@ def _output_path(value: str | None) -> str:
 
 
 def validate_output_arguments(script: str, arguments: list[str], job_id: str) -> None:
-    if script in ("scripts/train.py", "scripts/train_sincro.py", "scripts/train_reviwo.py"):
+    if script in (
+        "scripts/train.py", "scripts/train_sincro.py", "scripts/train_reviwo.py",
+        "scripts/train_snerl.py", "scripts/train_dynamo.py", "scripts/train_mvp3d.py",
+    ):
         if (_option(arguments, "--name") != job_id
                 or _output_path(_option(arguments, "--output-root")) != CONTAINER_REPO + "/runs"):
             raise ValueError("Remote pretraining artifacts must be under runs/<job_id>")

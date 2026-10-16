@@ -339,6 +339,17 @@ def test_wrapper_only_results_do_not_unblock_dependencies(tmp_path, monkeypatch)
     assert not backend.launches
 
 
+@pytest.mark.parametrize("script", ["train_snerl.py", "train_dynamo.py", "train_mvp3d.py"])
+def test_new_baseline_completion_requires_numeric_configuration(tmp_path, script):
+    entry = f"scripts/{script}"
+    queued = write_queue(tmp_path, [job(script=entry)])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path, script=entry)
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "sync_pending"
+
+
 @pytest.mark.parametrize("changed", ["image_digest", "data_id", "arguments", "config_sha256"])
 def test_final_numerical_provenance_must_match_declared_identity(tmp_path, monkeypatch, changed):
     queued = write_queue(tmp_path, [job()])
@@ -684,7 +695,16 @@ def test_commit_and_local_identity_match_actual_bootstrap_fingerprint_scope(tmp_
     commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"],
                             capture_output=True, text=True, check=True).stdout.strip()
     committed = remote.commit_source_sha256(tmp_path, commit)
-    for name in committed:
+    for name, identity in committed.items():
+        if name.endswith("@commit"):
+            module = name.removesuffix("@commit")
+            path = tmp_path / module
+            path.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "clone", "--shared", "--no-checkout", "--quiet", str(REPO / module), str(path)],
+                           capture_output=True, check=True)
+            subprocess.run(["git", "-C", str(path), "checkout", "--quiet", "--detach", identity],
+                           capture_output=True, check=True)
+            continue
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = subprocess.run(["git", "-C", str(REPO), "show", commit + ":" + name],

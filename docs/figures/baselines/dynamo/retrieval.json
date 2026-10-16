@@ -1,0 +1,19 @@
+{
+  "queries": 2118,
+  "pool_frames": 4764,
+  "pool_episodes": 8,
+  "validation_episodes": 10,
+  "metric": "median state error of the top-1 same-camera neighbour",
+  "trained": {
+    "hand_error_cm_median": 1.431351900100708,
+    "hammer_error_cm_median": 1.7931630834937096
+  },
+  "random init": {
+    "hand_error_cm_median": 1.3991130515933037,
+    "hammer_error_cm_median": 1.919836364686489
+  },
+  "random frame (chance)": {
+    "hand_error_cm_median": 15.239980816841125,
+    "hammer_error_cm_median": 16.075970232486725
+  }
+}

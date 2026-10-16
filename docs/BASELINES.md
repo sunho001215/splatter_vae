@@ -1,8 +1,110 @@
-# Stage 4 baselines: SinCro and ReViWo
+# Stage 4 baselines
 
-Both baselines are pretrained per task on our Meta-World data and then used as frozen encoders in DrM. The rule is
-**upstream code, original hyperparameters, changes only at the data interface**. This file lists every place where
-that rule bends, and why.
+The final comparison comprises ours, SinCro, SNeRL, ReViWo, DynaMo, 3D-MVP and the end-to-end CNN. MV-MWM and
+GNFactor are excluded. Representation baselines pretrain per task on the same episode split and use frozen encoders
+in DrM. SinCro and ReViWo are already in the accepted campaign; the three new ports are not yet accepted.
+
+## Expansion policy and adaptation plan (2026-10-13)
+
+Use the exact-pin official submodules directly, with thin data, checkpoint and RL adapters. Models and losses must
+not be rewritten. Minimal import/runtime patches live under `third_party/patches/<name>/` and apply to cached copies,
+never the submodule checkout. Test and release identities include `.gitmodules`, gitlink pins and patch bytes; remote
+releases transfer the pinned submodule contents separately. No locked shared dependency changes are permitted.
+
+| Method | Pretraining input and objective | Frozen RL input / raw readout | Adaptation and outstanding gate |
+|---|---|---|---|
+| SNeRL | Three training-camera RGB images and known poses; official RGB, semantic and DINO-feature NeRF objectives | Three RGB views and poses, official mean-pooled 63-d feature; **multi-view RGB input (privileged)** | Direct official shared convolution encoder and NeRF; preserve rig K and official integer ray samples without a half-pixel offset. Final port, license scope, resume and full native acceptance remain pending. |
+| DynaMo | Each camera video is a separate RGB trajectory; official stopped-target latent forward/inverse dynamics and covariance loss | Single RGB camera, official pooled ResNet-18 512-d feature | Original encoder unchanged. Keep 40 epochs, epoch-0 encoder/projector LR zero and the unscheduled forward optimizer. Meta-World choices: latent 39, window 5, frame gap 2, shared split. Import-only accelerate patch and exact-step/resume tests require bundle verification. |
+| 3D-MVP | Original in-domain fused setting: each sample's point cloud fused from **all six training cameras** (RGB-D + extrinsics), five RVT virtual views, RGB-only 75% patch masking, RGB-D MAE reconstruction; no camera subsets or single-camera clouds; one pretraining per task | Two RL conditions sharing that encoder, per-view max pooling then concatenate: **A** "3D-MVP, multi-view RGB-D + extrinsics (privileged)" (3 of 6 training cameras per episode, fused; SNeRL protocol) and **B** "3D-MVP, single RGB-D + extrinsics (privileged)" (one camera per episode); both **reimplemented** | No official 3D-MVP code: use the pinned RVT trunk directly; only masking, MAE decoder and pretraining loop are ours. The returned duplicated trunk is not accepted and must be replaced by a thin official-RVT wrapper. Pooling is unspecified in the paper. |
+
+**3D-MVP input conditions (user decision, 2026-10-14; supersedes the earlier random-subset pretraining and
+single-camera-only RL input).** Pretraining follows the original fused multi-camera setting: every sample fuses all
+six training cameras, with no random subsets and no single-camera clouds. The same pretrained encoder per task feeds
+two RL conditions, both run on all eight tasks x seeds 2000-2002 and reported as **separate rows with their input
+labels in every table**:
+
+- **A, "3D-MVP, multi-view RGB-D + extrinsics (privileged)"**: SNeRL's camera protocol. Per episode, 3 of the 6
+  training cameras are drawn at random and fixed within the episode; their RGB-D is fused into one cloud, then
+  rendered to the virtual views, then fed to the frozen encoder. Viewpoint-shift evaluation keeps 2 of the 3 input
+  cameras fixed and replaces the third by its perturbed counterpart (near/trajectory sets) or the moving trajectory.
+- **B, "3D-MVP, single RGB-D + extrinsics (privileged)"**: one random training camera per episode and the same
+  viewpoint-shift evaluation as the single-camera methods. **B is our added single-camera condition**: it sees
+  sparser single-view clouds than in pretraining.
+
+Everything else is identical to the other baselines in both conditions: adapter pattern, projection head and state
+size, three-frame handling, proprio, DrM and the full evaluation protocol. The size cap is unchanged; encoder
+FLOPs/frame do not depend on the condition (five virtual views per frame).
+
+SNeRL's feature objective follows the official MSE rather than the paper's L1; unavailable auxiliary terms must be
+reported, not invented. Its downstream encoder is fully frozen by the comparison protocol, unlike the partially
+trainable official RL setup. Full-scene data differs from the official alpha-masked scenes. DynaMo adds no actions,
+geometry or camera identity. For 3D-MVP, the permitted z-buffer point-splat fallback differs from RVT-1's PyTorch3D
+disc blending; matching cameras/channels is not proof of native-renderer equivalence.
+
+Only 3D-MVP is resized: at most **9,064,704 parameters** and **1,786,078,891 FLOPs/frame**, as measured for SinCro.
+One 3D-MVP frame includes all five virtual views rendered from one RGB-D observation. Reduce transformer/MLP width,
+then virtual-view resolution/patch size, then layers with a proportional within-/cross-view split; scale the MAE-only
+decoder proportionally. All other encoder sizes stay unchanged, even when larger than SinCro. No original-size
+training side runs are allowed.
+
+### RL-time encoder size and pretraining cost
+
+Multiply-add counts as two FLOPs. Count parameters reached by the frozen encoder readout, not pretraining-only
+rendering/decoder or dynamics modules, and exclude the trainable RL projection head. For temporal encoders divide
+three-frame observation FLOPs by three. New-port figures below are preliminary handback measurements, not full-suite
+acceptance; 3D-MVP must be remeasured after the direct-RVT correction. GPU-hour estimates cover eight tasks, exclude
+RL and are not actual campaign resource accounting.
+
+| Method | Encoder parameters | GFLOPs/frame | Raw encoder output | State after head | Pretraining GPU-h, 8 tasks |
+|---|---:|---:|---|---:|---|
+| Ours (unchanged) | 1,726,592 | 0.214980 | 256 / three-frame history | 256 | Pending final-length accounting |
+| SinCro (unchanged) | 9,064,704 | 1.786079 | 256 / three-frame history | 256 | ~356, shared-GPU smoke extrapolation |
+| SNeRL (official size unchanged; preliminary) | 6,587,885 | 0.637811 / three-view frame | 63 / frame | 256 | ~456, latest bounded-smoke extrapolation; original 2.4M recipe unchanged |
+| ReViWo (unchanged) | 1,683,712 | 0.416940 | 1,024 / frame | 256 | ~129, shared-GPU smoke extrapolation |
+| DynaMo (official size unchanged; preliminary) | **11,176,512** | 1.184 | 512 / frame | 256 | ~42, dedicated-GPU smoke extrapolation |
+| 3D-MVP (chosen; preliminary; same encoder for conditions A and B) | 9,029,760 | 1.485373 | 80 x 256 tokens; pooled 1,280 / frame | 256 | ~23, dedicated-GPU smoke extrapolation (superseded random-subset recipe; to be remeasured with fused six-camera samples) |
+| CNN end-to-end (registered protocol) | 30,368 | 0.071069 | 103,968 / three-frame observation | 50 | 0; no representation pretraining |
+| Original RVT-1 image-token encoder (**computed only**, not a comparison run) | 34,269,568 | 175.962624 | 2,000 x 512 tokens; pooled 2,560 / frame | Not trained | 0; no side run |
+
+DynaMo is 1.23x SinCro in parameters and remains unchanged. CNN retains its already-registered DrM 50-d trunk;
+the frozen methods all use the shared 256-d adapter output and three-frame history. This existing CNN difference is
+recorded rather than silently changed after its completed runs.
+
+Original RVT-1: 220-pixel views, patch 11, width 512, eight layers split 4+4. Chosen 3D-MVP: 48-pixel views, patch 12,
+width 256 (8 heads x 32), the same eight layers split 4+4; MAE decoder two layers at width 256, 2,339,136 parameters.
+Reason: **scaled to at most SinCro's encoder size by user decision**. The preliminary chosen trunk uses 99.6% of the
+parameter budget and 83.2% of the FLOP budget; width 264 exceeds parameters, and 5x5 tokens/view at width 256 exceeds
+FLOPs. These bounds must survive the official-trunk correction. The renderer's reported matrix-product cost is
+0.001769 GFLOPs/frame separately; full renderer accounting remains pending.
+
+### Acceptance and scientific order
+
+1. Finish the thin ports, convention/official-function/resume tests and complete native bundle suite locally.
+2. Integrate and deploy the immutable accepted bundle without stopping current campaign jobs; run the full suite
+   in the remote image. Repeat GPU isolation only if guard or GPU-selection code changes; label reused evidence
+   as carry-over, not a fresh test.
+3. Pretrain hammer at the unchanged recipes. Save the exact same initialized encoder for the random-frozen arm.
+   Run pretrained-frozen versus random-frozen DrM with three RL seeds and 400k agent steps; inspect panels and
+   investigate lack of benefit before expanding to all tasks. For 3D-MVP this check uses condition A; condition B
+   runs once (pretrained encoder, one seed) to confirm its pipeline.
+4. Full-split retrieval and probes for every new baseline, rendering additionally for SNeRL. For SNeRL camera
+   shifts replace one input view and hold the other two fixed; never silently alter the existing campaign's
+   evaluation protocol.
+5. Report adaptation, final sizes/costs, deviations, hammer sanity and panels once, then proceed to all eight tasks
+   (3D-MVP: one pretraining per task, then conditions A and B, each 8 tasks x 3 seeds). Same priority and placement
+   as the other new baselines.
+   Never use the six non-development tasks' RL outcomes for method decisions.
+
+Upstream execution/testing for RVT, DynaMo and SNeRL is currently permission-blocked. Reported bounded diagnostics
+are not a release or the required full-pretraining sanity. SNeRL's handback reports 790 passes and one full-suite
+virtual-gitlink fixture failure, so it is not accepted. Its historical 10k old-K/redraw smoke is context only; a
+corrected-K 1,000-step diagnostic used explicit smoke-only seed 1, while all registered recipe configs retain seed 0.
+Seed 0's dead coarse density remains a documented risk, not grounds for automatic reseeding. The reported corrected
+smoke held-out panel has PSNR 14.10 dB and depth MAE 0.467 m, with only 55.6% valid depth inside its near/far bounds;
+novel-view quality is weak. The existing accepted campaign continues independently.
+
+The remainder documents the already-accepted SinCro/ReViWo adaptations. Their rule is **upstream code, original
+hyperparameters, changes only at the data interface**; exceptions are listed explicitly.
 
 ## Sources
 
@@ -10,6 +112,10 @@ that rule bends, and why.
 |---|---|---|
 | SinCro model code | github.com/sunho001215/sincro (MIT, © 2025 Seungyeon Yoo) | `5c7c06d373233e7bc7d7c240fdc27b212e2535f4` |
 | ReViWo model code | github.com/lafmdp/ReViWo (**no license stated**) | `ac0c24958c83366dbdceebfb1db9f9111fce56a0` |
+| SNeRL official code | github.com/jayLEE0301/snerl_official (`third_party/snerl`; MIT file under `snerl/`, root/pretrainer coverage unresolved) | `d01533b673ebcea1705b15d5e4549c67c757d9a9` |
+| DynaMo official code | github.com/jeffacce/dynamo_ssl (`third_party/dynamo`; MIT) | `62874039e5d3fc663b0fccd2083b2dd2c8d9935e` |
+| RVT official trunk | github.com/NVlabs/RVT (`third_party/rvt`; NVIDIA non-commercial research/evaluation license) | `367995a1a2169b6352bf4e8b0ed405890462a3a0` |
+| DINO teacher for SNeRL | github.com/facebookresearch/dino (`third_party/dino`; Apache 2.0) | `7c446df5b9f45747937fb0d72314eb9f7b66930a` |
 
 The ReViWo repository states no license: the vendored code is used for this internal research comparison only and must not be redistributed without the authors' permission.
 | Reference trainers, configs, RL wrappers | sunho001215/splatter_vae, `baselines/{SinCro,ReViWo}/`, `agents/common/encoders.py` | `c0abf56` |
@@ -150,7 +256,7 @@ point projects to the image centre in both conventions, in front of the camera i
 
 ## Hyperparameters (unchanged from the reference configs)
 
-There are 8 tasks: door-open, hammer, peg-unplug-side, stick-push, pick-place, peg-insert-side, shelf-place and
+There are 8 tasks: door-open, hammer, peg-unplug-side, stick-push, pick-place, peg-insert-side, coffee-push and
 bin-picking.
 
 - The reference has configs for the first four. All its task configs are identical except for names and paths, so

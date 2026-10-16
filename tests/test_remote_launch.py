@@ -95,6 +95,27 @@ def test_rejects_unsafe_remote_launch_spec(key, value):
         validate_spec(spec)
 
 
+@pytest.mark.parametrize("script", ["train_snerl.py", "train_dynamo.py", "train_mvp3d.py"])
+@pytest.mark.parametrize("args", [
+    ["--name", "other", "--output-root", "runs"],
+    ["--name", "m3d-hammer-seed0"],
+    ["--name", "m3d-hammer-seed0", "--output-root", "runs/pretrain"],
+    ["--name", "m3d-hammer-seed0", "--output-root", "runs/../runs"],
+])
+def test_new_baseline_artifacts_cannot_escape_the_synced_run_directory(script, args):
+    spec = job_spec()
+    spec.update(script=f"scripts/{script}", args=args)
+    with pytest.raises(ValueError):
+        validate_spec(spec)
+
+
+@pytest.mark.parametrize("script", ["train_snerl.py", "train_dynamo.py", "train_mvp3d.py"])
+def test_new_baseline_launch_spec_preserves_valid_output_and_numeric_arguments(script):
+    spec = job_spec()
+    spec["script"] = f"scripts/{script}"
+    assert validate_spec(spec)["args"] == spec["args"]
+
+
 @pytest.mark.parametrize("script,args", [
     ("scripts/train.py", ["--name", "other", "--output-root", "runs"]),
     ("scripts/train.py", ["--name", "m3d-hammer-seed0"]),
@@ -205,7 +226,8 @@ def test_generated_shell_has_detachment_single_uuid_rooted_mounts_and_syntax(gpu
         assert "NVIDIA_VISIBLE_DEVICES=" + spec["gpu"] in docker_args
     assert "CUDA_VISIBLE_DEVICES=" + spec["gpu"] in command
     assert "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics" in command
-    assert docker_args.count("WANDB_MODE=offline") == 1 and docker_args[docker_args.index("WANDB_MODE=offline") - 1] == "--env"
+    assert docker_args.count("WANDB_MODE=offline") == 1
+    assert docker_args[docker_args.index("WANDB_MODE=offline") - 1] == "--env"
     threads = str(spec.get("cpu_threads", 8))
     for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         setting = f"{name}={threads}"

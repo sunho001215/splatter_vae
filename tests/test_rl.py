@@ -354,6 +354,13 @@ def test_env_frames_match_collector_rig_in_one_uuid_subprocess():
         "reset_varies_objects": True,
         "pool_matches_single_env": True,
         "seeded_reset_history_free": True,
+        "multi_shapes": {"rgb": [3, 3, 3, 64, 64], "depth": [3, 3, 64, 64], "K": [3, 3, 3, 3], "c2w": [3, 3, 4, 4]},
+        "multi_first_view_matches_single": True,
+        "multi_depth_matches_collector": True,
+        "multi_cameras_match_rig": True,
+        "multi_trajectory_camera_moves": True,
+        "multi_pool_batches_dicts": True,
+        "multi_stack_shape": [2, 3, 3, 3, 64, 64],
     }
 
 
@@ -416,3 +423,65 @@ def test_disk_frames_are_advised_random_and_read_back_unchanged(tmp_path):
     b = reopened.sample(64, np.random.default_rng(1), GAMMA)
     for x, y in zip(a, b):
         np.testing.assert_array_equal(np.asarray(x), np.asarray(y))
+
+
+# ------------------------------------------------------------------------------------------ multi-view observations
+class _ViewMeanBackbone(torch.nn.Module):
+    """Per-frame test backbone: mean RGB per view + depth mean + camera centre, so every input entry matters."""
+
+    is_trainable = False
+    observation = {"views": 3, "depth": True, "cameras": True}
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.scale = torch.nn.Parameter(torch.ones(1))
+
+    def forward(self, obs):
+        rgb = obs["rgb"].mean(dim=(-1, -2))  # (N, V, 3)
+        parts = [rgb.flatten(1), obs["depth"].mean(dim=(-1, -2)), obs["c2w"][..., :3, 3].flatten(1)]
+        return torch.cat(parts, 1) * self.scale
+
+
+def test_frozen_adapter_feeds_dict_observations_to_a_declaring_backbone(monkeypatch):
+    from s4d.rl import encoders as E
+
+    monkeypatch.setitem(E.BACKBONES, "viewmean", _ViewMeanBackbone)
+    cfg = tiny_cfg("viewmean")
+    cfg["env"].update(views=3, depth=True, cameras=True)
+    adapter = E.VisionEncoderAdapter(cfg)
+    assert adapter.replay_atom_shape == (21,)  # per frame: 3 views x (3 RGB means + depth mean + 3 camera centre)
+    rng = np.random.default_rng(0)
+    obs = {"rgb": torch.as_tensor(rng.integers(0, 255, (2, 3, 3, 3, 32, 32), dtype=np.uint8)),
+           "depth": torch.as_tensor(rng.uniform(0.5, 2, (2, 3, 3, 32, 32)).astype(np.float32)),
+           "K": torch.eye(3).expand(2, 3, 3, 3, 3).clone(), "c2w": torch.eye(4).expand(2, 3, 3, 4, 4).clone()}
+    obs["c2w"][1, 2, 1, 0, 3] = 0.5
+    feat = adapter.extract_cacheable_feature(obs)
+    assert feat.shape == (2, 3, 21) and feat.dtype == torch.float16
+    frame = {k: (v.float() / 255 if k == "rgb" else v.float())[1:2, 2] for k, v in obs.items()}  # batch 1, frame 2
+    expected = _ViewMeanBackbone(cfg)(frame)
+    torch.testing.assert_close(feat[1, 2].float(), expected[0], atol=2e-3, rtol=1e-3)
+    assert adapter(feat, is_feature=True).shape == (2, adapter.repr_dim)
+    with pytest.raises(ValueError, match="observation"):
+        adapter.extract_cacheable_feature(torch.zeros(2, 9, 32, 32, dtype=torch.uint8))
+    cfg["env"]["views"] = 1
+    with pytest.raises(ValueError, match="needs env observation"):
+        E.VisionEncoderAdapter(cfg)
+
+
+def test_multiview_evaluation_keeps_two_inputs_and_shifts_one():
+    from s4d.rl.env import HELDOUT_PATHS
+    from s4d.rl.evaluate import nearest_training_camera
+
+    cfg = {"episodes_per_train_camera": 2, "episodes_per_heldout_camera": 1, "episodes_per_trajectory": 1}
+    single, multi = evaluation_groups(cfg), evaluation_groups(cfg, views=3)
+    assert single.keys() == multi.keys() and all(multi[n][1] == single[n][1] for n in single)
+    assert multi["train0"][0] == (TRAIN_PATHS["train0"], TRAIN_PATHS["train1"], TRAIN_PATHS["train3"])
+    counts = {n: sum(TRAIN_PATHS[n] in multi[g][0] for g in TRAIN_PATHS) for n in TRAIN_PATHS}
+    assert set(counts.values()) == {3}  # every training camera is an input in exactly three training groups
+    for j in range(len(HELDOUT_PATHS)):
+        n = nearest_training_camera(HELDOUT_PATHS[f"eval{j}"])
+        assert multi[f"eval{j}"][0][0] == HELDOUT_PATHS[f"eval{j}"]
+        assert multi[f"eval{j}"][0][1:] == multi[f"train{n}"][0][1:]
+    assert multi["traj_lateral"][0][0] == trajectory_path("lateral")
+    assert multi["traj_lateral"][0][1:] == multi["train1"][0][1:]
+    assert nearest_training_camera(TRAIN_PATHS["train4"]) == 4

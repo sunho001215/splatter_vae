@@ -1,0 +1,12 @@
+[submodule "snerl"]
+	path = third_party/snerl
+	url = https://github.com/jayLEE0301/snerl_official.git
+[submodule "dynamo"]
+	path = third_party/dynamo
+	url = https://github.com/jeffacce/dynamo_ssl.git
+[submodule "rvt"]
+	path = third_party/rvt
+	url = https://github.com/NVlabs/RVT.git
+[submodule "dino"]
+	path = third_party/dino
+	url = https://github.com/facebookresearch/dino.git

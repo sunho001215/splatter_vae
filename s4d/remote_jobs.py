@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from s4d import third_party
 from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from s4d.remote_access import RemoteClient, RemoteUnreachable
 
@@ -243,6 +244,7 @@ def commit_source_sha256(repo: Path, commit: str) -> dict[str, str]:
         payload = data[end + 1:end + 1 + size]
         fingerprints[name] = hashlib.sha256(payload).hexdigest()
         offset = end + size + 2
+    fingerprints.update(third_party.commit_identity(repo, commit))  # pinned submodule commits, patch files
     return fingerprints
 
 

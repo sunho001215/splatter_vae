@@ -345,6 +345,47 @@ class RemoteAccessTests(unittest.TestCase):
                 with self.assertRaisesRegex(access.RemoteCommandError, "dirty sources"):
                     self.client.sync_code("a" * 40)
 
+    def test_release_carries_each_pinned_submodule_and_verifies_the_checkout(self):
+        def run(cwd, *args):
+            subprocess.run(["git", "-C", str(cwd), "-c", "protocol.file.allow=always", "-c", "user.name=t", "-c",
+                            "user.email=t@t", *args], capture_output=True, check=True)
+
+        upstream = self.repo / "upstream"
+        upstream.mkdir()
+        run(upstream, "init", "-q")
+        (upstream / "model.py").write_text("WIDTH = 1\n")
+        run(upstream, "add", "model.py")
+        run(upstream, "commit", "-qm", "first")
+        pinned = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"], capture_output=True, text=True,
+                                check=True).stdout.strip()
+        superproject = self.repo / "super"
+        superproject.mkdir()
+        run(superproject, "init", "-q")
+        run(superproject, "submodule", "add", "-q", str(upstream), "third_party/upstream")
+        run(superproject, "commit", "-qm", "pin")
+        sha = subprocess.run(["git", "-C", str(superproject), "rev-parse", "HEAD"], capture_output=True, text=True,
+                             check=True).stdout.strip()
+        self.client.repo = superproject
+        code = access.REMOTE_ROOT + "/releases/" + sha + "/code"
+        with patch.object(self.client, "rsync_upload") as upload, \
+                patch.object(self.client, "checked_ssh", return_value=self.result()) as ssh:
+            released = self.client._sync_submodules(sha, code, "git -C " + code)
+        self.assertEqual(released["third_party/upstream"]["commit"], pinned)
+        bundle = upload.call_args.args[0]
+        subprocess.run(["git", "-C", str(upstream), "bundle", "verify", str(bundle)], capture_output=True, check=True)
+        fetch, verify = ssh.call_args_list[0].args[0], ssh.call_args_list[-1].args[0]
+        self.assertIn(code + "/third_party/upstream", fetch)
+        self.assertIn("checkout --quiet --detach " + pinned, fetch)
+        self.assertIn("status --porcelain --untracked-files=all", fetch)
+        self.assertIn("submodule status", verify)
+        self.client.repo = self.repo
+        (superproject / "third_party/upstream/.git").unlink() if (superproject / "third_party/upstream/.git").is_file() \
+            else None
+        self.client.repo = superproject
+        with patch.object(self.client, "rsync_upload"), patch.object(self.client, "checked_ssh"):
+            with self.assertRaisesRegex(access.RemoteCommandError, "not checked out"):
+                self.client._sync_submodules(sha, code, "git -C " + code)
+
     def test_code_release_accepts_ancestor_and_records_external_proof(self):
         sha, tip = "a" * 40, "b" * 40
 
