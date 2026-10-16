@@ -3591,3 +3591,12 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
 - 03:04 3D-MVP hammer sanity **passed**: multiview (condition A) pretrained-frozen last-5 training success
   0.323/0.133/0.527 (mean 0.328) vs random-frozen 0.373/0.260/0.172 (mean 0.268); AUC 0.183 vs 0.178. Narrow, with
   large seed spread. Single-view (condition B, one seed by design) pretrained 0.328. All runs remote, e4206f1.
+- Baseline step 4 (full-split retrieval and probes), definition fixed before any result: `scripts/eval_baseline_
+  representation.py` (branch bx-repr-eval) evaluates the RL-time frozen feature through our `Evaluator`'s unchanged
+  retrieval/state-statistics/probe code (only the encoder call is overridden; refactor reviewed as behaviour-
+  preserving). Primary state = the RL head input (per-frame features of the 3-frame window concatenated: DynaMo
+  1536-d, 3D-MVP 3840-d, SNeRL 189-d); secondary = newest frame. Pretrained export vs its `encoder_init.pt`, strides
+  2 and 6, our validation split; 3D-MVP A (multi-view) and B (single) separately. Caveats reported with the numbers:
+  feature dimension differs from ours (ridge probes on 3840-d with 2304 samples are near-underdetermined), and
+  multi-view columns share cameras (inflates multi-view retrieval; SNeRL protocol per user 2026-10-14). Descriptive
+  only; no recipe, checkpoint or protocol choice follows from these numbers.
