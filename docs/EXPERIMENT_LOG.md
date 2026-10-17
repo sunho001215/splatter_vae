@@ -3664,3 +3664,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
 - Drivers: Stage 2 local driver includes the registration (reused-encoder proofs, task from config, non-dev window
   counts); remote driver maps its remote Stage 2 jobs and uploads verified shift exports. Previous versions kept as
   `*.before-followup-20261017.py`.
+- 18:46 Release 21a0e12 not accepted: first launch refused (release code had not been synced; `sync_code` run after
+  committing the registry snapshot 0499005), second attempt's remote native suite 931/1. The new evaluator's
+  entry-point test called `record_run_identity` without `native_diagnostic_steps`, so on the remote host it demanded
+  campaign job identity (passes locally, where that check does not apply). Fix in `.worktrees/repr-identity`: a
+  `--max-batches` smoke is a native diagnostic (as the trainers' short runs); the test bounds it to cover every
+  batch. Shift / no-shift training stays gated until a release with the fix is accepted; E1 continues on e4206f1.
