@@ -485,3 +485,18 @@ def test_multiview_evaluation_keeps_two_inputs_and_shifts_one():
     assert multi["traj_lateral"][0][0] == trajectory_path("lateral")
     assert multi["traj_lateral"][0][1:] == multi["train1"][0][1:]
     assert nearest_training_camera(TRAIN_PATHS["train4"]) == 4
+
+
+@pytest.mark.parametrize("random_shift", [None, True, False])
+def test_cnn_random_shift_switch_controls_the_update_augmentation(tmp_path, random_shift):
+    """``agent.random_shift`` false disables DrM's update-time RandomShiftsAug; absent or true keeps the official one."""
+    device = torch.device("cuda")
+    extra = {} if random_shift is None else {"random_shift": random_shift}
+    torch.manual_seed(0)
+    agent = DrMAgent(tiny_cfg("convnet", None, **extra), 4, 4, device)
+    assert agent.augment_pixels is (random_shift is not False)
+    calls = []
+    official = agent.aug
+    agent.aug = lambda x: calls.append(x.shape) or official(x)
+    agent.update(replay_iterator(pixel_replay(tmp_path), 16, 0.97, seed=0, device=device), 2)
+    assert bool(calls) is (random_shift is not False)

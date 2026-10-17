@@ -1,6 +1,7 @@
 """Training-time view augmentations for viewpoint robustness within the six fixed cameras (review item 2).
 
 * ``random_resized_crop`` (2a): encoder input only; render targets stay untouched.
+* ``random_shift`` (2026-10-17 attribution variant): DrM-style random shift in place of the crop; encoder input only.
 * ``jitter_cameras`` + ``synthesize_views`` (2b): the training cameras' GT depth and colours are fused and splatted into
   cameras jittered within the RL trajectory ranges; holes become masked tokens through ``coverage_visible``.
 * the same jittered cameras serve the self-rendered view consistency term (2c, in ``loop.forward_losses``).
@@ -49,6 +50,31 @@ def random_resized_crop(
     def apply(x):
         out = F.grid_sample(x.reshape(R * T, *x.shape[2:]).float(), grid_t, mode="bilinear", align_corners=False)
         return out.view(x.shape).to(x.dtype)
+
+    return apply(images), (apply(extra) if extra is not None else None)
+
+
+def random_shift(
+    images: torch.Tensor, extra: torch.Tensor | None, prob: float, pad: int = 4
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """images (R,T,C,H,W), extra (R,T,1,H,W) or None: DrM-style random shift (``RandomShiftsAug``: replicate padding
+    by ``pad`` pixels, then an integer crop back to H x W). With probability ``1 - prob`` a row is unchanged; otherwise
+    one shift is drawn per row and applied to all T frames of the row and to its aligned ``extra`` map."""
+    R, T, C, H, W = images.shape
+    device = images.device
+    shift = torch.rand(R, device=device) < prob
+    if not bool(shift.any()):
+        return images, extra
+    offsets = torch.randint(0, 2 * pad + 1, (R, 2), device=device)
+    offsets = torch.where(shift[:, None], offsets, torch.full_like(offsets, pad))  # pad, pad: the unshifted image
+    rows = (offsets[:, 0, None] + torch.arange(H, device=device)).repeat_interleave(T, 0)  # (R*T, H)
+    cols = (offsets[:, 1, None] + torch.arange(W, device=device)).repeat_interleave(T, 0)  # (R*T, W)
+    index = torch.arange(R * T, device=device)[:, None, None]
+
+    def apply(x):
+        padded = F.pad(x.reshape(R * T, *x.shape[2:]).float(), (pad,) * 4, mode="replicate")
+        out = padded.permute(0, 2, 3, 1)[index, rows[:, :, None], cols[:, None, :]].permute(0, 3, 1, 2)
+        return out.reshape(x.shape).to(x.dtype)
 
     return apply(images), (apply(extra) if extra is not None else None)
 

@@ -29,7 +29,7 @@ from s4d.model.encoder import Encoder, EncoderConfig
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_hard_depth, render_rgbd
 from s4d.train import ddp
-from s4d.train.augment import coverage_visible, jitter_cameras, random_resized_crop, synthesize_views
+from s4d.train.augment import coverage_visible, jitter_cameras, random_resized_crop, random_shift, synthesize_views
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
 from s4d.train.workers import fork_safe_iter
 
@@ -126,6 +126,9 @@ def forward_losses(
         enc_in, score_in = random_resized_crop(
             enc_in, score_in, float(crop.get("prob", 0.5)), tuple(crop.get("scale", (0.8, 1.0))), tuple(crop.get("ratio", (0.95, 1.05)))
         )
+    shift = aug.get("shift") if training else None
+    if shift:
+        enc_in, score_in = random_shift(enc_in, score_in, float(shift.get("prob", 0.5)), int(shift.get("pad", 4)))
     if source is None:
         source = torch.randint(V, (B,), device=device)
     bf16 = bool(get(cfg, "train.bf16", True))

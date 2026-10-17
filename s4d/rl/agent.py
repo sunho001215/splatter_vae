@@ -205,8 +205,9 @@ class DrMAgent:
 
         self.encoder = VisionEncoderAdapter(cfg).to(device)
         self.use_pixels = self.encoder.backbone_trainable
-        # Official DrM augments every update; the reference gives frozen encoders no augmentation.
-        self.augment_pixels = self.use_pixels
+        # Official DrM augments every update; the reference gives frozen encoders no augmentation. ``agent.random_shift``
+        # false disables it for the end-to-end CNN (2026-10-17 ablation; absent means the official behaviour).
+        self.augment_pixels = self.use_pixels and bool(a.get("random_shift", True))
         repr_dim = self.encoder.repr_dim
         self.actor = Actor(repr_dim, proprio_dim, action_dim, feature_dim, hidden_dim).to(device)
         self.value_predictor = VNetwork(repr_dim, proprio_dim, feature_dim, hidden_dim).to(device)

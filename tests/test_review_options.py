@@ -65,6 +65,33 @@ def test_crop_is_identity_when_off_and_shared_across_frames_when_on():
     assert cropped_score.shape == score.shape
 
 
+def test_shift_is_drm_random_shift_shared_across_frames_and_the_aligned_map():
+    import torch.nn.functional as F
+
+    from s4d.rl.agent import RandomShiftsAug
+
+    x = torch.rand(6, 3, 3, 16, 16)
+    same, same_score = A.random_shift(x, None, prob=0.0)
+    assert torch.equal(same, x) and same_score is None
+    frames = x[:, :1].expand(6, 3, 3, 16, 16).contiguous()
+    score = frames[:, :, :1].clone()  # aligned map: equal to the first colour channel before the shift
+    torch.manual_seed(0)
+    shifted, shifted_score = A.random_shift(frames, score, prob=1.0, pad=4)
+    padded = F.pad(frames[:, 0], (4,) * 4, mode="replicate")
+    crops = {(dy, dx): padded[..., dy:dy + 16, dx:dx + 16] for dy in range(9) for dx in range(9)}
+    for r in range(6):
+        match = [k for k, c in crops.items() if torch.equal(shifted[r, 0], c[r])]
+        assert match, "every row is an integer crop of the replicate-padded image"
+        for t in (1, 2):
+            assert torch.equal(shifted[r, t], shifted[r, 0])
+        assert torch.equal(shifted_score[r, :, 0], shifted[r, :, 0])
+    # DrM's RandomShiftsAug yields the same family of images: integer crops of the replicate-padded input.
+    torch.manual_seed(0)
+    drm = RandomShiftsAug(4)(frames[:, 0])
+    for r in range(6):
+        assert any(torch.allclose(drm[r], c[r], atol=1e-5) for c in crops.values())
+
+
 def test_jittered_cameras_look_at_the_workspace_within_the_trajectory_ranges():
     K = torch.tensor([[110.0, 0, 64], [0, 110.0, 64], [0, 0, 1]]).expand(3, 3, 3)
     cams = A.jitter_cameras(3, 2, K, 128, 128, seed=0)
@@ -199,6 +226,34 @@ def test_forward_losses_with_every_review_option(batch, monkeypatch):
     with torch.no_grad():
         forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]), mask_ratio=0.0)
     assert [c[1] for c in calls if c[0] == "RGB+ED"] == [2]
+
+
+def test_forward_losses_shifts_only_the_training_encoder_input(batch, monkeypatch):
+    from s4d.model import render
+    from s4d.train import loop
+
+    monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    seen = []
+
+    def recording_shift(images, extra, prob, pad):
+        seen.append((images.shape, None if extra is None else extra.shape, prob, pad))
+        return A.random_shift(images, extra, prob, pad)
+
+    monkeypatch.setattr(loop, "random_shift", recording_shift)
+    batch["images"] = torch.randint(0, 256, batch["images"].shape, dtype=torch.uint8)
+    targets = batch["images"].clone()
+    cfg = load_config([REPO / "configs/metaworld/base.yaml"], ["aug.shift.prob=0.5", "aug.shift.pad=4"])
+    cfg["train"]["bf16"] = False
+    model = _model().train()
+    out = forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]))
+    assert torch.isfinite(out["total"]) and torch.equal(batch["images"], targets)  # rendering targets untouched
+    B, T, V, _, H, W = batch["images"].shape
+    assert seen == [((B * V, T, 3, H, W), (B * V, T, 1, H, W), 0.5, 4)]
+    model.eval()
+    with torch.no_grad():
+        forward_losses(model, batch, cfg, 100, source=torch.tensor([0, 1]), mask_ratio=0.0)
+    assert len(seen) == 1  # evaluation never shifts
 
 
 def test_depth_hard_boost_applies_only_in_the_first_fraction(batch, monkeypatch):
