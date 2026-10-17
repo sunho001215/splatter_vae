@@ -12,7 +12,9 @@ read simply comes from disk again.
    (runs/<id>/snapshots/step_N.pt with N <= the last eval.jsonl step), and any snapshot not written for 10 minutes
    (the trainer never re-reads it; a lagging evaluator reads it once from disk).
 5. (2026-10-17) Meta-World datasets (/home/ws/data/metaworld/splatter4d_v1, never other data roots) while no active
-   local job reads datasets (DrM trainers/evaluators simulate live); a later reader re-reads them from disk."""
+   local job reads datasets (DrM trainers/evaluators simulate live); a later reader re-reads them from disk.
+6. (2026-10-17) Only while the full charge exceeds the 130 GB steady target: the replay files of active local RL
+   runs. Their clean cached pages are dropped; sampling re-reads the needed frames from disk (no data change)."""
 import json
 import os
 import sys
@@ -109,6 +111,21 @@ if not readers:
             dataset_files += 1
         except OSError:
             pass
+STEADY_TARGET = 130_000_000_000
+active_replay_files = 0
+if int(Path('/sys/fs/cgroup/memory.current').read_text()) > STEADY_TARGET:
+    for jid, s in state.items():
+        if s.get('status') not in jobs.ACTIVE or s.get('host', 'local') != 'local' or jid.endswith('-eval'):
+            continue
+        folder = ROOT / 'runs' / jid / 'replay'
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        for path in folder.iterdir():
+            try:
+                evict(path)
+                active_replay_files += 1
+            except OSError:
+                pass
 after = int(Path('/sys/fs/cgroup/memory.current').read_text())
 print(json.dumps({'time': time.strftime('%F %T'), 'files': count, 'bytes': size, 'finished_rl_runs': len(finished),
-                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'active_snapshot_files': active_snapshot_files, 'dataset_files': dataset_files, 'dataset_readers': len(readers), 'charge_before': before, 'charge_after': after}))
+                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'active_snapshot_files': active_snapshot_files, 'dataset_files': dataset_files, 'active_replay_files': active_replay_files, 'dataset_readers': len(readers), 'charge_before': before, 'charge_after': after}))

@@ -3677,3 +3677,5 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   (new keys absent by default; evaluator refactor behaviour-preserving); retries of jobs launched on e4206f1 are held
   by the scheduler as before. Previous driver kept as `remote_campaign_driver.before-7c0d0d2.py`.
 - 19:41 Remote driver: the 2026-10-17 follow-up pretrains rank 1.6 (after baseline pretrains, before baseline RL) instead of the pretrain-only variant rank 2.5, since they gate 24 RL pairs. Order of all other kinds unchanged.
+- 20:11 `s4-drm-mvp3d-multiview-bin-picking-s2000` launch refused by a transient remote pre-check race (awk read of a vanished /proc/<pid>/smaps_rollup); no container; reconciled, relaunched by the driver.
+- 21:57 Memory alert again (148.8 GB at 21:56): anon 99.7 GB, 44 GB inactive cache = replay files of 29 active local RL runs. One-off fadvise of those replays -> 118.9 GB; `evict_partial_cache.py` rule 6 now releases active-run replay cache whenever the charge exceeds the 130 GB steady target. No job stopped.
