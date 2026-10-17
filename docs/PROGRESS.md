@@ -356,6 +356,7 @@ diff inline.
 | 2026-10-17 01:21 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-rand-s1001-rem-b completed with final eval at 400k; remote replay retained) |
 | 2026-10-17 01:21 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-rand-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 | 2026-10-17 03:06 | remote 3.23 TB (bxs-mvp3d-multiview-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 18:57 | remote 3.17 TB (s4-drm-mvp3d-multiview-hammer-s2001 completed with final eval at 1000k; remote replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
