@@ -3676,3 +3676,4 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   shift-pretraining and no-shift CNN trainers. Code paths of every existing job type are unchanged from e4206f1
   (new keys absent by default; evaluator refactor behaviour-preserving); retries of jobs launched on e4206f1 are held
   by the scheduler as before. Previous driver kept as `remote_campaign_driver.before-7c0d0d2.py`.
+- 19:41 Remote driver: the 2026-10-17 follow-up pretrains rank 1.6 (after baseline pretrains, before baseline RL) instead of the pretrain-only variant rank 2.5, since they gate 24 RL pairs. Order of all other kinds unchanged.

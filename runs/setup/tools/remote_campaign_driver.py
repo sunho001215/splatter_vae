@@ -335,7 +335,10 @@ def dispatch_key(job):
     trainer_status = state.get(trainer['id'], {}).get('status', jobs.PENDING)
     companion = is_evaluator and trainer_status in jobs.ACTIVE | {jobs.DONE}
     seed = int(trainer['args'][trainer['args'].index('--seed') + 1]) if '--seed' in trainer['args'] else 0
-    return RANK[kind(job['id'])], not companion, seed, [j['id'] for j in remote].index(job['id'])
+    rank = RANK[kind(job['id'])]
+    if kind(job['id']) == 's2_pretrain' and job.get('stage2_extension') == 'followup-20261017':
+        rank = 1.6  # the follow-up pretrains gate 24 RL pairs: after the baseline pretrains, before baseline RL
+    return rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
 candidates = [j for j in jobs.eligible(remote, state) if ready(j)]
