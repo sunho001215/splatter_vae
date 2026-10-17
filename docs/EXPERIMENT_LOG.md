@@ -3610,3 +3610,18 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   on standardised inputs, 2304 samples), so the stack probes are not interpretable; stack retrieval matches the
   newest-frame pattern. Random-init 3D-MVP A retrieval is high because its virtual views are rendered from a fused
   world-frame cloud and columns share cameras (pre-registered caveat). No recipe, checkpoint or protocol change.
+
+## 2026-10-17 09:12 — Eight-task DynaMo / 3D-MVP runs and DynaMo epoch-9 diagnostic registered (user go-ahead)
+
+- User approved (after the hammer acceptance report) the eight-task runs for DynaMo and 3D-MVP and the optional
+  DynaMo epoch-9 diagnostic. Registered before any result: `runs/setup/baselines-eight-task-registration-20261017.json`
+  (164 jobs; tool `register_baselines_eight_task.py`): 14 remote pretrains (7 tasks x 2; hammer reuses the accepted
+  encoders), 72 DrM 1M pairs (8 tasks x seeds 2000-2002; DynaMo and 3D-MVP condition B on local MIG, condition A on
+  the remote; evaluator 6 x 8 as all final rows), 3 diagnostic pairs `bxs-dynamo-hammer-ep09-s100{0,1,2}-rem-b`
+  (sanity protocol, export `exports/encoder_epoch09.pt`, sha 2e036546… identical on both hosts).
+- Diagnostic rule fixed now: mean last-5 training success reported next to the final-encoder (0.349) and random
+  (0.516) arms, descriptively; never replaces the final encoder; no checkpoint choice follows.
+- Local driver: admits the registration's local rows; RL jobs reserve no dataset page cache (DrM reads no dataset
+  file; the old rule reserved 141 GB for eight tasks' HDF5 and blocked all admission); task taken from `--task`.
+  Previous version `baseline_local_driver.before-eight-task-20261017.py`. Remote release e4206f1 unchanged; local RL
+  code identical to it.

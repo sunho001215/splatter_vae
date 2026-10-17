@@ -22,8 +22,10 @@ from scripts import jobs  # noqa: E402
 CAP = 140_000_000_000
 # The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json). Only the evaluator of the
 # kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
-REGISTRATIONS = ['baselines-sanity-registration-20261016.json']
-ONLY = {'bxs-dynamo-hammer-rand-s1000-eval'}
+# Eight-task runs (2026-10-17): the local rows of baselines-eight-task-registration-20261017.json (DynaMo and 3D-MVP
+# condition B DrM; their pretraining exports come from the remote).
+REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json']
+ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
 DRY = '--dry-run' in sys.argv
 SETUP = ROOT / 'runs/setup'
@@ -43,8 +45,7 @@ for name in REGISTRATIONS:
     if (SETUP / name).is_file():
         record = json.loads((SETUP / name).read_text())
         assert [by_queue[j['id']] for j in record['jobs']] == record['jobs'], f'{name}: jobs changed in the queue'
-        registered += record['jobs']
-registered = [j for j in registered if j['id'] in ONLY]
+        registered += [j for j in record['jobs'] if name not in ONLY or j['id'] in ONLY[name]]
 by_id = {j['id']: j for j in registered}
 if not registered:
     print('BASELINES nothing registered for local admission')
@@ -61,7 +62,11 @@ def status(job_id):
 
 
 def task_files(job):
-    task = 'hammer' if 'hammer' in job['id'] else job['id'].split('-')[2]
+    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py'):
+        return []  # DrM simulates Meta-World live; it reads no dataset file
+    trainer = by_id.get(job['id'].removesuffix('-eval'), job)
+    args = trainer['args']
+    task = args[args.index('--task') + 1] if '--task' in args else ('hammer' if 'hammer' in job['id'] else job['id'].split('-')[2])
     return [DATA / f'{task}.hdf5', DATA / f'heldout_sets/{task}.hdf5']
 
 
@@ -105,7 +110,7 @@ candidates.sort(key=lambda j: (j['priority'], j['script'] == 'scripts/eval_rl.py
 charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
 files = sorted({f for j in registered for f in task_files(j) if f.is_file()})
 fincore = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, files)],
-                         capture_output=True, text=True, check=True).stdout.split()
+                         capture_output=True, text=True, check=True).stdout.split() if files else []
 cache_reserve = sum(max(0, f.stat().st_size - int(r)) for f, r in zip(files, fincore))
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
