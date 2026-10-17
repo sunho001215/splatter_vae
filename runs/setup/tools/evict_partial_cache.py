@@ -13,6 +13,8 @@ read simply comes from disk again.
    (the trainer never re-reads it; a lagging evaluator reads it once from disk).
 5. (2026-10-17) Meta-World datasets (/home/ws/data/metaworld/splatter4d_v1, never other data roots) while no active
    local job reads datasets (DrM trainers/evaluators simulate live); a later reader re-reads them from disk.
+7. (2026-10-18) Finished trainers whose evaluator still runs: their replay (incl. the final ram_snapshot.npz);
+   only the trainer reads it and the evaluator uses policy snapshots alone.
 6. (2026-10-17) Only while the full charge exceeds the 130 GB steady target: the replay files of active local RL
    runs. Their clean cached pages are dropped; sampling re-reads the needed frames from disk (no data change)."""
 import json
@@ -77,6 +79,18 @@ for root in [ROOT / '.worktrees', ROOT / 'runs/nv', ROOT / 'runs/rel', ROOT / 'r
                     stale_files += 1
             except OSError:
                 pass
+trainer_done_replay_files = 0
+for jid, s in state.items():
+    if jid.endswith('-eval') or s.get('status') != jobs.DONE or s.get('host', 'local') != 'local':
+        continue
+    folder = ROOT / 'runs' / jid / 'replay'
+    if folder.is_dir() and not folder.is_symlink() and (ROOT / 'runs' / jid / 'final.json').is_file():
+        for path in folder.iterdir():
+            try:
+                evict(path)
+                trainer_done_replay_files += 1
+            except OSError:
+                pass
 active_snapshot_files = 0
 for jid, s in state.items():
     if s.get('status') not in jobs.ACTIVE or s.get('host', 'local') != 'local' or jid.endswith('-eval'):
@@ -128,4 +142,4 @@ if int(Path('/sys/fs/cgroup/memory.current').read_text()) > STEADY_TARGET:
                 pass
 after = int(Path('/sys/fs/cgroup/memory.current').read_text())
 print(json.dumps({'time': time.strftime('%F %T'), 'files': count, 'bytes': size, 'finished_rl_runs': len(finished),
-                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'active_snapshot_files': active_snapshot_files, 'dataset_files': dataset_files, 'active_replay_files': active_replay_files, 'dataset_readers': len(readers), 'charge_before': before, 'charge_after': after}))
+                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'active_snapshot_files': active_snapshot_files, 'dataset_files': dataset_files, 'trainer_done_replay_files': trainer_done_replay_files, 'active_replay_files': active_replay_files, 'dataset_readers': len(readers), 'charge_before': before, 'charge_after': after}))
