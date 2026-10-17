@@ -3679,3 +3679,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
 - 19:41 Remote driver: the 2026-10-17 follow-up pretrains rank 1.6 (after baseline pretrains, before baseline RL) instead of the pretrain-only variant rank 2.5, since they gate 24 RL pairs. Order of all other kinds unchanged.
 - 20:11 `s4-drm-mvp3d-multiview-bin-picking-s2000` launch refused by a transient remote pre-check race (awk read of a vanished /proc/<pid>/smaps_rollup); no container; reconciled, relaunched by the driver.
 - 21:57 Memory alert again (148.8 GB at 21:56): anon 99.7 GB, 44 GB inactive cache = replay files of 29 active local RL runs. One-off fadvise of those replays -> 118.9 GB; `evict_partial_cache.py` rule 6 now releases active-run replay cache whenever the charge exceeds the 130 GB steady target. No job stopped.
+- 22:14 Memory alert at 149.9 GB (152.9 GB a minute later): active-run replay cache refills within minutes (23 GB in
+  15 min; DrM samples the whole buffer), so it is real working set. The baseline local driver's DrM trainer footprint
+  now includes the preallocated replay (3.5 GB + 2.6 GB) so admission no longer overcommits, and three local trainers
+  (`s4-drm-mvp3d-single-stick-push-s200{0,1,2}`, least advanced, ~134-152k) are paused losslessly at their next 50k
+  checkpoint with `pause_rl_at_checkpoint.py` (standing authorization; evaluators after their snapshots). They resume
+  through the scheduler when headroom allows. Rule 6 of the eviction tool stays (harmless, short relief).
