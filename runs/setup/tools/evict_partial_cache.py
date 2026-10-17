@@ -7,7 +7,11 @@ read simply comes from disk again.
    pretraining checkpoints are never touched.
 3. (2026-10-16) Files nothing reads again after they are written: source worktrees and their test outputs
    (.worktrees/, runs/nv/, runs/rel/; their .venv links are skipped), release bundles (runs/remote/bundles/) and pulled
-   offline W&B folders (runs/<id>/wandb/), which `wandb sync` re-reads from disk."""
+   offline W&B folders (runs/<id>/wandb/), which `wandb sync` re-reads from disk.
+4. (2026-10-17) Active RL runs: policy snapshots whose step the evaluation companion has already recorded
+   (runs/<id>/snapshots/step_N.pt with N <= the last eval.jsonl step); nothing reads them again.
+5. (2026-10-17) Meta-World datasets (/home/ws/data/metaworld/splatter4d_v1, never other data roots) while no active
+   local job reads datasets (DrM trainers/evaluators simulate live); a later reader re-reads them from disk."""
 import json
 import os
 import sys
@@ -70,6 +74,39 @@ for root in [ROOT / '.worktrees', ROOT / 'runs/nv', ROOT / 'runs/rel', ROOT / 'r
                     stale_files += 1
             except OSError:
                 pass
+active_snapshot_files = 0
+for jid, s in state.items():
+    if s.get('status') not in jobs.ACTIVE or s.get('host', 'local') != 'local' or jid.endswith('-eval'):
+        continue
+    folder = ROOT / 'runs' / jid / 'snapshots'
+    evals = [ROOT / 'runs' / f'{jid}-eval' / 'eval.jsonl', ROOT / 'runs' / jid / 'eval.jsonl']
+    path = next((e for e in evals if e.is_file()), None)
+    if not folder.is_dir() or folder.is_symlink() or path is None:
+        continue
+    try:
+        done = max((json.loads(line)['step'] for line in path.read_text().splitlines() if line.strip()), default=-1)
+    except (OSError, ValueError, KeyError):
+        continue
+    for snap in folder.glob('step_*.pt'):
+        try:
+            if int(snap.stem.split('_')[1]) <= done:
+                evict(snap)
+                active_snapshot_files += 1
+        except (OSError, ValueError):
+            pass
+DATA_READERS = {'scripts/train.py', 'scripts/evaluate.py', 'scripts/train_dynamo.py', 'scripts/train_mvp3d.py',
+                'scripts/train_snerl.py', 'scripts/train_sincro.py', 'scripts/train_reviwo.py'}
+queue = {j['id']: j for j in jobs.load_queue()['jobs']}
+readers = [jid for jid, s in state.items() if s.get('status') in jobs.ACTIVE and s.get('host', 'local') == 'local'
+           and queue.get(jid, {}).get('script', 'scripts/train.py') in DATA_READERS]
+dataset_files = 0
+if not readers:
+    for path in Path('/home/ws/data/metaworld/splatter4d_v1').rglob('*.hdf5'):
+        try:
+            evict(path)
+            dataset_files += 1
+        except OSError:
+            pass
 after = int(Path('/sys/fs/cgroup/memory.current').read_text())
 print(json.dumps({'time': time.strftime('%F %T'), 'files': count, 'bytes': size, 'finished_rl_runs': len(finished),
-                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'charge_before': before, 'charge_after': after}))
+                  'rl_files': rl_files, 'rl_bytes': rl_bytes, 'stale_tree_files': stale_files, 'active_snapshot_files': active_snapshot_files, 'dataset_files': dataset_files, 'dataset_readers': len(readers), 'charge_before': before, 'charge_after': after}))

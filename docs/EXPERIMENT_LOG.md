@@ -3625,3 +3625,8 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   file; the old rule reserved 141 GB for eight tasks' HDF5 and blocked all admission); task taken from `--task`.
   Previous version `baseline_local_driver.before-eight-task-20261017.py`. Remote release e4206f1 unchanged; local RL
   code identical to it.
+- 11:42 Local charge rose ~15 GB/h with the eight-task local DrM rows (92 -> 123 GB), almost all inactive file cache
+  (72 GB): Meta-World dataset pages left by the step-4 evaluations/panels (~28 GB) and already-evaluated policy
+  snapshots of active runs. `evict_partial_cache.py` (15-min loop) now also releases (fadvise only; no file touched)
+  snapshots at or below the companion's last evaluated step and the Meta-World datasets while no local job reads
+  datasets. Charge 110.7 -> 64.9 GB. Previous version `evict_partial_cache.before-20261017.py`.
