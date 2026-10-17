@@ -21,7 +21,7 @@ IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7
 FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
 # Admission release (2026-10-16): cffa071 adds the new baselines and typed verification; model/loss/train/data code
 # is identical to the frozen source and the single-camera RL path is unchanged (runs/remote/acceptance/cffa071).
-COMMIT = 'e4206f1e3106cfd115517d4e33fb967199f2e74a'  # e4206f1: cffa071 + in-container identity mount fix
+COMMIT = '7c0d0d211774ceec0729a2d67ada318f1e872d39'  # 7c0d0d2: e4206f1 + aug.shift / agent.random_shift + evaluator fixes
 MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
@@ -265,7 +265,7 @@ def task_of(job):
 
 # Source features of the accepted remote release (COMMIT). A job naming a feature the release lacks is never launched:
 # its configuration keys would be silently ignored by older code. 'aug-shift': aug.shift, agent.random_shift.
-RELEASE_FEATURES = set()
+RELEASE_FEATURES = {'aug-shift'}  # 7c0d0d2 (accepted 2026-10-17 19:34, manifest 5dd4dee0...)
 
 
 def ready(job):

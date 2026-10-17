@@ -3670,3 +3670,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   campaign job identity (passes locally, where that check does not apply). Fix in `.worktrees/repr-identity`: a
   `--max-batches` smoke is a native diagnostic (as the trainers' short runs); the test bounds it to cover every
   batch. Shift / no-shift training stays gated until a release with the fix is accepted; E1 continues on e4206f1.
+- 19:34 Release 7c0d0d2 accepted remotely (typed verification in the accepted image: native suite and four one-UUID
+  CUDA/EGL isolation checks; manifest `runs/remote/acceptance/7c0d0d2/manifest.json`, SHA-256 5dd4dee0…; data
+  identity unchanged). Remote driver now admits on 7c0d0d2 with RELEASE_FEATURES {aug-shift}, releasing the gated
+  shift-pretraining and no-shift CNN trainers. Code paths of every existing job type are unchanged from e4206f1
+  (new keys absent by default; evaluator refactor behaviour-preserving); retries of jobs launched on e4206f1 are held
+  by the scheduler as before. Previous driver kept as `remote_campaign_driver.before-7c0d0d2.py`.
