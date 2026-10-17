@@ -64,14 +64,19 @@ original = {j['id'] for j in registration['jobs']}  # the 108 Stage 2 jobs regis
 # Later Stage 2 registrations with the same job structure and closeouts: the crop variants (user approval
 # 2026-10-15), admitted at the "middle" rank (see admissible/rank below).
 # ... and the RL arm of the completed no-synth pretrains (registered 2026-10-16 before any of its RL results).
+# ... and the 2026-10-17 follow-ups (crop on six more tasks, pretraining shift, their missing matched controls;
+# registered before any result; remote placement inside the registration itself).
+REUSED = {}
 for name in ['stage2-crop-registration-20261015.json', 'stage2-nosynth-rl-registration-20261016.json',
-             'stage2-extra-rl-registration-20261016.json']:
+             'stage2-extra-rl-registration-20261016.json', 'followup-registration-20261017.json']:
     if (SETUP / name).is_file():
         later = json.loads((SETUP / name).read_text())
         assert not set(later['configs']) & set(registration['configs'])
         assert not {j['id'] for j in later['jobs']} & original
-        registration = {**registration, 'jobs': registration['jobs'] + later['jobs'],
+        later_jobs = [j for j in later['jobs'] if j.get('stage') == 2]  # the follow-up's CNN rows are remote-driver work
+        registration = {**registration, 'jobs': registration['jobs'] + later_jobs,
                         'configs': {**registration['configs'], **later['configs']}}
+        REUSED.update(later.get('reused_pretraining', {}))
 queue = jobs.load_queue()
 ids = [j['id'] for j in registration['jobs']]
 stage2 = [j for j in queue['jobs'] if j['id'] in set(ids)]
@@ -110,11 +115,34 @@ def task_of(job):
     args = job['args']
     if '--task' in args:
         return args[args.index('--task') + 1]
+    config = next((a for a in args if a.startswith('configs/metaworld/tasks/')), None)
+    if config:
+        return config.rsplit('/', 1)[1].removesuffix('.yaml')
+    if job['deps'] and job['deps'][0] in by_id:
+        return task_of(by_id[job['deps'][0]])
+    if job['deps'] and job['deps'][0] in REUSED:
+        return REUSED[job['deps'][0]]['config']['data']['task']
     return 'pick-place' if 'pick-place' in job['id'] else 'hammer'
 
 
 def pretrain_run(job_id):
+    if job_id in REUSED:
+        return ROOT / 'runs' / job_id
     return ROOT / 'runs' / job_id if by_id[job_id].get('host') == 'remote' else ROOT / 'runs/pretrain' / job_id
+
+
+# 0. reused pretraining runs (the full method's remote final encoders as follow-up controls): proof once the synced
+# 200k checkpoint still has the registered checksum and the run's config is the frozen task configuration
+for jid, reused in REUSED.items():
+    if proof_of(jid).exists() or state.get(jid, {}).get('status') != jobs.DONE:
+        continue
+    run = pretrain_run(jid)
+    cfg = yaml.safe_load((run / 'config.yaml').read_text())
+    cfg.pop('run')
+    assert cfg == reused['config'], jid
+    assert sha(ROOT / reused['checkpoint']) == reused['sha256'], jid
+    write_proof(jid, {'reused_pretraining': True, 'config_equals_registration': True,
+                      'checkpoint_sha256': reused['sha256']})
 
 
 # 1. pretraining closeouts, then evaluation configs (copied only from a verified 200k pretraining run)
@@ -148,8 +176,13 @@ for job in stage2:
         run = ROOT / 'runs' / jid
         summary_path = run / 'eval/step_0200000/summary.json'
         summary = json.loads(summary_path.read_text())
-        windows = WINDOWS[task_of(job)]
-        assert summary['step'] == 200000 and summary['num_batches'] == {k: math.ceil(v / 16) for k, v in windows.items()}
+        task = task_of(job)
+        if task in WINDOWS:
+            windows = WINDOWS[task]
+            assert summary['step'] == 200000 and summary['num_batches'] == {k: math.ceil(v / 16) for k, v in windows.items()}
+        else:  # follow-up tasks: full split (both strides, non-empty); equality across arms is checked at reporting
+            assert summary['step'] == 200000 and set(summary['num_batches']) == {'2', '6'}
+            assert all(int(n) > 0 for n in summary['num_batches'].values())
         text = (run / 'console.log').read_text()
         assert 'Traceback' not in text[text.rfind('=== attempt'):]
         console, _ = json.JSONDecoder().raw_decode(text[text.rfind('\n{\n') + 1:])

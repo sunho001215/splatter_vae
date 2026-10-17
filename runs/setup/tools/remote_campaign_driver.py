@@ -48,7 +48,12 @@ except BlockingIOError:
 
 PLACEMENT_PATH = REPO / 'runs/setup/stage2-placement-20261015.json'
 placement = json.loads(PLACEMENT_PATH.read_text()) if PLACEMENT_PATH.exists() else {'effective_jobs': {}}
-S2_REMOTE = placement['effective_jobs']
+S2_REMOTE = dict(placement['effective_jobs'])
+# 2026-10-17 follow-ups: Stage 2-structured jobs whose remote placement is part of their own registration
+FOLLOWUP_PATH = REPO / 'runs/setup/followup-registration-20261017.json'
+if FOLLOWUP_PATH.exists():
+    S2_REMOTE.update({j['id']: j for j in json.loads(FOLLOWUP_PATH.read_text())['jobs']
+                      if j.get('stage') == 2 and j.get('host') == 'remote'})
 S2_KINDS = {'scripts/train.py': 's2_pretrain', 'scripts/evaluate.py': 's2_eval',
             'scripts/train_rl.py': 's2_rl', 'scripts/eval_rl.py': 's2_rl'}
 
@@ -215,9 +220,9 @@ for job in remote:
 
 uploaded = set()
 for job in queue['jobs']:
-    if not job['id'].startswith(('export-ls-', 'export-s2ab-crop')):
+    if not job['id'].startswith(('export-ls-', 'export-s2ab-crop', 'export-s2ab-shift')):
         continue
-    if job['id'].startswith('export-s2ab-crop') and not (
+    if job['id'].startswith(('export-s2ab-crop', 'export-s2ab-shift')) and not (
             REPO / 'runs/setup' / f"s2-{job['id']}-completion.json").exists():
         continue
     out = job['args'][job['args'].index('--out') + 1]
@@ -258,9 +263,16 @@ def task_of(job):
         next(a for a in args if a.startswith('configs/metaworld/tasks/')).rsplit('/', 1)[1].removesuffix('.yaml')
 
 
+# Source features of the accepted remote release (COMMIT). A job naming a feature the release lacks is never launched:
+# its configuration keys would be silently ignored by older code. 'aug-shift': aug.shift, agent.random_shift.
+RELEASE_FEATURES = set()
+
+
 def ready(job):
     jid = job['id']
     k = kind(jid)
+    if job.get('requires_feature') and job['requires_feature'] not in RELEASE_FEATURES:
+        return False
     if k == 's2_eval':
         proof = REPO / 'runs/setup' / f"s2-{job['deps'][0]}-completion.json"
         config = REPO / 'runs' / jid / 'config.yaml'

@@ -9,7 +9,8 @@ read simply comes from disk again.
    (.worktrees/, runs/nv/, runs/rel/; their .venv links are skipped), release bundles (runs/remote/bundles/) and pulled
    offline W&B folders (runs/<id>/wandb/), which `wandb sync` re-reads from disk.
 4. (2026-10-17) Active RL runs: policy snapshots whose step the evaluation companion has already recorded
-   (runs/<id>/snapshots/step_N.pt with N <= the last eval.jsonl step); nothing reads them again.
+   (runs/<id>/snapshots/step_N.pt with N <= the last eval.jsonl step), and any snapshot not written for 10 minutes
+   (the trainer never re-reads it; a lagging evaluator reads it once from disk).
 5. (2026-10-17) Meta-World datasets (/home/ws/data/metaworld/splatter4d_v1, never other data roots) while no active
    local job reads datasets (DrM trainers/evaluators simulate live); a later reader re-reads them from disk."""
 import json
@@ -81,15 +82,16 @@ for jid, s in state.items():
     folder = ROOT / 'runs' / jid / 'snapshots'
     evals = [ROOT / 'runs' / f'{jid}-eval' / 'eval.jsonl', ROOT / 'runs' / jid / 'eval.jsonl']
     path = next((e for e in evals if e.is_file()), None)
-    if not folder.is_dir() or folder.is_symlink() or path is None:
+    if not folder.is_dir() or folder.is_symlink():
         continue
     try:
-        done = max((json.loads(line)['step'] for line in path.read_text().splitlines() if line.strip()), default=-1)
+        done = -1 if path is None else max(
+            (json.loads(line)['step'] for line in path.read_text().splitlines() if line.strip()), default=-1)
     except (OSError, ValueError, KeyError):
-        continue
+        done = -1
     for snap in folder.glob('step_*.pt'):
         try:
-            if int(snap.stem.split('_')[1]) <= done:
+            if int(snap.stem.split('_')[1]) <= done or time.time() - snap.stat().st_mtime > 600:
                 evict(snap)
                 active_snapshot_files += 1
         except (OSError, ValueError):

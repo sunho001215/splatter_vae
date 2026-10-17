@@ -3634,3 +3634,33 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   77 GB actual charge (accounted 141.5 GB > 140 GB ceiling). Now uses the campaign's measured DrM footprints
   (trainer 3.5 GB, evaluator 4.5 GB; the Stage 2 driver's table, per the measured-footprint scheduling rule);
   observed baseline DrM RSS 2.7-3.4 GB / ~1.9 GB fits. Previous version `baseline_local_driver.before-measured-20261017.py`.
+- 17:56 Local charge reached 152.5 GB (> 150 GB rule) for ~5 min: 21 local DrM trainers after the measured-footprint
+  change, the gated suite run of the aug-shift worktree, and ~19 GB of not-yet-evaluated policy snapshots (10 trainers
+  wait for their evaluator) plus worktree test files in page cache. Immediate eviction (fadvise only) -> 124.7 GB.
+  `evict_partial_cache.py` now also releases any active-run snapshot not written for 10 min (read once later by the
+  lagging evaluator, from disk). No job was stopped. Process memory ~81 GB; the local driver keeps admitting job by job
+  under its 140 GB accounted ceiling.
+
+## 2026-10-17 18:07 — Follow-up experiments E1-E3 registered (user request 17:4x), before any result
+
+Registration `runs/setup/followup-registration-20261017.json` (tool `register_followup_20261017.py`; 138 jobs):
+configurations, hypotheses, seeds, controls and the analysis plan are fixed there. Frozen method unchanged
+(C + D0 + M3D, 200k, pretraining seed 0); DrM 1M; evaluation 240 episodes / 10k steps, three camera conditions.
+- E1 crop on bin-picking, coffee-push, door-open, peg-insert-side, peg-unplug-side, stick-push (crop recipe of the
+  hammer/pick-place runs; synthetic views/rendering kept), RL seeds 2000-2002 vs the full method's final runs.
+  Missing matched controls added: full-split evaluations of the six full-method final encoders; crop RL on hammer/
+  pick-place at 2000-2002 (eight-task aggregate on matched seeds).
+- E2 pretraining random shift (aug.shift prob 0.5, pad 4, replicate; shared over history frames and the aligned
+  motion-score map; encoder input only) on hammer/pick-place, Stage 2 seeds 1000-1002 vs `s2rl-full`/`s2rl-crop`.
+- E3 DrM CNN with agent.random_shift=false on eight tasks, seeds 2000-2002, matched to `s4-drm-cnn-*`.
+- Analysis (registered): margin rule unchanged and never read as "no effect"; paired-by-seed bootstrap CIs for
+  last-5/final/AUC success and return; explicit learning efficiency (AUC, early AUC 10k-300k, restricted mean time
+  to 0.5/0.8 success with reach rates); NA rules for Hedges g and novel/training ratios; E3 training vs novel-view
+  changes with a difference-in-differences. Codex review task-mvc5ta28-tp0zrd: no code findings; its three analysis
+  points (paired bootstrap, censored threshold times, NA handling) adopted before publication.
+- Source: aug.shift / agent.random_shift merged at 21a0e12 (932/0). Placement: pretraining, evaluation and RL remote;
+  exports local. The 26 shift-pretraining and no-shift CNN trainers carry `requires_feature: aug-shift` and stay
+  unlaunched until a remote release with that source is accepted (older code would ignore the keys).
+- Drivers: Stage 2 local driver includes the registration (reused-encoder proofs, task from config, non-dev window
+  counts); remote driver maps its remote Stage 2 jobs and uploads verified shift exports. Previous versions kept as
+  `*.before-followup-20261017.py`.

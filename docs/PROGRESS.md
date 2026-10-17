@@ -21,7 +21,8 @@ diff inline.
 | task-mvafnh17-iday3i | MIG guard/scheduler review (inline diff) | `.worktrees/mig` | 1 finding (unavailable process listing read as idle), fixed `d95e863`, integrated |
 | task-mvafyrt7-0bpdom | baseline bundle review (inline code) | `.worktrees/bx-int` | 1 P0 claim (multi-view shift keeps 2 fixed views) = registered user protocol, not changed; caveat in reports |
 | task-mvahby60-5isaes | patch proposal: port the remote verification bootstrap (native suite + GPU isolation in the image) from WIP `8f8f952` | `.worktrees/verify` | applied with manual fixes (7 rejected hunks, removed its campaign-path reuse check, reserved `verify-` ids); suite pending |
-| task-mvajgv75-oizyou | adversarial review of the adapted verification bundle | `.worktrees/verify` | running |
+| task-mvajgv75-oizyou | adversarial review of the adapted verification bundle | `.worktrees/verify` | asked for more context; no findings |
+| task-mvc5ta28-tp0zrd | review of the follow-up augmentation changes (`aug.shift`, `agent.random_shift`) and experiment configurations (inline diff + registration excerpts) | `.worktrees/codex-followup` | no code findings; 3 analysis-plan points adopted before registration |
 
 ## Current phase
 - **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,
@@ -318,6 +319,43 @@ diff inline.
 | 2026-10-16 17:08 | 4.2TB (s2rl-nosynth-hammer-s1001 completed with final eval at 1000k; replay retained) |
 | 2026-10-16 17:08 | 4.2TB (s2rl-nosynth-pick-place-s1001 completed with final eval at 1000k; replay retained) |
 | 2026-10-16 17:08 | 4.2TB (s2rl-nosynth-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 17:18 | 4.2TB (s2rl-nosynth-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:14 | remote 3.32TB (s2rl-cropnosynth-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:24 | remote 3.32TB (s2rl-cropnosynth-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:24 | remote 3.32TB (s2rl-crop-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:24 | remote 3.32TB (s2rl-cropnosynth-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:24 | remote 3.32TB (s2rl-crop-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:29 | remote 3.32TB (s2rl-cropnosynth-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:39 | remote 3.32TB (s2rl-cropnosynth-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 18:54 | remote 3.32TB (s2rl-crop-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 19:00 | remote 3.32TB (s2rl-cropnosynth-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 19:14 | remote 3.31 TB (bxs-snerl-hammer-rand-s1000-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-16 19:56 | remote 3.31 TB (bxs-dynamo-hammer-rand-s1002-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-16 19:56 | remote 3.31 TB (bxs-snerl-hammer-rand-s1001-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-16 20:21 | remote 3.31 TB (bxs-dynamo-hammer-rand-s1001-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-16 20:51 | remote 3.31 TB (bxs-snerl-hammer-rand-s1002-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-16 21:26 | 4.0TB (s2rl-nocons-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:26 | 4.0TB (s2rl-misscaled-none-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:32 | 4.0TB (s2rl-nocons-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:32 | 4.0TB (s2rl-misscaled-none-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:43 | 4.0TB (s2rl-nocons-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:43 | 4.0TB (s2rl-nocons-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:43 | 4.0TB (s2rl-nocons-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:43 | 4.0TB (s2rl-misscaled-none-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:43 | 4.0TB (s2rl-misscaled-none-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-16 21:58 | 4.0TB (s2rl-nocons-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-17 00:15 | remote 3.26 TB (bxs-dynamo-hammer-pre-s1000-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 00:15 | remote 3.26 TB (bxs-dynamo-hammer-pre-s1001-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 00:35 | remote 3.24 TB (bxs-dynamo-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 00:50 | remote 3.24 TB (bxs-mvp3d-multiview-hammer-pre-s1001-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 01:00 | remote 3.23 TB (bxs-mvp3d-single-hammer-pre-s1000-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 01:15 | 3.9TB (s2rl-misscaled-none-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-17 01:16 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-pre-s1000-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 01:20 | 3.9TB (s2rl-misscaled-none-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-17 01:21 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-rand-s1000-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 01:21 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-rand-s1001-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 01:21 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-rand-s1002-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-17 03:06 | remote 3.23 TB (bxs-mvp3d-multiview-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
