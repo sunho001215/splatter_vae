@@ -305,7 +305,7 @@ def test_gpu_query_failure_reconciles_exits_but_launches_nothing(tmp_path, monke
 
     def query(devices, state_dir, timeout):
         assert devices is jobs.MIG_DEVICES
-        assert state_dir == REPO / "experiments" and timeout == 60
+        assert state_dir == REPO / "experiments" and timeout == 180
         result = next(probes)
         if isinstance(result, Exception):
             raise result

@@ -470,7 +470,7 @@ def test_local_nvml_failure_does_not_block_remote(tmp_path, monkeypatch, failure
 
     def query(devices, state_dir, timeout):
         assert devices is jobs.MIG_DEVICES
-        assert state_dir == REPO / "experiments" and timeout == 60
+        assert state_dir == REPO / "experiments" and timeout == 180
         raise failure
 
     monkeypatch.setattr(jobs, "mig_query", query)
