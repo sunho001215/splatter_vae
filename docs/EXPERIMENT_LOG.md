@@ -3685,3 +3685,5 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   (`s4-drm-mvp3d-single-stick-push-s200{0,1,2}`, least advanced, ~134-152k) are paused losslessly at their next 50k
   checkpoint with `pause_rl_at_checkpoint.py` (standing authorization; evaluators after their snapshots). They resume
   through the scheduler when headroom allows. Rule 6 of the eviction tool stays (harmless, short relief).
+- 23:39 `s2ab-crop-seed0-peg-unplug-side` launch refused by the same transient remote pre-check race (vanished /proc/<pid>/smaps_rollup; 2nd occurrence); reconciled, relaunched by the driver.
+- 00:41 Local baseline driver double-counted the resident replay of running trainers (already in the charge, and again in footprint-minus-PSS growth): 18 jobs at 94 GB actual while accounted 141.8 GB. Growth now subtracts each trainer's resident replay (fincore). Paused stick-push trainers resume as headroom allows.

@@ -131,7 +131,20 @@ def active_footprint(job_id, current):
     return int(MEASURED.get(script, float(current.get('ram_gb', 0)) * 2**30))
 
 
-growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0))
+def resident_replay(job_id):
+    """Bytes of a running trainer's replay already resident in the page cache (part of the measured charge)."""
+    files = [f for f in (ROOT / 'runs' / job_id / 'replay').glob('*') if f.is_file()] if \
+        (ROOT / 'runs' / job_id / 'replay').is_dir() else []
+    if not files:
+        return 0
+    out = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, files)],
+                         capture_output=True, text=True).stdout.split()
+    return sum(int(x) for x in out if x.isdigit())
+
+
+# remaining growth: footprint minus what the job already uses (its PSS, and for trainers the replay pages already
+# counted in the charge, so the resident replay is not counted twice)
+growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0) - resident_replay(i))
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 total = charge + sum(growth.values()) + cache_reserve
 admitted, taken = [], set()
