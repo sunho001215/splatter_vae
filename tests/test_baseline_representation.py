@@ -371,7 +371,8 @@ def test_entry_point_writes_both_arms_with_provenance(tmp_path, monkeypatch):
     threads = torch.get_num_threads()
     monkeypatch.setattr(sys, "argv", ["eval_baseline_representation.py", "--task", "hammer", "--encoder", "dynamo",
                                       "--export", str(tmp_path / "encoder.pt"), "--output", str(out), "--config",
-                                      str(tmp_path / "config.yaml"), "--device", "cpu", "--cpu-threads", "2"])
+                                      str(tmp_path / "config.yaml"), "--device", "cpu", "--cpu-threads", "2",
+                                      "--max-batches", "1000"])  # covers every batch; a native diagnostic on the remote
     try:
         script.main()
     finally:

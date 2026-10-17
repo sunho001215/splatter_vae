@@ -116,7 +116,9 @@ def main() -> None:
         if not path.is_file():
             raise FileNotFoundError(path)
     output.mkdir(parents=True, exist_ok=True)
-    identity = record_run_identity(cfg, REPO, output)
+    # a --max-batches smoke inside the test suite is a native diagnostic (as the trainers' short runs); a real
+    # evaluation (no bound) always takes the full remote campaign identity
+    identity = record_run_identity(cfg, REPO, output, native_diagnostic_steps=args.max_batches)
     combined = {}
     for encoder in args.encoder:
         for arm, path in exports.items():
