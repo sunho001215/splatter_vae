@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-17T08:53:54.144469+00:00",
+  "started_utc": "2026-10-17T09:56:04.455214+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -14,15 +14,15 @@
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/aug-shift/tests",
+    "/home/ws/ws/splatter4d/.worktrees/repr-identity/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/aug-shift/docs/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/repr-identity/docs/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/aug-shift/docs/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/.worktrees/repr-identity/docs/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 592.856783648007,
+  "duration_seconds": 587.5292270380014,
   "counts": {
     "passed": 932,
     "error": 0,
@@ -150,7 +150,7 @@
     "scripts/droid_track_smoke.py": "5bfe961bea05ace87c1c15b518ba3676901bb52b33691c02ef6c2adff29fb1cd",
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
     "scripts/dynamo_panels.py": "338e5b2e35a3ebd458cf77802424c334804431941bd9ac99dc0bbd0bcf5a6391",
-    "scripts/eval_baseline_representation.py": "d6a5219b59bdeda7e04bc1cac0f05096acdaa1a259c52c52882d99b264876952",
+    "scripts/eval_baseline_representation.py": "df3c84c6b7a6fcaac57eab80a5c0243d5357e20243a5f02fefeb494849e937f2",
     "scripts/eval_rl.py": "3b38b282caabfd6913fabd610e21fa67464b79d5df29e5f77a305c8f9b7d423f",
     "scripts/evaluate.py": "b6f16353d54247b71e4ea6b49f496d1345725421104a03305a161fcca7bbcc9d",
     "scripts/export_encoder.py": "f6c982f77be256c11da8ab07685224723de7ca1dca9b75d74ce13e0a325bf843",
@@ -191,7 +191,7 @@
     "tests/_mvp3d_rvt_worker.py": "cdfd0cc1ef06fe7ef5a2b738b15c46e48a492d465585944685c9d224a323c8c6",
     "tests/_rl_env_worker.py": "a43311fb7c86be797b6bc4b9890f80822d1350531ba3686c49fe3c228096310c",
     "tests/conftest.py": "ed07d4adb44ad5399a7e29c38d7f0b095c68558f2d7d2d9e7648dfec5253cae0",
-    "tests/test_baseline_representation.py": "391a1d123df91891c780887b7425a81f6bbe91c396653e88223fb305a25eb21b",
+    "tests/test_baseline_representation.py": "6d8e94cca82eb7104443e040f6f4dcce53bba7f154abe2fb7c88ed30034f2f95",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
     "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
@@ -440,7 +440,7 @@
     "scripts/droid_track_smoke.py": "5bfe961bea05ace87c1c15b518ba3676901bb52b33691c02ef6c2adff29fb1cd",
     "scripts/droid_validate_alignment.py": "7976c960a63f814aa43da6efcfe1eef39049d24c87e8cba04157ebaf49d9c114",
     "scripts/dynamo_panels.py": "338e5b2e35a3ebd458cf77802424c334804431941bd9ac99dc0bbd0bcf5a6391",
-    "scripts/eval_baseline_representation.py": "d6a5219b59bdeda7e04bc1cac0f05096acdaa1a259c52c52882d99b264876952",
+    "scripts/eval_baseline_representation.py": "df3c84c6b7a6fcaac57eab80a5c0243d5357e20243a5f02fefeb494849e937f2",
     "scripts/eval_rl.py": "3b38b282caabfd6913fabd610e21fa67464b79d5df29e5f77a305c8f9b7d423f",
     "scripts/evaluate.py": "b6f16353d54247b71e4ea6b49f496d1345725421104a03305a161fcca7bbcc9d",
     "scripts/export_encoder.py": "f6c982f77be256c11da8ab07685224723de7ca1dca9b75d74ce13e0a325bf843",
@@ -481,7 +481,7 @@
     "tests/_mvp3d_rvt_worker.py": "cdfd0cc1ef06fe7ef5a2b738b15c46e48a492d465585944685c9d224a323c8c6",
     "tests/_rl_env_worker.py": "a43311fb7c86be797b6bc4b9890f80822d1350531ba3686c49fe3c228096310c",
     "tests/conftest.py": "ed07d4adb44ad5399a7e29c38d7f0b095c68558f2d7d2d9e7648dfec5253cae0",
-    "tests/test_baseline_representation.py": "391a1d123df91891c780887b7425a81f6bbe91c396653e88223fb305a25eb21b",
+    "tests/test_baseline_representation.py": "6d8e94cca82eb7104443e040f6f4dcce53bba7f154abe2fb7c88ed30034f2f95",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
     "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
