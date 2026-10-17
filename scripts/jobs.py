@@ -221,7 +221,8 @@ def session_id(pid: int) -> int | None:
 def gpu_usage() -> dict[str, list[tuple[int, float]]]:
     # Local devices are MIG instances: the compute-apps CSV query cannot attribute their processes, the per-GPU
     # detailed query can (GPU instance ID + PID).
-    found = mig_query(MIG_DEVICES, state_dir=REPO / "experiments", timeout=60)
+    # The detailed per-GPU query lists every process; with ~60 local DrM processes it took 70 s (2026-10-18)
+    found = mig_query(MIG_DEVICES, state_dir=REPO / "experiments", timeout=180)
     return {uuid: found[uuid]["processes"] for uuid in APPROVED_HOST_GPUS["local"]}
 
 

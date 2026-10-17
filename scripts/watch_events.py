@@ -44,7 +44,7 @@ ALIVE = REPO / "experiments/watcher.alive"
 BUILD_LOG = REPO / "runs/setup/uv_sync.log"
 GPU_HIGH, GPU_CLEAR = 0.92, 0.85
 DISK_LOW_GB, DISK_CLEAR_GB = 400.0, 420.0
-GPU_QUERY_TIMEOUT = 60
+GPU_QUERY_TIMEOUT = 180  # the detailed MIG query took 70 s with ~60 local DrM processes (2026-10-18)
 
 
 def load_state() -> dict:

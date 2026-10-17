@@ -211,7 +211,7 @@ def parse_mig_query(text: str) -> dict[tuple[str, int], dict]:
     return found
 
 
-def mig_query(mig_devices, state_dir: Path, timeout: float = 60) -> dict[str, dict]:
+def mig_query(mig_devices, state_dir: Path, timeout: float = 180) -> dict[str, dict]:
     """Per allowed MIG UUID: {"processes": [(pid, MiB)], "total_mib", "used_mib"}, from one bounded query."""
     parents = ",".join(dict.fromkeys(item[0] for item in mig_devices.values()))
     found = parse_mig_query(query_output(["nvidia-smi", "-q", "-i", parents], state_dir, timeout=timeout))
