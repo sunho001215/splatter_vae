@@ -3630,3 +3630,7 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   snapshots of active runs. `evict_partial_cache.py` (15-min loop) now also releases (fadvise only; no file touched)
   snapshots at or below the companion's last evaluated step and the Meta-World datasets while no local job reads
   datasets. Charge 110.7 -> 64.9 GB. Previous version `evict_partial_cache.before-20261017.py`.
+- 16:45 Local baseline driver charged DrM rows their declared ram_gb (6/8 GB), so admission stopped at 7 pairs with
+  77 GB actual charge (accounted 141.5 GB > 140 GB ceiling). Now uses the campaign's measured DrM footprints
+  (trainer 3.5 GB, evaluator 4.5 GB; the Stage 2 driver's table, per the measured-footprint scheduling rule);
+  observed baseline DrM RSS 2.7-3.4 GB / ~1.9 GB fits. Previous version `baseline_local_driver.before-measured-20261017.py`.

@@ -86,6 +86,10 @@ def session_pss():
 
 
 def footprint(job):
+    # DrM rows use the measured campaign footprints (scheduling rule: measured, not declared; observed baseline DrM
+    # trainers 2.7-3.4 GB and evaluators ~1.9 GB RSS on 2026-10-17); other new-baseline jobs: declared ram_gb.
+    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py'):
+        return int(MEASURED[job['script']])
     return int(float(job['ram_gb']) * 2**30)
 
 
