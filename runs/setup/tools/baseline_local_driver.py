@@ -116,7 +116,11 @@ candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local
 if stage2_waiting:
     messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
     candidates = []
-candidates.sort(key=lambda j: (j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
+# evaluators of already finished trainers first (short, and they release the run's cached snapshots), then by
+# priority with trainers before their companions
+candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
+                                    and status(j['id'].removesuffix('-eval')) == jobs.DONE),
+                               j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
 charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
 files = sorted({f for j in registered for f in task_files(j) if f.is_file()})
 fincore = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, files)],
