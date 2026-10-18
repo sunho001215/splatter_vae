@@ -26,6 +26,7 @@ CAP = 140_000_000_000
 # condition B DrM; their pretraining exports come from the remote).
 REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
+PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
 DRY = '--dry-run' in sys.argv
 SETUP = ROOT / 'runs/setup'
@@ -44,8 +45,11 @@ registered = []
 for name in REGISTRATIONS:
     if (SETUP / name).is_file():
         record = json.loads((SETUP / name).read_text())
-        assert [by_queue[j['id']] for j in record['jobs']] == record['jobs'], f'{name}: jobs changed in the queue'
-        registered += [j for j in record['jobs'] if name not in ONLY or j['id'] in ONLY[name]]
+        # host-neutral execution overlay (scientific fields unchanged): baselines-placement-20261018.json
+        overlay = json.loads(PLACEMENT.read_text())['effective_jobs'] if PLACEMENT.is_file() else {}
+        record_jobs = [overlay.get(j['id'], j) for j in record['jobs']]
+        assert [by_queue[j['id']] for j in record_jobs] == record_jobs, f'{name}: jobs changed in the queue'
+        registered += [j for j in record_jobs if name not in ONLY or j['id'] in ONLY[name]]
 by_id = {j['id']: j for j in registered}
 if not registered:
     print('BASELINES nothing registered for local admission')

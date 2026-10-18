@@ -12779,7 +12779,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id001
+  deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 3
@@ -12809,7 +12809,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id001
+  deps:
+  - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -12836,7 +12837,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id002
+  deps:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 3
@@ -12866,7 +12867,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id002
+  deps:
+  - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -12893,7 +12895,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id003
+  deps:
   - s3-export-m3d-seed0-bin-picking-200k
   max_restarts: 1
   stage: 3
@@ -12923,7 +12925,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id003
+  deps:
+  - s3-export-m3d-seed0-bin-picking-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -12950,7 +12953,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id004
+  deps:
   - s3-export-m3d-seed0-coffee-push-200k
   max_restarts: 1
   stage: 3
@@ -12980,7 +12983,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id004
+  deps:
+  - s3-export-m3d-seed0-coffee-push-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13007,7 +13011,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id005
+  deps:
   - s3-export-m3d-seed0-door-open-200k
   max_restarts: 1
   stage: 3
@@ -13037,7 +13041,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id005
+  deps:
+  - s3-export-m3d-seed0-door-open-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13064,7 +13069,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id006
+  deps:
   - s3-export-m3d-seed0-peg-insert-side-200k
   max_restarts: 1
   stage: 3
@@ -13094,7 +13099,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id006
+  deps:
+  - s3-export-m3d-seed0-peg-insert-side-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13121,7 +13127,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id007
+  deps:
   - s3-export-m3d-seed0-peg-unplug-side-200k
   max_restarts: 1
   stage: 3
@@ -13151,7 +13157,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id007
+  deps:
+  - s3-export-m3d-seed0-peg-unplug-side-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13178,7 +13185,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id008
+  deps:
   - s3-export-m3d-seed0-stick-push-200k
   max_restarts: 1
   stage: 3
@@ -13208,7 +13215,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id008
+  deps:
+  - s3-export-m3d-seed0-stick-push-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13235,7 +13243,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id009
+  deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 3
@@ -13265,7 +13273,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id009
+  deps:
+  - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13292,7 +13301,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id010
+  deps:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 3
@@ -13322,7 +13331,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id010
+  deps:
+  - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13349,7 +13359,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id011
+  deps:
   - s3-export-m3d-seed0-bin-picking-200k
   max_restarts: 1
   stage: 3
@@ -13379,7 +13389,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id011
+  deps:
+  - s3-export-m3d-seed0-bin-picking-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13406,7 +13417,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id012
+  deps:
   - s3-export-m3d-seed0-coffee-push-200k
   max_restarts: 1
   stage: 3
@@ -13436,7 +13447,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id012
+  deps:
+  - s3-export-m3d-seed0-coffee-push-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13463,7 +13475,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id013
+  deps:
   - s3-export-m3d-seed0-door-open-200k
   max_restarts: 1
   stage: 3
@@ -13493,7 +13505,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id013
+  deps:
+  - s3-export-m3d-seed0-door-open-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13520,7 +13533,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id014
+  deps:
   - s3-export-m3d-seed0-peg-insert-side-200k
   max_restarts: 1
   stage: 3
@@ -13550,7 +13563,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id014
+  deps:
+  - s3-export-m3d-seed0-peg-insert-side-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13577,7 +13591,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id015
+  deps:
   - s3-export-m3d-seed0-peg-unplug-side-200k
   max_restarts: 1
   stage: 3
@@ -13607,7 +13621,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id015
+  deps:
+  - s3-export-m3d-seed0-peg-unplug-side-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13634,7 +13649,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id016
+  deps:
   - s3-export-m3d-seed0-stick-push-200k
   max_restarts: 1
   stage: 3
@@ -13664,7 +13679,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id016
+  deps:
+  - s3-export-m3d-seed0-stick-push-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13691,7 +13707,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id017
+  deps:
   - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 3
@@ -13721,7 +13737,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id017
+  deps:
+  - export-ls-a200-hammer-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13748,7 +13765,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id018
+  deps:
   - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 3
@@ -13778,7 +13795,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id018
+  deps:
+  - export-ls-a200-pick-place-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13805,7 +13823,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id019
+  deps:
   - s3-export-m3d-seed0-bin-picking-200k
   max_restarts: 1
   stage: 3
@@ -13835,7 +13853,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id019
+  deps:
+  - s3-export-m3d-seed0-bin-picking-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13862,7 +13881,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id020
+  deps:
   - s3-export-m3d-seed0-coffee-push-200k
   max_restarts: 1
   stage: 3
@@ -13892,7 +13911,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id020
+  deps:
+  - s3-export-m3d-seed0-coffee-push-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13919,7 +13939,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id021
+  deps:
   - s3-export-m3d-seed0-door-open-200k
   max_restarts: 1
   stage: 3
@@ -13949,7 +13969,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id021
+  deps:
+  - s3-export-m3d-seed0-door-open-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -13976,7 +13997,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id022
+  deps:
   - s3-export-m3d-seed0-peg-insert-side-200k
   max_restarts: 1
   stage: 3
@@ -14006,7 +14027,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id022
+  deps:
+  - s3-export-m3d-seed0-peg-insert-side-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -14033,7 +14055,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id023
+  deps:
   - s3-export-m3d-seed0-peg-unplug-side-200k
   max_restarts: 1
   stage: 3
@@ -14063,7 +14085,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id023
+  deps:
+  - s3-export-m3d-seed0-peg-unplug-side-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -14090,7 +14113,7 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: &id024
+  deps:
   - s3-export-m3d-seed0-stick-push-200k
   max_restarts: 1
   stage: 3
@@ -14120,7 +14143,8 @@ jobs:
 - host: remote
   gpu: any
   priority: 2
-  deps: *id024
+  deps:
+  - s3-export-m3d-seed0-stick-push-200k
   max_restarts: 1
   stage: 3
   frozen_method: method-frozen-v1
@@ -24306,7 +24330,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24330,13 +24354,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-bin-picking-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24360,11 +24381,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-bin-picking-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24388,13 +24407,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-bin-picking-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24418,10 +24434,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-bin-picking-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
   gpu: any
   priority: 2
@@ -24480,7 +24494,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24504,13 +24518,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-coffee-push-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-coffee-push-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24534,11 +24545,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-coffee-push-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24562,13 +24571,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-coffee-push-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-coffee-push-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24592,10 +24598,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-coffee-push-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
   gpu: any
   priority: 2
@@ -24654,7 +24658,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24678,13 +24682,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-door-open-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24708,11 +24709,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-door-open-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24736,13 +24735,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-door-open-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -24766,10 +24762,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-door-open-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
   gpu: any
   priority: 2
@@ -25002,7 +24996,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25026,13 +25020,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25056,11 +25047,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25084,13 +25073,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25114,10 +25100,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
   gpu: any
   priority: 2
@@ -25176,7 +25160,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25200,13 +25184,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25230,11 +25211,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25258,13 +25237,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25288,10 +25264,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
   gpu: any
   priority: 2
@@ -25350,7 +25324,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25374,13 +25348,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-pick-place-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-pick-place-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25404,11 +25375,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-pick-place-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25432,13 +25401,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-pick-place-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-pick-place-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25462,10 +25428,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-pick-place-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
   gpu: any
   priority: 2
@@ -25524,7 +25488,7 @@ jobs:
   ram_gb: 8
   required_results:
   - eval.jsonl
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25548,13 +25512,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-stick-push-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-stick-push-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25578,11 +25539,9 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-stick-push-s2001-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25606,13 +25565,10 @@ jobs:
   - --set
   - vision.export_path=runs/s4-mvp3d-stick-push-rem-b/encoder.pt
   mem_gb: 4
-  disk_gb: 10
   baseline_export: runs/s4-mvp3d-stick-push-rem-b/encoder.pt
-  ram_gb: 16
-  required_results:
-  - final.json
-  - train.jsonl
-- host: remote
+  ram_gb: 6
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -25636,10 +25592,8 @@ jobs:
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-stick-push-s2002-eval
   mem_gb: 3
-  disk_gb: 1
   ram_gb: 8
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
   gpu: any
   priority: 2
@@ -26912,7 +26866,7 @@ jobs:
   mem_gb: 3
   disk_gb: 1
   ram_gb: 8
-- host: remote
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -26937,13 +26891,10 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt
   mem_gb: 4
-  ram_gb: 16
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  ram_gb: 6
   baseline_export: runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -26967,11 +26918,9 @@ jobs:
   - --output-dir
   - runs/bxs-dynamo-hammer-ep09-s1000-rem-b-eval
   mem_gb: 4
-  ram_gb: 12
-  disk_gb: 1
-  required_results:
-  - eval.jsonl
-- host: remote
+  ram_gb: 8
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -26996,13 +26945,10 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt
   mem_gb: 4
-  ram_gb: 16
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  ram_gb: 6
   baseline_export: runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -27026,11 +26972,9 @@ jobs:
   - --output-dir
   - runs/bxs-dynamo-hammer-ep09-s1001-rem-b-eval
   mem_gb: 4
-  ram_gb: 12
-  disk_gb: 1
-  required_results:
-  - eval.jsonl
-- host: remote
+  ram_gb: 8
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -27055,13 +26999,10 @@ jobs:
   - train.num_train_steps=400000
   - vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt
   mem_gb: 4
-  ram_gb: 16
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  ram_gb: 6
   baseline_export: runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt
-- host: remote
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
+- host: local
   gpu: any
   priority: 2
   deps:
@@ -27085,10 +27026,8 @@ jobs:
   - --output-dir
   - runs/bxs-dynamo-hammer-ep09-s1002-rem-b-eval
   mem_gb: 4
-  ram_gb: 12
-  disk_gb: 1
-  required_results:
-  - eval.jsonl
+  ram_gb: 8
+  placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - id: s2ab-crop-seed0-bin-picking
   script: scripts/train.py
   args:
@@ -31233,5 +31172,4 @@ jobs:
   - --output-dir
   - runs/s4-drm-cnnnoshift-stick-push-s2002-eval
   cnn_ablation: noshift-20261017
-
 host_ram_reserve_gb: 60

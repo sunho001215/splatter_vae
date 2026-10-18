@@ -1,0 +1,2211 @@
+{
+  "recorded_local": "2026-10-18T09:01:34.197162+09:00",
+  "purpose": "Host-neutral placement overlay (2026-10-18) for unstarted remote jobs of baselines-eight-task-registration-20261017.",
+  "registration": "runs/setup/baselines-eight-task-registration-20261017.json",
+  "original_jobs": {
+    "s4-drm-mvp3d-multiview-bin-picking-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-bin-picking-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-bin-picking-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-bin-picking-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-coffee-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-coffee-push-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-coffee-push-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-coffee-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-coffee-push-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-coffee-push-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-pick-place-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-pick-place-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-pick-place-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-pick-place-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2001": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-stick-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-stick-push-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2001-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-stick-push-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2002": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-stick-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "disk_gb": 10,
+      "baseline_export": "runs/s4-mvp3d-stick-push-rem-b/encoder.pt",
+      "ram_gb": 16,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2002-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-stick-push-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "disk_gb": 1,
+      "ram_gb": 8,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "bxs-dynamo-hammer-ep09-s1000-rem-b": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1000-rem-b",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1000-rem-b",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+    },
+    "bxs-dynamo-hammer-ep09-s1000-rem-b-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1000-rem-b-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1000-rem-b",
+        "--train-job",
+        "bxs-dynamo-hammer-ep09-s1000-rem-b",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1000-rem-b-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "bxs-dynamo-hammer-ep09-s1001-rem-b": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1001-rem-b",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1001-rem-b",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+    },
+    "bxs-dynamo-hammer-ep09-s1001-rem-b-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1001-rem-b-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1001-rem-b",
+        "--train-job",
+        "bxs-dynamo-hammer-ep09-s1001-rem-b",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1001-rem-b-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    "bxs-dynamo-hammer-ep09-s1002-rem-b": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1002-rem-b",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1002-rem-b",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 16,
+      "disk_gb": 5,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "baseline_export": "runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+    },
+    "bxs-dynamo-hammer-ep09-s1002-rem-b-eval": {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1002-rem-b-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1002-rem-b",
+        "--train-job",
+        "bxs-dynamo-hammer-ep09-s1002-rem-b",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1002-rem-b-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 12,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    }
+  },
+  "effective_jobs": {
+    "s4-drm-mvp3d-multiview-bin-picking-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-bin-picking-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-bin-picking-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-bin-picking-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-coffee-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-coffee-push-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-coffee-push-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-coffee-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-coffee-push-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-coffee-push-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-coffee-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-coffee-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-coffee-push-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-coffee-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-door-open-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-insert-side-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-peg-insert-side-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-insert-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-insert-side-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-unplug-side-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-peg-unplug-side-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-peg-unplug-side-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-peg-unplug-side-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-pick-place-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-pick-place-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-pick-place-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-pick-place-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-pick-place-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-pick-place-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2001": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2001",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-stick-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-stick-push-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2001-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2001",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-stick-push-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2002": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2002",
+        "--set",
+        "vision.export_path=runs/s4-mvp3d-stick-push-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "baseline_export": "runs/s4-mvp3d-stick-push-rem-b/encoder.pt",
+      "ram_gb": 6,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "s4-drm-mvp3d-multiview-stick-push-s2002-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-stick-push-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "mvp3d",
+      "baseline_condition": "mvp3d_multiview",
+      "stage": 4,
+      "baseline_expansion": "eight-task-20261017",
+      "id": "s4-drm-mvp3d-multiview-stick-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2002",
+        "--train-job",
+        "s4-drm-mvp3d-multiview-stick-push-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/s4-drm-mvp3d-multiview-stick-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "bxs-dynamo-hammer-ep09-s1000-rem-b": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1000-rem-b",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1000",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1000-rem-b",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "baseline_export": "runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt",
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "bxs-dynamo-hammer-ep09-s1000-rem-b-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1000-rem-b-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1000-rem-b",
+        "--train-job",
+        "bxs-dynamo-hammer-ep09-s1000-rem-b",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1000-rem-b-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "bxs-dynamo-hammer-ep09-s1001-rem-b": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1001-rem-b",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1001",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1001-rem-b",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "baseline_export": "runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt",
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "bxs-dynamo-hammer-ep09-s1001-rem-b-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1001-rem-b-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1001-rem-b",
+        "--train-job",
+        "bxs-dynamo-hammer-ep09-s1001-rem-b",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1001-rem-b-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "bxs-dynamo-hammer-ep09-s1002-rem-b": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1002-rem-b",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "1002",
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1002-rem-b",
+        "--set",
+        "train.num_train_steps=400000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "baseline_export": "runs/s4-dynamo-hammer-rem-b/exports/encoder_epoch09.pt",
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    },
+    "bxs-dynamo-hammer-ep09-s1002-rem-b-eval": {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "baseline": "dynamo",
+      "baseline_arm": "ep09-diagnostic",
+      "stage": 4,
+      "baseline_expansion": "dynamo-ep09-diagnostic-20261017",
+      "id": "bxs-dynamo-hammer-ep09-s1002-rem-b-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1002-rem-b",
+        "--train-job",
+        "bxs-dynamo-hammer-ep09-s1002-rem-b",
+        "--workers",
+        "3",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/bxs-dynamo-hammer-ep09-s1002-rem-b-eval"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
+    }
+  },
+  "scientific_fields_unchanged": true,
+  "queue_sha256_before": "9e5e742fe374f4d3592395e900fc504fdf21a6337fedbd2ee96c87d48ca757c3",
+  "queue_sha256_after": "9c04bfa08595dd7b8cbc70c5c12fe60d96b3e580bac90f7fe91760c0b4478d67"
+}
