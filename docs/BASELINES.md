@@ -146,6 +146,48 @@ completes.
     is therefore inflated.
   - The sanity differences are small relative to the spread between seeds.
 
+### Eight-task results: DynaMo and 3D-MVP (step 5, 2026-10-18)
+
+All 72 new DrM runs are complete: 8 tasks × seeds 2000–2002 × 1M agent steps, 240 episodes every 10k steps. They are
+reported with the final-comparison standard and are descriptive only; no new decision rule follows. Tool:
+`runs/setup/tools/baselines_eight_task_report.py`. Report:
+`runs/setup/baselines-eight-task-report-20261018-221713.json` and its `.md` digest, which has the per-task tables.
+Curves: `docs/figures/baselines/eight_task/success_curves.png`. The ours / SinCro / ReViWo / CNN rows reproduce the
+earlier final-comparison IQMs exactly.
+
+IQM success over 8 tasks × 3 seeds, last-5 (AUC) [stratified bootstrap 95% CI on last-5]:
+
+| method (input) | training cameras | held-out cameras | trajectories |
+|---|---|---|---|
+| Splatter4D (ours), single RGB | **0.756** (0.510) [0.670, 0.811] | 0.126 (0.105) [0.111, 0.140] | 0.721 (0.509) [0.650, 0.771] |
+| DrM CNN, single RGB | 0.718 (0.409) [0.666, 0.768] | 0.008 (0.012) [0.004, 0.014] | **0.771** (0.438) [0.735, 0.809] |
+| SinCro | 0.440 (0.250) [0.343, 0.528] | 0.003 (0.004) [0.002, 0.004] | 0.101 (0.093) [0.081, 0.123] |
+| ReViWo | 0.386 (0.260) [0.274, 0.481] | 0.003 (0.009) [0.002, 0.006] | 0.229 (0.170) [0.196, 0.279] |
+| DynaMo, single RGB | 0.199 (0.120) [0.158, 0.243] | 0.020 (0.027) [0.005, 0.039] | 0.071 (0.060) [0.033, 0.131] |
+| 3D-MVP A, multi-view RGB-D + extrinsics (privileged) | 0.186 (0.095) [0.140, 0.237] | 0.099 (0.063) [0.064, 0.154] | 0.205 (0.102) [0.132, 0.284] |
+| 3D-MVP B, single RGB-D + extrinsics (privileged) | 0.325 (0.179) [0.205, 0.445] | **0.144** (0.107) [0.094, 0.197] | 0.279 (0.136) [0.156, 0.405] |
+
+- **DynaMo** is below every other row on training cameras, on all eight tasks except hammer (0.69, behind ours at 0.89). This
+  matches its failed hammer sanity check: the encoder is faithful but partially collapsed.
+- **3D-MVP** learns poorly on training cameras. Condition A is at 0.00 on bin-picking, pick-place and stick-push;
+  condition B is at 0.00 on bin-picking and pick-place. Where it does learn, its held-out-camera success is high:
+  - door-open: A 0.82 and B 0.49, vs ours 0.35;
+  - peg-unplug-side: A 0.45 and B 0.35, vs ours 0.19;
+  - stick-push: B 0.44 vs ours 0.16;
+  - hammer: A 0.29 vs ours 0.15.
+
+  The held-out IQM of B (0.144) is above ours (0.126), but the CIs overlap. Both 3D-MVP conditions receive depth and
+  camera extrinsics, a privileged input that the single-RGB methods do not have. Read these held-out numbers with
+  that input label, not as a like-for-like comparison.
+- **Fairness:**
+  - No RL config differs from ours outside the encoder and input fields (`encoder_name`, `vision.*`, and for 3D-MVP
+    `env.cameras/depth/views`).
+  - Every point has 240 episodes.
+  - Hosts: DynaMo and B ran on local MIG. A ran 14 runs local and 10 remote (host-neutral overlay). The local launch
+    commits differ only in tooling and in the behaviour-preserving `agent.random_shift` gate. One older CNN run has
+    no provenance file; its host (local) comes from the registry.
+- SNeRL's eight-task runs follow its hammer acceptance. Its pretraining is at step 1.67M of 2.4M.
+
 The remainder documents the already-accepted SinCro/ReViWo adaptations. Their rule is **upstream code, original
 hyperparameters, changes only at the data interface**; exceptions are listed explicitly.
 

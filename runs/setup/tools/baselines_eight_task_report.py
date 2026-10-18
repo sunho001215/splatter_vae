@@ -90,7 +90,10 @@ def load(rid):
             if measure == 'success':
                 curves[kind] = series
     assert np.allclose([r['train_cameras_success'] for r in rows], curves['train']), rid
-    prov = json.loads((RUNS / rid / 'provenance.json').read_text())
+    # early final-comparison runs predate provenance.json: host from the scheduler registry
+    path = RUNS / rid / 'provenance.json'
+    prov = json.loads(path.read_text()) if path.is_file() else \
+        {'host': STATE[rid]['host'], 'git_commit': 'pre-provenance'}
     return {'scores': out, 'curves': curves, 'episodes': sorted({r['episodes'] for r in rows}),
             'host': prov['host'], 'git_commit': prov['git_commit'], 'eval_jsonl_sha256': sha(eval_path(rid))}
 
