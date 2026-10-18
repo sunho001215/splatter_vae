@@ -3698,3 +3698,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
 - 15:41 Local baseline driver admits evaluators of already finished trainers first (the DynaMo epoch-9 evaluators waited ~2 h behind new 3D-MVP A trainers under the memory ceiling); order otherwise unchanged.
 - 15:46 GPU memory alert on MIG-c3511b41 (21.8 of 23.6 GB): two 3D-MVP condition A evaluators co-located because they were declared mem_gb 3; measured 10-15 GB GPU each (trainers are small). Placement manifest amended (execution field only): mem_gb 16 for the 14 local condition A evaluators, so at most one per 1g.24gb slice. The already co-located pair keeps running; an OOM restart resumes from eval.jsonl and is placed with the corrected value.
 - 17:44 Host-neutral overlay `runs/setup/followup-placement-20261018.json` (tool apply_followup_placement_20261018.py): the 19 unstarted follow-up RL pairs (13 E1 crop, 6 E2 shift) move to local MIG; execution fields only (arguments incl. evaluator 3 x 8 and --output-dir identical). Stage 2 driver honours the overlay and reads evaluator output from the -eval directory when present. CNN no-shift rows stay remote. Previous driver stage2_local_driver.before-fuplacement-20261018.py.
+- 17:56 DynaMo epoch-9 diagnostic complete (registered rule: descriptive only; never replaces the final encoder).
+  Hammer DrM 400k, seeds 1000-1002, mean last-5 training-camera success [seed bootstrap 95% CI]:
+  epoch 9 **0.251** [0.185, 0.298] (0.185/0.270/0.298) vs final encoder 0.349 [0.193, 0.520] vs random init 0.516
+  [0.313, 0.635]; AUC 0.110 / 0.145 / 0.213; trajectory cameras 0.180 / 0.138 / 0.565. The earlier checkpoint's
+  better linear-probe R² (0.835) does not translate into RL: the over-training explanation is not supported, and
+  random init stays ahead. No checkpoint or recipe choice follows.

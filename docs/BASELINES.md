@@ -133,6 +133,9 @@ completes.
   collapses (effective rank 3.7 vs 10.7 within trajectories) and over-trains (probe R² 0.835 at epoch 9, 0.673 at
   the final epoch). Evidence: `runs/setup/baselines/dynamo-sanity-investigation-20261017.md`. The final-epoch encoder
   is kept; choosing a checkpoint would be retuning.
+- **DynaMo epoch-9 diagnostic (user-requested, 2026-10-18, descriptive):** hammer DrM with the epoch-9 export,
+  last-5 training success 0.251 [0.185, 0.298] vs final 0.349 and random init 0.516 (AUC 0.110 / 0.145 / 0.213).
+  The earlier checkpoint is not better in RL despite its better probes; the final encoder stays.
 - **Panels:** `docs/figures/baselines/dynamo/final/` and `docs/figures/baselines/mvp3d/final/`.
   - DynaMo same-camera nearest-neighbour state error is 2.1 cm trained vs 0.8 cm at random init (chance 20 cm).
   - The 3D-MVP MAE reconstruction is faithful for 6- and 3-camera clouds and noisier for one camera.
