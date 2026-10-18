@@ -24380,7 +24380,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-bin-picking-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -24433,7 +24433,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-bin-picking-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
@@ -24544,7 +24544,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-coffee-push-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -24597,7 +24597,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-coffee-push-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
@@ -24708,7 +24708,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-door-open-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -24761,7 +24761,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-door-open-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
@@ -25046,7 +25046,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -25099,7 +25099,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
@@ -25210,7 +25210,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -25263,7 +25263,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
@@ -25374,7 +25374,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-pick-place-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -25427,7 +25427,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-pick-place-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: remote
@@ -25538,7 +25538,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-stick-push-s2001-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local
@@ -25591,7 +25591,7 @@ jobs:
   - '8'
   - --output-dir
   - runs/s4-drm-mvp3d-multiview-stick-push-s2002-eval
-  mem_gb: 3
+  mem_gb: 16
   ram_gb: 8
   placement: host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)
 - host: local

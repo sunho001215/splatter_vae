@@ -1221,7 +1221,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-bin-picking-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1282,7 +1282,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-bin-picking-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1343,7 +1343,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-coffee-push-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1404,7 +1404,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-coffee-push-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1465,7 +1465,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-door-open-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1526,7 +1526,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-door-open-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1587,7 +1587,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1648,7 +1648,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1709,7 +1709,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1770,7 +1770,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1831,7 +1831,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-pick-place-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1892,7 +1892,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-pick-place-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -1953,7 +1953,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-stick-push-s2001-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -2014,7 +2014,7 @@
         "--output-dir",
         "runs/s4-drm-mvp3d-multiview-stick-push-s2002-eval"
       ],
-      "mem_gb": 3,
+      "mem_gb": 16,
       "ram_gb": 8,
       "placement": "host-neutral overlay 2026-10-18 (baselines-placement-20261018.json)"
     },
@@ -2207,5 +2207,29 @@
   },
   "scientific_fields_unchanged": true,
   "queue_sha256_before": "9e5e742fe374f4d3592395e900fc504fdf21a6337fedbd2ee96c87d48ca757c3",
-  "queue_sha256_after": "9c04bfa08595dd7b8cbc70c5c12fe60d96b3e580bac90f7fe91760c0b4478d67"
+  "queue_sha256_after": "9c04bfa08595dd7b8cbc70c5c12fe60d96b3e580bac90f7fe91760c0b4478d67",
+  "amendments": [
+    {
+      "recorded_local": "2026-10-18T15:45:51.818318+09:00",
+      "change": "mem_gb 3 -> 16 for the local 3D-MVP condition A evaluators (measured 10-15 GB GPU each; 3 GB caused co-location near the 24 GB MIG limit); execution field only",
+      "jobs": [
+        "s4-drm-mvp3d-multiview-bin-picking-s2001-eval",
+        "s4-drm-mvp3d-multiview-bin-picking-s2002-eval",
+        "s4-drm-mvp3d-multiview-coffee-push-s2001-eval",
+        "s4-drm-mvp3d-multiview-coffee-push-s2002-eval",
+        "s4-drm-mvp3d-multiview-door-open-s2001-eval",
+        "s4-drm-mvp3d-multiview-door-open-s2002-eval",
+        "s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval",
+        "s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval",
+        "s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval",
+        "s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval",
+        "s4-drm-mvp3d-multiview-pick-place-s2001-eval",
+        "s4-drm-mvp3d-multiview-pick-place-s2002-eval",
+        "s4-drm-mvp3d-multiview-stick-push-s2001-eval",
+        "s4-drm-mvp3d-multiview-stick-push-s2002-eval"
+      ],
+      "queue_sha256_before": "9c04bfa08595dd7b8cbc70c5c12fe60d96b3e580bac90f7fe91760c0b4478d67",
+      "queue_sha256_after": "52c29a4464312159b7c6197edee8bc9b9c4aca85862d4ee65d2f003c02eda9d0"
+    }
+  ]
 }
