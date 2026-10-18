@@ -167,8 +167,9 @@ IQM success over 8 tasks × 3 seeds, last-5 (AUC) [stratified bootstrap 95% CI o
 | 3D-MVP A, multi-view RGB-D + extrinsics (privileged) | 0.186 (0.095) [0.140, 0.237] | 0.099 (0.063) [0.064, 0.154] | 0.205 (0.102) [0.132, 0.284] |
 | 3D-MVP B, single RGB-D + extrinsics (privileged) | 0.325 (0.179) [0.205, 0.445] | **0.144** (0.107) [0.094, 0.197] | 0.279 (0.136) [0.156, 0.405] |
 
-- **DynaMo** is below every other row on training cameras, on all eight tasks except hammer (0.69, behind ours at 0.89). This
-  matches its failed hammer sanity check: the encoder is faithful but partially collapsed.
+- **DynaMo** has the lowest training-camera IQM among the RGB-only methods (0.199). It is behind ours on every task,
+  ranging from 0.00 on peg-insert-side to 0.69 on hammer (ours 0.89) and 0.77 on stick-push (ours 1.00). This matches
+  its failed hammer sanity check: the encoder is faithful but partially collapsed.
 - **3D-MVP** learns poorly on training cameras. Condition A is at 0.00 on bin-picking, pick-place and stick-push;
   condition B is at 0.00 on bin-picking and pick-place. Where it does learn, its held-out-camera success is high:
   - door-open: A 0.82 and B 0.49, vs ours 0.35;
