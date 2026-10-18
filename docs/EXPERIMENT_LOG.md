@@ -3712,3 +3712,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - IQM of held-out last-5: crop 0.102 [0.094, 0.112] vs full 0.126 [0.111, 0.140].
 
   Historical rule: within margin on every task and camera condition, except pick-place trajectory (worse: −0.143 vs margin 0.10). Large but within-margin drops: stick-push trajectory −0.198 (margin 0.23) and stick-push held-out −0.075. Gains: peg-insert-side training +0.132 (margin 0.14) and coffee-push trajectory +0.078. Representation on the non-development tasks is mixed (beyond the hammer margin, better/worse: bin-picking 3/4, coffee-push 4/2, door-open 0/1, peg-insert-side 0/2, peg-unplug-side 4/2, stick-push 5/1). Configs differ from the controls only in `vision.export_path`. Attribution only.
+- 03:45 (10-19) E2 hammer complete: shift RL at seeds 1000–2 (local); report `runs/setup/followup-report-20261019-034541.json`, interim. Last-5 success:
+  - **shift vs full** within margin everywhere: training −0.004 [−0.030, +0.035], held-out −0.023, trajectory +0.027. AUC +0.030 / −0.018 / +0.030; early AUC on training cameras +0.081 [−0.009, +0.255]. Time to 0.5 is 213k → 153k; to 0.8 it is 443k → 450k.
+  - **shift vs crop**: held-out **worse** under the historical rule (−0.102 [−0.130, −0.080], margin 0.10; AUC −0.088). Training −0.039 and trajectory −0.008 are within margin.
+  - Representation, shift vs full (hammer margins): 3 worse (psnr −0.54, psnr_traj −0.27, retrieval_traj −0.054) and 1 better (cd_motion_dyn); shift vs crop: 2 worse and 1 better.
+
+  Configs differ only in `vision.export_path`. Pick-place shift is waiting for its pretrain, at step ~160k of 200k.
