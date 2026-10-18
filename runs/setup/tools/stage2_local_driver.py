@@ -362,10 +362,15 @@ def session_pss():
 charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
 fincore = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, DATA_FILES)],
                          capture_output=True, text=True, check=True).stdout.split()
-cache_reserve = sum(max(0, f.stat().st_size - int(r)) for f, r in zip(DATA_FILES, fincore))
+# the dataset page-cache reserve applies only while a dataset reader (pretraining / full-split evaluation) is a
+# local candidate; exports and DrM read no dataset file (2026-10-18)
+cache_reserve = sum(max(0, f.stat().st_size - int(r)) for f, r in zip(DATA_FILES, fincore)) \
+    if any(j['script'] in ('scripts/train.py', 'scripts/evaluate.py') for j in candidates) else 0
 pss = session_pss()
 # remaining growth of every active local job: its measured/declared footprint minus what it already uses
-growth = {i: max(0, (footprint(by_id[i]) if i in by_id else int(float(s.get('ram_gb', 0)) * 2**30))
+queue_scripts = {j['id']: j['script'] for j in queue['jobs']}
+# other drivers' local DrM jobs: the measured DrM footprints too (their resident replay is already in the charge)
+growth = {i: max(0, (footprint(by_id[i]) if i in by_id else int(MEASURED.get(queue_scripts.get(i), float(s.get('ram_gb', 0)) * 2**30)))
                  - pss.get(int(s.get('pid', -1)), 0))
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 ramp = sum(growth.values())
