@@ -27879,8 +27879,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-bin-picking-s2002
   script: scripts/train_rl.py
   args:
@@ -27896,12 +27895,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-bin-picking-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -27913,8 +27909,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-bin-picking-s2002-eval
   script: scripts/eval_rl.py
   args:
@@ -27929,11 +27924,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-bin-picking-s2002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28011,8 +28004,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-coffee-push-s2001
   script: scripts/train_rl.py
   args:
@@ -28028,12 +28020,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-coffee-push-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28045,8 +28034,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-coffee-push-s2001-eval
   script: scripts/eval_rl.py
   args:
@@ -28061,11 +28049,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-coffee-push-s2001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28077,8 +28063,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-coffee-push-s2002
   script: scripts/train_rl.py
   args:
@@ -28094,12 +28079,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-coffee-push-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28111,8 +28093,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-coffee-push-s2002-eval
   script: scripts/eval_rl.py
   args:
@@ -28127,11 +28108,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-coffee-push-s2002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28143,8 +28122,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-door-open-s2000
   script: scripts/train_rl.py
   args:
@@ -28160,12 +28138,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-door-open-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28177,8 +28152,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-door-open-s2000-eval
   script: scripts/eval_rl.py
   args:
@@ -28193,11 +28167,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-door-open-s2000-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28209,8 +28181,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-door-open-s2001
   script: scripts/train_rl.py
   args:
@@ -28226,12 +28197,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-door-open-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28243,8 +28211,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-door-open-s2001-eval
   script: scripts/eval_rl.py
   args:
@@ -28259,11 +28226,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-door-open-s2001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28275,8 +28240,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-door-open-s2002
   script: scripts/train_rl.py
   args:
@@ -28292,12 +28256,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-door-open-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28309,8 +28270,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-door-open-s2002-eval
   script: scripts/eval_rl.py
   args:
@@ -28325,11 +28285,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-door-open-s2002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28539,8 +28497,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-insert-side-s2000
   script: scripts/train_rl.py
   args:
@@ -28556,12 +28513,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-peg-insert-side-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28573,8 +28527,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-insert-side-s2000-eval
   script: scripts/eval_rl.py
   args:
@@ -28589,11 +28542,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-peg-insert-side-s2000-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28605,8 +28556,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-insert-side-s2001
   script: scripts/train_rl.py
   args:
@@ -28622,12 +28572,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-peg-insert-side-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28639,8 +28586,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-insert-side-s2001-eval
   script: scripts/eval_rl.py
   args:
@@ -28655,11 +28601,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-peg-insert-side-s2001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28671,8 +28615,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-insert-side-s2002
   script: scripts/train_rl.py
   args:
@@ -28688,12 +28631,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-peg-insert-side-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28705,8 +28645,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-insert-side-s2002-eval
   script: scripts/eval_rl.py
   args:
@@ -28721,11 +28660,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-peg-insert-side-s2002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28803,8 +28740,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-unplug-side-s2001
   script: scripts/train_rl.py
   args:
@@ -28820,12 +28756,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-peg-unplug-side-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28837,8 +28770,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-unplug-side-s2001-eval
   script: scripts/eval_rl.py
   args:
@@ -28853,11 +28785,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-peg-unplug-side-s2001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28869,8 +28799,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-unplug-side-s2002
   script: scripts/train_rl.py
   args:
@@ -28886,12 +28815,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-peg-unplug-side-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -28903,8 +28829,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-peg-unplug-side-s2002-eval
   script: scripts/eval_rl.py
   args:
@@ -28919,11 +28844,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-peg-unplug-side-s2002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29199,8 +29122,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-stick-push-s2001
   script: scripts/train_rl.py
   args:
@@ -29216,12 +29138,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-stick-push-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29233,8 +29152,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-stick-push-s2001-eval
   script: scripts/eval_rl.py
   args:
@@ -29249,11 +29167,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-stick-push-s2001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29265,8 +29181,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-stick-push-s2002
   script: scripts/train_rl.py
   args:
@@ -29282,12 +29197,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-crop-seed0-stick-push-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29299,8 +29211,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-crop-stick-push-s2002-eval
   script: scripts/eval_rl.py
   args:
@@ -29315,11 +29226,9 @@ jobs:
   - --output-dir
   - runs/s2rl-crop-stick-push-s2002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - id: s2ab-shift-seed0-hammer
   script: scripts/train.py
   args:
@@ -29515,8 +29424,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-hammer-s1000
   script: scripts/train_rl.py
   args:
@@ -29532,12 +29440,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-shift-seed0-hammer-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29549,8 +29454,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-hammer-s1000-eval
   script: scripts/eval_rl.py
   args:
@@ -29565,11 +29469,9 @@ jobs:
   - --output-dir
   - runs/s2rl-shift-hammer-s1000-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29581,8 +29483,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-pick-place-s1000
   script: scripts/train_rl.py
   args:
@@ -29598,12 +29499,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-shift-seed0-pick-place-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29615,8 +29513,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-pick-place-s1000-eval
   script: scripts/eval_rl.py
   args:
@@ -29631,11 +29528,9 @@ jobs:
   - --output-dir
   - runs/s2rl-shift-pick-place-s1000-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29647,8 +29542,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-hammer-s1001
   script: scripts/train_rl.py
   args:
@@ -29664,12 +29558,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-shift-seed0-hammer-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29681,8 +29572,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-hammer-s1001-eval
   script: scripts/eval_rl.py
   args:
@@ -29697,11 +29587,9 @@ jobs:
   - --output-dir
   - runs/s2rl-shift-hammer-s1001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29713,8 +29601,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-pick-place-s1001
   script: scripts/train_rl.py
   args:
@@ -29730,12 +29617,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-shift-seed0-pick-place-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29747,8 +29631,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-pick-place-s1001-eval
   script: scripts/eval_rl.py
   args:
@@ -29763,11 +29646,9 @@ jobs:
   - --output-dir
   - runs/s2rl-shift-pick-place-s1001-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29779,8 +29660,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-hammer-s1002
   script: scripts/train_rl.py
   args:
@@ -29796,12 +29676,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-shift-seed0-hammer-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29813,8 +29690,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-hammer-s1002-eval
   script: scripts/eval_rl.py
   args:
@@ -29829,11 +29705,9 @@ jobs:
   - --output-dir
   - runs/s2rl-shift-hammer-s1002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29845,8 +29719,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-pick-place-s1002
   script: scripts/train_rl.py
   args:
@@ -29862,12 +29735,9 @@ jobs:
   - train.num_train_steps=1000000
   - vision.export_path=runs/exports/s2ab-shift-seed0-pick-place-200k.pt
   mem_gb: 4
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 300
-  disk_gb: 5
-  required_results:
-  - final.json
-  - train.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - gpu: any
   priority: 1
   deps:
@@ -29879,8 +29749,7 @@ jobs:
   freeze_manifest_sha256: 65176543d4db2499d9e755555ca16dc6d08de4d6cc8dac6608777be9675d1af9
   stage2_margins_sha256: 5fadd04fd5050a440f13d5adad540e424a0f78257ed3f82eacec36df31db5677
   stage2_extension: followup-20261017
-  host: remote
-  cpu_threads: 8
+  host: local
   id: s2rl-shift-pick-place-s1002-eval
   script: scripts/eval_rl.py
   args:
@@ -29895,11 +29764,9 @@ jobs:
   - --output-dir
   - runs/s2rl-shift-pick-place-s1002-eval
   mem_gb: 3
-  ram_gb: 8
+  ram_gb: 6
   oom_score_adj: 400
-  disk_gb: 3
-  required_results:
-  - eval.jsonl
+  placement: host-neutral overlay 2026-10-18 (followup-placement-20261018.json)
 - host: remote
   script: scripts/train_rl.py
   gpu: any

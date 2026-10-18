@@ -83,7 +83,10 @@ stage2 = [j for j in queue['jobs'] if j['id'] in set(ids)]
 # Host-neutral placement is an execution overlay, not a rewrite of scientific registrations.
 placement_path = SETUP / 'stage2-placement-20261015.json'
 placement = json.loads(placement_path.read_text()) if placement_path.exists() else {'effective_jobs': {}}
-expected = [placement['effective_jobs'].get(j['id'], j) for j in registration['jobs']]
+# 2026-10-18 host-neutral overlay for unstarted follow-up RL pairs (followup-placement-20261018.json)
+FU_PLACEMENT = SETUP / 'followup-placement-20261018.json'
+fu_effective = json.loads(FU_PLACEMENT.read_text())['effective_jobs'] if FU_PLACEMENT.exists() else {}
+expected = [fu_effective.get(j['id'], placement['effective_jobs'].get(j['id'], j)) for j in registration['jobs']]
 assert stage2 == expected, 'registered Stage 2 jobs or their explicit placement overlay changed in the queue'
 assert all(placement.get('original_jobs', {}).get(j['id'], j) == j for j in registration['jobs'])
 # Report-only evaluations registered later (crop follow-up step 1, user 2026-10-15): same admission path and cap,
@@ -213,7 +216,9 @@ for job in stage2:
             continue
         run = ROOT / 'runs' / jid
         final = json.loads((run / 'final.json').read_text())
-        eval_path = ROOT / 'runs' / (jid + '-eval') / 'eval.jsonl' if job.get('host') == 'remote' else run / 'eval.jsonl'
+        eval_path = ROOT / 'runs' / (jid + '-eval') / 'eval.jsonl'  # --output-dir companions (remote and follow-ups)
+        if not eval_path.is_file():
+            eval_path = run / 'eval.jsonl'
         evals = [json.loads(line) for line in eval_path.read_text().splitlines() if line.strip()]
         steps = [r['step'] for r in evals]
         assert final['completed'] is True and final['steps'] == RL_STEPS, (jid, final)
