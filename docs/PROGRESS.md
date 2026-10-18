@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-16 13:40 +09:00 (restart after the hardware update).
+Last updated: 2026-10-18 22:25 +09:00 (baseline eight-task results; follow-ups running). Earlier: 2026-10-16 13:40 restart after the hardware update.
 **Restarted.** Local devices are now 12 MIG 1g.24gb instances (GPUs 4/5/6); guard/EGL/scheduler adapted on main
 (`756dc9b`, `d95e863`), isolation passed on all 12 (CUDA+EGL), native suite 778/0/0/0. Old daemon PID2819571 is gone
 (container restart); one scheduler daemon, one watcher (venv python), Stage 2 and remote driver loops, memory alert
@@ -46,6 +46,12 @@ diff inline.
 - **Final comparison complete:** ours24/24, SinCro/ReViWo48/48, CNN24/24. All16 accepted baseline pretrains complete;
   lengths unchanged: SinCro300k, ReViWo100,001. Success **and return**, last-5/final/AUC, per-task seed means/95% CIs:
   `runs/setup/rl-report-20261015-203425.json`; no frozen-method change follows from final results.
+- **New baselines, eight tasks (2026-10-18 22:17):** DynaMo and 3D-MVP A/B are 72/72 complete
+  (`runs/setup/baselines-eight-task-report-20261018-221713.json`; docs/BASELINES.md "Eight-task results"). SNeRL's hammer
+  pretraining is at step 1.67M of 2.4M; its sanity arms, step 4 and eight-task runs follow.
+- **Follow-ups E1/E2/E3** (`runs/setup/followup-registration-20261017.json`, 138 jobs): 57 done and in progress, no
+  failures. Report tool: `runs/setup/tools/followup_report.py` (analysis details logged 10-18 22:20 before any comparison
+  was computed).
 
 ## Rules in force
 - Local <=150GB full cgroup charge; measured job-by-job admission (trainer10.77GB PSS plus dataset page cache),
@@ -357,6 +363,31 @@ diff inline.
 | 2026-10-17 01:21 | remote 3.22 TB (bxs-mvp3d-multiview-hammer-rand-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 | 2026-10-17 03:06 | remote 3.23 TB (bxs-mvp3d-multiview-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 | 2026-10-17 18:57 | remote 3.17 TB (s4-drm-mvp3d-multiview-hammer-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-17 19:56 | remote 3.16 TB (s4-drm-mvp3d-multiview-hammer-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-17 20:56 | remote 3.15 TB (s4-drm-mvp3d-multiview-hammer-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-17 22:39 | remote 3.14TB (s2rl-crop-hammer-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-17 23:30 | remote 3.14TB (s2rl-crop-hammer-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-17 23:30 | remote 3.14TB (s2rl-crop-pick-place-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-17 23:30 | remote 3.14TB (s2rl-crop-pick-place-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 00:20 | remote 3.13TB (s2rl-crop-pick-place-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 00:56 | remote 3.13TB (s2rl-crop-hammer-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 06:19 | remote 3.09 TB (s4-drm-mvp3d-multiview-bin-picking-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 07:53 | remote 3.08 TB (s4-drm-mvp3d-multiview-coffee-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 08:21 | remote 3.08 TB (s4-drm-mvp3d-multiview-door-open-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 10:02 | remote 3.06 TB (s4-drm-mvp3d-multiview-peg-insert-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 13:23 | remote 3.01 TB (s4-drm-mvp3d-multiview-peg-unplug-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 15:54 | remote 2.98 TB (s4-drm-mvp3d-multiview-pick-place-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 17:44 | remote 2.96 TB (s4-drm-mvp3d-multiview-stick-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 17:44 | remote 2.96 TB (s4-drm-cnnnoshift-bin-picking-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 19:45 | remote 2.91TB (s2rl-crop-coffee-push-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 19:45 | remote 2.91TB (s2rl-crop-peg-unplug-side-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 20:27 | remote 2.89 TB (s4-drm-cnnnoshift-coffee-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-18 20:43 | remote 2.88TB (s2rl-crop-stick-push-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 21:33 | remote 2.84TB (s2rl-crop-bin-picking-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 21:33 | 1.4TB (s2rl-crop-door-open-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 21:46 | 1.4TB (s2rl-crop-door-open-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 22:03 | 1.4TB (s2rl-crop-coffee-push-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 22:13 | remote 2.82TB (s2rl-crop-bin-picking-s2001 completed with final eval at 1000k; replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
