@@ -23,6 +23,7 @@ diff inline.
 | task-mvahby60-5isaes | patch proposal: port the remote verification bootstrap (native suite + GPU isolation in the image) from WIP `8f8f952` | `.worktrees/verify` | applied with manual fixes (7 rejected hunks, removed its campaign-path reuse check, reserved `verify-` ids); suite pending |
 | task-mvajgv75-oizyou | adversarial review of the adapted verification bundle | `.worktrees/verify` | asked for more context; no findings |
 | task-mvc5ta28-tp0zrd | review of the follow-up augmentation changes (`aug.shift`, `agent.random_shift`) and experiment configurations (inline diff + registration excerpts) | `.worktrees/codex-followup` | no code findings; 3 analysis-plan points adopted before registration |
+| codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: pending |
 
 ## Current phase
 - **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,
@@ -54,6 +55,7 @@ diff inline.
   was computed).
 
 ## Rules in force
+- **Local GPU authorization (user, 2026-10-19):** only the 8 MIG 1g.24gb instances of GPU 4 (`GPU-76871c16-...`) and GPU 5 (`GPU-d09f0338-...`); GPU 6 (`GPU-6b33eef2-...`) revoked. Remote: the same 4 GPUs. Record `runs/setup/gpu-allowlist-20261019.json`; provenance index `runs/setup/local-device-provenance.json`.
 - Local <=150GB full cgroup charge; measured job-by-job admission (trainer10.77GB PSS plus dataset page cache),
   no group/all-or-nothing requirement. Host reserve60GiB, local disk floor300GB. Remote <=1TB and >=15% free disk.
 - **Host-neutral placement (user, 2026-10-15 20:09):** either host may run any job or checkpoint continuation;
@@ -388,6 +390,36 @@ diff inline.
 | 2026-10-18 21:46 | 1.4TB (s2rl-crop-door-open-s2001 completed with final eval at 1000k; replay retained) |
 | 2026-10-18 22:03 | 1.4TB (s2rl-crop-coffee-push-s2001 completed with final eval at 1000k; replay retained) |
 | 2026-10-18 22:13 | remote 2.82TB (s2rl-crop-bin-picking-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 22:28 | 1.4TB (s2rl-crop-peg-insert-side-s2000 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 22:54 | 1.4TB (s2rl-crop-peg-insert-side-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-18 23:44 | 1.3TB (s2rl-crop-peg-unplug-side-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 00:02 | 1.3TB (s2rl-crop-stick-push-s2001 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 00:23 | 1.3TB (s2rl-crop-bin-picking-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 00:38 | 1.3TB (s2rl-crop-door-open-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 00:43 | 1.3TB (s2rl-crop-coffee-push-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 01:23 | 1.2TB (s2rl-crop-peg-insert-side-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 01:23 | 1.2TB (s2rl-crop-peg-unplug-side-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 01:44 | 1.2TB (s2rl-crop-stick-push-s2002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 03:16 | remote 2.56 TB (s4-drm-cnnnoshift-coffee-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 03:40 | 1.1TB (s2rl-shift-hammer-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 03:40 | 1.1TB (s2rl-shift-hammer-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 03:45 | 1.1TB (s2rl-shift-hammer-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 03:50 | remote 2.54 TB (s4-drm-cnnnoshift-hammer-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 05:53 | remote 2.43 TB (s4-drm-cnnnoshift-hammer-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 07:03 | remote 2.37 TB (s4-drm-cnnnoshift-peg-insert-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 07:03 | remote 2.37 TB (s4-drm-cnnnoshift-pick-place-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 07:03 | remote 2.37 TB (s4-drm-cnnnoshift-stick-push-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 09:04 | remote 2.27 TB (s4-drm-cnnnoshift-door-open-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 09:28 | remote 2.25 TB (s4-drm-cnnnoshift-peg-insert-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 09:53 | remote 2.22 TB (s4-drm-cnnnoshift-peg-unplug-side-s2000 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 11:52 | remote 2.12 TB (s4-drm-cnnnoshift-peg-unplug-side-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 12:00 | remote 2.11 TB (s4-drm-cnnnoshift-bin-picking-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 13:03 | 674GB (s2rl-shift-pick-place-s1001 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 13:06 | remote 2.05 TB (s4-drm-cnnnoshift-door-open-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 13:08 | 673GB (s2rl-shift-pick-place-s1002 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 13:13 | 669GB (s2rl-shift-pick-place-s1000 completed with final eval at 1000k; replay retained) |
+| 2026-10-19 13:41 | remote 2.02 TB (s4-drm-cnnnoshift-pick-place-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 14:11 | remote 1.99 TB (s4-drm-cnnnoshift-stick-push-s2001 completed with final eval at 1000k; remote replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity

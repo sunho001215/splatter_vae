@@ -1,0 +1,6950 @@
+{
+ "recorded_local": "2026-10-19T15:23:34.110075+09:00",
+ "purpose": "Device provenance of every local launch in experiments/registry.jsonl: host, MIG instance and parent physical GPU.",
+ "mig_parent_mapping": {
+  "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+  "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+  "MIG-423203d9-5801-5892-a489-30f16a5a2d4a": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+  "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+  "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+  "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+  "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+  "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
+  "MIG-f30be823-f40d-5292-9474-427746dd3703": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b",
+  "MIG-908fda99-f524-5319-ae5a-9f534a881ee1": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b",
+  "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b",
+  "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+ },
+ "runs": {
+  "collect-door-open": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4020393,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "collect-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4039974,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "collect-peg-unplug-side": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4068635,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "collect-stick-push": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4085445,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "collect-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4101832,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "collect-peg-insert-side": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4126694,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "collect-shelf-place": [
+   {
+    "attempt": 1,
+    "time": 1791364553.414662,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "collect-bin-picking": [
+   {
+    "attempt": 1,
+    "time": 1791364553.4166105,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-cnn-c1": [
+   {
+    "attempt": 1,
+    "time": 1791365340.6381626,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stage0-drm-cnn-hammer-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791366231.4088998,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "stage0-drm-cnn-hammer-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791366231.4109972,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791366874.2972982,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791367828.0567255,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "stage0-drm-cnn-shelf-place-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791366231.4127424,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "stage0-drm-cnn-shelf-place-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791366231.4148195,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791366874.2991464,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791367828.0584493,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-cnn-c1-eval": [
+   {
+    "attempt": 1,
+    "time": 1791366262.538813,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791366874.3007565,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c1": [
+   {
+    "attempt": 1,
+    "time": 1791366262.5409179,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-door-open": [
+   {
+    "attempt": 1,
+    "time": 1791366355.965564,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-door-open": [
+   {
+    "attempt": 1,
+    "time": 1791366355.967992,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-door-open": [
+   {
+    "attempt": 1,
+    "time": 1791366355.9701836,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791366477.1585124,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "stats-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791366477.1600537,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "check-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791366477.1616166,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "split-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791366692.2650952,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791366692.2673044,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791366692.2692294,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c4-0": [
+   {
+    "attempt": 1,
+    "time": 1791366692.271875,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791367125.4581563,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c4-1": [
+   {
+    "attempt": 1,
+    "time": 1791366692.2737293,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791367125.4598908,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c4-2": [
+   {
+    "attempt": 1,
+    "time": 1791366692.2757363,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791367125.4618232,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c4-3": [
+   {
+    "attempt": 1,
+    "time": 1791366692.2779555,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791367125.4639344,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-shelf-place": [
+   {
+    "attempt": 1,
+    "time": 1791366843.9941528,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-shelf-place": [
+   {
+    "attempt": 1,
+    "time": 1791366843.9964967,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-shelf-place": [
+   {
+    "attempt": 1,
+    "time": 1791366843.9985466,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-peg-unplug-side": [
+   {
+    "attempt": 1,
+    "time": 1791366939.631996,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-peg-unplug-side": [
+   {
+    "attempt": 1,
+    "time": 1791366939.6335783,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-peg-unplug-side": [
+   {
+    "attempt": 1,
+    "time": 1791366939.636,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-stick-push": [
+   {
+    "attempt": 1,
+    "time": 1791367032.5752084,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "stats-stick-push": [
+   {
+    "attempt": 1,
+    "time": 1791367032.577563,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "check-stick-push": [
+   {
+    "attempt": 1,
+    "time": 1791367032.579825,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "split-bin-picking": [
+   {
+    "attempt": 1,
+    "time": 1791367125.451175,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-bin-picking": [
+   {
+    "attempt": 1,
+    "time": 1791367125.4533014,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-bin-picking": [
+   {
+    "attempt": 1,
+    "time": 1791367125.4560232,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-peg-insert-side": [
+   {
+    "attempt": 1,
+    "time": 1791367342.6530595,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-peg-insert-side": [
+   {
+    "attempt": 1,
+    "time": 1791367342.6549633,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-peg-insert-side": [
+   {
+    "attempt": 1,
+    "time": 1791367342.65703,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "gate-m2-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791367927.8172843,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791367958.1113718,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791368170.042725,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing-pretrain-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791367927.8243632,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791367958.1154575,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791368170.0440462,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-0": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0453858,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-1": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0462892,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-2": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0475767,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-3": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0486956,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-4": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0500526,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-5": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0510962,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-6": [
+   {
+    "attempt": 1,
+    "time": 1791368170.0520456,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing2-cnn-c8-7": [
+   {
+    "attempt": 1,
+    "time": 1791368170.052945,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "timing-s4d-c1": [
+   {
+    "attempt": 1,
+    "time": 1791368777.3728015,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-0": [
+   {
+    "attempt": 1,
+    "time": 1791369382.882171,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-1": [
+   {
+    "attempt": 1,
+    "time": 1791369382.883741,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-2": [
+   {
+    "attempt": 1,
+    "time": 1791369382.8859448,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-3": [
+   {
+    "attempt": 1,
+    "time": 1791369382.8905158,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-4": [
+   {
+    "attempt": 1,
+    "time": 1791369382.8962913,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-5": [
+   {
+    "attempt": 1,
+    "time": 1791369382.8991022,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-6": [
+   {
+    "attempt": 1,
+    "time": 1791369382.901578,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "timing-s4d-c8-7": [
+   {
+    "attempt": 1,
+    "time": 1791369382.9029274,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "gate-m2-hammer-it2": [
+   {
+    "attempt": 1,
+    "time": 1791369595.6765947,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791369626.0132375,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791369777.346102,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-pretrain-hammer-base": [
+   {
+    "attempt": 1,
+    "time": 1791370415.7042077,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791385999.6916702,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 3,
+    "time": 1791395606.9366758,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 4,
+    "time": 1791416634.6772094,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-pretrain-pick-place-base": [
+   {
+    "attempt": 1,
+    "time": 1791370415.7068167,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791386788.7027001,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 3,
+    "time": 1791395606.9398732,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 4,
+    "time": 1791396883.9903169,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 5,
+    "time": 1791417212.6735806,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "gate-m2-hammer-it3a": [
+   {
+    "attempt": 1,
+    "time": 1791370690.5105975,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "gate-m2-hammer-it3b": [
+   {
+    "attempt": 1,
+    "time": 1791370690.5131774,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "screen-s1-motion20": [
+   {
+    "attempt": 1,
+    "time": 1791377734.6328268,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791380615.4217684,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "screen-s2-lambdadyn4": [
+   {
+    "attempt": 1,
+    "time": 1791377734.6343338,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "screen-s3-decdim256": [
+   {
+    "attempt": 1,
+    "time": 1791377734.6362026,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-it1-decdim256-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791381101.3454401,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791385999.7013707,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 3,
+    "time": 1791397035.400902,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 4,
+    "time": 1791416126.2242942,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 5,
+    "time": 1791417519.6453145,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 6,
+    "time": 1791435275.5462162,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-it1-decdim256-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791381101.3488228,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791386545.8848903,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 3,
+    "time": 1791397035.4026997,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 4,
+    "time": 1791416064.9185734,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 5,
+    "time": 1791417642.6711786,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 6,
+    "time": 1791419015.7789295,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 7,
+    "time": 1791435275.5483286,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-it2-lambdadyn4-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791381101.350563,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791386545.888125,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 3,
+    "time": 1791397035.4045222,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 4,
+    "time": 1791419015.7813933,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 5,
+    "time": 1791454255.586043,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-it2-lambdadyn4-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791381101.352398,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791388521.5789402,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 3,
+    "time": 1791397035.4055932,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 4,
+    "time": 1791419320.027345,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 5,
+    "time": 1791419412.7228062,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 6,
+    "time": 1791454255.5877204,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-base-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791404082.9678905,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-base-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791404082.9710538,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791408307.2121692,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791408307.2203474,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791408307.2296336,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791408307.2375848,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791409490.9214978,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791409490.9254367,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791409490.9282482,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791409490.9322562,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-it1-decdim256-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791414559.3573208,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-it1-decdim256-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791414559.3594992,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-it2-lambdadyn4-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791414559.3613977,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-it2-lambdadyn4-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791414559.3638308,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-base-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791422084.2091486,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-base-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791422084.2120051,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-base-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791422084.2141325,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s1-base-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791422084.216589,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791426885.9205108,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791426885.922664,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791426885.924876,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791426885.9271805,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-it2-lambdadyn4-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791426885.9293296,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy400-base-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791426946.734537,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy400-base-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791426946.7371745,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy400-base-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791426946.7392964,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy400-base-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791426946.7416093,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it1-decdim256-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791427493.7149055,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it1-decdim256-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791427493.7169755,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-it1-decdim256-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791427493.7185016,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791427584.8689475,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791427740.5796711,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791427584.8708022,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-door-open": [
+   {
+    "attempt": 1,
+    "time": 1791427584.872312,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791428077.759491,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "heldout-sets-peg-unplug-side": [
+   {
+    "attempt": 1,
+    "time": 1791427615.204287,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791428077.7614467,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-peg-insert-side": [
+   {
+    "attempt": 1,
+    "time": 1791427615.205816,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791428108.2246473,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-bin-picking": [
+   {
+    "attempt": 1,
+    "time": 1791427645.596377,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-stick-push": [
+   {
+    "attempt": 1,
+    "time": 1791427645.5983956,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-shelf-place": [
+   {
+    "attempt": 1,
+    "time": 1791427679.459561,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791428108.2271798,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "screen-reserve-tasks": [
+   {
+    "attempt": 1,
+    "time": 1791428077.7531774,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it1-decdim256-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791428077.7555182,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it1-decdim256-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791428077.757588,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-s1-base-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791429569.485794,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-s1-base-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791429569.4878275,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s3b-cnn-plate-slide-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791429569.489643,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s3b-cnn-plate-slide-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791429569.4917653,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s1-it1-decdim256-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791429569.493428,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s1-it2-lambdadyn4-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791429599.9366302,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-screen-s1-motion20-6k": [
+   {
+    "attempt": 1,
+    "time": 1791429599.9389942,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "screen-g-ref": [
+   {
+    "attempt": 1,
+    "time": 1791429721.8146865,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s3b-cnn-assembly-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791429874.3103483,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s3b-cnn-assembly-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791429874.3127646,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-s1-it1-decdim256-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791430858.0483575,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s1-it2-lambdadyn4-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791430858.0516565,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1-it2-lambdadyn4-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791430858.056005,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1-it1-decdim256-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791430918.948318,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "screen-g4a-declr3-dec4x256": [
+   {
+    "attempt": 1,
+    "time": 1791430918.9500248,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "screen-g4b-k4-statecat": [
+   {
+    "attempt": 1,
+    "time": 1791430918.9519253,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "screen-g4c-adaln-fourier": [
+   {
+    "attempt": 1,
+    "time": 1791430918.9554617,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it1-decdim256-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791432808.7582607,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it1-decdim256-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791432870.2985065,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "screen-g4d-hardx3": [
+   {
+    "attempt": 1,
+    "time": 1791433083.7318003,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "screen-g4e-motionnorm": [
+   {
+    "attempt": 1,
+    "time": 1791433298.042715,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2-screen-crop-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791433358.954691,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2-screen-crop-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791433389.3320155,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it1-decdim256-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791434575.4575007,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it1-decdim256-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791434667.0052032,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791434727.9826598,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791434788.7342646,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-screen-g-ref-6k": [
+   {
+    "attempt": 1,
+    "time": 1791435062.714372,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2-screen-synth-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791435123.4701204,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2-screen-synth-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791435305.9019449,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-screen-g4a-declr3-dec4x256-6k": [
+   {
+    "attempt": 1,
+    "time": 1791435853.2730355,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2-screen-selfrender-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791435914.0193143,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-screen-g4c-adaln-fourier-6k": [
+   {
+    "attempt": 1,
+    "time": 1791436339.3856978,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2-screen-selfrender-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791436400.2263334,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-screen-g4b-k4-statecat-6k": [
+   {
+    "attempt": 1,
+    "time": 1791436704.098176,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791436764.8746026,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval2-screen-g4d-hardx3-6k": [
+   {
+    "attempt": 1,
+    "time": 1791438255.5681572,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-screen-g4e-motionnorm-6k": [
+   {
+    "attempt": 1,
+    "time": 1791438498.8840346,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "screen-g-ref-seed1": [
+   {
+    "attempt": 1,
+    "time": 1791438650.8085234,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s3b-cnn-coffee-push-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791443302.3907263,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s3b-cnn-coffee-push-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791443302.3921506,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s3b-cnn-drawer-open-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791443302.3939114,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s3b-cnn-drawer-open-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791443302.3954465,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-screen-g-ref-seed1-6k": [
+   {
+    "attempt": 1,
+    "time": 1791443332.7342083,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it2-lambdadyn4-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791443484.8443732,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-base-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791456566.2767925,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-pretrain-hammer-base300k": [
+   {
+    "attempt": 1,
+    "time": 1791456627.1402779,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513777.922793,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-pretrain-pick-place-base300k": [
+   {
+    "attempt": 1,
+    "time": 1791456627.1419709,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513810.1782103,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base200k-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791456901.150684,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base200k-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791456901.1526644,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-base200k-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791456901.1547208,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base200k-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791456901.1566834,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "pilot-coffee-push": [
+   {
+    "attempt": 1,
+    "time": 1791463168.4830523,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "collect-coffee-push": [
+   {
+    "attempt": 1,
+    "time": 1791464020.2221353,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-base-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791464843.077447,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base200k-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791465303.8780687,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base200k-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791465303.8815212,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base200k-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791465303.8839824,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base200k-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791465334.5142834,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "split-coffee-push": [
+   {
+    "attempt": 1,
+    "time": 1791474860.4143775,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "stats-coffee-push": [
+   {
+    "attempt": 1,
+    "time": 1791474860.4171662,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "check-coffee-push": [
+   {
+    "attempt": 1,
+    "time": 1791474860.4192154,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "heldout-sets-coffee-push": [
+   {
+    "attempt": 1,
+    "time": 1791474890.8598464,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791475986.2319353,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-base300k-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791479301.1585891,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-base300k-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791479301.162033,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-base300k-hammer-300k": [
+   {
+    "attempt": 1,
+    "time": 1791479301.1637163,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-base300k-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791479301.1654365,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-base300k-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791479301.1693907,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-base300k-pick-place-300k": [
+   {
+    "attempt": 1,
+    "time": 1791479301.1716888,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s2-screen-crop-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791480396.8774464,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s2-screen-crop-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791483074.722937,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s2-screen-synth-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791486118.439655,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s2-screen-synth-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791486457.288485,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s2-screen-selfrender-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791487892.5763886,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval2-s2-screen-selfrender-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791487892.5779076,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2-synth-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791488581.8572917,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2-synth-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791488581.8586524,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-synth-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791488581.8602092,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s1-synth-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791488581.8618217,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it3-synth-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791488947.5060236,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it3-synth-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791488947.5088184,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it3-synth-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791489191.1267743,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it3-synth-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791489191.1282232,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it3-synth-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791489191.1296828,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it3-synth-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791489221.6028788,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-it3-synth-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791489343.991703,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-it3-synth-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791489343.9949925,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-synth-hammer-to200k": [
+   {
+    "attempt": 1,
+    "time": 1791489374.5074902,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513503.7851713,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-pretrain-hammer-synth300k": [
+   {
+    "attempt": 1,
+    "time": 1791489801.159543,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791518479.73164,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-synth-pick-place-to200k": [
+   {
+    "attempt": 1,
+    "time": 1791490014.9281876,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513777.9193237,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-pretrain-pick-place-synth300k": [
+   {
+    "attempt": 1,
+    "time": 1791490168.6739318,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791518906.2206807,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1-base300k-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791495536.2419274,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base300k-100k-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791495536.2444034,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513503.7873209,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base300k-100k-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791495536.2463543,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513534.220712,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base300k-100k-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791495536.2483568,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513503.7888303,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-base300k-100k-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791495536.2502518,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791513564.6670313,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-base300k-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791495536.2532868,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-synth200k-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791530985.5189834,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-synth200k-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791530985.5219972,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-synth200k-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791530985.5241342,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-synth200k-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791530985.527338,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1-synth-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791531016.0218773,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1-synth-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791531382.3025212,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1-proxy-synth200k-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791531565.4839602,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-synth200k-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791531565.4869783,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-synth200k-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791531565.4895298,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1-proxy-synth200k-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791531565.4917831,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synth-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791532420.5019443,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthinv-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791532420.5032625,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthinv-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791532420.5051842,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synthsr-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791532420.5067472,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-cnn-pick-place-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791532420.5080724,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791569908.1237662,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791594501.6720037,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-cnn-pick-place-s2000": [
+   {
+    "attempt": 1,
+    "time": 1791532603.9040623,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 1,
+    "time": 1791594501.670042,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthsr-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791533031.5650675,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synth-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791533031.56741,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthinv-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791533031.569167,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synthinv-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791533642.8649018,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791534246.2425852,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthsr-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791533642.8669894,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791534246.2445855,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 3,
+    "time": 1791584387.7134125,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthsr-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791533642.8690372,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "bench-loader-synth-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791533796.7076159,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791534246.2468357,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1v-synth-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791534376.6059587,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791534407.1170468,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791534498.5540538,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791537420.4171867,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1v-synth-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791534376.6078315,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791534407.1184928,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791534498.5561686,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 1,
+    "time": 1791537513.831978,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synth-seed1-split0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791536627.032962,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791584844.7485464,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synthinv-seed1-split0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791536627.035729,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791585545.5902066,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthsr-seed1-split0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791537237.038977,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791585820.579188,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synth-seed1-split0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791538034.2333617,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791585820.582545,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s1v-synthinv-seed1-split0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791538649.0848484,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791585820.5836928,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s1v-synthsr-seed1-split0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791538718.081902,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791586155.5458193,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1v-synthinv-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791585454.2007275,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1v-synthsr-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791586429.8325906,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synthinv-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791591098.914489,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synthsr-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791591405.2877543,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synthinv-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791592320.4728062,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synth-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791593114.272771,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synthinv-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791600960.6535017,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synth-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791603371.6478343,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s1v-synthsr-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791604713.9850745,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s1v-synthsr-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791604713.9870036,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d0-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1048076,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.815278,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d0-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.10673,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.8183076,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d1-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1098967,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.82147,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d1-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.113211,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.824357,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d2-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.114997,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.8275092,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d2-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.118554,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.8307815,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d3-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1198986,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.8337576,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d3-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.121208,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.8366947,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d4-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1222577,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.839865,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d4-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1233175,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791701103.842819,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d0-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1243744,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d0-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1252902,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d1-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605080.1268291,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d1-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605692.18937,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d2-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605692.194859,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d2-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605692.1970983,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d3-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605692.1991577,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d3-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791605692.201856,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i1-d4-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791608921.7537556,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i1-d4-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791608921.7818408,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "verify-native-portability-200e5e6-local-20261010": [
+   {
+    "attempt": 1,
+    "time": 1791647401.3396223,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d2-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791669427.18114,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d0-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791670177.5724907,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d0-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791670946.9956336,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d2-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791670946.9988928,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d4-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791670947.0013108,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d1-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791671171.3537846,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d4-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791672302.1261866,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d3-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791673796.5994358,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d3-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791673796.6019888,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d1-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791675014.227601,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "verify-native-portability-200e5e6-shortpath-20261011": [
+   {
+    "attempt": 1,
+    "time": 1791701103.8457212,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "verify-native-v2-414a6c9-shortpath-20261011": [
+   {
+    "attempt": 1,
+    "time": 1791701615.1235888,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "verify-v2-local-e267ba8-20261011": [
+   {
+    "attempt": 1,
+    "time": 1791702262.0510576,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "verify-v2-local-e267ba8-20261011b": [
+   {
+    "attempt": 1,
+    "time": 1791702406.7641242,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "verify-native-wandb-a002e30-shortpath-20261011": [
+   {
+    "attempt": 1,
+    "time": 1791704138.709527,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d2-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791722544.3896365,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d3-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791725445.7028675,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d1-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791726262.1521506,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d4-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791726359.3238914,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d0-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791726529.282929,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i1-d1-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791726760.3298125,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d0-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791726862.424533,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d4-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791726862.4278963,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d2-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791727310.8467188,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i1-d3-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791727411.9229448,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-m3d-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791727971.7735047,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-m3d-seed1-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791727971.7777526,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-m3d-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791727971.7812736,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-m3d-seed1-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791727971.784657,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-i2-m2d-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791727971.7876465,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-i2-m2d-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791727971.7903845,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791728037.33925,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791728037.344105,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791728037.3520205,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791728037.355664,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791728037.357643,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791728037.3649242,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1003": [
+   {
+    "attempt": 1,
+    "time": 1791728037.3699956,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1003-eval": [
+   {
+    "attempt": 1,
+    "time": 1791728037.3812773,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1004": [
+   {
+    "attempt": 1,
+    "time": 1791728037.3844943,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1005": [
+   {
+    "attempt": 1,
+    "time": 1791728037.3930244,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1004-eval": [
+   {
+    "attempt": 1,
+    "time": 1791728773.1423402,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m2d-hammer-s1005-eval": [
+   {
+    "attempt": 1,
+    "time": 1791728773.1450596,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-i2-m3d-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791753539.0544367,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i2-m3d-seed1-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791753539.0579417,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1003": [
+   {
+    "attempt": 1,
+    "time": 1791753640.2763731,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1003-eval": [
+   {
+    "attempt": 1,
+    "time": 1791753640.2795427,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1004": [
+   {
+    "attempt": 1,
+    "time": 1791753640.2822063,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1004-eval": [
+   {
+    "attempt": 1,
+    "time": 1791753640.284821,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1005": [
+   {
+    "attempt": 1,
+    "time": 1791753640.2874143,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1005-eval": [
+   {
+    "attempt": 1,
+    "time": 1791753640.2899444,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-i2-m3d-seed1-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791753864.8629434,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-i2-m3d-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791758059.1600018,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i2-m3d-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791758059.1628494,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791758143.6434276,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791758143.6451645,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791758143.646749,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791758143.648419,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791758143.649711,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "i2-proxy-m3d-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791758143.6510053,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-i2-m3d-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791758406.098983,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-sincro-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791778755.7594388,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-reviwo-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791778755.7624373,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "ls-a200-m3d-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791779193.927608,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "ls-a300-m3d-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791779193.9311237,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "ls-a200-m3d-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791779193.933937,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "ls-a300-m3d-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791779193.936902,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-sincro-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791780310.3940785,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-reviwo-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791780310.396539,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-reviwo-bin-picking": [
+   {
+    "attempt": 1,
+    "time": 1791781119.6450698,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "verify-native-bundle-6e976f8-shortpath-20261012": [
+   {
+    "attempt": 1,
+    "time": 1791786530.5941582,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "verify-native-threads-8417843-shortpath-20261012": [
+   {
+    "attempt": 1,
+    "time": 1791788193.74917,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-ls-a200-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791809285.6847053,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a200-m3d-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791809285.6880264,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-ls-a200-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791810568.5722744,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a200-m3d-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791810568.5754104,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-ls-a300-hammer-300k": [
+   {
+    "attempt": 1,
+    "time": 1791854578.8512878,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a300-m3d-seed0-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1791854578.854479,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a300-m3d-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791854578.8570914,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a300-m3d-seed0-hammer-300k": [
+   {
+    "attempt": 1,
+    "time": 1791854578.8592849,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-ls-a300-pick-place-300k": [
+   {
+    "attempt": 1,
+    "time": 1791857139.6561174,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a300-m3d-seed0-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1791857139.6590624,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-ls-a300-m3d-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791857139.6617262,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-ls-a300-m3d-seed0-pick-place-300k": [
+   {
+    "attempt": 1,
+    "time": 1791857139.6644795,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-t1-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2084568,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-t1-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2104156,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-nomotion-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2123322,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-nomotion-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2139359,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-noinfonce-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2153935,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-noinfonce-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2167983,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-singlegroup-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1791871871.2186615,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-singlegroup-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1791872546.9815662,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791946509.1875014,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791872546.9892993,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791937210.9938638,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791872546.9975889,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791940768.8800309,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791872547.0095124,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1791948526.4827294,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-full-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791872547.014604,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791964759.3108606,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-full-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791872547.0198808,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1791965553.2845278,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-t1-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791936791.2216675,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-nomotion-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791936791.2257009,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-t1-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791938933.4205997,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-nomotion-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791939626.8806994,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-noinfonce-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791940768.875749,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-t1-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791945215.7451806,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-t1-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946021.0011873,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-noinfonce-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946021.0045354,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-noinfonce-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946021.007293,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-nomotion-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946962.3440154,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-singlegroup-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946962.3470366,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-nomotion-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946962.3500016,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-noinfonce-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1791946962.3527117,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791946962.3556795,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-noinfonce-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791946962.3585868,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791947444.6371381,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-noinfonce-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791947444.640678,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-singlegroup-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1791947980.2238054,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791947980.226491,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nomotion-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791947980.227866,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791947980.2294188,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-singlegroup-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791948526.4797642,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791948526.4856937,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791964759.3141348,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791965156.6234078,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nomotion-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791965156.626113,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-noinfonce-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1791965553.2782981,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-noinfonce-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1791965553.2817376,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-full-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791965941.4763248,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-t1-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791965941.4825418,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791965941.4875164,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nomotion-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791965941.49152,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791965941.4941926,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-noinfonce-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791965941.4970188,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-noinfonce-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791966324.948498,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791966324.9522765,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791966324.955711,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791966324.9594545,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791966797.5440183,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791967142.0832617,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791967555.1087394,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791987737.186568,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791987737.1898055,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-noinfonce-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1791987737.192658,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-noinfonce-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1791988122.4225507,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791988474.2508395,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791988474.25415,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791989057.6932049,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791989057.6975944,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nomotion-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791989057.700892,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791989057.704311,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-noinfonce-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791989449.6748393,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-noinfonce-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791989449.676727,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-singlegroup-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1791991320.474828,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1791993820.2068398,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-singlegroup-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792001880.1061316,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792001880.1099448,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-singlegroup-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792002243.7011142,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-singlegroup-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792004413.513861,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-full-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792007192.015387,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792007192.0189545,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-singlegroup-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792007868.8895583,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792007868.8928702,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-t1-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792008548.3748336,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nomotion-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792008548.3779538,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nomotion-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792008930.4396605,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-noinfonce-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792009302.9379945,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-noinfonce-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792009976.692625,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792010351.336162,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-singlegroup-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792018897.256978,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-singlegroup-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792023760.4767773,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "creval-base-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1792024064.2473545,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "creval-base-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1792024064.2502701,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "creval-crop-hammer-100k": [
+   {
+    "attempt": 1,
+    "time": 1792024368.0959542,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "creval-crop-pick-place-100k": [
+   {
+    "attempt": 1,
+    "time": 1792024368.0987175,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-crop-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1792024672.49306,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-crop-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1792024672.4965734,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-cropnosynth-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1792025894.9836345,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-cropnosynth-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1792027122.7048512,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-nosynth-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1792030508.6326084,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-nosynth-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1792030508.6361804,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2ab-nocons-seed0-hammer": [
+   {
+    "attempt": 1,
+    "time": 1792030819.139123,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2ab-nocons-seed0-pick-place": [
+   {
+    "attempt": 1,
+    "time": 1792033630.3906586,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1792123989.6142375,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-crop-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792096591.051221,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-crop-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792096591.0546968,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-crop-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792097191.2859855,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-crop-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792097191.2912877,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-cropnosynth-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792098325.6609545,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-cropnosynth-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792098325.66486,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "fulleval-s2ab-cropnosynth-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792098325.667594,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-cropnosynth-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792099125.8634932,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-nosynth-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792100932.327613,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-nosynth-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792101493.0823667,
+    "host": "local",
+    "mig_uuid": null,
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-nosynth-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792123989.6050427,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-nosynth-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792123989.608404,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-nocons-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792123989.6114373,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nosynth-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5872333,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nosynth-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5891259,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1792130600.269451,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nosynth-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5910275,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nosynth-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5926356,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1792130600.2726178,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nosynth-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5946736,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nosynth-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792124632.596423,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1792133084.2208674,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nosynth-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5983906,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nosynth-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792124632.5996954,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   },
+   {
+    "attempt": 2,
+    "time": 1792133084.223884,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nosynth-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792124632.6010413,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nosynth-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792124632.6030028,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   },
+   {
+    "attempt": 2,
+    "time": 1792133770.4518003,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nosynth-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792124632.6063056,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nosynth-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792124632.6091733,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   },
+   {
+    "attempt": 2,
+    "time": 1792134775.9399726,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-dynamo-hammer-init": [
+   {
+    "attempt": 1,
+    "time": 1792125792.3627563,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-snerl-hammer-init": [
+   {
+    "attempt": 1,
+    "time": 1792125792.3652027,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "bxs-dynamo-hammer-rand-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792126534.0034983,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-snerl-hammer": [
+   {
+    "attempt": 1,
+    "time": 1792130211.5332541,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "fulleval-s2ab-nocons-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792133084.2173207,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-nocons-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792140382.3070912,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-nocons-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792140382.3105779,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-misscaled-none-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792140382.3135874,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-misscaled-none-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792140382.3167953,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nocons-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1033633,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nocons-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1066217,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nocons-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1094575,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nocons-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.112162,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-misscaled-none-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1152244,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-misscaled-none-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1182015,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-misscaled-none-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1211197,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-misscaled-none-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1241705,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nocons-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1270113,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nocons-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1300037,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nocons-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792140763.132797,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nocons-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1356714,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-misscaled-none-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792140763.139412,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-misscaled-none-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.142499,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-misscaled-none-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792140763.145878,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-misscaled-none-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1487122,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-nocons-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1522925,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nocons-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1547103,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-nocons-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792140763.1576073,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-nocons-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792141161.0093582,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-misscaled-none-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792153962.7967832,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-misscaled-none-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792153962.804853,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-misscaled-none-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792153962.8078728,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-misscaled-none-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792154304.106239,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "bxs-dynamo-hammer-rand-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792164914.2917023,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-hammer-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792197053.457668,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-hammer-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792197053.461085,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-hammer-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4640145,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-hammer-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4669726,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-hammer-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4702005,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-hammer-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792197053.473357,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-hammer-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792197053.476537,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-hammer-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4797285,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-hammer-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4826446,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-hammer-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4857786,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-hammer-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792197053.4887965,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-hammer-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792206625.3424313,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-door-open-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792216126.9100697,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-door-open-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792216126.913382,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-door-open-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792216126.916238,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-door-open-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792216126.9190922,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-door-open-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792216126.9221194,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-door-open-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792216126.9250708,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-pick-place-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792216962.9570208,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-pick-place-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792216962.9606397,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-pick-place-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792216962.9634051,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-pick-place-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792216962.966006,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-pick-place-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792216962.9690964,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-pick-place-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792216962.9717896,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-coffee-push-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792219155.6293068,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-coffee-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792219155.6327016,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-bin-picking-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3787498,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-bin-picking-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3814166,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-bin-picking-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3842025,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-coffee-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792223140.386817,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-peg-insert-side-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3894737,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-insert-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3919299,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-insert-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3943703,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-stick-push-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792223140.396776,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-stick-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792223140.3992,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-stick-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792223140.4018302,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-bin-picking-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792223140.4045763,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-bin-picking-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792223140.4073262,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-peg-unplug-side-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792230847.7459395,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-unplug-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792230847.7491767,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-unplug-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792230847.751822,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-bin-picking-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792230847.7551851,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-bin-picking-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792230847.7581089,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-bin-picking-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792230847.7611582,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-coffee-push-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792232309.4308524,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-coffee-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792232309.4335349,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-coffee-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792232309.4361145,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-door-open-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792232309.4408934,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-door-open-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792232309.4447474,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-door-open-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792235507.1055038,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-insert-side-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792237796.238629,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-insert-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792237796.2422183,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-insert-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792237796.2454567,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-pick-place-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792237796.2502964,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-pick-place-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792237796.2535157,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-pick-place-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792238239.1920269,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-bin-picking-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792238239.2000642,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-coffee-push-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792238239.2094722,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-coffee-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792238239.2195115,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-coffee-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792238239.2288725,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-stick-push-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792239213.7164292,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1792252052.2275414,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-stick-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792239213.8071432,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   },
+   {
+    "attempt": 2,
+    "time": 1792252052.230368,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-stick-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792239213.8114169,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   },
+   {
+    "attempt": 2,
+    "time": 1792256957.8864782,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-peg-insert-side-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792239610.2608945,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-dynamo-peg-insert-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792239610.2647183,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-peg-insert-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792239610.2676284,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-unplug-side-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792239610.270391,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-unplug-side-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792250634.3635197,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-unplug-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792250634.3659902,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-unplug-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792250634.3677218,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-unplug-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792252052.224054,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-peg-unplug-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792256253.4888086,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-stick-push-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792256957.8891785,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-dynamo-stick-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792256957.8916175,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-dynamo-stick-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792258011.4041653,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-bin-picking-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792258011.4171367,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-bin-picking-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792261893.344611,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-bin-picking-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792262649.3460593,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-coffee-push-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792262649.349851,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-coffee-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792262649.3528337,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-coffee-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792262649.3555353,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-door-open-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792263354.675454,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-door-open-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792264383.2831647,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-door-open-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792272216.0299199,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-insert-side-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792272216.033376,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-insert-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792272216.0364,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-insert-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792273204.9109547,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-unplug-side-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792273204.9144514,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-unplug-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792273204.9174497,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-peg-unplug-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792273204.9201176,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-pick-place-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792273204.9223216,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-pick-place-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792273613.408835,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-pick-place-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792274419.496684,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-single-stick-push-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792274858.9947872,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-single-stick-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792276138.401236,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-single-stick-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792276138.4050417,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-bin-picking-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9385798,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-bin-picking-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792282265.940655,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-coffee-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9423692,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-coffee-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9441833,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-door-open-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9460225,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-door-open-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9477856,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-insert-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9496262,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-insert-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792282265.9513743,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-unplug-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792283263.97709,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-unplug-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792283263.985988,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-pick-place-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792283263.9885147,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-pick-place-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792283263.9908793,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-bin-picking-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792283263.993303,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-stick-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792283878.018272,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-bin-picking-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792283878.0216444,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-stick-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792284835.7517214,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-coffee-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792284835.755147,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-crop-seed0-bin-picking-200k": [
+   {
+    "attempt": 1,
+    "time": 1792292232.3606775,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-crop-seed0-coffee-push-200k": [
+   {
+    "attempt": 1,
+    "time": 1792292232.3626955,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "bxs-dynamo-hammer-ep09-s1000-rem-b": [
+   {
+    "attempt": 1,
+    "time": 1792292669.1018417,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "bxs-dynamo-hammer-ep09-s1001-rem-b": [
+   {
+    "attempt": 1,
+    "time": 1792292669.1057496,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "bxs-dynamo-hammer-ep09-s1002-rem-b": [
+   {
+    "attempt": 1,
+    "time": 1792292669.1084569,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-coffee-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792298748.047917,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-door-open-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792298748.0533855,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-door-open-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792300599.7194483,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-crop-seed0-peg-unplug-side-200k": [
+   {
+    "attempt": 1,
+    "time": 1792301868.7621503,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "export-s2ab-crop-seed0-stick-push-200k": [
+   {
+    "attempt": 1,
+    "time": 1792303259.1647434,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-insert-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792303859.8391266,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-insert-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792304470.0356586,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-unplug-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792304943.8281112,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-peg-unplug-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792304943.8307157,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-pick-place-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792305823.5602558,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-pick-place-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792306275.2710626,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-stick-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792307964.5864305,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s4-drm-mvp3d-multiview-stick-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792308861.167534,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "export-s2ab-crop-seed0-door-open-200k": [
+   {
+    "attempt": 1,
+    "time": 1792310440.7265732,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "bxs-dynamo-hammer-ep09-s1000-rem-b-eval": [
+   {
+    "attempt": 1,
+    "time": 1792310789.2099605,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "bxs-dynamo-hammer-ep09-s1001-rem-b-eval": [
+   {
+    "attempt": 1,
+    "time": 1792310789.2128794,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "bxs-dynamo-hammer-ep09-s1002-rem-b-eval": [
+   {
+    "attempt": 1,
+    "time": 1792311286.9274654,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-door-open-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792313271.1526103,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-door-open-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792313271.1551242,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-coffee-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792313271.1578815,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-coffee-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792313271.161004,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-door-open-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792313746.7745361,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-door-open-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792314173.6252284,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-crop-seed0-peg-insert-side-200k": [
+   {
+    "attempt": 1,
+    "time": 1792316407.3147974,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-peg-insert-side-s2000": [
+   {
+    "attempt": 1,
+    "time": 1792316878.8808918,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-peg-insert-side-s2000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792316878.8838363,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-crop-peg-insert-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792317283.3278759,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-crop-peg-insert-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792320443.479293,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-crop-peg-unplug-side-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792321143.8117375,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-crop-peg-unplug-side-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792321143.8149188,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-crop-stick-push-s2001": [
+   {
+    "attempt": 1,
+    "time": 1792321512.420367,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-stick-push-s2001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792321881.9611926,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-bin-picking-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792322910.263073,
+    "host": "local",
+    "mig_uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-bin-picking-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792322910.2685456,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-coffee-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792324224.618237,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-coffee-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792324678.0738761,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-door-open-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792324678.0768733,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-door-open-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792324678.0796454,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-peg-insert-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792326883.1769087,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-crop-peg-insert-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792326883.1816783,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-peg-unplug-side-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792326883.185034,
+    "host": "local",
+    "mig_uuid": "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-crop-peg-unplug-side-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792327280.2949893,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-stick-push-s2002": [
+   {
+    "attempt": 1,
+    "time": 1792327691.388333,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-crop-stick-push-s2002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792327691.3924491,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "export-s2ab-shift-seed0-hammer-200k": [
+   {
+    "attempt": 1,
+    "time": 1792335081.8560717,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-shift-hammer-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792335472.9874141,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-shift-hammer-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792335472.9895923,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-shift-hammer-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792335472.991024,
+    "host": "local",
+    "mig_uuid": "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-shift-hammer-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792335472.9933722,
+    "host": "local",
+    "mig_uuid": "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "s2rl-shift-hammer-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792335472.9950418,
+    "host": "local",
+    "mig_uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-shift-hammer-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792335472.9965918,
+    "host": "local",
+    "mig_uuid": "MIG-f30be823-f40d-5292-9474-427746dd3703",
+    "parent_gpu_uuid": "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b"
+   }
+  ],
+  "export-s2ab-shift-seed0-pick-place-200k": [
+   {
+    "attempt": 1,
+    "time": 1792368120.6234536,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-shift-pick-place-s1000": [
+   {
+    "attempt": 1,
+    "time": 1792368670.5552168,
+    "host": "local",
+    "mig_uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-shift-pick-place-s1000-eval": [
+   {
+    "attempt": 1,
+    "time": 1792368670.5587115,
+    "host": "local",
+    "mig_uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-shift-pick-place-s1001": [
+   {
+    "attempt": 1,
+    "time": 1792368670.562149,
+    "host": "local",
+    "mig_uuid": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-shift-pick-place-s1001-eval": [
+   {
+    "attempt": 1,
+    "time": 1792368670.5654035,
+    "host": "local",
+    "mig_uuid": "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369",
+    "parent_gpu_uuid": "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
+   }
+  ],
+  "s2rl-shift-pick-place-s1002": [
+   {
+    "attempt": 1,
+    "time": 1792368670.5685601,
+    "host": "local",
+    "mig_uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ],
+  "s2rl-shift-pick-place-s1002-eval": [
+   {
+    "attempt": 1,
+    "time": 1792368670.571774,
+    "host": "local",
+    "mig_uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+    "parent_gpu_uuid": "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639"
+   }
+  ]
+ },
+ "unmapped": []
+}

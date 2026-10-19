@@ -1,0 +1,36 @@
+{
+  "recorded_local": "2026-10-19T15:16:13.537630+09:00",
+  "purpose": "Local GPU authorization change (user, 2026-10-19): local schedulable devices are the eight MIG 1g.24gb instances of\nGPU 4 (GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce) and GPU 5 (GPU-d09f0338-71b9-d915-3c7f-e99754a3b639); GPU 6\n(GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b) and its four MIG instances are no longer authorized. Remote unchanged.",
+  "authorized_local": {
+    "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce": [
+      "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+      "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+      "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+      "MIG-02b55a66-ed41-53c2-9004-c3f5619d6369"
+    ],
+    "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639": [
+      "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631",
+      "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
+      "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+      "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd"
+    ]
+  },
+  "revoked_local": {
+    "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b": [
+      "MIG-f30be823-f40d-5292-9474-427746dd3703",
+      "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
+      "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+      "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29"
+    ]
+  },
+  "remote_unchanged": [
+    "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+    "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
+    "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+    "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1"
+  ],
+  "campaign_jobs_on_revoked_devices_at_change": {},
+  "migrations": [],
+  "queue_sha256_before": "5e981505c20acf06536732e40a5190bc003259f1bd74381df575834d13947fd0",
+  "queue_sha256_after": "6a857f5716cc877b968a1438966bb3dc00d7142cd3ec12f5df0c094285d45141"
+}
