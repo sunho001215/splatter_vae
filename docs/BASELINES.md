@@ -146,6 +146,39 @@ completes.
     is therefore inflated.
   - The sanity differences are small relative to the spread between seeds.
 
+### Hammer acceptance report: SNeRL (steps 3-4, 2026-10-19)
+
+Release e4206f1 (accepted remotely), as for DynaMo and 3D-MVP. Criterion fixed on 2026-10-16: pretrained mean last-5
+training-camera success above random init.
+
+| | SNeRL (multi-view RGB + poses, privileged) |
+|---|---|
+| RL-time encoder | 6,587,885 params, 0.638 GFLOPs per three-view frame, 63-d per view (official size and mean-pooled readout) |
+| Hammer pretraining | 2.4M steps (official recipe), seed 0, one remote GPU (`s4-snerl-hammer-rem-b`): 2026-10-16 17:24 to 2026-10-19 20:19 KST, 74.9 h wall (mean 0.112 s/step) |
+| Final validation (training cameras) | PSNR 32.9 dB, semantic accuracy 0.990, DINO-feature MSE 0.059, depth MAE 0.11 m |
+| Sanity: last-5 train success, pretrained vs random (seeds 1000-1002) | **0.589** (0.637 / 0.600 / 0.530) vs **0.013** (0.030 / 0.000 / 0.008): **passed** |
+| AUC; time to 0.5 train success | 0.269 vs 0.014; 323k steps (3/3 seeds) vs never (0/3) |
+| Held-out / moving-camera last-5 success | 0.087 vs 0.019 / 0.517 vs 0.000 |
+| Step 4 retrieval, train cams, newest frame (ours 0.94) | 0.916 (random 0.016); held-out cams 0.285 |
+| Step 4 hand-position R², train cams (ours 0.97) | 0.887 (random 0.534) |
+| Effective rank, pretrained vs random | 5.9 vs 3.2 (63-d readout) |
+
+- **Panels:** `docs/figures/baselines/snerl/final/pretrain_val_step2399999.png` (validation at the last step: three
+  input cameras, a held-out training camera's RGB, depth, semantic classes and DINO features). The renders, classes
+  and features match the ground truth closely.
+- **Coarse network:** seed 0's coarse density was dead at initialisation (`init.json`: live_coarse 0.0, fine 0.048),
+  and it stayed dead (coarse PSNR 7.4 dB, semantic loss ln 5 at the end). The fine network carries the reconstruction.
+  This was the documented risk; it is not grounds for reseeding, and the RL encoder is the shared convolution trunk.
+- **Caveats:**
+  - SNeRL sees three training-camera RGB views plus poses at execution (privileged), and its multi-view shift
+    evaluation replaces one input view and keeps two fixed (user, 2026-10-14). Its held-out and moving-camera numbers
+    are therefore not like-for-like with single-camera methods.
+  - The random-init arm barely learns, so this gap is much larger than DynaMo's or 3D-MVP's.
+  - Retrieval on shared cameras is inflated, as for 3D-MVP A.
+- **Next:** the eight-task SNeRL runs need the user's go-ahead, as DynaMo and 3D-MVP did after their acceptance
+  report: 7 remaining pretrains at 2.4M steps (~75 GPU-h each, ~525 GPU-h; about 3 days on the 4 remote GPUs) plus
+  8 tasks x 3 seeds DrM at 1M steps.
+
 ### Eight-task results: DynaMo and 3D-MVP (step 5, 2026-10-18)
 
 All 72 new DrM runs are complete: 8 tasks × seeds 2000–2002 × 1M agent steps, 240 episodes every 10k steps. They are
@@ -187,7 +220,7 @@ IQM success over 8 tasks × 3 seeds, last-5 (AUC) [stratified bootstrap 95% CI o
   - Hosts: DynaMo and B ran on local MIG. A ran 14 runs local and 10 remote (host-neutral overlay). The local launch
     commits differ only in tooling and in the behaviour-preserving `agent.random_shift` gate. One older CNN run has
     no provenance file; its host (local) comes from the registry.
-- SNeRL's eight-task runs follow its hammer acceptance. Its pretraining is at step 1.67M of 2.4M.
+- SNeRL's eight-task runs follow its hammer acceptance (passed 2026-10-19; see its report above).
 
 The remainder documents the already-accepted SinCro/ReViWo adaptations. Their rule is **upstream code, original
 hyperparameters, changes only at the data interface**; exceptions are listed explicitly.

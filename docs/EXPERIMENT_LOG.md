@@ -3755,3 +3755,11 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - held-out-camera retrieval 0.285.
 
   Caveat as for 3D-MVP A: SNeRL takes three training-camera RGB views plus poses (privileged multi-view input), so retrieval on shared cameras is inflated. The pretrained sanity arms `bxs-snerl-hammer-pre-s100{0,1,2}-rem-b` are running on the remote. The acceptance report follows when they finish.
+- 22:00 (10-19) **SNeRL hammer sanity passed** the 2026-10-16 criterion. All 12 arms are complete at 400k, seeds 1000-1002, remote, e4206f1.
+  - Pretrained-frozen last-5 training success 0.637 / 0.600 / 0.530 (mean 0.589) vs random-frozen 0.030 / 0.000 / 0.008 (mean 0.013).
+  - AUC 0.269 vs 0.014. Time to 0.5 success: 323k steps (3/3 seeds) vs never.
+  - Held-out cameras 0.087 vs 0.019; moving cameras 0.517 vs 0.000 (privileged three-view input; one view replaced).
+  - The final validation panel (`docs/figures/baselines/snerl/final/`) is faithful: training-camera PSNR 32.9 dB, semantic accuracy 0.990.
+  - Seed 0's coarse density stayed dead, as documented; the fine network carries the reconstruction.
+  - Acceptance report: docs/BASELINES.md "Hammer acceptance report: SNeRL".
+  - Decision: following the DynaMo/3D-MVP precedent, the eight-task SNeRL runs wait for the user's go-ahead. Their cost is about 525 GPU-h of pretraining (7 tasks × 75 h) plus 24 DrM runs; nothing has been registered.
