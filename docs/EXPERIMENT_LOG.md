@@ -3718,3 +3718,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Representation, shift vs full (hammer margins): 3 worse (psnr −0.54, psnr_traj −0.27, retrieval_traj −0.054) and 1 better (cd_motion_dyn); shift vs crop: 2 worse and 1 better.
 
   Configs differ only in `vision.export_path`. Pick-place shift is waiting for its pretrain, at step ~160k of 200k.
+- 13:13 (10-19) E2 complete: pick-place shift RL at seeds 1000–2 (local); report `runs/setup/followup-report-20261019-131346.json`, interim until E3 finishes. Pick-place last-5 success:
+  - **shift vs full**: training +0.031 [−0.213, +0.240], held-out +0.003, trajectory −0.073 [−0.195, +0.045]; all within margin. AUC −0.016 / −0.001 / −0.042. Time to 0.5 is 807k → 713k, with reach 3/3 vs 1/3.
+  - **shift vs crop**: training +0.038, held-out +0.009, trajectory −0.037; all within margin. Early training AUC −0.030 [−0.043, −0.007].
+  - Representation, shift vs full (pick-place margins): **9 worse, 0 better**, mainly rendering (psnr −0.79, psnr_moving −1.71, psnr_near −0.88) and retrieval_traj (−0.101). Shift vs crop: 9 worse, 3 better.
+
+  Across both development tasks, shift leaves RL within the historical margins, with mixed signs. Its encoders render and retrieve worse than the full and crop encoders, and on hammer it loses crop's held-out gain (worse vs crop, −0.102). Configs differ only in `vision.export_path`.
