@@ -3763,3 +3763,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Seed 0's coarse density stayed dead, as documented; the fine network carries the reconstruction.
   - Acceptance report: docs/BASELINES.md "Hammer acceptance report: SNeRL".
   - Decision: following the DynaMo/3D-MVP precedent, the eight-task SNeRL runs wait for the user's go-ahead. Their cost is about 525 GPU-h of pretraining (7 tasks × 75 h) plus 24 DrM runs; nothing has been registered.
+- 22:20 (10-19) **Results report published** as a private Claude Artifact: https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73.
+  - Cutoff 2026-10-19 22:05 KST, commit 1db463b.
+  - Reporting only: no training, and no job was stopped or changed. Rollouts are fresh inference from final policies on one authorized MIG instance at nice 15.
+  - Workspace `reports/results-artifact/` (git-excluded): extraction and figure scripts, figures (SVG/PDF/PNG + CSV), data JSON and rollout videos.
+  - Plotted values reproduce the registered reports: IQM and per-task means match `baselines-eight-task-report-20261018-221713.json`, and Stage 2 verdicts are asserted against `stage2-report-20261017-012034.json`.
+  - Codex reviewed the aggregation code (IQM, stratified and paired bootstrap, historical rule) and found no defects. Its four wording caveats are disclosed on the page: censoring in time-to-0.5, pointwise three-seed bands, the in-sample R_ref, and horizon alignment for interim runs (none remain after SNeRL completed).

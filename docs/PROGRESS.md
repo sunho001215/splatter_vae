@@ -49,7 +49,8 @@ diff inline.
   `runs/setup/rl-report-20261015-203425.json`; no frozen-method change follows from final results.
 - **New baselines, eight tasks (2026-10-18 22:17):** DynaMo and 3D-MVP A/B are 72/72 complete
   (`runs/setup/baselines-eight-task-report-20261018-221713.json`; docs/BASELINES.md "Eight-task results"). SNeRL's hammer
-  pretraining is at step 1.67M of 2.4M; its sanity arms, step 4 and eight-task runs follow.
+  acceptance passed 2026-10-19 (sanity 0.589 vs random 0.013; docs/BASELINES.md); its eight-task runs await the user's go-ahead.
+- **Results report (2026-10-19 22:05 KST, commit 1db463b):** Claude Artifact https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73 (private); sources and scripts in `reports/results-artifact/` (git-excluded).
 - **Follow-ups E1/E2/E3 complete (2026-10-19 20:19):** 138/138 jobs; consolidated report docs/FOLLOWUP_REPORT.md (tables docs/FOLLOWUP_TABLES.md, JSON runs/setup/followup-report-20261019-201913.json).
 - **Local GPU authorization (user, 2026-10-19):** only the 8 MIG 1g.24gb instances of GPU 4 (`GPU-76871c16-...`) and GPU 5 (`GPU-d09f0338-...`); GPU 6 (`GPU-6b33eef2-...`) revoked. Remote: the same 4 GPUs. Record `runs/setup/gpu-allowlist-20261019.json`; provenance index `runs/setup/local-device-provenance.json`.
 - Local <=150GB full cgroup charge; measured job-by-job admission (trainer10.77GB PSS plus dataset page cache),
@@ -423,6 +424,9 @@ diff inline.
 | 2026-10-19 19:58 | remote 2.90 TB (s4-drm-cnnnoshift-peg-insert-side-s2002 completed with final eval at 1000k; remote replay retained) |
 | 2026-10-19 20:19 | remote 2.89 TB (s4-drm-cnnnoshift-peg-unplug-side-s2002 completed with final eval at 1000k; remote replay retained) |
 | 2026-10-19 20:19 | remote 2.89 TB (s4-drm-cnnnoshift-pick-place-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 21:53 | remote 2.89 TB (bxs-snerl-hammer-pre-s1000-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-19 21:53 | remote 2.89 TB (bxs-snerl-hammer-pre-s1001-rem-b completed with final eval at 400k; remote replay retained) |
+| 2026-10-19 21:59 | remote 2.89 TB (bxs-snerl-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
