@@ -167,12 +167,26 @@ def test_cuda_environment_rejects_duplicates_and_accepts_selected_set(monkeypatc
 
 def test_local_mig_instances_map_to_their_parent_gpus(monkeypatch):
     assert tuple(guard.MIG_DEVICES) == guard.APPROVED_HOST_GPUS["local"]
-    assert len(guard.MIG_DEVICES) == 12 and len(set(guard.MIG_DEVICES)) == 12
+    assert len(guard.MIG_DEVICES) == 8 and len(set(guard.MIG_DEVICES)) == 8
     for index, (uuid, (parent, instance, slot)) in enumerate(guard.MIG_DEVICES.items()):
         assert uuid.startswith("MIG-") and parent == guard.LOCAL_MIG_PARENTS[index // 4]
         assert (instance, slot) == (3 + index % 4, index % 4) and guard.cuda_uuid(uuid) == parent
     for parent in guard.LOCAL_MIG_PARENTS:
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", parent)
+        with pytest.raises(guard.GPUIsolationError, match="not an allowed"):
+            guard.visible_device_uuids()
+
+
+def test_revoked_local_gpu_and_its_mig_instances_are_rejected(monkeypatch):
+    # GPU 6 and its four MIG instances lost their authorization on 2026-10-19 (user); only GPUs 4/5 remain.
+    revoked = ["GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b", "MIG-f30be823-f40d-5292-9474-427746dd3703",
+               "MIG-908fda99-f524-5319-ae5a-9f534a881ee1", "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
+               "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29"]
+    assert guard.LOCAL_MIG_PARENTS == ("GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
+                                       "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639")
+    for uuid in revoked:
+        assert uuid not in guard.MIG_DEVICES and all(uuid not in gpus for gpus in guard.APPROVED_HOST_GPUS.values())
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", uuid)
         with pytest.raises(guard.GPUIsolationError, match="not an allowed"):
             guard.visible_device_uuids()
 

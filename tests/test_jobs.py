@@ -243,6 +243,10 @@ def test_reset_preserves_attempt_high_water_for_the_next_local_launch(tmp_path, 
     monkeypatch.setattr(jobs, "source_identity", lambda: {})
     jobs.tick(queue, registry, runs, usage={}, available_gb=100)
     assert launched == [5] and jobs.read_registry(registry)["a"]["attempts"] == 5
+    # device provenance: the MIG instance and its authorized parent GPU
+    event = [json.loads(line) for line in registry.read_text().splitlines()][-1]
+    assert event["event"] == "launched" and event["gpu"] == GPU4
+    assert event["gpu_parent"] == jobs.MIG_DEVICES[GPU4][0] == "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce"
 
 
 def test_session_id_matches_the_kernel():

@@ -16,7 +16,7 @@ import yaml
 
 APPROVED_HOST_GPUS = MappingProxyType(
     {
-        # MIG 1g.24gb instances of local GPUs 4/5/6 (user, 2026-10-16), in nvidia-smi -L order.
+        # MIG 1g.24gb instances of local GPUs 4/5 (user, 2026-10-19; GPU 6 revoked), in nvidia-smi -L order.
         "local": (
             "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
             "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
@@ -26,10 +26,6 @@ APPROVED_HOST_GPUS = MappingProxyType(
             "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
             "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
             "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
-            "MIG-f30be823-f40d-5292-9474-427746dd3703",
-            "MIG-908fda99-f524-5319-ae5a-9f534a881ee1",
-            "MIG-3b813dc6-21e9-5e2e-bc3c-4aa8659b51a8",
-            "MIG-42dd67ec-ecc1-5c8f-b9a2-22e9a48a8c29",
         ),
         "remote": (
             "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
@@ -42,7 +38,6 @@ APPROVED_HOST_GPUS = MappingProxyType(
 LOCAL_MIG_PARENTS = (
     "GPU-76871c16-ff1d-f7b1-cdf5-fabbaf9df8ce",
     "GPU-d09f0338-71b9-d915-3c7f-e99754a3b639",
-    "GPU-6b33eef2-80c5-547e-6a61-7ab81c14d63b",
 )
 # MIG UUID -> (parent GPU UUID, GPU instance ID, MIG device index on the parent). CUDA reports the parent GPU's
 # UUID for a MIG device, and EGL lists one device per MIG instance in this order, all mapping to CUDA ordinal 0.

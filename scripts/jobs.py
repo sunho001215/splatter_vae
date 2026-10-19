@@ -670,7 +670,9 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         else:
             identity = source_identity() if identity is None else identity
             pid = launch(job, gpu, attempt, runs)
+            # Device provenance: the MIG instance and its parent physical GPU (CUDA reports the parent's UUID).
             record({"event": "launched", "id": job["id"], "host": "local", "pid": pid, "gpu": gpu,
+                    "gpu_parent": MIG_DEVICES[gpu][0] if gpu in MIG_DEVICES else gpu,
                     "attempt": attempt, "mem_gb": float(job["mem_gb"]), "ram_gb": need,
                     "disk_gb": float(job.get("disk_gb", 0)), "job_sha256": job_fingerprint(job), **identity}, registry)
             resource["available"] -= need
