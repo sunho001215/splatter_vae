@@ -1,0 +1,53 @@
+{
+ "recorded_local": "2026-10-19T19:05:26.781006+09:00",
+ "local": {
+  "free_gb_at_request": 363.1,
+  "free_gb_when_target_set": 1018.6,
+  "target_free_gb": 500,
+  "free_gb_before_stage0": 1007.9,
+  "free_gb_after_stage0": 1078.5,
+  "reclaimed_gb_by_category": {
+   "partial_download": 49.5,
+   "pytest_tmp": 6.4,
+   "worktree_cache_copy": 14.7
+  },
+  "reclaimed_gb_total": 70.6,
+  "files_or_trees_deleted": 5487,
+  "highest_stage_reached": 0,
+  "not_entered": "stages 1-3 (target met; free space had risen through non-campaign activity before any deletion)",
+  "retained": {
+   "replay_buffers_gb": 182.0,
+   "rl_policy_snapshots_gb": 416.1,
+   "checkpoints_gb": 71.0,
+   "wandb_gb": 52.8,
+   "media_gb": 24.9,
+   "uv_package_cache_gb": 9.6,
+   "partials_of_running_runs": 691,
+   "partials_of_failed_runs": 35
+  }
+ },
+ "remote": {
+  "free_gb_before": 1804.1,
+  "free_gb_after": 2926.4,
+  "target_free_gb": 1500,
+  "reclaimed_gb_measured": 1122.3,
+  "replay_files_deleted": 318,
+  "runs": 138,
+  "stages": "stage 1 (completed replay) only; stages 0/2/3 not entered (above target)",
+  "retained_replay_runs": {
+   "s4-drm-cnn-bin-picking-s2000-r2": "registry status failed host remote",
+   "s4-drm-cnn-bin-picking-s2000-r3": "registry status failed host remote",
+   "s4-drm-cnnnoshift-peg-insert-side-s2002": "container running",
+   "s4-drm-cnnnoshift-peg-unplug-side-s2002": "container running",
+   "s4-drm-cnnnoshift-pick-place-s2002": "container running",
+   "s4-drm-cnnnoshift-stick-push-s2002": "container running"
+  },
+  "kept": "all remote checkpoints, policy snapshots, final models, results, logs and W&B"
+ },
+ "uncertain": [
+  "remote replay of failed, superseded runs s4-drm-cnn-bin-picking-s2000-r2/-r3 (kept: failed = protected)",
+  "35 local partial downloads of failed runs (kept)"
+ ],
+ "blocked": [],
+ "integrity": "9 active jobs running after cleanup (4 CNN no-shift pairs + SNeRL pretrain), 0 unknown, no new failures; running trainers' replays intact; local runs/ touched only for partial downloads"
+}

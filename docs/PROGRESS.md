@@ -62,8 +62,7 @@ diff inline.
   compared arms may span hosts and existing references stay valid. No host-equivalence or migration-comparison
   gate. Record every run's host; GPU/security/resource restrictions remain. Earlier placement rules are superseded.
 - Frozen method/hyperparameters do not change; six non-development RL tasks never inform method decisions.
-- Health notes only on change. Completed replays are currently retained: automatic runtime-computed deletion
-  was removed after a permission gate. Disk reservations/floors remain enforced; W&B never blocks numerical work.
+- Health notes only on change. Replays: completed remote replay deleted by user-authorized cleanup 2026-10-19 (318 files, 138 runs; local completed replay kept, target met); records runs/setup/disk-cleanup-20261019/. Disk reservations/floors remain enforced; W&B never blocks numerical work.
 
 ## Source and remote status
 - Main sourcec5a7571 is integrated/pushed: intentional-stop accounting/refused-launch reconciliation plus bounded,
@@ -420,6 +419,10 @@ diff inline.
 | 2026-10-19 13:13 | 669GB (s2rl-shift-pick-place-s1000 completed with final eval at 1000k; replay retained) |
 | 2026-10-19 13:41 | remote 2.02 TB (s4-drm-cnnnoshift-pick-place-s2001 completed with final eval at 1000k; remote replay retained) |
 | 2026-10-19 14:11 | remote 1.99 TB (s4-drm-cnnnoshift-stick-push-s2001 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 15:57 | remote 1.91 TB (s4-drm-cnnnoshift-coffee-push-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 16:52 | remote 1.87 TB (s4-drm-cnnnoshift-hammer-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 17:12 | remote 1.86 TB (s4-drm-cnnnoshift-bin-picking-s2002 completed with final eval at 1000k; remote replay retained) |
+| 2026-10-19 17:17 | remote 1.86 TB (s4-drm-cnnnoshift-door-open-s2002 completed with final eval at 1000k; remote replay retained) |
 
 ## Next actions
 1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity

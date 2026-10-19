@@ -1,0 +1,19 @@
+{
+ "recorded_local": "2026-10-19T19:04:50.276275+09:00",
+ "request": "user 2026-10-19 ~19:20: apply the same staged process, priorities, checks and retention rules to the remote; stop once sufficient space is recovered",
+ "filesystem": "remote /dev/nvme0n1p3 at / (7.53 TB); campaign root /home/compu/kaist/sunho",
+ "policy_sources": {
+  "remote_disk_floor_fraction": 0.15,
+  "source": "experiments/queue.yaml hosts.remote.disk_floor_fraction; docs/PROGRESS.md Rules in force (remote >= 15% free disk)"
+ },
+ "floor_bytes": 1129338552729,
+ "expected_remote_campaign_writes_gb": 200,
+ "target_free_gb": 1500,
+ "target_reason": "15% floor (1129 GB) + ~200 GB expected remote campaign writes (SNeRL pretrains/RL, remaining E3) + ~170 GB headroom; fixed before further deletion",
+ "free_before_any_cleanup_gb": 1804.1,
+ "free_after_stage1_gb": 2926.4,
+ "stages": {
+  "1 (completed replay, separately requested)": "done: 318 files, 138 runs",
+  "0, 2, 3": "not entered: free space above target (it was already above target before stage 1)"
+ }
+}
