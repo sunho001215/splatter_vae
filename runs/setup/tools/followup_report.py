@@ -83,7 +83,10 @@ def run(rid):
     assert {r['episodes'] for r in rows} == {240}, rid
     final = json.loads((RUNS / rid / 'final.json').read_text())
     assert final['completed'] is True and final['steps'] == 1_000_000, rid
-    prov = json.loads((RUNS / rid / 'provenance.json').read_text())
+    # early final-comparison runs predate provenance.json: host from the scheduler registry
+    path = RUNS / rid / 'provenance.json'
+    prov = json.loads(path.read_text()) if path.is_file() else \
+        {'host': STATE[rid]['host'], 'git_commit': 'pre-provenance'}
     out = {'eval_jsonl_sha256': sha(eval_path(rid)), 'host': prov['host'], 'git_commit': prov['git_commit'],
            'curves': {}, 'scores': {}}
     for kind, paths in PATHS.items():
