@@ -23,7 +23,7 @@ diff inline.
 | task-mvahby60-5isaes | patch proposal: port the remote verification bootstrap (native suite + GPU isolation in the image) from WIP `8f8f952` | `.worktrees/verify` | applied with manual fixes (7 rejected hunks, removed its campaign-path reuse check, reserved `verify-` ids); suite pending |
 | task-mvajgv75-oizyou | adversarial review of the adapted verification bundle | `.worktrees/verify` | asked for more context; no findings |
 | task-mvc5ta28-tp0zrd | review of the follow-up augmentation changes (`aug.shift`, `agent.random_shift`) and experiment configurations (inline diff + registration excerpts) | `.worktrees/codex-followup` | no code findings; 3 analysis-plan points adopted before registration |
-| codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: pending |
+| codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: no findings; merged a1815c4 |
 
 ## Current phase
 - **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,
