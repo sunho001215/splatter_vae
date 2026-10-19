@@ -1,0 +1,6 @@
+[gpu_guard] cuda:0 -> MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[snerl/pretrained] runs/s4-snerl-hammer-rem-b/encoder.pt on {'2': 2058, '6': 1978} validation windows; GPUs [{'index': 0, 'uuid': 'MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70', 'name': 'NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb'}]
+[snerl/pretrained] done in 226.8 s -> /home/ws/ws/splatter4d/runs/bxrepr/snerl-hammer-stack/snerl/pretrained/summary.json
+[snerl/random_init] runs/s4-snerl-hammer-rem-b/encoder_init.pt on {'2': 2058, '6': 1978} validation windows; GPUs [{'index': 0, 'uuid': 'MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70', 'name': 'NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb'}]
+[snerl/random_init] done in 221.3 s -> /home/ws/ws/splatter4d/runs/bxrepr/snerl-hammer-stack/snerl/random_init/summary.json

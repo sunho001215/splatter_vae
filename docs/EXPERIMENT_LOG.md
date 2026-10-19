@@ -3745,3 +3745,13 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - **Preserved as uncertain:** 40 pretraining runs whose completion record says 200k but whose checkpoints end at 100k–140k (14.7 GB); failed pretraining runs; and timing/smoke RL runs with incomplete histories or no `final.json`.
   - W&B files, datasets, source code and the remote are untouched. The follow-up report still runs on the remaining records.
 - 20:19 (10-19) **Follow-ups E1–E3 complete (138/138 jobs). Consolidated report: docs/FOLLOWUP_REPORT.md; tables in docs/FOLLOWUP_TABLES.md; JSON `runs/setup/followup-report-20261019-201913.json`.** E3 (CNN without RL random shift, 8 tasks × 3 seeds): training-camera last-5 success −0.543 [−0.606, −0.480] (IQM 0.718 → 0.060); worse on all 8 tasks under the historical rule. Trajectory success tracks the training drop (difference-in-differences −0.052 [−0.138, +0.028]). Held-out success is at the floor in both arms, so its difference-in-differences (+0.547) is mechanical. Conclusion: general learning degradation, with no evidence of an additional viewpoint-specific loss. E1 and E2 are as logged at 01:44 and 13:13. Configs differ from the controls only in the intended keys. The follow-up report tool now falls back to the registry host for the one older control run that has no provenance.json. Attribution only; the frozen method is unchanged.
+- 20:25 (10-19) SNeRL hammer pretraining `s4-snerl-hammer-rem-b` complete (2.4M steps, remote; results synced). Acceptance continues as registered:
+  - the pretrained sanity arms `bxs-snerl-hammer-pre-s100{0,1,2}-rem-b` (+eval) are released by that dependency on the remote; the random-init arms are already done;
+  - the step 4 representation evaluation runs locally on authorized MIG-c4ec2a95 (GPU 4) and MIG-05a151e7 (GPU 5), with the same feature readouts as DynaMo/3D-MVP: `runs/bxrepr/snerl-hammer-{stack,newest}`.
+- 20:40 (10-19) SNeRL step 4, hammer (`runs/bxrepr/snerl-hammer-{newest,stack}`, local MIG-c4ec2a95 / MIG-05a151e7). Newest-frame readout, stride 2, pretrained vs random init:
+  - training-camera retrieval top-1 0.916 vs 0.016 (ours 0.94);
+  - hand-position R² on training cameras 0.887 vs 0.534 (ours 0.97);
+  - effective rank 5.9 vs 3.2 (the official 63-d mean-pooled readout);
+  - held-out-camera retrieval 0.285.
+
+  Caveat as for 3D-MVP A: SNeRL takes three training-camera RGB views plus poses (privileged multi-view input), so retrieval on shared cameras is inflated. The pretrained sanity arms `bxs-snerl-hammer-pre-s100{0,1,2}-rem-b` are running on the remote. The acceptance report follows when they finish.
