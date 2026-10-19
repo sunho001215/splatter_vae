@@ -3770,3 +3770,13 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Plotted values reproduce the registered reports: IQM and per-task means match `baselines-eight-task-report-20261018-221713.json`, and Stage 2 verdicts are asserted against `stage2-report-20261017-012034.json`.
   - Codex reviewed the aggregation code (IQM, stratified and paired bootstrap, historical rule) and found no defects.
   - A second Codex pass checked fairness and caption accuracy. Seven wording fixes were applied: the 3D-MVP A pass is now stated as within margin; "level with", "no effect" and "not viewpoint-specific" were replaced by interval statements; T=1 is described as a bundled change; DynaMo held-out is given as 0.0204. Its four wording caveats are disclosed on the page: censoring in time-to-0.5, pointwise three-seed bands, the in-sample R_ref, and horizon alignment for interim runs (none remain after SNeRL completed).
+
+## 2026-10-20 00:25 — SNeRL eight-task runs registered (user go-ahead), before any result
+
+- The user approved the eight-task SNeRL runs after its hammer acceptance report. Registered before any result: `runs/setup/baselines-snerl-eight-task-registration-20261020.json` (55 jobs; tool `register_snerl_eight_task_20261020.py`).
+  - **7 remote pretrains** `s4-snerl-<task>-rem-b`: official recipe configs unchanged (2.4M steps, seed 0), release e4206f1, the hammer run's resources. Hammer reuses the accepted `s4-snerl-hammer-rem-b` encoder (sha recorded).
+  - **24 DrM 1M pairs** `s4-drm-snerl-<task>-s200{0,1,2}` (+eval 6 × 8): `snerl` encoder config, i.e. three training-camera RGB views + poses (privileged), the same protocol as every final-comparison row.
+- Placement (host-neutral):
+  - Pretraining runs on the remote under the existing load rule (load 1.0 each, limit 2.8, so up to 2 per GPU). On one full GPU SNeRL ran about 2× faster than the ~6-day estimate on one MIG slice, so it does not saturate a full GPU.
+  - DrM runs on local MIG through the local baseline driver (registration added; previous version kept as `baseline_local_driver.before-snerl-eight-task-20261020.py`). It reads the synced exports, as the DynaMo / 3D-MVP B rows did. SNeRL DrM is light: 400k steps took 1.4 h on the remote at 0.16 GB GPU memory.
+- Expected: roughly 3–5 days for the pretraining, depending on GPU sharing. The hammer pairs start now. No frozen-method or protocol change.

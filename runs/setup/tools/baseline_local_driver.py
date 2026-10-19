@@ -24,7 +24,9 @@ CAP = 140_000_000_000
 # kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
 # Eight-task runs (2026-10-17): the local rows of baselines-eight-task-registration-20261017.json (DynaMo and 3D-MVP
 # condition B DrM; their pretraining exports come from the remote).
-REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json']
+# SNeRL eight-task runs (user go-ahead 2026-10-20): the local DrM rows of baselines-snerl-eight-task-registration-20261020.json.
+REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json',
+                 'baselines-snerl-eight-task-registration-20261020.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
