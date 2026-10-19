@@ -49,5 +49,80 @@
   "35 local partial downloads of failed runs (kept)"
  ],
  "blocked": [],
- "integrity": "9 active jobs running after cleanup (4 CNN no-shift pairs + SNeRL pretrain), 0 unknown, no new failures; running trainers' replays intact; local runs/ touched only for partial downloads"
+ "integrity": "9 active jobs running after cleanup (4 CNN no-shift pairs + SNeRL pretrain), 0 unknown, no new failures; running trainers' replays intact; local runs/ touched only for partial downloads",
+ "local_second_request": {
+  "recorded_local": "2026-10-19T19:17:09.196017+09:00",
+  "request": "user 2026-10-19 ~19:10: local-only deletion of completed replay, obsolete RL policy snapshots, unneeded intermediate checkpoints; no stopping rule",
+  "free_gb_before": 1059.6,
+  "free_gb_after": 1666.5,
+  "reclaimed": {
+   "replay": {
+    "files": 133,
+    "allocated_gb": 169.8,
+    "df_delta_gb": 169.8,
+    "skipped_at_recheck": 0
+   },
+   "policy_snapshot": {
+    "files": 14549,
+    "allocated_gb": 410.7,
+    "df_delta_gb": 410.7,
+    "skipped_at_recheck": 0
+   },
+   "checkpoint": {
+    "files": 843,
+    "allocated_gb": 26.4,
+    "df_delta_gb": 26.4,
+    "skipped_at_recheck": 0
+   }
+  },
+  "kept": {
+   "final RL policy snapshot": {
+    "files": 181,
+    "gb": 4.7
+   },
+   "RL run not eligible: evaluation history incomplete": {
+    "files": 87,
+    "gb": 10.9
+   },
+   "RL run not eligible: no final.json": {
+    "files": 80,
+    "gb": 1.8
+   },
+   "final pretrained model": {
+    "files": 61,
+    "gb": 2.0
+   },
+   "pretraining resume state / non-step file": {
+    "files": 61,
+    "gb": 2.0
+   },
+   "100k-multiple milestone (reported endpoints)": {
+    "files": 48,
+    "gb": 1.5
+   },
+   "pretraining run not eligible: completion not verified": {
+    "files": 448,
+    "gb": 14.7
+   },
+   "pretraining run not eligible: status failed": {
+    "files": 46,
+    "gb": 1.4
+   },
+   "no recorded evaluation for this step": {
+    "files": 1,
+    "gb": 0.0
+   },
+   "referenced in campaign records": {
+    "files": 2,
+    "gb": 0.1
+   }
+  },
+  "post_checks": {
+   "done_rl_runs_with_final_snapshot_and_latest_pt": 195,
+   "exports": 49,
+   "eval_histories": 365,
+   "followup_report_runs": true
+  },
+  "untouched": "W&B files, datasets, source code, remote files, eval histories, configs, provenance, metrics, reports"
+ }
 }
