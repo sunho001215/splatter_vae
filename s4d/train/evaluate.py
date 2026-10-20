@@ -37,6 +37,17 @@ RETRIEVAL_STATES = 64
 HELDOUT_GROUPS = {"eval": "heldout", "near": "near", "traj": "traj"}
 
 
+def encoder_images(batch: dict, key: str) -> torch.Tensor:
+    """The images an encoder may see for camera group ``key``: the history window under the future objective
+    (``history_<key>``, required: a future batch never falls back to its target window), else the window itself.
+    Render targets and ground truth always stay ``batch[key]``."""
+    if "history_images" in batch:
+        if f"history_{key}" not in batch:
+            raise KeyError(f"future-objective batch without history_{key}: the encoder must not see target frames")
+        return batch[f"history_{key}"]
+    return batch[key]
+
+
 def encode_states(model: Model, images_u8: torch.Tensor) -> torch.Tensor:
     """images (B,T,V,3,H,W) uint8 -> slots (B,V,K,Ds) without masking."""
     B, T, V = images_u8.shape[:3]
@@ -262,7 +273,7 @@ class Evaluator:
         """(B,V,D) CPU states of one camera group of a batch: the training cameras (``group`` "") or a held-out
         group (a ``HELDOUT_GROUPS`` prefix). Every retrieval and probe state comes from here; a baseline evaluator
         overrides it (``s4d/baselines/representation.py``)."""
-        images = batch[f"{group}_images" if group else "images"].to(self.device)
+        images = encoder_images(batch, f"{group}_images" if group else "images").to(self.device)
         return _cpu(encode_states(model, images).flatten(2))
 
     def representation(
@@ -402,7 +413,7 @@ class Evaluator:
         img01 = batch["images"].float() / 255.0
         depth_scale = self.far - self.near
         encoder = model.encoder
-        score_bv = batch["motion_score"][b].permute(1, 0, 2, 3, 4).to(self.device)  # (V,T,1,H,W)
+        score_bv = batch.get("history_motion_score", batch["motion_score"])[b].permute(1, 0, 2, 3, 4).to(self.device)
         vis_mask = sample_tube_mask(
             encoder.patch_scores(score_bv), encoder.cfg.mask_ratio, encoder.cfg.motion_patch_threshold
         ).cpu()
@@ -508,9 +519,9 @@ class Evaluator:
             self.logger.save_png(out_dir / "heldout.png", panel)
             media["panels/heldout"] = W.image(panel, "held-out cameras: GT | render | rendered depth (never trained on)")
         # cross-source consistency: decode from every camera, render to train cam 0 at t0
-        slots_all = encode_states(model, batch["images"][b : b + 1].to(self.device))[0]
+        slots_all = encode_states(model, encoder_images(batch, "images")[b : b + 1].to(self.device))[0]
         if "eval_images" in batch:
-            extra = encode_states(model, batch["eval_images"][b : b + 1].to(self.device))[0]
+            extra = encode_states(model, encoder_images(batch, "eval_images")[b : b + 1].to(self.device))[0]
             slots_all = torch.cat((slots_all, extra), dim=0)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             gs_all = model.decoder(slots_all)

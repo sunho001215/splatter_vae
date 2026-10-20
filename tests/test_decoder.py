@@ -25,7 +25,10 @@ def _config(single_group=False):
 
 
 def test_decoder_forward_requires_only_slots():
-    assert set(inspect.signature(GaussianDecoder.forward).parameters) == {"self", "slots"}
+    # slots, plus the recorded future actions of the action-conditioned variant (optional); never pixels or cameras
+    params = inspect.signature(GaussianDecoder.forward).parameters
+    assert set(params) == {"self", "slots", "actions", "action_count"}
+    assert params["actions"].default is None and params["action_count"].default is None
     decoder = GaussianDecoder(_config())
     with pytest.raises(TypeError):
         decoder(torch.randn(1, 2, 12), cameras=torch.eye(4))
