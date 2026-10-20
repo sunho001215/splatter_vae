@@ -27,8 +27,9 @@ CAP = 140_000_000_000
 # SNeRL eight-task runs (user go-ahead 2026-10-20): the local DrM rows of baselines-snerl-eight-task-registration-20261020.json.
 # Variant action_future (k = history = future stride) was CANCELLED and superseded on 2026-10-20 (user instruction;
 # runs/setup/actfut-cancellation-20261020.json): its registration is no longer admitted.
+# Its replacement future_k2 (fixed history stride 2, future stride k2 in 1..6; runs/setup/afk2-definition-20261020.json).
 REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json',
-                 'baselines-snerl-eight-task-registration-20261020.json']
+                 'baselines-snerl-eight-task-registration-20261020.json', 'afk2-registration-hammer-pick-place-20261020.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')

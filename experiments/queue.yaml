@@ -32932,5 +32932,449 @@ jobs:
   disk_gb: 1
   required_results:
   - eval.jsonl
+- id: afk2-seed0-hammer-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/future_k2.yaml
+  - --name
+  - afk2-seed0-hammer-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 1
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: afk2-export-seed0-hammer-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/afk2-seed0-hammer-200k
+  - --checkpoint
+  - runs/pretrain/afk2-seed0-hammer-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/afk2-export-seed0-hammer-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - afk2-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-hammer-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/afk2-drm-hammer-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/afk2-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-hammer-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/afk2-drm-hammer-s2000
+  - --train-job
+  - afk2-drm-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/afk2-drm-hammer-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-hammer-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/afk2-drm-hammer-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/afk2-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-hammer-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/afk2-drm-hammer-s2001
+  - --train-job
+  - afk2-drm-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/afk2-drm-hammer-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-hammer-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/afk2-drm-hammer-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/afk2-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-hammer-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/afk2-drm-hammer-s2002
+  - --train-job
+  - afk2-drm-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/afk2-drm-hammer-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: afk2-seed0-pick-place-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/future_k2.yaml
+  - --name
+  - afk2-seed0-pick-place-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 1
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: afk2-export-seed0-pick-place-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/afk2-seed0-pick-place-200k
+  - --checkpoint
+  - runs/pretrain/afk2-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/afk2-export-seed0-pick-place-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - afk2-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-pick-place-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/afk2-drm-pick-place-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/afk2-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-pick-place-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/afk2-drm-pick-place-s2000
+  - --train-job
+  - afk2-drm-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/afk2-drm-pick-place-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-pick-place-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/afk2-drm-pick-place-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/afk2-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-pick-place-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/afk2-drm-pick-place-s2001
+  - --train-job
+  - afk2-drm-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/afk2-drm-pick-place-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-pick-place-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/afk2-drm-pick-place-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/afk2-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - afk2-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  id: afk2-drm-pick-place-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/afk2-drm-pick-place-s2002
+  - --train-job
+  - afk2-drm-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/afk2-drm-pick-place-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
 
 host_ram_reserve_gb: 60

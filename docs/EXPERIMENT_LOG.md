@@ -3835,3 +3835,10 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - `history_stride` / `future_stride` throughout dataset, contract, decoder interface, loss path, evaluator (metric keys `@f<k2>`; retrieval and probes at the history stride), export metadata and the RL spacing check;
   - configuration validation (`check_objective`); the superseded config is removed (Git keeps it);
   - tests renamed and extended (test_future_stride.py, 20 tests).
+- 18:15 (10-20) future_k2 merged as 220cf6b: full suite 949/0/0/0 (test_future_stride.py, 20 tests); the launch gate's fingerprint matches.
+  - Codex review: the relaunch path is closed (only `pending` jobs are eligible; no driver lists the cancelled registration). Two fixes were applied: per-k2 evaluation loaders now share the anchors of the longest horizon, and cancellation finalisation is fenced under the registry lock, accepting only a confirmed checkpoint pause.
+  - Smoke runs (600 steps, local MIG) are finite: pick-place loss 4.98 → 3.33 at 0.40 s/step. Step-0 retrieval is identical under the k2 = 2 and 6 keys, so encoder metrics use the history stride.
+  - `afk2_checks.py` passes on both smoke checkpoints for k2 = 1..6 (`runs/setup/afk2-pilot/`). The first run's alignment failure for k2 ≠ 2 was a bug in the check script (history frames read with step k2); it was fixed before any training result.
+- Registered `afk2-seed0-{hammer,pick-place}-200k` + exports + DrM 1M × seeds 2000–2002 (+ evaluators), all local (`runs/setup/afk2-registration-hammer-pick-place-20261020.json`).
+  - The protocol was checked against the frozen method's registered rows: 200k steps, seed 0, the same four overrides, and the RL protocol unchanged.
+  - The local driver admits them.
