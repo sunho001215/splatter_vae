@@ -3869,3 +3869,40 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Codex review: the protocol replicates the pilots and the reference. The accounting is sound for this driver. Cross-driver over-admission would need the Stage 2 driver to admit work, but all its jobs are done.
   - `afk2-seed0-bin-picking-200k` launched at 22:40 on MIG-8da55219. The other five start job by job as RAM headroom appears; each pretrain needs about 11 GB plus its 16–23 GB dataset cache.
 - Placement: local only for now. The remote GPUs run the 7 SNeRL pretrains (load limit 2 per GPU, 7 of 8 slots in use). Running future_k2 there needs a new accepted release, which would also block SNeRL retries on the current release. Revisit when the SNeRL pretrains finish (from about 10-22).
+- 23:20 (10-20) Results artifact: corrected t-SNE protocol (user instruction 2026-10-20 ~22:25; inference only; scripts in `reports/results-artifact/src/tsne_demo*.py`).
+  - Demonstration: one per task by a fixed rule (lowest-numbered validation episode that is a zero-noise scripted expert and succeeds). This is ep098 on all eight tasks, 34–115 steps.
+  - Windows (t−4, t−2, t) with RL reset padding.
+  - Trajectories: 6 training and 4 held-out cameras from the stored frames. The two RL moving paths (base train1, pose index t//2 mod 72) are re-rendered by state replay. `replay_check` passes, and the RL camera convention reproduces stored train1 exactly.
+  - Plots, one joint t-SNE each: training (6 cameras); held-out camera + registered nearest training camera (eval0–4, eval1–5, eval2–2, eval3–3); moving path + train1.
+  - Features: each method's RL head input. Frozen exports go through the RL adapter in eval mode. The DrM CNN uses its RL-trained 1M snapshot (seed 2000; bin-picking -r4), copied from the remote at 100 KB/s with sha256 verification. The multi-view encoders' columns share 2 of 3 cameras.
+  - Original-space metrics (8-task means, sync ±2):
+    - ours: training 0.98 (same-time ratio 0.15), moving 0.98, held-out 0.42 (eval0 0.10, eval1–3 ≈ 0.5);
+    - ReViWo: 0.94 / 0.56 / 0.12; SinCro: 0.67 / 0.52 / 0.16; DynaMo: chance;
+    - no-synthetic-view ablation: held-out 0.17.
+- 23:20 (10-20) Rendering diagnosis (inference on the existing matched renders; `render_diag_*.py`).
+  - Correctness: replay reproduces every ground-truth image (≤ 0.006 % of pixels > 8/255). The ±2 px shift gain is ≤ 0.12 dB for every method.
+  - Region partition from replayed segmentation, with static depth bands.
+  - Training cameras vs SinCro (7 tasks, hammer excluded because SinCro omits the robot there): the far static band (≥ 1.3 m, ~10 % of pixels) carries 64 % [58–72 %] of the MSE gap. Vs SNeRL it carries more than the whole gap, because ours is better on the robot.
+  - Held-out: the whole gap to SNeRL comes from far pixels no training camera saw (only 29–44 % of the far band was seen; ours 6.7 vs 10.3 dB on unseen pixels). On every observed region ours is equal or better.
+  - Ours has the lowest region-crop LPIPS on robot, object and moving crops in every camera group.
+  - Ours, measured:
+    - far-band depth error: training median 4.5 cm; held-out 1.04 m, 67 cm too near, 15 % uncovered;
+    - static Gaussians: 49–71 % at the 0.08 m scale cap, 20–47 % hidden;
+    - static sharpness 0.36 vs 0.55–0.67.
+  - Goal markers are present in the stored RGB and depth, but ours does not reconstruct them on door-open (6 % vs 94–96 %) or stick-push (11 % vs 71–75 %). The pick-place marker is missed by all methods.
+  - Hypotheses and training proposals are recorded in the artifact as not run.
+- Placement note: the CNN snapshot fetch used the established rate-limited single-file rsync.
+  - Analysis memory was kept small: report-file page cache released with fadvise, and the CNN t-SNE fits run with a single worker.
+  - A first 4-worker refit, about 10 GB per worker on the 104k-d CNN features, was stopped by me to protect the 150 GB budget.
+- 00:20 (10-21) Results artifact version 8 published (same URL), after a Codex review of the t-SNE logic, the rendering diagnostics and claim strength. Revisions made:
+  - **Metrics.** Trajectory metrics now use one reference z-score per (method, task) over all 12 trajectories; the per-plot z-score is kept only for the projection. The exact chance (5T−6)/T² (8-task mean 0.079), within-trajectory spread and covariance trace were added.
+  - **Claims narrowed.** SinCro is intermediate (0.68), not camera-organised. Held-out alignment for ours is partial and camera-dependent (0.40; eval0 0.10, near chance). One demonstration per task. CNN added: 0.09 / 0.11 / 0.50.
+  - **Moving paths.** The windows match the RL env's own stacked observations at every agent step from reset, on 8 tasks × 2 paths (max 1/255; `tsne_demo/moving_path_check.json`).
+  - **Rendering.**
+    - The decomposition now uses the common novel training cameras and includes the matched single-view SinCro. Novel cameras vs SinCro3 (7 tasks): far band 60 % [54–67 %]. vs SNeRL: 127 % [101–160 %].
+    - All-task context: ours equals SinCro1 in mean PSNR (28.3).
+    - "Never observed" is now a geometric visibility test: 29–44 % visible at 2 cm, 30–48 % at 5 cm.
+    - Region PSNR was added: robot 22.8 vs 18.5–20.8 dB; objects 23.2 vs 19.9–22.3.
+  - **Hidden Gaussians.** "Hidden" became "negligible training-view contribution", with threshold sensitivity (20–41 / 25–47 / 36–56 % at 0.001 / 0.01 / 0.1 px). 22–43 % are negligible in all 22 views.
+  - **Wording.** "Content-blind" was removed. SNeRL steps: 12× on hammer, 1.25–2.55× elsewhere. Mechanisms are labelled as correlates and RL effects as hypotheses.
+  - **Markers verified in the final training targets** with the frozen pipeline: door-open 96/96 and stick-push 94/96 sampled RGB targets, depth-valid at 100 % of marker pixels, present in the synthetic-view targets (`diag/marker_targets.json`).
