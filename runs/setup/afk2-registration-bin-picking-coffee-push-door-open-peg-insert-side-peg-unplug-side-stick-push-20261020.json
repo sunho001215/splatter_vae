@@ -1,0 +1,1589 @@
+{
+  "prepared_at": "2026-10-20T22:31:54.946292+09:00",
+  "purpose": "Variant future_k2 (definition and gate: runs/setup/afk2-definition-20261020.json; replaces the cancelled action_future), registered before any\nresult of these runs. Mirrors the frozen method's registered jobs (s3-m3d-seed0-<task>-200k, its export and\ns3-drm-splatter4d-<task>-s200x + evaluator) with only the variant config added and new names/paths.",
+  "tasks": [
+    "bin-picking",
+    "coffee-push",
+    "door-open",
+    "peg-insert-side",
+    "peg-unplug-side",
+    "stick-push"
+  ],
+  "counts": {
+    "train.py": 6,
+    "export_encoder.py": 6,
+    "train_rl.py": 18,
+    "eval_rl.py": 18
+  },
+  "jobs": [
+    {
+      "id": "afk2-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ]
+    },
+    {
+      "id": "afk2-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/afk2-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/pretrain/afk2-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/afk2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "afk2-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "encoder.pt"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/afk2-drm-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-bin-picking-s2000",
+        "--train-job",
+        "afk2-drm-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/afk2-drm-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-bin-picking-s2001",
+        "--train-job",
+        "afk2-drm-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/afk2-drm-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-bin-picking-s2002",
+        "--train-job",
+        "afk2-drm-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "id": "afk2-seed0-coffee-push-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/coffee-push.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2-seed0-coffee-push-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ]
+    },
+    {
+      "id": "afk2-export-seed0-coffee-push-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/afk2-seed0-coffee-push-200k",
+        "--checkpoint",
+        "runs/pretrain/afk2-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/afk2-export-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "afk2-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "encoder.pt"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-coffee-push-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/afk2-drm-coffee-push-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-coffee-push-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-coffee-push-s2000",
+        "--train-job",
+        "afk2-drm-coffee-push-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-coffee-push-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-coffee-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/afk2-drm-coffee-push-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-coffee-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-coffee-push-s2001",
+        "--train-job",
+        "afk2-drm-coffee-push-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-coffee-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-coffee-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "coffee-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/afk2-drm-coffee-push-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-coffee-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-coffee-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-coffee-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-coffee-push-s2002",
+        "--train-job",
+        "afk2-drm-coffee-push-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-coffee-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "id": "afk2-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2-seed0-door-open-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ]
+    },
+    {
+      "id": "afk2-export-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/afk2-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/pretrain/afk2-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/afk2-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "afk2-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "encoder.pt"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/afk2-drm-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-door-open-s2000",
+        "--train-job",
+        "afk2-drm-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/afk2-drm-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-door-open-s2001",
+        "--train-job",
+        "afk2-drm-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/afk2-drm-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-door-open-s2002",
+        "--train-job",
+        "afk2-drm-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "id": "afk2-seed0-peg-insert-side-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/peg-insert-side.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2-seed0-peg-insert-side-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ]
+    },
+    {
+      "id": "afk2-export-seed0-peg-insert-side-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/afk2-seed0-peg-insert-side-200k",
+        "--checkpoint",
+        "runs/pretrain/afk2-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/afk2-export-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "afk2-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "encoder.pt"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-insert-side-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/afk2-drm-peg-insert-side-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-insert-side-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-peg-insert-side-s2000",
+        "--train-job",
+        "afk2-drm-peg-insert-side-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-peg-insert-side-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-insert-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/afk2-drm-peg-insert-side-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-insert-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-peg-insert-side-s2001",
+        "--train-job",
+        "afk2-drm-peg-insert-side-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-peg-insert-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-insert-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-insert-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/afk2-drm-peg-insert-side-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-peg-insert-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-insert-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-insert-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-peg-insert-side-s2002",
+        "--train-job",
+        "afk2-drm-peg-insert-side-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-peg-insert-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "id": "afk2-seed0-peg-unplug-side-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/peg-unplug-side.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2-seed0-peg-unplug-side-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ]
+    },
+    {
+      "id": "afk2-export-seed0-peg-unplug-side-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/afk2-seed0-peg-unplug-side-200k",
+        "--checkpoint",
+        "runs/pretrain/afk2-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/afk2-export-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "afk2-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "encoder.pt"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-unplug-side-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/afk2-drm-peg-unplug-side-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-unplug-side-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-peg-unplug-side-s2000",
+        "--train-job",
+        "afk2-drm-peg-unplug-side-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-peg-unplug-side-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-unplug-side-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/afk2-drm-peg-unplug-side-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-unplug-side-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-peg-unplug-side-s2001",
+        "--train-job",
+        "afk2-drm-peg-unplug-side-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-peg-unplug-side-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-unplug-side-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "peg-unplug-side",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/afk2-drm-peg-unplug-side-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-peg-unplug-side-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-peg-unplug-side-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-peg-unplug-side-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-peg-unplug-side-s2002",
+        "--train-job",
+        "afk2-drm-peg-unplug-side-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-peg-unplug-side-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "id": "afk2-seed0-stick-push-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/stick-push.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2-seed0-stick-push-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ]
+    },
+    {
+      "id": "afk2-export-seed0-stick-push-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/afk2-seed0-stick-push-200k",
+        "--checkpoint",
+        "runs/pretrain/afk2-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/afk2-export-seed0-stick-push-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "afk2-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "encoder.pt"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-stick-push-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/afk2-drm-stick-push-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-stick-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-stick-push-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-stick-push-s2000",
+        "--train-job",
+        "afk2-drm-stick-push-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-stick-push-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-stick-push-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/afk2-drm-stick-push-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-stick-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-stick-push-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-stick-push-s2001",
+        "--train-job",
+        "afk2-drm-stick-push-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-stick-push-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-stick-push-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "stick-push",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/afk2-drm-stick-push-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/afk2-export-seed0-stick-push-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "afk2-export-seed0-stick-push-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "id": "afk2-drm-stick-push-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/afk2-drm-stick-push-s2002",
+        "--train-job",
+        "afk2-drm-stick-push-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/afk2-drm-stick-push-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ]
+    }
+  ],
+  "registered_at": "2026-10-20T22:32:24.472802+09:00",
+  "queue_sha256_before": "7bdedaf81dee25b7055cf38be92128c2b60aa34d792d73aab7c6be5f2ceb1abd",
+  "queue_sha256_after": "807d8569b710cc99562890ae925d39b0687f698452a4be27a818148a403f3e97"
+}

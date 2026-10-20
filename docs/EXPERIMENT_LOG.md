@@ -3859,3 +3859,13 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
 - 19:04 (10-20) The user freed local disk space: 3.1 TB available. During the full period no job crashed, no admission waited (no `host_disk_low` event), and nothing was lost.
   - Every pending job in the active registrations (future_k2 pilots, SNeRL eight-task) is still gated only by its running pretrain.
   - The future_k2 pilots are at 7.4k steps with finite losses. The 7 remote SNeRL pretrains are running; a remote drop at 18:51 lasted 71 s, with no relaunch and no hold needed.
+- 22:40 (10-20) future_k2 expanded to all eight tasks (user instruction 2026-10-20 ~22:25: the pilot gate no longer blocks expansion; correctness and resource checks stay).
+  - Registered the other six tasks with the pilots' exact protocol: 6 pretrains (200k, seed 0), 6 exports, 18 DrM 1M (seeds 2000–2002) and 18 evaluators, all local (`runs/setup/afk2-registration-bin-picking-coffee-push-door-open-peg-insert-side-peg-unplug-side-stick-push-20261020.json`).
+  - The registry was reconciled first: no future_k2 job existed for these tasks. The hammer/pick-place pilots continue under their original identities; no superseded variant is involved.
+  - Correctness check before registration: `afk2_checks.py` passes on both pilots' 10k checkpoints for k2 = 1..6 (`runs/setup/afk2-pilot/checks-10k-*.json`).
+- The local driver's dataset-cache reserve was fixed (`baseline_local_driver.py`; previous version `*.before-afk2-expansion-20261020.py`).
+  - It had reserved the non-resident datasets of every registered task, including jobs not yet started. That was 129 GB for the six new datasets, so no job could be admitted under the 140 GB ceiling.
+  - Now the reserve covers active jobs plus each admitted candidate's own datasets, and our pretraining trainer counts at its measured 10.77 GB PSS (rule 2026-10-11).
+  - Codex review: the protocol replicates the pilots and the reference. The accounting is sound for this driver. Cross-driver over-admission would need the Stage 2 driver to admit work, but all its jobs are done.
+  - `afk2-seed0-bin-picking-200k` launched at 22:40 on MIG-8da55219. The other five start job by job as RAM headroom appears; each pretrain needs about 11 GB plus its 16–23 GB dataset cache.
+- Placement: local only for now. The remote GPUs run the 7 SNeRL pretrains (load limit 2 per GPU, 7 of 8 slots in use). Running future_k2 there needs a new accepted release, which would also block SNeRL retries on the current release. Revisit when the SNeRL pretrains finish (from about 10-22).

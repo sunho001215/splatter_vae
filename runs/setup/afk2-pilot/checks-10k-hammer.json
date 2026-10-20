@@ -1,0 +1,117 @@
+{
+ "run": "/home/ws/ws/splatter4d/runs/pretrain/afk2-seed0-hammer-200k",
+ "checkpoint": "/home/ws/ws/splatter4d/runs/pretrain/afk2-seed0-hammer-200k/checkpoints/step_0010000.pt",
+ "step": 10000,
+ "gpu": [
+  {
+   "index": 0,
+   "uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+   "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+  }
+ ],
+ "strides": {
+  "1": {
+   "alignment": true,
+   "current_time_independent_of_actions_and_k2": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_actions_and_k2": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 3.9144396781921387,
+    "action_encoder": 0.010712964460253716,
+    "motion01": 0.2188722938299179,
+    "motion12": 0.149762824177742
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "2": {
+   "alignment": true,
+   "current_time_independent_of_actions_and_k2": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_actions_and_k2": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 4.550796031951904,
+    "action_encoder": 0.030679209157824516,
+    "motion01": 0.4319554567337036,
+    "motion12": 0.2750861644744873
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "3": {
+   "alignment": true,
+   "current_time_independent_of_actions_and_k2": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_actions_and_k2": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 4.147533416748047,
+    "action_encoder": 0.06553252041339874,
+    "motion01": 0.5336036682128906,
+    "motion12": 0.3614279627799988
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "4": {
+   "alignment": true,
+   "current_time_independent_of_actions_and_k2": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_actions_and_k2": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 4.097229480743408,
+    "action_encoder": 0.10500725358724594,
+    "motion01": 0.6618897318840027,
+    "motion12": 0.42330384254455566
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "5": {
+   "alignment": true,
+   "current_time_independent_of_actions_and_k2": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_actions_and_k2": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 3.952712059020996,
+    "action_encoder": 0.12477689236402512,
+    "motion01": 0.6989111304283142,
+    "motion12": 0.4552014172077179
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "6": {
+   "alignment": true,
+   "current_time_independent_of_actions_and_k2": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_actions_and_k2": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 4.442194938659668,
+    "action_encoder": 0.1665702760219574,
+    "motion01": 0.9020044207572937,
+    "motion12": 0.5435293316841125
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  }
+ },
+ "passed": true
+}

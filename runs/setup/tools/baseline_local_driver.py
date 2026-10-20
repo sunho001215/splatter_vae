@@ -29,7 +29,8 @@ CAP = 140_000_000_000
 # runs/setup/actfut-cancellation-20261020.json): its registration is no longer admitted.
 # Its replacement future_k2 (fixed history stride 2, future stride k2 in 1..6; runs/setup/afk2-definition-20261020.json).
 REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight-task-registration-20261017.json',
-                 'baselines-snerl-eight-task-registration-20261020.json', 'afk2-registration-hammer-pick-place-20261020.json']
+                 'baselines-snerl-eight-task-registration-20261020.json', 'afk2-registration-hammer-pick-place-20261020.json',
+                 'afk2-registration-bin-picking-coffee-push-door-open-peg-insert-side-peg-unplug-side-stick-push-20261020.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
@@ -107,6 +108,8 @@ def footprint(job):
         # + the trainer's preallocated replay file, which DrM sampling keeps resident in the page cache (measured
         # 2026-10-17: DynaMo 1.1 GB, 3D-MVP 2.5 GB; evicting it refills within minutes)
         return int(MEASURED[job['script']] + (2.6e9 if job['script'] == 'scripts/train_rl.py' else 0))
+    if job['script'] == 'scripts/train.py':  # our pretraining trainer: measured 10.77 GB max sampled PSS (rule 2026-10-11)
+        return int(MEASURED[job['script']])
     return int(float(job['ram_gb']) * 2**30)
 
 
@@ -133,10 +136,15 @@ candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
                                     and status(j['id'].removesuffix('-eval')) == jobs.DONE),
                                j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
 charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
+# Dataset cache reserve (2026-10-20, afk2 expansion): the non-resident part of the datasets of ACTIVE jobs, plus each
+# candidate's own datasets when it is admitted (below). Reserving every registered-but-unstarted task's dataset up
+# front blocked all admissions (six new task datasets, 129 GB, against the 140 GB ceiling).
 files = sorted({f for j in registered for f in task_files(j) if f.is_file()})
 fincore = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, files)],
                          capture_output=True, text=True, check=True).stdout.split() if files else []
-cache_reserve = sum(max(0, f.stat().st_size - int(r)) for f, r in zip(files, fincore))
+nonresident = {f: max(0, f.stat().st_size - int(r)) for f, r in zip(files, fincore)}
+counted = {f for j in registered if status(j['id']) in jobs.ACTIVE for f in task_files(j) if f in nonresident}
+cache_reserve = sum(nonresident[f] for f in counted)
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
 MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/eval_rl.py': 4.5e9,
@@ -172,11 +180,13 @@ for job in candidates:
         trainer = job['id'].removesuffix('-eval')
         if status(trainer) not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
             continue
-    if total + footprint(job) >= CAP:
+    extra = sum(nonresident[f] for f in set(task_files(job)) - counted if f in nonresident)
+    if total + footprint(job) + extra >= CAP:
         continue
     admitted.append(job)
     taken.add(job['id'])
-    total += footprint(job)
+    total += footprint(job) + extra
+    counted |= {f for f in task_files(job) if f in nonresident}
 if admitted and not DRY:
     source = jobs.source_identity()
     report = json.loads((ROOT / 'docs/tests.json').read_text())
