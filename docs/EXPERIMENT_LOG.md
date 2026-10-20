@@ -3780,3 +3780,21 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Pretraining runs on the remote under the existing load rule (load 1.0 each, limit 2.8, so up to 2 per GPU). On one full GPU SNeRL ran about 2× faster than the ~6-day estimate on one MIG slice, so it does not saturate a full GPU.
   - DrM runs on local MIG through the local baseline driver (registration added; previous version kept as `baseline_local_driver.before-snerl-eight-task-20261020.py`). It reads the synced exports, as the DynaMo / 3D-MVP B rows did. SNeRL DrM is light: 400k steps took 1.4 h on the remote at 0.16 GB GPU memory.
 - Expected: roughly 3–5 days for the pretraining, depending on GPU sharing. The hammer pairs start now. No frozen-method or protocol change.
+
+## 2026-10-20 11:20 — Variant action_future registered (user request), before any result
+
+- New pretraining variant, separate from `method-frozen-v1` (unchanged):
+  - The encoder sees the RGB history (t-2k, t-k, t).
+  - The decoder renders the current frame and two future frames (t, t+k, t+2k), k ∈ {2, 4, 6}.
+  - Only the dynamic Gaussians' displacement heads receive the recorded actions[t:t+2k] (shared prefix MLP 61→128→64, two-layer fusion heads). Current-time Gaussians are action-independent, and the first displacement never sees second-interval actions.
+  - The variant changes both the objective and the access to actions, so any effect is not attributed to future prediction alone.
+- Definition, information boundaries and technical gate: `runs/setup/actfut-definition-20261020.json`.
+- Collector convention verified: action[i] takes observation i to i+1, so the future sequence is actions[t:t+2k] (4/8/12 actions; no division by the RL action repeat).
+- Eligible windows shrink to length-24 per episode and stride (original: length-12); hammer validation keeps 0.944 of the original count.
+- Gate (hammer and pick-place, fixed now):
+  - G1: implementation checks, including the real data and trained checkpoints.
+  - G2: stable training.
+  - G3: future prediction beats persistence by ≥ 0.5 dB moving-region PSNR at t+2k and reaches relative 3D EPE ≤ 0.8, both better than step 0.
+  - G4: the RL pipeline produces valid evaluations.
+  - No RL-success requirement. If the gate passes, the six other tasks follow with identical settings.
+- Implementation in worktree `.worktrees/actfut` (branch `actfut-20261020`); merged only after the full suite passes. Codex reviews the decoder change and the alignment.
