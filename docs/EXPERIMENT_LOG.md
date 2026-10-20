@@ -3855,3 +3855,4 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - SNeRL is above ours off the training cameras on every task;
   - ours has the lowest held-out LPIPS on 5 of 8 tasks;
   - the status records action_future as cancelled and future_k2 as in progress.
+  - The Codex fairness pass (claims recomputed from the table) led to versions 6–7: each claim names its metric (PSNR vs LPIPS); SinCro single-view parity is shown as a hammer artifact (1.0–1.4 dB ahead without it); moving-range LPIPS counts were corrected; the no-synthetic-view PSNR loss is larger on novel training cameras (1.7 dB) than held-out (1.4 dB).
