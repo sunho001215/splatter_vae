@@ -3,13 +3,16 @@
 Motion is derived from simulator state only: per-pixel body id + body poses give
 exact rigid displacements. Segmentation is never used as a loss mask.
 
-``objective="future"`` (variant action_future): a sample is a current time t and a stride k. The batch-contract fields
-(images, depth, motion3d, motion_weight, motion_score) describe the TARGET window (t, t+k, t+2k) and serve only as
-supervision; the encoder's inputs are separate: ``history_images``/``history_depth`` and ``history_motion_score``
-(computed from the history frames alone) of the window (t-2k, t-k, t); ``actions`` = the recorded actions[t:t+2k]
-(action[i] takes observation i to observation i+1, s4d/data/metaworld/collect.py), zero-padded to MAX_ACTIONS, with
-``action_count`` = 2k. Anchors are kept only where every stride's history, targets and actions lie inside the episode.
-``probe_state`` describes the history window (the frames the encoder sees).
+``objective="future"`` (variant future_k2): a sample is a current time t and a FUTURE stride k2 drawn uniformly from
+``future_strides`` (1..6); the encoder's HISTORY stride is fixed (``history_stride`` = 2 stored environment steps, the
+registered RL observation spacing). The batch-contract fields (images, depth, motion3d, motion_weight, motion_score)
+describe the TARGET window (t, t+k2, t+2*k2) and serve only as supervision; the encoder's inputs are separate:
+``history_images``/``history_depth`` and ``history_motion_score`` (from the history frames alone) of the window
+(t-4, t-2, t), identical for every k2; ``actions`` = the recorded actions[t:t+2*k2] (action[i] takes observation i to
+observation i+1, s4d/data/metaworld/collect.py), zero-padded to MAX_ACTIONS, with ``future_stride`` = k2. Anchors are
+kept only where the history and the longest future (and its actions) lie inside the episode, and each anchor yields one
+sample per k2, so k2 is exactly uniform without episode-boundary bias. ``probe_state`` and ``meta["stride"]`` (the
+spacing every encoder-side metric uses) describe the history; ``meta["future_stride"]`` the targets.
 """
 
 from __future__ import annotations
@@ -34,7 +37,9 @@ TRAIN_STRIDES = (2, 4, 6)
 VAL_STRIDES = (2, 6)
 PROBE_DIM = 11  # hand xyz, gripper opening, object-1 xyz, object-1 quaternion (wxyz)
 OBJECTIVES = ("reconstruct", "future")
-MAX_ACTIONS = 12  # 2k for the largest training stride k = 6
+HISTORY_STRIDE = 2  # future objective: encoder frames (t-4, t-2, t), the RL observation spacing (action repeat 2)
+FUTURE_STRIDES = (1, 2, 3, 4, 5, 6)
+MAX_ACTIONS = 12  # 2 * the largest future stride
 
 
 def list_episodes(path: str | Path) -> list[str]:
@@ -75,9 +80,15 @@ class MetaworldWindowDataset(Dataset):
         seed: int = 0,
         heldout: str | Path | None = None,
         objective: str = "reconstruct",
+        history_stride: int = HISTORY_STRIDE,
+        future_strides=FUTURE_STRIDES,
+        eligibility_future: int | None = None,
     ):
         """One sample per (episode, start frame, stride). Start frames are kept only where *every* stride fits,
-        so each sample's stride is exactly uniform over ``strides``.
+        so each sample's stride is exactly uniform over ``strides``. Under the future objective ``strides`` is unused:
+        the encoder stride is ``history_stride`` (fixed at 2) and ``future_strides`` are the sampled target strides;
+        anchors need room for ``eligibility_future`` (default: the largest of ``future_strides``), so loaders that
+        evaluate one k2 each share the identical anchors (and encoder windows) when given the training maximum.
 
         ``heldout``: near/trajectory held-out-set file (validation episodes only); with ``with_eval`` its views are
         added as ``<set>_images/_depth/_K/_w2c/_c2w`` for episodes it contains."""
@@ -87,8 +98,17 @@ class MetaworldWindowDataset(Dataset):
         if objective not in OBJECTIVES:
             raise ValueError(f"objective must be one of {OBJECTIVES}, got {objective!r}")
         self.objective = objective
-        if objective == "future" and 2 * max(self.strides) > MAX_ACTIONS:
-            raise ValueError(f"future objective supports strides up to {MAX_ACTIONS // 2}")
+        self.history_stride = int(history_stride)
+        self.future_strides = tuple(int(k) for k in future_strides)
+        if objective == "future":
+            if self.history_stride != HISTORY_STRIDE:
+                raise ValueError(f"the future objective's history stride is fixed at {HISTORY_STRIDE} (RL spacing)")
+            if not self.future_strides or min(self.future_strides) < 1 or 2 * max(self.future_strides) > MAX_ACTIONS:
+                raise ValueError(f"future strides must lie in 1..{MAX_ACTIONS // 2}, got {self.future_strides}")
+            self.eligibility_future = int(eligibility_future or max(self.future_strides))
+            if self.eligibility_future < max(self.future_strides) or 2 * self.eligibility_future > MAX_ACTIONS:
+                raise ValueError("eligibility_future must cover every future stride and stay within MAX_ACTIONS")
+            self.strides = ()  # never used under this objective: the history stride is fixed
         self.with_eval = with_eval
         self._file: h5py.File | None = None
         self.heldout = HeldoutSets(heldout) if (with_eval and heldout is not None) else None
@@ -108,13 +128,14 @@ class MetaworldWindowDataset(Dataset):
             self.samples: list[tuple[str, int, tuple[int, ...]]] = []
             # only the future objective reads actions (fixtures of the original method may have none)
             self.action_dim = int(f["episodes"][self.episodes[0]]["action"].shape[1]) if objective == "future" else 0
-            span = (T_WINDOW - 1) * max(self.strides)
             for ep in self.episodes:
                 length = int(f["episodes"][ep].attrs["length"])
-                if objective == "future":  # sample index = current time t: history t-2k >= 0, target t+2k <= length-1
-                    for t in range(span, length - span):
-                        self.samples.extend((ep, t, (s,)) for s in self.strides)
+                if objective == "future":  # anchor t: history t-4 >= 0; longest target t+2*max(k2) <= length-1
+                    first, end = (T_WINDOW - 1) * self.history_stride, length - (T_WINDOW - 1) * self.eligibility_future
+                    for t in range(first, end):
+                        self.samples.extend((ep, t, (k2,)) for k2 in self.future_strides)
                 else:
+                    span = (T_WINDOW - 1) * max(self.strides)
                     for t0 in range(length - span):
                         self.samples.extend((ep, t0, (s,)) for s in self.strides)
         if not self.samples:
@@ -135,28 +156,30 @@ class MetaworldWindowDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict:
         ep_key, t_anchor, valid = self.samples[index]
-        stride = valid[0]
         if self.objective == "reconstruct":
+            stride = valid[0]
             return self._window(ep_key, [t_anchor + k * stride for k in range(T_WINDOW)], stride)
-        # future: targets (t, t+k, t+2k) carry every supervision field; the history (t-2k, t-k, t) feeds the encoder
-        target_idx = [t_anchor + k * stride for k in range(T_WINDOW)]
-        history_idx = [t_anchor - (T_WINDOW - 1 - k) * stride for k in range(T_WINDOW)]
-        sample = self._window(ep_key, target_idx, stride)
-        history = self._window(ep_key, history_idx, stride)
+        # future: targets (t, t+k2, t+2*k2) carry every supervision field; the fixed history (t-4, t-2, t) feeds the
+        # encoder. Encoder-side metadata (meta["stride"], probe_state) is the history's; the future stride is separate.
+        future_stride, h = valid[0], self.history_stride
+        target_idx = [t_anchor + k * future_stride for k in range(T_WINDOW)]
+        history_idx = [t_anchor - (T_WINDOW - 1 - k) * h for k in range(T_WINDOW)]
+        sample = self._window(ep_key, target_idx, h)
+        history = self._window(ep_key, history_idx, h)
         sample["history_images"] = history["images"]
         sample["history_depth"] = history["depth"]
         sample["history_motion_score"] = history["motion_score"]
         sample["probe_state"] = history["probe_state"]
         ep = self._h5()["episodes"][ep_key]
-        count = 2 * stride
-        seq = torch.from_numpy(ep["action"][t_anchor : t_anchor + count]).float()  # actions[t:t+2k]
+        count = 2 * future_stride
+        seq = torch.from_numpy(ep["action"][t_anchor : t_anchor + count]).float()  # actions[t:t+2*k2]
         if seq.shape[0] != count:
             raise ValueError(f"{ep_key}: actions[{t_anchor}:{t_anchor + count}] incomplete")
         actions = torch.zeros(MAX_ACTIONS, seq.shape[1])
         actions[:count] = seq
         sample["actions"] = actions
-        sample["action_count"] = torch.tensor(count, dtype=torch.int64)
-        sample["meta"]["history_t_indices"] = history_idx
+        sample["future_stride"] = torch.tensor(future_stride, dtype=torch.int64)
+        sample["meta"].update(history_t_indices=history_idx, history_stride=h, future_stride=future_stride)
         if self.with_eval:
             for key in [k for k in history if k.endswith("_images") and k != "images"]:
                 sample[f"history_{key}"] = history[key]

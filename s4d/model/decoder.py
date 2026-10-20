@@ -4,15 +4,16 @@ The decoder never sees pixels, depth, or cameras. Parent tokens are FiLM-conditi
 by the mean slot, refined by L blocks of (self-attention, cross-attention to the K
 slots, MLP), then expanded into children around parent centres.
 
-Action-conditioned future prediction (variant ``action_future``, off by default, ``action_dim`` > 0): the Gaussians
-describe the CURRENT time t and are independent of actions; only the dynamic group's two displacement heads take the
-recorded future action sequence. A shared action-prefix MLP embeds the prefixes actions[t:t+k] (first interval) and
-actions[t:t+2k] (both intervals), each zero-padded to ``max_actions`` with an explicit validity mask and the elapsed
-time; actions outside a prefix are removed (set to zero) before padding, so the first displacement cannot depend on
-second-interval actions. Each displacement head combines the per-Gaussian child feature ``feats`` with a prefix
-embedding through a two-layer MLP; the second also sees the predicted intermediate centre mu(t+k). Future centres:
-mu(t+k) = mu(t) + delta01, mu(t+2k) = mu(t+k) + delta12. Without actions (diagnostic panels only) the displacements
-are zero (persistence).
+Action-conditioned future prediction (variant ``future_k2``, off by default, ``action_dim`` > 0): the Gaussians
+describe the CURRENT time t and are independent of actions and of the future stride k2; only the dynamic group's two
+displacement heads take the recorded future action sequence. A shared action-prefix MLP embeds the prefixes
+actions[t:t+k2] (first interval) and actions[t:t+2*k2] (both intervals), each zero-padded to ``max_actions`` with an
+explicit validity mask and the prefix duration (valid actions / max_actions), which is how the heads tell horizons apart
+(no separate horizon embedding); actions outside a prefix are removed (set to zero) before padding, so the first
+displacement cannot depend on second-interval actions. Each displacement head combines the per-Gaussian child feature
+``feats`` with a prefix embedding through a two-layer MLP; the second also sees the predicted intermediate centre
+mu(t+k2). Future centres: mu(t+k2) = mu(t) + delta01, mu(t+2*k2) = mu(t+k2) + delta12. Without actions (diagnostic
+panels only) the displacements are zero (persistence).
 
 Screened options (review item 4, all off by default): ``state_concat`` concatenates the full K-slot state to every
 parent token before the first block; ``conditioning="adaln_zero"`` replaces FiLM by DiT-style adaptive LayerNorm
@@ -60,8 +61,8 @@ class DecoderConfig:
     state_concat: bool = False
     conditioning: str = "film"  # "film" | "adaln_zero"
     anchor_fourier: int = 0  # number of frequencies (0 = off)
-    action_dim: int = 0  # > 0: action-conditioned dynamic displacements (variant action_future)
-    max_actions: int = 12  # prefix length after padding (2k for the largest stride k = 6)
+    action_dim: int = 0  # > 0: action-conditioned dynamic displacements (variant future_k2)
+    max_actions: int = 12  # prefix length after padding (2*k2 for the largest future stride k2 = 6)
     action_hidden: int = 128
     action_embed: int = 64
 
@@ -179,8 +180,8 @@ class GroupHeads(nn.Module):
 
     def forward(self, parents: torch.Tensor, motion_max: float, scale_act_bias: float,
                 prefix_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None) -> dict[str, torch.Tensor]:
-        """``prefix_embeddings`` (action-conditioned heads only): embeddings (B,E) of actions[t:t+k] and actions[t:t+2k];
-        None gives zero displacements (persistence)."""
+        """``prefix_embeddings`` (action-conditioned heads only): embeddings (B,E) of actions[t:t+k2] and
+        actions[t:t+2*k2]; None gives zero displacements (persistence)."""
         B, P, D = parents.shape
         g = self.g
         centers = self.anchors[None] + g.offset_scale * self.parent_pos(parents)  # (B,P,3)
@@ -203,7 +204,7 @@ class GroupHeads(nn.Module):
         if self.action_embed and prefix_embeddings is not None:
             e1, e2 = (e[:, None].expand(B, feats.shape[1], -1).to(feats.dtype) for e in prefix_embeddings)
             d01 = torch.tanh(self.motion01(torch.cat((feats, e1), -1)).float()) * motion_max
-            mid = out["xyz"] + d01  # predicted intermediate centre mu(t+k), never a ground-truth position
+            mid = out["xyz"] + d01  # predicted intermediate centre mu(t+k2), never a ground-truth position
             d12 = torch.tanh(self.motion12(torch.cat((feats, e2, mid.to(feats.dtype)), -1)).float()) * motion_max
             out["delta01"], out["delta12"] = d01, d12
         elif self.motion_head is not None:
@@ -284,22 +285,23 @@ class GaussianDecoder(nn.Module):
             head.anchors.copy_(torch.randn_like(head.anchors) * std + mean)
 
     def forward(self, slots: torch.Tensor, actions: torch.Tensor | None = None,
-                action_count: torch.Tensor | None = None) -> GaussianSet:
+                future_stride: torch.Tensor | None = None) -> GaussianSet:
         """slots (B,K,Ds) -> GaussianSet. No camera or image arguments by design.
 
-        Action-conditioned decoders only: ``actions`` (B, max_actions, A) = actions[t:t+2k] zero-padded, and
-        ``action_count`` (B,) = 2k; the first displacement uses the prefix of length k, the second the full 2k."""
+        Action-conditioned decoders only: ``actions`` (B, max_actions, A) = actions[t:t+2*k2] zero-padded, and
+        ``future_stride`` (B,) = k2 >= 1; the first displacement uses the prefix of length k2, the second 2*k2. The
+        current-time Gaussians never depend on either."""
         if slots.dim() != 2 + 1:
             raise ValueError(f"slots must be (B,K,Ds), got {tuple(slots.shape)}")
-        if (actions is None) != (action_count is None):
-            raise ValueError("actions and action_count must be given together")
+        if (actions is None) != (future_stride is None):
+            raise ValueError("actions and future_stride must be given together")
         if actions is not None and self.action_encoder is None:
             raise ValueError("this decoder is not action-conditioned (model.decoder.action_dim = 0)")
         prefixes = None
         if actions is not None:
-            if bool((action_count % 2 != 0).any()):
-                raise ValueError("action_count must be 2k (two equal intervals)")
-            prefixes = (self.action_encoder(actions, action_count // 2), self.action_encoder(actions, action_count))
+            if bool((future_stride < 1).any()):
+                raise ValueError("future_stride must be a positive k2")
+            prefixes = (self.action_encoder(actions, future_stride), self.action_encoder(actions, 2 * future_stride))
         B = slots.shape[0]
         kv = self.slot_proj(slots)
         tokens = []

@@ -43,13 +43,19 @@ def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
     training = torch.load(ckpt, map_location="cpu", weights_only=False)
     encoder.load_state_dict(training["encoder"], strict=True)
     step = int(training["step"])
+    data = cfg.get("data", {})
     payload = {
         "format": EXPORT_FORMAT,
         "encoder_config": asdict(encoder.cfg),
         "state_dict": encoder.state_dict(),
         "step": step,
-        # Simulator-step spacing of the pretraining frames; the RL side matches its frame gap to one of these.
-        "frame_strides": cfg.get("data", {}).get("strides"),
+        # Simulator-step spacing of the ENCODER's pretraining frames; the RL side matches its frame gap to one of these.
+        # Under the future objective that is the fixed history stride (2); the sampled target strides are pretraining
+        # metadata only (pretraining_future_strides) and never an encoder input.
+        "frame_strides": ([int(data["history_stride"])] if data.get("objective") == "future" else data.get("strides")),
+        "history_stride": int(data["history_stride"]) if data.get("objective") == "future" else None,
+        "pretraining_objective": data.get("objective", "reconstruct"),
+        "pretraining_future_strides": data.get("future_strides") if data.get("objective") == "future" else None,
         "source_checkpoint": str(ckpt),
         "run_name": cfg.get("run", {}).get("name"),
     }

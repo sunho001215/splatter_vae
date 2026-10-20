@@ -54,7 +54,7 @@ class Model(nn.Module):
         source: torch.Tensor,
         mask_ratio: float | None = None,
         actions: torch.Tensor | None = None,
-        action_count: torch.Tensor | None = None,
+        future_stride: torch.Tensor | None = None,
     ):
         """The encoder sees only ``images_bv`` (and the masking score); ``actions`` reach the decoder's displacement
         heads only (action-conditioned variant)."""
@@ -63,7 +63,7 @@ class Model(nn.Module):
         B = slots.shape[0] // num_views
         slots = slots.view(B, num_views, *slots.shape[1:])
         source_slots = slots[torch.arange(B, device=slots.device), source]
-        gs = self.decoder(source_slots) if actions is None else self.decoder(source_slots, actions, action_count)
+        gs = self.decoder(source_slots) if actions is None else self.decoder(source_slots, actions, future_stride)
         return slots.float(), enc["visible"].view(B, num_views, -1), gs
 
 
@@ -112,11 +112,11 @@ def forward_losses(
 ) -> dict:
     """Compute every loss term and metric for one batch. Returns dict with 'total', 'losses', 'metrics', renders.
 
-    Future objective (variant action_future, batches with ``history_images``): the encoder, its masking score and the
-    synthetic-view invariance positives use only the observed history (t-2k, t-k, t); ``images``/``depth``/
-    ``motion3d``/``motion_score`` are the target window (t, t+k, t+2k) and serve only as render, depth and motion
-    targets (and the target-side pixel weights); the recorded actions[t:t+2k] reach only the decoder's displacement
-    heads. Without ``history_images`` the encoder input is the target window itself (the original method)."""
+    Future objective (variant future_k2, batches with ``history_images``): the encoder, its masking score and the
+    synthetic-view invariance positives use only the observed history (t-4, t-2, t), the same for every future stride;
+    ``images``/``depth``/``motion3d``/``motion_score`` are the target window (t, t+k2, t+2*k2) and serve only as render,
+    depth and motion targets (and the target-side pixel weights); the recorded actions[t:t+2*k2] and k2 reach only the
+    decoder's displacement heads. Without ``history_images`` the encoder input is the window itself (original method)."""
     loss_cfg = cfg["loss"]
     near, far = float(cfg["render"]["near"]), float(cfg["render"]["far"])
     images = batch["images"]
@@ -129,7 +129,7 @@ def forward_losses(
         raise ValueError("data.objective 'future' requires history batches (and only it provides them)")
     action_kw = {}
     if future:
-        action_kw = {"actions": batch["actions"], "action_count": batch["action_count"]}
+        action_kw = {"actions": batch["actions"], "future_stride": batch["future_stride"]}
         enc_images01 = batch["history_images"].float() / 255.0
         enc_score = batch["history_motion_score"].float()
     else:

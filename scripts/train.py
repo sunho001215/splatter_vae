@@ -42,6 +42,32 @@ def fixed_windows(dataset, indices):
     return Subset(dataset, indices)
 
 
+def check_objective(cfg: dict) -> str:
+    """Validate the pretraining objective. ``future`` (variant future_k2) needs the encoder history stride 2 (the
+    registered RL observation spacing, action repeat 2), future strides k2 in 1..6, validation future strides among
+    them, the action-conditioned decoder, and no self-render consistency; the original method's ``reconstruct`` must
+    not carry those fields."""
+    objective = str(get(cfg, "data.objective", "reconstruct"))
+    action_dim = int(get(cfg, "model.decoder.action_dim", 0))
+    if objective == "future":
+        future = [int(k) for k in get(cfg, "data.future_strides", [])]
+        val = [int(k) for k in get(cfg, "data.val_future_strides", [])]
+        if int(get(cfg, "data.history_stride", -1)) != 2:
+            raise ValueError("data.history_stride must be 2 under the future objective (RL observation spacing)")
+        if not future or min(future) < 1 or max(future) > 6 or len(set(future)) != len(future):
+            raise ValueError(f"data.future_strides must be distinct values in 1..6, got {future}")
+        if not val or not set(val) <= set(future):
+            raise ValueError("data.val_future_strides must be a non-empty subset of data.future_strides")
+        if action_dim <= 0 or float(get(cfg, "loss.self_render", 0.0)) > 0:
+            raise ValueError("the future objective needs model.decoder.action_dim > 0 and no loss.self_render")
+    elif objective == "reconstruct":
+        if action_dim > 0 or get(cfg, "data.future_strides") is not None:
+            raise ValueError("action conditioning and future strides belong to the future objective only")
+    else:
+        raise ValueError(f"unknown data.objective {objective!r}")
+    return objective
+
+
 def build_data(cfg: dict):
     """Return (train_dataset, val_loaders, probe_loaders, n_train_cams).
 
@@ -83,11 +109,21 @@ def build_data(cfg: dict):
             train_eps, val_eps = split_episodes(
                 path, float(get(cfg, "data.train_ratio", 0.96)), int(get(cfg, "data.split_seed", 0))
             )
-        strides = tuple(int(s) for s in get(cfg, "data.strides"))
-        val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
-        objective = str(get(cfg, "data.objective", "reconstruct"))
-        train_ds = MetaworldWindowDataset(path, train_eps, strides=strides, seed=int(get(cfg, "train.seed", 0)),
-                                          objective=objective)
+        objective = check_objective(cfg)
+        if objective == "future":  # fixed encoder history stride; loaders keyed by the sampled FUTURE stride k2
+            history = int(get(cfg, "data.history_stride"))
+            future = tuple(int(k) for k in get(cfg, "data.future_strides"))
+            val_strides = tuple(int(k) for k in get(cfg, "data.val_future_strides"))
+            # every loader shares the anchors of the longest training horizon, so per-k2 validation and probe loaders
+            # encode the identical history windows (only the targets differ with k2)
+            window = lambda keys: {"objective": "future", "history_stride": history, "future_strides": keys,  # noqa: E731
+                                   "eligibility_future": max(future)}
+            train_kw, val_kw = window(future), {k: window((k,)) for k in val_strides}
+        else:
+            strides = tuple(int(s) for s in get(cfg, "data.strides"))
+            val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
+            train_kw, val_kw = {"strides": strides}, {s: {"strides": (s,)} for s in val_strides}
+        train_ds = MetaworldWindowDataset(path, train_eps, seed=int(get(cfg, "train.seed", 0)), **train_kw)
         heldout = None
         if get(cfg, "eval.heldout_sets", False):  # near/trajectory held-out sets (validation episodes only)
             from s4d.data.metaworld.heldout import heldout_path  # noqa: PLC0415
@@ -98,13 +134,10 @@ def build_data(cfg: dict):
                     f"eval.heldout_sets requested but {heldout} is missing (scripts/render_heldout_sets.py)"
                 )
         val_loaders = {
-            s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True, heldout=heldout,
-                                             objective=objective), False)
+            s: loader(MetaworldWindowDataset(path, val_eps, with_eval=True, heldout=heldout, **val_kw[s]), False)
             for s in val_strides
         }
-        probe_loaders = {
-            s: loader(MetaworldWindowDataset(path, train_eps, strides=(s,), objective=objective), True) for s in val_strides
-        }
+        probe_loaders = {s: loader(MetaworldWindowDataset(path, train_eps, **val_kw[s]), True) for s in val_strides}
         n_train_cams = len(train_ds.train_cams)
     elif regime == "droid":
         from s4d.data.droid.dataset import DroidCacheDataset  # noqa: PLC0415
