@@ -3846,3 +3846,12 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - `af-seed0-hammer-200k` and `af-seed0-pick-place-200k` were paused by `pause_pretrain_at_checkpoint.py` at their published 60k checkpoints (sha256 f6de045e… / 8b0cea33…, `runs/pretrain/af-seed0-*-200k/checkpoints/step_0060000.pt`; not charged as failures). They were then fenced as cancelled under the registry lock.
   - Partial runs are preserved as historical records only. No remote cancellation was needed or remains pending.
 - 18:27 (10-20) future_k2 pilot pretrains `afk2-seed0-{hammer,pick-place}-200k` admitted on local MIG (fresh random initialisation as the reference method; no warm start).
+- 18:46 (10-20) Local /home/ws reached 0 GB available to non-root users. The writer was external: `/home/ws/data/point-world/restored`, a PointWorld restore owned by uid 1000 (6.5 TB, about 450 MB/s from about 17:57). The campaign wrote about 1 GB/h.
+  - The filesystem is ext4 with about 715 GB reserved for root. The uid-1000 writer stopped at ENOSPC, and the campaign (real root) keeps writing: afk2 pretrains, remote sync, registry and ledger.
+  - The scheduler's free-space measure (`shutil.disk_usage`, non-root available) is 0, so new local admissions wait at the 300 GB floor. The policy is unchanged; nothing local needs admission before the future_k2 pilots finish (~10-21 16:30).
+  - Nothing was deleted or touched outside the campaign. Freeing space is the user's action.
+- 18:47 (10-20) Results artifact version 5 (same URL). The rendering comparison now covers all 8 tasks: SNeRL is interim (250k–510k steps) on 7 of them; the 8-task means are stratified over common tasks. Captions, overview card and status were rewritten to the 8-task picture:
+  - SinCro's 3-view renders lead on training cameras on 7 of 8 tasks;
+  - SNeRL is above ours off the training cameras on every task;
+  - ours has the lowest held-out LPIPS on 5 of 8 tasks;
+  - the status records action_future as cancelled and future_k2 as in progress.
