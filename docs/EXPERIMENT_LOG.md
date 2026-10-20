@@ -3798,3 +3798,17 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - G4: the RL pipeline produces valid evaluations.
   - No RL-success requirement. If the gate passes, the six other tasks follow with identical settings.
 - Implementation in worktree `.worktrees/actfut` (branch `actfut-20261020`); merged only after the full suite passes. Codex reviews the decoder change and the alignment.
+- 11:45 (10-20) action_future implementation accepted for the pilot.
+  - Full suite 942/0/0/0 (13 new tests); merged as c1fd281. The launch gate's fingerprint matches.
+  - Codex review: one finding. The evaluator could fall back to target frames for held-out encodings; it now requires history fields. A second issue (an eager action read broke older fixtures) was fixed.
+  - Smoke runs (600 steps, local MIG; worktree `runs/smoke/smoke-af-{hammer,pick-place}`): finite throughout. Training loss 4.97 → 3.41 (pick-place) and PSNR 14.9 → 17.4 dB; 0.38–0.40 s/step, so ~21.5 h per 200k pretrain on one MIG instance.
+  - Real-data gate checks pass on both smoke checkpoints for k = 2, 4, 6 (`runs/setup/actfut-pilot/checks-smoke-*.json`):
+    - alignment, including actions == file actions[t:t+2k];
+    - current-time Gaussians unchanged under altered future actions;
+    - first displacement unchanged under altered second-interval actions;
+    - padding invariance;
+    - encoder output unchanged under altered target-side fields and actions;
+    - finite, non-zero gradients into the encoder and the action branch.
+  - The diagnostics tool (correct / shuffled / reversed / persistence) works. At 600 steps all four conditions are identical (motion ramp 20k), as expected.
+- Registered `af-seed0-{hammer,pick-place}-200k` + exports + DrM 1M × seeds 2000–2002 (+ evaluators), all local (`runs/setup/actfut-registration-hammer-pick-place-20261020.json`). The local baseline driver admits them; it now reads a pretraining job's task from its config path (previous version kept).
+  - Remote placement would need a new accepted remote release; it is reconsidered for the six-task expansion.

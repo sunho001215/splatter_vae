@@ -1,0 +1,66 @@
+{
+ "run": "/home/ws/ws/splatter4d/.worktrees/actfut/runs/smoke/smoke-af-hammer",
+ "checkpoint": "/home/ws/ws/splatter4d/.worktrees/actfut/runs/smoke/smoke-af-hammer/checkpoints/step_0000600.pt",
+ "step": 600,
+ "gpu": [
+  {
+   "index": 0,
+   "uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+   "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+  }
+ ],
+ "strides": {
+  "2": {
+   "alignment": true,
+   "current_time_independent_of_actions": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_and_actions": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 4.31265926361084,
+    "action_encoder": 3.267812280682847e-05,
+    "motion01": 0.03155337646603584,
+    "motion12": 0.038854215294122696
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "4": {
+   "alignment": true,
+   "current_time_independent_of_actions": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_and_actions": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 5.320331573486328,
+    "action_encoder": 3.853835369227454e-05,
+    "motion01": 0.03592376783490181,
+    "motion12": 0.022761713713407516
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "6": {
+   "alignment": true,
+   "current_time_independent_of_actions": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_and_actions": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 8.221870422363281,
+    "action_encoder": 3.0626339139416814e-05,
+    "motion01": 0.013421195559203625,
+    "motion12": 0.02456461451947689
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  }
+ },
+ "passed": true
+}

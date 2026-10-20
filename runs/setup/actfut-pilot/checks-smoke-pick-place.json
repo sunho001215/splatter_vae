@@ -1,0 +1,66 @@
+{
+ "run": "/home/ws/ws/splatter4d/.worktrees/actfut/runs/smoke/smoke-af-pick-place",
+ "checkpoint": "/home/ws/ws/splatter4d/.worktrees/actfut/runs/smoke/smoke-af-pick-place/checkpoints/step_0000600.pt",
+ "step": 600,
+ "gpu": [
+  {
+   "index": 0,
+   "uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+   "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+  }
+ ],
+ "strides": {
+  "2": {
+   "alignment": true,
+   "current_time_independent_of_actions": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_and_actions": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 2.8307816982269287,
+    "action_encoder": 4.4442036596592516e-05,
+    "motion01": 0.04918229952454567,
+    "motion12": 0.05693402513861656
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "4": {
+   "alignment": true,
+   "current_time_independent_of_actions": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_and_actions": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 1.4342995882034302,
+    "action_encoder": 4.713977614301257e-05,
+    "motion01": 0.04587236046791077,
+    "motion12": 0.047726672142744064
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  },
+  "6": {
+   "alignment": true,
+   "current_time_independent_of_actions": true,
+   "displacement_changes_with_actions": true,
+   "first_displacement_independent_of_second_interval": true,
+   "padding_invariant": true,
+   "encoder_independent_of_targets_and_actions": true,
+   "loss_finite": true,
+   "grad_norms": {
+    "encoder": 1.6588910818099976,
+    "action_encoder": 6.0240879975026473e-05,
+    "motion01": 0.03446073457598686,
+    "motion12": 0.04156823456287384
+   },
+   "grads_finite_nonzero": true,
+   "passed": true
+  }
+ },
+ "passed": true
+}
