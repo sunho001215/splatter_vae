@@ -176,3 +176,19 @@ long-window evidence is collected. Remote clean pushed-release deployment/native
 ## Outages
 
 No remote connectivity outage observed during initial setup. Record each detected outage's start, end, duration and affected unknown-state jobs here; never infer a remote job failure from loss of connectivity.
+
+## Maintenance shutdowns (user instruction 2026-10-20)
+
+A remote disconnection is an expected interruption.
+- **Checkpoints:** the active remote jobs are the seven SNeRL pretrains. `scripts/train_snerl.py` writes complete, resumable checkpoints atomically (tmp + rename) every 10k steps, about every 13–25 min at the measured speeds. Each holds the networks, optimiser, step and every RNG state, and the jobs run with `--resume auto` (lossless resume, tested).
+- **Local record:** `runs/setup/tools/remote_ledger.py` records every remote job in `runs/setup/remote-ledger/latest.json` and `history.jsonl`:
+  - id, attempt, container, GPU, release commit, image, launch spec and local config;
+  - the remote run directory with checkpoint size, mtime and sha256, the last logged step and the container state;
+  - host health.
+- **Outage guard:** `runs/setup/tools/remote_outage_guard.py` runs every 5 min and refreshes the ledger every 30 min. After > 10 min unreachable it snapshots the ledger (`pre-outage-ledger.json`) and creates `runs/setup/remote-hold-admissions`; the driver then admits nothing remote, while reconciliation and syncs continue.
+- **Recovery check on return:**
+  - Host: the four authorized GPUs visible, runtime-root disk ≥ 15 % free, Docker answering.
+  - Each interrupted job: container running, or `checkpoints/latest.pt` present with the pre-outage sha256, or a newer full-size file.
+  - Pass: the hold is removed and the driver relaunches exited jobs as a new attempt with `--resume auto` in the same run directory (identity and training state preserved; `max_restarts` 2).
+  - Fail: the hold stays and `remote-ledger/recovery-blockers.json` names each job and its blocker. A missing container, or a missing or mismatched checkpoint, is reported and never restarted from scratch.
+- **Retries and other work:** the drivers retry with their existing bounded backoff (tunnel check up to 10 min with ≤ 60 s steps, every 5-min loop). Local work, including the action_future pretrains on local MIG, continues.

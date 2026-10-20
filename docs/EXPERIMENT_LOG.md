@@ -3812,3 +3812,7 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - The diagnostics tool (correct / shuffled / reversed / persistence) works. At 600 steps all four conditions are identical (motion ramp 20k), as expected.
 - Registered `af-seed0-{hammer,pick-place}-200k` + exports + DrM 1M × seeds 2000–2002 (+ evaluators), all local (`runs/setup/actfut-registration-hammer-pick-place-20261020.json`). The local baseline driver admits them; it now reads a pretraining job's task from its config path (previous version kept).
   - Remote placement would need a new accepted remote release; it is reconsidered for the six-task expansion.
+- 11:58 (10-20) Remote maintenance preparation (user instruction; no job stopped or changed):
+  - Remote ledger and outage guard added (docs/REMOTE.md "Maintenance shutdowns").
+  - First ledger: 7 SNeRL pretrains running, each with a recent complete checkpoint and its sha256 recorded (steps 271k–512k); the four authorized GPUs are visible; runtime-root disk 61 % used.
+  - The recovery check was dry-run against the live host: no blockers, all containers running.
