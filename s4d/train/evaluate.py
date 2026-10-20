@@ -121,6 +121,10 @@ class Evaluator:
 
     ``val_loaders`` and ``probe_loaders`` map a frame stride (simulator steps) to a loader. Every metric is
     reported once per stride with the suffix ``@s<stride>``; panels go to ``eval/step_*/s<stride>/``.
+
+    Future objective (variant future_k2): the loaders are keyed by the FUTURE stride k2 and metrics carry ``@f<k2>``
+    (panels ``f<k2>``); the encoder's history stride is fixed (``data.history_stride`` = 2), and every encoder-side
+    quantity (retrieval windows, probes, state statistics) uses it, never k2.
     """
 
     def __init__(
@@ -138,6 +142,9 @@ class Evaluator:
         self.heldout_diag = bool(get(cfg, "eval.heldout_sets", False))
         self.probe_every = int(get(cfg, "eval.probe_every", 10000))
         self.near, self.far = float(cfg["render"]["near"]), float(cfg["render"]["far"])
+        self.future = get(cfg, "data.objective", "reconstruct") == "future"
+        self.history_stride = int(get(cfg, "data.history_stride", 2))
+        self.key = "f" if self.future else "s"  # metric suffix: future stride k2, or the window stride
 
     # ------------------------------------------------------------------------------------ main
     @torch.no_grad()
@@ -146,18 +153,20 @@ class Evaluator:
         num_batches = {}
         for stride, loader in self.val_loaders.items():
             part, num_batches[stride] = self.evaluate_stride(model, step, full, int(stride), loader)
-            summary.update({f"{k}@s{stride}": v for k, v in part.items()})
+            summary.update({f"{k}@{self.key}{stride}": v for k, v in part.items()})
         out_dir = self.logger.eval_dir(step)
         (out_dir / "summary.json").write_text(json.dumps({"step": step, "num_batches": num_batches, **summary}, indent=1))
         self.logger.scalars(
             step, {f"val/{k.split('/', 1)[-1]}": v for k, v in summary.items() if isinstance(v, (int, float))}
         )
         for stride in self.val_loaders:
+            k = f"@{self.key}{stride}"
             self.logger.text(
-                f"eval step {step} stride {stride}: psnr {summary.get(f'metric/psnr@s{stride}', float('nan')):.2f} "
-                f"heldout {summary.get(f'metric/psnr_heldout@s{stride}', float('nan')):.2f} rel_epe02 "
-                f"{summary.get(f'metric/rel_epe_02@s{stride}', float('nan')):.3f} retrieval "
-                f"{summary.get(f'metric/retrieval_top1_train@s{stride}', float('nan')):.3f}"
+                f"eval step {step} {'future stride' if self.future else 'stride'} {stride}: psnr "
+                f"{summary.get(f'metric/psnr{k}', float('nan')):.2f} "
+                f"heldout {summary.get(f'metric/psnr_heldout{k}', float('nan')):.2f} rel_epe02 "
+                f"{summary.get(f'metric/rel_epe_02{k}', float('nan')):.3f} retrieval "
+                f"{summary.get(f'metric/retrieval_top1_train{k}', float('nan')):.3f}"
             )
         return summary
 
@@ -265,7 +274,7 @@ class Evaluator:
         periodic = full or (self.probe_every > 0 and step % self.probe_every == 0)
         summary.update(self.representation(model, stride, loader, states, group_states, probe_states, strides, periodic))
         if first is not None:
-            self.panels(model, first, step, summary, tag=f"s{stride}")
+            self.panels(model, first, step, summary, tag=f"{self.key}{stride}")
         model.train()
         return summary, count
 
@@ -287,7 +296,8 @@ class Evaluator:
         all_states = torch.cat(states)  # (M,V,D)
         held = {name: torch.cat(rows) for name, rows in group_states.items() if rows}
         if periodic:
-            summary.update(self.retrieval(model, stride))
+            # registered retrieval protocol: encoder windows at the encoder's own spacing (never the future stride)
+            summary.update(self.retrieval(model, self.history_stride if self.future else stride))
             if self.heldout_diag:
                 summary.update(self.retrieval_sets(model, stride, loader))
         summary.update({f"metric/{k}_val": float(v) for k, v in state_statistics(all_states).items()})

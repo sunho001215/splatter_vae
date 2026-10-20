@@ -28,6 +28,9 @@ def resolve_config(task: str, encoder: str, seed: int, overrides: list[str]) -> 
         check_pretraining_spacing(
             export["frame_strides"], int(export["encoder_config"]["num_frames"]), int(cfg["env"]["action_repeat"])
         )
+        history = export.get("history_stride")  # future-objective exports: the encoder's one fixed history stride
+        if history is not None and int(history) != int(cfg["env"]["action_repeat"]):
+            raise ValueError(f"encoder history stride {history} differs from the RL frame spacing {cfg['env']['action_repeat']}")
     elif cfg["vision"]["encoder_type"] == "sincro":  # SinCro was pretrained on one fixed frame spacing
         export = torch.load(cfg["vision"]["export_path"], map_location="cpu", weights_only=True)
         check_pretraining_spacing(

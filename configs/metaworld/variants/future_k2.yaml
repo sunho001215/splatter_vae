@@ -1,0 +1,24 @@
+# Variant future_k2 (registered 2026-10-20; replaces the cancelled action_future; not the frozen method):
+# action-conditioned future prediction with a FIXED encoder history stride and a SAMPLED future stride.
+# Encoder input: RGB frames (t-4, t-2, t) (history stride 2 = the RL observation spacing, action repeat 2), identical
+# for every sample; targets: frames (t, t+k2, t+2*k2) with k2 uniform over future_strides; the decoder's dynamic
+# displacement heads also take the recorded actions[t:t+2*k2]. No time/horizon input reaches the encoder. Everything else
+# is method-frozen-v1 (C + D0 + M3D): its four registered overrides are repeated here. The RL-time encoder input,
+# architecture and export format are unchanged (the export records history_stride 2).
+data:
+  objective: future
+  history_stride: 2
+  future_strides: [1, 2, 3, 4, 5, 6]
+  val_future_strides: [2, 6]
+aug:
+  synth_views: 2
+  synth_render: true
+loss:
+  depth_valid_far: true
+  motion_space: gaussian
+model:
+  decoder:
+    action_dim: 4        # Meta-World actions (verified: dataset action arrays are (T, 4))
+    max_actions: 12      # 2*k2 for k2 = 6
+    action_hidden: 128   # prefix MLP 61 -> 128 -> 64
+    action_embed: 64

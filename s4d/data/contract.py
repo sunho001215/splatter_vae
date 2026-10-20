@@ -9,13 +9,13 @@ probe_state   (B,T,Dp)          float32 (optional)
 eval_images   (B,T,Ve,3,H,W)    uint8   (optional, with eval_K / eval_w2c / eval_depth)
 meta          dict
 
-Future objective (variant action_future; all optional, given together): the fields above are the target window and
-the encoder input is separate:
-history_images       (B,T,V,3,H,W)  uint8    encoder window (t-2k, t-k, t)
+Future objective (variant future_k2; all optional, given together): the fields above are the target window
+(t, t+k2, t+2*k2) and the encoder input is separate, with a fixed history stride of 2:
+history_images       (B,T,V,3,H,W)  uint8    encoder window (t-4, t-2, t), identical for every k2
 history_depth        (B,T,V,1,H,W)  float32  its depth (synthetic invariance positives only)
 history_motion_score (B,T,V,1,H,W)  float32  its masking score, from the history frames alone
-actions              (B,L,A)        float32  recorded actions[t:t+2k], zero beyond action_count
-action_count         (B,)           int64    2k
+actions              (B,L,A)        float32  recorded actions[t:t+2*k2], zero beyond 2 * future_stride
+future_stride        (B,)           int64    k2 >= 1 (target spacing; never an encoder input)
 
 Motion targets take exactly one of two forms. Dense (Meta-World), on each pair's source pixel grid:
 motion3d      (B,P=3,V,3,H,W)   float32 world-frame displacement for PAIRS
@@ -42,7 +42,7 @@ REQUIRED = ("images", "K", "w2c", "c2w", "depth", "motion_score")
 DENSE_MOTION = ("motion3d", "motion_weight")
 TRACK_MOTION = ("track_src", "track_disp", "track_weight", "track_count", "gripper_points", "gripper_weight")
 EVAL_FIELDS = ("eval_images", "eval_K", "eval_w2c", "eval_depth")
-HISTORY_FIELDS = ("history_images", "history_depth", "history_motion_score", "actions", "action_count")
+HISTORY_FIELDS = ("history_images", "history_depth", "history_motion_score", "actions", "future_stride")
 
 
 class ContractError(ValueError):
@@ -178,11 +178,11 @@ def validate_batch(batch: dict, *, training: bool = True) -> dict:
         actions = batch["actions"]
         _check(torch.is_tensor(actions) and actions.dim() == 3 and actions.shape[0] == B, "actions must be (B,L,A)")
         _check_tensor(batch, "actions", tuple(actions.shape), torch.float32)
-        count = _check_tensor(batch, "action_count", (B,), torch.int64)
+        k2 = _check_tensor(batch, "future_stride", (B,), torch.int64)
         L = actions.shape[1]
-        _check(bool(((count >= 2) & (count <= L) & (count % 2 == 0)).all()), "action_count must be an even 2k <= L")
-        beyond = torch.arange(L, device=actions.device)[None] >= count[:, None]
-        _check(not bool((actions.abs().sum(-1) * beyond).any()), "actions must be zero beyond action_count")
+        _check(bool(((k2 >= 1) & (2 * k2 <= L)).all()), "future_stride must satisfy 1 <= k2 and 2*k2 <= L")
+        beyond = torch.arange(L, device=actions.device)[None] >= 2 * k2[:, None]
+        _check(not bool((actions.abs().sum(-1) * beyond).any()), "actions must be zero beyond 2 * future_stride")
     # Held-out fields are optional in both regimes, including DROID validation.
     _check("meta" in batch and isinstance(batch["meta"], dict), "meta must be a dict")
     return {"B": B, "T": T, "V": V, "H": H, "W": W}
