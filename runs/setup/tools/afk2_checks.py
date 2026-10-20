@@ -78,7 +78,7 @@ def main():
             ok &= bool(np.array_equal(batch['actions'][b, :n].cpu().numpy(), h5['episodes'][ep]['action'][t:t + n]))
             ok &= not bool(batch['actions'][b, n:].any())
             ok &= bool(np.array_equal(batch['history_images'][b, :, 0].permute(0, 2, 3, 1).cpu().numpy(),
-                                      h5['episodes'][ep]['rgb'][hist[0]:hist[2] + 1:k, 0]))
+                                      h5['episodes'][ep]['rgb'][hist[0]:hist[2] + 1:2, 0]))  # history stride 2 for every k2
         res['alignment'] = bool(ok)
         model.eval()
         with torch.no_grad():

@@ -65,17 +65,30 @@ def main():
             cur = state.get(jid, {})
             if not cur.get('attempts') or jid in record_out['jobs'] and 'last_checkpoint' in record_out['jobs'][jid]:
                 continue
-            if cur['status'] in jobs.ACTIVE:
-                raise SystemExit(f'{jid} is still {cur["status"]}; finalize after its pause has exited')
+            if cur['status'] == jobs.DONE:  # completed results keep their status (none exist for this campaign)
+                record_out['jobs'][jid] = {'state_before': 'done', 'kept': True}
+                continue
             run = ROOT / 'runs/pretrain' / jid
             ckpts = sorted((run / 'checkpoints').glob('step_*.pt'))
             last = ckpts[-1] if ckpts else None
+            stops = [s for s in cur.get('intentional_stops', []) if s.get('attempt') == cur.get('attempt')]
+            if not stops or last is None or int(last.stem.split('_')[1]) < int(stops[-1].get('checkpoint_step', 0)):
+                raise SystemExit(f'{jid}: no confirmed checkpoint pause with its published checkpoint; not finalised')
             logged = None
             for line in (run / 'metrics.jsonl').read_text().splitlines()[::-1]:
                 if '"step"' in line:
                     logged = json.loads(line).get('step')
                     break
-            record({'event': 'failed', 'id': jid, 'host': 'local', 'cancelled': True, 'reason': REASON, 'superseded': True})
+            with jobs.REGISTRY.with_suffix('.lock').open('a') as lock:  # re-read under the registry lock, then fence
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                now = jobs.read_registry().get(jid, {})
+                if now.get('status') in jobs.ACTIVE or now.get('attempt') != cur.get('attempt'):
+                    raise SystemExit(f'{jid} changed ({now.get("status")}, attempt {now.get("attempt")}); not finalised')
+                with jobs.REGISTRY.open('a') as stream:
+                    stream.write(json.dumps({'event': 'failed', 'id': jid, 'host': 'local', 'cancelled': True,
+                                             'reason': REASON, 'superseded': True, 'time': time.time()}) + '\n')
+                    stream.flush()
+                    os.fsync(stream.fileno())
             record_out['jobs'][jid] = {
                 'state_before': f"running (attempt {cur.get('attempts')}), paused at a published checkpoint",
                 'device': cur.get('gpu'), 'commit': cur.get('commit'), 'run_dir': str(run.relative_to(ROOT)),
