@@ -1,0 +1,29 @@
+{
+ "experiment": "future_k2 (action-conditioned future prediction, fixed history stride, sampled future stride)",
+ "registered_local": "2026-10-20 (before any result of this variant; user instruction of 2026-10-20 ~16:50 KST)",
+ "replaces": "action_future (runs/setup/actfut-definition-20261020.json): cancelled and superseded; its partial pretraining (paused at a published checkpoint) is a historical record only, never reused, warm-started from or relabelled",
+ "relation_to_frozen_method": "A separate pretraining variant; method-frozen-v1 (C + D0 + M3D, 200k) is unchanged and remains the method and the primary reference (its completed eight-task results are reused). The variant changes the prediction objective, gives the decoder's displacement heads the recorded future actions, and changes the temporal sampling (fixed history stride 2 instead of {2,4,6}; future strides 1..6); any difference cannot be attributed to future prediction alone.",
+ "definition": {
+  "history_stride": 2,
+  "future_strides_k2": [1, 2, 3, 4, 5, 6],
+  "encoder_input": "RGB frames (t-4, t-2, t) of one camera for every sample and k2; unchanged encoder architecture, learned spatial position embeddings, learned ordinal frame embeddings and 1x256 state; no time, horizon, k2, action or future input",
+  "targets": "frames (t, t+k2, t+2*k2) of the 6 training cameras; depth and Gaussian-space 3D motion (M3D) targets of this window",
+  "decoder": "current-time Gaussians independent of actions and k2; dynamic-group displacements t->t+k2 from (feats, emb(actions[t:t+k2])) and t+k2->t+2*k2 from (feats, emb(actions[t:t+2*k2]), predicted mu(t+k2)); shared prefix MLP 61->128->64 (12 x 4 actions, 12 validity entries, prefix duration = valid actions / 12, which distinguishes horizons); two-layer fusion heads, zero-initialised outputs; actions outside each prefix removed before padding",
+  "actions": "recorded actions[t:t+2*k2] (2..12 per sample); collector convention action[i]: observation i -> i+1; not divided by the RL action repeat",
+  "sampling": "anchors t with t-4 >= 0 and t+12 <= length-1 (history and the longest future inside the episode); every anchor yields one sample per k2, so k2 is exactly uniform; per episode 6 x (length-16) samples vs 3 x (length-12) for the original method",
+  "information_boundaries": "encoder inputs, the history-only tube-masking score and the synthetic-view invariance positives use (t-4, t-2, t); render, depth, synthetic-render and 3D-motion targets use (t, t+k2, t+2*k2); no teacher forcing; self-render refused under this objective; encoder-side metadata (meta stride, probes, retrieval windows) use the history stride",
+  "unchanged": "static/dynamic Gaussian allocation (768x8 + 256x8), renderer, non-position attributes, loss weights, temporal ramp, synthetic views (2 per sample), D0 depth with far mask, M3D, InfoNCE 1.0, consistency 0.5, visibility, 200k steps, seed 0, batch 16, LR schedule, random initialisation as the reference method",
+  "config": "configs/metaworld/base.yaml + configs/metaworld/tasks/<task>.yaml + configs/metaworld/variants/future_k2.yaml, --set train.steps=200000 train.seed=0",
+  "export": "encoder-only, frame_strides [2], history_stride 2, pretraining_future_strides [1..6] (metadata); RL checks history_stride == action repeat 2",
+  "rl_protocol": "registered protocol: frozen export, RL encoder config 'splatter4d', DrM 1M agent steps, seeds 2000-2002, evaluation every 10k agent steps with 240 episodes (120 training, 80 held-out, 40 moving cameras); decoder and action branch discarded",
+  "names": {"pretrain": "afk2-seed0-<task>-200k", "export": "afk2-export-seed0-<task>-200k", "rl": "afk2-drm-<task>-s<seed> (+ -eval)"}
+ },
+ "technical_gate_hammer_and_pick_place": {
+  "G1_implementation": "full suite passes (variant tests: fixed encoder indices for every k2; targets, action prefixes and 3D motion supervision aligned for k2 = 1..6; encoder outputs and current-time Gaussians unchanged when k2 or future actions change; first displacement independent of second-interval actions; padding; no future information in the encoder; finite gradients reaching encoder and action branch; real exporter records history stride 2 and the export loads through the RGB-only interface) and runs/setup/tools/afk2_checks.py passes on real data for every k2 on smoke and final checkpoints",
+  "G2_stability": "smoke runs on both tasks finite; 200k pretraining completes without non-finite events; mean training loss over the last 10k steps below the mean over steps 1k-10k",
+  "G3_prediction": "held-out validation episodes, 200k checkpoint, correct actions, averaged over k2 = 1..6: (a) moving-region PSNR at t+2*k2 at least 0.5 dB above the persistence reference (same model, zero displacement); (b) relative 3D end-point error of the predicted t->t+2*k2 displacement <= 0.8; (c) both better than the step-0 evaluation. Per-k2 values, shuffled and reversed actions reported descriptively",
+  "G4_rl_pipeline": "frozen-encoder DrM runs start, evaluate and log finite success/return; no RL-performance requirement",
+  "expansion_rule": "if G1-G3 pass on both tasks and G4 shows valid evaluations, register and run the remaining six tasks identically; pilot runs are reused. On failure: diagnose and repair, preserve attempts, document; never tune toward RL results."
+ },
+ "comparison": "primary reference: the completed method-frozen-v1 eight-task results (no retraining). RL: success and return vs agent steps, last-5, final, normalised AUC, 95% CIs (established procedures), per task and IQM, training / held-out / moving cameras. Prediction by k2: current (observed) and future frames separately, PSNR, SSIM, LPIPS, depth error, 3D displacement error, moving-region metrics; the original method's reconstruction of observed frames is never presented as forecasting. Record pretraining time, GPU-hours, model size, the action supervision and the sampling differences."
+}

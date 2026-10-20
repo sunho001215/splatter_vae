@@ -3816,3 +3816,22 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Remote ledger and outage guard added (docs/REMOTE.md "Maintenance shutdowns").
   - First ledger: 7 SNeRL pretrains running, each with a recent complete checkpoint and its sha256 recorded (steps 271k–512k); the four authorized GPUs are visible; runtime-root disk 61 % used.
   - The recovery check was dry-run against the live host: no blockers, all containers running.
+
+## 2026-10-20 17:50 — action_future cancelled and superseded; future_k2 registered (user instruction), before any result
+
+- **Cancellation** (`runs/setup/actfut-cancellation-20261020.json`, tool `cancel_actfut_20261020.py`). Scope: the action_future registration (16 jobs, all local). No observation-time-embedding variant was ever registered, and nothing ran remotely.
+  - The local baseline driver no longer lists the registration; the previous version is kept.
+  - The 14 never-started jobs (2 exports, 6 DrM trainers, 6 evaluators) got a terminal `failed` event with `cancelled: true` and the reason.
+  - The two running pretrains (`af-seed0-{hammer,pick-place}-200k`, ~54k steps, local MIG) are being stopped by the established `pause_pretrain_at_checkpoint.py` at their next published checkpoint (60k). They are then finalised as cancelled with their last checkpoint recorded.
+  - Their partial training is kept as a historical record only, never reused or relabelled. Unrelated jobs are untouched.
+- **Replacement future_k2** (`runs/setup/afk2-definition-20261020.json`, fixed now):
+  - History stride is fixed at 2 (= RL spacing), so the encoder input is always (t-4, t-2, t).
+  - The future stride k2 is drawn uniformly from 1..6; targets are (t, t+k2, t+2k2), and actions[t:t+2k2] go only to the dynamic displacement heads.
+  - No time, horizon or k2 input reaches the encoder; there was no timestep-embedding code to remove.
+  - The export records `history_stride` 2, and RL checks it against action repeat 2.
+  - Per episode there are 6 × (length-16) samples (original method: 3 × (length-12)).
+  - Gate G1–G4 as for the cancelled variant, with the prediction criteria averaged over k2.
+- Code refactor in worktree `.worktrees/afk2` (branch `future-stride-20261020`):
+  - `history_stride` / `future_stride` throughout dataset, contract, decoder interface, loss path, evaluator (metric keys `@f<k2>`; retrieval and probes at the history stride), export metadata and the RL spacing check;
+  - configuration validation (`check_objective`); the superseded config is removed (Git keeps it);
+  - tests renamed and extended (test_future_stride.py, 20 tests).

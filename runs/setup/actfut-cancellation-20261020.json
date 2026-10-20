@@ -1,0 +1,63 @@
+{
+ "reason": "cancelled: superseded on 2026-10-20 by the replacement future-prediction variant (fixed history stride 2, future stride k2 in 1..6); user instruction",
+ "registration": "runs/setup/actfut-registration-hammer-pick-place-20261020.json",
+ "jobs": {
+  "af-export-seed0-hammer-200k": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-hammer-s2000": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-hammer-s2000-eval": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-hammer-s2001": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-hammer-s2001-eval": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-hammer-s2002": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-hammer-s2002-eval": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-export-seed0-pick-place-200k": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-pick-place-s2000": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-pick-place-s2000-eval": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-pick-place-s2001": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-pick-place-s2001-eval": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-pick-place-s2002": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-drm-pick-place-s2002-eval": {
+   "state_before": "pending (never started)",
+   "cancelled_at": "2026-10-20T17:38:16+0900"
+  }
+ },
+ "updated": "2026-10-20T17:38:16+0900"
+}
