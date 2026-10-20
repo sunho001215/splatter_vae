@@ -4,6 +4,16 @@ The decoder never sees pixels, depth, or cameras. Parent tokens are FiLM-conditi
 by the mean slot, refined by L blocks of (self-attention, cross-attention to the K
 slots, MLP), then expanded into children around parent centres.
 
+Action-conditioned future prediction (variant ``action_future``, off by default, ``action_dim`` > 0): the Gaussians
+describe the CURRENT time t and are independent of actions; only the dynamic group's two displacement heads take the
+recorded future action sequence. A shared action-prefix MLP embeds the prefixes actions[t:t+k] (first interval) and
+actions[t:t+2k] (both intervals), each zero-padded to ``max_actions`` with an explicit validity mask and the elapsed
+time; actions outside a prefix are removed (set to zero) before padding, so the first displacement cannot depend on
+second-interval actions. Each displacement head combines the per-Gaussian child feature ``feats`` with a prefix
+embedding through a two-layer MLP; the second also sees the predicted intermediate centre mu(t+k). Future centres:
+mu(t+k) = mu(t) + delta01, mu(t+2k) = mu(t+k) + delta12. Without actions (diagnostic panels only) the displacements
+are zero (persistence).
+
 Screened options (review item 4, all off by default): ``state_concat`` concatenates the full K-slot state to every
 parent token before the first block; ``conditioning="adaln_zero"`` replaces FiLM by DiT-style adaptive LayerNorm
 (shift, scale and a zero-initialised gate per sub-layer, from the mean slot); ``anchor_fourier`` adds Fourier
@@ -50,6 +60,10 @@ class DecoderConfig:
     state_concat: bool = False
     conditioning: str = "film"  # "film" | "adaln_zero"
     anchor_fourier: int = 0  # number of frequencies (0 = off)
+    action_dim: int = 0  # > 0: action-conditioned dynamic displacements (variant action_future)
+    max_actions: int = 12  # prefix length after padding (2k for the largest stride k = 6)
+    action_hidden: int = 128
+    action_embed: int = 64
 
 
 class DecoderBlock(nn.Module):
@@ -103,10 +117,37 @@ def fourier_features(x: torch.Tensor, frequencies: int) -> torch.Tensor:
     return torch.cat((angles.sin(), angles.cos()), -1)
 
 
+class ActionPrefixEncoder(nn.Module):
+    """Shared MLP over one action prefix: [actions (max_actions x A, zero outside the prefix), validity mask
+    (max_actions), elapsed time (number of valid actions / max_actions)] -> embedding. For A = 4: 61 -> 128 -> 64."""
+
+    def __init__(self, action_dim: int, max_actions: int, hidden: int, embed: int):
+        super().__init__()
+        self.action_dim, self.max_actions = action_dim, max_actions
+        self.mlp = nn.Sequential(nn.Linear(max_actions * (action_dim + 1) + 1, hidden), nn.SiLU(), nn.Linear(hidden, embed),
+                                 nn.SiLU())
+
+    def prefix(self, actions: torch.Tensor, count: torch.Tensor) -> torch.Tensor:
+        """actions (B, max_actions, A) recorded sequence from time t (oldest first); count (B,) number of actions in
+        the prefix -> MLP input with every action beyond the prefix removed (zeroed) and masked."""
+        B, L, A = actions.shape
+        if L != self.max_actions or A != self.action_dim:
+            raise ValueError(f"actions must be (B,{self.max_actions},{self.action_dim}), got {tuple(actions.shape)}")
+        if bool((count < 1).any()) or bool((count > L).any()):
+            raise ValueError(f"prefix lengths must lie in [1, {L}], got {count.tolist()}")
+        valid = (torch.arange(L, device=actions.device)[None] < count[:, None]).to(actions.dtype)  # (B,L)
+        kept = actions * valid[..., None]
+        elapsed = count.to(actions.dtype)[:, None] / L
+        return torch.cat((kept.flatten(1), valid, elapsed), -1)
+
+    def forward(self, actions: torch.Tensor, count: torch.Tensor) -> torch.Tensor:
+        return self.mlp(self.prefix(actions, count))
+
+
 class GroupHeads(nn.Module):
     """Per-group anchors, parent tokens, and output heads."""
 
-    def __init__(self, g: GroupConfig, dim: int, dynamic: bool):
+    def __init__(self, g: GroupConfig, dim: int, dynamic: bool, action_embed: int = 0):
         super().__init__()
         self.g, self.dynamic = g, dynamic
         self.parent_tokens = nn.Parameter(torch.randn(g.parents, dim) * 0.02)
@@ -117,7 +158,16 @@ class GroupHeads(nn.Module):
         self.child_mlp = nn.Sequential(nn.Linear(2 * dim, dim), nn.SiLU(), nn.Linear(dim, dim), nn.SiLU())
         self.xyz_head = nn.Linear(dim, 3)
         self.attr_head = nn.Linear(dim, 3 + 4 + 1 + 3)
-        self.motion_head = nn.Linear(dim, 6) if dynamic else None
+        self.action_embed = action_embed if dynamic else 0
+        if self.action_embed:  # action-conditioned displacements (two-layer MLPs; zero-initialised outputs = persistence)
+            self.motion_head = None
+            self.motion01 = nn.Sequential(nn.Linear(dim + action_embed, dim), nn.SiLU(), nn.Linear(dim, 3))
+            self.motion12 = nn.Sequential(nn.Linear(dim + action_embed + 3, dim), nn.SiLU(), nn.Linear(dim, 3))
+            for head in (self.motion01, self.motion12):
+                nn.init.zeros_(head[2].weight)
+                nn.init.zeros_(head[2].bias)
+        else:
+            self.motion_head = nn.Linear(dim, 6) if dynamic else None
         nn.init.zeros_(self.parent_pos.weight)
         nn.init.zeros_(self.parent_pos.bias)
         nn.init.normal_(self.xyz_head.weight, std=1e-3)
@@ -127,7 +177,10 @@ class GroupHeads(nn.Module):
             nn.init.zeros_(self.motion_head.weight)
             nn.init.zeros_(self.motion_head.bias)
 
-    def forward(self, parents: torch.Tensor, motion_max: float, scale_act_bias: float) -> dict[str, torch.Tensor]:
+    def forward(self, parents: torch.Tensor, motion_max: float, scale_act_bias: float,
+                prefix_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None) -> dict[str, torch.Tensor]:
+        """``prefix_embeddings`` (action-conditioned heads only): embeddings (B,E) of actions[t:t+k] and actions[t:t+2k];
+        None gives zero displacements (persistence)."""
         B, P, D = parents.shape
         g = self.g
         centers = self.anchors[None] + g.offset_scale * self.parent_pos(parents)  # (B,P,3)
@@ -147,7 +200,13 @@ class GroupHeads(nn.Module):
             "rgb": torch.sigmoid(attr[..., 8:11]),
             "parent_centers": centers.float(),
         }
-        if self.motion_head is not None:
+        if self.action_embed and prefix_embeddings is not None:
+            e1, e2 = (e[:, None].expand(B, feats.shape[1], -1).to(feats.dtype) for e in prefix_embeddings)
+            d01 = torch.tanh(self.motion01(torch.cat((feats, e1), -1)).float()) * motion_max
+            mid = out["xyz"] + d01  # predicted intermediate centre mu(t+k), never a ground-truth position
+            d12 = torch.tanh(self.motion12(torch.cat((feats, e2, mid.to(feats.dtype)), -1)).float()) * motion_max
+            out["delta01"], out["delta12"] = d01, d12
+        elif self.motion_head is not None:
             motion = torch.tanh(self.motion_head(feats).float()) * motion_max
             out["delta01"], out["delta12"] = motion[..., :3], motion[..., 3:]
         else:
@@ -181,6 +240,11 @@ class GaussianDecoder(nn.Module):
                 self.state_cat.weight[:, :D].copy_(torch.eye(D))
                 nn.init.normal_(self.state_cat.weight[:, D:], std=0.02)
                 self.state_cat.bias.zero_()
+        self.action_encoder = None
+        if cfg.action_dim > 0:
+            if cfg.single_group:
+                raise ValueError("action-conditioned displacements require the scene/dynamic group split")
+            self.action_encoder = ActionPrefixEncoder(cfg.action_dim, cfg.max_actions, cfg.action_hidden, cfg.action_embed)
         if cfg.single_group:
             total = cfg.scene.parents + cfg.dynamic.parents
             merged = GroupConfig(
@@ -196,7 +260,10 @@ class GaussianDecoder(nn.Module):
             self.groups = nn.ModuleList([GroupHeads(merged, D, dynamic=True)])
             group_ids = [DYNAMIC_GROUP]
         else:
-            self.groups = nn.ModuleList([GroupHeads(cfg.scene, D, dynamic=False), GroupHeads(cfg.dynamic, D, dynamic=True)])
+            self.groups = nn.ModuleList([
+                GroupHeads(cfg.scene, D, dynamic=False),
+                GroupHeads(cfg.dynamic, D, dynamic=True, action_embed=cfg.action_embed if cfg.action_dim > 0 else 0),
+            ])
             group_ids = [SCENE_GROUP, DYNAMIC_GROUP]
         self.register_buffer(
             "group",
@@ -216,10 +283,23 @@ class GaussianDecoder(nn.Module):
             mean, std = torch.tensor(s["mean"], **like), torch.tensor(s["std"], **like)
             head.anchors.copy_(torch.randn_like(head.anchors) * std + mean)
 
-    def forward(self, slots: torch.Tensor) -> GaussianSet:
-        """slots (B,K,Ds) -> GaussianSet. No camera or image arguments by design."""
+    def forward(self, slots: torch.Tensor, actions: torch.Tensor | None = None,
+                action_count: torch.Tensor | None = None) -> GaussianSet:
+        """slots (B,K,Ds) -> GaussianSet. No camera or image arguments by design.
+
+        Action-conditioned decoders only: ``actions`` (B, max_actions, A) = actions[t:t+2k] zero-padded, and
+        ``action_count`` (B,) = 2k; the first displacement uses the prefix of length k, the second the full 2k."""
         if slots.dim() != 2 + 1:
             raise ValueError(f"slots must be (B,K,Ds), got {tuple(slots.shape)}")
+        if (actions is None) != (action_count is None):
+            raise ValueError("actions and action_count must be given together")
+        if actions is not None and self.action_encoder is None:
+            raise ValueError("this decoder is not action-conditioned (model.decoder.action_dim = 0)")
+        prefixes = None
+        if actions is not None:
+            if bool((action_count % 2 != 0).any()):
+                raise ValueError("action_count must be 2k (two equal intervals)")
+            prefixes = (self.action_encoder(actions, action_count // 2), self.action_encoder(actions, action_count))
         B = slots.shape[0]
         kv = self.slot_proj(slots)
         tokens = []
@@ -244,7 +324,9 @@ class GaussianDecoder(nn.Module):
                 parents = block(parents, kv, cond)
         outputs, start = [], 0
         for head in self.groups:
-            outputs.append(head(parents[:, start : start + head.g.parents], self.cfg.motion_max, self.cfg.scale_act_bias))
+            outputs.append(
+                head(parents[:, start : start + head.g.parents], self.cfg.motion_max, self.cfg.scale_act_bias, prefixes)
+            )
             start += head.g.parents
         cat = {
             k: torch.cat([o[k] for o in outputs], 1)

@@ -85,7 +85,9 @@ def build_data(cfg: dict):
             )
         strides = tuple(int(s) for s in get(cfg, "data.strides"))
         val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
-        train_ds = MetaworldWindowDataset(path, train_eps, strides=strides, seed=int(get(cfg, "train.seed", 0)))
+        objective = str(get(cfg, "data.objective", "reconstruct"))
+        train_ds = MetaworldWindowDataset(path, train_eps, strides=strides, seed=int(get(cfg, "train.seed", 0)),
+                                          objective=objective)
         heldout = None
         if get(cfg, "eval.heldout_sets", False):  # near/trajectory held-out sets (validation episodes only)
             from s4d.data.metaworld.heldout import heldout_path  # noqa: PLC0415
@@ -96,10 +98,13 @@ def build_data(cfg: dict):
                     f"eval.heldout_sets requested but {heldout} is missing (scripts/render_heldout_sets.py)"
                 )
         val_loaders = {
-            s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True, heldout=heldout), False)
+            s: loader(MetaworldWindowDataset(path, val_eps, strides=(s,), with_eval=True, heldout=heldout,
+                                             objective=objective), False)
             for s in val_strides
         }
-        probe_loaders = {s: loader(MetaworldWindowDataset(path, train_eps, strides=(s,)), True) for s in val_strides}
+        probe_loaders = {
+            s: loader(MetaworldWindowDataset(path, train_eps, strides=(s,), objective=objective), True) for s in val_strides
+        }
         n_train_cams = len(train_ds.train_cams)
     elif regime == "droid":
         from s4d.data.droid.dataset import DroidCacheDataset  # noqa: PLC0415

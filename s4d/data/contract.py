@@ -9,6 +9,14 @@ probe_state   (B,T,Dp)          float32 (optional)
 eval_images   (B,T,Ve,3,H,W)    uint8   (optional, with eval_K / eval_w2c / eval_depth)
 meta          dict
 
+Future objective (variant action_future; all optional, given together): the fields above are the target window and
+the encoder input is separate:
+history_images       (B,T,V,3,H,W)  uint8    encoder window (t-2k, t-k, t)
+history_depth        (B,T,V,1,H,W)  float32  its depth (synthetic invariance positives only)
+history_motion_score (B,T,V,1,H,W)  float32  its masking score, from the history frames alone
+actions              (B,L,A)        float32  recorded actions[t:t+2k], zero beyond action_count
+action_count         (B,)           int64    2k
+
 Motion targets take exactly one of two forms. Dense (Meta-World), on each pair's source pixel grid:
 motion3d      (B,P=3,V,3,H,W)   float32 world-frame displacement for PAIRS
 motion_weight (B,P,V,1,H,W)     float32 in [0,1]; 0 where no target
@@ -34,6 +42,7 @@ REQUIRED = ("images", "K", "w2c", "c2w", "depth", "motion_score")
 DENSE_MOTION = ("motion3d", "motion_weight")
 TRACK_MOTION = ("track_src", "track_disp", "track_weight", "track_count", "gripper_points", "gripper_weight")
 EVAL_FIELDS = ("eval_images", "eval_K", "eval_w2c", "eval_depth")
+HISTORY_FIELDS = ("history_images", "history_depth", "history_motion_score", "actions", "action_count")
 
 
 class ContractError(ValueError):
@@ -158,6 +167,22 @@ def validate_batch(batch: dict, *, training: bool = True) -> dict:
         _check_cameras(eK, ew2c, None, H, W, "eval cameras")
         edepth = _check_tensor(batch, "eval_depth", (B, T, Ve, 1, H, W), torch.float32)
         _check(bool((edepth >= 0).all()), "eval_depth must be >= 0")
+    history = [name for name in HISTORY_FIELDS if name in batch]
+    if history:
+        _check(len(history) == len(HISTORY_FIELDS), f"history fields must be given together, found {history}")
+        _check_tensor(batch, "history_images", (B, T, V, 3, H, W), torch.uint8)
+        hdepth = _check_tensor(batch, "history_depth", (B, T, V, 1, H, W), torch.float32)
+        _check(bool((hdepth >= 0).all()), "history_depth must be >= 0")
+        hscore = _check_tensor(batch, "history_motion_score", (B, T, V, 1, H, W), torch.float32)
+        _check(bool((hscore >= 0).all() and (hscore <= 1).all()), "history_motion_score must lie in [0,1]")
+        actions = batch["actions"]
+        _check(torch.is_tensor(actions) and actions.dim() == 3 and actions.shape[0] == B, "actions must be (B,L,A)")
+        _check_tensor(batch, "actions", tuple(actions.shape), torch.float32)
+        count = _check_tensor(batch, "action_count", (B,), torch.int64)
+        L = actions.shape[1]
+        _check(bool(((count >= 2) & (count <= L) & (count % 2 == 0)).all()), "action_count must be an even 2k <= L")
+        beyond = torch.arange(L, device=actions.device)[None] >= count[:, None]
+        _check(not bool((actions.abs().sum(-1) * beyond).any()), "actions must be zero beyond action_count")
     # Held-out fields are optional in both regimes, including DROID validation.
     _check("meta" in batch and isinstance(batch["meta"], dict), "meta must be a dict")
     return {"B": B, "T": T, "V": V, "H": H, "W": W}

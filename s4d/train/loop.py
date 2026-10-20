@@ -53,12 +53,17 @@ class Model(nn.Module):
         num_views: int,
         source: torch.Tensor,
         mask_ratio: float | None = None,
+        actions: torch.Tensor | None = None,
+        action_count: torch.Tensor | None = None,
     ):
+        """The encoder sees only ``images_bv`` (and the masking score); ``actions`` reach the decoder's displacement
+        heads only (action-conditioned variant)."""
         enc = self.encoder(images_bv, score_bv, mask_ratio=mask_ratio)
         slots = enc["slots"]
         B = slots.shape[0] // num_views
         slots = slots.view(B, num_views, *slots.shape[1:])
-        gs = self.decoder(slots[torch.arange(B, device=slots.device), source])
+        source_slots = slots[torch.arange(B, device=slots.device), source]
+        gs = self.decoder(source_slots) if actions is None else self.decoder(source_slots, actions, action_count)
         return slots.float(), enc["visible"].view(B, num_views, -1), gs
 
 
@@ -105,7 +110,13 @@ def forward_losses(
     mask_ratio: float | None = None,
     return_renders: bool = False,
 ) -> dict:
-    """Compute every loss term and metric for one batch. Returns dict with 'total', 'losses', 'metrics', renders."""
+    """Compute every loss term and metric for one batch. Returns dict with 'total', 'losses', 'metrics', renders.
+
+    Future objective (variant action_future, batches with ``history_images``): the encoder, its masking score and the
+    synthetic-view invariance positives use only the observed history (t-2k, t-k, t); ``images``/``depth``/
+    ``motion3d``/``motion_score`` are the target window (t, t+k, t+2k) and serve only as render, depth and motion
+    targets (and the target-side pixel weights); the recorded actions[t:t+2k] reach only the decoder's displacement
+    heads. Without ``history_images`` the encoder input is the target window itself (the original method)."""
     loss_cfg = cfg["loss"]
     near, far = float(cfg["render"]["near"]), float(cfg["render"]["far"])
     images = batch["images"]
@@ -113,8 +124,18 @@ def forward_losses(
     device = images.device
     images01 = images.float() / 255.0
     score = batch["motion_score"].float()
-    enc_in = images01.permute(0, 2, 1, 3, 4, 5).reshape(B * V, T, 3, H, W)
-    score_in = score.permute(0, 2, 1, 3, 4, 5).reshape(B * V, T, 1, H, W)
+    future = "history_images" in batch
+    if future != (get(cfg, "data.objective", "reconstruct") == "future"):
+        raise ValueError("data.objective 'future' requires history batches (and only it provides them)")
+    action_kw = {}
+    if future:
+        action_kw = {"actions": batch["actions"], "action_count": batch["action_count"]}
+        enc_images01 = batch["history_images"].float() / 255.0
+        enc_score = batch["history_motion_score"].float()
+    else:
+        enc_images01, enc_score = images01, score
+    enc_in = enc_images01.permute(0, 2, 1, 3, 4, 5).reshape(B * V, T, 3, H, W)
+    score_in = enc_score.permute(0, 2, 1, 3, 4, 5).reshape(B * V, T, 1, H, W)
     single_frame = bool(get(cfg, "model.single_frame", False))
     if single_frame:
         enc_in, score_in = enc_in[:, :1], score_in[:, :1]
@@ -133,18 +154,21 @@ def forward_losses(
         source = torch.randint(V, (B,), device=device)
     bf16 = bool(get(cfg, "train.bf16", True))
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
-        slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio)
+        slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio, **action_kw)
     encoder = getattr(model, "module", model).encoder
     n_syn = int(aug.get("synth_views", 0)) if training else 0
     syn = None
     if n_syn:
         syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
-        syn = synthesize_views(batch, syn_cams, near, far)
+        syn = synthesize_views(batch, syn_cams, near, far)  # render targets: the target window
+        # invariance positives: the same synthetic cameras rendered from the encoder's (history) window
+        syn_pos = synthesize_views({**batch, "images": batch["history_images"], "depth": batch["history_depth"]},
+                                   syn_cams, near, far) if future else syn
         frames = enc_in.shape[1]
-        syn_in = syn["images"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 3, H, W)[:, :frames]
+        syn_in = syn_pos["images"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 3, H, W)[:, :frames]
         ratio = encoder.cfg.mask_ratio if mask_ratio is None else mask_ratio
         keep = max(1, min(encoder.cfg.num_patches, int(round(encoder.cfg.num_patches * (1.0 - ratio)))))
-        syn_cov = syn["covered"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 1, H, W)[:, :frames]
+        syn_cov = syn_pos["covered"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 1, H, W)[:, :frames]
         syn_visible = coverage_visible(syn_cov, encoder.cfg.patch_size, keep)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
             syn_slots = encoder.forward_visible(syn_in, syn_visible)["slots"]
@@ -273,6 +297,8 @@ def forward_losses(
     )
     cons = slot_consistency(inv_slots)
     self_w = float(loss_cfg.get("self_render", 0.0)) if training else 0.0
+    if self_w > 0 and future:  # would force the encoding of rendered FUTURE frames to equal the history encoding
+        raise ValueError("loss.self_render is incompatible with the future objective")
     if self_w > 0:  # review item 2c: re-encode renders of the decoded scene from jittered cameras
         sr_cams = jitter_cameras(B, 2, batch["K"][:, 0], H, W)
         with torch.no_grad():  # stop-gradient on the decoder path
