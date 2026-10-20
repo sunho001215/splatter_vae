@@ -3842,3 +3842,7 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
 - Registered `afk2-seed0-{hammer,pick-place}-200k` + exports + DrM 1M × seeds 2000–2002 (+ evaluators), all local (`runs/setup/afk2-registration-hammer-pick-place-20261020.json`).
   - The protocol was checked against the frozen method's registered rows: 200k steps, seed 0, the same four overrides, and the RL protocol unchanged.
   - The local driver admits them.
+- 18:28 (10-20) action_future cancellation finalised (`runs/setup/actfut-cancellation-20261020.json`). All 16 jobs are terminal (`failed` with `cancelled: true`, `superseded: true`).
+  - `af-seed0-hammer-200k` and `af-seed0-pick-place-200k` were paused by `pause_pretrain_at_checkpoint.py` at their published 60k checkpoints (sha256 f6de045e… / 8b0cea33…, `runs/pretrain/af-seed0-*-200k/checkpoints/step_0060000.pt`; not charged as failures). They were then fenced as cancelled under the registry lock.
+  - Partial runs are preserved as historical records only. No remote cancellation was needed or remains pending.
+- 18:27 (10-20) future_k2 pilot pretrains `afk2-seed0-{hammer,pick-place}-200k` admitted on local MIG (fresh random initialisation as the reference method; no warm start).

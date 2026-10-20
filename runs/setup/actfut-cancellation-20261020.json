@@ -57,7 +57,49 @@
   "af-drm-pick-place-s2002-eval": {
    "state_before": "pending (never started)",
    "cancelled_at": "2026-10-20T17:38:16+0900"
+  },
+  "af-seed0-hammer-200k": {
+   "state_before": "running (attempt 1), paused at a published checkpoint",
+   "device": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+   "commit": "39973357786237cc10f98859011a62a2dba3680f",
+   "run_dir": "runs/pretrain/af-seed0-hammer-200k",
+   "last_checkpoint": {
+    "path": "runs/pretrain/af-seed0-hammer-200k/checkpoints/step_0060000.pt",
+    "step": 60000,
+    "sha256": "f6de045e33ca50e46dd25479f541703c196b87b9058fb78c0773be5e70dfa73e"
+   },
+   "last_logged_step": 60000,
+   "pause_events": [
+    {
+     "attempt": 1,
+     "checkpoint_step": 60000,
+     "checkpoint_sha256": "f6de045e33ca50e46dd25479f541703c196b87b9058fb78c0773be5e70dfa73e",
+     "reason": "cancelled_superseded_by_future_stride_variant_20261020"
+    }
+   ],
+   "cancelled_at": "2026-10-20T18:28:09+0900"
+  },
+  "af-seed0-pick-place-200k": {
+   "state_before": "running (attempt 1), paused at a published checkpoint",
+   "device": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
+   "commit": "39973357786237cc10f98859011a62a2dba3680f",
+   "run_dir": "runs/pretrain/af-seed0-pick-place-200k",
+   "last_checkpoint": {
+    "path": "runs/pretrain/af-seed0-pick-place-200k/checkpoints/step_0060000.pt",
+    "step": 60000,
+    "sha256": "8b0cea33a833bd348741a08ecb32f179dac034470d2e8d150ba4395aab15f620"
+   },
+   "last_logged_step": 60000,
+   "pause_events": [
+    {
+     "attempt": 1,
+     "checkpoint_step": 60000,
+     "checkpoint_sha256": "8b0cea33a833bd348741a08ecb32f179dac034470d2e8d150ba4395aab15f620",
+     "reason": "cancelled_superseded_by_future_stride_variant_20261020"
+    }
+   ],
+   "cancelled_at": "2026-10-20T18:28:09+0900"
   }
  },
- "updated": "2026-10-20T17:38:16+0900"
+ "updated": "2026-10-20T18:28:09+0900"
 }
