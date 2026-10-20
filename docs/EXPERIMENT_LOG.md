@@ -3856,3 +3856,6 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - ours has the lowest held-out LPIPS on 5 of 8 tasks;
   - the status records action_future as cancelled and future_k2 as in progress.
   - The Codex fairness pass (claims recomputed from the table) led to versions 6–7: each claim names its metric (PSNR vs LPIPS); SinCro single-view parity is shown as a hammer artifact (1.0–1.4 dB ahead without it); moving-range LPIPS counts were corrected; the no-synthetic-view PSNR loss is larger on novel training cameras (1.7 dB) than held-out (1.4 dB).
+- 19:04 (10-20) The user freed local disk space: 3.1 TB available. During the full period no job crashed, no admission waited (no `host_disk_low` event), and nothing was lost.
+  - Every pending job in the active registrations (future_k2 pilots, SNeRL eight-task) is still gated only by its running pretrain.
+  - The future_k2 pilots are at 7.4k steps with finite losses. The 7 remote SNeRL pretrains are running; a remote drop at 18:51 lasted 71 s, with no relaunch and no hold needed.

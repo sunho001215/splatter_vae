@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-20 18:50 +09:00 (SNeRL eight-task and future_k2 running; local disk full from an external writer). Earlier: 2026-10-18 22:25 (baseline eight-task results). Earlier: 2026-10-16 13:40 restart after the hardware update.
+Last updated: 2026-10-20 18:50 +09:00 (SNeRL eight-task and future_k2 running; local disk freed 19:00). Earlier: 2026-10-18 22:25 (baseline eight-task results). Earlier: 2026-10-16 13:40 restart after the hardware update.
 **Restarted.** Local devices are now 12 MIG 1g.24gb instances (GPUs 4/5/6); guard/EGL/scheduler adapted on main
 (`756dc9b`, `d95e863`), isolation passed on all 12 (CUDA+EGL), native suite 778/0/0/0. Old daemon PID2819571 is gone
 (container restart); one scheduler daemon, one watcher (venv python), Stage 2 and remote driver loops, memory alert
@@ -52,7 +52,7 @@ diff inline.
   acceptance passed 2026-10-19 (sanity 0.589 vs random 0.013; docs/BASELINES.md); its eight-task runs (user go-ahead 2026-10-20) are in progress (`runs/setup/baselines-snerl-eight-task-registration-20261020.json`): the hammer row is complete; 7 remote 2.4M-step pretrains are running, and their 21 local DrM pairs follow.
 - **Results report (2026-10-19 22:05 KST, commit 1db463b; version 5 2026-10-20 18:47 adds rendering on all 8 tasks and viewpoint invariance):** Claude Artifact https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73 (private); sources and scripts in `reports/results-artifact/` (git-excluded).
 - **Future prediction (2026-10-20):** `action_future` was cancelled and superseded (`runs/setup/actfut-cancellation-20261020.json`). The replacement `future_k2` (history stride 2, future stride 1–6; `runs/setup/afk2-definition-20261020.json`) runs hammer/pick-place 200k pilots locally from 18:27; a technical gate decides the other six tasks.
-- **Local disk (2026-10-20 18:46):** non-root available space is 0 because of an external PointWorld restore (uid 1000) under `/home/ws/data/point-world`. Campaign jobs (root) continue in ext4's ~715 GB root reserve. New local admissions wait at the unchanged 300 GB floor until the user frees space.
+- **Local disk (2026-10-20):** the external PointWorld restore filled non-root space at 18:46. The user freed space by ~19:00, leaving 3.1 TB available. No job failed or waited, and the 300 GB floor is unchanged.
 - **Follow-ups E1/E2/E3 complete (2026-10-19 20:19):** 138/138 jobs; consolidated report docs/FOLLOWUP_REPORT.md (tables docs/FOLLOWUP_TABLES.md, JSON runs/setup/followup-report-20261019-201913.json).
 - **Local GPU authorization (user, 2026-10-19):** only the 8 MIG 1g.24gb instances of GPU 4 (`GPU-76871c16-...`) and GPU 5 (`GPU-d09f0338-...`); GPU 6 (`GPU-6b33eef2-...`) revoked. Remote: the same 4 GPUs. Record `runs/setup/gpu-allowlist-20261019.json`; provenance index `runs/setup/local-device-provenance.json`.
 - Local <=150GB full cgroup charge; measured job-by-job admission (trainer10.77GB PSS plus dataset page cache),
