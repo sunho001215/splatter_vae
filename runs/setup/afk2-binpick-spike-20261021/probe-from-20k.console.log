@@ -1,0 +1,7 @@
+[gpu_guard] cuda:0 -> MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[2026-10-21 15:29:49] GPU mapping: [{"index": 0, "uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631", "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"}]; world size 1
+[2026-10-21 15:29:49] torch 2.10.0+cu129; config ['/home/ws/ws/splatter4d/runs/pretrain/afk2-seed0-bin-picking-200k/config.yaml'] overrides ['train.stop_step=20050', 'train.save_every=100000']
+[2026-10-21 15:29:52] resumed from /home/ws/ws/splatter4d/.worktrees/afk2-replay/runs/spike-replay/probe-from-20k/resume-step_0020000.pt at step 20000
+[2026-10-21 15:30:31] step 20050 loss 0.4721 psnr 24.79 motion 0.0075 nce 0.181 0.780s/it
+[2026-10-21 15:31:14] eval step 20050 future stride 2: psnr 24.99 heldout 16.50 rel_epe02 0.385 retrieval nan
+[2026-10-21 15:31:14] eval step 20050 future stride 6: psnr 24.89 heldout 16.49 rel_epe02 0.366 retrieval nan

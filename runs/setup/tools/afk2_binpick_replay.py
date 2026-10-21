@@ -25,6 +25,7 @@ RUN = ROOT / 'runs/pretrain/afk2-seed0-bin-picking-200k'
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--stop', type=int, default=12700)
+ap.add_argument('--from-step', type=int, default=10000, help='the saved checkpoint to start from (10k steps apart)')
 ap.add_argument('--out', default=str(ROOT / 'runs/setup/afk2-binpick-spike-20261021/replay-from-10k'))
 ap.add_argument('--name', default='replay-from-10k')
 ap.add_argument('--fixed', action='store_true', help='substitute the candidate fix: off-image terms only in front of near')
@@ -32,9 +33,9 @@ args = ap.parse_args()
 out = Path(args.out)
 out.mkdir(parents=True, exist_ok=True)
 (out / 'points').mkdir(exist_ok=True)
-source = out / 'resume-step_0010000.pt'
+source = out / f'resume-step_{args.from_step:07d}.pt'
 if not source.exists():
-    shutil.copy2(RUN / 'checkpoints/step_0010000.pt', source)
+    shutil.copy2(RUN / f'checkpoints/step_{args.from_step:07d}.pt', source)
 
 sys.path.insert(0, str(WT / 'scripts'))
 sys.path.insert(0, str(WT))

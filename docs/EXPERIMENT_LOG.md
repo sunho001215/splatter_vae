@@ -3949,3 +3949,29 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Skipped as ambiguous (3): `s4d-verify-isolation-0-226d8ae-20261012-a1` and `s4d-verify-native-e267ba8-20261011-a1` (no registry launch record with their ids), and `s4d-runtime-integrity-03cca5218096dc88` (project label without run/attempt labels).
   - Not ours (2): left untouched and not inspected beyond the listing. Images, volumes and networks untouched. The host now has 75 containers. Inventory and outcomes: `runs/setup/remote-container-cleanup-20261021*.json`.
   - Automatic cleanup for future jobs (`scripts/jobs.py`, `s4d/remote_jobs.py`): new containers carry `s4d.project=splatter4d` and `s4d.owner=kaist-sunho`; ids are recorded at launch. After a job completes and its final results are verified, the scheduler removes that container (and earlier interrupted attempts of the same job) by id, at most 10 per tick. Failed, unfinished and verification containers are kept. It is retry-safe after a lost connection (lock, receipt, distinct absent records).
+- 15:3x (10-21) Loss spike in the future_k2 bin-picking pretrain (user request): investigation and fresh retraining. Original run `afk2-seed0-bin-picking-200k` (W&B `smyt3rjy`, project splatter4d-metaworld; local, MIG-8da55219, launched 2026-10-20 22:38 from bfb4ccb, whose 286 fingerprinted source files equal the launch record; single attempt, never resumed) is untouched and still running. Evidence: `runs/setup/afk2-binpick-spike-20261021/`; tools `afk2_binpick_spike.py`, `afk2_binpick_replay.py`, `afk2_binpick_compare.py`.
+  - **Event.** First affected log is step 12000; the step-11950 log is normal. The run logs one step in 50, so the first affected step lies in 11951–12000. Sequence:
+    - visibility loss 0.023 → 0.62 (12000) → peaks 7.4 (12350); render and motion 2–3× at 12000;
+    - from 12100: InfoNCE at its chance value (2.899), consistency ~0.002, positive and negative cosine both ~0.99 (all embeddings identical);
+    - gradient shares after clipping (total clipped to 1): decoder ~0.9999, encoder 0.01–0.03, i.e. the decoder's gradient filled the clip budget and the encoder was starved for ~800 steps;
+    - PSNR down to 11.5; opacity mean 0.29–0.65;
+    - recovered by 12900 (all terms back at pre-event levels by ~13000).
+  - **Persistent degradation: none found.**
+    - Validation every 5k keeps improving: PSNR 22.88 / 24.13 / 24.62, relative EPE 0–2 0.546 / 0.427 / 0.407 and retrieval top-1 0.67 → 0.78 (10k / 15k / 20k); 28.18 PSNR at 125k.
+    - Fixed-sample renders and Gaussian point clouds at 10k and 15k (the W&B panels bracketing the event; none exist inside it) show no degradation. The tube-mask row differs only because the mask is resampled.
+    - Instrumented 50-step probes from the saved checkpoints: 10k → 20k visibility 0.0247 → 0.0238; centres behind a camera 3456 → 3456 per step (a constant, structural count); none inside the near plane; render 0.135 → 0.110; InfoNCE 0.32 → 0.19.
+    - Caveat: the same-task counterfactual comes only from the rerun.
+  - **Checked and excluded:**
+    - data: the exact training batches 11940–12009 were reconstructed (sampler permutation, seed 0, epoch 0 of 21,142 steps) and validated: finite, depth ≥ 94.5 % valid, camera matrices consistent, frame indices inside episodes, actions ≤ 1 and zero beyond 2·k2, motion targets ≤ 0.24 m, k2 = 1–6 well mixed;
+    - learning rate: smooth (warm-up peak 5e-4 at 10k);
+    - checkpoint resume and optimizer state: no resume in this run.
+  - **Replays.**
+    - Two instrumented replays from a copy of the 10k checkpoint on the run's own code, config, data order and RNG state: unchanged, and with a candidate fix. Neither reproduced the event through 12.7k: visibility ≤ 0.027, InfoNCE ≤ 0.88.
+    - The unchanged replay differs from the original from the first logs on (total 0.8786 vs 0.8799 at 10050): training is not bitwise deterministic. The event depends on that trajectory, not deterministically on state and data.
+  - **Cause: unresolved.**
+    - Leading hypothesis: a visibility-term surge whose decoder gradient fills the global clip budget (pre-clip norm ~4, so clipping is always active) and starves the encoder, collapsing the embeddings until the term subsides.
+    - A plausible trigger: the term's projection u = fx·x/z is unbounded near a camera plane (gradient ∝ 1/z²), and for centres behind a camera its gradient pushes them further behind.
+    - Supporting: visibility was the first and largest anomaly, and pick-place shows the same signature mildly (4 logs, visibility 0.06–0.29 with a decoder-dominated gradient, no collapse); the i2-m3d reference runs show none.
+    - Not confirmed: the replay did not reproduce the event, and 50-step logging cannot establish which term moved first.
+  - **Candidate fix, not applied:** `loss.visibility_front_only` (off-image terms only in front of the near plane), branch `visfix-20261021` (0ba42c5, tests pass, unmerged). It also changes ordinary steps: about 25 % of the normal visibility loss comes from the 3456 behind-camera projections.
+  - **Rerun.** Per the instruction for an unresolved cause, one unchanged rerun: `afk2rerun-seed0-bin-picking-200k` (W&B `89z76kak`; launched 15:33:04 on local MIG-8da55219 from 8185c41; config sha256 288c3e70… identical to the original; registration `runs/setup/afk2rerun-seed0-bin-picking-200k-registration-20261021.json`; identical row apart from the name: base + bin-picking + future_k2, seed 0, 200k steps, W&B on; source = main at launch). Monitored over 10k–15k with the event signature (after step 2000: visibility > 0.1 together with encoder share < 0.1, InfoNCE > 2 or cosine collapse), and compared with the original at every 5k evaluation (reconstruction, motion, representation) via `afk2_binpick_compare.py`.

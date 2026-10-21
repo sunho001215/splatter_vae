@@ -1,0 +1,60 @@
+[gpu_guard] cuda:0 -> MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[2026-10-21 14:55:06] GPU mapping: [{"index": 0, "uuid": "MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631", "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"}]; world size 1
+[2026-10-21 14:55:06] torch 2.10.0+cu129; config ['/home/ws/ws/splatter4d/runs/pretrain/afk2-seed0-bin-picking-200k/config.yaml'] overrides ['train.stop_step=12700', 'train.save_every=100000']
+[2026-10-21 14:55:09] resumed from /home/ws/ws/splatter4d/.worktrees/afk2-replay/runs/spike-replay/replay-from-10k/resume-step_0010000.pt at step 10000
+[2026-10-21 14:55:59] step 10050 loss 0.8786 psnr 22.20 motion 0.0143 nce 0.453 1.007s/it
+[2026-10-21 14:56:31] step 10100 loss 0.7792 psnr 22.26 motion 0.0225 nce 0.352 0.649s/it
+[2026-10-21 14:57:06] step 10150 loss 0.6646 psnr 22.39 motion 0.0127 nce 0.296 0.688s/it
+[2026-10-21 14:57:39] step 10200 loss 0.8586 psnr 22.21 motion 0.0155 nce 0.460 0.673s/it
+[2026-10-21 14:58:16] step 10250 loss 0.6998 psnr 22.19 motion 0.0163 nce 0.321 0.730s/it
+[2026-10-21 14:58:49] step 10300 loss 0.6894 psnr 22.84 motion 0.0154 nce 0.316 0.665s/it
+[2026-10-21 14:59:23] step 10350 loss 0.6217 psnr 22.90 motion 0.0130 nce 0.276 0.674s/it
+[2026-10-21 14:59:57] step 10400 loss 0.7531 psnr 22.47 motion 0.0175 nce 0.362 0.678s/it
+[2026-10-21 15:00:29] step 10450 loss 0.4862 psnr 22.44 motion 0.0128 nce 0.132 0.645s/it
+[2026-10-21 15:01:02] step 10500 loss 0.6000 psnr 22.72 motion 0.0118 nce 0.252 0.666s/it
+[2026-10-21 15:01:35] step 10550 loss 0.6813 psnr 22.37 motion 0.0133 nce 0.296 0.657s/it
+[2026-10-21 15:02:07] step 10600 loss 0.6704 psnr 22.40 motion 0.0141 nce 0.264 0.629s/it
+[2026-10-21 15:02:39] step 10650 loss 0.6665 psnr 22.23 motion 0.0145 nce 0.289 0.652s/it
+[2026-10-21 15:03:11] step 10700 loss 0.6641 psnr 23.23 motion 0.0115 nce 0.354 0.627s/it
+[2026-10-21 15:03:44] step 10750 loss 0.8021 psnr 22.86 motion 0.0129 nce 0.450 0.661s/it
+[2026-10-21 15:04:17] step 10800 loss 0.6799 psnr 22.22 motion 0.0165 nce 0.266 0.661s/it
+[2026-10-21 15:04:49] step 10850 loss 0.6153 psnr 22.71 motion 0.0120 nce 0.254 0.643s/it
+[2026-10-21 15:05:21] step 10900 loss 0.6810 psnr 22.81 motion 0.0130 nce 0.325 0.645s/it
+[2026-10-21 15:05:54] step 10950 loss 0.5732 psnr 22.61 motion 0.0145 nce 0.203 0.654s/it
+[2026-10-21 15:06:26] step 11000 loss 0.7775 psnr 22.93 motion 0.0189 nce 0.393 0.636s/it
+[2026-10-21 15:06:59] step 11050 loss 0.6176 psnr 22.43 motion 0.0141 nce 0.237 0.672s/it
+[2026-10-21 15:07:31] step 11100 loss 0.7185 psnr 22.96 motion 0.0168 nce 0.324 0.637s/it
+[2026-10-21 15:08:01] step 11150 loss 0.6965 psnr 22.32 motion 0.0142 nce 0.326 0.592s/it
+[2026-10-21 15:08:35] step 11200 loss 0.9600 psnr 22.60 motion 0.0189 nce 0.525 0.680s/it
+[2026-10-21 15:09:06] step 11250 loss 0.4983 psnr 22.50 motion 0.0112 nce 0.148 0.631s/it
+[2026-10-21 15:09:38] step 11300 loss 0.6426 psnr 23.40 motion 0.0093 nce 0.316 0.635s/it
+[2026-10-21 15:10:11] step 11350 loss 0.7399 psnr 23.18 motion 0.0201 nce 0.360 0.651s/it
+[2026-10-21 15:10:42] step 11400 loss 0.6668 psnr 22.65 motion 0.0179 nce 0.276 0.627s/it
+[2026-10-21 15:11:15] step 11450 loss 0.8685 psnr 22.28 motion 0.0184 nce 0.442 0.672s/it
+[2026-10-21 15:11:45] step 11500 loss 0.7151 psnr 22.51 motion 0.0184 nce 0.316 0.586s/it
+[2026-10-21 15:12:18] step 11550 loss 0.6783 psnr 22.97 motion 0.0118 nce 0.327 0.663s/it
+[2026-10-21 15:12:51] step 11600 loss 0.7373 psnr 22.95 motion 0.0155 nce 0.362 0.672s/it
+[2026-10-21 15:13:24] step 11650 loss 0.7021 psnr 22.61 motion 0.0143 nce 0.287 0.653s/it
+[2026-10-21 15:13:56] step 11700 loss 0.8090 psnr 23.10 motion 0.0180 nce 0.420 0.641s/it
+[2026-10-21 15:14:30] step 11750 loss 0.5769 psnr 22.63 motion 0.0170 nce 0.189 0.672s/it
+[2026-10-21 15:15:02] step 11800 loss 0.7562 psnr 22.86 motion 0.0194 nce 0.367 0.651s/it
+[2026-10-21 15:15:36] step 11850 loss 0.5704 psnr 23.57 motion 0.0106 nce 0.240 0.680s/it
+[2026-10-21 15:16:08] step 11900 loss 0.6504 psnr 22.55 motion 0.0162 nce 0.259 0.643s/it
+[2026-10-21 15:16:42] step 11950 loss 0.4187 psnr 23.29 motion 0.0123 nce 0.081 0.662s/it
+[2026-10-21 15:17:17] step 12000 loss 0.6553 psnr 23.05 motion 0.0102 nce 0.325 0.702s/it
+[2026-10-21 15:17:49] step 12050 loss 0.4468 psnr 22.89 motion 0.0124 nce 0.101 0.657s/it
+[2026-10-21 15:18:23] step 12100 loss 0.7893 psnr 22.60 motion 0.0148 nce 0.396 0.669s/it
+[2026-10-21 15:18:58] step 12150 loss 0.6952 psnr 23.40 motion 0.0159 nce 0.336 0.702s/it
+[2026-10-21 15:19:33] step 12200 loss 0.7075 psnr 23.09 motion 0.0141 nce 0.358 0.702s/it
+[2026-10-21 15:20:05] step 12250 loss 0.4654 psnr 22.86 motion 0.0125 nce 0.123 0.635s/it
+[2026-10-21 15:20:39] step 12300 loss 0.5899 psnr 23.02 motion 0.0113 nce 0.246 0.674s/it
+[2026-10-21 15:21:13] step 12350 loss 0.7562 psnr 23.35 motion 0.0128 nce 0.397 0.687s/it
+[2026-10-21 15:21:46] step 12400 loss 0.7422 psnr 23.19 motion 0.0142 nce 0.358 0.669s/it
+[2026-10-21 15:22:18] step 12450 loss 0.5374 psnr 22.68 motion 0.0117 nce 0.189 0.639s/it
+[2026-10-21 15:22:50] step 12500 loss 0.6051 psnr 23.11 motion 0.0123 nce 0.238 0.642s/it
+[2026-10-21 15:23:22] step 12550 loss 0.7621 psnr 22.57 motion 0.0224 nce 0.349 0.642s/it
+[2026-10-21 15:23:58] step 12600 loss 0.6186 psnr 22.39 motion 0.0124 nce 0.261 0.715s/it
+[2026-10-21 15:24:31] step 12650 loss 0.7738 psnr 23.48 motion 0.0101 nce 0.421 0.648s/it
+[2026-10-21 15:25:02] step 12700 loss 0.7577 psnr 23.39 motion 0.0113 nce 0.396 0.628s/it
+[2026-10-21 15:25:45] eval step 12700 future stride 2: psnr 24.10 heldout 16.50 rel_epe02 0.476 retrieval nan
+[2026-10-21 15:25:45] eval step 12700 future stride 6: psnr 24.06 heldout 16.50 rel_epe02 0.423 retrieval nan

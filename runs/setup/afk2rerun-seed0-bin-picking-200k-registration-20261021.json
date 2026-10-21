@@ -1,0 +1,89 @@
+{
+  "prepared_at": "2026-10-21T15:26:08.973093+09:00",
+  "purpose": "Fresh retraining of future_k2 bin-picking from scratch under a new run ID (user request 2026-10-21, spike\ninvestigation runs/setup/afk2-binpick-spike-20261021/). The original afk2-seed0-bin-picking-200k and its artifacts stay\nuntouched and running. The new row equals the original's apart from the name/paths and, only with --with-fix, the\nverified fix (loss.visibility_front_only=true): same base/task/variant config, seed 0, 200k steps, resources,\nrestarts and required results. Logged to W&B (the training default). Registered before any result of the new run.",
+  "commit": "8185c41533793b986a1df32e9816b428e61795cf",
+  "original": {
+    "id": "afk2-seed0-bin-picking-200k",
+    "host": "local",
+    "script": "scripts/train.py",
+    "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/bin-picking.yaml",
+      "configs/metaworld/variants/future_k2.yaml",
+      "--name",
+      "afk2-seed0-bin-picking-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+    ],
+    "gpu": "any",
+    "mem_gb": 10,
+    "ram_gb": 13,
+    "disk_gb": 30,
+    "priority": 1,
+    "deps": [],
+    "max_restarts": 3,
+    "stage": 5,
+    "variant": "future_k2",
+    "variant_definition": "runs/setup/afk2-definition-20261020.json",
+    "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+    ]
+  },
+  "jobs": [
+    {
+      "id": "afk2rerun-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/future_k2.yaml",
+        "--name",
+        "afk2rerun-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 1,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "variant": "future_k2",
+      "variant_definition": "runs/setup/afk2-definition-20261020.json",
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "investigation": "runs/setup/afk2-binpick-spike-20261021",
+      "rerun_of": "afk2-seed0-bin-picking-200k"
+    }
+  ],
+  "differences_from_original": [
+    "args",
+    "id",
+    "investigation",
+    "rerun_of"
+  ],
+  "fix": null,
+  "registered_at": "2026-10-21T15:26:17.685906+09:00",
+  "queue_sha256_before": "807d8569b710cc99562890ae925d39b0687f698452a4be27a818148a403f3e97",
+  "queue_sha256_after": "84432ac0facf195d8125ac640af94733aa2ad4b6e181c30a544677f3f5177087"
+}

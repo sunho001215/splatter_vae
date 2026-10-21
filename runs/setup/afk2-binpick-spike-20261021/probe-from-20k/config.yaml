@@ -1,0 +1,132 @@
+data:
+  regime: metaworld
+  root: /home/ws/data/metaworld/splatter4d_v1
+  task: bin-picking
+  train_ratio: 0.96
+  strides:
+  - 2
+  - 4
+  - 6
+  val_strides:
+  - 2
+  - 6
+  episodes: null
+  objective: future
+  history_stride: 2
+  future_strides:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  val_future_strides:
+  - 2
+  - 6
+model:
+  encoder:
+    backbone: scratch
+    image_height: 128
+    image_width: 128
+    patch_size: 16
+    width: 128
+    depth: 8
+    heads: 8
+    num_slots: 1
+    slot_dim: 256
+    num_frames: 3
+    mask_ratio: 0.5
+    motion_patch_threshold: 0.05
+    drop_path: 0.1
+  decoder:
+    dim: 128
+    depth: 2
+    heads: 4
+    motion_max: 0.25
+    scene:
+      parents: 768
+      children: 8
+      offset_scale: 0.15
+      child_radius: 0.06
+      scale_min: 0.001
+      scale_max: 0.08
+    dynamic:
+      parents: 256
+      children: 8
+      offset_scale: 0.4
+      child_radius: 0.04
+      scale_min: 0.0005
+      scale_max: 0.03
+    single_group: false
+    action_dim: 4
+    max_actions: 12
+    action_hidden: 128
+    action_embed: 64
+  anchor_stats: /home/ws/data/metaworld/splatter4d_v1/workspace_stats/bin-picking.json
+  single_frame: false
+render:
+  near: 0.05
+  far: 3.0
+loss:
+  rgb: 1.0
+  ssim_weight: 0.2
+  lambda_dyn: 1.0
+  coverage: 0.1
+  depth_l1: 1.0
+  depth_grad: 0.5
+  depth_hard: 0.5
+  depth_align: none
+  depth_align_warmup_steps: 0
+  motion: 5.0
+  motion_huber: 0.01
+  invariance: 1.0
+  consistency: 0.5
+  temperature: 0.1
+  visibility: 1.0
+  ramp_steps: 20000
+  teacher_scale_jitter: null
+  depth_valid_far: true
+  motion_space: gaussian
+train:
+  steps: 200000
+  batch_size: 16
+  lr: 0.0005
+  min_lr: 1.0e-05
+  weight_decay: 0.01
+  warmup_steps: 10000
+  grad_clip: 1.0
+  bf16: true
+  seed: 0
+  num_workers: 6
+  prefetch_factor: 2
+  log_every: 50
+  eval_every: 5000
+  save_every: 100000
+  eval_at_start: true
+  stop_step: 20050
+eval:
+  max_batches: 8
+  probe_every: 10000
+  probe_batches: 24
+  orbit_center:
+  - 0.0
+  - 0.6
+  - 0.0
+  orbit_distance: 1.0
+  orbit_elevation: -45.0
+wandb:
+  enabled: true
+  project: splatter4d-metaworld
+aug:
+  synth_views: 2
+  synth_render: true
+run:
+  name: probe-from-20k
+  gpus:
+  - index: 0
+    uuid: MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631
+    name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb
+  host: local
+  git_commit: bfb4ccb128c44f207e362ac6e233751862e3e0d9
+  source_dirty: false
+  config_sha256: a54c91d9f1058e10a183eef35869fdb5b422f8dcec90fbd4e0521d33d9fcda9e
