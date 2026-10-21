@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 
 from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from s4d.remote_access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
-from s4d.remote_jobs import commit_source_sha256
+from s4d.remote_jobs import OWNERSHIP_LABELS, commit_source_sha256
 from s4d.remote_verification import validate_verification, verification_artifacts, verification_output
 
 CONTAINER_REPO = "/workspace/splatter4d"
@@ -117,7 +117,7 @@ def validate_spec(spec: dict) -> dict:
         raise ValueError("Invalid OOM score")
     expected_labels = {
         "s4d.managed": "true", "s4d.run_id": job_id, "s4d.attempt": str(attempt), "s4d.host": "remote",
-        "s4d.commit": commit, "s4d.image_digest": image,
+        "s4d.commit": commit, "s4d.image_digest": image, **OWNERSHIP_LABELS,
     }
     if purpose is not None:
         expected_labels.update({"s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"})
