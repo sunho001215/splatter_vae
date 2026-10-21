@@ -1,4 +1,7 @@
-"""Best-effort, targeted eviction of clean file-cache pages of completed or inactive files (revised 2026-10-21).
+"""RETIRED 2026-10-21 (user decision, option (b)): the local budget excludes clean disk-backed file cache and no cache
+is force-evicted, so this tool no longer runs periodically and refuses to run without --manual.
+
+Best-effort, targeted eviction of clean file-cache pages of completed or inactive files (revised 2026-10-21).
 
 Files are never modified or deleted; only their clean cached pages are released with POSIX_FADV_DONTNEED (dirty pages
 stay until written back; a later read simply comes from disk again). Shared memory (/dev/shm) is never touched and
@@ -130,6 +133,8 @@ def task_of(job):
 
 
 def main():
+    if '--manual' not in sys.argv:
+        raise SystemExit('evict_partial_cache.py is retired (2026-10-21, option (b)): no cache is force-evicted')
     before = mb.snapshot()
     report = {}
     state = jobs.read_registry()

@@ -103,7 +103,8 @@ def footprint(job):
     if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py'):
         # + the trainer's preallocated replay file, which DrM sampling keeps resident in the page cache (measured
         # 2026-10-17: DynaMo 1.1 GB, 3D-MVP 2.5 GB; evicting it refills within minutes)
-        return int(MEASURED[job['script']] + (2.6e9 if job['script'] == 'scripts/train_rl.py' else 0))
+        # (the replay file's clean page cache is excluded from the budget since 2026-10-21, option (b))
+        return int(MEASURED[job['script']])
     if job['script'] == 'scripts/train.py':  # our pretraining trainer: measured 10.77 GB max sampled PSS (rule 2026-10-11)
         return int(MEASURED[job['script']])
     return int(float(job['ram_gb']) * 2**30)
@@ -132,14 +133,15 @@ candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
                                     and status(j['id'].removesuffix('-eval')) == jobs.DONE),
                                j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
 memory = mb.snapshot()
-charge = memory['working_set']  # max(0, memory.current - inactive_file): reclaimable inactive cache excluded
-# Dataset cache (2026-10-21): inactive dataset pages are excluded from the budget; the active share is reserved as an
-# allowance of ACTIVE_CACHE_FRACTION of each dataset used by an active job, and by each candidate when admitted.
+# Budget (user decision 2026-10-21, option (b); memory_budget.py): every byte of the cgroup except verified clean,
+# disk-backed file cache, active or inactive. Clean dataset and replay cache are therefore excluded, and no dataset-cache
+# allowance is projected.
 files = sorted({f for j in registered for f in task_files(j) if f.is_file()})
-allowance = {f: int(mb.ACTIVE_CACHE_FRACTION * f.stat().st_size) for f in files}
+allowance = {f: 0 for f in files}
 nonresident = allowance  # name kept for the admission loop below
 counted = {f for j in registered if status(j['id']) in jobs.ACTIVE for f in task_files(j) if f in allowance}
-cache_reserve = sum(allowance[f] for f in counted)
+cache_reserve = 0
+charge = memory['budget_usage']
 active_share = memory['active_file'] / max(1, memory['active_file'] + memory['inactive_file'])
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
@@ -167,7 +169,7 @@ def resident_replay(job_id):
 
 # remaining growth: footprint minus what the job already uses (its non-file PSS, and for trainers the part of the
 # resident replay cache that is in the working set: the resident bytes times the cgroup's active-file share)
-growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0) - int(active_share * resident_replay(i)))
+growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0))
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 total = charge + sum(growth.values()) + cache_reserve
 admitted, taken = [], set()
@@ -192,7 +194,8 @@ if admitted and not DRY:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
                         'jobs': json.loads(json.dumps(admitted))}, stream, sort_keys=False)
     with (SETUP / f'bx-local-admission-{tag}.json').open('x') as stream:
-        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'working_set',
+        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'budget_usage',
+                   'budget_definition': 'memory.current - clean disk-backed file cache (option b)',
                    'memory_snapshot': memory, 'remaining_growth_by_job': growth,
                    'active_cache_allowance_bytes': cache_reserve, 'accounted_plus_admitted_bytes': total,
                    'admission_ceiling_bytes': CAP, 'ceiling_bytes': mb.CEILING,
@@ -207,5 +210,6 @@ for job in registered:
     counts.setdefault(job['script'].split('/')[-1], {}).setdefault(status(job['id']), 0)
     counts[job['script'].split('/')[-1]][status(job['id'])] += 1
 print('\n'.join(messages))
-print("ACCOUNTING working_set", charge, "raw", memory["current"], "growth", sum(growth.values()), "active_cache_allowance", cache_reserve, "total", total, "cap", CAP, "candidates", len(candidates), "host_available", memory["host_mem_available"], "psi_some_avg60", memory["pressure"].get("some", {}).get("avg60"))
+print("ACCOUNTING budget_usage", charge, "clean_disk_file_excluded", memory["clean_disk_file"], "raw", memory["current"], "growth", sum(growth.values()), "active_cache_allowance", cache_reserve, "total", total, "cap", CAP, "candidates", len(candidates), "host_available", memory["host_mem_available"], "psi_some_avg60", memory["pressure"].get("some", {}).get("avg60"),
+      "io_psi_full_avg60", memory["io_pressure"].get("full", {}).get("avg60"))
 print("BASELINES", json.dumps(counts, sort_keys=True))

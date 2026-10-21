@@ -359,11 +359,10 @@ def session_pss():
 
 
 memory = mb.snapshot()
-charge = memory['working_set']  # max(0, memory.current - inactive_file) (2026-10-21)
-# the active-cache allowance of the datasets applies only while a dataset reader (pretraining / full-split
-# evaluation) is a local candidate; exports and DrM read no dataset file (2026-10-18)
-cache_reserve = sum(int(mb.ACTIVE_CACHE_FRACTION * f.stat().st_size) for f in DATA_FILES) \
-    if any(j['script'] in ('scripts/train.py', 'scripts/evaluate.py') for j in candidates) else 0
+# budget (user decision 2026-10-21, option (b); memory_budget.py): every byte of the cgroup except verified clean,
+# disk-backed file cache, active or inactive; clean dataset cache is excluded, so no dataset-cache allowance
+charge = memory['budget_usage']
+cache_reserve = 0
 pss = session_pss()
 # remaining growth of every active local job: its measured/declared footprint minus what it already uses
 queue_scripts = {j['id']: j['script'] for j in queue['jobs']}
@@ -398,7 +397,7 @@ if admitted and not DRY:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
                         'jobs': json.loads(json.dumps(admitted))}, stream, sort_keys=False)
     with (SETUP / f's2-local-admission-{tag}.json').open('x') as stream:
-        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'working_set',
+        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'budget_usage',
                    'memory_snapshot': memory, 'remaining_growth_bytes': ramp, 'remaining_growth_by_job': growth,
                    'active_cache_allowance_bytes': cache_reserve, 'accounted_plus_admitted_bytes': total,
                    'admission_ceiling_bytes': CAP, 'commit': source['commit'], 'admission': 'job by job',
