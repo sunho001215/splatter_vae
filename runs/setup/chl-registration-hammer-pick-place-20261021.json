@@ -1,0 +1,89 @@
+{
+ "prepared_at": "2026-10-21T16:00:00.548642+09:00",
+ "commit": "f51caff88bd2889cce78163e5f4517150be11014",
+ "purpose": "chamfer_lean pilot pretrains (definition runs/setup/chl-definition-20261021.json), registered before any result: hammer and pick-place, seed 0, 200k LR schedule stopped at 50k. No 200k, RL or eight-task expansion yet.",
+ "tasks": [
+  "hammer",
+  "pick-place"
+ ],
+ "counts": {
+  "train.py": 2
+ },
+ "jobs": [
+  {
+   "id": "chl-seed0-hammer-50k",
+   "host": "local",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/hammer.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "--name",
+    "chl-seed0-hammer-50k",
+    "--output-root",
+    "runs/pretrain",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.stop_step=50000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 10,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "variant": "chamfer_lean",
+   "variant_definition": "runs/setup/chl-definition-20261021.json",
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0050000.pt"
+   ]
+  },
+  {
+   "id": "chl-seed0-pick-place-50k",
+   "host": "local",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/pick-place.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "--name",
+    "chl-seed0-pick-place-50k",
+    "--output-root",
+    "runs/pretrain",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.stop_step=50000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 10,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "variant": "chamfer_lean",
+   "variant_definition": "runs/setup/chl-definition-20261021.json",
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0050000.pt"
+   ]
+  }
+ ],
+ "registered_at": "2026-10-21T16:00:12.745304+09:00",
+ "queue_sha256_before": "84432ac0facf195d8125ac640af94733aa2ad4b6e181c30a544677f3f5177087",
+ "queue_sha256_after": "4b1eada26c674a7752712820009787ecfafaf85e34dc6ee44ae53daaf515c211"
+}

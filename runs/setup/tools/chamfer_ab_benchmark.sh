@@ -1,12 +1,12 @@
 #!/bin/bash
-# chamfer_lean smoke test and matched cost benchmark (2026-10-21), from the candidate worktree's code.
+# chamfer_lean smoke test and matched cost benchmark (2026-10-21), from the merged main checkout.
 # 1. smoke: chamfer_lean on hammer to step 200 (checkpoints every 100, evaluation at the end), then resumed from its
 #    checkpoint to step 300 (resumability check).
 # 2. A/B: reference C + D0 + M3D (i2-m3d overrides) vs chamfer_lean, hammer, seed 0, interleaved ref, chl, ref, chl on
 #    the same MIG slice (which also hosts one running pretrain, the same for all four runs), 500 steps each on the
 #    200k schedule; step time, GPU time and peak allocated GPU memory are read from metrics.jsonl (logs at 150-500).
 set -u
-WT=/home/ws/ws/splatter4d/.worktrees/chamfer
+WT=/home/ws/ws/splatter4d  # main checkout (merged chamfer_lean, suite evidence c5918fb/8185c41); outputs must lie in its repo
 OUT=/home/ws/ws/splatter4d/runs/bench/chl-ab-20261021
 PY=/home/ws/ws/splatter4d/.venv/bin/python
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:?set one authorized MIG UUID}

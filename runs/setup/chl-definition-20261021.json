@@ -1,0 +1,74 @@
+{
+ "prepared_at": "2026-10-21T16:00:00.548642+09:00",
+ "name": "chamfer_lean",
+ "description": "Pretraining candidate: the completed reference C + D0 + M3D (i2-m3d) with the hard-opacity depth pass, depth-gradient loss and visibility regulariser removed (occlusion/free-space already 0) and a bidirectional 3D Chamfer loss between all decoded Gaussian centres and the training cameras' fused depth cloud added at each reconstructed timestep. Not \"D2\" (historical D2 also had occlusion).",
+ "commit": "f51caff88bd2889cce78163e5f4517150be11014",
+ "config": {
+  "files": [
+   "configs/metaworld/base.yaml",
+   "configs/metaworld/tasks/<task>.yaml",
+   "configs/metaworld/variants/chamfer_lean.yaml"
+  ],
+  "variant_sha256": "8d57b7206acb98965258500a7d191f54b08fb5c5cdac8b46b245e2590a33005f",
+  "variant_text": "# Variant chamfer_lean (registered 2026-10-21; a pretraining candidate, not the frozen method). Base: the completed\n# reference C + D0 + M3D (method-frozen-v1); its four registered overrides are repeated here. Not \"D2\": the historical\n# D2 also had occlusion supervision.\n# Kept: RGB reconstruction (L1 + SSIM), Gaussian-space 3D motion (M3D), expected-depth L1, alpha coverage, InfoNCE,\n#   slot consistency, the synthetic-view setup (2 views, also render targets), temporal ramp, encoder, decoder,\n#   Gaussian counts, anchor initialisation, temporal sampling, splits, rendering settings.\n# Removed (each skipped entirely, not multiplied by zero): hard-opacity depth pass and its loss, multi-scale\n#   depth-gradient loss, visibility regulariser, occlusion/free-space loss (already 0 in the reference).\n# Added: bidirectional 3D Chamfer between all decoded Gaussian centres and the training cameras' fused depth at each\n#   reconstructed timestep (s4d/losses/chamfer.py): 0.5 mean_g min_p |g-p|^2 + 0.5 mean_p min_g |p-g|^2, metric,\n#   no alignment; target points: depth > 0 and < far (3.0 m), 1 cm voxel means, 4096 points per sample and timestep,\n#   uniform over voxels. Weight 5 fixed by the training-only gradient-scale check\n#   runs/setup/chamfer-weight-check-20261021.json (rule v2) before any candidate training.\n# Computation: the diagnostic motion-feature render runs only on logging/evaluation steps (identical reported metrics).\naug:\n  synth_views: 2\n  synth_render: true\nloss:\n  depth_valid_far: true\n  motion_space: gaussian\n  depth_hard: 0.0\n  depth_grad: 0.0\n  visibility: 0.0\n  occlusion: 0.0\n  chamfer: 5.0\n  chamfer_points: 4096\n  chamfer_voxel_m: 0.01\n  motion_feature_render: log_steps\n"
+ },
+ "reference": {
+  "runs": "runs/pretrain/i2-m3d-seed{0,1}-<task>",
+  "overrides": [
+   "aug.synth_views=2",
+   "aug.synth_render=true",
+   "loss.depth_valid_far=true",
+   "loss.motion_space=gaussian"
+  ]
+ },
+ "loss": {
+  "formula": "L = 0.5 * mean_g min_p ||g - p||^2 + 0.5 * mean_p min_g ||p - g||^2 (metres^2), per sample and reconstructed timestep, averaged over valid samples; added to the render loss with weight 5",
+  "gaussians": "all decoded Gaussian centres (static and dynamic) at that timestep; no opacity or contribution filter; no alignment",
+  "targets": "training cameras of the batch only (no held-out or moving-camera data): every pixel lifted with its stored depth and calibration; valid if depth > 0 and < far (3.0 m, loss.depth_valid_far); 1 cm voxel means (one point per occupied voxel, across views); 4096 points per sample and timestep sampled uniformly over voxels (without replacement when enough voxels exist)",
+  "nearest_neighbours": "exact fp32, fused Triton kernel (bounded memory, no distance matrix), argmin without gradient, squared distance recomputed with gradient at the argmin",
+  "weight": {
+   "value": 5,
+   "source": "runs/setup/chamfer-weight-check-20261021.json",
+   "rule": "v2: lambda = median |grad (0.5 hard-depth + 0.5 depth-gradient)| / |grad C| over task x state x batch, rounded to the nearest 1-2-5 value (v1 used R including the visibility term; see the comment above)",
+   "median_ratio": 5.857402459793581,
+   "ratio_range": [
+    3.2203464380096425,
+    8.255188066438846
+   ],
+   "note": "rule v1 (including the visibility term) gave ~108 because of the visibility initialisation transient; v2 matches the gradient scale of the removed depth terms. Fixed before any candidate training; no sweep."
+  }
+ },
+ "computation": "disabled terms are skipped (no hard-opacity render, no depth-gradient or visibility computation); the diagnostic motion-feature render runs only on logging steps (loss.motion_feature_render: log_steps), with identical logged metrics",
+ "unchanged": [
+  "RGB L1 + SSIM",
+  "M3D Gaussian-space motion",
+  "expected-depth L1",
+  "alpha coverage",
+  "InfoNCE",
+  "slot consistency",
+  "synthetic views (2, render targets)",
+  "encoder",
+  "decoder",
+  "Gaussian counts",
+  "anchors",
+  "temporal sampling",
+  "splits",
+  "rendering settings",
+  "reconstruction timing"
+ ],
+ "pilot": {
+  "tasks": [
+   "hammer",
+   "pick-place"
+  ],
+  "seed": 0,
+  "schedule": "train.steps=200000 (LR schedule), train.stop_step=50000",
+  "checkpoints": "every 10k (resumable)",
+  "comparison": "i2-m3d-seed0 in-training evaluation at 50k (same seed); i2-m3d-seed1 50k checkpoints (full evaluation and diagnostics); i2-m3d-seed0 100k for context",
+  "not_yet": [
+   "200k",
+   "RL",
+   "eight-task expansion"
+  ]
+ }
+}

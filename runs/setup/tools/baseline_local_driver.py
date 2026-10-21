@@ -37,7 +37,9 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'baselines-snerl-eight-task-registration-20261020.json', 'afk2-registration-hammer-pick-place-20261020.json',
                  'afk2-registration-bin-picking-coffee-push-door-open-peg-insert-side-peg-unplug-side-stick-push-20261020.json',
                  # fresh unchanged bin-picking retraining (spike investigation 2026-10-21; cause unresolved)
-                 'afk2rerun-seed0-bin-picking-200k-registration-20261021.json']
+                 'afk2rerun-seed0-bin-picking-200k-registration-20261021.json',
+                 # chamfer_lean pilot pretrains (hammer, pick-place; 200k schedule stopped at 50k; 2026-10-21)
+                 'chl-registration-hammer-pick-place-20261021.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')

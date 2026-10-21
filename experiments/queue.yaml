@@ -34741,5 +34741,69 @@ jobs:
   - checkpoints/step_0200000.pt
   investigation: runs/setup/afk2-binpick-spike-20261021
   rerun_of: afk2-seed0-bin-picking-200k
+- id: chl-seed0-hammer-50k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-hammer-50k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=50000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 10
+  priority: 1
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0050000.pt
+- id: chl-seed0-pick-place-50k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-pick-place-50k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.stop_step=50000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 10
+  priority: 1
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0050000.pt
 
 host_ram_reserve_gb: 60
