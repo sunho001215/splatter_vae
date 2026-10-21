@@ -127,6 +127,8 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 job.setdefault("containers_removed", []).append(event.get("container_id"))
             elif kind == "container_kept":
                 job.setdefault("containers_kept", []).append(event.get("container_id"))
+            elif kind == "container_kept_cleared":  # a refusal traced to a defect of the check itself, since fixed
+                job["containers_kept"] = [i for i in job.get("containers_kept", []) if i != event.get("container_id")]
             elif kind == "container_absent":
                 job.setdefault("containers_absent", []).append(event.get("container_id"))
             elif kind == "exited":
