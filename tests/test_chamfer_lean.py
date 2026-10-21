@@ -227,3 +227,17 @@ def test_chamfer_uses_only_the_training_cameras_and_reaches_encoder_decoder_and_
     motion = sum(float(p.grad.abs().sum()) for n, p in model.decoder.named_parameters()
                  if p.grad is not None and "motion" in n)
     assert enc > 0 and xyz > 0 and motion > 0  # later timesteps move the dynamic centres through the motion head
+
+
+def test_fallback_tiles_keep_global_indices_and_nan_depth_is_invalid(monkeypatch):
+    monkeypatch.setattr(chamfer_mod, "_FALLBACK_ELEMENTS", 16)  # 4 x 4 tiles
+    g = torch.Generator().manual_seed(2)
+    src, dst = torch.randn(2, 37, 3, generator=g), torch.randn(2, 29, 3, generator=g)
+    d, i = nearest_neighbours(src, dst, fused=False)
+    ref_d, ref_i = _brute(src.double(), dst.double())
+    assert torch.equal(i, ref_i)
+    torch.testing.assert_close(d.double(), ref_d, atol=1e-6, rtol=1e-6)
+    depth, K, c2w = _cloud_inputs()
+    depth[0, 1, 0, 0, 0] = float("nan")
+    pts, valid, stats = target_clouds(depth, K, c2w, far=3.0, valid_far=True, voxel=0.01, budget=8)
+    assert torch.isfinite(pts).all() and valid.all()

@@ -87,17 +87,21 @@ def nearest_neighbours(src: torch.Tensor, dst: torch.Tensor, fused: bool | None 
         if N > 0:
             _nearest_kernel[(triton.cdiv(N, 64), B)](src, dst, d, i, N, M, BLOCK_N=64, BLOCK_M=128)
         return d, i.long()
-    chunk = max(1, _FALLBACK_ELEMENTS // max(1, B * M))
-    ds, idx = [], []
-    for s in range(0, N, chunk):
-        diff = src[:, s : s + chunk, None, :] - dst[:, None, :, :]  # exact squared differences, as the kernel
-        d2 = (diff * diff).sum(-1)
-        v, k = d2.min(-1)
-        ds.append(v)
-        idx.append(k)
-    if not ds:
-        return src.new_zeros(B, 0), torch.zeros(B, 0, dtype=torch.long, device=src.device)
-    return torch.cat(ds, 1), torch.cat(idx, 1)
+    # tiles over batch, query and destination, each holding at most _FALLBACK_ELEMENTS pairs (x3 coordinates of
+    # temporaries); running minima keep global indices, ties resolving to the lowest index as in the kernel
+    best_d = torch.full((B, N), float("inf"), device=src.device)
+    best_i = torch.zeros(B, N, dtype=torch.long, device=src.device)
+    tile = max(1, int(_FALLBACK_ELEMENTS ** 0.5))
+    for b0 in range(B):
+        for n0 in range(0, N, tile):
+            for m0 in range(0, M, tile):
+                diff = src[b0, n0 : n0 + tile, None, :] - dst[b0, None, m0 : m0 + tile, :]
+                d2 = (diff * diff).sum(-1)
+                v, k = d2.min(-1)
+                better = v < best_d[b0, n0 : n0 + tile]
+                best_d[b0, n0 : n0 + tile] = torch.where(better, v, best_d[b0, n0 : n0 + tile])
+                best_i[b0, n0 : n0 + tile] = torch.where(better, k + m0, best_i[b0, n0 : n0 + tile])
+    return best_d, best_i
 
 
 def target_clouds(
@@ -119,9 +123,9 @@ def target_clouds(
     B, T, V, H, W = depth.shape
     device = depth.device
     xyz = lift_depth(depth.float(), K[:, None].expand(B, T, V, 3, 3).float(), c2w[:, None].expand(B, T, V, 4, 4).float())
-    zero = depth <= 0
+    zero = ~(depth > 0)  # also NaN: only finite positive depth is valid, as in the reference rule
     beyond = (depth >= far) if valid_far else torch.zeros_like(zero)
-    keep = ~zero & ~beyond
+    keep = (depth > 0) & ((depth < far) if valid_far else torch.isfinite(depth))
     BT = B * T
     group = torch.arange(BT, device=device)[:, None].expand(BT, V * H * W)[keep.reshape(BT, -1)]
     pts = xyz.reshape(BT, V * H * W, 3)[keep.reshape(BT, -1)]
