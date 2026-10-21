@@ -1104,7 +1104,9 @@ def test_removal_command_never_forces_prunes_or_deletes_volumes_and_rechecks_ide
         assert not any(forbidden in line.split("docker ", 1)[1] for line in docker), forbidden
     # the only other deletions are this run's own temporary archive files
     assert [line for line in lines if "rm -f" in line] == ["trap 'rm -f -- \"$tmp_log\" \"$tmp_record\"' EXIT"]
-    assert f"{CONTAINER_ID}|exited|0|true|remote|r|2|/s4d-r-a2|true" in cmd  # incl. read-only root filesystem
+    # incl. read-only root filesystem and no verification labels
+    assert f"{CONTAINER_ID}|exited|0|true|remote|r|2|/s4d-r-a2|true||" in cmd
+    assert 's4d.verification_purpose' in cmd and 's4d.campaign_eligible' in cmd
     assert f"{remote.ROOT}/runs/r/containers/s4d-r-a2.docker.log" in cmd and "No such object" in cmd
     for bad in (dict(root="/tmp"), dict(container="s4d-other-a2"), dict(container_id="x" * 64),
                 dict(required=["../escape"]), dict(run_id="r;rm")):
@@ -1272,3 +1274,24 @@ def test_backend_removal_maps_refusals_and_transport_failures(tmp_path):
             remote.RemoteBackend(REPO, tmp_path / "runs", Client(code, "garbage")).remove_container(*args)
     with pytest.raises(remote.RemoteUnreachable):
         remote.RemoteBackend(REPO, tmp_path / "runs", Client(None)).remove_container(*args)
+
+
+def test_verification_containers_are_never_cleanup_targets(tmp_path):
+    """Early verification jobs carry no purpose field in the registry; their container labels identify them."""
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.remove_error = remote.RemoteJobError("transient")  # the job completes; its container stays for now
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done" and len(backend.removals) == 1
+    backend.remove_error = None
+    backend.removals.clear()
+    item = backend.value.containers["s4d-r-a1"]
+    item["Config"]["Labels"] = {**item["Config"]["Labels"], "s4d.verification_purpose": "gpu_isolation",
+                                "s4d.campaign_eligible": "false"}
+    for _ in range(2):
+        tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert not backend.removals and "s4d-r-a1" in backend.value.containers
+    assert not {"containers_removed", "containers_kept", "containers_absent"} & set(state)
