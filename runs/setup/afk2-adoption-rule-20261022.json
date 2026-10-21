@@ -1,0 +1,21 @@
+{
+ "recorded": "2026-10-22, before any future_k2 RL result was inspected (user instruction 2026-10-22: train and evaluate future prediction + Chamfer only if the results indicate that future prediction provides meaningful improvements and is worth adopting)",
+ "question": "Does future_k2 (runs/setup/afk2-definition-20261020.json) improve over the original method (method-frozen-v1: C + D0 + M3D, 200k) enough to adopt it?",
+ "primary_endpoint": {
+  "metric": "DrM evaluation success rate, last-5 (mean of the final five evaluation points of each run), training-camera group",
+  "runs": "future_k2: afk2-drm-<task>-s2000..s2002; original: the completed s3-drm-splatter4d-<task>-s2000..s2002 (frozen-encoder DrM, 1M agent steps, same evaluation protocol; evaluation episode seeds depend only on the run seed and evaluation index)",
+  "aggregate": "interquartile mean over runs (tasks x seeds) of future_k2 minus that of the original, with a task-stratified bootstrap 95% interval (B = 2000), the campaign's established RL aggregation"
+ },
+ "decision_points": {
+  "D1": "all six pilot-task runs (hammer, pick-place x 3 seeds) of future_k2 evaluated to 1M steps",
+  "D2": "all 24 runs (eight tasks x 3 seeds) evaluated to 1M steps"
+ },
+ "rule": "Adopt if, at D1 or at D2, the IQM difference is >= 0.05 success and its 95% interval lies above 0. At D1 an interval that includes 0 defers the decision to D2 (no adoption). If D2 does not meet the rule, future_k2 is not adopted and the combined variant is not run; this is documented.",
+ "secondary_descriptive": ["return", "normalised AUC", "final success", "held-out and moving camera groups", "per-task differences", "representation and prediction metrics (validation, 200k)", "pretraining cost"],
+ "on_adoption": {
+  "variant": "afk2chl: base + task + variants/future_k2.yaml + variants/chamfer_lean.yaml (future prediction exactly as future_k2; the Chamfer term exactly as chamfer_lean, applied to the decoded centres of the target window (t, t+k2, t+2*k2) against the training cameras' fused depth of those frames; the depth-gradient, hard-depth and visibility terms skipped as in chamfer_lean)",
+  "protocol": "eight tasks, seed 0, 200k pretraining, export, DrM seeds 2000-2002 1M steps with evaluators, identical to the future_k2 and chamfer_lean rows",
+  "prerequisites": "a compatibility test and a smoke run of the combined configuration through the established worktree / full-suite workflow before registration"
+ },
+ "not_used_for_the_decision": "chamfer_lean RL results, any tuning toward RL results"
+}

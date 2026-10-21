@@ -34805,5 +34805,1783 @@ jobs:
   - completion.json
   - metrics.jsonl
   - checkpoints/step_0050000.pt
+- id: chl-seed0-hammer-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-hammer-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  continues: runs/pretrain/chl-seed0-hammer-50k/checkpoints/step_0050000.pt
+- id: chl-export-seed0-hammer-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-hammer-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-hammer-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-hammer-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-hammer-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-hammer-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-hammer-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-hammer-s2000
+  - --train-job
+  - chl-drm-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-hammer-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-hammer-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-hammer-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-hammer-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-hammer-s2001
+  - --train-job
+  - chl-drm-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-hammer-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-hammer-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-hammer-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-hammer-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-hammer-s2002
+  - --train-job
+  - chl-drm-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-hammer-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-pick-place-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-pick-place-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  continues: runs/pretrain/chl-seed0-pick-place-50k/checkpoints/step_0050000.pt
+- id: chl-export-seed0-pick-place-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-pick-place-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-pick-place-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-pick-place-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-pick-place-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-pick-place-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-pick-place-s2000
+  - --train-job
+  - chl-drm-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-pick-place-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-pick-place-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-pick-place-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-pick-place-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-pick-place-s2001
+  - --train-job
+  - chl-drm-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-pick-place-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-pick-place-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-pick-place-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-pick-place-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-pick-place-s2002
+  - --train-job
+  - chl-drm-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-pick-place-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-bin-picking-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/bin-picking.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-bin-picking-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: chl-export-seed0-bin-picking-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-bin-picking-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-bin-picking-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-bin-picking-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-bin-picking-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-bin-picking-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-bin-picking-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-bin-picking-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-bin-picking-s2000
+  - --train-job
+  - chl-drm-bin-picking-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-bin-picking-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-bin-picking-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-bin-picking-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-bin-picking-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-bin-picking-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-bin-picking-s2001
+  - --train-job
+  - chl-drm-bin-picking-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-bin-picking-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-bin-picking-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - bin-picking
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-bin-picking-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-bin-picking-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-bin-picking-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-bin-picking-s2002
+  - --train-job
+  - chl-drm-bin-picking-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-bin-picking-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-coffee-push-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/coffee-push.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-coffee-push-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: chl-export-seed0-coffee-push-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-coffee-push-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-coffee-push-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-coffee-push-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-coffee-push-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-coffee-push-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-coffee-push-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-coffee-push-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-coffee-push-s2000
+  - --train-job
+  - chl-drm-coffee-push-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-coffee-push-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-coffee-push-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-coffee-push-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-coffee-push-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-coffee-push-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-coffee-push-s2001
+  - --train-job
+  - chl-drm-coffee-push-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-coffee-push-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-coffee-push-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - coffee-push
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-coffee-push-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-coffee-push-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-coffee-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-coffee-push-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-coffee-push-s2002
+  - --train-job
+  - chl-drm-coffee-push-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-coffee-push-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-door-open-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/door-open.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-door-open-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: chl-export-seed0-door-open-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-door-open-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-door-open-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-door-open-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-door-open-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-door-open-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-door-open-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-door-open-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-door-open-s2000
+  - --train-job
+  - chl-drm-door-open-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-door-open-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-door-open-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-door-open-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-door-open-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-door-open-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-door-open-s2001
+  - --train-job
+  - chl-drm-door-open-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-door-open-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-door-open-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - door-open
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-door-open-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-door-open-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-door-open-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-door-open-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-door-open-s2002
+  - --train-job
+  - chl-drm-door-open-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-door-open-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-peg-insert-side-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/peg-insert-side.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-peg-insert-side-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: chl-export-seed0-peg-insert-side-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-peg-insert-side-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-peg-insert-side-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-insert-side-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-peg-insert-side-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-peg-insert-side-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-insert-side-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-peg-insert-side-s2000
+  - --train-job
+  - chl-drm-peg-insert-side-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-peg-insert-side-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-insert-side-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-peg-insert-side-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-peg-insert-side-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-insert-side-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-peg-insert-side-s2001
+  - --train-job
+  - chl-drm-peg-insert-side-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-peg-insert-side-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-insert-side-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-insert-side
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-peg-insert-side-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-peg-insert-side-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-insert-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-insert-side-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-peg-insert-side-s2002
+  - --train-job
+  - chl-drm-peg-insert-side-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-peg-insert-side-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-peg-unplug-side-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/peg-unplug-side.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-peg-unplug-side-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: chl-export-seed0-peg-unplug-side-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-peg-unplug-side-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-peg-unplug-side-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-unplug-side-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-peg-unplug-side-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-peg-unplug-side-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-unplug-side-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-peg-unplug-side-s2000
+  - --train-job
+  - chl-drm-peg-unplug-side-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-peg-unplug-side-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-unplug-side-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-peg-unplug-side-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-peg-unplug-side-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-unplug-side-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-peg-unplug-side-s2001
+  - --train-job
+  - chl-drm-peg-unplug-side-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-peg-unplug-side-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-unplug-side-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - peg-unplug-side
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-peg-unplug-side-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-peg-unplug-side-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-peg-unplug-side-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-peg-unplug-side-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-peg-unplug-side-s2002
+  - --train-job
+  - chl-drm-peg-unplug-side-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-peg-unplug-side-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- id: chl-seed0-stick-push-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/stick-push.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - --name
+  - chl-seed0-stick-push-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+- id: chl-export-seed0-stick-push-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chl-seed0-stick-push-200k
+  - --checkpoint
+  - runs/pretrain/chl-seed0-stick-push-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chl-export-seed0-stick-push-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chl-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  required_results:
+  - encoder.pt
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-stick-push-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chl-drm-stick-push-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-stick-push-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-stick-push-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-stick-push-s2000
+  - --train-job
+  - chl-drm-stick-push-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-stick-push-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-stick-push-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chl-drm-stick-push-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-stick-push-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-stick-push-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-stick-push-s2001
+  - --train-job
+  - chl-drm-stick-push-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-stick-push-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-stick-push-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - stick-push
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chl-drm-stick-push-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chl-export-seed0-stick-push-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chl-export-seed0-stick-push-200k
+  max_restarts: 1
+  stage: 5
+  variant: chamfer_lean
+  variant_definition: runs/setup/chl-definition-20261021.json
+  id: chl-drm-stick-push-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chl-drm-stick-push-s2002
+  - --train-job
+  - chl-drm-stick-push-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chl-drm-stick-push-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
 
 host_ram_reserve_gb: 60
