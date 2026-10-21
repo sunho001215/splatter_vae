@@ -116,7 +116,8 @@ class FakeBackend:
         self.removals.append((run_id, attempt, container, container_id, expected_code, tuple(required)))
         if self.remove_error:
             raise self.remove_error
-        self.value.containers.pop(container, None)
+        if self.value.containers.pop(container, None) is None:
+            return {"absent": True}
         return {"removed": True, "log_sha256": "0" * 64, "inspect_sha256": "1" * 64}
 
     def sync_results(self, run_id, final=False, checkpoints=False):
@@ -1092,10 +1093,18 @@ def test_isolation_bootstrap_requires_passing_suite_for_same_release(tmp_path, m
 # ---- completed-container cleanup (user instruction 2026-10-21) --------------------------------------------------------
 def test_removal_command_never_forces_prunes_or_deletes_volumes_and_rechecks_identity():
     cmd = remote.removal_command(remote.ROOT, "r", 2, "s4d-r-a2", CONTAINER_ID, 0, ["exit.json", "checkpoints/x.pt"])
-    assert 'docker rm "$id"' in cmd and cmd.count("docker inspect --format") == 2  # identity checked twice
-    for forbidden in (" -f ", "--force", " -v", "--volumes", "prune", "docker rmi", "volume rm", "network rm"):
-        assert forbidden not in cmd.replace("mv -f", "mv"), forbidden
-    assert f"{CONTAINER_ID}|exited|0|true|remote|r|2|/s4d-r-a2" in cmd
+    lines = cmd.splitlines()
+    assert 'docker rm "$id" > /dev/null || exit 6' in lines and lines.count("check") == 3  # identity checked thrice
+    assert lines.index("flock -w 60 9 || exit 8") < lines.index("check", lines.index("flock -w 60 9 || exit 8"))
+    assert [i for i, line in enumerate(lines) if line == "check"][-1] == lines.index('docker rm "$id" > /dev/null || exit 6') - 1
+    assert 'd="$(sha256sum < "$1")" || exit 5' in cmd and "mktemp" in cmd and "removal-receipt" in cmd
+    docker = [line for line in lines if "docker " in line]
+    assert {line.split("docker ")[1].split()[0] for line in docker} == {"inspect", "logs", "rm"}
+    for forbidden in (" -f", "--force", " -v", "--volumes", "prune", "rmi", "volume", "network", "kill", "stop"):
+        assert not any(forbidden in line.split("docker ", 1)[1] for line in docker), forbidden
+    # the only other deletions are this run's own temporary archive files
+    assert [line for line in lines if "rm -f" in line] == ["trap 'rm -f -- \"$tmp_log\" \"$tmp_record\"' EXIT"]
+    assert f"{CONTAINER_ID}|exited|0|true|remote|r|2|/s4d-r-a2|true" in cmd  # incl. read-only root filesystem
     assert f"{remote.ROOT}/runs/r/containers/s4d-r-a2.docker.log" in cmd and "No such object" in cmd
     for bad in (dict(root="/tmp"), dict(container="s4d-other-a2"), dict(container_id="x" * 64),
                 dict(required=["../escape"]), dict(run_id="r;rm")):
@@ -1130,7 +1139,7 @@ def test_completed_container_is_removed_once_after_verified_sync(tmp_path):
     assert state["r"]["status"] == "done"
     assert backend.removals == [("r", 1, "s4d-r-a1", CONTAINER_ID, 0,
                                  ("console.log", "exit.json", "metrics.jsonl", "provenance.json"))]
-    assert state["r"]["container_removed"] == CONTAINER_ID
+    assert state["r"]["containers_removed"] == [CONTAINER_ID]
     tick(tmp_path, queued, backend)  # nothing left to do: no second removal
     assert len(backend.removals) == 1
 
@@ -1147,14 +1156,16 @@ def test_failed_interrupted_or_mismatched_containers_are_kept(tmp_path):
     launch_event(tmp_path, "s")
     other = inspected("s", status="exited")
     backend.value.containers["s4d-s-a1"] = other
+    backend.remove_error = remote.RemoteJobError("transient")
     tick(tmp_path, queued, backend)
     assert jobs.read_registry(tmp_path / "registry.jsonl")["s"]["status"] == "done" and len(backend.removals) == 1
-    jobs.record({"event": "container_removed", "id": "s", "host": "remote", "container_id": "0" * 64},
-                tmp_path / "registry.jsonl")  # a stale record does not stop the check for the recorded id
+    backend.remove_error = None
     backend.removals.clear()
     backend.value.containers["s4d-s-a1"] = {**other, "Id": "e" * 64}
     messages = tick(tmp_path, queued, backend)
     assert not backend.removals and any("kept" in m for m in messages)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["s"]["containers_kept"] == [CONTAINER_ID]
+    assert not any("kept" in m for m in tick(tmp_path, queued, backend))  # recorded once, then skipped
 
 
 def test_cleanup_is_retry_safe_after_refusal_or_lost_connection(tmp_path):
@@ -1165,15 +1176,15 @@ def test_cleanup_is_retry_safe_after_refusal_or_lost_connection(tmp_path):
     backend.remove_error = remote.RemoteUnreachable("lost")
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")
-    assert state["r"]["status"] == "done" and state["r"].get("container_removed") is None
-    backend.remove_error = remote.RemoteJobError("refused")
+    assert state["r"]["status"] == "done" and "containers_removed" not in state["r"]
+    backend.remove_error = remote.RemoteJobError("transient")  # e.g. the log could not be saved: retried later
     messages = tick(tmp_path, queued, backend)
-    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"].get("container_removed") is None
-    assert any("kept" in m for m in messages)
+    assert "containers_removed" not in jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert any("kept for now" in m for m in messages)
     backend.remove_error = None
     tick(tmp_path, queued, backend)
-    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["container_removed"] == CONTAINER_ID
-    # an absent container (already removed after a lost response) is recorded without another removal call
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["containers_removed"] == [CONTAINER_ID]
+    # an absent container (already removed before a lost response) is confirmed by the command and recorded once
     queued = write_queue(tmp_path, [job("t")])
     launch_event(tmp_path, "t")
     backend.value.containers["s4d-t-a1"] = inspected("t", status="exited")
@@ -1183,8 +1194,11 @@ def test_cleanup_is_retry_safe_after_refusal_or_lost_connection(tmp_path):
     backend.remove_error = None
     calls = len(backend.removals)
     tick(tmp_path, queued, backend)
-    assert jobs.read_registry(tmp_path / "registry.jsonl")["t"]["container_removed"] == CONTAINER_ID
-    assert len(backend.removals) == calls
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["t"]
+    assert state["containers_absent"] == [CONTAINER_ID] and "containers_removed" not in state
+    assert len(backend.removals) == calls + 1
+    tick(tmp_path, queued, backend)
+    assert len(backend.removals) == calls + 1
 
 
 def test_cleanup_can_be_disabled_per_host(tmp_path):
@@ -1194,3 +1208,67 @@ def test_cleanup_can_be_disabled_per_host(tmp_path):
     launch_event(tmp_path)
     tick(tmp_path, queued, backend)
     assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done" and not backend.removals
+
+
+def test_lasting_refusal_is_recorded_once_and_the_container_kept(tmp_path):
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.remove_error = remote.ContainerRemovalRefused("required run files are missing")
+    messages = tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["containers_kept"] == [CONTAINER_ID] and "containers_removed" not in state
+    assert any("required run files are missing" in m for m in messages)
+    tick(tmp_path, queued, backend)
+    assert len(backend.removals) == 1
+
+
+def test_earlier_attempts_are_removed_only_after_the_job_succeeded(tmp_path):
+    queued = write_queue(tmp_path, [job(max_restarts=2)])
+    backend = FakeBackend(tmp_path / "runs")
+    first, unrecorded = "a" * 64, "b" * 64
+    backend.value.containers["s4d-r-a1"] = {**inspected(status="exited", code=137), "Id": first}
+    launch_event(tmp_path, container_id=first)
+    jobs.record({"event": "exited", "id": "r", "host": "remote", "attempt": 1, "code": 137},
+                tmp_path / "registry.jsonl")
+    launch_event(tmp_path, attempt=2, container=remote.container_name("r", 2))
+    backend.value.containers["s4d-r-a2"] = inspected(attempt=2, status="running")
+    tick(tmp_path, queued, backend)
+    assert not backend.removals  # interrupted attempt kept while its recovery is still running
+    # an attempt whose exit was never recorded is not a target
+    backend.value.containers["s4d-r-a3"] = {**inspected(attempt=3, status="exited", code=1), "Id": unrecorded}
+    backend.value.containers["s4d-r-a2"] = inspected(attempt=2, status="exited")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "done"
+    assert [(r[1], r[3], r[4]) for r in backend.removals] == [(1, first, 137), (2, CONTAINER_ID, 0)]
+    assert sorted(state["containers_removed"]) == sorted([first, CONTAINER_ID])
+    assert "s4d-r-a3" in backend.value.containers
+
+
+def test_backend_removal_maps_refusals_and_transport_failures(tmp_path):
+    class Client:
+        root = remote.ROOT
+
+        def __init__(self, code, out=""):
+            self.code, self.out, self.commands = code, out, []
+
+        def ssh(self, command, **kwargs):
+            self.commands.append((command, kwargs))
+            if self.code is None:
+                raise remote.RemoteUnreachable("lost")
+            return subprocess.CompletedProcess([], self.code, self.out, "")
+
+    args = ("r", 1, "s4d-r-a1", CONTAINER_ID, 0, ["exit.json"])
+    ok = Client(0, '{"removed": true, "log_sha256": "%s", "inspect_sha256": "%s"}\n' % ("0" * 64, "1" * 64))
+    assert remote.RemoteBackend(REPO, tmp_path / "runs", ok).remove_container(*args)["removed"] is True
+    assert ok.commands[0][1]["idempotent"] is True
+    gone = Client(0, '{"absent": true}\n')
+    assert remote.RemoteBackend(REPO, tmp_path / "runs", gone).remove_container(*args) == {"absent": True}
+    for code, error in ((3, remote.ContainerRemovalRefused), (4, remote.ContainerRemovalRefused),
+                        (5, remote.RemoteJobError), (7, remote.RemoteJobError), (0, remote.RemoteJobError)):
+        with pytest.raises(error):
+            remote.RemoteBackend(REPO, tmp_path / "runs", Client(code, "garbage")).remove_container(*args)
+    with pytest.raises(remote.RemoteUnreachable):
+        remote.RemoteBackend(REPO, tmp_path / "runs", Client(None)).remove_container(*args)

@@ -38,6 +38,15 @@ class RemoteJobError(RuntimeError):
     pass
 
 
+class ContainerRemovalRefused(RemoteJobError):
+    """``removal_command`` refused for a lasting reason: the container differs from the record (exit 3) or required run
+    files are missing (exit 4). The container is kept."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 @dataclass
 class RemoteSnapshot:
     usage: dict[str, list[tuple[int, float]]]
@@ -70,18 +79,74 @@ def container_labels(run_id: str, attempt: int, commit: str, image_digest: str) 
 
 _INSPECT_IDENTITY = ('{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{index .Config.Labels "s4d.managed"}}|'
                      '{{index .Config.Labels "s4d.host"}}|{{index .Config.Labels "s4d.run_id"}}|'
-                     '{{index .Config.Labels "s4d.attempt"}}|{{.Name}}')
+                     '{{index .Config.Labels "s4d.attempt"}}|{{.Name}}|{{.HostConfig.ReadonlyRootfs}}')
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+
+
+_REMOVAL_SCRIPT = r"""set -u; export LC_ALL=C
+id=@ID@; tmp_log=; tmp_record=
+trap 'rm -f -- "$tmp_log" "$tmp_record"' EXIT
+gone() {
+  if [ -s @RECEIPT@ ] && read -r rid rlog rinspect < @RECEIPT@ && [ "$rid" = "$id" ]; then
+    printf '{"absent": true, "log_sha256": "%s", "inspect_sha256": "%s"}\n' "$rlog" "$rinspect"
+  else
+    printf '{"absent": true}\n'
+  fi
+  exit 0
+}
+check() {
+  if ! info="$(docker inspect --format @FORMAT@ "$id" 2>&1)"; then
+    case "$info" in
+      *"No such object"*|*"No such container"*) gone;;
+      *) printf 'inspect failed %s\n' "$info" >&2; exit 7;;
+    esac
+  fi
+  test "$info" = @EXPECTED@ || { printf 'refused %s\n' "$info" >&2; exit 3; }
+}
+digest() {
+  d="$(sha256sum < "$1")" || exit 5
+  d="${d%% *}"
+  case "$d" in *[!0-9a-f]*|"") exit 5;; esac
+  [ "${#d}" -eq 64 ] || exit 5
+}
+check
+test -d @RUN_DIR@ || exit 4
+@REQUIRED@
+mkdir -p @KEEP@ || exit 5
+exec 9> @LOCK@ || exit 5
+flock -w 60 9 || exit 8
+check
+tmp_log="$(mktemp @LOG_TMP@)" || exit 5
+tmp_record="$(mktemp @RECORD_TMP@)" || exit 5
+docker logs "$id" > "$tmp_log" 2>&1 || exit 5
+docker inspect "$id" > "$tmp_record" || exit 5
+digest "$tmp_log"; logsum="$d"
+digest "$tmp_record"; inspectsum="$d"
+mv -f -- "$tmp_log" @LOG@ || exit 5
+tmp_log=
+mv -f -- "$tmp_record" @RECORD@ || exit 5
+tmp_record=
+printf '%s %s %s\n' "$id" "$logsum" "$inspectsum" > @RECEIPT_TMP@ || exit 5
+mv -f -- @RECEIPT_TMP@ @RECEIPT@ || exit 5
+check
+docker rm "$id" > /dev/null || exit 6
+printf '{"removed": true, "log_sha256": "%s", "inspect_sha256": "%s"}\n' "$logsum" "$inspectsum"
+"""
 
 
 def removal_command(root: str, run_id: str, attempt: int, container: str, container_id: str, expected_code: int,
                     required: list[str]) -> str:
     """Remove one completed container of ours by its explicit id, after preserving its Docker log and inspect record
     under the run directory. Refuses (non-zero exit) unless the container still is exactly that id, stopped
-    ("exited") with the expected exit code, labelled ours for this run and attempt, and every required run file is
-    present and non-empty under the authorized root. Identity and state are re-checked immediately before ``docker rm``
-    (no force, no volume removal). Prints {"absent": true} when the container no longer exists, so a retry after an
-    interrupted connection is safe."""
+    ("exited") with the expected exit code, labelled ours for this run and attempt, with a read-only root filesystem,
+    and every required run file is present and non-empty under the authorized root. Identity and state are checked
+    first, again under a per-container lock (overlapping executions, e.g. an SSH retry while a timed-out first
+    execution still runs, are serialized), and once more immediately before ``docker rm`` (no force, no volume
+    removal). The archive goes to unique temporary files, is checksummed (a checksum failure refuses), moved in place
+    and described by a receipt before removal. Output: {"removed": true, hashes} when this execution removed it;
+    {"absent": true, hashes} when it is gone and our receipt for this id exists (an earlier, interrupted execution
+    removed it); {"absent": true} when it is gone without our receipt. Exit 3: identity or state differs; 4: required
+    files missing; 5: archive failed; 6: docker rm failed; 7: inspect failed; 8: lock busy."""
     if root != ROOT:
         raise ValueError("Remote removal root is not authorized")
     if (not _RUN_ID.fullmatch(run_id) or container != f"s4d-{run_id}-a{int(attempt)}" or not SHA256.fullmatch(container_id)
@@ -89,34 +154,23 @@ def removal_command(root: str, run_id: str, attempt: int, container: str, contai
         raise ValueError("Invalid container removal request")
     q = shlex.quote
     run_dir = f"{root}/runs/{run_id}"
-    expected = f"{container_id}|exited|{int(expected_code)}|true|remote|{run_id}|{int(attempt)}|/{container}"
     keep = f"{run_dir}/containers"
     log, record = f"{keep}/{container}.docker.log", f"{keep}/{container}.inspect.json"
-    identity = "docker inspect --format " + q(_INSPECT_IDENTITY) + ' "$id" 2>/dev/null'
-    absent = "printf '%s\\n' " + q('{"absent": true}')
-    lines = [
-        "set -u; export LC_ALL=C",
-        "id=" + q(container_id),
-        # only Docker's own "no such container" answer means absent; any other inspect failure refuses
-        'if ! info="$(docker inspect --format ' + q(_INSPECT_IDENTITY) + ' "$id" 2>&1)"; then case "$info" in '
-        '*"No such object"*|*"No such container"*) ' + absent + "; exit 0;; "
-        "*) printf 'inspect failed %s\\n' \"$info\" >&2; exit 7;; esac; fi",
-        'test "$info" = ' + q(expected) + " || { printf 'refused %s\\n' \"$info\" >&2; exit 3; }",
-        "test -d " + q(run_dir) + " || exit 4",
-        *["test -s " + q(run_dir + "/" + name) + " || { printf 'missing %s\\n' " + q(name) + " >&2; exit 4; }"
-          for name in required],
-        "mkdir -p " + q(keep) + " || exit 5",
-        'docker logs "$id" > ' + q(log + ".tmp") + " 2>&1 || exit 5",
-        "mv -f " + q(log + ".tmp") + " " + q(log) + " || exit 5",
-        'docker inspect "$id" > ' + q(record + ".tmp") + " || exit 5",
-        "mv -f " + q(record + ".tmp") + " " + q(record) + " || exit 5",
-        'logsum="$(sha256sum ' + q(log) + " | cut -d' ' -f1)\" || exit 5",
-        'inspectsum="$(sha256sum ' + q(record) + " | cut -d' ' -f1)\" || exit 5",
-        'test "$(' + identity + ')" = ' + q(expected) + " || exit 3",
-        'docker rm "$id" > /dev/null || exit 6',
-        "printf '{\"removed\": true, \"log_sha256\": \"%s\", \"inspect_sha256\": \"%s\"}\\n' \"$logsum\" \"$inspectsum\"",
-    ]
-    return "\n".join(lines)
+    receipt = f"{keep}/{container}.removal-receipt"
+    # read-only root filesystem: every output was written to the bind-mounted run directory, none only inside it
+    expected = f"{container_id}|exited|{int(expected_code)}|true|remote|{run_id}|{int(attempt)}|/{container}|true"
+    values = {
+        "@ID@": q(container_id), "@FORMAT@": q(_INSPECT_IDENTITY), "@EXPECTED@": q(expected), "@RUN_DIR@": q(run_dir),
+        "@KEEP@": q(keep), "@LOCK@": q(f"{keep}/.{container}.lock"), "@LOG@": q(log), "@RECORD@": q(record),
+        "@LOG_TMP@": q(log + ".tmp.") + "XXXXXX", "@RECORD_TMP@": q(record + ".tmp.") + "XXXXXX",
+        "@RECEIPT_TMP@": q(receipt + ".tmp"), "@RECEIPT@": q(receipt),
+        "@REQUIRED@": "\n".join(f"test -s {q(run_dir + '/' + name)} || {{ printf 'missing %s\\n' {q(name)} >&2; exit 4; }}"
+                                for name in required),
+    }
+    script = _REMOVAL_SCRIPT
+    for key, value in values.items():
+        script = script.replace(key, value)
+    return script
 
 
 def snapshot_command(root: str) -> str:
@@ -580,16 +634,24 @@ class RemoteBackend:
         """``removal_command`` over SSH; returns {"removed": True, "log_sha256", "inspect_sha256"} or {"absent": True}."""
         command = removal_command(self.client.root, run_id, attempt, container, container_id, expected_code, required)
         try:
-            response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=120)
+            response = self.client.ssh(command, wait=False, idempotent=True, timeout=120)
         except RemoteUnreachable:
             self._save_snapshot(reachable=False, query_ok=False)
             raise
+        if response.returncode == 3:
+            raise ContainerRemovalRefused("identity or state differs from the record")
+        if response.returncode == 4:
+            raise ContainerRemovalRefused("required run files are missing")
+        if response.returncode:
+            raise RemoteJobError(f"Container removal exited {response.returncode}")
         try:
             payload = json.loads(response.stdout.strip().splitlines()[-1])
         except (IndexError, ValueError) as exc:
             raise RemoteJobError("Container removal returned no result") from exc
-        if payload == {"absent": True} or (payload.get("removed") is True and SHA256.fullmatch(str(payload.get("log_sha256")))
-                                           and SHA256.fullmatch(str(payload.get("inspect_sha256")))):
+        hashes = SHA256.fullmatch(str(payload.get("log_sha256"))) and SHA256.fullmatch(str(payload.get("inspect_sha256")))
+        if payload == {"absent": True} or (set(payload) == {"absent", "log_sha256", "inspect_sha256"}
+                                           and payload["absent"] is True and hashes) or (
+                set(payload) == {"removed", "log_sha256", "inspect_sha256"} and payload["removed"] is True and hashes):
             return payload
         raise RemoteJobError("Container removal returned an unexpected result")
 
