@@ -80,7 +80,10 @@ def container_labels(run_id: str, attempt: int, commit: str, image_digest: str) 
 _INSPECT_IDENTITY = ('{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{index .Config.Labels "s4d.managed"}}|'
                      '{{index .Config.Labels "s4d.host"}}|{{index .Config.Labels "s4d.run_id"}}|'
                      '{{index .Config.Labels "s4d.attempt"}}|{{.Name}}|{{.HostConfig.ReadonlyRootfs}}|'
-                     '{{index .Config.Labels "s4d.verification_purpose"}}|{{index .Config.Labels "s4d.campaign_eligible"}}')
+                     # optional labels: Docker prints "<no value>" for a missing key in this position, so the value is
+                     # printed only when present and non-empty (empty otherwise)
+                     '{{with index .Config.Labels "s4d.verification_purpose"}}{{.}}{{end}}|'
+                     '{{with index .Config.Labels "s4d.campaign_eligible"}}{{.}}{{end}}')
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 
 

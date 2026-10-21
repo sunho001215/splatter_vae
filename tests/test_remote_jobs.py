@@ -1106,7 +1106,9 @@ def test_removal_command_never_forces_prunes_or_deletes_volumes_and_rechecks_ide
     assert [line for line in lines if "rm -f" in line] == ["trap 'rm -f -- \"$tmp_log\" \"$tmp_record\"' EXIT"]
     # incl. read-only root filesystem and no verification labels
     assert f"{CONTAINER_ID}|exited|0|true|remote|r|2|/s4d-r-a2|true||" in cmd
-    assert 's4d.verification_purpose' in cmd and 's4d.campaign_eligible' in cmd
+    # optional labels print nothing when missing (Docker prints "<no value>" for a bare index of a missing key)
+    assert '{{with index .Config.Labels "s4d.verification_purpose"}}{{.}}{{end}}' in remote._INSPECT_IDENTITY
+    assert '{{with index .Config.Labels "s4d.campaign_eligible"}}{{.}}{{end}}' in remote._INSPECT_IDENTITY
     assert f"{remote.ROOT}/runs/r/containers/s4d-r-a2.docker.log" in cmd and "No such object" in cmd
     for bad in (dict(root="/tmp"), dict(container="s4d-other-a2"), dict(container_id="x" * 64),
                 dict(required=["../escape"]), dict(run_id="r;rm")):
@@ -1295,3 +1297,23 @@ def test_verification_containers_are_never_cleanup_targets(tmp_path):
     state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
     assert not backend.removals and "s4d-r-a1" in backend.value.containers
     assert not {"containers_removed", "containers_kept", "containers_absent"} & set(state)
+
+
+def test_cleared_keep_records_reenable_cleanup(tmp_path):
+    """A refusal traced to a defect of the check itself is released by an explicit container_kept_cleared event."""
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.remove_error = remote.ContainerRemovalRefused("identity or state differs from the record")
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["containers_kept"] == [CONTAINER_ID]
+    backend.remove_error = None
+    tick(tmp_path, queued, backend)
+    assert len(backend.removals) == 1  # kept: not retried
+    jobs.record({"event": "container_kept_cleared", "id": "r", "host": "remote", "container_id": CONTAINER_ID},
+                tmp_path / "registry.jsonl")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert len(backend.removals) == 2 and state["containers_removed"] == [CONTAINER_ID]
+    assert state["containers_kept"] == []
