@@ -79,7 +79,8 @@ def container_labels(run_id: str, attempt: int, commit: str, image_digest: str) 
 
 _INSPECT_IDENTITY = ('{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{index .Config.Labels "s4d.managed"}}|'
                      '{{index .Config.Labels "s4d.host"}}|{{index .Config.Labels "s4d.run_id"}}|'
-                     '{{index .Config.Labels "s4d.attempt"}}|{{.Name}}|{{.HostConfig.ReadonlyRootfs}}')
+                     '{{index .Config.Labels "s4d.attempt"}}|{{.Name}}|{{.HostConfig.ReadonlyRootfs}}|'
+                     '{{index .Config.Labels "s4d.verification_purpose"}}|{{index .Config.Labels "s4d.campaign_eligible"}}')
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 
 
@@ -139,7 +140,7 @@ def removal_command(root: str, run_id: str, attempt: int, container: str, contai
     """Remove one completed container of ours by its explicit id, after preserving its Docker log and inspect record
     under the run directory. Refuses (non-zero exit) unless the container still is exactly that id, stopped
     ("exited") with the expected exit code, labelled ours for this run and attempt, with a read-only root filesystem,
-    and every required run file is present and non-empty under the authorized root. Identity and state are checked
+    not labelled as a verification container, and every required run file is present and non-empty under the authorized root. Identity and state are checked
     first, again under a per-container lock (overlapping executions, e.g. an SSH retry while a timed-out first
     execution still runs, are serialized), and once more immediately before ``docker rm`` (no force, no volume
     removal). The archive goes to unique temporary files, is checksummed (a checksum failure refuses), moved in place
@@ -157,8 +158,9 @@ def removal_command(root: str, run_id: str, attempt: int, container: str, contai
     keep = f"{run_dir}/containers"
     log, record = f"{keep}/{container}.docker.log", f"{keep}/{container}.inspect.json"
     receipt = f"{keep}/{container}.removal-receipt"
-    # read-only root filesystem: every output was written to the bind-mounted run directory, none only inside it
-    expected = f"{container_id}|exited|{int(expected_code)}|true|remote|{run_id}|{int(attempt)}|/{container}|true"
+    # read-only root filesystem: every output was written to the bind-mounted run directory, none only inside it;
+    # verification containers (s4d.verification_purpose / s4d.campaign_eligible labels) are never removed
+    expected = f"{container_id}|exited|{int(expected_code)}|true|remote|{run_id}|{int(attempt)}|/{container}|true||"
     values = {
         "@ID@": q(container_id), "@FORMAT@": q(_INSPECT_IDENTITY), "@EXPECTED@": q(expected), "@RUN_DIR@": q(run_dir),
         "@KEEP@": q(keep), "@LOCK@": q(f"{keep}/.{container}.lock"), "@LOG@": q(log), "@RECORD@": q(record),

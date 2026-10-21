@@ -497,8 +497,10 @@ def _cleanup_targets(job_id: str, current: dict) -> list[tuple[int, str, str, in
     exit code): once the job is done with its final results synced and checksum-verified, the final attempt's container
     (exit 0) and the containers of its earlier, failed or interrupted attempts (their recovery is complete), each only
     if its id was recorded at launch and, for earlier attempts, its exit code was recorded. Verification jobs and
-    containers already removed, kept or found absent are excluded."""
+    containers already removed, kept or found absent are excluded (verification containers whose registry rows predate
+    the purpose field are recognised by their labels in ``_cleanup_completed_containers`` and in the removal command)."""
     if (current.get("host") != "remote" or current.get("status") != DONE or current.get("verification_purpose") is not None
+            or current.get("campaign_eligible") is False
             or (current.get("sync") or {}).get("final") is not True or not current.get("container_id")):
         return []
     final = int(current.get("attempt", current["attempts"]))
@@ -527,6 +529,9 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
             base = {"event": "container_removed", "id": job_id, "host": "remote", "attempt": attempt,
                     "container": name, "container_id": container_id}
             item = snapshot.containers.get(name)
+            labels = ((item or {}).get("Config") or {}).get("Labels") or {}
+            if labels.get("s4d.verification_purpose") or labels.get("s4d.campaign_eligible") == "false":
+                continue  # verification containers are kept (early ones predate the registry's purpose field)
             if item is not None and (item.get("Id") != container_id or item.get("State", {}).get("Status") != "exited"
                                      or item.get("State", {}).get("ExitCode") != code):
                 record({**base, "event": "container_kept", "reason": "identity or state differs from the record"},
