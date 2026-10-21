@@ -17,7 +17,6 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 from s4d.config import get
 from s4d.data.contract import PAIRS, collate, motion_targets, validate_batch
-from s4d.losses.chamfer import chamfer_loss, target_clouds
 from s4d.losses.depth import abs_rel, align_teacher, depth_gradient_loss, depth_l1
 from s4d.losses.invariance import multi_positive_info_nce, slot_consistency, state_statistics
 from s4d.losses.motion import expected_displacement, motion_loss
@@ -209,9 +208,7 @@ def forward_losses(
         align_mode = "none"
     aligned, align_stats = align_teacher(depth_rows, _rows(depth_t), alpha_rows, align_mode, weights=weights)
     dl1 = depth_l1(depth_rows, aligned, valid, weights)
-    grad_weight = float(loss_cfg.get("depth_grad", 0.5))
-    # disabled terms are not computed at all (variant chamfer_lean); the reference weights give the same sums as before
-    dgrad = depth_gradient_loss(depth_rows, aligned, valid, weights=weights) if grad_weight > 0 else None
+    dgrad = depth_gradient_loss(depth_rows, aligned, valid, weights=weights)
     hard_weight = float(loss_cfg.get("depth_hard", 0.5))
     boost = loss_cfg.get("depth_hard_boost")  # review item 4d: {factor, fraction} of train.steps
     if boost and step < float(boost.get("fraction", 0.2)) * int(get(cfg, "train.steps", 200000)):
@@ -220,9 +217,8 @@ def forward_losses(
         float(loss_cfg.get("rgb", 1.0)) * _per_t(rgb_l, B, T, V)
         + float(loss_cfg.get("coverage", 0.1)) * _per_t(cov_l, B, T, V)
         + float(loss_cfg.get("depth_l1", 1.0)) * _per_t(dl1, B, T, V)
+        + float(loss_cfg.get("depth_grad", 0.5)) * _per_t(dgrad, B, T, V)
     )
-    if dgrad is not None:
-        render_t = render_t + grad_weight * _per_t(dgrad, B, T, V)
     dhard = None
     if hard_weight > 0:  # the hard-depth pass is skipped entirely when its weight is 0 (directive item 1d)
         hard = render_hard_depth(gs, xyz_seq, w2c, K, H, W, near, far)
@@ -233,15 +229,6 @@ def forward_losses(
     if occ_w > 0:  # directive item 1a: centres vs GT depth in every training camera
         occ_t = occlusion_loss(xyz_seq, batch["depth"], w2c, K, near, far, occ_margin)
         render_t = render_t + occ_w * occ_t
-    cham_w = float(loss_cfg.get("chamfer", 0.0))
-    cham, cham_stats = None, {}
-    if cham_w > 0:  # variant chamfer_lean: all centres vs the training cameras' fused depth, per reconstructed timestep
-        clouds, cloud_valid, cham_stats = target_clouds(
-            batch["depth"][:, :, :, 0], K, batch["c2w"], far, valid_far, float(loss_cfg.get("chamfer_voxel_m", 0.01)),
-            int(loss_cfg.get("chamfer_points", 4096)),
-        )
-        cham = chamfer_loss(xyz_seq, clouds, cloud_valid)
-        render_t = render_t + cham_w * cham["loss"]
     render_loss = (render_t[0] + ramp * (render_t[1] + render_t[2])) / (1.0 + 2.0 * ramp)
     extra_losses = {}
     if syn is not None and aug.get("synth_render", False):  # synthetic views as render targets on covered pixels
@@ -259,26 +246,17 @@ def forward_losses(
     # The rendered per-pixel displacement remains for the image-space EPE metrics, the panels and the dynamic share.
     if str(loss_cfg.get("motion_space", "gaussian")) != "gaussian":
         raise ValueError("loss.motion_space: only 'gaussian' (M3D) remains; the image-space motion loss was removed")
+    is_dyn = (gs.group == DYNAMIC_GROUP).float()[None, :, None].expand(B, -1, 1)
     d01, d12 = gs.delta01, gs.delta12
-    log_step = not model.training or step == 0 or (step + 1) % int(get(cfg, "train.log_every", 50)) == 0
-    feature_mode = str(loss_cfg.get("motion_feature_render", "every_step"))
-    if feature_mode not in ("every_step", "log_steps"):
-        raise ValueError(f"loss.motion_feature_render must be 'every_step' or 'log_steps', not {feature_mode!r}")
-    # The feature render below feeds only metrics (image-space EPE, dynamic alpha share) and panels, never a loss term;
-    # 'log_steps' renders it only where metrics are logged or returned, so every reported value is unchanged.
-    features_needed = feature_mode == "every_step" or log_step or return_renders
-    pred_disp = coverage = feats = cov = None
-    if features_needed:
-        is_dyn = (gs.group == DYNAMIC_GROUP).float()[None, :, None].expand(B, -1, 1)
-        feat0 = torch.cat((d01, d01 + d12, is_dyn), -1)
-        feat1 = torch.cat((d12, torch.zeros_like(d12), is_dyn), -1)
-        feat2 = torch.cat((torch.zeros_like(d01), torch.zeros_like(d12), is_dyn), -1)
-        states = gs.xyz_sequence().detach()
-        fr = render_features(gs.detach_geometry(), states, torch.stack((feat0, feat1, feat2), 1), w2c, K, H, W, near, far)
-        feats, cov = fr["features"], fr["alpha"].detach()
-        pred_feat = torch.stack((feats[:, 0, :, 0:3], feats[:, 1, :, 0:3], feats[:, 0, :, 3:6]), 1)
-        coverage = torch.stack((cov[:, 0], cov[:, 1], cov[:, 0]), 1)
-        pred_disp = expected_displacement(pred_feat, coverage)
+    feat0 = torch.cat((d01, d01 + d12, is_dyn), -1)
+    feat1 = torch.cat((d12, torch.zeros_like(d12), is_dyn), -1)
+    feat2 = torch.cat((torch.zeros_like(d01), torch.zeros_like(d12), is_dyn), -1)
+    states = gs.xyz_sequence().detach()
+    fr = render_features(gs.detach_geometry(), states, torch.stack((feat0, feat1, feat2), 1), w2c, K, H, W, near, far)
+    feats, cov = fr["features"], fr["alpha"].detach()
+    pred_feat = torch.stack((feats[:, 0, :, 0:3], feats[:, 1, :, 0:3], feats[:, 0, :, 3:6]), 1)
+    coverage = torch.stack((cov[:, 0], cov[:, 1], cov[:, 0]), 1)
+    pred_disp = expected_displacement(pred_feat, coverage)
     if motion_targets(batch) == "tracks":  # review item 2c (DROID): 3D track arrays supervise M3D; no pixel grids
         track_src, track_disp, track_weight = track_candidates(batch)
         if valid_far:  # the far mask on each point's source depth in its camera
@@ -292,28 +270,24 @@ def forward_losses(
         if valid_far:
             src_depth = batch["depth"][:, [a for a, _, _ in PAIRS]]  # (B,P,V,1,H,W) on each pair's source grid
             motion_weight = motion_weight * (src_depth < far).to(motion_weight.dtype)
-        m_metrics = {}
-        if features_needed:
-            image_loss, m_metrics = motion_loss(  # metrics only: image-space EPE of the rendered displacements
-                pred_disp,
-                coverage,
-                batch["motion3d"],
-                motion_weight,
-                float(loss_cfg.get("motion_huber", 0.01)),
-                normalization=str(loss_cfg.get("motion_norm", "valid")),
-            )
-            m_metrics["motion_image"] = image_loss.detach()
+        image_loss, m_metrics = motion_loss(  # metrics only: image-space EPE of the rendered displacements
+            pred_disp,
+            coverage,
+            batch["motion3d"],
+            motion_weight,
+            float(loss_cfg.get("motion_huber", 0.01)),
+            normalization=str(loss_cfg.get("motion_norm", "valid")),
+        )
+        m_metrics["motion_image"] = image_loss.detach()
         m_loss, m3d_metrics = motion3d_loss(
             gs, xyz_seq, gs.group == DYNAMIC_GROUP, batch["depth"], K, batch["c2w"], batch["motion3d"], motion_weight
         )
         m_metrics.update(m3d_metrics)
+    dyn_share_map = (feats[:, :, :, 6:7] / cov.clamp_min(1e-6)).detach()
     moving0 = score > MOVING_SCORE
     moving_count = moving0.float().sum()
-    dyn_share_map = dyn_share = None
-    if features_needed:
-        dyn_share_map = (feats[:, :, :, 6:7] / cov.clamp_min(1e-6)).detach()
-        dyn_share = (dyn_share_map * moving0.float()).sum() / moving_count.clamp_min(1.0)
-        dyn_share = torch.where(moving_count > 0, dyn_share, dyn_share.new_tensor(float("nan")))
+    dyn_share = (dyn_share_map * moving0.float()).sum() / moving_count.clamp_min(1.0)
+    dyn_share = torch.where(moving_count > 0, dyn_share, dyn_share.new_tensor(float("nan")))
 
     # ---- invariance + visibility -------------------------------------------------------------
     inv_slots = slots if syn is None else torch.cat((slots, syn_slots), 1)  # synthetic views are extra positives
@@ -335,19 +309,15 @@ def forward_losses(
         sr_slots = F.normalize(sr_slots.float().view(B, 2, *sr_slots.shape[1:]), dim=-1)
         target = F.normalize(slots[torch.arange(B, device=device), source].detach(), dim=-1)  # (B,K,D)
         extra_losses["self_render"] = (1.0 - (sr_slots * target[:, None]).sum(-1)).mean()
-    vis_w = float(loss_cfg.get("visibility", 1.0))
-    vis_t = vis = None
-    if vis_w > 0:  # skipped entirely at weight 0 (variant chamfer_lean)
-        vis_t = visibility_loss(xyz_seq, w2c, K, H, W, near, far)
-        vis = (vis_t[0] + ramp * (vis_t[1] + vis_t[2])) / (1.0 + 2.0 * ramp)
+    vis_t = visibility_loss(xyz_seq, w2c, K, H, W, near, far)
+    vis = (vis_t[0] + ramp * (vis_t[1] + vis_t[2])) / (1.0 + 2.0 * ramp)
     total = (
         render_loss
         + ramp * float(loss_cfg.get("motion", 1.0)) * m_loss
         + float(loss_cfg.get("invariance", 1.0)) * nce
         + float(loss_cfg.get("consistency", 0.5)) * cons
+        + float(loss_cfg.get("visibility", 1.0)) * vis
     )
-    if vis is not None:
-        total = total + vis_w * vis
     if "synth_render" in extra_losses:
         total = total + float(aug.get("synth_render_weight", 1.0)) * extra_losses["synth_render"]
     if "self_render" in extra_losses:
@@ -381,7 +351,7 @@ def forward_losses(
             "align_shift_mean": align_stats["shift"].mean(),
             "align_scale_min": align_stats["scale"].min(),
             "align_scale_max": align_stats["scale"].max(),
-            **({"dyn_alpha_share_moving": dyn_share} if dyn_share is not None else {}),
+            "dyn_alpha_share_moving": dyn_share,
             "dynamic_score_moving_count": moving_count,
             "translation01_dyn_mean": d01[:, gs.group == DYNAMIC_GROUP].norm(dim=-1).mean(),
             "translation12_dyn_mean": d12[:, gs.group == DYNAMIC_GROUP].norm(dim=-1).mean(),
@@ -398,8 +368,7 @@ def forward_losses(
         metrics.update(m_metrics)
         metrics.update(nce_metrics)
         used = None
-        if log_step:
-            metrics.update({k: v.detach() for k, v in cham_stats.items()})
+        if not model.training or step == 0 or (step + 1) % int(get(cfg, "train.log_every", 50)) == 0:
             metrics.update(state_statistics(slots_mean))
             usage, used = usage_diagnostics(gs, batch["depth"][:, 0], w2c, K, near, far, occ_margin)
             metrics.update({k: _nanmean(v) for k, v in usage.items()})
@@ -409,19 +378,14 @@ def forward_losses(
         "motion": m_loss.detach(),
         "infonce": nce.detach(),
         "consistency": cons.detach(),
-        **({"visibility": vis.detach()} if vis is not None else {}),
+        "visibility": vis.detach(),
         **{f"rgb_t{t}": v.detach() for t, v in enumerate(_per_t(rgb_l, B, T, V))},
         **{f"coverage_t{t}": v.detach() for t, v in enumerate(_per_t(cov_l, B, T, V))},
         **{f"depth_l1_t{t}": v.detach() for t, v in enumerate(_per_t(dl1, B, T, V))},
-        **({f"depth_grad_t{t}": v.detach() for t, v in enumerate(_per_t(dgrad, B, T, V))} if dgrad is not None else {}),
+        **{f"depth_grad_t{t}": v.detach() for t, v in enumerate(_per_t(dgrad, B, T, V))},
         **({f"depth_hard_t{t}": v.detach() for t, v in enumerate(_per_t(dhard, B, T, V))} if dhard is not None else {}),
         **({f"occlusion_t{t}": v.detach() for t, v in enumerate(occ_t)} if occ_w > 0 else {}),
-        **({f"visibility_t{t}": v.detach() for t, v in enumerate(vis_t)} if vis_t is not None else {}),
-        **({f"chamfer_t{t}": v.detach() for t, v in enumerate(cham["loss"])} if cham is not None else {}),
-        **({f"chamfer_pred_to_target_t{t}": v.detach() for t, v in enumerate(cham["pred_to_target"])}
-           if cham is not None else {}),
-        **({f"chamfer_target_to_pred_t{t}": v.detach() for t, v in enumerate(cham["target_to_pred"])}
-           if cham is not None else {}),
+        **{f"visibility_t{t}": v.detach() for t, v in enumerate(vis_t)},
         **{k: v.detach() for k, v in extra_losses.items()},
     }
     out = {"total": total, "losses": losses, "metrics": metrics, "slots": slots, "source": source, "gs": gs, "used": used}

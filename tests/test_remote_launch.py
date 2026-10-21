@@ -37,8 +37,7 @@ def job_spec():
         "host_ram_reserve_gb": 120, "host_ram_ramp_minutes": 10,
         "required_results": ["completion.json", "metrics.jsonl"],
         "labels": {"s4d.managed": "true", "s4d.run_id": "m3d-hammer-seed0", "s4d.attempt": "1",
-                   "s4d.host": "remote", "s4d.commit": COMMIT, "s4d.image_digest": IMAGE,
-                   "s4d.project": "splatter4d", "s4d.owner": "kaist-sunho"},
+                   "s4d.host": "remote", "s4d.commit": COMMIT, "s4d.image_digest": IMAGE},
     }
 
 
@@ -457,7 +456,7 @@ def test_cpu_thread_limit_defaults_to_eight_and_follows_the_job():
 
 def _rv_launch_spec(purpose="native_suite"):
     from s4d.gpu_guard import APPROVED_HOST_GPUS
-    from s4d.remote_jobs import container_labels
+    from s4d.remote_jobs import labels
     from s4d.remote_verification import POLICIES, ROOT, canonical_arguments
 
     script, timeout, ram, memory, reports = POLICIES[purpose]
@@ -471,7 +470,7 @@ def _rv_launch_spec(purpose="native_suite"):
             "ram_gb": ram, "mem_gb": memory, "disk_gb": 1, "disk_floor_gb": 0, "disk_floor_fraction": 0.15,
             "host_ram_reserve_gb": 120, "host_ram_ramp_minutes": 10, "max_mem_gb": 90, "max_jobs": 20,
             "required_results": ["evidence/" + name for name in reports],
-            "labels": {**container_labels(job_id, 1, commit, image),
+            "labels": {**labels(job_id, 1, commit, image),
                        "s4d.verification_purpose": purpose, "s4d.campaign_eligible": "false"},
             "evidence": {"commit": commit, "image_digest": image, "verification_purpose": purpose,
                          "campaign_eligible": False, "data": {"sha256": "d" * 64},
@@ -587,7 +586,7 @@ def test_existing_container_of_other_kind_is_refused_before_reuse(campaign_launc
     existing = command[command.index("existing()"):command.index("if existing; then exit 0; fi")]
     cases = []
     for key in ("s4d.managed", "s4d.run_id", "s4d.attempt", "s4d.host", "s4d.commit",
-                "s4d.image_digest", "s4d.project", "s4d.owner", "s4d.verification_purpose", "s4d.campaign_eligible"):
+                "s4d.image_digest", "s4d.verification_purpose", "s4d.campaign_eligible"):
         template = '{{index .Config.Labels "' + key + '"}}'
         cases.append(shlex.quote(template) + ") printf '%s\\n' " + shlex.quote(actual_labels.get(key, "")) + ";;")
     shell = ("set -eu\ncontainer=" + shlex.quote(spec["container"]) + "\n"
