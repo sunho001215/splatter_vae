@@ -3906,3 +3906,16 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - **Hidden Gaussians.** "Hidden" became "negligible training-view contribution", with threshold sensitivity (20–41 / 25–47 / 36–56 % at 0.001 / 0.01 / 0.1 px). 22–43 % are negligible in all 22 views.
   - **Wording.** "Content-blind" was removed. SNeRL steps: 12× on hammer, 1.25–2.55× elsewhere. Mechanisms are labelled as correlates and RL effects as hypotheses.
   - **Markers verified in the final training targets** with the frozen pipeline: door-open 96/96 and stick-push 94/96 sampled RGB targets, depth-valid at 100 % of marker pixels, present in the synthetic-view targets (`diag/marker_targets.json`).
+- 08:50 (10-21) Remote outage of 586 s (08:38:43–08:48:30). All seven SNeRL containers exited with 255 at the reconnect, consistent with a host or Docker restart during maintenance. The scheduler recorded them as crashed (1 failure each; 2 restarts allowed).
+  - The guard places its hold only after 10 minutes, so I applied its procedure by hand to keep verification ahead of any relaunch:
+    - placed the admission hold before the driver's next pass;
+    - reconstructed the pre-outage ledger (`runs/setup/remote-ledger/pre-outage-ledger.json`, from the 08:26:54 history entry);
+    - ran the guard's recovery check.
+  - Result, passed: the 4 authorized GPUs are visible, the disk is within its floor, Docker answers. Every checkpoint is resumable: bin-picking, coffee-push, door-open and pick-place unchanged; peg-insert-side, peg-unplug-side and stick-push newer full-size files written before the outage.
+  - The hold was lifted. The driver resumes each job from `checkpoints/latest.pt` (`--resume auto`, new attempt, same run directory and identity). Nothing was deleted.
+  - Note: a watcher instance I started untracked at 08:48 was stopped and replaced by a tracked one.
+- 09:3x (10-21) Recovery gap found and fixed. The remote driver chose admissions from the raw registry, where the seven SNeRL pretrains had status `crashed`. It therefore never offered them for retry, although `jobs.py` treats crashed jobs with restarts left as pending.
+  - Fix (`remote_campaign_driver.py`; previous version `*.before-crash-retry-20261021.py`): the driver now uses the same view, crashed with failures ≤ max_restarts counted as pending. A dry run admitted exactly the seven SNeRL pretrains.
+  - One manual driver pass relaunched them as attempt 2 (same run directories, `--resume auto`, release 7c0d0d2), across all four GPUs.
+  - Verified on the remote: they continue from their checkpoints at steps 760k–772k (peg-insert-side 1.44M), losing at most ~10k steps since the last checkpoint. The remote GPUs were idle from 08:48 to 09:3x.
+  - My earlier readiness note, which said the driver retries from checkpoints, was wrong until this fix.

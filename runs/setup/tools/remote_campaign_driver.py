@@ -341,7 +341,13 @@ def dispatch_key(job):
     return rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
-candidates = [j for j in jobs.eligible(remote, state) if ready(j)]
+# Crashed jobs with restarts left are retried, exactly as scripts/jobs.py _tick treats them (status -> pending when
+# failures <= max_restarts); the scheduler resumes them from checkpoints/latest.pt (--resume auto) under a new attempt.
+# (2026-10-21: after the 08:38-08:48 remote outage the raw registry view never offered the seven crashed SNeRL
+# pretrains for retry.)
+retry_view = {i: ({**s, 'status': jobs.PENDING} if s.get('status') == 'crashed' and i in by_id
+                  and s.get('failures', 0) <= int(by_id[i].get('max_restarts', 1)) else s) for i, s in state.items()}
+candidates = [j for j in jobs.eligible(remote, retry_view) if ready(j)]
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
     candidates = []
