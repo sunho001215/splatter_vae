@@ -59,6 +59,66 @@ def labels(run_id: str, attempt: int, commit: str, image_digest: str) -> dict:
             "s4d.host": "remote", "s4d.commit": commit, "s4d.image_digest": image_digest}
 
 
+# Project-ownership labels on every container created from 2026-10-21 on (the remote Docker host is shared). Containers
+# created earlier lack them; their identity rests on the core labels above and the registry's recorded container id.
+OWNERSHIP_LABELS = {"s4d.project": "splatter4d", "s4d.owner": "kaist-sunho"}
+
+
+def container_labels(run_id: str, attempt: int, commit: str, image_digest: str) -> dict:
+    return {**labels(run_id, attempt, commit, image_digest), **OWNERSHIP_LABELS}
+
+
+_INSPECT_IDENTITY = ('{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{index .Config.Labels "s4d.managed"}}|'
+                     '{{index .Config.Labels "s4d.host"}}|{{index .Config.Labels "s4d.run_id"}}|'
+                     '{{index .Config.Labels "s4d.attempt"}}|{{.Name}}')
+_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+
+
+def removal_command(root: str, run_id: str, attempt: int, container: str, container_id: str, expected_code: int,
+                    required: list[str]) -> str:
+    """Remove one completed container of ours by its explicit id, after preserving its Docker log and inspect record
+    under the run directory. Refuses (non-zero exit) unless the container still is exactly that id, stopped
+    ("exited") with the expected exit code, labelled ours for this run and attempt, and every required run file is
+    present and non-empty under the authorized root. Identity and state are re-checked immediately before ``docker rm``
+    (no force, no volume removal). Prints {"absent": true} when the container no longer exists, so a retry after an
+    interrupted connection is safe."""
+    if root != ROOT:
+        raise ValueError("Remote removal root is not authorized")
+    if (not _RUN_ID.fullmatch(run_id) or container != f"s4d-{run_id}-a{int(attempt)}" or not SHA256.fullmatch(container_id)
+            or any(not re.fullmatch(r"[A-Za-z0-9._/-]{1,255}", name) or ".." in name for name in required)):
+        raise ValueError("Invalid container removal request")
+    q = shlex.quote
+    run_dir = f"{root}/runs/{run_id}"
+    expected = f"{container_id}|exited|{int(expected_code)}|true|remote|{run_id}|{int(attempt)}|/{container}"
+    keep = f"{run_dir}/containers"
+    log, record = f"{keep}/{container}.docker.log", f"{keep}/{container}.inspect.json"
+    identity = "docker inspect --format " + q(_INSPECT_IDENTITY) + ' "$id" 2>/dev/null'
+    absent = "printf '%s\\n' " + q('{"absent": true}')
+    lines = [
+        "set -u; export LC_ALL=C",
+        "id=" + q(container_id),
+        # only Docker's own "no such container" answer means absent; any other inspect failure refuses
+        'if ! info="$(docker inspect --format ' + q(_INSPECT_IDENTITY) + ' "$id" 2>&1)"; then case "$info" in '
+        '*"No such object"*|*"No such container"*) ' + absent + "; exit 0;; "
+        "*) printf 'inspect failed %s\\n' \"$info\" >&2; exit 7;; esac; fi",
+        'test "$info" = ' + q(expected) + " || { printf 'refused %s\\n' \"$info\" >&2; exit 3; }",
+        "test -d " + q(run_dir) + " || exit 4",
+        *["test -s " + q(run_dir + "/" + name) + " || { printf 'missing %s\\n' " + q(name) + " >&2; exit 4; }"
+          for name in required],
+        "mkdir -p " + q(keep) + " || exit 5",
+        'docker logs "$id" > ' + q(log + ".tmp") + " 2>&1 || exit 5",
+        "mv -f " + q(log + ".tmp") + " " + q(log) + " || exit 5",
+        'docker inspect "$id" > ' + q(record + ".tmp") + " || exit 5",
+        "mv -f " + q(record + ".tmp") + " " + q(record) + " || exit 5",
+        'logsum="$(sha256sum ' + q(log) + " | cut -d' ' -f1)\" || exit 5",
+        'inspectsum="$(sha256sum ' + q(record) + " | cut -d' ' -f1)\" || exit 5",
+        'test "$(' + identity + ')" = ' + q(expected) + " || exit 3",
+        'docker rm "$id" > /dev/null || exit 6',
+        "printf '{\"removed\": true, \"log_sha256\": \"%s\", \"inspect_sha256\": \"%s\"}\\n' \"$logsum\" \"$inspectsum\"",
+    ]
+    return "\n".join(lines)
+
+
 def snapshot_command(root: str) -> str:
     if root != ROOT:
         raise ValueError("Remote snapshot root is not authorized")
@@ -174,6 +234,7 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
         request_ok = False
     if (item.get("Name", "").removeprefix("/") != state["container"]
             or any(actual.get(key) != value for key, value in expected.items())
+            or any(key in actual and actual[key] != value for key, value in OWNERSHIP_LABELS.items())
             or item.get("Image") != state["image_digest"]
             or not SHA256.fullmatch(str(item.get("Id", "")))
             or (state.get("container_id") and item["Id"] != state["container_id"])
@@ -466,7 +527,7 @@ class RemoteBackend:
                 "max_mem_gb": float(host["limits"][gpu]["max_mem_gb"]),
                 "host_ram_reserve_gb": float(host.get("host_ram_reserve_gb", 0)),
                 "host_ram_ramp_minutes": float(host.get("host_ram_ramp_minutes", 10)),
-                "evidence": evidence, "labels": labels(job["id"], attempt, host["commit"], host["image_digest"])}
+                "evidence": evidence, "labels": container_labels(job["id"], attempt, host["commit"], host["image_digest"])}
         if "cpu_threads" in job:
             spec["cpu_threads"] = job["cpu_threads"]
         if purpose is not None:
@@ -513,6 +574,24 @@ class RemoteBackend:
         if not isinstance(payload, dict) or not SHA256.fullmatch(str(payload.get("container_id", ""))):
             raise RemoteJobError("Remote launcher returned no verifiable container id")
         return payload
+
+    def remove_container(self, run_id: str, attempt: int, container: str, container_id: str, expected_code: int,
+                         required: list[str]) -> dict:
+        """``removal_command`` over SSH; returns {"removed": True, "log_sha256", "inspect_sha256"} or {"absent": True}."""
+        command = removal_command(self.client.root, run_id, attempt, container, container_id, expected_code, required)
+        try:
+            response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=120)
+        except RemoteUnreachable:
+            self._save_snapshot(reachable=False, query_ok=False)
+            raise
+        try:
+            payload = json.loads(response.stdout.strip().splitlines()[-1])
+        except (IndexError, ValueError) as exc:
+            raise RemoteJobError("Container removal returned no result") from exc
+        if payload == {"absent": True} or (payload.get("removed") is True and SHA256.fullmatch(str(payload.get("log_sha256")))
+                                           and SHA256.fullmatch(str(payload.get("inspect_sha256")))):
+            return payload
+        raise RemoteJobError("Container removal returned an unexpected result")
 
     def sync_results(self, run_id: str, *, final: bool = False, checkpoints: bool = False) -> dict:
         try:

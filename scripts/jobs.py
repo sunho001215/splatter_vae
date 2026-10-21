@@ -119,6 +119,8 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 job.update(status="sync_pending", code=event["code"], unknown=False)
             elif kind == "results_synced":
                 job.update(sync=event["sync"], unknown=False)
+            elif kind == "container_removed":
+                job["container_removed"] = event.get("container_id")
             elif kind == "exited":
                 synced = job.get("sync", {})
                 verified = job.get("host", "local") != "remote" or (synced.get("final") is True
@@ -477,6 +479,53 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
     return owned, reachable
 
 
+CONTAINER_CLEANUP_PER_TICK = 10
+FINAL_REMOTE_FILES = ("exit.json", "provenance.json", "console.log")
+
+
+def _cleanup_pending(current: dict) -> bool:
+    """A completed campaign job on the remote whose final, verified container has not yet been removed."""
+    return (current.get("host") == "remote" and current.get("status") == DONE and current.get("verification_purpose") is None
+            and (current.get("sync") or {}).get("final") is True and bool(current.get("container_id"))
+            and current.get("container_removed") != current.get("container_id"))
+
+
+def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path, messages: list[str]) -> bool:
+    """Remove the containers of successfully completed remote jobs whose outputs were synced and checksum-verified
+    (user instruction 2026-10-21). Only the final attempt's container, by its recorded id, stopped with exit code 0,
+    labelled ours, after preserving its Docker log and inspect record in the remote run directory
+    (``RemoteBackend.remove_container``). Failed or interrupted containers are kept for recovery and diagnosis.
+    At most CONTAINER_CLEANUP_PER_TICK per tick; returns False if the host became unreachable."""
+    done = 0
+    for job_id, current in state.items():
+        if done >= CONTAINER_CLEANUP_PER_TICK or not _cleanup_pending(current):
+            continue
+        attempt = int(current.get("attempt", current["attempts"]))
+        item = snapshot.containers.get(current["container"])
+        base = {"event": "container_removed", "id": job_id, "host": "remote", "attempt": attempt,
+                "container": current["container"], "container_id": current["container_id"]}
+        if item is None:  # not in a confirmed snapshot of our labelled containers
+            record({**base, "absent": True}, registry)
+            continue
+        if (item.get("Id") != current["container_id"] or item.get("State", {}).get("Status") != "exited"
+                or item.get("State", {}).get("ExitCode") != 0):
+            messages.append(f"{job_id}: completed container kept (identity or state differs from the record)")
+            continue
+        required = sorted(set(FINAL_REMOTE_FILES) | {str(name) for name in current.get("required_results", [])})
+        try:
+            result = backend.remove_container(job_id, attempt, current["container"], current["container_id"], 0, required)
+        except RemoteUnreachable:
+            _host_reachability(registry, False, "RemoteUnreachable")
+            return False
+        except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            messages.append(f"{job_id}: completed container kept (removal refused: {type(exc).__name__})")
+            continue
+        record({**base, **result}, registry)
+        messages.append(f"{job_id}: completed container {current['container']} removed (log and inspect record kept)")
+        done += 1
+    return True
+
+
 def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None,
          available_gb: float | None = None, disk_bytes: tuple[int, int] | None = None, remote_backend=None) -> list[str]:
     registry.parent.mkdir(parents=True, exist_ok=True)
@@ -520,6 +569,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             current["status"] = PENDING
     remote_needed = any(current.get("host") == "remote" and current["status"] in ACTIVE
                         for current in state.values()) or (
+        remote_host is not None and remote_host.get("cleanup_completed_containers", True) is True
+        and any(_cleanup_pending(current) for current in state.values())) or (
         remote_host is not None and remote_host.get("enabled") is True and not remote_host.get("hold", False)
         and not (queue_path.parent / "HOLD").exists()
         and any(job.get("host", "local") == "remote" for job in eligible(list(jobs.values()), remote_candidates))
@@ -530,6 +581,9 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             snapshot = remote_backend.snapshot()
             _host_reachability(registry, True)
             owned, reachable = _reconcile_remote(remote_backend, snapshot, read_registry(registry), registry, runs, messages)
+            if reachable and remote_host is not None and remote_host.get("cleanup_completed_containers", True) is True:
+                reachable = _cleanup_completed_containers(remote_backend, snapshot, read_registry(registry), registry,
+                                                          messages)
             if reachable and snapshot.resources_ready:
                 foreign = {uuid for uuid, procs in snapshot.usage.items() if any(pid not in owned for pid, _ in procs)}
                 resources["remote"] = {"available": snapshot.available_gb, "disk_total": snapshot.disk_total_bytes,

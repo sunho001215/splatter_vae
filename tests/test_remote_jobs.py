@@ -84,7 +84,8 @@ class FakeBackend:
         self.value = remote.RemoteSnapshot({uuid: [] for uuid in APPROVED_HOST_GPUS["remote"]},
                                            200, 1000 * GIB, 800 * GIB, {})
         self.launches, self.syncs = [], []
-        self.snapshot_error = self.launch_error = self.sync_error = self.ready_error = None
+        self.snapshot_error = self.launch_error = self.sync_error = self.ready_error = self.remove_error = None
+        self.removals = []
         self.registry = runs.parent / "registry.jsonl"
 
     def snapshot(self):
@@ -110,6 +111,13 @@ class FakeBackend:
         if self.launch_error:
             raise self.launch_error
         return {"container_id": CONTAINER_ID}
+
+    def remove_container(self, run_id, attempt, container, container_id, expected_code, required):
+        self.removals.append((run_id, attempt, container, container_id, expected_code, tuple(required)))
+        if self.remove_error:
+            raise self.remove_error
+        self.value.containers.pop(container, None)
+        return {"removed": True, "log_sha256": "0" * 64, "inspect_sha256": "1" * 64}
 
     def sync_results(self, run_id, final=False, checkpoints=False):
         self.syncs.append((run_id, final))
@@ -1016,7 +1024,7 @@ def test_campaign_prepare_and_fingerprint_remain_unchanged(tmp_path, monkeypatch
            "mem_gb": 5, "ram_gb": 10, "disk_gb": 1, "required_results": ["completion.json"]}
     campaign = {"commit": host["commit"], "image_digest": host["image_digest"], "data_identity": evidence["data_identity"]}
     _, spec = backend.prepare(job, next(iter(host["limits"])), 1, host, campaign)
-    assert spec["args"] == ["0", "a; $(false)"] and spec["labels"] == remote_jobs.labels(
+    assert spec["args"] == ["0", "a; $(false)"] and spec["labels"] == remote_jobs.container_labels(
         job["id"], 1, host["commit"], host["image_digest"])
     assert not {"verification_purpose", "campaign_eligible", "verification_timeout_seconds"} & spec.keys()
     original = {"script": job["script"], "args": ["0", "a; $(false)"],
@@ -1079,3 +1087,110 @@ def test_isolation_bootstrap_requires_passing_suite_for_same_release(tmp_path, m
     evidence.pop("full_suite")
     with pytest.raises(ValueError):
         verification_artifacts(evidence, "gpu_isolation", tmp_path, evidence["source_sha256"])
+
+
+# ---- completed-container cleanup (user instruction 2026-10-21) --------------------------------------------------------
+def test_removal_command_never_forces_prunes_or_deletes_volumes_and_rechecks_identity():
+    cmd = remote.removal_command(remote.ROOT, "r", 2, "s4d-r-a2", CONTAINER_ID, 0, ["exit.json", "checkpoints/x.pt"])
+    assert 'docker rm "$id"' in cmd and cmd.count("docker inspect --format") == 2  # identity checked twice
+    for forbidden in (" -f ", "--force", " -v", "--volumes", "prune", "docker rmi", "volume rm", "network rm"):
+        assert forbidden not in cmd.replace("mv -f", "mv"), forbidden
+    assert f"{CONTAINER_ID}|exited|0|true|remote|r|2|/s4d-r-a2" in cmd
+    assert f"{remote.ROOT}/runs/r/containers/s4d-r-a2.docker.log" in cmd and "No such object" in cmd
+    for bad in (dict(root="/tmp"), dict(container="s4d-other-a2"), dict(container_id="x" * 64),
+                dict(required=["../escape"]), dict(run_id="r;rm")):
+        args = {"root": remote.ROOT, "run_id": "r", "attempt": 2, "container": "s4d-r-a2", "container_id": CONTAINER_ID,
+                "expected_code": 0, "required": ["exit.json"], **bad}
+        with pytest.raises(ValueError):
+            remote.removal_command(**args)
+
+
+def test_new_containers_carry_ownership_labels_and_legacy_ones_still_validate():
+    assert remote.container_labels("r", 1, COMMIT, IMAGE) == {**remote.labels("r", 1, COMMIT, IMAGE),
+                                                              **remote.OWNERSHIP_LABELS}
+    state = {"attempts": 1, "commit": COMMIT, "image_digest": IMAGE, "container": "s4d-r-a1", "gpu": REMOTE,
+             "gpu_backend": "cdi", "container_id": CONTAINER_ID}
+    legacy = inspected(status="running")
+    remote.validate_container(legacy, "r", state)  # created before the labels existed
+    labelled = inspected(status="running")
+    labelled["Config"]["Labels"] = remote.container_labels("r", 1, COMMIT, IMAGE)
+    remote.validate_container(labelled, "r", state)
+    labelled["Config"]["Labels"]["s4d.owner"] = "someone-else"
+    with pytest.raises(remote.RemoteJobError):
+        remote.validate_container(labelled, "r", state)
+
+
+def test_completed_container_is_removed_once_after_verified_sync(tmp_path):
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert state["r"]["status"] == "done"
+    assert backend.removals == [("r", 1, "s4d-r-a1", CONTAINER_ID, 0,
+                                 ("console.log", "exit.json", "metrics.jsonl", "provenance.json"))]
+    assert state["r"]["container_removed"] == CONTAINER_ID
+    tick(tmp_path, queued, backend)  # nothing left to do: no second removal
+    assert len(backend.removals) == 1
+
+
+def test_failed_interrupted_or_mismatched_containers_are_kept(tmp_path):
+    queued = write_queue(tmp_path, [job(max_restarts=0)])
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path)
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited", code=7)
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "failed" and not backend.removals
+    # a completed job whose container no longer matches its recorded id is kept and reported
+    queued = write_queue(tmp_path, [job("s")])
+    launch_event(tmp_path, "s")
+    other = inspected("s", status="exited")
+    backend.value.containers["s4d-s-a1"] = other
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["s"]["status"] == "done" and len(backend.removals) == 1
+    jobs.record({"event": "container_removed", "id": "s", "host": "remote", "container_id": "0" * 64},
+                tmp_path / "registry.jsonl")  # a stale record does not stop the check for the recorded id
+    backend.removals.clear()
+    backend.value.containers["s4d-s-a1"] = {**other, "Id": "e" * 64}
+    messages = tick(tmp_path, queued, backend)
+    assert not backend.removals and any("kept" in m for m in messages)
+
+
+def test_cleanup_is_retry_safe_after_refusal_or_lost_connection(tmp_path):
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.remove_error = remote.RemoteUnreachable("lost")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert state["r"]["status"] == "done" and state["r"].get("container_removed") is None
+    backend.remove_error = remote.RemoteJobError("refused")
+    messages = tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"].get("container_removed") is None
+    assert any("kept" in m for m in messages)
+    backend.remove_error = None
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["container_removed"] == CONTAINER_ID
+    # an absent container (already removed after a lost response) is recorded without another removal call
+    queued = write_queue(tmp_path, [job("t")])
+    launch_event(tmp_path, "t")
+    backend.value.containers["s4d-t-a1"] = inspected("t", status="exited")
+    backend.remove_error = remote.RemoteUnreachable("lost")
+    tick(tmp_path, queued, backend)
+    backend.value.containers.pop("s4d-t-a1")
+    backend.remove_error = None
+    calls = len(backend.removals)
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["t"]["container_removed"] == CONTAINER_ID
+    assert len(backend.removals) == calls
+
+
+def test_cleanup_can_be_disabled_per_host(tmp_path):
+    queued = write_queue(tmp_path, [job()], cleanup_completed_containers=False)
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done" and not backend.removals
