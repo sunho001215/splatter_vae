@@ -1,6 +1,6 @@
 # splatter4d Meta-World campaign — progress
 
-Last updated: 2026-10-21 00:20 +09:00 (future_k2 on eight tasks; SNeRL eight-task running; artifact v8). Earlier: 2026-10-18 22:25 (baseline eight-task results). Earlier: 2026-10-16 13:40 restart after the hardware update.
+Last updated: 2026-10-21 15:35 +09:00 (memory budget option (b); remote container cleanup; bin-picking rerun; chamfer_lean merged, pilots pending). Earlier: 2026-10-21 00:20 (future_k2 on eight tasks; SNeRL eight-task running; artifact v8). Earlier: 2026-10-18 22:25 (baseline eight-task results). Earlier: 2026-10-16 13:40 restart after the hardware update.
 **Restarted.** Local devices are now 12 MIG 1g.24gb instances (GPUs 4/5/6); guard/EGL/scheduler adapted on main
 (`756dc9b`, `d95e863`), isolation passed on all 12 (CUDA+EGL), native suite 778/0/0/0. Old daemon PID2819571 is gone
 (container restart); one scheduler daemon, one watcher (venv python), Stage 2 and remote driver loops, memory alert
@@ -52,8 +52,8 @@ diff inline.
   acceptance passed 2026-10-19 (sanity 0.589 vs random 0.013; docs/BASELINES.md); its eight-task runs (user go-ahead 2026-10-20) are in progress (`runs/setup/baselines-snerl-eight-task-registration-20261020.json`): the hammer row is complete; 7 remote 2.4M-step pretrains are running, and their 21 local DrM pairs follow.
 - **Results report (2026-10-19 22:05 KST, commit 1db463b; version 8 2026-10-21 00:20: rendering on 8 tasks, rendering diagnosis, demonstration-trajectory t-SNE):** Claude Artifact https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73 (private); sources and scripts in `reports/results-artifact/` (git-excluded).
 - **Future prediction (2026-10-20/21):** `action_future` was cancelled and superseded (`runs/setup/actfut-cancellation-20261020.json`). The replacement `future_k2` (history stride 2, future stride 1–6; `runs/setup/afk2-definition-20261020.json`) now covers all eight tasks (user instruction 2026-10-20 ~22:25; the pilot gate no longer blocks). The six-task registration is `runs/setup/afk2-registration-bin-picking-…-20261020.json`.
-  - Running: hammer and pick-place pilots, and bin-picking (from 22:40).
-  - Five pretrains start job by job as local RAM allows (dataset cache plus about 11 GB each; the driver's reserve was fixed). DrM 1M × 3 seeds follow each pretrain.
+  - Running (2026-10-21 15:35): all eight pretrains (hammer/pick-place ~176k, bin-picking ~136k, five others ~10k). DrM 1M × 3 seeds follow each pretrain.
+  - bin-picking had a transient collapse at 12.0–12.9k (cause unresolved; no lasting effect found). An unchanged rerun `afk2rerun-seed0-bin-picking-200k` (W&B 89z76kak) runs alongside; the original stays untouched. Candidate fix `loss.visibility_front_only` (branch visfix-20261021) not applied.
   - Remote placement will be revisited after the SNeRL pretrains finish.
 - **Local disk (2026-10-20):** the external PointWorld restore filled non-root space at 18:46. The user freed space by ~19:00, leaving 3.1 TB available. No job failed or waited, and the 300 GB floor is unchanged.
 - **Follow-ups E1/E2/E3 complete (2026-10-19 20:19):** 138/138 jobs; consolidated report docs/FOLLOWUP_REPORT.md (tables docs/FOLLOWUP_TABLES.md, JSON runs/setup/followup-report-20261019-201913.json).
@@ -438,6 +438,6 @@ diff inline.
    frees, full numerical result sync, offline W&B attempt, completed replay retained. Old speculative300k stays out.
 2. Stage3: six final200k encoders -> guarded exports -> eight-task RL seeds2000-2002; two dev encoders reused.
 3. Stage2 local driver (`runs/setup/tools/stage2_local_driver.py`, every5min): verified closeouts -> eval configs/
-   exports -> RL; job-by-job below the140GB admission ceiling. Report against the recorded margins once each
+   exports -> RL; job-by-job below the 150 GB budget (clean disk cache excluded, option (b)) with growth and a 10 GB margin. Report against the recorded margins once each
    comparison's runs are all complete; no post-freeze method/hyperparameter selection.
 4. Continue SinCro/ReViWo Stage4. New SNeRL/DynaMo/3D-MVP execution remains blocked; no unaccepted release or long run.

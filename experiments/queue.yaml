@@ -34708,5 +34708,38 @@ jobs:
   disk_gb: 1
   required_results:
   - eval.jsonl
+- id: afk2rerun-seed0-bin-picking-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/bin-picking.yaml
+  - configs/metaworld/variants/future_k2.yaml
+  - --name
+  - afk2rerun-seed0-bin-picking-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 1
+  deps: []
+  max_restarts: 3
+  stage: 5
+  variant: future_k2
+  variant_definition: runs/setup/afk2-definition-20261020.json
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  investigation: runs/setup/afk2-binpick-spike-20261021
+  rerun_of: afk2-seed0-bin-picking-200k
 
 host_ram_reserve_gb: 60
