@@ -4003,3 +4003,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
     - endpoint: last-5 success on the training cameras; IQM difference against the original's s3-drm-splatter4d runs, task-stratified bootstrap;
     - adopt if the difference is ≥ 0.05 with the 95 % interval above 0, at D1 (hammer + pick-place, 6 runs) or D2 (eight tasks, 24 runs);
     - on adoption, the combined variant (future_k2 + chamfer_lean configs) is tested, smoke-run and registered on the same eight-task protocol.
+- 06:2x (10-22) future_k2 adoption, decision point D1 (rule `runs/setup/afk2-adoption-rule-20261022.json`; record `runs/setup/afk2-adoption-D1-20261022.json`): hammer and pick-place, 3 seeds each, all evaluated to 1M steps.
+  - Primary (last-5 success, training cameras, IQM over 6 runs): future_k2 0.719 vs original 0.721, difference −0.002 [−0.100, +0.097]. Verdict: DEFER to D2 (eight tasks). The combined future_k2 + chamfer_lean variant is not started.
+  - Secondary (descriptive):
+    - held-out cameras 0.041 vs 0.084 (−0.043 [−0.066, +0.010]); moving cameras 0.710 vs 0.639 (+0.071 [−0.040, +0.141]);
+    - training-camera final 0.710 vs 0.710; AUC 0.454 vs 0.467; return last-5 1179 vs 1288 (−108 [−190, −5]);
+    - per task: hammer 0.844 vs 0.890, pick-place 0.552 vs 0.506.
