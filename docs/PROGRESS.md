@@ -58,8 +58,8 @@ diff inline.
 - **Local disk (2026-10-20):** the external PointWorld restore filled non-root space at 18:46. The user freed space by ~19:00, leaving 3.1 TB available. No job failed or waited, and the 300 GB floor is unchanged.
 - **Follow-ups E1/E2/E3 complete (2026-10-19 20:19):** 138/138 jobs; consolidated report docs/FOLLOWUP_REPORT.md (tables docs/FOLLOWUP_TABLES.md, JSON runs/setup/followup-report-20261019-201913.json).
 - **Local GPU authorization (user, 2026-10-19):** only the 8 MIG 1g.24gb instances of GPU 4 (`GPU-76871c16-...`) and GPU 5 (`GPU-d09f0338-...`); GPU 6 (`GPU-6b33eef2-...`) revoked. Remote: the same 4 GPUs. Record `runs/setup/gpu-allowlist-20261019.json`; provenance index `runs/setup/local-device-provenance.json`.
-- Local <=150GB full cgroup charge; measured job-by-job admission (trainer10.77GB PSS plus dataset page cache),
-  no group/all-or-nothing requirement. Host reserve60GiB, local disk floor300GB. Remote <=1TB and >=15% free disk.
+- Local <=150 GB of the cgroup working set (memory.current - inactive_file; since 2026-10-21, `runs/setup/tools/memory_budget.py`; raw charge, PSI and host MemAvailable still monitored); job-by-job admission with measured footprints (trainer 10.77 GB non-file PSS) plus a 5 % active-cache allowance per dataset and a 10 GB transient margin;
+  no group/all-or-nothing requirement. Host reserve 60 GiB, local disk floor 300 GB. Remote <=1 TB and >=15 % free disk.
 - **Host-neutral placement (user, 2026-10-15 20:09):** either host may run any job or checkpoint continuation;
   compared arms may span hosts and existing references stay valid. No host-equivalence or migration-comparison
   gate. Record every run's host; GPU/security/resource restrictions remain. Earlier placement rules are superseded.

@@ -1,0 +1,283 @@
+{
+ "rule": "lambda = median |grad R| / |grad C| over task x state x batch, rounded to the nearest 1-2-5 value (R = 0.5 hard-depth + 0.5 depth-gradient + 1.0 visibility, the removed terms)",
+ "median_ratio": 107.67390504634007,
+ "ratio_range": [
+  3.4441816275851167,
+  20896.142196761233
+ ],
+ "lambda": 100,
+ "rows": [
+  {
+   "task": "hammer",
+   "state": "init",
+   "batch": 0,
+   "value": {
+    "removed": 0.5678821802139282,
+    "depth_hard": 0.34143972396850586,
+    "depth_grad": 0.08002721518278122,
+    "visibility": 0.3571487367153168,
+    "depth_l1": 0.30917391180992126,
+    "chamfer": 0.051578156650066376,
+    "chamfer_pred_to_target_t0": 0.04497554153203964,
+    "chamfer_target_to_pred_t0": 0.05818077176809311
+   },
+   "grad": {
+    "removed": 12.060654718506377,
+    "depth_l1": 0.6601193819797881,
+    "chamfer": 0.05729252109248433,
+    "hard_half": 0.3788605539760137,
+    "grad_half": 0.11594710262970725,
+    "visibility": 12.018843664509784
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.0425211600959301,
+    "chamfer_excluded_beyond_far": 0.018120447173714638,
+    "chamfer_voxels_per_cloud": 19514.146484375,
+    "chamfer_raw_near_fraction": 0.4823290705680847,
+    "chamfer_raw_far_fraction": 0.08920282870531082,
+    "chamfer_sampled_near_fraction": 0.2884318232536316,
+    "chamfer_sampled_far_fraction": 0.2793731689453125
+   },
+   "ratio_removed_over_chamfer": 210.51010652921855
+  },
+  {
+   "task": "hammer",
+   "state": "init",
+   "batch": 1,
+   "value": {
+    "removed": 0.5656677484512329,
+    "depth_hard": 0.3370550274848938,
+    "depth_grad": 0.07997911423444748,
+    "visibility": 0.3571506440639496,
+    "depth_l1": 0.3045433759689331,
+    "chamfer": 0.04875592142343521,
+    "chamfer_pred_to_target_t0": 0.044071681797504425,
+    "chamfer_target_to_pred_t0": 0.0534401535987854
+   },
+   "grad": {
+    "removed": 12.076228968866118,
+    "depth_l1": 0.661848173149092,
+    "chamfer": 0.05057057422547279,
+    "hard_half": 0.3755265423582116,
+    "grad_half": 0.11386616592320178,
+    "visibility": 12.036860092362014
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.04089101031422615,
+    "chamfer_excluded_beyond_far": 0.0178036168217659,
+    "chamfer_voxels_per_cloud": 19352.48046875,
+    "chamfer_raw_near_fraction": 0.48275795578956604,
+    "chamfer_raw_far_fraction": 0.08677680790424347,
+    "chamfer_sampled_near_fraction": 0.2921091914176941,
+    "chamfer_sampled_far_fraction": 0.2725728452205658
+   },
+   "ratio_removed_over_chamfer": 238.79952232741758
+  },
+  {
+   "task": "hammer",
+   "state": "reference_100k",
+   "batch": 0,
+   "value": {
+    "removed": 0.037908270955085754,
+    "depth_hard": 0.02384444698691368,
+    "depth_grad": 0.011370057240128517,
+    "visibility": 0.02030101791024208,
+    "depth_l1": 0.019088411703705788,
+    "chamfer": 0.03983777016401291,
+    "chamfer_pred_to_target_t0": 0.04343127831816673,
+    "chamfer_target_to_pred_t0": 0.03685082122683525
+   },
+   "grad": {
+    "removed": 0.43794305351041035,
+    "depth_l1": 0.30793204039126093,
+    "chamfer": 0.12715445956822943,
+    "hard_half": 0.3427930820515634,
+    "grad_half": 0.11649133870646473,
+    "visibility": 0.1699475697778011
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.0425211600959301,
+    "chamfer_excluded_beyond_far": 0.018120447173714638,
+    "chamfer_voxels_per_cloud": 19514.146484375,
+    "chamfer_raw_near_fraction": 0.4823290705680847,
+    "chamfer_raw_far_fraction": 0.08920282870531082,
+    "chamfer_sampled_near_fraction": 0.2881317138671875,
+    "chamfer_sampled_far_fraction": 0.2795664668083191
+   },
+   "ratio_removed_over_chamfer": 3.4441816275851167
+  },
+  {
+   "task": "hammer",
+   "state": "reference_100k",
+   "batch": 1,
+   "value": {
+    "removed": 0.039143189787864685,
+    "depth_hard": 0.025527995079755783,
+    "depth_grad": 0.01237884908914566,
+    "visibility": 0.020189769566059113,
+    "depth_l1": 0.021285682916641235,
+    "chamfer": 0.04006330296397209,
+    "chamfer_pred_to_target_t0": 0.04307647794485092,
+    "chamfer_target_to_pred_t0": 0.037471652030944824
+   },
+   "grad": {
+    "removed": 0.4472967600732342,
+    "depth_l1": 0.36033633586577934,
+    "chamfer": 0.11850185922995282,
+    "hard_half": 0.3523447874167919,
+    "grad_half": 0.1336222141716534,
+    "visibility": 0.15996030833250183
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.04089101031422615,
+    "chamfer_excluded_beyond_far": 0.0178036168217659,
+    "chamfer_voxels_per_cloud": 19352.48046875,
+    "chamfer_raw_near_fraction": 0.48275795578956604,
+    "chamfer_raw_far_fraction": 0.08677680790424347,
+    "chamfer_sampled_near_fraction": 0.2931671142578125,
+    "chamfer_sampled_far_fraction": 0.2715403437614441
+   },
+   "ratio_removed_over_chamfer": 3.774596980839389
+  },
+  {
+   "task": "pick-place",
+   "state": "init",
+   "batch": 0,
+   "value": {
+    "removed": 0.9150744676589966,
+    "depth_hard": 0.35796016454696655,
+    "depth_grad": 0.08723723888397217,
+    "visibility": 0.6924757957458496,
+    "depth_l1": 0.3220898509025574,
+    "chamfer": 0.053266748785972595,
+    "chamfer_pred_to_target_t0": 0.05378410220146179,
+    "chamfer_target_to_pred_t0": 0.0527493953704834
+   },
+   "grad": {
+    "removed": 1142.7556375193765,
+    "depth_l1": 0.6338606988475924,
+    "chamfer": 0.05468739764302026,
+    "hard_half": 0.3709042093515329,
+    "grad_half": 0.13970572089660876,
+    "visibility": 1142.724443448357
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.0430348701775074,
+    "chamfer_excluded_beyond_far": 0.021448560059070587,
+    "chamfer_voxels_per_cloud": 18917.833984375,
+    "chamfer_raw_near_fraction": 0.4469085931777954,
+    "chamfer_raw_far_fraction": 0.1002267375588417,
+    "chamfer_sampled_near_fraction": 0.2274068295955658,
+    "chamfer_sampled_far_fraction": 0.320526123046875
+   },
+   "ratio_removed_over_chamfer": 20896.142196761233
+  },
+  {
+   "task": "pick-place",
+   "state": "init",
+   "batch": 1,
+   "value": {
+    "removed": 0.9164459705352783,
+    "depth_hard": 0.36045393347740173,
+    "depth_grad": 0.08672019094228745,
+    "visibility": 0.692858874797821,
+    "depth_l1": 0.3244374692440033,
+    "chamfer": 0.05337069556117058,
+    "chamfer_pred_to_target_t0": 0.053110554814338684,
+    "chamfer_target_to_pred_t0": 0.05363083630800247
+   },
+   "grad": {
+    "removed": 1144.3695199897838,
+    "depth_l1": 0.6328608248569693,
+    "chamfer": 0.05513563597477855,
+    "hard_half": 0.36932038558031605,
+    "grad_half": 0.14396179183757207,
+    "visibility": 1144.4478394491837
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.04363144934177399,
+    "chamfer_excluded_beyond_far": 0.021405113860964775,
+    "chamfer_voxels_per_cloud": 18875.708984375,
+    "chamfer_raw_near_fraction": 0.4419969916343689,
+    "chamfer_raw_far_fraction": 0.10274018347263336,
+    "chamfer_sampled_near_fraction": 0.2268778532743454,
+    "chamfer_sampled_far_fraction": 0.325714111328125
+   },
+   "ratio_removed_over_chamfer": 20755.533145809153
+  },
+  {
+   "task": "pick-place",
+   "state": "reference_100k",
+   "batch": 0,
+   "value": {
+    "removed": 0.05257672816514969,
+    "depth_hard": 0.03050386533141136,
+    "depth_grad": 0.013727433979511261,
+    "visibility": 0.030461076647043228,
+    "depth_l1": 0.023076582700014114,
+    "chamfer": 0.042216625064611435,
+    "chamfer_pred_to_target_t0": 0.046084508299827576,
+    "chamfer_target_to_pred_t0": 0.03814825415611267
+   },
+   "grad": {
+    "removed": 0.48009246782897963,
+    "depth_l1": 0.474189636975871,
+    "chamfer": 0.09923974495978685,
+    "hard_half": 0.381330026950799,
+    "grad_half": 0.15955184663665367,
+    "visibility": 0.1319243591958767
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.0430348701775074,
+    "chamfer_excluded_beyond_far": 0.021448560059070587,
+    "chamfer_voxels_per_cloud": 18917.833984375,
+    "chamfer_raw_near_fraction": 0.4469085931777954,
+    "chamfer_raw_far_fraction": 0.1002267375588417,
+    "chamfer_sampled_near_fraction": 0.2281443327665329,
+    "chamfer_sampled_far_fraction": 0.3182271420955658
+   },
+   "ratio_removed_over_chamfer": 4.837703563461584
+  },
+  {
+   "task": "pick-place",
+   "state": "reference_100k",
+   "batch": 1,
+   "value": {
+    "removed": 0.05130522698163986,
+    "depth_hard": 0.028536099940538406,
+    "depth_grad": 0.013239001855254173,
+    "visibility": 0.030417678877711296,
+    "depth_l1": 0.02239631675183773,
+    "chamfer": 0.04167412221431732,
+    "chamfer_pred_to_target_t0": 0.04629373550415039,
+    "chamfer_target_to_pred_t0": 0.03715202957391739
+   },
+   "grad": {
+    "removed": 0.4091700798851537,
+    "depth_l1": 0.4198002557198711,
+    "chamfer": 0.0978222636168274,
+    "hard_half": 0.34047750726843423,
+    "grad_half": 0.128708154466674,
+    "visibility": 0.12960031750439444
+   },
+   "cloud": {
+    "chamfer_excluded_no_depth": 0.04363144934177399,
+    "chamfer_excluded_beyond_far": 0.021405113860964775,
+    "chamfer_voxels_per_cloud": 18875.708984375,
+    "chamfer_raw_near_fraction": 0.4419969916343689,
+    "chamfer_raw_far_fraction": 0.10274018347263336,
+    "chamfer_sampled_near_fraction": 0.2254537045955658,
+    "chamfer_sampled_far_fraction": 0.3263143002986908
+   },
+   "ratio_removed_over_chamfer": 4.182790959406589
+  }
+ ],
+ "gpu": [
+  {
+   "index": 0,
+   "uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+   "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+  }
+ ],
+ "worktree": "/home/ws/ws/splatter4d/.worktrees/chamfer"
+}

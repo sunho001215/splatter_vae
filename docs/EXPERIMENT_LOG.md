@@ -3919,3 +3919,16 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - One manual driver pass relaunched them as attempt 2 (same run directories, `--resume auto`, release 7c0d0d2), across all four GPUs.
   - Verified on the remote: they continue from their checkpoints at steps 760k–772k (peg-insert-side 1.44M), losing at most ~10k steps since the last checkpoint. The remote GPUs were idle from 08:48 to 09:3x.
   - My earlier readiness note, which said the driver retries from checkpoints, was wrong until this fix.
+- 13:30 (10-21) Local memory budget now counts the cgroup working set (user instruction 2026-10-21): budget_usage = max(0, memory.current − inactive_file); ceiling unchanged at 150,000,000,000 bytes. `runs/setup/tools/memory_budget.py` is the single definition.
+  - Still counted: anonymous memory, shmem (on the anonymous LRU), active file cache, kernel memory and other non-excluded usage.
+  - Admission in both local drivers (`baseline_local_driver.py`, `stage2_local_driver.py`; previous versions `*.before-working-set-20261021.py`) requires working set + remaining growth of running jobs + candidate peak footprint + active-cache allowance ≤ 150 GB − 10 GB transient overhead.
+    - Remaining growth = measured peak footprint − non-file PSS (Pss_Anon + Pss_Shmem; Pss_File unused, so mapped cache cannot re-enter the budget). DrM resident replay counts at the cgroup's active-file share.
+    - The active-cache allowance is 5 % of each dataset an active or admitted job reads; it replaces the full non-resident dataset reserve. Measured: 2.3 GB active file cache with ~60 GB of three training datasets resident.
+  - Host MemAvailable with the scheduler's 60 GiB host reserve is unchanged; raw usage, PSI and host MemAvailable are still monitored (`runs/setup/memory-monitor.log`).
+  - Watchdogs replaced: the eviction trigger fires at working set ≥ 135 GB; the alert fires at working set ≥ 147 GB, PSI full avg60 ≥ 5 % or host MemAvailable < 60 GiB (`runs/setup/tools/memory_watch.py`).
+  - Targeted eviction (`evict_partial_cache.py`, previous version `*.before-working-set-20261021.py`), POSIX_FADV_DONTNEED of clean pages only:
+    - guards: never files open by any process or modified in the last 10 minutes; never shmem; never drop_caches;
+    - the old rule that evicted active RL replay files was removed; datasets are evicted only for tasks no running reader uses;
+    - new rules for inactive pretraining checkpoints and report outputs.
+    - First pass released 9.6 GB (raw 108.7 → 99.5 GB; working set unchanged at 40.6 GB).
+  - Result: before the change the driver projected 127.3 GB of 140 and admitted nothing. On the 13:29 pass the working set was 40.6 GB and the projection 103.3 GB, and all five waiting future_k2 pretrains were admitted (coffee-push, door-open, peg-insert-side, peg-unplug-side, stick-push); all eight tasks now pretrain locally on the 8 MIG slices.

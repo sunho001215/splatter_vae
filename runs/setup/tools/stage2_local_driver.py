@@ -19,7 +19,12 @@ ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from scripts import jobs  # noqa: E402
 
-CAP = 140_000_000_000  # admission ceiling, 10 GB below the 150 GB hard cap
+sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
+import memory_budget as mb  # noqa: E402
+
+# Local budget (user instruction 2026-10-21): cgroup working set max(0, memory.current - inactive_file) vs 150 GB,
+# minus the transient-overhead margin (runs/setup/tools/memory_budget.py)
+CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD
 TRAINER_PSS = 10.77e9  # measured trainer peak PSS (user rule)
 # Measured splatter4d DrM peaks (2026-10-14): trainer RSS <= 2.65 GB at 1M (runs/s3-drm-splatter4d-*/final.json),
 # local session PSS 2.80 GB at 667k; evaluator session PSS 3.5-3.8 GB. ~25% margin. Other jobs: declared ram_gb.
@@ -349,27 +354,15 @@ if HOLD.is_file():
 
 
 def session_pss():
-    """PSS (bytes) per session id over all live processes (scheduler launches are session leaders)."""
-    out = {}
-    for entry in Path('/proc').iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            session = int((entry / 'stat').read_text().rsplit(')', 1)[1].split()[3])
-            pss = next(int(line.split()[1]) * 1024 for line in (entry / 'smaps_rollup').read_text().splitlines()
-                       if line.startswith('Pss:'))
-        except (OSError, IndexError, StopIteration, ValueError):
-            continue
-        out[session] = out.get(session, 0) + pss
-    return out
+    """Non-file PSS (Pss_Anon + Pss_Shmem, bytes) per session id: mapped file cache stays out of the budget."""
+    return mb.session_nonfile_pss()
 
 
-charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
-fincore = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, DATA_FILES)],
-                         capture_output=True, text=True, check=True).stdout.split()
-# the dataset page-cache reserve applies only while a dataset reader (pretraining / full-split evaluation) is a
-# local candidate; exports and DrM read no dataset file (2026-10-18)
-cache_reserve = sum(max(0, f.stat().st_size - int(r)) for f, r in zip(DATA_FILES, fincore)) \
+memory = mb.snapshot()
+charge = memory['working_set']  # max(0, memory.current - inactive_file) (2026-10-21)
+# the active-cache allowance of the datasets applies only while a dataset reader (pretraining / full-split
+# evaluation) is a local candidate; exports and DrM read no dataset file (2026-10-18)
+cache_reserve = sum(int(mb.ACTIVE_CACHE_FRACTION * f.stat().st_size) for f in DATA_FILES) \
     if any(j['script'] in ('scripts/train.py', 'scripts/evaluate.py') for j in candidates) else 0
 pss = session_pss()
 # remaining growth of every active local job: its measured/declared footprint minus what it already uses
@@ -405,8 +398,9 @@ if admitted and not DRY:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
                         'jobs': json.loads(json.dumps(admitted))}, stream, sort_keys=False)
     with (SETUP / f's2-local-admission-{tag}.json').open('x') as stream:
-        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'remaining_growth_bytes': ramp, 'remaining_growth_by_job': growth,
-                   'data_cache_reserve_bytes': cache_reserve, 'accounted_plus_admitted_bytes': total,
+        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'working_set',
+                   'memory_snapshot': memory, 'remaining_growth_bytes': ramp, 'remaining_growth_by_job': growth,
+                   'active_cache_allowance_bytes': cache_reserve, 'accounted_plus_admitted_bytes': total,
                    'admission_ceiling_bytes': CAP, 'commit': source['commit'], 'admission': 'job by job',
                    'admitted': {j['id']: footprint(j) for j in admitted}}, stream, indent=2)
     messages.append(f"ADMITTING {[j['id'] for j in admitted]} charge {charge} growth {ramp} reserve {cache_reserve}")

@@ -19,7 +19,12 @@ ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from scripts import jobs  # noqa: E402
 
-CAP = 140_000_000_000
+sys.path.insert(0, str(ROOT / 'runs/setup/tools'))
+import memory_budget as mb  # noqa: E402
+
+# Local budget (user instruction 2026-10-21): the cgroup working set max(0, memory.current - inactive_file) against the
+# 150 GB ceiling, minus a transient-overhead margin; see runs/setup/tools/memory_budget.py.
+CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD
 # The local sanity set moved to the remote (baselines-sanity-remote-registration-20261016.json). Only the evaluator of the
 # kept local pair `bxs-dynamo-hammer-rand-s1000` (trainer done locally) is still admitted here (2026-10-17).
 # Eight-task runs (2026-10-17): the local rows of baselines-eight-task-registration-20261017.json (DynaMo and 3D-MVP
@@ -87,17 +92,8 @@ def task_files(job):
 
 
 def session_pss():
-    out = {}
-    for entry in Path('/proc').iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            session = int((entry / 'stat').read_text().rsplit(')', 1)[1].split()[3])
-            pss = next(int(line.split()[1]) * 1024 for line in (entry / 'smaps_rollup').read_text().splitlines()
-                       if line.startswith('Pss:'))
-        except (OSError, IndexError, StopIteration, ValueError):
-            continue
-        out[session] = out.get(session, 0) + pss
+    # non-file PSS (Pss_Anon + Pss_Shmem): mapped file cache must not re-enter the working-set budget (2026-10-21)
+    out = mb.session_nonfile_pss()
     return out
 
 
@@ -135,16 +131,16 @@ if stage2_waiting:
 candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
                                     and status(j['id'].removesuffix('-eval')) == jobs.DONE),
                                j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
-charge = int(Path('/sys/fs/cgroup/memory.current').read_text())
-# Dataset cache reserve (2026-10-20, afk2 expansion): the non-resident part of the datasets of ACTIVE jobs, plus each
-# candidate's own datasets when it is admitted (below). Reserving every registered-but-unstarted task's dataset up
-# front blocked all admissions (six new task datasets, 129 GB, against the 140 GB ceiling).
+memory = mb.snapshot()
+charge = memory['working_set']  # max(0, memory.current - inactive_file): reclaimable inactive cache excluded
+# Dataset cache (2026-10-21): inactive dataset pages are excluded from the budget; the active share is reserved as an
+# allowance of ACTIVE_CACHE_FRACTION of each dataset used by an active job, and by each candidate when admitted.
 files = sorted({f for j in registered for f in task_files(j) if f.is_file()})
-fincore = subprocess.run(['fincore', '--bytes', '--noheadings', '--output', 'RES', *map(str, files)],
-                         capture_output=True, text=True, check=True).stdout.split() if files else []
-nonresident = {f: max(0, f.stat().st_size - int(r)) for f, r in zip(files, fincore)}
-counted = {f for j in registered if status(j['id']) in jobs.ACTIVE for f in task_files(j) if f in nonresident}
-cache_reserve = sum(nonresident[f] for f in counted)
+allowance = {f: int(mb.ACTIVE_CACHE_FRACTION * f.stat().st_size) for f in files}
+nonresident = allowance  # name kept for the admission loop below
+counted = {f for j in registered if status(j['id']) in jobs.ACTIVE for f in task_files(j) if f in allowance}
+cache_reserve = sum(allowance[f] for f in counted)
+active_share = memory['active_file'] / max(1, memory['active_file'] + memory['inactive_file'])
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
 MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/eval_rl.py': 4.5e9,
@@ -169,9 +165,9 @@ def resident_replay(job_id):
     return sum(int(x) for x in out if x.isdigit())
 
 
-# remaining growth: footprint minus what the job already uses (its PSS, and for trainers the replay pages already
-# counted in the charge, so the resident replay is not counted twice)
-growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0) - resident_replay(i))
+# remaining growth: footprint minus what the job already uses (its non-file PSS, and for trainers the part of the
+# resident replay cache that is in the working set: the resident bytes times the cgroup's active-file share)
+growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0) - int(active_share * resident_replay(i)))
           for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
 total = charge + sum(growth.values()) + cache_reserve
 admitted, taken = [], set()
@@ -196,9 +192,11 @@ if admitted and not DRY:
         yaml.safe_dump({'hosts': {'local': copy.deepcopy(queue['hosts']['local'])},
                         'jobs': json.loads(json.dumps(admitted))}, stream, sort_keys=False)
     with (SETUP / f'bx-local-admission-{tag}.json').open('x') as stream:
-        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'remaining_growth_by_job': growth,
-                   'data_cache_reserve_bytes': cache_reserve, 'accounted_plus_admitted_bytes': total,
-                   'admission_ceiling_bytes': CAP, 'commit': source['commit'],
+        json.dump({'recorded_local': stamp.isoformat(), 'charge_bytes': charge, 'budget_metric': 'working_set',
+                   'memory_snapshot': memory, 'remaining_growth_by_job': growth,
+                   'active_cache_allowance_bytes': cache_reserve, 'accounted_plus_admitted_bytes': total,
+                   'admission_ceiling_bytes': CAP, 'ceiling_bytes': mb.CEILING,
+                   'transient_overhead_bytes': mb.TRANSIENT_OVERHEAD, 'commit': source['commit'],
                    'admitted': {j['id']: footprint(j) for j in admitted}}, stream, indent=2)
     messages.append(f"ADMITTING {[j['id'] for j in admitted]} charge {charge} reserve {cache_reserve}")
     messages.extend(jobs.tick(queue_path=qpath))
@@ -209,5 +207,5 @@ for job in registered:
     counts.setdefault(job['script'].split('/')[-1], {}).setdefault(status(job['id']), 0)
     counts[job['script'].split('/')[-1]][status(job['id'])] += 1
 print('\n'.join(messages))
-print("ACCOUNTING", charge, sum(growth.values()), cache_reserve, total, len(candidates))
+print("ACCOUNTING working_set", charge, "raw", memory["current"], "growth", sum(growth.values()), "active_cache_allowance", cache_reserve, "total", total, "cap", CAP, "candidates", len(candidates), "host_available", memory["host_mem_available"], "psi_some_avg60", memory["pressure"].get("some", {}).get("avg60"))
 print("BASELINES", json.dumps(counts, sort_keys=True))
