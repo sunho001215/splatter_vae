@@ -4009,3 +4009,8 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
     - held-out cameras 0.041 vs 0.084 (−0.043 [−0.066, +0.010]); moving cameras 0.710 vs 0.639 (+0.071 [−0.040, +0.141]);
     - training-camera final 0.710 vs 0.710; AUC 0.454 vs 0.467; return last-5 1179 vs 1288 (−108 [−190, −5]);
     - per task: hammer 0.844 vs 0.890, pick-place 0.552 vs 0.506.
+- 01:4x (10-23) bin-picking unchanged rerun `afk2rerun-seed0-bin-picking-200k` (W&B 89z76kak) completed 200k: no anomalous log anywhere (event signature; the original had 15 at 12.1–12.8k). Matched validation, original / rerun (`runs/setup/afk2-binpick-spike-20261021/rerun-comparison-200k.json`):
+  - at 200k: PSNR 28.60 / 28.66; moving PSNR 24.22 / 24.31; SSIM 0.921 / 0.923; depth AbsRel 0.011 / 0.010; held-out PSNR 16.66 / 16.63;
+  - relative EPE 0–2 0.164 / 0.160 (k2 = 2) and 0.156 / 0.154 (k2 = 6); retrieval top-1 0.973 / 0.970 (train), 0.174 / 0.175 (held-out); effective rank 6.34 / 6.46;
+  - every 5k evaluation from 10k on agrees within run-to-run variation.
+  - Conclusion: the original's 12.0–12.9k collapse was transient and trajectory-dependent, with no lasting effect on reconstruction, motion or representation. Its cause remains unresolved (leading hypothesis: visibility-term gradient surge under global clipping). The original run's encoder stays the one used for RL (as registered); the candidate fix stays unmerged.
