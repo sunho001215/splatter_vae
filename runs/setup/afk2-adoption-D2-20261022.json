@@ -1,0 +1,603 @@
+{
+ "decided_at": "2026-10-23 06:24:01 +0900",
+ "point": "D2",
+ "tasks": [
+  "bin-picking",
+  "coffee-push",
+  "door-open",
+  "hammer",
+  "peg-insert-side",
+  "peg-unplug-side",
+  "pick-place",
+  "stick-push"
+ ],
+ "rule": "runs/setup/afk2-adoption-rule-20261022.json",
+ "primary": {
+  "iqm": {
+   "future_k2": 0.6858333333333334,
+   "original": 0.7562500000000001
+  },
+  "difference": -0.07041666666666668,
+  "ci95": [
+   -0.1682048611111111,
+   0.039583333333333304
+  ],
+  "per_task_mean": {
+   "bin-picking": {
+    "future_k2": 0.5427777777777778,
+    "original": 0.6183333333333333
+   },
+   "coffee-push": {
+    "future_k2": 0.41111111111111115,
+    "original": 0.44111111111111106
+   },
+   "door-open": {
+    "future_k2": 0.8711111111111111,
+    "original": 0.9661111111111111
+   },
+   "hammer": {
+    "future_k2": 0.8444444444444444,
+    "original": 0.89
+   },
+   "peg-insert-side": {
+    "future_k2": 0.2577777777777777,
+    "original": 0.12222222222222222
+   },
+   "peg-unplug-side": {
+    "future_k2": 0.6816666666666666,
+    "original": 0.8233333333333334
+   },
+   "pick-place": {
+    "future_k2": 0.5522222222222223,
+    "original": 0.5055555555555555
+   },
+   "stick-push": {
+    "future_k2": 0.9983333333333334,
+    "original": 0.9983333333333334
+   }
+  }
+ },
+ "verdict": "NOT ADOPTED",
+ "all": {
+  "train/success/last5": {
+   "iqm": {
+    "future_k2": 0.6858333333333334,
+    "original": 0.7562500000000001
+   },
+   "difference": -0.07041666666666668,
+   "ci95": [
+    -0.1682048611111111,
+    0.039583333333333304
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.5427777777777778,
+     "original": 0.6183333333333333
+    },
+    "coffee-push": {
+     "future_k2": 0.41111111111111115,
+     "original": 0.44111111111111106
+    },
+    "door-open": {
+     "future_k2": 0.8711111111111111,
+     "original": 0.9661111111111111
+    },
+    "hammer": {
+     "future_k2": 0.8444444444444444,
+     "original": 0.89
+    },
+    "peg-insert-side": {
+     "future_k2": 0.2577777777777777,
+     "original": 0.12222222222222222
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.6816666666666666,
+     "original": 0.8233333333333334
+    },
+    "pick-place": {
+     "future_k2": 0.5522222222222223,
+     "original": 0.5055555555555555
+    },
+    "stick-push": {
+     "future_k2": 0.9983333333333334,
+     "original": 0.9983333333333334
+    }
+   }
+  },
+  "train/success/final": {
+   "iqm": {
+    "future_k2": 0.6743055555555556,
+    "original": 0.7569444444444445
+   },
+   "difference": -0.08263888888888893,
+   "ci95": [
+    -0.18612847222222234,
+    0.029861111111111227
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.5777777777777778,
+     "original": 0.6277777777777778
+    },
+    "coffee-push": {
+     "future_k2": 0.3444444444444445,
+     "original": 0.4444444444444445
+    },
+    "door-open": {
+     "future_k2": 0.8666666666666667,
+     "original": 0.9500000000000001
+    },
+    "hammer": {
+     "future_k2": 0.8277777777777778,
+     "original": 0.9027777777777778
+    },
+    "peg-insert-side": {
+     "future_k2": 0.21944444444444447,
+     "original": 0.11666666666666665
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.6694444444444444,
+     "original": 0.8472222222222222
+    },
+    "pick-place": {
+     "future_k2": 0.525,
+     "original": 0.4777777777777778
+    },
+    "stick-push": {
+     "future_k2": 1.0,
+     "original": 1.0
+    }
+   }
+  },
+  "train/success/auc": {
+   "iqm": {
+    "future_k2": 0.4541527777777778,
+    "original": 0.5098958333333333
+   },
+   "difference": -0.05574305555555553,
+   "ci95": [
+    -0.10785416666666664,
+    -0.0047562499999999714
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.23477777777777778,
+     "original": 0.2637777777777777
+    },
+    "coffee-push": {
+     "future_k2": 0.30191666666666667,
+     "original": 0.29330555555555554
+    },
+    "door-open": {
+     "future_k2": 0.66425,
+     "original": 0.7920277777777777
+    },
+    "hammer": {
+     "future_k2": 0.5910833333333334,
+     "original": 0.6624444444444443
+    },
+    "peg-insert-side": {
+     "future_k2": 0.08672222222222221,
+     "original": 0.04386111111111111
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.5600277777777777,
+     "original": 0.6880833333333333
+    },
+    "pick-place": {
+     "future_k2": 0.3338888888888889,
+     "original": 0.29883333333333334
+    },
+    "stick-push": {
+     "future_k2": 0.8312499999999999,
+     "original": 0.8703055555555556
+    }
+   }
+  },
+  "heldout/success/last5": {
+   "iqm": {
+    "future_k2": 0.11333333333333333,
+    "original": 0.12583333333333332
+   },
+   "difference": -0.012499999999999997,
+   "ci95": [
+    -0.034374999999999975,
+    0.012296874999999992
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.0016666666666666668,
+     "original": 0.0
+    },
+    "coffee-push": {
+     "future_k2": 0.15083333333333332,
+     "original": 0.18416666666666667
+    },
+    "door-open": {
+     "future_k2": 0.2875,
+     "original": 0.355
+    },
+    "hammer": {
+     "future_k2": 0.07916666666666666,
+     "original": 0.14833333333333334
+    },
+    "peg-insert-side": {
+     "future_k2": 0.03,
+     "original": 0.0033333333333333335
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.21250000000000002,
+     "original": 0.1925
+    },
+    "pick-place": {
+     "future_k2": 0.03333333333333333,
+     "original": 0.027499999999999997
+    },
+    "stick-push": {
+     "future_k2": 0.20249999999999999,
+     "original": 0.15583333333333335
+    }
+   }
+  },
+  "heldout/success/final": {
+   "iqm": {
+    "future_k2": 0.10416666666666667,
+    "original": 0.13020833333333331
+   },
+   "difference": -0.026041666666666644,
+   "ci95": [
+    -0.05312499999999998,
+    0.003125000000000003
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.0,
+     "original": 0.0
+    },
+    "coffee-push": {
+     "future_k2": 0.1375,
+     "original": 0.19999999999999998
+    },
+    "door-open": {
+     "future_k2": 0.26666666666666666,
+     "original": 0.4083333333333334
+    },
+    "hammer": {
+     "future_k2": 0.05416666666666667,
+     "original": 0.16666666666666666
+    },
+    "peg-insert-side": {
+     "future_k2": 0.04583333333333334,
+     "original": 0.0
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.23750000000000002,
+     "original": 0.2333333333333333
+    },
+    "pick-place": {
+     "future_k2": 0.0375,
+     "original": 0.03333333333333333
+    },
+    "stick-push": {
+     "future_k2": 0.2041666666666667,
+     "original": 0.13749999999999998
+    }
+   }
+  },
+  "heldout/success/auc": {
+   "iqm": {
+    "future_k2": 0.09358333333333334,
+    "original": 0.10481249999999998
+   },
+   "difference": -0.011229166666666637,
+   "ci95": [
+    -0.027124999999999996,
+    0.006064062499999989
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.0009583333333333333,
+     "original": 0.00037500000000000006
+    },
+    "coffee-push": {
+     "future_k2": 0.13541666666666666,
+     "original": 0.15516666666666665
+    },
+    "door-open": {
+     "future_k2": 0.20083333333333334,
+     "original": 0.274125
+    },
+    "hammer": {
+     "future_k2": 0.04833333333333333,
+     "original": 0.099875
+    },
+    "peg-insert-side": {
+     "future_k2": 0.011583333333333334,
+     "original": 0.0019166666666666666
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.1935,
+     "original": 0.174625
+    },
+    "pick-place": {
+     "future_k2": 0.025833333333333333,
+     "original": 0.014166666666666666
+    },
+    "stick-push": {
+     "future_k2": 0.21108333333333337,
+     "original": 0.16566666666666666
+    }
+   }
+  },
+  "traj/success/last5": {
+   "iqm": {
+    "future_k2": 0.6679166666666666,
+    "original": 0.7212500000000001
+   },
+   "difference": -0.053333333333333455,
+   "ci95": [
+    -0.15083333333333326,
+    0.04917708333333308
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.43500000000000005,
+     "original": 0.5833333333333334
+    },
+    "coffee-push": {
+     "future_k2": 0.3916666666666666,
+     "original": 0.4616666666666667
+    },
+    "door-open": {
+     "future_k2": 0.9116666666666666,
+     "original": 0.9666666666666667
+    },
+    "hammer": {
+     "future_k2": 0.8566666666666668,
+     "original": 0.8650000000000001
+    },
+    "peg-insert-side": {
+     "future_k2": 0.355,
+     "original": 0.13833333333333334
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.7183333333333333,
+     "original": 0.8166666666666668
+    },
+    "pick-place": {
+     "future_k2": 0.5133333333333333,
+     "original": 0.4383333333333333
+    },
+    "stick-push": {
+     "future_k2": 0.9916666666666667,
+     "original": 0.98
+    }
+   }
+  },
+  "traj/success/final": {
+   "iqm": {
+    "future_k2": 0.6749999999999999,
+    "original": 0.7208333333333335
+   },
+   "difference": -0.045833333333333615,
+   "ci95": [
+    -0.16458333333333341,
+    0.07708333333333339
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.4749999999999999,
+     "original": 0.6166666666666667
+    },
+    "coffee-push": {
+     "future_k2": 0.32499999999999996,
+     "original": 0.4833333333333334
+    },
+    "door-open": {
+     "future_k2": 0.9416666666666668,
+     "original": 0.9416666666666668
+    },
+    "hammer": {
+     "future_k2": 0.875,
+     "original": 0.8166666666666668
+    },
+    "peg-insert-side": {
+     "future_k2": 0.39166666666666666,
+     "original": 0.16666666666666666
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.7083333333333334,
+     "original": 0.8250000000000001
+    },
+    "pick-place": {
+     "future_k2": 0.45,
+     "original": 0.48333333333333334
+    },
+    "stick-push": {
+     "future_k2": 0.9833333333333334,
+     "original": 0.9500000000000001
+    }
+   }
+  },
+  "traj/success/auc": {
+   "iqm": {
+    "future_k2": 0.451875,
+    "original": 0.5088541666666667
+   },
+   "difference": -0.05697916666666669,
+   "ci95": [
+    -0.10631354166666673,
+    -0.009706249999999942
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 0.19183333333333338,
+     "original": 0.2430833333333333
+    },
+    "coffee-push": {
+     "future_k2": 0.31083333333333335,
+     "original": 0.2968333333333334
+    },
+    "door-open": {
+     "future_k2": 0.7191666666666667,
+     "original": 0.8235833333333332
+    },
+    "hammer": {
+     "future_k2": 0.5773333333333334,
+     "original": 0.6560833333333332
+    },
+    "peg-insert-side": {
+     "future_k2": 0.11591666666666667,
+     "original": 0.050166666666666665
+    },
+    "peg-unplug-side": {
+     "future_k2": 0.5713333333333334,
+     "original": 0.7131666666666666
+    },
+    "pick-place": {
+     "future_k2": 0.31441666666666673,
+     "original": 0.2754166666666667
+    },
+    "stick-push": {
+     "future_k2": 0.8363333333333335,
+     "original": 0.8588333333333334
+    }
+   }
+  },
+  "train/return/last5": {
+   "iqm": {
+    "future_k2": 973.1961307888683,
+    "original": 1177.5557731828724
+   },
+   "difference": -204.35964239400403,
+   "ci95": [
+    -365.3089493361934,
+    3.307061627349631
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 788.058137055836,
+     "original": 1154.5110078248872
+    },
+    "coffee-push": {
+     "future_k2": 123.16833670020151,
+     "original": 140.88699916179323
+    },
+    "door-open": {
+     "future_k2": 1570.5235314411966,
+     "original": 1795.650829407438
+    },
+    "hammer": {
+     "future_k2": 1650.4289191180212,
+     "original": 1782.0997539693838
+    },
+    "peg-insert-side": {
+     "future_k2": 650.6265702845664,
+     "original": 474.8040808423534
+    },
+    "peg-unplug-side": {
+     "future_k2": 537.5906889558188,
+     "original": 999.287896893568
+    },
+    "pick-place": {
+     "future_k2": 734.9965305482589,
+     "original": 782.409376367025
+    },
+    "stick-push": {
+     "future_k2": 1603.8972464341944,
+     "original": 1703.7738200048395
+    }
+   }
+  },
+  "train/return/final": {
+   "iqm": {
+    "future_k2": 976.3209989410443,
+    "original": 1166.4793891517863
+   },
+   "difference": -190.15839021074203,
+   "ci95": [
+    -377.47441092013173,
+    24.637245178767923
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 860.3062922927962,
+     "original": 1174.9142379255509
+    },
+    "coffee-push": {
+     "future_k2": 98.510792583647,
+     "original": 161.29217409697299
+    },
+    "door-open": {
+     "future_k2": 1552.9714758447835,
+     "original": 1749.251080511529
+    },
+    "hammer": {
+     "future_k2": 1629.2127742125085,
+     "original": 1802.8213185619627
+    },
+    "peg-insert-side": {
+     "future_k2": 604.4117278242071,
+     "original": 457.8502052393715
+    },
+    "peg-unplug-side": {
+     "future_k2": 525.1765864278033,
+     "original": 1019.688405824918
+    },
+    "pick-place": {
+     "future_k2": 730.1035267355278,
+     "original": 734.9725961273242
+    },
+    "stick-push": {
+     "future_k2": 1692.7464093750739,
+     "original": 1708.97373374913
+    }
+   }
+  },
+  "train/return/auc": {
+   "iqm": {
+    "future_k2": 533.6804810037661,
+    "original": 657.6493699991325
+   },
+   "difference": -123.96888899536646,
+   "ci95": [
+    -211.2819868453509,
+    -39.45398206614233
+   ],
+   "per_task_mean": {
+    "bin-picking": {
+     "future_k2": 324.636710701658,
+     "original": 452.5990562226436
+    },
+    "coffee-push": {
+     "future_k2": 84.20010929860939,
+     "original": 79.09684337995232
+    },
+    "door-open": {
+     "future_k2": 1280.846533468112,
+     "original": 1476.7388329977375
+    },
+    "hammer": {
+     "future_k2": 1186.8229526994207,
+     "original": 1315.9747148661045
+    },
+    "peg-insert-side": {
+     "future_k2": 322.7196550696226,
+     "original": 250.23092466228778
+    },
+    "peg-unplug-side": {
+     "future_k2": 312.2864183590818,
+     "original": 559.6966601092184
+    },
+    "pick-place": {
+     "future_k2": 441.4463366038328,
+     "original": 428.3510397026459
+    },
+    "stick-push": {
+     "future_k2": 911.6727447396228,
+     "original": 1122.2129970365029
+    }
+   }
+  }
+ }
+}

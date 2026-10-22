@@ -4014,3 +4014,10 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - relative EPE 0–2 0.164 / 0.160 (k2 = 2) and 0.156 / 0.154 (k2 = 6); retrieval top-1 0.973 / 0.970 (train), 0.174 / 0.175 (held-out); effective rank 6.34 / 6.46;
   - every 5k evaluation from 10k on agrees within run-to-run variation.
   - Conclusion: the original's 12.0–12.9k collapse was transient and trajectory-dependent, with no lasting effect on reconstruction, motion or representation. Its cause remains unresolved (leading hypothesis: visibility-term gradient surge under global clipping). The original run's encoder stays the one used for RL (as registered); the candidate fix stays unmerged.
+- 06:2x (10-23) future_k2 adoption, decision point D2 (eight tasks, 24 runs, all evaluated to 1M steps; record `runs/setup/afk2-adoption-D2-20261022.json`). Verdict: NOT ADOPTED. The combined future_k2 + chamfer_lean variant is therefore not run (user condition; rule `runs/setup/afk2-adoption-rule-20261022.json`).
+  - Primary (last-5 success, training cameras, IQM): future_k2 0.686 vs original 0.756, difference −0.070 [−0.168, +0.040].
+  - Secondary (descriptive):
+    - held-out cameras −0.012 [−0.034, +0.012]; moving cameras −0.053 [−0.151, +0.049];
+    - final success −0.083 [−0.186, +0.030]; AUC −0.056 [−0.108, −0.005]; return last-5 −204 [−365, +3], return AUC −124 [−211, −39].
+  - Per task (training last-5, mean of 3 seeds, future_k2 − original): peg-insert-side +0.136, pick-place +0.047, stick-push 0.000, coffee-push −0.030, hammer −0.046, bin-picking −0.076, door-open −0.095, peg-unplug-side −0.142.
+  - The variant changed the objective, the action conditioning and the temporal sampling together (definition), so the deficit is not attributable to future prediction alone. The full comparison with the original (RL, representation, rendering, forecasting, cost) goes into the variants report together with chamfer_lean.
