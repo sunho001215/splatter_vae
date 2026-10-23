@@ -4214,3 +4214,13 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   (s2rl-full) 0.463 / 0.011 / 0.423, AUC 0.278, return 689. Observation: on pick-place, stacking three independently
   encoded frames did not improve on the newest frame alone (3 seeds, wide seed spread; different code commits; the
   stacked head has 263,680 vs 132,608 parameters). Hammer follows; reported with intervals once complete.
+- (10-24 00:4x) Pilot complete: T=1 stacked vs newest-frame-only T=1 (hammer + pick-place, seeds 1000-1002, IQM over 6
+  runs, task-stratified bootstrap; `reports/results-artifact/src/pilots_rl.py`, output `pilots/rl.json`):
+  - training-camera last-5 success 0.795 vs 0.798, -0.004 [-0.199, +0.071]; AUC 0.493 vs 0.542, -0.049
+    [-0.203, +0.107]; held-out -0.006 [-0.032, +0.021]; moving cameras +0.029 [-0.140, +0.122];
+  - per task: hammer 0.935 vs 0.933 (return 1865 vs 1865), pick-place 0.530 vs 0.664 (804 vs 878);
+  - context, vs the Stage 2 full method: +0.072 [-0.141, +0.191] training, -0.036 [-0.078, +0.003] held-out,
+    +0.120 [-0.010, +0.189] moving cameras.
+  - Reading: chronological stacking of independently encoded frames did not detectably change RL relative to the
+    newest frame alone on these two tasks (both intervals include 0); the stacked policy has a 768-d input and twice the
+    head parameters; the runs span code commits (6a48200 vs fed4c17). Not attributed to temporal information alone.
