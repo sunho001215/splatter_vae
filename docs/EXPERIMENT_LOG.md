@@ -4204,3 +4204,7 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   other rows, running jobs and results unchanged. Dispatch stays capacity-based on both hosts (remote pool pass and
   local drivers, existing limits); vision-only pairs (priority 2, after the earlier-registered pilot / chamfer_lean rows)
   start as load frees, then the SNeRL RL pairs.
+- (10-23 night) chamfer_lean RL, interim, five tasks (door-open added): training-camera last-5 success IQM 0.671 vs
+  original 0.734, -0.063 [-0.233, +0.077]; AUC -0.008 [-0.103, +0.064]; held-out -0.029 [-0.046, -0.011]; moving
+  cameras -0.015 [-0.178, +0.105]. Per task: door-open 0.970 vs 0.966 (bin-picking 0.594 / 0.618, coffee-push 0.451 /
+  0.441, hammer 0.817 / 0.890, pick-place 0.271 / 0.506). Three tasks follow.
