@@ -4029,3 +4029,9 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
 - 07:0x (10-23) chamfer_lean RL, interim (hammer and pick-place, 6 runs; `reports/results-artifact/src/variants_rl.py`):
   - last-5 success on the training cameras, IQM 0.593 vs original 0.721, −0.128 [−0.290, −0.025]; held-out −0.044 [−0.063, −0.021]; moving cameras −0.012 [−0.225, +0.068];
   - per task: hammer 0.817 vs 0.890, pick-place 0.271 vs 0.506. The other six tasks follow.
+- 10:4x (10-23) Remote campaign driver repaired (operational; no job, setting or result changed):
+  - Since 10-22 07:44 every pass had stopped with a JSON error while closing out the completed `s4-snerl-peg-insert-side-rem-b`. Its synced `metrics.jsonl` has 981 NUL bytes before one record (line 17544), left by the unclean remote shutdown during maintenance and followed by the resumed run's records.
+  - The pass therefore skipped its later steps (export uploads, remote admissions). Nothing was eligible meanwhile, so no work was delayed. The SNeRL peg-insert-side DrM runs had already completed locally through their scheduler dependency.
+  - Fix: the closeout parser strips NUL runs before decoding (`remote_campaign_driver.py`, backup `.before-nul-20261023`). The metrics file is unchanged.
+  - The closeout record `runs/remote/finished/s4-snerl-peg-insert-side-rem-b.json` was written: 2,399,999 steps, completed.
+  - Remote GPU ca65 has been idle since that run finished. No registered remote work is eligible, and the chamfer_lean pipeline is paced by its local pretraining (DrM about 5 h per run on a MIG slice), so no placement change was made.

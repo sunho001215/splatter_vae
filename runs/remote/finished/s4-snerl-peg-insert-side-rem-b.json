@@ -1,0 +1,14 @@
+{
+  "job_id": "s4-snerl-peg-insert-side-rem-b",
+  "finished_local": "2026-10-23T10:44:04.664059+09:00",
+  "completion": {
+    "status": "completed",
+    "steps": 2399999
+  },
+  "last_metrics_step": 2399999,
+  "configured_steps": 2400999,
+  "wandb": "deferred to the sync_wandb_remote.py batch",
+  "wandb_runs": [
+    "s4-snerl-peg-insert-side-rem-b"
+  ]
+}

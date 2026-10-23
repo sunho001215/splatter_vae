@@ -181,7 +181,9 @@ for job in remote:
             wait=False, timeout=600, idempotent=True).stdout.strip()
         record.update(remote_replay='retained', remote_free_bytes=int(out))
     else:
-        rows = [json.loads(line) for line in (run / 'metrics.jsonl').read_text().splitlines() if line.strip()]
+        # NUL runs left by an unclean remote shutdown (maintenance reboot) precede the record written after resume
+        rows = [json.loads(line.strip('\x00')) for line in (run / 'metrics.jsonl').read_text().splitlines()
+                if line.strip('\x00').strip()]
         last = max(r.get('step', 0) for r in rows)
         if kind(jid) == 'nbaseline':
             completion = json.loads((run / 'completion.json').read_text())
