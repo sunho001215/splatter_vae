@@ -31218,7 +31218,7 @@ jobs:
   - completion.json
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-bin-picking-rem-b
   max_restarts: 1
@@ -31245,7 +31245,7 @@ jobs:
   baseline_export: runs/s4-snerl-bin-picking-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-bin-picking-rem-b
   max_restarts: 1
@@ -31271,7 +31271,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-bin-picking-rem-b
   max_restarts: 1
@@ -31298,7 +31298,7 @@ jobs:
   baseline_export: runs/s4-snerl-bin-picking-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-bin-picking-rem-b
   max_restarts: 1
@@ -31324,7 +31324,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-bin-picking-rem-b
   max_restarts: 1
@@ -31351,7 +31351,7 @@ jobs:
   baseline_export: runs/s4-snerl-bin-picking-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-bin-picking-rem-b
   max_restarts: 1
@@ -31377,7 +31377,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-coffee-push-rem-b
   max_restarts: 1
@@ -31404,7 +31404,7 @@ jobs:
   baseline_export: runs/s4-snerl-coffee-push-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-coffee-push-rem-b
   max_restarts: 1
@@ -31430,7 +31430,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-coffee-push-rem-b
   max_restarts: 1
@@ -31457,7 +31457,7 @@ jobs:
   baseline_export: runs/s4-snerl-coffee-push-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-coffee-push-rem-b
   max_restarts: 1
@@ -31483,7 +31483,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-coffee-push-rem-b
   max_restarts: 1
@@ -31510,7 +31510,7 @@ jobs:
   baseline_export: runs/s4-snerl-coffee-push-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-coffee-push-rem-b
   max_restarts: 1
@@ -31536,7 +31536,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-door-open-rem-b
   max_restarts: 1
@@ -31563,7 +31563,7 @@ jobs:
   baseline_export: runs/s4-snerl-door-open-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-door-open-rem-b
   max_restarts: 1
@@ -31589,7 +31589,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-door-open-rem-b
   max_restarts: 1
@@ -31616,7 +31616,7 @@ jobs:
   baseline_export: runs/s4-snerl-door-open-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-door-open-rem-b
   max_restarts: 1
@@ -31642,7 +31642,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-door-open-rem-b
   max_restarts: 1
@@ -31669,7 +31669,7 @@ jobs:
   baseline_export: runs/s4-snerl-door-open-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-door-open-rem-b
   max_restarts: 1
@@ -32013,7 +32013,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-peg-unplug-side-rem-b
   max_restarts: 1
@@ -32040,7 +32040,7 @@ jobs:
   baseline_export: runs/s4-snerl-peg-unplug-side-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-peg-unplug-side-rem-b
   max_restarts: 1
@@ -32066,7 +32066,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-peg-unplug-side-rem-b
   max_restarts: 1
@@ -32093,7 +32093,7 @@ jobs:
   baseline_export: runs/s4-snerl-peg-unplug-side-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-peg-unplug-side-rem-b
   max_restarts: 1
@@ -32119,7 +32119,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-peg-unplug-side-rem-b
   max_restarts: 1
@@ -32146,7 +32146,7 @@ jobs:
   baseline_export: runs/s4-snerl-peg-unplug-side-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-peg-unplug-side-rem-b
   max_restarts: 1
@@ -32172,7 +32172,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-pick-place-rem-b
   max_restarts: 1
@@ -32199,7 +32199,7 @@ jobs:
   baseline_export: runs/s4-snerl-pick-place-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-pick-place-rem-b
   max_restarts: 1
@@ -32225,7 +32225,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-pick-place-rem-b
   max_restarts: 1
@@ -32252,7 +32252,7 @@ jobs:
   baseline_export: runs/s4-snerl-pick-place-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-pick-place-rem-b
   max_restarts: 1
@@ -32278,7 +32278,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-pick-place-rem-b
   max_restarts: 1
@@ -32305,7 +32305,7 @@ jobs:
   baseline_export: runs/s4-snerl-pick-place-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-pick-place-rem-b
   max_restarts: 1
@@ -32331,7 +32331,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-stick-push-rem-b
   max_restarts: 1
@@ -32358,7 +32358,7 @@ jobs:
   baseline_export: runs/s4-snerl-stick-push-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-stick-push-rem-b
   max_restarts: 1
@@ -32384,7 +32384,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-stick-push-rem-b
   max_restarts: 1
@@ -32411,7 +32411,7 @@ jobs:
   baseline_export: runs/s4-snerl-stick-push-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-stick-push-rem-b
   max_restarts: 1
@@ -32437,7 +32437,7 @@ jobs:
   disk_gb: 1
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-stick-push-rem-b
   max_restarts: 1
@@ -32464,7 +32464,7 @@ jobs:
   baseline_export: runs/s4-snerl-stick-push-rem-b/encoder.pt
 - host: local
   gpu: any
-  priority: 2
+  priority: 3
   deps:
   - s4-snerl-stick-push-rem-b
   max_restarts: 1
@@ -41847,5 +41847,4 @@ jobs:
   observation: vision_only (no proprioception)
   matched_with_proprio: s4-drm-cnn-stick-push-s2002-eval
   variant_definition: runs/setup/vision-only-definition-20261023.json
-
 host_ram_reserve_gb: 60

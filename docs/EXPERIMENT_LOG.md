@@ -4197,3 +4197,10 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   load limit (2.6-2.8 of 2.8; a trainer + evaluator pair needs 0.8) and local admission at its budget, so the pairs start
   as capacity frees (pool placement first to the remote; three remote GPUs free when SNeRL ends, about 05:00). CNN
   trainers declare 48 GB RAM each (pixel replay), so at most ~18 run concurrently under the remote 1 TB cap.
+- 21:2x (10-23) Priority change (user instruction): the vision-only campaign is dispatched before the pending
+  low-priority SNeRL RL expansion. Only the queue order changed: the 36 unstarted rows s4-drm-snerl-<task>-s200x[-eval]
+  (bin-picking, coffee-push, door-open, peg-unplug-side, pick-place, stick-push) moved from priority 2 to 3 through the
+  recorded overlay (`pool_placement.set_priority`, `runs/setup/pool-placement.json`: original and effective rows); all
+  other rows, running jobs and results unchanged. Dispatch stays capacity-based on both hosts (remote pool pass and
+  local drivers, existing limits); vision-only pairs (priority 2, after the earlier-registered pilot / chamfer_lean rows)
+  start as load frees, then the SNeRL RL pairs.

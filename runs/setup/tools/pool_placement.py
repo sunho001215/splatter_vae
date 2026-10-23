@@ -185,6 +185,51 @@ def move(ids: list[str], host: str, reason: str, blocking: bool = False) -> list
             return chosen
 
 
+def set_priority(ids: list[str], priority: int, reason: str) -> list[str]:
+    """Queue-order change only (user instruction 2026-10-23: vision-only before the low-priority SNeRL RL expansion):
+    rewrite the ``priority`` of never-launched rows, nothing else; recorded like a move (original / effective rows) and
+    applied by the drivers through ``effective_rows()``."""
+    with open(ADMISSION_LOCK, 'w') as admission:
+        fcntl.flock(admission, fcntl.LOCK_EX)
+        with jobs.REGISTRY.with_suffix('.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            queue = jobs.load_queue()
+            by_id = {j['id']: j for j in queue['jobs']}
+            state = jobs.read_registry()
+            chosen = [i for i in ids if i in by_id and i not in state and by_id[i].get('priority') != priority]
+            if not chosen:
+                return []
+            stamp = datetime.now().astimezone().isoformat(timespec='seconds')
+            effective = {}
+            for i in chosen:
+                new = copy.deepcopy(by_id[i])
+                new['priority'] = priority
+                assert {k: v for k, v in new.items() if k != 'priority'} == {k: v for k, v in by_id[i].items() if k != 'priority'}
+                effective[i] = new
+            before = jobs.QUEUE.read_bytes()
+            text = before.decode()
+            node = next(value for key, value in yaml.compose(text).value if key.value == 'jobs')
+            new_jobs = [effective.get(j['id'], j) for j in queue['jobs']]
+            staged = SETUP / 'pool-placement-queue-candidate.yaml'
+            staged.write_text(text[:node.start_mark.index] + yaml.safe_dump(json.loads(json.dumps(new_jobs)), sort_keys=False)
+                              + text[node.end_mark.index:])
+            assert jobs.load_queue(staged)['jobs'] == new_jobs and jobs.load_queue(staged)['hosts'] == queue['hosts']
+            tmp = jobs.QUEUE.with_suffix('.pool.tmp')
+            tmp.write_bytes(staged.read_bytes())
+            os.replace(tmp, jobs.QUEUE)
+            record = json.loads(MANIFEST.read_text()) if MANIFEST.is_file() else {
+                'purpose': __doc__.split('\n\n')[0], 'moves': [], 'effective_jobs': {}}
+            record['moves'].append({'time': stamp, 'priority': priority, 'reason': reason, 'ids': chosen,
+                                    'original': {i: by_id[i] for i in chosen},
+                                    'queue_sha256_before': hashlib.sha256(before).hexdigest(),
+                                    'queue_sha256_after': hashlib.sha256(jobs.QUEUE.read_bytes()).hexdigest()})
+            record['effective_jobs'].update(effective)
+            tmp = MANIFEST.with_suffix('.tmp')
+            tmp.write_text(json.dumps(record, indent=1) + '\n')
+            os.replace(tmp, MANIFEST)
+            return chosen
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
