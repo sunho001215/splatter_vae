@@ -4035,3 +4035,7 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Fix: the closeout parser strips NUL runs before decoding (`remote_campaign_driver.py`, backup `.before-nul-20261023`). The metrics file is unchanged.
   - The closeout record `runs/remote/finished/s4-snerl-peg-insert-side-rem-b.json` was written: 2,399,999 steps, completed.
   - Remote GPU ca65 has been idle since that run finished. No registered remote work is eligible, and the chamfer_lean pipeline is paced by its local pretraining (DrM about 5 h per run on a MIG slice), so no placement change was made.
+- 11:xx (10-23) chamfer_lean RL, interim, three tasks (bin-picking added; `variants_rl.py`):
+  - Training-camera last-5 success, IQM 0.645 vs original 0.757, difference −0.112 [−0.443, +0.162].
+  - Held-out cameras −0.027 [−0.038, −0.018]; moving cameras −0.030 [−0.370, +0.224]; training-camera AUC −0.011 [−0.216, +0.127].
+  - Per task: bin-picking 0.594 vs 0.618, hammer 0.817 vs 0.890, pick-place 0.271 vs 0.506. Five tasks follow.
