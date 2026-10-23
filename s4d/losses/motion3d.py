@@ -9,6 +9,10 @@ distance to the nearest dynamic centre at the source time (gradient to the centr
 
 ``motion3d_track_loss`` applies the same sampling and terms to 3D track arrays (DROID): the candidates per view are
 that camera's tracked points and the gripper FK points, at their given source positions instead of lifted pixels.
+
+Per-pair sources (``pair_sources`` / ``pair_displacements``, per-frame temporal pilot): each pair has its own source
+set (the Gaussians decoded from the pair's source frame) and that set's predicted displacement to the target frame, in
+place of one set's centres per time and its delta01/delta12 chain. Sampling, terms and metrics are unchanged.
 """
 
 from __future__ import annotations
@@ -75,10 +79,13 @@ def motion3d_loss(
     attraction_weight: float = ATTRACTION_WEIGHT,
     pair_weights=PAIR_WEIGHTS,
     generator: torch.Generator | None = None,
+    pair_sources: list[torch.Tensor] | None = None,
+    pair_displacements: list[torch.Tensor] | None = None,
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """xyz_seq (B,3,N,3) centres per time, dynamic (N,) bool, depth (B,T,V,1,H,W), cameras (B,V,…),
     target (B,P,V,3,H,W) and weight (B,P,V,1,H,W) as for the image-space loss. Returns the pair-weighted loss and
-    per-pair metrics."""
+    per-pair metrics. With ``pair_sources`` and ``pair_displacements`` (one (B,N,3) tensor per pair of ``PAIRS``),
+    ``gs`` and ``xyz_seq`` are not used (module docstring)."""
     B, P, V, _, H, W = target.shape
     T = depth.shape[1]
     lifted = lift_depth(depth[:, :, :, 0].float(), K[:, None].expand(B, T, V, 3, 3), c2w[:, None].expand(B, T, V, 4, 4))
@@ -90,7 +97,7 @@ def motion3d_loss(
 
     return _gaussian_motion_loss(
         gs, xyz_seq, dynamic, B, V, candidates, num_points, neighbours, radius, huber, attraction_weight, pair_weights,
-        generator,
+        generator, pair_sources, pair_displacements,
     )
 
 
@@ -125,16 +132,25 @@ def motion3d_track_loss(
 
 def _gaussian_motion_loss(
     gs, xyz_seq, dynamic, B, V, candidates, num_points, neighbours, radius, huber, attraction_weight, pair_weights,
-    generator,
+    generator, pair_sources=None, pair_displacements=None,
 ):
     """candidates(p, source time) -> world positions (B*V,M,3), target displacements (B*V,M,3), weights (B*V,M)."""
+    if (pair_sources is None) != (pair_displacements is None):
+        raise ValueError("pair_sources and pair_displacements must be given together")
+    if pair_sources is not None and not (len(pair_sources) == len(pair_displacements) == len(PAIRS)):
+        raise ValueError(f"one source set and one displacement per pair ({len(PAIRS)}) are required")
     dyn_idx = torch.nonzero(dynamic, as_tuple=False)[:, 0]
     k = min(neighbours, len(dyn_idx))
     if k == 0:
-        return xyz_seq.sum() * 0.0, {}
+        return (xyz_seq if pair_sources is None else pair_sources[0]).sum() * 0.0, {}
     sigma = radius / 2.0
-    pair_disp = {(0, 1): gs.delta01, (1, 2): gs.delta12, (0, 2): gs.delta01 + gs.delta12}
-    total = xyz_seq.new_zeros(())
+    if pair_sources is None:
+        pair_disp = {(0, 1): gs.delta01, (1, 2): gs.delta12, (0, 2): gs.delta01 + gs.delta12}
+        pair_src = {(a, b): xyz_seq[:, a] for a, b, _ in PAIRS}
+    else:
+        pair_disp = {(a, b): d for (a, b, _), d in zip(PAIRS, pair_displacements)}
+        pair_src = {(a, b): x for (a, b, _), x in zip(PAIRS, pair_sources)}
+    total = pair_src[(0, 1)].new_zeros(())
     metrics = {}
     for p, ((a, b, _), name) in enumerate(zip(PAIRS, ("01", "12", "02"))):
         positions, tgt, w = candidates(p, a)
@@ -143,7 +159,7 @@ def _gaussian_motion_loss(
         points = gather(positions).view(B, V * num_points, 3)
         t_pts = gather(tgt).view(B, V * num_points, 3)
         w_pts = (torch.gather(w, 1, idx) * row_ok[:, None].float()).view(B, V * num_points)
-        centres = xyz_seq[:, a][:, dyn_idx]  # (B,Nd,3)
+        centres = pair_src[(a, b)][:, dyn_idx]  # (B,Nd,3)
         with torch.no_grad():
             dist, nn_idx = torch.cdist(points, centres.detach().float()).topk(k, dim=-1, largest=False)  # (B,M,k)
             kernel = torch.exp(-(dist**2) / (2 * sigma**2)) * (dist < radius).float()

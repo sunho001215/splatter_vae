@@ -49,9 +49,14 @@ def encoder_images(batch: dict, key: str) -> torch.Tensor:
 
 
 def encode_states(model: Model, images_u8: torch.Tensor) -> torch.Tensor:
-    """images (B,T,V,3,H,W) uint8 -> slots (B,V,K,Ds) without masking."""
+    """images (B,T,V,3,H,W) uint8 -> slots (B,V,K,Ds) without masking. Per-frame models (``frame_mode`` "stack"):
+    every frame encoded on its own, the state is the chronological stack (B,V,T*K,Ds) (the RL policy state)."""
     B, T, V = images_u8.shape[:3]
     x = images_u8.float().div(255.0).permute(0, 2, 1, 3, 4, 5).reshape(B * V, T, *images_u8.shape[3:])
+    if getattr(model, "frame_mode", "joint") == "stack":
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            slots = model.encoder(x.reshape(B * V * T, 1, *x.shape[2:]), None, mask_ratio=0.0)["slots"]
+        return slots.float().view(B, V, T * slots.shape[1], slots.shape[2])
     x = x[:, : model.encoder.cfg.num_frames]
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         slots = model.encoder(x, None, mask_ratio=0.0)["slots"]
@@ -203,15 +208,7 @@ class Evaluator:
             for prefix, name in HELDOUT_GROUPS.items():
                 if f"{prefix}_images" not in batch:
                     continue
-                rendered = render_rgbd(
-                    gs,
-                    gs.xyz_sequence(),
-                    batch[f"{prefix}_w2c"],
-                    batch[f"{prefix}_K"],
-                    *batch["images"].shape[-2:],
-                    self.near,
-                    self.far,
-                )
+                rendered = self.render_group(gs, batch, prefix)
                 if prefix == "eval":
                     heldout = rendered
                 Hp = rendered["rgb"].flatten(0, 2)
@@ -277,6 +274,11 @@ class Evaluator:
             self.panels(model, first, step, summary, tag=f"{self.key}{stride}")
         model.train()
         return summary, count
+
+    def render_group(self, gs, batch: dict, prefix: str) -> dict:
+        """Renders (B,T,Ve,…) of the decoded scene in the cameras of held-out group ``prefix`` at every timestep."""
+        return render_rgbd(gs, gs.xyz_sequence(), batch[f"{prefix}_w2c"], batch[f"{prefix}_K"], *batch["images"].shape[-2:],
+                           self.near, self.far)
 
     def states(self, model, batch: dict, group: str = "") -> torch.Tensor:
         """(B,V,D) CPU states of one camera group of a batch: the training cameras (``group`` "") or a held-out

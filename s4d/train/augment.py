@@ -129,3 +129,17 @@ def coverage_visible(covered: torch.Tensor, patch: int, keep: int) -> torch.Tens
     visible = torch.zeros_like(frac, dtype=torch.bool)
     visible.scatter_(1, ids, True)
     return visible
+
+
+def coverage_visible_tokens(covered: torch.Tensor, patch: int, keep: int) -> torch.Tensor:
+    """Per-token form of ``coverage_visible`` for encoders with ``mask_mode`` "random": covered (R,T,1,H,W) ->
+    visible-token mask (R,T*N) (frame-major) with exactly ``keep`` True per row, uniform among the tokens whose own
+    frame's patch is covered to >= PATCH_COVERAGE; holes (insufficiently covered tokens) are used only when a row has
+    fewer such tokens than ``keep`` (the same coverage exception as the shared spatial mask)."""
+    R, T = covered.shape[:2]
+    frac = F.avg_pool2d(covered.flatten(0, 1).float(), patch).view(R, -1)  # (R,T*N), frame-major
+    priority = torch.where(frac >= PATCH_COVERAGE, torch.rand_like(frac), torch.rand_like(frac) - 2.0)
+    ids = torch.topk(priority, keep, dim=1).indices
+    visible = torch.zeros_like(frac, dtype=torch.bool)
+    visible.scatter_(1, ids, True)
+    return visible

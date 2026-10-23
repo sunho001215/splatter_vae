@@ -199,7 +199,12 @@ def main() -> None:
     try:
         require_prebuilt_renderer()
         train_ds, val_loaders, probe_loaders, n_train_cams = build_data(cfg)
-        evaluator = Evaluator(cfg, val_loaders, probe_loaders, logger, ctx.device, n_train_cams) if ctx.is_main else None
+        evaluator_cls = Evaluator
+        if get(cfg, "model.perframe"):  # per-frame pilots: per-frame renders and panels, stacked policy states
+            from s4d.train.perframe_eval import PerFrameEvaluator
+
+            evaluator_cls = PerFrameEvaluator
+        evaluator = evaluator_cls(cfg, val_loaders, probe_loaders, logger, ctx.device, n_train_cams) if ctx.is_main else None
         train(cfg, run_dir, train_ds, ctx, logger, evaluator, resume=resume)
         if ctx.is_main:
             (run_dir / "completion.json").write_text(json.dumps({"status": "completed", "steps": get(cfg, "train.steps")}))

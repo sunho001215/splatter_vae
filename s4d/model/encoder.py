@@ -1,4 +1,11 @@
-"""Frame-blind ViT encoder with temporal embedding, tube masking, and K learnable state tokens."""
+"""Frame-blind ViT encoder with temporal embedding, tube masking, and K learnable state tokens.
+
+Masking (training only, ``mask_mode``): "tube" (default, the frozen method) keeps the same spatial patches in every
+frame, half of them the highest-scoring moving patches; "random" (SinCro-style ablation, 2026-10-23) keeps a uniform
+random subset of the T x N concatenated temporal tokens of each row, with no per-frame quota, no shared spatial mask and
+no motion prioritisation (for T = 1 this is per-image uniform random masking). Both keep
+``visible_count(L, mask_ratio)`` tokens, L = N (tube) or T * N (random).
+"""
 
 from __future__ import annotations
 
@@ -27,6 +34,7 @@ class EncoderConfig:
     slot_dim: int = 256
     num_frames: int = 3
     mask_ratio: float = 0.5
+    mask_mode: str = "tube"  # "tube" (motion-aware, shared over time) | "random" (uniform over the T*N tokens)
     motion_patch_threshold: float = 0.05
     drop_path: float = 0.1
     layerscale_init: float | None = None
@@ -120,6 +128,22 @@ class Block(nn.Module):
         return x + self._drop(self.ls2(self.mlp(self.norm2(x))))
 
 
+def visible_count(tokens: int, mask_ratio: float) -> int:
+    """Visible tokens kept out of ``tokens`` at ``mask_ratio`` (at least one). For the counts used here this equals
+    the ``int(L * (1 - mask_ratio))`` of SinCro/MAE: 192 at 0.75 -> 48, 64 at 0.75 -> 16, 64 at 0.9 -> 6."""
+    return max(1, min(tokens, int(round(tokens * (1.0 - mask_ratio)))))
+
+
+def sample_random_tokens(rows: int, tokens: int, keep: int, device, generator: torch.Generator | None = None) -> torch.Tensor:
+    """Uniform random visible-token mask (rows, tokens) with exactly ``keep`` True per row (SinCro
+    ``random_view_masking``: argsort of uniform noise over the whole concatenated sequence)."""
+    noise = torch.rand(rows, tokens, device=device, generator=generator)
+    ids = torch.argsort(noise, dim=1)[:, :keep]
+    visible = torch.zeros(rows, tokens, dtype=torch.bool, device=device)
+    visible.scatter_(1, ids, True)
+    return visible
+
+
 def sample_tube_mask(patch_scores: torch.Tensor, mask_ratio: float, threshold: float) -> torch.Tensor:
     """Visible-patch mask (True = visible) of shape (B, N) shared across time.
 
@@ -163,6 +187,8 @@ class Encoder(nn.Module):
             nn.init.trunc_normal_(p, std=0.02)
         if self.cls_token is not None:
             nn.init.trunc_normal_(self.cls_token, std=0.02)
+        if cfg.mask_mode not in ("tube", "random"):
+            raise ValueError(f"unknown encoder mask_mode {cfg.mask_mode!r}")
         if cfg.backbone == "dinov2_vits14":
             load_dinov2_vits14(self, cfg.pretrained_path)
 
@@ -183,8 +209,9 @@ class Encoder(nn.Module):
         return self._encode(images, motion_score, mask_ratio, None)
 
     def forward_visible(self, images: torch.Tensor, visible: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Like ``forward`` with an explicit visible-token mask (B,N), the same count per row: synthetic training views
-        (review item 2b) keep their holes out of the token set."""
+        """Like ``forward`` with an explicit visible-token mask, the same count per row: (B,N) spatial patches shared by
+        every frame, or (B,T*N) individual temporal tokens (frame-major, as ``mask_mode`` "random"). Synthetic training
+        views (review item 2b) keep their holes out of the token set."""
         return self._encode(images, None, None, visible)
 
     def _encode(self, images, motion_score, mask_ratio, visible) -> dict[str, torch.Tensor]:
@@ -199,7 +226,10 @@ class Encoder(nn.Module):
         tokens = tokens + self.pos_embed[:, None] + self.temporal_embed[:, :T, None]
         ratio = cfg.mask_ratio if mask_ratio is None else mask_ratio
         if visible is not None or (ratio > 0.0 and self.training):
-            if visible is None:
+            if visible is None and cfg.mask_mode == "random":
+                visible = sample_random_tokens(B, T * cfg.num_patches, visible_count(T * cfg.num_patches, ratio),
+                                               images.device)
+            elif visible is None:
                 scores = (
                     self.patch_scores(motion_score)
                     if motion_score is not None
@@ -207,8 +237,17 @@ class Encoder(nn.Module):
                 )
                 visible = sample_tube_mask(scores, ratio, cfg.motion_patch_threshold)
             n_vis = int(visible.sum(1)[0])
+            if not bool((visible.sum(1) == n_vis).all()):
+                raise ValueError("every row of a visible-token mask must keep the same number of tokens")
             ids = visible.nonzero()[:, 1].view(B, n_vis)
-            tokens = torch.gather(tokens, 2, ids[:, None, :, None].expand(B, T, n_vis, tokens.shape[-1]))
+            if visible.shape[1] == cfg.num_patches:  # spatial patches shared by every frame (tube; T = 1 per image)
+                tokens = torch.gather(tokens, 2, ids[:, None, :, None].expand(B, T, n_vis, tokens.shape[-1]))
+            elif visible.shape[1] == T * cfg.num_patches:  # individual temporal tokens (frame-major)
+                tokens = torch.gather(tokens.reshape(B, T * cfg.num_patches, -1), 1,
+                                      ids[:, :, None].expand(B, n_vis, tokens.shape[-1]))
+            else:
+                raise ValueError(f"visible mask must be (B,{cfg.num_patches}) or (B,{T * cfg.num_patches}), "
+                                 f"got {tuple(visible.shape)}")
         else:
             visible = torch.ones(B, cfg.num_patches, dtype=torch.bool, device=images.device)
         tokens = tokens.reshape(B, -1, tokens.shape[-1])

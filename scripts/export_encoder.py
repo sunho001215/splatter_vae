@@ -59,6 +59,8 @@ def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
         "source_checkpoint": str(ckpt),
         "run_name": cfg.get("run", {}).get("name"),
     }
+    if cfg.get("model", {}).get("perframe"):  # per-frame pilots: the policy input is the stack of per-frame states
+        payload["policy_frames"] = "stack"
     payload["encoder_config"]["pretrained_path"] = None  # exported weights already contain the backbone
     payload["encoder_config"]["backbone"] = (
         "scratch" if payload["encoder_config"]["backbone"] == "dinov2_vits14" else payload["encoder_config"]["backbone"]

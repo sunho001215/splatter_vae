@@ -26,11 +26,18 @@ from s4d.losses.occlusion import occlusion_loss, usage_diagnostics
 from s4d.losses.regularizers import visibility_loss
 from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss
 from s4d.model.decoder import DecoderConfig, GaussianDecoder, GroupConfig
-from s4d.model.encoder import Encoder, EncoderConfig
+from s4d.model.encoder import Encoder, EncoderConfig, visible_count
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_hard_depth, render_rgbd
 from s4d.train import ddp
-from s4d.train.augment import coverage_visible, jitter_cameras, random_resized_crop, random_shift, synthesize_views
+from s4d.train.augment import (
+    coverage_visible,
+    coverage_visible_tokens,
+    jitter_cameras,
+    random_resized_crop,
+    random_shift,
+    synthesize_views,
+)
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
 from s4d.train.workers import fork_safe_iter
 
@@ -40,12 +47,16 @@ ACTIVE_OPACITY = 0.05
 
 
 class Model(nn.Module):
-    """Encoder + decoder bundle so DDP wraps one module."""
+    """Encoder + decoder bundle so DDP wraps one module. ``frame_mode``: "joint" (the encoder sees a T-frame window) or
+    "stack" (per-frame pilots: one image at a time, the state of a window is the chronological stack)."""
 
-    def __init__(self, encoder: Encoder, decoder: GaussianDecoder):
+    def __init__(self, encoder: Encoder, decoder: GaussianDecoder, frame_mode: str = "joint"):
         super().__init__()
+        if frame_mode not in ("joint", "stack"):
+            raise ValueError(f"unknown frame_mode {frame_mode!r}")
         self.encoder = encoder
         self.decoder = decoder
+        self.frame_mode = frame_mode
 
     def forward(
         self,
@@ -81,7 +92,15 @@ def build_model(cfg: dict) -> Model:
     decoder_cfg = DecoderConfig(
         slot_dim=encoder_cfg.slot_dim, num_slots=encoder_cfg.num_slots, scene=scene, dynamic=dynamic, **dec
     )
-    return Model(Encoder(encoder_cfg), GaussianDecoder(decoder_cfg))
+    perframe = get(cfg, "model.perframe")
+    if perframe:  # per-frame pilots (s4d/train/perframe.py): single-image encoder, static per-frame decoding
+        if encoder_cfg.num_frames != 1 or decoder_cfg.motion_head:
+            raise ValueError("model.perframe needs model.encoder.num_frames = 1 and model.decoder.motion_head = false")
+        if bool(perframe.get("temporal", False)) != decoder_cfg.temporal_branch:
+            raise ValueError("model.perframe.temporal must equal model.decoder.temporal_branch")
+    elif not decoder_cfg.motion_head or decoder_cfg.temporal_branch:
+        raise ValueError("model.decoder.motion_head = false / temporal_branch are defined only with model.perframe")
+    return Model(Encoder(encoder_cfg), GaussianDecoder(decoder_cfg), frame_mode="stack" if perframe else "joint")
 
 
 def temporal_ramp(step: int, ramp_steps: int) -> float:
@@ -117,7 +136,14 @@ def forward_losses(
     synthetic-view invariance positives use only the observed history (t-4, t-2, t), the same for every future stride;
     ``images``/``depth``/``motion3d``/``motion_score`` are the target window (t, t+k2, t+2*k2) and serve only as render,
     depth and motion targets (and the target-side pixel weights); the recorded actions[t:t+2*k2] and k2 reach only the
-    decoder's displacement heads. Without ``history_images`` the encoder input is the window itself (original method)."""
+    decoder's displacement heads. Without ``history_images`` the encoder input is the window itself (original method).
+
+    Per-frame pilots (``model.perframe``) use ``s4d.train.perframe.forward_losses_perframe`` (same output keys)."""
+    if get(cfg, "model.perframe"):
+        from s4d.train.perframe import forward_losses_perframe
+
+        return forward_losses_perframe(model, batch, cfg, step, source=source, mask_ratio=mask_ratio,
+                                       return_renders=return_renders)
     loss_cfg = cfg["loss"]
     near, far = float(cfg["render"]["near"]), float(cfg["render"]["far"])
     images = batch["images"]
@@ -168,9 +194,13 @@ def forward_losses(
         frames = enc_in.shape[1]
         syn_in = syn_pos["images"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 3, H, W)[:, :frames]
         ratio = encoder.cfg.mask_ratio if mask_ratio is None else mask_ratio
-        keep = max(1, min(encoder.cfg.num_patches, int(round(encoder.cfg.num_patches * (1.0 - ratio)))))
         syn_cov = syn_pos["covered"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 1, H, W)[:, :frames]
-        syn_visible = coverage_visible(syn_cov, encoder.cfg.patch_size, keep)
+        if encoder.cfg.mask_mode == "random":  # the same temporal-token scheme as the real views, holes excluded
+            keep = visible_count(frames * encoder.cfg.num_patches, ratio)
+            syn_visible = coverage_visible_tokens(syn_cov, encoder.cfg.patch_size, keep)
+        else:
+            keep = visible_count(encoder.cfg.num_patches, ratio)
+            syn_visible = coverage_visible(syn_cov, encoder.cfg.patch_size, keep)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
             syn_slots = encoder.forward_visible(syn_in, syn_visible)["slots"]
         syn_slots = syn_slots.float().view(B, n_syn, *syn_slots.shape[1:])

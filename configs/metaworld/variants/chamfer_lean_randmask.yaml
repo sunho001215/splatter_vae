@@ -1,0 +1,17 @@
+# Variant chamfer_lean_randmask (2026-10-23; SinCro-style masking ablation; a pilot, not the frozen method). Applied ON TOP
+# of chamfer_lean.yaml (job config list: base, task, chamfer_lean.yaml, this file); it changes ONLY the encoder masking:
+#   chamfer_lean: 50 % motion-aware tube masking (the same 32 of 64 spatial patches in every frame, half of them the
+#     highest-scoring moving patches)
+#   this variant: 75 % uniform random masking over the concatenated temporal tokens: per sample and camera the 3 x 64
+#     patch tokens of the three frames are flattened and a uniform random 25 % is kept, exactly 48 of 192, with no
+#     per-frame quota, no spatial mask shared across frames and no motion prioritisation (s4d/model/encoder.py
+#     mask_mode "random"; SinCro random_view_masking, len_keep = int(L * (1 - 0.75)) = 48, the same count).
+# Synthetic encoder inputs (the two jittered views, invariance positives) use the same per-token scheme: 48 tokens kept
+# uniformly among the tokens whose own frame's patch is >= 90 % covered; uncovered tokens are used only if a row has fewer
+# than 48 covered tokens (coverage exception, s4d/train/augment.py coverage_visible_tokens).
+# Unchanged: encoder, decoder, losses, Gaussian budget, temporal sampling, augmentation, RL adapter (export num_frames 3,
+# joint state). Tests the combined masking choice (ratio, temporal pattern, no motion prioritisation), not each part.
+model:
+  encoder:
+    mask_mode: random
+    mask_ratio: 0.75

@@ -1,0 +1,20 @@
+# Variant perframe_spatial (2026-10-23; per-frame pilot, not the frozen method). Applied ON TOP of chamfer_lean.yaml
+# (job config list: base, task, chamfer_lean.yaml, this file). One shared single-image encoder (num_frames 1; the same
+# ViT, state tokens and slot size); every sampled image (3 frames x 6 training cameras) is encoded on its own with 75 %
+# uniform random masking (16 of 64 patches, sampled independently per image and timestep, no tube or motion priority).
+# The existing Gaussian decoder (same groups and budget; its displacement head removed, motion_head false) decodes each
+# frame's set from the source camera's state; spatial reconstruction of every frame at its own time with chamfer_lean's
+# terms (RGB L1 + SSIM, expected-depth L1, alpha coverage, bidirectional 3D Chamfer, synthetic-view rendering) and the
+# per-frame view invariance (InfoNCE + consistency over training + synthetic views). No cross-time reconstruction and no
+# motion supervision. Policy input: the chronological stack [E(I_t-4), E(I_t-2), E(I_t)] (export policy_frames stack;
+# RL vision.frame_features stack). Definitions: s4d/train/perframe.py.
+model:
+  encoder:
+    num_frames: 1
+    mask_mode: random
+    mask_ratio: 0.75
+  decoder:
+    motion_head: false
+    temporal_branch: false
+  perframe:
+    temporal: false

@@ -60,8 +60,31 @@ class ConvNet(nn.Module):
         return self.convnet(obs.float() / 255.0 - 0.5).flatten(1).contiguous()
 
 
+FRAME_FEATURES = ("auto", "joint", "latest", "stack")
+
+
+def splatter4d_frame_mode(requested: str, num_frames: int, exported: str | None) -> str:
+    """Policy input of a splatter4d export (``vision.frame_features``):
+
+    * "joint": one state of the whole history (multi-frame encoders, the frozen method);
+    * "latest": the newest frame's state only (single-frame encoders; the historical Stage 2 T=1 arm);
+    * "stack": every frame encoded independently, the chronological stack [E(I_t-4), E(I_t-2), E(I_t)] (single-frame
+      encoders; per-frame pilots, whose exports record ``policy_frames: stack`` and refuse any other mode).
+
+    "auto" (default) is the export's ``policy_frames`` if recorded, else "latest" for single-frame and "joint" for
+    multi-frame encoders, which is the behaviour of every earlier run."""
+    if requested not in FRAME_FEATURES:
+        raise ValueError(f"vision.frame_features must be one of {FRAME_FEATURES}, got {requested!r}")
+    mode = requested if requested != "auto" else (exported or ("latest" if num_frames == 1 else "joint"))
+    if (mode == "joint") != (num_frames > 1):
+        raise ValueError(f"frame_features {mode!r} does not fit an encoder with num_frames = {num_frames}")
+    if exported == "stack" and mode != "stack":
+        raise ValueError("a per-frame pilot export is defined for the stacked policy input only")
+    return mode
+
+
 class Splatter4DStateEncoder(nn.Module):
-    """Frozen splatter4d encoder: one chronological RGB history -> flattened state slots."""
+    """Frozen splatter4d encoder: one chronological RGB history -> flattened state (``splatter4d_frame_mode``)."""
 
     is_trainable = False
     returns_sequence_state = True
@@ -70,13 +93,20 @@ class Splatter4DStateEncoder(nn.Module):
         super().__init__()
         from s4d.model.encoder import load_encoder
 
-        self.encoder = load_encoder(cfg["vision"]["export_path"])
+        path = cfg["vision"]["export_path"]
+        self.encoder = load_encoder(path)
         self.num_frames = int(self.encoder.cfg.num_frames)
+        exported = torch.load(path, map_location="cpu", weights_only=True).get("policy_frames")
+        self.frame_mode = splatter4d_frame_mode(str(cfg["vision"].get("frame_features", "auto")), self.num_frames, exported)
 
     def forward(self, frames: torch.Tensor) -> torch.Tensor:
-        """frames: (B,T,3,H,W) float in [0,1], oldest first. The T=1 ablation sees only the newest frame."""
-        if self.num_frames == 1:
-            frames = frames[:, -1:]
+        """frames: (B,T,3,H,W) float in [0,1], oldest first -> (B, D): the joint state, the newest frame's state
+        ("latest", the historical T=1 arm) or the chronological stack of per-frame states ("stack", D = T*K*Ds)."""
+        if self.frame_mode == "latest":
+            return self.encoder.policy_state(frames[:, -1:])
+        if self.frame_mode == "stack":
+            b, t = frames.shape[:2]
+            return self.encoder.policy_state(frames.reshape(b * t, 1, *frames.shape[2:])).view(b, -1)
         return self.encoder.policy_state(frames)
 
 

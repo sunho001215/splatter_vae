@@ -1,0 +1,24 @@
+# Variant perframe_temporal (2026-10-23; per-frame pilot with pair-conditioned temporal reconstruction; STP-inspired; not
+# the frozen method and not causal action-conditioned future prediction). Applied ON TOP of chamfer_lean.yaml (job config
+# list: base, task, chamfer_lean.yaml, this file). Everything of perframe_spatial.yaml (same encoder, masking, spatial
+# reconstruction of every frame, invariance, stacked policy input), plus a lightweight temporal branch in the decoder
+# (PairTemporalBranch): for the pairs (0,1), (1,2), (0,2) of the sampled window, the dynamic Gaussians of the set decoded
+# from the source frame a (its 75 %-masked spatial encoding) are displaced to time b, conditioned on that encoding and on
+# a separate 90 %-masked encoding of frame b (6 of 64 patches, independent mask; the branch never sees frame b's 75 %
+# encoding). Cross-time reconstruction (the moved source set rendered at time b in the training cameras: RGB, depth,
+# coverage, Chamfer) and M3D on each pair's own source set and displacement (source identities preserved), both ramped
+# as the reference's temporal terms and weighted 1 : 1 against the spatial reconstruction. No action, timestep or
+# horizon input anywhere. Definitions: s4d/train/perframe.py.
+model:
+  encoder:
+    num_frames: 1
+    mask_mode: random
+    mask_ratio: 0.75
+  decoder:
+    motion_head: false
+    temporal_branch: true
+    temporal_hidden: 128
+    temporal_embed: 64
+  perframe:
+    temporal: true
+    target_mask_ratio: 0.9

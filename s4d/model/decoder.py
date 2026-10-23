@@ -15,6 +15,12 @@ displacement cannot depend on second-interval actions. Each displacement head co
 mu(t+k2). Future centres: mu(t+k2) = mu(t) + delta01, mu(t+2*k2) = mu(t+k2) + delta12. Without actions (diagnostic
 panels only) the displacements are zero (persistence).
 
+Per-frame pilots (2026-10-23, off by default): ``motion_head = False`` decodes a static set from one frame's state (the
+dynamic group keeps its budget and parametrisation but no displacement head); ``temporal_branch = True`` adds the
+pair-conditioned temporal reconstruction branch (``PairTemporalBranch``), which moves the dynamic Gaussians of a SOURCE
+frame's decoded set to a target frame from the two frames' independently encoded states. This is pair-conditioned
+temporal reconstruction, not causal action-conditioned future prediction: no action, timestep or horizon input.
+
 Screened options (review item 4, all off by default): ``state_concat`` concatenates the full K-slot state to every
 parent token before the first block; ``conditioning="adaln_zero"`` replaces FiLM by DiT-style adaptive LayerNorm
 (shift, scale and a zero-initialised gate per sub-layer, from the mean slot); ``anchor_fourier`` adds Fourier
@@ -65,6 +71,10 @@ class DecoderConfig:
     max_actions: int = 12  # prefix length after padding (2*k2 for the largest future stride k2 = 6)
     action_hidden: int = 128
     action_embed: int = 64
+    motion_head: bool = True  # False: static decoding of one frame's state (per-frame pilots)
+    temporal_branch: bool = False  # pair-conditioned temporal branch (per-frame temporal pilot)
+    temporal_hidden: int = 128
+    temporal_embed: int = 64
 
 
 class DecoderBlock(nn.Module):
@@ -148,7 +158,7 @@ class ActionPrefixEncoder(nn.Module):
 class GroupHeads(nn.Module):
     """Per-group anchors, parent tokens, and output heads."""
 
-    def __init__(self, g: GroupConfig, dim: int, dynamic: bool, action_embed: int = 0):
+    def __init__(self, g: GroupConfig, dim: int, dynamic: bool, action_embed: int = 0, motion_head: bool = True):
         super().__init__()
         self.g, self.dynamic = g, dynamic
         self.parent_tokens = nn.Parameter(torch.randn(g.parents, dim) * 0.02)
@@ -168,7 +178,7 @@ class GroupHeads(nn.Module):
                 nn.init.zeros_(head[2].weight)
                 nn.init.zeros_(head[2].bias)
         else:
-            self.motion_head = nn.Linear(dim, 6) if dynamic else None
+            self.motion_head = nn.Linear(dim, 6) if dynamic and motion_head else None
         nn.init.zeros_(self.parent_pos.weight)
         nn.init.zeros_(self.parent_pos.bias)
         nn.init.normal_(self.xyz_head.weight, std=1e-3)
@@ -200,6 +210,7 @@ class GroupHeads(nn.Module):
             "opacity": torch.sigmoid(attr[..., 7]),
             "rgb": torch.sigmoid(attr[..., 8:11]),
             "parent_centers": centers.float(),
+            "feats": feats,
         }
         if self.action_embed and prefix_embeddings is not None:
             e1, e2 = (e[:, None].expand(B, feats.shape[1], -1).to(feats.dtype) for e in prefix_embeddings)
@@ -213,6 +224,32 @@ class GroupHeads(nn.Module):
         else:
             out["delta01"] = out["delta12"] = torch.zeros_like(out["xyz"])
         return out
+
+
+class PairTemporalBranch(nn.Module):
+    """Pair-conditioned temporal reconstruction head (per-frame temporal pilot, 2026-10-23; STP-inspired).
+
+    For a frame pair (a, b): the displacement from time a to time b of every dynamic Gaussian of the set decoded from
+    frame a, from that Gaussian's own decoder child feature and an embedding of the two frames' states (each encoded
+    independently by the shared single-image encoder: frame a with the spatial-reconstruction masking, frame b with a
+    separate, more strongly masked encoding). Identities are those of the source set; nothing is matched or subtracted
+    across independently decoded sets. Pair MLP [s_a, s_b] (2*K*Ds) -> hidden -> embed; displacement MLP
+    [feature, embed] -> dim -> 3 with a zero-initialised output (persistence at initialisation), tanh * motion_max."""
+
+    def __init__(self, slot_dim: int, num_slots: int, dim: int, hidden: int, embed: int, motion_max: float):
+        super().__init__()
+        self.motion_max = float(motion_max)
+        self.pair = nn.Sequential(nn.Linear(2 * num_slots * slot_dim, hidden), nn.SiLU(), nn.Linear(hidden, embed),
+                                  nn.SiLU())
+        self.head = nn.Sequential(nn.Linear(dim + embed, dim), nn.SiLU(), nn.Linear(dim, 3))
+        nn.init.zeros_(self.head[2].weight)
+        nn.init.zeros_(self.head[2].bias)
+
+    def forward(self, feats: torch.Tensor, source_slots: torch.Tensor, target_slots: torch.Tensor) -> torch.Tensor:
+        """feats (B,Nd,D) source-set dynamic child features, slots (B,K,Ds) -> displacements (B,Nd,3) float."""
+        e = self.pair(torch.cat((source_slots.flatten(1), target_slots.flatten(1)), -1).to(feats.dtype))
+        x = torch.cat((feats, e[:, None].expand(-1, feats.shape[1], -1)), -1)
+        return torch.tanh(self.head(x).float()) * self.motion_max
 
 
 class GaussianDecoder(nn.Module):
@@ -242,6 +279,10 @@ class GaussianDecoder(nn.Module):
                 nn.init.normal_(self.state_cat.weight[:, D:], std=0.02)
                 self.state_cat.bias.zero_()
         self.action_encoder = None
+        if cfg.temporal_branch and (cfg.motion_head or cfg.single_group or cfg.action_dim > 0):
+            raise ValueError("the pair temporal branch needs motion_head=False, the group split and no actions")
+        self.temporal = (PairTemporalBranch(cfg.slot_dim, cfg.num_slots, D, cfg.temporal_hidden, cfg.temporal_embed,
+                                            cfg.motion_max) if cfg.temporal_branch else None)
         if cfg.action_dim > 0:
             if cfg.single_group:
                 raise ValueError("action-conditioned displacements require the scene/dynamic group split")
@@ -258,12 +299,13 @@ class GaussianDecoder(nn.Module):
                 cfg.scene.anchor_mean,
                 cfg.scene.anchor_std,
             )
-            self.groups = nn.ModuleList([GroupHeads(merged, D, dynamic=True)])
+            self.groups = nn.ModuleList([GroupHeads(merged, D, dynamic=True, motion_head=cfg.motion_head)])
             group_ids = [DYNAMIC_GROUP]
         else:
             self.groups = nn.ModuleList([
                 GroupHeads(cfg.scene, D, dynamic=False),
-                GroupHeads(cfg.dynamic, D, dynamic=True, action_embed=cfg.action_embed if cfg.action_dim > 0 else 0),
+                GroupHeads(cfg.dynamic, D, dynamic=True, action_embed=cfg.action_embed if cfg.action_dim > 0 else 0,
+                           motion_head=cfg.motion_head),
             ])
             group_ids = [SCENE_GROUP, DYNAMIC_GROUP]
         self.register_buffer(
@@ -285,12 +327,14 @@ class GaussianDecoder(nn.Module):
             head.anchors.copy_(torch.randn_like(head.anchors) * std + mean)
 
     def forward(self, slots: torch.Tensor, actions: torch.Tensor | None = None,
-                future_stride: torch.Tensor | None = None) -> GaussianSet:
+                future_stride: torch.Tensor | None = None, return_features: bool = False):
         """slots (B,K,Ds) -> GaussianSet. No camera or image arguments by design.
 
         Action-conditioned decoders only: ``actions`` (B, max_actions, A) = actions[t:t+2*k2] zero-padded, and
         ``future_stride`` (B,) = k2 >= 1; the first displacement uses the prefix of length k2, the second 2*k2. The
-        current-time Gaussians never depend on either."""
+        current-time Gaussians never depend on either.
+
+        ``return_features`` (pair temporal branch): also return the dynamic group's child features (B,Nd,D)."""
         if slots.dim() != 2 + 1:
             raise ValueError(f"slots must be (B,K,Ds), got {tuple(slots.shape)}")
         if (actions is None) != (future_stride is None):
@@ -334,6 +378,11 @@ class GaussianDecoder(nn.Module):
             k: torch.cat([o[k] for o in outputs], 1)
             for k in ("xyz", "scales", "quats", "opacity", "rgb", "delta01", "delta12")
         }
-        return GaussianSet(
+        gs = GaussianSet(
             cat["xyz"], cat["scales"], cat["quats"], cat["opacity"], cat["rgb"], cat["delta01"], cat["delta12"], self.group
         )
+        if return_features:
+            if self.cfg.single_group:
+                raise ValueError("dynamic-group features need the scene/dynamic group split")
+            return gs, outputs[1]["feats"]
+        return gs
