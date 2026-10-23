@@ -4158,3 +4158,7 @@ transparently; reconcile the driver, pool commit, image and acceptance records; 
   (local twin pft-seed0-hammer-200k 0.53-0.69 s/it on a shared MIG slice). Remote GPUs then at the load limit (2.6-2.8 of
   2.8 per GPU; 93-99 % utilisation), 1.4 TB RAM free. Moves: `runs/setup/pool-placement.json`; provenance ledger
   `runs/setup/job-provenance-20261023.json`.
+- 18:xx (10-23) chamfer_lean RL, interim, four tasks (coffee-push added; `variants_rl.py`): training-camera last-5
+  success IQM 0.561 vs original 0.638, -0.077 [-0.298, +0.113]; held-out -0.037 [-0.057, -0.020]; moving cameras -0.006
+  [-0.233, +0.155]; return -119 [-560, +371]. Per task: bin-picking 0.594 vs 0.618, coffee-push 0.451 vs 0.441, hammer
+  0.817 vs 0.890, pick-place 0.271 vs 0.506. Four tasks follow.
