@@ -43,7 +43,9 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  # chamfer_lean 200k, RL and eight-task expansion (user instruction 2026-10-22)
                  'chl-registration-eight-task-20261022.json',
                  # masking ablation, per-frame pilots and T=1 stacking, hammer + pick-place (user instructions 2026-10-23)
-                 'mpf-registration-20261023.json']
+                 'mpf-registration-20261023.json',
+                 # vision-only DrM, original frozen encoder vs CNN, eight tasks (user instruction 2026-10-23)
+                 'vision-only-registration-20261023.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')

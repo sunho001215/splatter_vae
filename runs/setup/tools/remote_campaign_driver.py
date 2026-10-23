@@ -29,9 +29,12 @@ MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
 # (runs/setup/image-cc-20261023/: Dockerfile, build log, kernel check), so the fused Chamfer kernel builds on the remote.
 # Rows placed on the remote by runs/setup/tools/pool_placement.py run on this (commit, image); every other kind keeps
 # (COMMIT, IMAGE) for new admissions, and a retry always keeps the commit and image of its first launch.
-POOL_COMMIT = 'fed4c177949d367fa0dbefb1da7bc4690aa38d02'
+# 2026-10-23 21:xx: pool release f3538b1 = fed4c17 + vision-only support (zero-width proprio replay fields, campaign W&B
+# tags; tests/test_vision_only.py); jobs launched on fed4c17 keep it for retries.
+POOL_COMMIT = 'f3538b1890c358a01ecbbaaa660c1822f8d89a44'
 POOL_IMAGE = 'sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a'
 RELEASES = {(COMMIT, IMAGE): MANIFEST,
+            ('fed4c177949d367fa0dbefb1da7bc4690aa38d02', POOL_IMAGE): 'runs/remote/acceptance/fed4c17-cc/manifest.json',
             (POOL_COMMIT, POOL_IMAGE): f'runs/remote/acceptance/{POOL_COMMIT[:7]}-cc/manifest.json'}
 POOL_READY = (REPO / RELEASES[(POOL_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'

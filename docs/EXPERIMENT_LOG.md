@@ -4162,3 +4162,38 @@ transparently; reconcile the driver, pool commit, image and acceptance records; 
   success IQM 0.561 vs original 0.638, -0.077 [-0.298, +0.113]; held-out -0.037 [-0.057, -0.020]; moving cameras -0.006
   [-0.233, +0.155]; return -119 [-560, +371]. Per task: bin-picking 0.594 vs 0.618, coffee-push 0.451 vs 0.441, hammer
   0.817 vs 0.890, pick-place 0.271 vs 0.506. Four tasks follow.
+
+### 2026-10-23 20:00–21:10 — Vision-only DrM campaign (no proprioception): registered before results
+User instruction (2026-10-23): vision-only DrM, our ORIGINAL frozen encoder vs the end-to-end CNN, all eight tasks, RL
+seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baselines or variants.
+- Encoders (resolved from the records, `runs/setup/vision-only-definition-20261023.json`): the method-frozen-v1 exports of
+  the completed eight-task comparison (C + D0 + M3D, 200k, pretraining seed 0): hammer / pick-place
+  runs/exports/ls-a200-m3d-seed0-<task>-200k.pt (from runs/pretrain/i2-m3d-seed0-<task> step 200000), the other six
+  runs/s3-export-m3d-seed0-<task>-200k/encoder.pt (from runs/s3-m3d-seed0-<task>-200k step 200000); export, source
+  checkpoint and pretraining-config SHA-256 recorded per task; frozen; no new pretraining.
+- Observation change only: `env.proprio_indices=[]` (no hand position, gripper or other state feature reaches the actor,
+  critics, target critic, value network or dormant-ratio passes; trunks take repr_dim instead of repr_dim + 4); RGB
+  history, frame spacing, rewards, termination, camera sampling, evaluation protocol, frozen encoder and the CNN's random
+  shift unchanged; policies from scratch. W&B tags vision_only, no_proprio; run names vo-drm-{splatter4d,cnn}-<task>-s<seed>.
+- Code f3538b1 (branch vision-only-20261023): zero-width proprio replay fields (in-memory empty arrays; numpy cannot map a
+  size-0 file), campaign W&B tags; tests/test_vision_only.py (9): no proprio inputs; fixed images + varied simulator
+  state leave actor, both critics (fixed action), target critic and value unchanged while the with-proprio control
+  changes each; the real environment and evaluation pool hand the policy only (N, 9, H, W) images and (N, 0) proprio with
+  images / rewards / success / returns identical to the with-proprio environment; updates, dormant ratios, replay
+  resume from disk (r+) and from the RAM snapshot. Codex review: three test-strength gaps (all addressed above); its
+  "syntax error" finding was a paste artifact (the module collects and passes). Remote full suite 1000/0 on the derived
+  image, adopted as the launch-gate evidence (local headroom unavailable); four isolation checks; accepted
+  (`runs/remote/acceptance/f3538b1-cc/`); pool release now f3538b1 (fed4c17 jobs keep it for retries).
+- Functional check (main f3538b1, local MIG, 1000 steps, hammer, `runs/setup/vision-only-check-20261023/`): both arms
+  train and checkpoint; trunks 256 (ours, = repr_dim) and 103,968 (CNN, = repr_dim) inputs; CNN replay has no proprio
+  file; config proprio_indices [] and the tags.
+- Preregistered analysis (`reports/results-artifact/src/vision_only_rl.py`, written before results; definition file):
+  primary = training-camera success full-budget AUC, ours - CNN, IQM over 24 runs with task-stratified bootstrap 95 % CI;
+  preregistered early-learning AUC over the first 200k agent steps; last-5, final; held-out and moving cameras
+  separately; per-task means; returns per task only; the matched with-proprio runs (s3-drm-splatter4d, s4-drm-cnn) for the
+  change of our advantage (difference in differences) and each arm's own change; wall clock reported apart from sample
+  efficiency; original pretraining cost separately.
+- Dispatch: all 96 rows eligible now (no dependency on hammer / pick-place). At registration the remote GPUs were at the
+  load limit (2.6-2.8 of 2.8; a trainer + evaluator pair needs 0.8) and local admission at its budget, so the pairs start
+  as capacity frees (pool placement first to the remote; three remote GPUs free when SNeRL ends, about 05:00). CNN
+  trainers declare 48 GB RAM each (pixel replay), so at most ~18 run concurrently under the remote 1 TB cap.

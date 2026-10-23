@@ -1,17 +1,17 @@
 ........................................................................ [  7%]
 ........................................................................ [ 14%]
 ........................................................................ [ 21%]
-........................................................................ [ 29%]
+........................................................................ [ 28%]
 ........................................................................ [ 36%]
 ........................................................................ [ 43%]
 ........................................................................ [ 50%]
-........................................................................ [ 58%]
-........................................................................ [ 65%]
+........................................................................ [ 57%]
+........................................................................ [ 64%]
 ........................................................................ [ 72%]
 ........................................................................ [ 79%]
-........................................................................ [ 87%]
-........................................................................ [ 94%]
-.......................................................                  [100%]
+........................................................................ [ 86%]
+........................................................................ [ 93%]
+................................................................         [100%]
 =============================== warnings summary ===============================
 tests/test_baseline_representation.py: 1222 warnings
 tests/test_heldout.py: 27 warnings
@@ -37,10 +37,6 @@ tests/test_baselines_snerl.py::test_heldout_semantic_ground_truth_is_native_stor
   /opt/s4d/.venv/lib/python3.10/site-packages/gymnasium/utils/passive_env_checker.py:157: UserWarning: [33mWARN: The obs returned by the `reset()` method is not within the observation space.[0m
     logger.warn(f"{pre} is not within the observation space.")
 
-tests/test_chamfer_lean.py::test_nearest_neighbours_match_brute_force_on_every_backend[cuda]
-  /workspace/splatter4d/s4d/losses/chamfer.py:91: UserWarning: Triton nearest-neighbour kernel unavailable (Failed to find C compiler. Please specify via CC environment variable or set triton.knobs.build.impl.); using the exact chunked fallback
-    warnings.warn(f"Triton nearest-neighbour kernel unavailable ({exc}); using the exact chunked fallback")
-
 tests/test_masking_perframe.py::test_decoder_features_and_zero_initialised_branch_give_persistence
   /workspace/splatter4d/tests/test_masking_perframe.py:192: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
   Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
@@ -51,4 +47,4 @@ tests/test_workers.py::test_fork_safe_iteration_collects_freezes_only_while_fork
     assert not any(isinstance(o, dict) and "tensor" in o and o.get("self") is o for o in gc.get_objects())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-991 passed, 2552 warnings in 328.54s (0:05:28)
+1000 passed, 2551 warnings in 420.63s (0:07:00)
