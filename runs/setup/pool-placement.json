@@ -1,0 +1,860 @@
+{
+ "purpose": "Host-neutral pool placement (user instruction 2026-10-23: the local and remote servers are one experiment pool).",
+ "moves": [
+  {
+   "time": "2026-10-23T17:08:59+09:00",
+   "to": "remote",
+   "reason": "free remote capacity (remote driver pass)",
+   "ids": [
+    "pft-seed0-pick-place-200k",
+    "t1stack-drm-hammer-s1002",
+    "t1stack-drm-hammer-s1002-eval",
+    "t1stack-drm-pick-place-s1000",
+    "t1stack-drm-pick-place-s1000-eval",
+    "t1stack-drm-pick-place-s1001",
+    "t1stack-drm-pick-place-s1001-eval",
+    "t1stack-drm-pick-place-s1002",
+    "t1stack-drm-pick-place-s1002-eval"
+   ],
+   "rewritten_exports": [
+    "pft-export-seed0-pick-place-200k"
+   ],
+   "original": {
+    "pft-seed0-pick-place-200k": {
+     "id": "pft-seed0-pick-place-200k",
+     "host": "local",
+     "script": "scripts/train.py",
+     "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/pick-place.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/perframe_temporal.yaml",
+      "--name",
+      "pft-seed0-pick-place-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+     ],
+     "gpu": "any",
+     "mem_gb": 10,
+     "ram_gb": 13,
+     "disk_gb": 30,
+     "priority": 2,
+     "deps": [],
+     "max_restarts": 3,
+     "stage": 5,
+     "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+     ],
+     "variant": "perframe_temporal",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json"
+    },
+    "pft-export-seed0-pick-place-200k": {
+     "id": "pft-export-seed0-pick-place-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/pretrain/pft-seed0-pick-place-200k",
+      "--checkpoint",
+      "runs/pretrain/pft-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/pft-export-seed0-pick-place-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "pft-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "perframe_temporal",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json"
+    },
+    "t1stack-drm-hammer-s1002": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-hammer-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-hammer-s1002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "hammer",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "1002",
+      "--run-dir",
+      "runs/t1stack-drm-hammer-s1002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt",
+      "vision.frame_features=stack"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 7,
+     "oom_score_adj": 300,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ]
+    },
+    "t1stack-drm-hammer-s1002-eval": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-hammer-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-hammer-s1002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/t1stack-drm-hammer-s1002",
+      "--train-job",
+      "t1stack-drm-hammer-s1002",
+      "--workers",
+      "3",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/t1stack-drm-hammer-s1002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 6,
+     "oom_score_adj": 400,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "eval.jsonl"
+     ]
+    },
+    "t1stack-drm-pick-place-s1000": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-pick-place-s1000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "pick-place",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "1000",
+      "--run-dir",
+      "runs/t1stack-drm-pick-place-s1000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+      "vision.frame_features=stack"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 7,
+     "oom_score_adj": 300,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ]
+    },
+    "t1stack-drm-pick-place-s1000-eval": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-pick-place-s1000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/t1stack-drm-pick-place-s1000",
+      "--train-job",
+      "t1stack-drm-pick-place-s1000",
+      "--workers",
+      "3",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/t1stack-drm-pick-place-s1000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 6,
+     "oom_score_adj": 400,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "eval.jsonl"
+     ]
+    },
+    "t1stack-drm-pick-place-s1001": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-pick-place-s1001",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "pick-place",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "1001",
+      "--run-dir",
+      "runs/t1stack-drm-pick-place-s1001",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+      "vision.frame_features=stack"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 7,
+     "oom_score_adj": 300,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ]
+    },
+    "t1stack-drm-pick-place-s1001-eval": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-pick-place-s1001-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/t1stack-drm-pick-place-s1001",
+      "--train-job",
+      "t1stack-drm-pick-place-s1001",
+      "--workers",
+      "3",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/t1stack-drm-pick-place-s1001-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 6,
+     "oom_score_adj": 400,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "eval.jsonl"
+     ]
+    },
+    "t1stack-drm-pick-place-s1002": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-pick-place-s1002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "pick-place",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "1002",
+      "--run-dir",
+      "runs/t1stack-drm-pick-place-s1002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+      "vision.frame_features=stack"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 7,
+     "oom_score_adj": 300,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ]
+    },
+    "t1stack-drm-pick-place-s1002-eval": {
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "export-s2ab-t1-seed0-pick-place-200k"
+     ],
+     "max_restarts": 1,
+     "id": "t1stack-drm-pick-place-s1002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/t1stack-drm-pick-place-s1002",
+      "--train-job",
+      "t1stack-drm-pick-place-s1002",
+      "--workers",
+      "3",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/t1stack-drm-pick-place-s1002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 6,
+     "oom_score_adj": 400,
+     "host": "local",
+     "stage": 5,
+     "variant": "t1_stack",
+     "variant_definition": "runs/setup/mpf-definition-20261023.json",
+     "required_results": [
+      "eval.jsonl"
+     ]
+    }
+   },
+   "queue_sha256_before": "ffb55b5b90bf0549021ac879978f4ca1af214376f2ada4eceab82e336ca29456",
+   "queue_sha256_after": "3d8d81e27fdc002686f97ef869a49bcca4c5025ed7ba4a0f7e90b42725a20f86"
+  },
+  {
+   "time": "2026-10-23T17:22:57+09:00",
+   "to": "remote",
+   "reason": "free remote capacity (remote driver pass)",
+   "ids": [
+    "chl-drm-peg-insert-side-s2000",
+    "chl-drm-peg-insert-side-s2000-eval"
+   ],
+   "rewritten_exports": [],
+   "original": {
+    "chl-drm-peg-insert-side-s2000": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "chl-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "variant": "chamfer_lean",
+     "variant_definition": "runs/setup/chl-definition-20261021.json",
+     "id": "chl-drm-peg-insert-side-s2000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-insert-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2000",
+      "--run-dir",
+      "runs/chl-drm-peg-insert-side-s2000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chl-export-seed0-peg-insert-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ]
+    },
+    "chl-drm-peg-insert-side-s2000-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 2,
+     "deps": [
+      "chl-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "variant": "chamfer_lean",
+     "variant_definition": "runs/setup/chl-definition-20261021.json",
+     "id": "chl-drm-peg-insert-side-s2000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chl-drm-peg-insert-side-s2000",
+      "--train-job",
+      "chl-drm-peg-insert-side-s2000",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chl-drm-peg-insert-side-s2000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ]
+    }
+   },
+   "queue_sha256_before": "3d8d81e27fdc002686f97ef869a49bcca4c5025ed7ba4a0f7e90b42725a20f86",
+   "queue_sha256_after": "06a515f3a3d33b5f260bb89aeee6eadd00d8f4a813d06b987642c8bd6b03c22a"
+  }
+ ],
+ "effective_jobs": {
+  "pft-seed0-pick-place-200k": {
+   "id": "pft-seed0-pick-place-200k",
+   "host": "remote",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/pick-place.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "configs/metaworld/variants/perframe_temporal.yaml",
+    "--name",
+    "pft-seed0-pick-place-200k",
+    "--output-root",
+    "runs",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 30,
+   "priority": 2,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0200000.pt"
+   ],
+   "variant": "perframe_temporal",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "pft-export-seed0-pick-place-200k": {
+   "id": "pft-export-seed0-pick-place-200k",
+   "host": "local",
+   "script": "scripts/export_encoder.py",
+   "args": [
+    "--run",
+    "runs/pft-seed0-pick-place-200k",
+    "--checkpoint",
+    "runs/pft-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+    "--out",
+    "runs/pft-export-seed0-pick-place-200k/encoder.pt"
+   ],
+   "gpu": "any",
+   "mem_gb": 2,
+   "ram_gb": 4,
+   "disk_gb": 1,
+   "priority": 0,
+   "deps": [
+    "pft-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "required_results": [
+    "encoder.pt"
+   ],
+   "variant": "perframe_temporal",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "placement": "pool 2026-10-23T17:08:59+09:00 (input paths of a moved pretraining run; runs/setup/pool-placement.json)"
+  },
+  "t1stack-drm-hammer-s1002": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-hammer-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-hammer-s1002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "hammer",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "1002",
+    "--run-dir",
+    "runs/t1stack-drm-hammer-s1002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt",
+    "vision.frame_features=stack"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 7,
+   "oom_score_adj": 300,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-hammer-s1002-eval": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-hammer-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-hammer-s1002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/t1stack-drm-hammer-s1002",
+    "--train-job",
+    "t1stack-drm-hammer-s1002",
+    "--workers",
+    "3",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/t1stack-drm-hammer-s1002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 6,
+   "oom_score_adj": 400,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-pick-place-s1000": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-pick-place-s1000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "pick-place",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "1000",
+    "--run-dir",
+    "runs/t1stack-drm-pick-place-s1000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+    "vision.frame_features=stack"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 7,
+   "oom_score_adj": 300,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-pick-place-s1000-eval": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-pick-place-s1000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/t1stack-drm-pick-place-s1000",
+    "--train-job",
+    "t1stack-drm-pick-place-s1000",
+    "--workers",
+    "3",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/t1stack-drm-pick-place-s1000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 6,
+   "oom_score_adj": 400,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-pick-place-s1001": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-pick-place-s1001",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "pick-place",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "1001",
+    "--run-dir",
+    "runs/t1stack-drm-pick-place-s1001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+    "vision.frame_features=stack"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 7,
+   "oom_score_adj": 300,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-pick-place-s1001-eval": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-pick-place-s1001-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/t1stack-drm-pick-place-s1001",
+    "--train-job",
+    "t1stack-drm-pick-place-s1001",
+    "--workers",
+    "3",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/t1stack-drm-pick-place-s1001-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 6,
+   "oom_score_adj": 400,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-pick-place-s1002": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-pick-place-s1002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "pick-place",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "1002",
+    "--run-dir",
+    "runs/t1stack-drm-pick-place-s1002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+    "vision.frame_features=stack"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 7,
+   "oom_score_adj": 300,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "t1stack-drm-pick-place-s1002-eval": {
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "export-s2ab-t1-seed0-pick-place-200k"
+   ],
+   "max_restarts": 1,
+   "id": "t1stack-drm-pick-place-s1002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/t1stack-drm-pick-place-s1002",
+    "--train-job",
+    "t1stack-drm-pick-place-s1002",
+    "--workers",
+    "3",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/t1stack-drm-pick-place-s1002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 6,
+   "oom_score_adj": 400,
+   "host": "remote",
+   "stage": 5,
+   "variant": "t1_stack",
+   "variant_definition": "runs/setup/mpf-definition-20261023.json",
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)",
+   "disk_gb": 10
+  },
+  "chl-drm-peg-insert-side-s2000": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "chl-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "variant": "chamfer_lean",
+   "variant_definition": "runs/setup/chl-definition-20261021.json",
+   "id": "chl-drm-peg-insert-side-s2000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-insert-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/chl-drm-peg-insert-side-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chl-export-seed0-peg-insert-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:22:57+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chl-drm-peg-insert-side-s2000-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 2,
+   "deps": [
+    "chl-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "variant": "chamfer_lean",
+   "variant_definition": "runs/setup/chl-definition-20261021.json",
+   "id": "chl-drm-peg-insert-side-s2000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chl-drm-peg-insert-side-s2000",
+    "--train-job",
+    "chl-drm-peg-insert-side-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chl-drm-peg-insert-side-s2000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "placement": "pool 2026-10-23T17:22:57+09:00 (remote; runs/setup/pool-placement.json)"
+  }
+ }
+}

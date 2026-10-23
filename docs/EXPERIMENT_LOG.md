@@ -4147,3 +4147,14 @@ transparently; reconcile the driver, pool commit, image and acceptance records; 
 - Per-job provenance ledger `runs/setup/tools/job_provenance.py` -> `runs/setup/job-provenance-20261023.json`
   (commit, image, source / job fingerprints, seed, resolved-config hash, data identity: remote launch data identity or the
   accepted data manifests' per-file SHA-256 with a size re-check for local launches).
+- 17:08 (fed4c17, derived image) accepted: native suite 991/0 in that image (the Chamfer test there requires and passes
+  the fused kernel), four one-UUID isolation checks passed, manifest `runs/remote/acceptance/fed4c17-cc/manifest.json`
+  (SHA-256 f454febe…). (fed4c17, accepted image) also accepted (`fed4c17/`, 991/0 + 4 isolation) as a recovery
+  release. Isolation checks ran beside our own SNeRL containers (owned processes are allowed; only foreign ones refused).
+- 17:10–17:27 first pool passes (all on fed4c17 + derived image; host recorded per run): moved and launched the four
+  unstarted T=1-stack pairs (hammer s1002, pick-place s1000-1002), pft-seed0-pick-place-200k (first launch lost to an
+  SSH drop before `docker run`, reconciled, attempt 2 running) and chl-drm-peg-insert-side-s2000 + evaluator. The
+  remote pretraining uses the fused kernel (no fallback warning); 0.34 s/it at step 50 while sharing ca65 with RL jobs
+  (local twin pft-seed0-hammer-200k 0.53-0.69 s/it on a shared MIG slice). Remote GPUs then at the load limit (2.6-2.8 of
+  2.8 per GPU; 93-99 % utilisation), 1.4 TB RAM free. Moves: `runs/setup/pool-placement.json`; provenance ledger
+  `runs/setup/job-provenance-20261023.json`.

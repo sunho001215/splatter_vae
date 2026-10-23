@@ -35971,7 +35971,7 @@ jobs:
   variant_definition: runs/setup/chl-definition-20261021.json
   required_results:
   - encoder.pt
-- host: local
+- host: remote
   gpu: any
   priority: 2
   deps:
@@ -36000,7 +36000,8 @@ jobs:
   required_results:
   - final.json
   - train.jsonl
-- host: local
+  placement: pool 2026-10-23T17:22:57+09:00 (remote; runs/setup/pool-placement.json)
+- host: remote
   gpu: any
   priority: 2
   deps:
@@ -36027,6 +36028,7 @@ jobs:
   disk_gb: 1
   required_results:
   - eval.jsonl
+  placement: pool 2026-10-23T17:22:57+09:00 (remote; runs/setup/pool-placement.json)
 - host: local
   gpu: any
   priority: 2
@@ -37708,7 +37710,7 @@ jobs:
   variant: perframe_temporal
   variant_definition: runs/setup/mpf-definition-20261023.json
 - id: pft-seed0-pick-place-200k
-  host: local
+  host: remote
   script: scripts/train.py
   args:
   - --config
@@ -37719,7 +37721,7 @@ jobs:
   - --name
   - pft-seed0-pick-place-200k
   - --output-root
-  - runs/pretrain
+  - runs
   - --resume
   - auto
   - --set
@@ -37739,14 +37741,15 @@ jobs:
   - checkpoints/step_0200000.pt
   variant: perframe_temporal
   variant_definition: runs/setup/mpf-definition-20261023.json
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
 - id: pft-export-seed0-pick-place-200k
   host: local
   script: scripts/export_encoder.py
   args:
   - --run
-  - runs/pretrain/pft-seed0-pick-place-200k
+  - runs/pft-seed0-pick-place-200k
   - --checkpoint
-  - runs/pretrain/pft-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - runs/pft-seed0-pick-place-200k/checkpoints/step_0200000.pt
   - --out
   - runs/pft-export-seed0-pick-place-200k/encoder.pt
   gpu: any
@@ -37762,6 +37765,8 @@ jobs:
   - encoder.pt
   variant: perframe_temporal
   variant_definition: runs/setup/mpf-definition-20261023.json
+  placement: pool 2026-10-23T17:08:59+09:00 (input paths of a moved pretraining run;
+    runs/setup/pool-placement.json)
 - host: local
   gpu: any
   priority: 2
@@ -38070,13 +38075,15 @@ jobs:
   mem_gb: 4
   ram_gb: 7
   oom_score_adj: 300
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - final.json
   - train.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38098,12 +38105,14 @@ jobs:
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - eval.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38127,13 +38136,15 @@ jobs:
   mem_gb: 4
   ram_gb: 7
   oom_score_adj: 300
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - final.json
   - train.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38155,12 +38166,14 @@ jobs:
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - eval.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38184,13 +38197,15 @@ jobs:
   mem_gb: 4
   ram_gb: 7
   oom_score_adj: 300
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - final.json
   - train.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38212,12 +38227,14 @@ jobs:
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - eval.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38241,13 +38258,15 @@ jobs:
   mem_gb: 4
   ram_gb: 7
   oom_score_adj: 300
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - final.json
   - train.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 - gpu: any
   priority: 2
   deps:
@@ -38269,10 +38288,12 @@ jobs:
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
-  host: local
+  host: remote
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
   required_results:
   - eval.jsonl
+  placement: pool 2026-10-23T17:08:59+09:00 (remote; runs/setup/pool-placement.json)
+  disk_gb: 10
 host_ram_reserve_gb: 60
