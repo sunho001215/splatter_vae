@@ -4224,3 +4224,7 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   - Reading: chronological stacking of independently encoded frames did not detectably change RL relative to the
     newest frame alone on these two tasks (both intervals include 0); the stacked policy has a 768-d input and twice the
     head parameters; the runs span code commits (6a48200 vs fed4c17). Not attributed to temporal information alone.
+- (10-24) chamfer_lean RL, interim, six tasks (peg-insert-side added; `variants_rl.py`): training-camera last-5
+  success IQM 0.560 vs original 0.641, -0.081 [-0.254, +0.096]; AUC -0.014 [-0.121, +0.079]; held-out -0.025
+  [-0.038, -0.012]; moving cameras -0.034 [-0.189, +0.122]. Per task: peg-insert-side 0.096 vs 0.122. Two tasks follow
+  (peg-unplug-side RL running, stick-push pretraining).
