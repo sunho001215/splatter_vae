@@ -25,10 +25,12 @@ def _config(single_group=False):
 
 
 def test_decoder_forward_requires_only_slots():
-    # slots, plus the recorded future actions of the action-conditioned variant (optional); never pixels or cameras
+    # slots, plus the recorded future actions of the action-conditioned variant (optional) and the per-frame temporal
+    # pilot's request for the dynamic group's own features (an output switch); never pixels or cameras
     params = inspect.signature(GaussianDecoder.forward).parameters
-    assert set(params) == {"self", "slots", "actions", "future_stride"}
+    assert set(params) == {"self", "slots", "actions", "future_stride", "return_features"}
     assert params["actions"].default is None and params["future_stride"].default is None
+    assert params["return_features"].default is False
     decoder = GaussianDecoder(_config())
     with pytest.raises(TypeError):
         decoder(torch.randn(1, 2, 12), cameras=torch.eye(4))
