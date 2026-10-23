@@ -1,13 +1,13 @@
 {
- "checked_at": "2026-10-21T08:50:18+0900",
+ "checked_at": "2026-10-21T16:28:41+0900",
  "blockers": {},
  "notes": {
-  "s4-snerl-bin-picking-rem-b": "checkpoint unchanged since the pre-outage ledger (sha 214a368febb9); resumable (container ['exited', 'Exited (255) About a minute ago'])",
-  "s4-snerl-coffee-push-rem-b": "checkpoint unchanged since the pre-outage ledger (sha d81f754aa804); resumable (container ['exited', 'Exited (255) About a minute ago'])",
-  "s4-snerl-door-open-rem-b": "checkpoint unchanged since the pre-outage ledger (sha e89fd0ad7401); resumable (container ['exited', 'Exited (255) About a minute ago'])",
-  "s4-snerl-peg-insert-side-rem-b": "newer complete checkpoint (mtime 1792539168, sha 4e5d49b3ff87); resumable (container ['exited', 'Exited (255) About a minute ago'])",
-  "s4-snerl-peg-unplug-side-rem-b": "newer complete checkpoint (mtime 1792539013, sha 0bc00856384f); resumable (container ['exited', 'Exited (255) About a minute ago'])",
-  "s4-snerl-pick-place-rem-b": "checkpoint unchanged since the pre-outage ledger (sha 24f757040920); resumable (container ['exited', 'Exited (255) About a minute ago'])",
-  "s4-snerl-stick-push-rem-b": "newer complete checkpoint (mtime 1792538906, sha 026459be1d5e); resumable (container ['exited', 'Exited (255) About a minute ago'])"
+  "s4-snerl-bin-picking-rem-b": "newer complete checkpoint (mtime 1792564969, sha 4759c70358cd); resumable (container ['exited', 'Exited (255) 8 minutes ago'])",
+  "s4-snerl-coffee-push-rem-b": "newer complete checkpoint (mtime 1792564547, sha 11c7c991dacb); resumable (container ['exited', 'Exited (255) 8 minutes ago'])",
+  "s4-snerl-door-open-rem-b": "newer complete checkpoint (mtime 1792564596, sha 8ea44f21655f); resumable (container ['exited', 'Exited (255) 8 minutes ago'])",
+  "s4-snerl-peg-insert-side-rem-b": "newer complete checkpoint (mtime 1792565635, sha 41d5c4c5cc35); resumable (container ['exited', 'Exited (255) 8 minutes ago'])",
+  "s4-snerl-peg-unplug-side-rem-b": "newer complete checkpoint (mtime 1792565198, sha fe0ecdb38bff); resumable (container ['exited', 'Exited (255) 8 minutes ago'])",
+  "s4-snerl-pick-place-rem-b": "newer complete checkpoint (mtime 1792564788, sha 05fdd763c3ee); resumable (container ['exited', 'Exited (255) 8 minutes ago'])",
+  "s4-snerl-stick-push-rem-b": "newer complete checkpoint (mtime 1792564844, sha 61561c1a9263); resumable (container ['exited', 'Exited (255) 8 minutes ago'])"
  }
 }

@@ -1,0 +1,19 @@
+{
+  "recorded": "2026-10-23T15:47:41.560713+09:00",
+  "instructions": "2026-10-23: masking ablation, per-frame STP-inspired pilots and T=1 stacking on hammer and pick-place; later revision (same day, before launch): temporal pilot 75 % source / 75 % target masking reusing each image's masked encoding; the superseded 75 % / 90 % definition (never registered or run) is commit 5fd623e of branch masking-perframe-20261023.",
+  "source_branch": "masking-perframe-20261023",
+  "variants": {
+    "chamfer_lean_randmask": "chamfer_lean with 75 % uniform random masking over the 3 x 64 concatenated temporal tokens (48 of 192 kept, no per-frame quota, no shared spatial mask, no motion priority; synthetic inputs alike among covered tokens). Everything else identical to chamfer_lean. Tests the combined masking choice, not its parts.",
+    "perframe_spatial": "single-image encoder, every image masked 75 % uniform random (16 of 64, independent per image and timestep); static per-frame decoding from the source camera; chamfer_lean reconstruction terms per frame; per-frame invariance; stacked policy input.",
+    "perframe_temporal": "perframe_spatial + pair-conditioned temporal branch (pairs (0,1), (1,2), (0,2); conditioned on the source camera's 75 %-masked encodings of both frames, the same outputs the spatial reconstructions use), cross-time reconstruction and M3D on per-pair source sets (identities preserved); no action, timestep or horizon input. Labelled pair-conditioned temporal reconstruction, not causal action-conditioned future prediction.",
+    "t1_stack": "the Stage 2 T=1 exports, policy input = chronological stack of independently encoded frames; no new pretraining; compared with the T=1 latest-frame rows (seeds 1000-1002), which stay reported separately."
+  },
+  "comparisons": {
+    "masking": "chamfer_lean_randmask vs chamfer_lean (chl-drm-<task>-s2000..2002, completed): same encoder, decoder, losses, sampling, augmentation, RL adapter; seeds 2000-2002.",
+    "temporal_supervision": "perframe_temporal vs perframe_spatial: identical encoder, masking, spatial objectives, image sampling/exposure, three-frame stacking, policy capacity and evaluation; seeds 2000-2002.",
+    "stacking": "t1_stack vs T=1 latest frame (s2rl-t1-<task>-s1000..1002), full method (s2rl-full) as context; the stacked policy head has a 768-d input (263,680 head parameters vs 132,608), same 256-d output.",
+    "context_only": "per-frame arms vs joint three-frame encoders (chamfer_lean, original) differ in the policy-input structure; differences there are not attributed to temporal supervision alone."
+  },
+  "reporting": "descriptive pilots (no adoption rule): DrM success and episodic return, last-5 / final / AUC, training, held-out and moving-camera groups; per task seed means; pooled IQM over the 6 runs with the task-stratified bootstrap 95 % interval (B = 2000) of each direct difference; targeted rendering and representation diagnostics (runs/setup/tools/variant_repr_probes.py and the 200k render analysis). Reported before any new eight-task expansion; chamfer_lean stays a candidate, not adopted.",
+  "compute_note": "perframe_temporal over perframe_spatial: the branch, three renders of the moved sets in the training cameras and M3D; no extra encoding (measured step times reported)."
+}

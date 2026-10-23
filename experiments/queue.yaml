@@ -36583,5 +36583,1655 @@ jobs:
   disk_gb: 1
   required_results:
   - eval.jsonl
+- id: chlrm-seed0-hammer-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/chamfer_lean_randmask.yaml
+  - --name
+  - chlrm-seed0-hammer-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: chlrm-export-seed0-hammer-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chlrm-seed0-hammer-200k
+  - --checkpoint
+  - runs/pretrain/chlrm-seed0-hammer-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chlrm-export-seed0-hammer-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chlrm-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-hammer-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chlrm-drm-hammer-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chlrm-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-hammer-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chlrm-drm-hammer-s2000
+  - --train-job
+  - chlrm-drm-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chlrm-drm-hammer-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-hammer-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chlrm-drm-hammer-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chlrm-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-hammer-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chlrm-drm-hammer-s2001
+  - --train-job
+  - chlrm-drm-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chlrm-drm-hammer-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-hammer-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chlrm-drm-hammer-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chlrm-export-seed0-hammer-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-hammer-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chlrm-drm-hammer-s2002
+  - --train-job
+  - chlrm-drm-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chlrm-drm-hammer-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: chlrm-seed0-pick-place-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/chamfer_lean_randmask.yaml
+  - --name
+  - chlrm-seed0-pick-place-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: chlrm-export-seed0-pick-place-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/chlrm-seed0-pick-place-200k
+  - --checkpoint
+  - runs/pretrain/chlrm-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/chlrm-export-seed0-pick-place-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - chlrm-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-pick-place-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/chlrm-drm-pick-place-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chlrm-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-pick-place-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chlrm-drm-pick-place-s2000
+  - --train-job
+  - chlrm-drm-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chlrm-drm-pick-place-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-pick-place-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/chlrm-drm-pick-place-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chlrm-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-pick-place-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chlrm-drm-pick-place-s2001
+  - --train-job
+  - chlrm-drm-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chlrm-drm-pick-place-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-pick-place-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/chlrm-drm-pick-place-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/chlrm-export-seed0-pick-place-200k/encoder.pt
+  mem_gb: 4
+  ram_gb: 6
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - chlrm-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: chlrm-drm-pick-place-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/chlrm-drm-pick-place-s2002
+  - --train-job
+  - chlrm-drm-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/chlrm-drm-pick-place-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: chamfer_lean_randmask
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pfs-seed0-hammer-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/perframe_spatial.yaml
+  - --name
+  - pfs-seed0-hammer-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pfs-export-seed0-hammer-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/pfs-seed0-hammer-200k
+  - --checkpoint
+  - runs/pretrain/pfs-seed0-hammer-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/pfs-export-seed0-hammer-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - pfs-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-hammer-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/pfs-drm-hammer-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pfs-export-seed0-hammer-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-hammer-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pfs-drm-hammer-s2000
+  - --train-job
+  - pfs-drm-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pfs-drm-hammer-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-hammer-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/pfs-drm-hammer-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pfs-export-seed0-hammer-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-hammer-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pfs-drm-hammer-s2001
+  - --train-job
+  - pfs-drm-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pfs-drm-hammer-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-hammer-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/pfs-drm-hammer-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pfs-export-seed0-hammer-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-hammer-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pfs-drm-hammer-s2002
+  - --train-job
+  - pfs-drm-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pfs-drm-hammer-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pfs-seed0-pick-place-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/perframe_spatial.yaml
+  - --name
+  - pfs-seed0-pick-place-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pfs-export-seed0-pick-place-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/pfs-seed0-pick-place-200k
+  - --checkpoint
+  - runs/pretrain/pfs-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/pfs-export-seed0-pick-place-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - pfs-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-pick-place-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/pfs-drm-pick-place-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pfs-export-seed0-pick-place-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-pick-place-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pfs-drm-pick-place-s2000
+  - --train-job
+  - pfs-drm-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pfs-drm-pick-place-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-pick-place-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/pfs-drm-pick-place-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pfs-export-seed0-pick-place-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-pick-place-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pfs-drm-pick-place-s2001
+  - --train-job
+  - pfs-drm-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pfs-drm-pick-place-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-pick-place-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/pfs-drm-pick-place-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pfs-export-seed0-pick-place-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pfs-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pfs-drm-pick-place-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pfs-drm-pick-place-s2002
+  - --train-job
+  - pfs-drm-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pfs-drm-pick-place-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_spatial
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pft-seed0-hammer-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/perframe_temporal.yaml
+  - --name
+  - pft-seed0-hammer-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pft-export-seed0-hammer-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/pft-seed0-hammer-200k
+  - --checkpoint
+  - runs/pretrain/pft-seed0-hammer-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/pft-export-seed0-hammer-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - pft-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-hammer-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/pft-drm-hammer-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pft-export-seed0-hammer-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-hammer-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pft-drm-hammer-s2000
+  - --train-job
+  - pft-drm-hammer-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pft-drm-hammer-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-hammer-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/pft-drm-hammer-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pft-export-seed0-hammer-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-hammer-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pft-drm-hammer-s2001
+  - --train-job
+  - pft-drm-hammer-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pft-drm-hammer-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-hammer-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/pft-drm-hammer-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pft-export-seed0-hammer-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-hammer-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pft-drm-hammer-s2002
+  - --train-job
+  - pft-drm-hammer-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pft-drm-hammer-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pft-seed0-pick-place-200k
+  host: local
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/perframe_temporal.yaml
+  - --name
+  - pft-seed0-pick-place-200k
+  - --output-root
+  - runs/pretrain
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 2
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- id: pft-export-seed0-pick-place-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/pretrain/pft-seed0-pick-place-200k
+  - --checkpoint
+  - runs/pretrain/pft-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/pft-export-seed0-pick-place-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 0
+  deps:
+  - pft-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-pick-place-s2000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2000'
+  - --run-dir
+  - runs/pft-drm-pick-place-s2000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pft-export-seed0-pick-place-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-pick-place-s2000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pft-drm-pick-place-s2000
+  - --train-job
+  - pft-drm-pick-place-s2000
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pft-drm-pick-place-s2000-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-pick-place-s2001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2001'
+  - --run-dir
+  - runs/pft-drm-pick-place-s2001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pft-export-seed0-pick-place-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-pick-place-s2001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pft-drm-pick-place-s2001
+  - --train-job
+  - pft-drm-pick-place-s2001
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pft-drm-pick-place-s2001-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-pick-place-s2002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '2002'
+  - --run-dir
+  - runs/pft-drm-pick-place-s2002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/pft-export-seed0-pick-place-200k/encoder.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  disk_gb: 10
+  required_results:
+  - final.json
+  - train.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- host: local
+  gpu: any
+  priority: 2
+  deps:
+  - pft-export-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  id: pft-drm-pick-place-s2002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/pft-drm-pick-place-s2002
+  - --train-job
+  - pft-drm-pick-place-s2002
+  - --workers
+  - '6'
+  - --envs-per-worker
+  - '8'
+  - --output-dir
+  - runs/pft-drm-pick-place-s2002-eval
+  mem_gb: 3
+  ram_gb: 8
+  disk_gb: 1
+  required_results:
+  - eval.jsonl
+  variant: perframe_temporal
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-hammer-200k
+  max_restarts: 1
+  id: t1stack-drm-hammer-s1000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1000'
+  - --run-dir
+  - runs/t1stack-drm-hammer-s1000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  oom_score_adj: 300
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-hammer-200k
+  max_restarts: 1
+  id: t1stack-drm-hammer-s1000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/t1stack-drm-hammer-s1000
+  - --train-job
+  - t1stack-drm-hammer-s1000
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  mem_gb: 3
+  ram_gb: 6
+  oom_score_adj: 400
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-hammer-200k
+  max_restarts: 1
+  id: t1stack-drm-hammer-s1001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1001'
+  - --run-dir
+  - runs/t1stack-drm-hammer-s1001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  oom_score_adj: 300
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-hammer-200k
+  max_restarts: 1
+  id: t1stack-drm-hammer-s1001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/t1stack-drm-hammer-s1001
+  - --train-job
+  - t1stack-drm-hammer-s1001
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  mem_gb: 3
+  ram_gb: 6
+  oom_score_adj: 400
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-hammer-200k
+  max_restarts: 1
+  id: t1stack-drm-hammer-s1002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - hammer
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1002'
+  - --run-dir
+  - runs/t1stack-drm-hammer-s1002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  oom_score_adj: 300
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-hammer-200k
+  max_restarts: 1
+  id: t1stack-drm-hammer-s1002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/t1stack-drm-hammer-s1002
+  - --train-job
+  - t1stack-drm-hammer-s1002
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  mem_gb: 3
+  ram_gb: 6
+  oom_score_adj: 400
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-pick-place-200k
+  max_restarts: 1
+  id: t1stack-drm-pick-place-s1000
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1000'
+  - --run-dir
+  - runs/t1stack-drm-pick-place-s1000
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  oom_score_adj: 300
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-pick-place-200k
+  max_restarts: 1
+  id: t1stack-drm-pick-place-s1000-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/t1stack-drm-pick-place-s1000
+  - --train-job
+  - t1stack-drm-pick-place-s1000
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  mem_gb: 3
+  ram_gb: 6
+  oom_score_adj: 400
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-pick-place-200k
+  max_restarts: 1
+  id: t1stack-drm-pick-place-s1001
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1001'
+  - --run-dir
+  - runs/t1stack-drm-pick-place-s1001
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  oom_score_adj: 300
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-pick-place-200k
+  max_restarts: 1
+  id: t1stack-drm-pick-place-s1001-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/t1stack-drm-pick-place-s1001
+  - --train-job
+  - t1stack-drm-pick-place-s1001
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  mem_gb: 3
+  ram_gb: 6
+  oom_score_adj: 400
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-pick-place-200k
+  max_restarts: 1
+  id: t1stack-drm-pick-place-s1002
+  script: scripts/train_rl.py
+  args:
+  - --task
+  - pick-place
+  - --encoder
+  - splatter4d
+  - --seed
+  - '1002'
+  - --run-dir
+  - runs/t1stack-drm-pick-place-s1002
+  - --set
+  - train.num_train_steps=1000000
+  - vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt
+  - vision.frame_features=stack
+  mem_gb: 4
+  ram_gb: 7
+  oom_score_adj: 300
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
+- gpu: any
+  priority: 2
+  deps:
+  - export-s2ab-t1-seed0-pick-place-200k
+  max_restarts: 1
+  id: t1stack-drm-pick-place-s1002-eval
+  script: scripts/eval_rl.py
+  args:
+  - --run-dir
+  - runs/t1stack-drm-pick-place-s1002
+  - --train-job
+  - t1stack-drm-pick-place-s1002
+  - --workers
+  - '3'
+  - --envs-per-worker
+  - '8'
+  mem_gb: 3
+  ram_gb: 6
+  oom_score_adj: 400
+  host: local
+  stage: 5
+  variant: t1_stack
+  variant_definition: runs/setup/mpf-definition-20261023.json
 
 host_ram_reserve_gb: 60

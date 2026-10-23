@@ -1,5 +1,5 @@
 {
- "checked_at": "2026-10-20T11:53:07+0900",
+ "checked_at": "2026-10-23T15:46:02+0900",
  "reachable": true,
  "jobs": {
   "s3spec-m3d-seed0-bin-picking": {
@@ -277,16 +277,16 @@
   "s4-snerl-bin-picking-rem-b": {
    "status": "running",
    "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-bin-picking-rem-b-a1",
+   "attempt": 3,
+   "container": "s4d-s4-snerl-bin-picking-rem-b-a3",
    "container_state": [
     "running",
-    "Up 11 hours"
+    "Up 47 hours"
    ],
    "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
    "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-bin-picking-rem-b-a1.json",
+   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-bin-picking-rem-b-a3.json",
    "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-bin-picking-rem-b",
    "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-bin-picking-rem-b/config.yaml",
    "script": "scripts/train_snerl.py",
@@ -301,28 +301,28 @@
     "auto"
    ],
    "max_restarts": 2,
-   "failures": 0,
+   "failures": 2,
    "checkpoint": {
     "path": "/home/compu/kaist/sunho/runs/s4-snerl-bin-picking-rem-b/checkpoints/latest.pt",
     "bytes": 99787955,
-    "mtime": 1792464229,
-    "sha256": "5283a1abe1b7b8abc1e94cc0a97c4708afb38fd26a46135228ad65930627d3b4"
+    "mtime": 1792736842,
+    "sha256": "2332c0bed12e5acb46a377ad444f75dc226ae9c65db53c8c76408808feb2e331"
    },
-   "last_logged": "{\"step\": 273600, \"train/loss\": 0.0148772"
+   "last_logged": "{\"step\": 2027400, \"train/loss\": 0.006165"
   },
   "s4-snerl-coffee-push-rem-b": {
    "status": "running",
    "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-coffee-push-rem-b-a1",
+   "attempt": 3,
+   "container": "s4d-s4-snerl-coffee-push-rem-b-a3",
    "container_state": [
     "running",
-    "Up 11 hours"
+    "Up 47 hours"
    ],
    "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
    "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-coffee-push-rem-b-a1.json",
+   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-coffee-push-rem-b-a3.json",
    "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-coffee-push-rem-b",
    "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-coffee-push-rem-b/config.yaml",
    "script": "scripts/train_snerl.py",
@@ -337,28 +337,28 @@
     "auto"
    ],
    "max_restarts": 2,
-   "failures": 0,
+   "failures": 2,
    "checkpoint": {
     "path": "/home/compu/kaist/sunho/runs/s4-snerl-coffee-push-rem-b/checkpoints/latest.pt",
     "bytes": 99787955,
-    "mtime": 1792463626,
-    "sha256": "09e765acf21f9db60f15ef6ad8c057ae946329d83d2512d7bf698908db479f83"
+    "mtime": 1792737792,
+    "sha256": "688c651b58fbab6202419bc54fccee0b27f42f1cb66f4a57fc1c623647ceee1d"
    },
-   "last_logged": "{\"step\": 277800, \"train/loss\": 0.2110173"
+   "last_logged": "{\"step\": 2061100, \"train/loss\": 0.007787"
   },
   "s4-snerl-door-open-rem-b": {
    "status": "running",
    "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-door-open-rem-b-a1",
+   "attempt": 3,
+   "container": "s4d-s4-snerl-door-open-rem-b-a3",
    "container_state": [
     "running",
-    "Up 11 hours"
+    "Up 47 hours"
    ],
    "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
    "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-door-open-rem-b-a1.json",
+   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-door-open-rem-b-a3.json",
    "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-door-open-rem-b",
    "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-door-open-rem-b/config.yaml",
    "script": "scripts/train_snerl.py",
@@ -373,64 +373,28 @@
     "auto"
    ],
    "max_restarts": 2,
-   "failures": 0,
+   "failures": 2,
    "checkpoint": {
     "path": "/home/compu/kaist/sunho/runs/s4-snerl-door-open-rem-b/checkpoints/latest.pt",
     "bytes": 99787955,
-    "mtime": 1792463942,
-    "sha256": "993f339b46b711e7fa021a49bd46cc038388a7d0e40033112a5b0cb06e570a2a"
+    "mtime": 1792737887,
+    "sha256": "7ec85dc4ce3f6495b4d0e95c19b5d2bc9654d5e007a96fae78a1198ef23fa3ca"
    },
-   "last_logged": "{\"step\": 275600, \"train/loss\": 0.0080507"
-  },
-  "s4-snerl-peg-insert-side-rem-b": {
-   "status": "running",
-   "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-peg-insert-side-rem-b-a1",
-   "container_state": [
-    "running",
-    "Up 11 hours"
-   ],
-   "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
-   "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
-   "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-peg-insert-side-rem-b-a1.json",
-   "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-peg-insert-side-rem-b",
-   "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-peg-insert-side-rem-b/config.yaml",
-   "script": "scripts/train_snerl.py",
-   "args": [
-    "--config",
-    "configs/baselines/snerl/peg-insert-side.yaml",
-    "--name",
-    "s4-snerl-peg-insert-side-rem-b",
-    "--output-root",
-    "runs",
-    "--resume",
-    "auto"
-   ],
-   "max_restarts": 2,
-   "failures": 0,
-   "checkpoint": {
-    "path": "/home/compu/kaist/sunho/runs/s4-snerl-peg-insert-side-rem-b/checkpoints/latest.pt",
-    "bytes": 99787955,
-    "mtime": 1792464508,
-    "sha256": "8ae05a56e8c97a761335d8fe030ed0a6d1cd29f76a5c17c79fda7625d6c3ab7e"
-   },
-   "last_logged": "{\"step\": 513500, \"train/loss\": 0.0077442"
+   "last_logged": "{\"step\": 2060500, \"train/loss\": 0.008086"
   },
   "s4-snerl-peg-unplug-side-rem-b": {
    "status": "running",
    "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-peg-unplug-side-rem-b-a1",
+   "attempt": 3,
+   "container": "s4d-s4-snerl-peg-unplug-side-rem-b-a3",
    "container_state": [
     "running",
-    "Up 11 hours"
+    "Up 47 hours"
    ],
    "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
    "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-peg-unplug-side-rem-b-a1.json",
+   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-peg-unplug-side-rem-b-a3.json",
    "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-peg-unplug-side-rem-b",
    "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-peg-unplug-side-rem-b/config.yaml",
    "script": "scripts/train_snerl.py",
@@ -445,28 +409,28 @@
     "auto"
    ],
    "max_restarts": 2,
-   "failures": 0,
+   "failures": 2,
    "checkpoint": {
     "path": "/home/compu/kaist/sunho/runs/s4-snerl-peg-unplug-side-rem-b/checkpoints/latest.pt",
     "bytes": 99787955,
-    "mtime": 1792464511,
-    "sha256": "f7842ad7ddfced6ef2da14356d4177e2d1eb4ae883858b7b6f139e03c04ea53d"
+    "mtime": 1792737145,
+    "sha256": "cb04996e6a7077dcda44043062a603573c8198e653e293a203780885bb5d6942"
    },
-   "last_logged": "{\"step\": 271800, \"train/loss\": 0.0252495"
+   "last_logged": "{\"step\": 2025300, \"train/loss\": 0.008985"
   },
   "s4-snerl-pick-place-rem-b": {
    "status": "running",
    "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-pick-place-rem-b-a1",
+   "attempt": 3,
+   "container": "s4d-s4-snerl-pick-place-rem-b-a3",
    "container_state": [
     "running",
-    "Up 11 hours"
+    "Up 47 hours"
    ],
    "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
    "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-pick-place-rem-b-a1.json",
+   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-pick-place-rem-b-a3.json",
    "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-pick-place-rem-b",
    "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-pick-place-rem-b/config.yaml",
    "script": "scripts/train_snerl.py",
@@ -481,28 +445,28 @@
     "auto"
    ],
    "max_restarts": 2,
-   "failures": 0,
+   "failures": 2,
    "checkpoint": {
     "path": "/home/compu/kaist/sunho/runs/s4-snerl-pick-place-rem-b/checkpoints/latest.pt",
     "bytes": 99787955,
-    "mtime": 1792463898,
-    "sha256": "8bc485207757af946164a52635f1a2590ca1ba6972225ef01494d4c336863194"
+    "mtime": 1792736615,
+    "sha256": "f4e473459004f62bbcc074909c8ea82b25a607ec05fd8d70ec2602b8b7addda1"
    },
-   "last_logged": "{\"step\": 275900, \"train/loss\": 0.0123619"
+   "last_logged": "{\"step\": 2059000, \"train/loss\": 0.006191"
   },
   "s4-snerl-stick-push-rem-b": {
    "status": "running",
    "unknown": false,
-   "attempt": 1,
-   "container": "s4d-s4-snerl-stick-push-rem-b-a1",
+   "attempt": 3,
+   "container": "s4d-s4-snerl-stick-push-rem-b-a3",
    "container_state": [
     "running",
-    "Up 11 hours"
+    "Up 47 hours"
    ],
    "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
    "commit": "7c0d0d211774ceec0729a2d67ada318f1e872d39",
    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
-   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-stick-push-rem-b-a1.json",
+   "spec_path": "/home/ws/ws/splatter4d/runs/remote/jobs/s4-snerl-stick-push-rem-b-a3.json",
    "remote_run_dir": "/home/compu/kaist/sunho/runs/s4-snerl-stick-push-rem-b",
    "local_config": "/home/ws/ws/splatter4d/runs/s4-snerl-stick-push-rem-b/config.yaml",
    "script": "scripts/train_snerl.py",
@@ -517,26 +481,26 @@
     "auto"
    ],
    "max_restarts": 2,
-   "failures": 0,
+   "failures": 2,
    "checkpoint": {
     "path": "/home/compu/kaist/sunho/runs/s4-snerl-stick-push-rem-b/checkpoints/latest.pt",
     "bytes": 99787955,
-    "mtime": 1792464203,
-    "sha256": "2d919ba945fd9255c6cda013f257d29669ab61c57c56a0da7eaa1db00dd62389"
+    "mtime": 1792736723,
+    "sha256": "13533b15c208dcb5d086ac781a5ea0df657a118f947465dee7b5840690947126"
    },
-   "last_logged": "{\"step\": 273900, \"train/loss\": 0.2039297"
+   "last_logged": "{\"step\": 2058300, \"train/loss\": 0.199669"
   }
  },
  "host": {
-  "date": "2026-10-20T02:53:09+00:00",
-  "mem_line": "Mem:            1511          63         484           0         972        1448",
-  "disk_line": "/dev/nvme0n1p3 7528923684864 4360575426560 2788835000320  61% /"
+  "date": "2026-10-23T06:46:05+00:00",
+  "mem_line": "Mem:            1511          70        1083           0         366        1441",
+  "disk_line": "/dev/nvme0n1p3 7528923684864 4074627006464 3074783420416  57% /"
  },
  "gpus": {
-  "GPU-4391fcee-537f-d408-d138-10d8a3866eea": "GPU-4391fcee-537f-d408-d138-10d8a3866eea, 98 %, 18275 MiB, 97887 MiB",
-  "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea, 99 %, 18275 MiB, 97887 MiB",
-  "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79, 99 %, 18275 MiB, 97887 MiB",
-  "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1, 88 %, 9140 MiB, 97887 MiB",
+  "GPU-4391fcee-537f-d408-d138-10d8a3866eea": "GPU-4391fcee-537f-d408-d138-10d8a3866eea, 99 %, 18415 MiB, 97887 MiB",
+  "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea, 98 %, 18415 MiB, 97887 MiB",
+  "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79, 98 %, 18415 MiB, 97887 MiB",
+  "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1, 0 %, 1 MiB, 97887 MiB",
   "GPU-1aa64fba-f45e-ee28-f83e-a272cb624cb4": "GPU-1aa64fba-f45e-ee28-f83e-a272cb624cb4, 0 %, 1 MiB, 97887 MiB",
   "GPU-83c912e1-65a8-9361-da0e-f8996e5971bb": "GPU-83c912e1-65a8-9361-da0e-f8996e5971bb, 0 %, 1 MiB, 97887 MiB",
   "GPU-684154cb-5f8d-0e5a-b4d7-6eddaa687d36": "GPU-684154cb-5f8d-0e5a-b4d7-6eddaa687d36, 0 %, 1 MiB, 97887 MiB",
