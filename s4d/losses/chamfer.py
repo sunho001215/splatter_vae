@@ -20,6 +20,8 @@ neighbours are recomputed with gradient: the gradient of a minimum is the gradie
 
 from __future__ import annotations
 
+import warnings
+
 import torch
 
 from s4d.geometry import lift_depth
@@ -69,18 +71,41 @@ try:  # the fused kernel needs Triton (bundled with CUDA builds of torch); the f
 except ImportError:  # pragma: no cover - CPU-only installs
     HAVE_TRITON = False
 
+_FUSED_OK: dict[str, bool] = {}
+
+
+def fused_available(device) -> bool:
+    """Whether the Triton kernel builds and launches on ``device`` (probed once per device). Triton compiles a small CUDA
+    helper with the system C compiler at its first launch; an image without one (the remote campaign image, 2026-10-23)
+    uses the exact chunked fallback, which returns the same nearest neighbours (ties to the lowest index in both)."""
+    key = str(device)
+    if key not in _FUSED_OK:
+        ok = HAVE_TRITON and torch.device(device).type == "cuda"
+        if ok:
+            try:
+                probe = torch.zeros(1, 2, 3, device=device)
+                d = torch.empty(1, 2, device=device)
+                i = torch.empty(1, 2, device=device, dtype=torch.int32)
+                _nearest_kernel[(1, 1)](probe, probe, d, i, 2, 2, BLOCK_N=64, BLOCK_M=128)
+            except RuntimeError as exc:
+                warnings.warn(f"Triton nearest-neighbour kernel unavailable ({exc}); using the exact chunked fallback")
+                ok = False
+        _FUSED_OK[key] = ok
+    return _FUSED_OK[key]
+
 
 @torch.no_grad()
 def nearest_neighbours(src: torch.Tensor, dst: torch.Tensor, fused: bool | None = None) -> tuple[torch.Tensor, torch.Tensor]:
     """src (B,N,3), dst (B,M,3) -> squared distance (B,N) to and index (B,N) of each source point's nearest destination
-    point (M >= 1). ``fused`` None: the Triton kernel on CUDA when available, else the exact chunked fallback."""
+    point (M >= 1). ``fused`` None: the Triton kernel on CUDA when it builds there (``fused_available``), else the exact
+    chunked fallback."""
     src, dst = src.detach().float().contiguous(), dst.detach().float().contiguous()
     B, N, _ = src.shape
     M = dst.shape[1]
     if M == 0:
         raise ValueError("nearest_neighbours needs a non-empty destination cloud")
     if fused is None:
-        fused = HAVE_TRITON and src.is_cuda
+        fused = src.is_cuda and fused_available(src.device)
     if fused:
         d = torch.empty(B, N, device=src.device, dtype=torch.float32)
         i = torch.empty(B, N, device=src.device, dtype=torch.int32)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -31,13 +33,27 @@ def test_nearest_neighbours_match_brute_force_on_every_backend(device):
     src = torch.randn(3, 517, 3, generator=g).to(device)
     dst = torch.randn(3, 263, 3, generator=g).to(device)
     ref_d, ref_i = _brute(src.cpu().double(), dst.cpu().double())
-    backends = [False] + ([True] if device == "cuda" and chamfer_mod.HAVE_TRITON else [])
+    backends = [False, None] + ([True] if device == "cuda" and chamfer_mod.fused_available(src.device) else [])
     if device == "cuda":
-        assert chamfer_mod.HAVE_TRITON, "the fused kernel must be available on the CUDA training path"
+        assert chamfer_mod.HAVE_TRITON
+        # the fused kernel is required wherever Triton finds a C compiler (local); an image without one (the remote
+        # campaign image) uses the exact fallback on the training path, checked here as the default backend (None)
+        if os.environ.get("CC") or shutil.which("gcc") or shutil.which("clang"):  # triton.runtime.build
+            assert chamfer_mod.fused_available(src.device), "the fused kernel must be available on the CUDA training path"
     for fused in backends:
         d, i = nearest_neighbours(src, dst, fused=fused)
         assert torch.equal(i.cpu(), ref_i), fused
         torch.testing.assert_close(d.cpu().double(), ref_d, atol=1e-5, rtol=1e-5)
+
+
+def test_unbuildable_kernel_falls_back_to_the_exact_tiles(monkeypatch):
+    g = torch.Generator().manual_seed(3)
+    src, dst = torch.randn(2, 70, 3, generator=g), torch.randn(2, 41, 3, generator=g)
+    monkeypatch.setattr(chamfer_mod, "_FUSED_OK", {"cpu": False})
+    ref_d, ref_i = _brute(src.double(), dst.double())
+    d, i = nearest_neighbours(src, dst)
+    assert torch.equal(i, ref_i)
+    torch.testing.assert_close(d.double(), ref_d, atol=1e-5, rtol=1e-5)
 
 
 def test_chamfer_value_and_gradient_equal_the_dense_min_formulation():
