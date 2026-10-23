@@ -18,7 +18,7 @@ panels only) the displacements are zero (persistence).
 Per-frame pilots (2026-10-23, off by default): ``motion_head = False`` decodes a static set from one frame's state (the
 dynamic group keeps its budget and parametrisation but no displacement head); ``temporal_branch = True`` adds the
 pair-conditioned temporal reconstruction branch (``PairTemporalBranch``), which moves the dynamic Gaussians of a SOURCE
-frame's decoded set to a target frame from the two frames' independently encoded states. This is pair-conditioned
+frame's decoded set to a target frame from the two frames' independently encoded (masked) states. This is pair-conditioned
 temporal reconstruction, not causal action-conditioned future prediction: no action, timestep or horizon input.
 
 Screened options (review item 4, all off by default): ``state_concat`` concatenates the full K-slot state to every
@@ -231,8 +231,8 @@ class PairTemporalBranch(nn.Module):
 
     For a frame pair (a, b): the displacement from time a to time b of every dynamic Gaussian of the set decoded from
     frame a, from that Gaussian's own decoder child feature and an embedding of the two frames' states (each encoded
-    independently by the shared single-image encoder: frame a with the spatial-reconstruction masking, frame b with a
-    separate, more strongly masked encoding). Identities are those of the source set; nothing is matched or subtracted
+    independently by the shared single-image encoder with its own 75 % uniform random mask: the same encoder outputs
+    the frames' spatial reconstructions use). Identities are those of the source set; nothing is matched or subtracted
     across independently decoded sets. Pair MLP [s_a, s_b] (2*K*Ds) -> hidden -> embed; displacement MLP
     [feature, embed] -> dim -> 3 with a zero-initialised output (persistence at initialisation), tanh * motion_max."""
 

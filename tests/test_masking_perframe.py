@@ -242,8 +242,9 @@ def test_perframe_forward_encodes_every_image_alone_and_reaches_the_encoder(batc
     assert out["gs"].xyz.shape[0] == B * T
     temporal = variant == "perframe_temporal.yaml"
     N = model.encoder.cfg.num_patches
-    if temporal:  # the separate target encodings: frames 1 and 2 of the source camera, 10 % of the patches
-        assert (B * 2, 1) == tuple(rows[-1][0][:2]) and rows[-1][1] == visible_count(N, 0.9)
+    # identical image exposure in both pilots: the real images (75 % masks) and the synthetic views, nothing else
+    assert len(rows) == 2 and rows[1][0][:2] == (B * 2 * T, 1) and rows[1][1] == visible_count(N, 0.75)
+    if temporal:
         assert all(f"psnr_cross_{a}{b}" in out["metrics"] for a, b in ("01", "12", "02"))
         assert out["losses"]["motion"] >= 0 and "cross_render" in out["losses"]
     else:
@@ -255,19 +256,22 @@ def test_perframe_forward_encodes_every_image_alone_and_reaches_the_encoder(batc
         assert branch > 0
 
 
-def test_temporal_branch_target_input_is_the_separate_strongly_masked_encoding(batch, monkeypatch):
-    """The branch's target input is a separate encoding of frame b (source camera) with the target mask, never frame b's
-    spatial-reconstruction encoding; pairs with the same target share it."""
-    from s4d.train import perframe
-
+def test_temporal_branch_reuses_each_frames_spatial_encoding(batch, monkeypatch):
+    """75 % source / 75 % target: the branch conditions on the source camera's encodings of frames a and b, i.e. the same
+    masked encoder outputs the spatial reconstructions use (no separate target encoding)."""
     _fake(monkeypatch, [])
     batch["images"] = torch.randint(0, 256, batch["images"].shape, dtype=torch.uint8)
     cfg = _cfg("perframe_temporal.yaml")
     model = build_model(cfg).train()
-    N = model.encoder.cfg.num_patches
-    fixed = torch.zeros(4, N, dtype=torch.bool)
-    fixed[:, :visible_count(N, 0.9)] = True
-    monkeypatch.setattr(perframe, "sample_random_tokens", lambda rows, tokens, keep, device: fixed[:rows].to(device))
+    encoded = []
+    original_encode = model.encoder._encode
+
+    def recording_encode(images, motion_score, mask_ratio, visible):
+        out = original_encode(images, motion_score, mask_ratio, visible)
+        encoded.append(out["slots"].detach().clone())
+        return out
+
+    monkeypatch.setattr(model.encoder, "_encode", recording_encode)
     captured = []
     original = model.decoder.temporal.forward
 
@@ -278,15 +282,13 @@ def test_temporal_branch_target_input_is_the_separate_strongly_masked_encoding(b
     monkeypatch.setattr(model.decoder.temporal, "forward", recording)
     source = torch.tensor([0, 1])
     forward_losses(model, batch, cfg, 30000, source=source)
-    imgs = batch["images"].float() / 255
-    tgt_in = imgs[:, [1, 2]][torch.arange(2), :, source].reshape(4, 1, 3, 16, 16)
-    expect = model.encoder.forward_visible(tgt_in, fixed)["slots"].detach().view(2, 2, *captured[0][1].shape[1:])
-    assert len(captured) == 3  # pairs (0,1), (1,2), (0,2): targets frames 1, 2, 2
-    torch.testing.assert_close(captured[0][1], expect[:, 0])
-    torch.testing.assert_close(captured[1][1], expect[:, 1])
-    torch.testing.assert_close(captured[2][1], expect[:, 1])
-    assert not torch.allclose(captured[1][0], captured[0][1])  # frame 1: spatial (source) != separate target encoding
-    torch.testing.assert_close(captured[0][0], captured[2][0])  # both pairs from frame 0 use its spatial encoding
+    B, T, V = batch["images"].shape[:3]
+    real = encoded[0].view(B, V, T, *encoded[0].shape[1:])  # rows (b, v, t): the spatial encodings
+    own = real[torch.arange(B), source]  # (B,T,K,Ds), source camera
+    assert len(captured) == 3
+    for (a, b, _), (s, t) in zip(((0, 1, 0), (1, 2, 1), (0, 2, 0)), captured):
+        torch.testing.assert_close(s, own[:, a])
+        torch.testing.assert_close(t, own[:, b])
 
 
 def test_rl_frame_modes_keep_history_and_refuse_mismatches():

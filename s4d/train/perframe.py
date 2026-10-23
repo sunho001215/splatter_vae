@@ -17,16 +17,17 @@ reconstruction of its own input, so no temporal ramp). View invariance: InfoNCE 
 training cameras plus the synthetic views (each synthetic frame encoded on its own with the same random masking,
 restricted to covered patches), averaged over the frames.
 
-Temporal pilot (``model.perframe.temporal``): for every pair (a, b) of ``PAIRS`` = (0,1), (1,2), (0,2) the dynamic
-Gaussians of the set decoded from frame a (its spatial-reconstruction encoding) are moved to time b by the decoder's
-``PairTemporalBranch``, conditioned on that encoding and on a SEPARATE encoding of frame b (source camera) with
-``model.perframe.target_mask_ratio`` (0.9 -> 6 of 64 patches, sampled independently, in training and evaluation alike);
-the branch never sees frame b's spatial encoding. Cross-time reconstruction: the moved source set rendered at time b in
-every training camera against frame b (RGB, depth, coverage, Chamfer as above, mean over the pairs); M3D on each pair's
-own source set and displacement (identities of the source set, never matched across sets). Both are ramped like the
-reference's temporal terms (``loss.ramp_steps``) and weigh 1 : 1 against the spatial reconstruction. Gradients reach the
-shared encoder through both states. The extra cost over the spatial pilot: one 6-token encoding of frames 1 and 2 of the
-source camera per sample, the branch, and three renders of the moved sets in the training cameras.
+Temporal pilot (``model.perframe.temporal``; 75 % source / 75 % target masking, user revision 2026-10-23 before any
+launch): for every pair (a, b) of ``PAIRS`` = (0,1), (1,2), (0,2) the dynamic Gaussians of the set decoded from frame a
+are moved to time b by the decoder's ``PairTemporalBranch``, conditioned on the source camera's encodings of frame a and
+frame b, i.e. the SAME masked encoder outputs (16 of 64 patches each, independent uniform masks) that the two frames'
+spatial reconstructions use; no further encoding is computed. Cross-time reconstruction: the moved source set rendered at
+time b in every training camera against frame b (RGB, depth, coverage, Chamfer as above, mean over the pairs); M3D on
+each pair's own source set and displacement (identities of the source set, never matched across sets). Both are ramped
+like the reference's temporal terms (``loss.ramp_steps``) and weigh 1 : 1 against the spatial reconstruction. Gradients
+reach the shared encoder through both states. Image sampling, masking and encodings are identical to the spatial pilot;
+the extra cost is the branch, three renders of the moved sets in the training cameras and M3D. (The superseded first
+definition, never run, used a separate 90 %-masked target encoding: commit 5fd623e.)
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ from s4d.losses.motion import expected_displacement, motion_loss
 from s4d.losses.motion3d import motion3d_loss
 from s4d.losses.occlusion import usage_diagnostics
 from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss
-from s4d.model.encoder import sample_random_tokens, visible_count
+from s4d.model.encoder import visible_count
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_rgbd
 from s4d.train.augment import coverage_visible_tokens, jitter_cameras, synthesize_views
@@ -51,7 +52,6 @@ from s4d.train.augment import coverage_visible_tokens, jitter_cameras, synthesiz
 MOVING_SCORE = 0.5
 STATIC_SCORE = 0.05
 ACTIVE_OPACITY = 0.05
-TARGET_TIMES = sorted({b for _, b, _ in PAIRS})  # frames that are a pair's target: (1, 2)
 UNSUPPORTED = {  # reference options outside the pilot definition: refused instead of silently ignored
     "loss.depth_grad": 0.0, "loss.depth_hard": 0.0, "loss.visibility": 0.0, "loss.occlusion": 0.0,
     "loss.self_render": 0.0, "loss.depth_align": "none", "loss.teacher_scale_jitter": None,
@@ -102,8 +102,8 @@ def render_per_time(gs: GaussianSet, xyz: torch.Tensor, w2c: torch.Tensor, K: to
 def check_perframe_config(cfg: dict) -> dict:
     pf = get(cfg, "model.perframe")
     if not isinstance(pf, dict):
-        raise ValueError("model.perframe must be a mapping {temporal, target_mask_ratio}")
-    unknown = set(pf) - {"temporal", "target_mask_ratio"}
+        raise ValueError("model.perframe must be a mapping {temporal}")
+    unknown = set(pf) - {"temporal"}
     if unknown:
         raise ValueError(f"unknown model.perframe keys {sorted(unknown)}")
     for key, value in UNSUPPORTED.items():
@@ -251,20 +251,13 @@ def forward_losses_perframe(
     if temporal:
         if motion_targets(batch) != "dense":
             raise ValueError("the per-frame temporal pilot is defined for dense Meta-World motion targets")
-        t_ratio = float(pf.get("target_mask_ratio", 0.9))
-        n_keep_t = visible_count(N_tok, t_ratio)
-        tgt_in = images01[:, TARGET_TIMES][ar, :, source].reshape(B * len(TARGET_TIMES), 1, 3, H, W)
-        tgt_visible = sample_random_tokens(tgt_in.shape[0], N_tok, n_keep_t, device)  # independent of the 75% masks
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
-            tgt_slots = encoder.forward_visible(tgt_in, tgt_visible)["slots"]
-        tgt_slots = tgt_slots.view(B, len(TARGET_TIMES), Ks, Ds)
         dyn = gs.group == DYNAMIC_GROUP
         dyn_idx = torch.nonzero(dyn, as_tuple=False)[:, 0]
         feats = dyn_feats.view(B, T, dyn_feats.shape[1], dyn_feats.shape[2])
         sources, disps = [], []
         for a, b, _ in PAIRS:
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
-                d = decoder.temporal(feats[:, a], src_slots[:, a], tgt_slots[:, TARGET_TIMES.index(b)])
+                d = decoder.temporal(feats[:, a], src_slots[:, a], src_slots[:, b])  # the frames' own encodings
             disps.append(torch.zeros(B, N, 3, device=device, dtype=d.dtype).index_copy(1, dyn_idx, d))
             sources.append(xyz_t[:, a])
         P = len(PAIRS)
@@ -321,7 +314,6 @@ def forward_losses_perframe(
                 temporal_metrics[f"psnr_cross_{a}{b}"] = _nanmean(psnr_x[:, p])
                 temporal_metrics[f"psnr_cross_moving_{a}{b}"] = _nanmean(psnr_xm[:, p])
             temporal_metrics["translation_dyn_mean"] = torch.stack([d[:, dyn_idx].norm(dim=-1).mean() for d in disps]).mean()
-            temporal_metrics["target_visible_tokens"] = torch.tensor(float(n_keep_t), device=device)
             if not training:  # persistence reference: the source set rendered unmoved at the target time
                 rp = render_per_time(gs_pairs, torch.stack(sources, 1).reshape(B * P, N, 3), w2c, K, P, H, W, near, far)
                 psnr_p = masked_psnr(_rows(rp["rgb"]), _rows(x_tgt), ones).view(B, P, V)
