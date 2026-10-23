@@ -1,0 +1,29 @@
+[gpu_guard] cuda:0 -> MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+[gpu_guard] cuda:0 -> MIG-05a151e7-c6bd-5344-91cb-8bfb3a342631 (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+{
+ "fused": {
+  "nn_pred_to_target_s": 0.027682736396789552,
+  "nn_target_to_pred_s": 0.029379328727722167,
+  "chamfer_loss_fwd_bwd_s": 0.054662239074707034,
+  "peak_mem_gb": 0.04004335403442383
+ },
+ "fallback": {
+  "nn_pred_to_target_s": 0.32522288513183595,
+  "nn_target_to_pred_s": 0.3203838195800781,
+  "chamfer_loss_fwd_bwd_s": 0.6348361206054688,
+  "peak_mem_gb": 0.5144543647766113
+ },
+ "agreement": {
+  "index_equal_fraction_pred_to_target": 1.0,
+  "index_equal_fraction_target_to_pred": 1.0,
+  "max_abs_d2_diff": 4.656612873077393e-10,
+  "loss_max_rel_diff": 0.0,
+  "grad_max_abs_diff": 1.1368683772161603e-13,
+  "grad_rel_diff": 1.4019228000705652e-09
+ }
+}
+/home/ws/ws/splatter4d/runs/setup/tools/chamfer_backend_bench.py:127: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+  totals.append(float(res['total']))
+chamfer_lean {'fused': (0.337, 2.59), 'fallback': (0.927, 2.6)} {'total_max_rel_diff': 3.382963457536274e-06, 'encoder_grad_rel_diff': 0.005704866256564856, 'decoder_grad_rel_diff': 5.140688881510869e-05} 2.75
+perframe_temporal {'fused': (0.531, 3.97), 'fallback': (1.699, 4.13)} {'total_max_rel_diff': 1.015365526512717e-06, 'encoder_grad_rel_diff': 0.0020920897368341684, 'decoder_grad_rel_diff': 1.7782775103114545e-05} 3.2

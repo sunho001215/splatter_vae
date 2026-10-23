@@ -4103,3 +4103,47 @@ temporal 0.43-0.44 (chamfer_lean 0.28; one MIG slice). The stacked head has a 76
 parameters, same 256-d output). STP (2403.05304): 75 % current / 95 % future masking, independent random masks, the
 temporal decoder queries the future frame's few tokens against the current frame; our pilot follows the user's
 75 % / 75 % definition.
+
+### 2026-10-23 16:00–17:10 — One local/remote pool: release, derived image, Chamfer backend, validation provenance
+User instructions (2026-10-23, two messages): local and remote are one freely usable pool; fix the remote compiler /
+deployment issue now; prefer a derived image with a C compiler; keep the exact fallback only as a benchmarked recovery
+path; finish the verification, use remote RAM for the remaining validation and revise local-only requirements
+transparently; reconcile the driver, pool commit, image and acceptance records; pin code, config, data and seed per job.
+- **Pool placement** (`runs/setup/tools/pool_placement.py`, manifest `runs/setup/pool-placement.json`): a never-launched
+  row moves between hosts by rewriting only host-specific fields (host, placement, required_results, disk, threads, and
+  for pretraining the output root runs/pretrain -> runs plus its local export's input paths), under the registry and
+  local admission locks; original and effective rows recorded. The remote driver pulls eligible local pretraining, then
+  RL trainer + evaluator pairs, into free remote capacity each pass (load limit 2.8 per GPU, 90 GB GPU memory, 1 TB RAM)
+  and dispatches each job on its pinned (commit, image); retries keep their first launch's. Local drivers apply the
+  overlay. Superseded duplicates (local DynaMo / 3D-MVP / SNeRL hammer rows done remotely) and the gated 300k
+  s3spec rows are not work. The T=1-stack rows were amended before launch (evaluators write to their own
+  --output-dir; required_results declared) so their pairs can sync per job; protocol unchanged.
+- **Release 7aacd74** (main with chamfer_lean, future_k2, pilots): remote native suite 989/1 in the accepted image. The
+  failure was real: the image has Triton but no C compiler, so the fused Chamfer nearest-neighbour kernel cannot build
+  (Chamfer pretraining would crash; RL unaffected). Its retry was a wasted repeat; the chain was stopped after it.
+- **Code fed4c17**: `nearest_neighbours` probes once per device whether the Triton kernel builds and otherwise uses the
+  exact chunked fallback; tests follow Triton's compiler lookup (fused required wherever gcc/clang/CC exist).
+- **Derived image** sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a
+  (`runs/setup/image-cc-20261023/`: Dockerfile, build log): FROM the accepted image (ID c3ffea7f…, verified before the
+  build) + gcc 11.4.0-1ubuntu1~22.04.3 and libc6-dev 2.35-0ubuntu3.15; same environment, user and entry; tag
+  s4d-runtime-03cca5218096dc88-cc:20261023; running containers untouched. Functional check (`kernel_check.py`, fed4c17
+  code, remote GPU 4391): Triton 3.6.0 builds the kernel; fused vs fallback at training shape (48 clouds x 8192 centres
+  vs 4096 points): identical indices, identical loss, gradient relative difference 1.2e-9; Chamfer forward+backward
+  0.023 s fused vs 0.293 s fallback.
+- **Fallback benchmark** (`chamfer_backend_bench.py`, local MIG, real hammer batches; `chamfer-backend-bench-local*.json`):
+  kernel 0.055 vs 0.635 s, peak 0.04 vs 0.51 GB, exact agreement; end to end chamfer_lean step 0.337 vs 0.927 s
+  (2.75x), perframe_temporal 0.531 vs 1.699 s (3.2x), peak 2.59 / 2.60 GB and 3.97 / 4.13 GB; total loss within 3e-6 and
+  encoder gradients within 0.6 % - the same as fused vs fused (0.59 % / 0.21 %, run-to-run nondeterminism of other
+  kernels). Decision: the fallback is a recovery path only; long Chamfer pretraining uses the fused kernel (derived image
+  remotely, local hosts have gcc).
+- **Validation provenance revision**: fed4c17's full remote native suite in the accepted image passed 991/0
+  (verify-native-fed4c17; its first launch was refused by a GPU precheck race and reconciled). The local host cannot
+  reserve the suite's ~40 GB headroom while pretraining runs, so docs/tests.json now carries that remote report with an
+  `adopted_evidence` block (host remote, job, commit, image, report SHA-256, plus the local run of the changed module
+  tests/test_chamfer_lean.py, 15 passed with the fused path), written by `adopt_remote_suite_evidence.py` only after the
+  report's source fingerprints equal the checkout's. Main fast-forwarded to fed4c17 under the local admission lock.
+- Pool release = (fed4c17, derived image); verification of that pair (native suite + four isolation checks) in progress,
+  acceptance under runs/remote/acceptance/fed4c17-cc/. The driver's RELEASES map (commit, image) -> manifest.
+- Per-job provenance ledger `runs/setup/tools/job_provenance.py` -> `runs/setup/job-provenance-20261023.json`
+  (commit, image, source / job fingerprints, seed, resolved-config hash, data identity: remote launch data identity or the
+  accepted data manifests' per-file SHA-256 with a size re-check for local launches).

@@ -8,6 +8,8 @@ and a scoped queue under runs/remote/verification/ holding the verification job(
 through RemoteBackend.ready_verification; campaign acceptance is never replaced by these files.
 
     python -I prepare_remote_verification.py <commit> [--suite runs/<verify job>/evidence/tests.json]
+        [--image <digest> --tag <suffix>]   (2026-10-23: a release on another image, e.g. the derived image with a C
+                                             compiler; job ids and the acceptance directory carry the suffix)
 """
 import hashlib
 import json
@@ -23,11 +25,15 @@ from s4d.remote_jobs import commit_source_sha256  # noqa: E402
 from s4d.remote_verification import POLICIES, validate_development_data, validate_report  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
+if '--image' in sys.argv:
+    IMAGE = sys.argv[sys.argv.index('--image') + 1]
+    assert len(IMAGE) == 71 and IMAGE.startswith('sha256:')
+TAG = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else ''
 DATA = ROOT / 'runs/remote/acceptance/226d8ae/data.json'
 commit = sys.argv[1]
 assert len(commit) == 40
 suite_path = Path(sys.argv[sys.argv.index('--suite') + 1]) if '--suite' in sys.argv else None
-short = commit[:7]
+short = commit[:7] + (f'-{TAG}' if TAG else '')
 out = ROOT / 'runs/remote/acceptance' / short
 out.mkdir(parents=True, exist_ok=True)
 source = commit_source_sha256(ROOT, commit)

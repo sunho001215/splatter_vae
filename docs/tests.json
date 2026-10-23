@@ -1,35 +1,35 @@
 {
-  "started_utc": "2026-10-23T06:32:01.631316+00:00",
+  "started_utc": "2026-10-23T07:50:11.907797+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
-  "host": "local",
-  "expected_commit": null,
-  "expected_image_digest": null,
+  "host": "remote",
+  "expected_commit": "fed4c177949d367fa0dbefb1da7bc4690aa38d02",
+  "expected_image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
   "gpu_mapping": [
     {
       "index": 0,
-      "uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
-      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+      "uuid": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/mpf/tests",
+    "/workspace/splatter4d/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/mpf/docs/tests.junit.xml",
+    "--junitxml=/home/compu/kaist/sunho/runtime/verification/verify-native-fed4c17/a2/evidence/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/mpf/docs/pytest-cache"
+    "cache_dir=/home/compu/kaist/sunho/runtime/verification/verify-native-fed4c17/a2/evidence/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 486.5518032320542,
+  "duration_seconds": 329.09774453000864,
   "counts": {
-    "passed": 990,
+    "passed": 991,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 990,
+  "total": 991,
   "full_suite_passed": true,
   "source_sha256": {
     "mujoco_mig_setup.py": "5fe3af1ebccfbfde5345a92fde874e574ca9da04cdc8fd3521e823d8e147238c",
@@ -100,7 +100,7 @@
     "s4d/geometry.py": "ed72b3e82278a437ff673a063c75536cac05a000e337353c4870b5f69e025660",
     "s4d/gpu_guard.py": "720b7f7594dbea9fbeb6116863d8e1c3259090548c1c8db4d1a6e20557888026",
     "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "s4d/losses/chamfer.py": "f666e55e2d1ae9b20c8c15cbaccfa3beb92390289217b2d86015b06c4823214a",
+    "s4d/losses/chamfer.py": "5c2da86c69bc382e40521aff38d035d56abe2be1c4421fad7becf09b4061c985",
     "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
     "s4d/losses/invariance.py": "6746f4115e6cf88f7056f914f5f881b0aeda990b8def4bfd6f669a8c93481d3b",
     "s4d/losses/motion.py": "02bdd3d7b64afcc0347ebb2f962ed51678d6b609563b92d157354251c0c03b84",
@@ -198,7 +198,7 @@
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
     "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
-    "tests/test_chamfer_lean.py": "f0b2b7a2ac2087324b76405866a5367be7b77359f7869369f25e125fe94ff8c4",
+    "tests/test_chamfer_lean.py": "d3a03361695e49312201ac0a216dbfd6f2cd2fe1b4056ca154496722f7cd6271",
     "tests/test_checkpoint.py": "eb136245edb00ea4e64481c5601fc86eb5d7ee2d5445762962d64f427ef741be",
     "tests/test_cli.py": "5ff1ba1b08fd8df9281e05e01bb2df06525b480fb90887457afd944e99a69030",
     "tests/test_contract.py": "cb565776a50aa300021b875ccd268f090fe84d7a7b08ed2800e848ba2ee9ae08",
@@ -401,7 +401,7 @@
     "s4d/geometry.py": "ed72b3e82278a437ff673a063c75536cac05a000e337353c4870b5f69e025660",
     "s4d/gpu_guard.py": "720b7f7594dbea9fbeb6116863d8e1c3259090548c1c8db4d1a6e20557888026",
     "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "s4d/losses/chamfer.py": "f666e55e2d1ae9b20c8c15cbaccfa3beb92390289217b2d86015b06c4823214a",
+    "s4d/losses/chamfer.py": "5c2da86c69bc382e40521aff38d035d56abe2be1c4421fad7becf09b4061c985",
     "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
     "s4d/losses/invariance.py": "6746f4115e6cf88f7056f914f5f881b0aeda990b8def4bfd6f669a8c93481d3b",
     "s4d/losses/motion.py": "02bdd3d7b64afcc0347ebb2f962ed51678d6b609563b92d157354251c0c03b84",
@@ -499,7 +499,7 @@
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
     "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
-    "tests/test_chamfer_lean.py": "f0b2b7a2ac2087324b76405866a5367be7b77359f7869369f25e125fe94ff8c4",
+    "tests/test_chamfer_lean.py": "d3a03361695e49312201ac0a216dbfd6f2cd2fe1b4056ca154496722f7cd6271",
     "tests/test_checkpoint.py": "eb136245edb00ea4e64481c5601fc86eb5d7ee2d5445762962d64f427ef741be",
     "tests/test_cli.py": "5ff1ba1b08fd8df9281e05e01bb2df06525b480fb90887457afd944e99a69030",
     "tests/test_contract.py": "cb565776a50aa300021b875ccd268f090fe84d7a7b08ed2800e848ba2ee9ae08",
@@ -1277,6 +1277,7 @@
     "s4d/losses/chamfer.py": [
       "<module>",
       "chamfer_loss",
+      "fused_available",
       "nearest_neighbours",
       "target_clouds"
     ],
@@ -1977,5 +1978,19 @@
     ]
   },
   "problems": [],
-  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance."
+  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
+  "adopted_evidence": {
+    "host": "remote",
+    "job": "verify-native-fed4c17",
+    "commit": "fed4c177949d367fa0dbefb1da7bc4690aa38d02",
+    "image_digest": "sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7",
+    "report": "runs/verify-native-fed4c17/evidence/tests.json",
+    "report_sha256": "a8e7441ff27a967072760577f94c9aa74ab3f9c0881aa2b05b12a5c70e223013",
+    "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+    "adopted_at": "2026-10-23T16:57:50+0900",
+    "local_runs": [
+      "tests/test_chamfer_lean.py: 15 passed at the fed4c17 sources on local MIG-2ebd9e11 (fused Triton path; 2026-10-23 16:4x)"
+    ],
+    "policy": "user instruction 2026-10-23: remote RAM for the remaining validation; the full native suite of the exact sources on the remote host is accepted as the launch-gate evidence when the local host lacks the suite headroom; provenance kept here (not a local run)"
+  }
 }

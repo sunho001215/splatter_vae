@@ -23,12 +23,17 @@ FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 s
 # is identical to the frozen source and the single-camera RL path is unchanged (runs/remote/acceptance/cffa071).
 COMMIT = '7c0d0d211774ceec0729a2d67ada318f1e872d39'  # 7c0d0d2: e4206f1 + aug.shift / agent.random_shift + evaluator fixes
 MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
-# Pool release (2026-10-23, user instruction: local and remote are one experiment pool): 7aacd74 = main with chamfer_lean,
-# future_k2 and the masking / per-frame pilots. Rows placed on the remote by runs/setup/tools/pool_placement.py run on it;
-# every other kind keeps COMMIT for new admissions, and a retry always keeps the commit of its first launch.
-POOL_COMMIT = '7aacd749d930bd7dd9fa6857e708ae9e60d25313'
-RELEASES = {COMMIT: MANIFEST, POOL_COMMIT: f'runs/remote/acceptance/{POOL_COMMIT[:7]}/manifest.json'}
-POOL_READY = (REPO / RELEASES[POOL_COMMIT]).is_file()
+# Pool release (2026-10-23, user instructions: local and remote are one experiment pool; fix the remote environment):
+# code fed4c17 = main 7aacd74 sources (chamfer_lean, future_k2, masking / per-frame pilots) + a probed Chamfer backend
+# (exact fallback only where Triton cannot build); image = the accepted runtime image + gcc / libc6-dev
+# (runs/setup/image-cc-20261023/: Dockerfile, build log, kernel check), so the fused Chamfer kernel builds on the remote.
+# Rows placed on the remote by runs/setup/tools/pool_placement.py run on this (commit, image); every other kind keeps
+# (COMMIT, IMAGE) for new admissions, and a retry always keeps the commit and image of its first launch.
+POOL_COMMIT = 'fed4c177949d367fa0dbefb1da7bc4690aa38d02'
+POOL_IMAGE = 'sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a'
+RELEASES = {(COMMIT, IMAGE): MANIFEST,
+            (POOL_COMMIT, POOL_IMAGE): f'runs/remote/acceptance/{POOL_COMMIT[:7]}-cc/manifest.json'}
+POOL_READY = (REPO / RELEASES[(POOL_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -484,32 +489,32 @@ if POOL_READY and not DRY and not held:
                     total -= need
 
 
-def job_commit(job):
-    """The release a job runs on: a retry keeps its first launch's commit; pool rows the pool release; others COMMIT."""
-    previous = state.get(job['id'], {}).get('commit')
-    if previous:
-        return previous
-    return POOL_COMMIT if kind(job['id']) in ('pool_pretrain', 'pool_rl') else COMMIT
+def job_release(job):
+    """(commit, image) a job runs on: a retry keeps its first launch's; pool rows the pool release; others COMMIT/IMAGE."""
+    previous = state.get(job['id'], {})
+    if previous.get('commit'):
+        return previous['commit'], previous.get('image_digest', IMAGE)
+    return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)
 
 
 if chosen and DRY:
-    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8], job_commit(j)[:7]) for j in chosen]}, reserved {total} bytes")
+    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8], job_release(j)[0][:7]) for j in chosen]}, reserved {total} bytes")
 if chosen and not DRY:
     groups = {}
     for job in chosen:
-        groups.setdefault(job_commit(job), []).append(job)
-    for commit, group in groups.items():
-        if commit not in RELEASES or not (REPO / RELEASES[commit]).is_file():
-            messages.append(f'HELD {[j["id"] for j in group]}: release {commit[:7]} has no accepted manifest')
+        groups.setdefault(job_release(job), []).append(job)
+    for (commit, image), group in groups.items():
+        if (commit, image) not in RELEASES or not (REPO / RELEASES[(commit, image)]).is_file():
+            messages.append(f'HELD {[j["id"] for j in group]}: release {commit[:7]}/{image[7:15]} has no accepted manifest')
             continue
         host = copy.deepcopy(queue['hosts']['remote'])
-        host.update(enabled=True, commit=commit, image_digest=IMAGE, evidence_manifest=RELEASES[commit])
+        host.update(enabled=True, commit=commit, image_digest=image, evidence_manifest=RELEASES[(commit, image)])
         qtag = f'{tag}-{commit[:7]}' if len(groups) > 1 else tag
         qpath = REPO / 'runs/setup' / f'remote-dispatch-{qtag}.yaml'
         with qpath.open('x') as stream:
             yaml.safe_dump({'hosts': {'local': {'enabled': False}, 'remote': host}, 'jobs': group}, stream, sort_keys=False)
         with (REPO / 'runs/setup' / f'remote-dispatch-{qtag}.json').open('x') as stream:
-            json.dump({'recorded_local': stamp.isoformat(), 'commit': commit, 'image_digest': IMAGE,
+            json.dump({'recorded_local': stamp.isoformat(), 'commit': commit, 'image_digest': image,
                        'gpu_load_limit': GPU_LOAD_LIMIT, 'max_reviwo': MAX_REVIWO, 'cap_bytes': CAP,
                        'reserved_before_bytes': reserved, 'reserved_after_bytes': total,
                        'admission': 'job by job', 'freeze_manifest_sha256': freeze_sha if freeze else None,

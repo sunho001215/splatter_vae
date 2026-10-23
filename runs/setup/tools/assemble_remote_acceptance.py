@@ -22,7 +22,11 @@ from scripts import jobs  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 commit = sys.argv[1]
-short = commit[:7]
+if '--image' in sys.argv:  # 2026-10-23: a release on another image (job ids / directory carry --tag)
+    IMAGE = sys.argv[sys.argv.index('--image') + 1]
+    assert len(IMAGE) == 71 and IMAGE.startswith('sha256:')
+TAG = sys.argv[sys.argv.index('--tag') + 1] if '--tag' in sys.argv else ''
+short = commit[:7] + (f'-{TAG}' if TAG else '')
 out = ROOT / 'runs/remote/acceptance' / short
 out.mkdir(parents=True, exist_ok=True)
 state = jobs.read_registry()
