@@ -46,6 +46,7 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'mpf-registration-20261023.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
+POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
 DRY = '--dry-run' in sys.argv
 SETUP = ROOT / 'runs/setup'
@@ -66,6 +67,9 @@ for name in REGISTRATIONS:
         record = json.loads((SETUP / name).read_text())
         # host-neutral execution overlay (scientific fields unchanged): baselines-placement-20261018.json
         overlay = json.loads(PLACEMENT.read_text())['effective_jobs'] if PLACEMENT.is_file() else {}
+        # host-neutral pool placement (2026-10-23; host-specific fields only): runs/setup/pool-placement.json
+        if POOL.is_file():
+            overlay = {**overlay, **json.loads(POOL.read_text())['effective_jobs']}
         record_jobs = [overlay.get(j['id'], j) for j in record['jobs']]
         assert [by_queue[j['id']] for j in record_jobs] == record_jobs, f'{name}: jobs changed in the queue'
         registered += [j for j in record_jobs if name not in ONLY or j['id'] in ONLY[name]]

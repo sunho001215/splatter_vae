@@ -23,6 +23,12 @@ FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 s
 # is identical to the frozen source and the single-camera RL path is unchanged (runs/remote/acceptance/cffa071).
 COMMIT = '7c0d0d211774ceec0729a2d67ada318f1e872d39'  # 7c0d0d2: e4206f1 + aug.shift / agent.random_shift + evaluator fixes
 MANIFEST = f'runs/remote/acceptance/{COMMIT[:7]}/manifest.json'
+# Pool release (2026-10-23, user instruction: local and remote are one experiment pool): 7aacd74 = main with chamfer_lean,
+# future_k2 and the masking / per-frame pilots. Rows placed on the remote by runs/setup/tools/pool_placement.py run on it;
+# every other kind keeps COMMIT for new admissions, and a retry always keeps the commit of its first launch.
+POOL_COMMIT = '7aacd749d930bd7dd9fa6857e708ae9e60d25313'
+RELEASES = {COMMIT: MANIFEST, POOL_COMMIT: f'runs/remote/acceptance/{POOL_COMMIT[:7]}/manifest.json'}
+POOL_READY = (REPO / RELEASES[POOL_COMMIT]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -59,6 +65,9 @@ S2_KINDS = {'scripts/train.py': 's2_pretrain', 'scripts/evaluate.py': 's2_eval',
 
 
 def kind(job_id):
+    row = globals().get('by_id', {}).get(job_id)
+    if row is not None and str(row.get('placement', '')).startswith('pool'):
+        return 'pool_pretrain' if row['script'] == 'scripts/train.py' else 'pool_rl'
     if job_id in S2_REMOTE:
         return S2_KINDS[S2_REMOTE[job_id]['script']]
     if job_id.startswith('ls-proxy-'):
@@ -91,7 +100,7 @@ def load(job):
         return 0.6
     if jid.endswith('-eval'):
         return 0.3
-    if kind(jid) in ('proxy', 'brl', 'orl', 's2_rl', 'nbrl'):
+    if kind(jid) in ('proxy', 'brl', 'orl', 's2_rl', 'nbrl', 'pool_rl'):
         return 0.5
     if jid.startswith('s4-reviwo-'):
         return 0.4
@@ -162,7 +171,7 @@ for job in remote:
         (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
         messages.append(f'EXPORT_VERIFIED {jid}')
         continue
-    if kind(jid) in ('proxy', 'brl', 'orl', 'nbrl'):
+    if kind(jid) in ('proxy', 'brl', 'orl', 'nbrl', 'pool_rl'):
         if state.get(f'{jid}-eval', {}).get('status') != jobs.DONE:
             continue
         jobs._verify_synced_exit(f'{jid}-eval', state[f'{jid}-eval'], state[f'{jid}-eval']['sync'], REPO / 'runs')
@@ -191,6 +200,11 @@ for job in remote:
             assert (run / 'encoder.pt').is_file() and (run / 'encoder_init.pt').is_file(), jid
             target = last + 1000  # the recipe's own length (epochs or steps) is recorded in completion.json
             record['completion'] = completion
+        elif kind(jid) == 'pool_pretrain':
+            completion = json.loads((run / 'completion.json').read_text())
+            target = pretrain_target(job)
+            assert completion['status'] == 'completed' and completion['steps'] == target, (jid, completion)
+            record['completion'] = completion
         elif kind(jid) in ('stage3', 'final_pretrain'):
             completion = json.loads((run / 'completion.json').read_text())
             target = pretrain_target(job)
@@ -211,7 +225,7 @@ for job in remote:
     record['wandb'] = 'deferred to the sync_wandb_remote.py batch'
     record['wandb_runs'] = ids
     (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
-    if 'remote_free_bytes' in record:
+    if 'remote_free_bytes' in record and kind(jid) != 'pool_rl':  # pool RL closeouts: no per-run PROGRESS rows
         row = (f"| {stamp.strftime('%Y-%m-%d %H:%M')} | remote {record['remote_free_bytes'] / 1e12:.2f} TB ({jid} "
                f"completed with final eval at {record['final_steps'] // 1000}k; remote replay retained) |\n")
         progress = REPO / 'docs/PROGRESS.md'
@@ -288,6 +302,23 @@ def ready(job):
             client.rsync_upload(config, f'{ROOT}/runs/{jid}/config.yaml')
             marker.write_text(json.dumps({'sha256': digest, 'uploaded': stamp.isoformat()}) + '\n')
         return True
+    if k == 'pool_rl':  # the export (a local file) is uploaded once, checksum-verified, before the pair starts
+        trainer = by_id[jid.removesuffix('-eval')]
+        export = next(a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path='))
+        local = REPO / export
+        if not local.is_file():
+            return False
+        marker = REPO / 'runs/remote/exports' / (export.replace('/', '__') + '.json')
+        digest = hashlib.sha256(local.read_bytes()).hexdigest()
+        if marker.exists() and json.loads(marker.read_text())['sha256'] == digest:
+            return True
+        client.rsync_upload(local, f'{ROOT}/{export}')
+        remote = client.checked_ssh(f'sha256sum {shlex.quote(ROOT + "/" + export)}', wait=False, idempotent=True,
+                                    timeout=600).stdout.split()[0]
+        assert remote == digest, export
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({'export': export, 'sha256': digest, 'uploaded': stamp.isoformat()}) + '\n')
+        return True
     if k == 'nbrl':
         trainer = by_id[jid.removesuffix('-eval')]
         export = trainer['baseline_export']
@@ -322,13 +353,14 @@ def ready(job):
         return False
     task = task_of(job)
     need = {f'{task}.hdf5', f'splits/{task}_seed0.json'}
-    if k in ('stage3', 'final_pretrain', 's2_pretrain'):
+    if k in ('stage3', 'final_pretrain', 's2_pretrain', 'pool_pretrain'):
         need |= {f'heldout_sets/{task}.hdf5', f'workspace_stats/{task}.json'}
     return need <= targets
 
 
 RANK = {'proxy': 0, 'final_export': 0, 's2_eval': 0, 's2_rl': 0.5, 'baseline': 1,
-        'final_pretrain': 1, 'nbaseline': 1.5, 'brl': 2, 'orl': 2, 'nbrl': 2.2, 's2_pretrain': 2.5, 'stage3': 3}
+        'final_pretrain': 1, 'nbaseline': 1.5, 'pool_pretrain': 1.6, 'brl': 2, 'orl': 2, 'pool_rl': 2, 'nbrl': 2.2,
+        's2_pretrain': 2.5, 'stage3': 3}
 
 
 def dispatch_key(job):
@@ -392,24 +424,100 @@ for job in candidates:
     taken.add(job['id'])
     total += need
     reviwo += job['id'].startswith('s4-reviwo-')
+# ---- host-neutral pool (user instruction 2026-10-23): eligible, never-launched local rows that the remote can start
+# now move here (runs/setup/tools/pool_placement.py: host-specific fields only) and are admitted in this pass. Pretraining
+# first (it gains most from the full GPUs), then RL trainer + evaluator pairs, each in priority / registration order.
+held = (REPO / 'runs/setup/remote-hold-admissions').exists()
+if POOL_READY and not DRY and not held:
+    sys.path.insert(0, str(REPO / 'runs/setup/tools'))
+    import pool_placement  # noqa: E402
+
+    units = []
+    for job in jobs.eligible(queue['jobs'], retry_view):
+        if job.get('host', 'local') != 'local' or job['script'] not in ('scripts/train.py', 'scripts/train_rl.py'):
+            continue
+        if not pool_placement.movable(job, state, by_id):
+            continue
+        members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
+        units.append(members)
+    units.sort(key=lambda m: 0 if m[0]['script'] == 'scripts/train.py' else 1)
+    plan = []
+    for members in units:
+        tentative = []
+        for u in members:
+            row_load = 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else 0.5)
+            need = int(float(u['ram_gb']) * 2**30)
+            fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
+                       and gpu_mem[g] + float(u['mem_gb']) <= 90]
+            if total + need > CAP or not fitting:
+                break
+            g = min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g]))
+            gpu_load[g] += row_load
+            gpu_mem[g] += float(u['mem_gb'])
+            total += need
+            tentative.append((u['id'], g, row_load, float(u['mem_gb']), need))
+        if len(tentative) != len(members):
+            for _, g, row_load, mem, need in tentative:
+                gpu_load[g] -= row_load
+                gpu_mem[g] -= mem
+                total -= need
+            continue
+        plan.append(tentative)
+    wanted = [t[0] for tentative in plan for t in tentative]
+    moved = set(pool_placement.move(wanted, 'remote', 'free remote capacity (remote driver pass)')) if wanted else set()
+    if wanted and not moved:
+        messages.append(f'POOL move skipped (local admission in progress or rows already admitted): {wanted[:4]}')
+    if moved:
+        queue = jobs.load_queue()
+        by_id = {j['id']: j for j in queue['jobs']}
+        remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
+        messages.append(f'POOL moved to remote: {sorted(moved)}')
+        for tentative in plan:
+            ok = all(i in moved for i, *_ in tentative) and all(ready(by_id[i]) for i, *_ in tentative)
+            for i, g, row_load, mem, need in tentative:
+                if ok:
+                    chosen.append({**copy.deepcopy(by_id[i]), 'gpu': g})
+                    taken.add(i)
+                else:  # placed but not startable yet (e.g. export upload pending): admitted by a later pass
+                    gpu_load[g] -= row_load
+                    gpu_mem[g] -= mem
+                    total -= need
+
+
+def job_commit(job):
+    """The release a job runs on: a retry keeps its first launch's commit; pool rows the pool release; others COMMIT."""
+    previous = state.get(job['id'], {}).get('commit')
+    if previous:
+        return previous
+    return POOL_COMMIT if kind(job['id']) in ('pool_pretrain', 'pool_rl') else COMMIT
+
+
 if chosen and DRY:
-    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8]) for j in chosen]}, reserved {total} bytes")
+    messages.append(f"DRY_RUN would admit {[(j['id'], j['gpu'][4:8], job_commit(j)[:7]) for j in chosen]}, reserved {total} bytes")
 if chosen and not DRY:
-    host = copy.deepcopy(queue['hosts']['remote'])
-    host.update(enabled=True, commit=COMMIT, image_digest=IMAGE, evidence_manifest=MANIFEST)
-    qpath = REPO / 'runs/setup' / f'remote-dispatch-{tag}.yaml'
-    with qpath.open('x') as stream:
-        yaml.safe_dump({'hosts': {'local': {'enabled': False}, 'remote': host}, 'jobs': chosen}, stream, sort_keys=False)
-    with (REPO / 'runs/setup' / f'remote-dispatch-{tag}.json').open('x') as stream:
-        json.dump({'recorded_local': stamp.isoformat(), 'commit': COMMIT, 'image_digest': IMAGE,
-                   'gpu_load_limit': GPU_LOAD_LIMIT, 'max_reviwo': MAX_REVIWO, 'cap_bytes': CAP,
-                   'reserved_before_bytes': reserved, 'reserved_after_bytes': total,
-                   'admission': 'job by job', 'freeze_manifest_sha256': freeze_sha if freeze else None,
-                   'admitted': {j['id']: j['gpu'] for j in chosen}, 'gpu_load_after': gpu_load, 'queue': str(qpath)},
-                  stream, indent=2)
-    messages.append(f"ADMITTING {[(j['id'], j['gpu'][4:8]) for j in chosen]}")
-    backend = RemoteBackend(REPO, REPO / 'runs')
-    messages += jobs.tick(queue_path=qpath, remote_backend=backend)
+    groups = {}
+    for job in chosen:
+        groups.setdefault(job_commit(job), []).append(job)
+    for commit, group in groups.items():
+        if commit not in RELEASES or not (REPO / RELEASES[commit]).is_file():
+            messages.append(f'HELD {[j["id"] for j in group]}: release {commit[:7]} has no accepted manifest')
+            continue
+        host = copy.deepcopy(queue['hosts']['remote'])
+        host.update(enabled=True, commit=commit, image_digest=IMAGE, evidence_manifest=RELEASES[commit])
+        qtag = f'{tag}-{commit[:7]}' if len(groups) > 1 else tag
+        qpath = REPO / 'runs/setup' / f'remote-dispatch-{qtag}.yaml'
+        with qpath.open('x') as stream:
+            yaml.safe_dump({'hosts': {'local': {'enabled': False}, 'remote': host}, 'jobs': group}, stream, sort_keys=False)
+        with (REPO / 'runs/setup' / f'remote-dispatch-{qtag}.json').open('x') as stream:
+            json.dump({'recorded_local': stamp.isoformat(), 'commit': commit, 'image_digest': IMAGE,
+                       'gpu_load_limit': GPU_LOAD_LIMIT, 'max_reviwo': MAX_REVIWO, 'cap_bytes': CAP,
+                       'reserved_before_bytes': reserved, 'reserved_after_bytes': total,
+                       'admission': 'job by job', 'freeze_manifest_sha256': freeze_sha if freeze else None,
+                       'admitted': {j['id']: j['gpu'] for j in group}, 'gpu_load_after': gpu_load, 'queue': str(qpath)},
+                      stream, indent=2)
+        messages.append(f"ADMITTING {[(j['id'], j['gpu'][4:8]) for j in group]} on {commit[:7]}")
+        backend = RemoteBackend(REPO, REPO / 'runs')
+        messages += jobs.tick(queue_path=qpath, remote_backend=backend)
 state = jobs.read_registry()
 counts = {}
 for job in remote:
