@@ -4021,3 +4021,11 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
     - final success −0.083 [−0.186, +0.030]; AUC −0.056 [−0.108, −0.005]; return last-5 −204 [−365, +3], return AUC −124 [−211, −39].
   - Per task (training last-5, mean of 3 seeds, future_k2 − original): peg-insert-side +0.136, pick-place +0.047, stick-push 0.000, coffee-push −0.030, hammer −0.046, bin-picking −0.076, door-open −0.095, peg-unplug-side −0.142.
   - The variant changed the objective, the action conditioning and the temporal sampling together (definition), so the deficit is not attributable to future prediction alone. The full comparison with the original (RL, representation, rendering, forecasting, cost) goes into the variants report together with chamfer_lean.
+- 09:1x (10-23) future_k2 forecasting at 200k, eight tasks (`runs/setup/tools/afk2_diagnostics.py`; outputs and summary `runs/setup/variants-compare-20261023/`; every validation window, k2 = 1..6 averaged):
+  - moving-region PSNR at t+2·k2: correct actions 20.3–26.2 dB vs persistence (no displacement) 14.5–21.5, +3.2 to +7.1 dB;
+  - relative 3D EPE 0→2: correct 0.28–0.48 vs shuffled 0.51–0.85 and reversed 0.58–1.02, so the actions are used;
+  - current-frame PSNR 27.4–29.0 dB.
+  - The registered prediction gate G3 (≥ 0.5 dB over persistence, EPE ≤ 0.8) passes on all eight tasks. The variant forecasts well; its RL deficit (D2) is not a failure to predict.
+- 07:0x (10-23) chamfer_lean RL, interim (hammer and pick-place, 6 runs; `reports/results-artifact/src/variants_rl.py`):
+  - last-5 success on the training cameras, IQM 0.593 vs original 0.721, −0.128 [−0.290, −0.025]; held-out −0.044 [−0.063, −0.021]; moving cameras −0.012 [−0.225, +0.068];
+  - per task: hammer 0.817 vs 0.890, pick-place 0.271 vs 0.506. The other six tasks follow.
