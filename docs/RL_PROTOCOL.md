@@ -198,3 +198,15 @@ Design choices backed by these numbers:
 - **Evaluation pools share one renderer per worker.** Each MuJoCo renderer holds its own copy of the scene textures
   (~0.44 GB); sharing it across a worker's environments is pixel-identical up to the renderer's own +/-1 intensity
   noise on all eight tasks. Pools (6 workers x 8 envs) are opened only while snapshots are pending.
+
+## Vision-only variant (2026-10-23 campaign)
+`env.proprio_indices=[]`: the environment returns an empty proprio vector, so the actor, both critics, the target
+critic, the value network and the dormant-ratio passes receive only the visual representation (their trunks take
+`repr_dim` inputs instead of `repr_dim + 4`). The simulator state is still used internally for rewards, termination and
+success. Everything else is the standard protocol: the same RGB history (3 frames, 2 simulator steps apart), rewards,
+episode length, training-camera sampling, evaluation schedule and camera groups; frozen encoders stay frozen and the CNN
+keeps its random-shift augmentation. The replay stores the zero-width proprio field as an empty in-memory array (a
+zero-size field cannot be memory-mapped). Runs carry the W&B tags `vision_only`, `no_proprio` (`wandb.tags`).
+Tests: `tests/test_vision_only.py` (no proprio inputs; changing the simulator state with fixed images cannot change
+actions, Q or V values, while the with-proprio control does; updates, dormant ratios and replay resume; resolved configs
+differ only in `env.proprio_indices` and the tags).

@@ -79,7 +79,8 @@ class Replay:
         if self.directory is not None:
             self.directory.mkdir(parents=True, exist_ok=True)
         for name, (dtype, shape) in specs.items():
-            if self.directory is None:
+            # zero-width fields (vision-only RL: proprio_dim 0) hold no bytes and cannot be memory-mapped
+            if self.directory is None or int(np.prod(shape)) == 0:
                 array = np.zeros(shape, dtype=dtype)
             else:
                 array = np.memmap(self.directory / f"{name}.memmap", dtype=dtype, mode=mode, shape=shape)
@@ -135,7 +136,8 @@ class Replay:
         """
         if self.directory is not None:
             for name in (*FIELDS, "meta"):
-                getattr(self, name).flush()
+                if isinstance(getattr(self, name), np.memmap):  # zero-width fields are plain (empty) arrays
+                    getattr(self, name).flush()
         else:
             self.snapshot_dir.mkdir(parents=True, exist_ok=True)
             tmp = self.snapshot_dir / "ram_snapshot.tmp.npz"

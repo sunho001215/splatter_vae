@@ -23,7 +23,7 @@ def init_wandb(cfg: dict, run_name: str, project: str, enabled: bool, run_dir):
         project=project,
         name=run_name,
         config=cfg,
-        tags=[f"host={HOST_NAME}"],
+        tags=[f"host={HOST_NAME}", *map(str, (cfg.get("wandb") or {}).get("tags", []) or [])],  # + campaign labels
         dir=str(run_dir),
         mode=mode,
         settings=wandb.Settings(start_method="thread"),
