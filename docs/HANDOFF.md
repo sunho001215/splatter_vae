@@ -143,7 +143,7 @@ stopped and scoped admissions held; pending jobs require a safely restarted disp
   from development, not separately pre-registered; retain this caveat.
 - Fairness + RL success/return standard: `rl-report-20261015-203425.json`, tool `rl_reporting.py`; all 30 original
   Stage 2 RL configs differ only by encoder path, same original local host/commit, 240 episodes at every point,
-  intended T=1 encoder-frame difference only. Three full references were losslessly paused/resumed at 50k.
+  intended T=1 difference only (num_frames 1: one frame in pretraining and RL; the policy gets the newest frame's feature only). Three full references were losslessly paused/resumed at 50k.
 - Final comparison: `final-comparison-20261015-084143.json`; final training-camera success IQM ours .76, SinCro .44,
   ReViWo .31, CNN .72; held-out ours .13 vs <=.01, trajectories ours .72 vs CNN .76. Low held-out absolute scores.
   Keep genuine nonlearning seeds (ReViWo stick2001, SinCro stick2002); do not reseed after seeing results.

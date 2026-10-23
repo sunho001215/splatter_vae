@@ -3013,7 +3013,8 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   - held-out cameras: 0.025 vs 0.011; +0.014, margin 0.100, within;
   - trajectories: 0.612 vs 0.423; +0.188, margin 0.164, **better**.
   - The single-frame encoder is not worse on pick-place RL and is better on moving-camera trajectories, although its
-    motion representation is undefined by construction (relative EPE 1.0). The full-method pick-place reference
+    motion representation is undefined by construction (relative EPE 1.0) [i.e. displacements fixed at zero; its
+    policy saw only the newest frame, correction 2026-10-23]. The full-method pick-place reference
     seeds vary (0.34-0.67), which widens the margin.
 - Single-group vs full, pick-place representation (200k, seed 0): 14 of 32 metrics worse beyond margin, 1 better.
   - Worse: PSNR -0.6 dB; utilisation 0.655 -> 0.489; dynamic Chamfer +131 %; relative EPE 0.224 -> 0.277.
@@ -3079,7 +3080,9 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
 - **Reading:**
   - Only the InfoNCE invariance term matters for RL on the development tasks: removing it is worse beyond margin on
     both tasks.
-  - Removing motion supervision, temporal input (T=1) or the scene/dynamic split is not detectably worse for RL. T=1
+  - Removing motion supervision, temporal input (T=1) or the scene/dynamic split is not detectably worse for RL
+    [corrected 2026-10-23: "motion supervision" = the explicit M3D term only, t1/t2 rendering kept; T=1 = the bundled
+    single-frame change with a newest-frame-only policy input]. T=1
     is better on pick-place trajectories. These components do show in representation metrics.
   - Held-out-camera success is near zero on pick-place for every arm, so it cannot separate the arms there.
 - The 10 representation-only variants report as their pretrains finish (12 pretrain-only jobs; their gate opened
@@ -3145,7 +3148,9 @@ wide; pick-place margins sit at the floors. No M3D value compared yet; the rule 
   - all 30 were run locally at commit 6a48200;
   - 240 evaluation episodes at every one of the 100 points;
   - encoder exports differ from the full method only in `num_frames` (3 -> 1) for T=1, which is the intended
-    difference; T=1 still feeds the 3-frame stack to the policy;
+    difference; T=1 still feeds the 3-frame stack to the policy [corrected 2026-10-23: the environment still
+    produces the 3-frame stack, but the T=1 encoder wrapper keeps only the newest frame (`frames[:, -1:]`), so the
+    policy receives one 256-d newest-frame feature and no visual history; verified from the run artifacts];
   - three full-method reference runs were checkpoint-paused at 50k on 10-13 and resumed losslessly;
   - median throughput 50-58 fps per arm.
   - No asymmetry beyond the intended encoder difference was found.
@@ -4039,3 +4044,62 @@ configurations, hypotheses, seeds, controls and the analysis plan are fixed ther
   - Training-camera last-5 success, IQM 0.645 vs original 0.757, difference −0.112 [−0.443, +0.162].
   - Held-out cameras −0.027 [−0.038, −0.018]; moving cameras −0.030 [−0.370, +0.224]; training-camera AUC −0.011 [−0.216, +0.127].
   - Per task: bin-picking 0.594 vs 0.618, hammer 0.817 vs 0.890, pick-place 0.271 vs 0.506. Five tasks follow.
+
+### 2026-10-23 — Reconstruction / RL gap: audit, diagnostics, masking and per-frame pilots, host-neutral pool
+User instructions (2026-10-23, three messages): audit the Stage 2 T=1 ablation; diagnose existing checkpoints before
+training; SinCro-style masking ablation; independent frame encoding with the T=1 exports; an STP-inspired per-frame
+Gaussian pilot (revised before launch to 75 % source / 75 % target masking); hammer and pick-place pilots with 200k
+pretraining and 1M DrM x 3 seeds; Codex review; report. Nothing running was stopped; chamfer_lean continues and stays
+a candidate, not adopted. Separately, local and remote are one experiment pool (see the pool entry below).
+
+**1. T=1 audit (verified from artifacts).** Exports `runs/exports/s2ab-t1-seed0-<task>-200k.pt`: num_frames 1, the
+only encoder-config difference from the full method (A200 exports). RL runs `s2rl-t1-<task>-s100x` executed at
+6a48200 (214 hashed sources match). At that commit `Splatter4DStateEncoder` keeps `frames[:, -1:]`, so the cached
+replay feature is one 256-d state of the NEWEST frame (replay size 0.544 GB = one 256-d fp16 atom per state, as the
+full method) and the policy head is the same (256 -> 256 -> 256, 132,608 parameters). A CPU check confirms: changing
+the two older frames changes the T=1 feature by exactly 0 (full method: 0.84-1.14). So T=1 = no visual history at RL
+time, not "three images" and not a stack of per-frame features. Pretraining encoded window frame 0 (the oldest); the
+motion score of t0 still drove its masks and pixel weights. No-motion: only `loss.motion` 5 -> 0; the 3-frame encoder,
+displacement head, t1/t2 rendering (RGB, depth, coverage, synthetic views, visibility) and the ramp stay, so motion is
+still learned through reconstruction (hammer relative EPE 0.506 vs 0.248 full, 1.0 T=1). Wording corrected (numbers
+unchanged): this log (annotated in place), RESULTS.md, HANDOFF.md, report page (backup
+`site/index.v9-before-t1-wording-20261023.html`), figstyle/t-SNE caption sources.
+
+**2. Diagnostics of existing checkpoints (inference only; `runs/setup/variants-compare-20261023/`).**
+- future_k2 history interventions (`afk2_history_diagnostics.py`; current image, actions and k2 fixed; history frames
+  replaced by the current image, taken from another window, or swapped): first result (hammer, 2 batches, k2 = 2):
+  moving PSNR at t+2k2 23.1 dB intact vs 20.5 static vs 20.6 shuffled vs 22.3 swapped (persistence 15.7); relative
+  EPE 0.25 vs 0.49 / 0.39 / 0.29. So forecasting uses the history, not only the actions. Eight-task run in progress.
+- Representation probes of the RL exports (`variant_repr_probes.py`; RL-spaced windows, train / held-out / near /
+  moving cameras; current-frame positions, velocities, object-minus-hand position; history replaced by the current
+  frame). Observations, 5 tasks: chamfer_lean and original are close on every probe (e.g. training-camera hand
+  velocity R^2 0.79-0.89 vs 0.73-0.89); future_k2 encodes less velocity (0.13-0.81); probes do not transfer to the
+  held-out cameras for any arm (R^2 < 0.6, mostly negative); object-minus-hand position is not linearly decodable
+  for any arm (error about equal to the target's spread). Hammer / pick-place T=1: newest frame only, hand velocity
+  R^2 0.49 / 0.27; stacked per-frame states 0.71 / 0.79.
+- chamfer_lean vs original at 200k, matched checkpoints (`chl_analysis_render.py`, `chl200_analysis_metrics.py`;
+  40 validation samples x 22 targets, paired by image; 5 tasks so far). Training cameras: chamfer_lean better
+  (+0.2 to +3.1 dB, mostly static background; robot/object region -0.33 to +0.71 dB); held-out cameras -0.10 to
+  -1.15 dB and moving cameras -0.80 to -1.95 dB, again mostly static background, where chamfer_lean leaves about twice
+  as many pixels uncovered (alpha < 0.5). LPIPS better everywhere; 3D Chamfer about 100x smaller; more static
+  Gaussians contribute (0.71-0.89 vs 0.48-0.71). In-training relative EPE and retrieval: no consistent difference.
+- Loss gradients on 8 fixed training batches (`grad_conflict_diag.py`; encoder, decoder and the state; active and
+  counterfactual terms on the same forward). At the state, the original's geometry terms (depth gradient, hard depth,
+  visibility) are nearly parallel to reconstruction (cosine 0.88-0.91) and to motion (0.33-0.47); chamfer_lean's
+  Chamfer gradient is weakly aligned (0.14-0.38 and 0.12-0.20) and small. Invariance is nearly orthogonal to
+  everything in both (0.01-0.04); no strong negative conflicts. The removed visibility term would act strongly on
+  the chamfer_lean state (its counterfactual gradient is large), so removing it is a confound of the comparison.
+- Reading (hypotheses, not established): the chamfer_lean RL deficit is not explained by worse reconstruction at the
+  training cameras or by weaker linear probes; candidates are the off-view background coverage, the removed geometry
+  terms (confound) and RL seed variance. The pilots below test masking and per-frame structure, not these.
+
+**3. Pilots registered** (`runs/setup/mpf-registration-20261023.json`, definitions `mpf-definition-20261023.json`,
+before any result; source merged at 7aacd74 after the full suite, 990/0; Codex review: no defects found, a shallow
+pass). chamfer_lean_randmask (48 of 192 temporal tokens, SinCro `random_view_masking` semantics verified against the
+official repository), perframe_spatial, perframe_temporal (75 % / 75 %, the previous 75 % / 90 % definition with a
+separate target encoding superseded before launch, commit 5fd623e) on hammer and pick-place, plus T=1 stacked
+(seeds 1000-1002 vs the existing latest-frame T=1 runs). Smoke steps: randmask 0.30 s/it, spatial 0.34-0.38,
+temporal 0.43-0.44 (chamfer_lean 0.28; one MIG slice). The stacked head has a 768-d input (263,680 vs 132,608
+parameters, same 256-d output). STP (2403.05304): 75 % current / 95 % future masking, independent random masks, the
+temporal decoder queries the future frame's few tokens against the current frame; our pilot follows the user's
+75 % / 75 % definition.

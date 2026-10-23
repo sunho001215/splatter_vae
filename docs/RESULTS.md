@@ -369,7 +369,9 @@ existing rule max(0.10, 2 x SE). Metrics beyond margin, worse/better:
 
 - Pure no-InfoNCE loses retrieval and object position: trajectory retrieval 0.815 -> 0.414 on hammer.
 - No-motion mainly loses motion: hammer relative EPE 0.248 -> 0.506.
-- T=1 has undefined motion by construction (relative EPE 1.0) and loses velocity R².
+- T=1 predicts no motion by construction (displacements fixed at zero; relative EPE 1.0) and loses velocity R².
+  Its encoder sees one frame in pretraining and at RL time; the RL policy receives only the newest frame's feature
+  (the environment's 3-frame stack is reduced to its newest frame), i.e. no visual history (audit 2026-10-23).
 - Single-group mostly loses utilisation and dynamic Chamfer.
 - First complete RL comparison, no-motion vs full on hammer (seeds 1000-1002):
   - training cameras 0.967 vs 0.935 (+0.032, margin 0.100, within margin);
@@ -385,8 +387,9 @@ existing rule max(0.10, 2 x SE). Metrics beyond margin, worse/better:
   - training cameras 0.933 vs 0.935 (-0.002, margin 0.106);
   - held-out cameras 0.066 vs 0.149 (-0.083, margin 0.100);
   - trajectories 0.907 vs 0.882 (+0.025, margin 0.148).
-- So on hammer, RL is affected only by removing InfoNCE; the temporal and motion components show in
-  representation metrics but not in hammer RL success.
+- So on hammer, RL is affected only by removing InfoNCE; removing the M3D term (t1/t2 rendering kept, so motion is
+  still learned implicitly) or the bundled T=1 change (newest-frame-only encoder and policy input, no temporal
+  rendering, no motion loss) shows in representation metrics but not in hammer RL success.
 - Fourth complete RL comparison, single-group vs full on hammer (05:31), all within margin:
   - training cameras 0.901 vs 0.935 (-0.034, margin 0.127);
   - held-out cameras 0.057 vs 0.149 (-0.092, margin 0.100);
@@ -519,7 +522,8 @@ Stage 2 fairness:
 - All 30 RL runs ran locally at the same commit.
 - Their RL configs differ from the full method only in the encoder export.
 - Every evaluation point has 240 episodes.
-- The only encoder difference besides the intended keys is T=1's `num_frames`.
+- The only encoder difference besides the intended keys is T=1's `num_frames`; at RL time the T=1 encoder keeps only
+  the newest of the three frames (`frames[:, -1:]`), so its policy has no visual history (audit 2026-10-23).
 - Pure no-InfoNCE is also far lower in return: hammer 1336 vs 1857, pick-place 25 vs 689.
 
 ### Crop follow-up step 1: 10-09 crop screen re-evaluated with the current evaluator (2026-10-15 09:39)
