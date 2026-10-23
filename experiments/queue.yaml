@@ -37960,6 +37960,9 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - final.json
+  - train.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -37976,6 +37979,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/t1stack-drm-hammer-s1000-eval
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
@@ -37983,6 +37988,8 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - eval.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38010,6 +38017,9 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - final.json
+  - train.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38026,6 +38036,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/t1stack-drm-hammer-s1001-eval
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
@@ -38033,6 +38045,8 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - eval.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38060,6 +38074,9 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - final.json
+  - train.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38076,6 +38093,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/t1stack-drm-hammer-s1002-eval
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
@@ -38083,6 +38102,8 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - eval.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38110,6 +38131,9 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - final.json
+  - train.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38126,6 +38150,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/t1stack-drm-pick-place-s1000-eval
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
@@ -38133,6 +38159,8 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - eval.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38160,6 +38188,9 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - final.json
+  - train.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38176,6 +38207,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/t1stack-drm-pick-place-s1001-eval
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
@@ -38183,6 +38216,8 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - eval.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38210,6 +38245,9 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
+  required_results:
+  - final.json
+  - train.jsonl
 - gpu: any
   priority: 2
   deps:
@@ -38226,6 +38264,8 @@ jobs:
   - '3'
   - --envs-per-worker
   - '8'
+  - --output-dir
+  - runs/t1stack-drm-pick-place-s1002-eval
   mem_gb: 3
   ram_gb: 6
   oom_score_adj: 400
@@ -38233,5 +38273,6 @@ jobs:
   stage: 5
   variant: t1_stack
   variant_definition: runs/setup/mpf-definition-20261023.json
-
+  required_results:
+  - eval.jsonl
 host_ram_reserve_gb: 60

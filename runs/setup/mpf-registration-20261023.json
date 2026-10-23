@@ -1626,7 +1626,11 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1645,7 +1649,9 @@
         "--workers",
         "3",
         "--envs-per-worker",
-        "8"
+        "8",
+        "--output-dir",
+        "runs/t1stack-drm-hammer-s1000-eval"
       ],
       "mem_gb": 3,
       "ram_gb": 6,
@@ -1653,7 +1659,10 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "eval.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1684,7 +1693,11 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1703,7 +1716,9 @@
         "--workers",
         "3",
         "--envs-per-worker",
-        "8"
+        "8",
+        "--output-dir",
+        "runs/t1stack-drm-hammer-s1001-eval"
       ],
       "mem_gb": 3,
       "ram_gb": 6,
@@ -1711,7 +1726,10 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "eval.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1742,7 +1760,11 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1761,7 +1783,9 @@
         "--workers",
         "3",
         "--envs-per-worker",
-        "8"
+        "8",
+        "--output-dir",
+        "runs/t1stack-drm-hammer-s1002-eval"
       ],
       "mem_gb": 3,
       "ram_gb": 6,
@@ -1769,7 +1793,10 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "eval.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1800,7 +1827,11 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1819,7 +1850,9 @@
         "--workers",
         "3",
         "--envs-per-worker",
-        "8"
+        "8",
+        "--output-dir",
+        "runs/t1stack-drm-pick-place-s1000-eval"
       ],
       "mem_gb": 3,
       "ram_gb": 6,
@@ -1827,7 +1860,10 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "eval.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1858,7 +1894,11 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1877,7 +1917,9 @@
         "--workers",
         "3",
         "--envs-per-worker",
-        "8"
+        "8",
+        "--output-dir",
+        "runs/t1stack-drm-pick-place-s1001-eval"
       ],
       "mem_gb": 3,
       "ram_gb": 6,
@@ -1885,7 +1927,10 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "eval.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1916,7 +1961,11 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ]
     },
     {
       "gpu": "any",
@@ -1935,7 +1984,9 @@
         "--workers",
         "3",
         "--envs-per-worker",
-        "8"
+        "8",
+        "--output-dir",
+        "runs/t1stack-drm-pick-place-s1002-eval"
       ],
       "mem_gb": 3,
       "ram_gb": 6,
@@ -1943,11 +1994,372 @@
       "host": "local",
       "stage": 5,
       "variant": "t1_stack",
-      "variant_definition": "runs/setup/mpf-definition-20261023.json"
+      "variant_definition": "runs/setup/mpf-definition-20261023.json",
+      "required_results": [
+        "eval.jsonl"
+      ]
     }
   ],
   "registered_at": "2026-10-23T15:48:46.704271+09:00",
   "definition_sha256": "a739ce64c94b8ecae5366b7663d847749ff8c6bb47b9c4ef08ba4b68cfebff09",
   "queue_sha256_before": "e67e216566afdbe45f29bf8a85bbf5b5f2a65ecafb30f52a7c767cf4feb2d911",
-  "queue_sha256_after": "ed0c5908ace388423c8577201f96a7f77d9a4aeb820bd932de099a409cdb3753"
+  "queue_sha256_after": "ed0c5908ace388423c8577201f96a7f77d9a4aeb820bd932de099a409cdb3753",
+  "amendments": [
+    {
+      "time": "2026-10-23T15:59:42+09:00",
+      "reason": "before launch: T=1-stack evaluators write eval.jsonl to their own --output-dir (as every other RL row of this registration) and trainers/evaluators declare required_results, so the pairs can run on either host (results synchronise per job); output locations only, evaluation protocol unchanged",
+      "original": {
+        "t1stack-drm-hammer-s1000": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-hammer-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-hammer-s1000",
+          "script": "scripts/train_rl.py",
+          "args": [
+            "--task",
+            "hammer",
+            "--encoder",
+            "splatter4d",
+            "--seed",
+            "1000",
+            "--run-dir",
+            "runs/t1stack-drm-hammer-s1000",
+            "--set",
+            "train.num_train_steps=1000000",
+            "vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt",
+            "vision.frame_features=stack"
+          ],
+          "mem_gb": 4,
+          "ram_gb": 7,
+          "oom_score_adj": 300,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-hammer-s1000-eval": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-hammer-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-hammer-s1000-eval",
+          "script": "scripts/eval_rl.py",
+          "args": [
+            "--run-dir",
+            "runs/t1stack-drm-hammer-s1000",
+            "--train-job",
+            "t1stack-drm-hammer-s1000",
+            "--workers",
+            "3",
+            "--envs-per-worker",
+            "8"
+          ],
+          "mem_gb": 3,
+          "ram_gb": 6,
+          "oom_score_adj": 400,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-hammer-s1001": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-hammer-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-hammer-s1001",
+          "script": "scripts/train_rl.py",
+          "args": [
+            "--task",
+            "hammer",
+            "--encoder",
+            "splatter4d",
+            "--seed",
+            "1001",
+            "--run-dir",
+            "runs/t1stack-drm-hammer-s1001",
+            "--set",
+            "train.num_train_steps=1000000",
+            "vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt",
+            "vision.frame_features=stack"
+          ],
+          "mem_gb": 4,
+          "ram_gb": 7,
+          "oom_score_adj": 300,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-hammer-s1001-eval": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-hammer-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-hammer-s1001-eval",
+          "script": "scripts/eval_rl.py",
+          "args": [
+            "--run-dir",
+            "runs/t1stack-drm-hammer-s1001",
+            "--train-job",
+            "t1stack-drm-hammer-s1001",
+            "--workers",
+            "3",
+            "--envs-per-worker",
+            "8"
+          ],
+          "mem_gb": 3,
+          "ram_gb": 6,
+          "oom_score_adj": 400,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-hammer-s1002": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-hammer-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-hammer-s1002",
+          "script": "scripts/train_rl.py",
+          "args": [
+            "--task",
+            "hammer",
+            "--encoder",
+            "splatter4d",
+            "--seed",
+            "1002",
+            "--run-dir",
+            "runs/t1stack-drm-hammer-s1002",
+            "--set",
+            "train.num_train_steps=1000000",
+            "vision.export_path=runs/exports/s2ab-t1-seed0-hammer-200k.pt",
+            "vision.frame_features=stack"
+          ],
+          "mem_gb": 4,
+          "ram_gb": 7,
+          "oom_score_adj": 300,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-hammer-s1002-eval": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-hammer-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-hammer-s1002-eval",
+          "script": "scripts/eval_rl.py",
+          "args": [
+            "--run-dir",
+            "runs/t1stack-drm-hammer-s1002",
+            "--train-job",
+            "t1stack-drm-hammer-s1002",
+            "--workers",
+            "3",
+            "--envs-per-worker",
+            "8"
+          ],
+          "mem_gb": 3,
+          "ram_gb": 6,
+          "oom_score_adj": 400,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-pick-place-s1000": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-pick-place-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-pick-place-s1000",
+          "script": "scripts/train_rl.py",
+          "args": [
+            "--task",
+            "pick-place",
+            "--encoder",
+            "splatter4d",
+            "--seed",
+            "1000",
+            "--run-dir",
+            "runs/t1stack-drm-pick-place-s1000",
+            "--set",
+            "train.num_train_steps=1000000",
+            "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+            "vision.frame_features=stack"
+          ],
+          "mem_gb": 4,
+          "ram_gb": 7,
+          "oom_score_adj": 300,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-pick-place-s1000-eval": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-pick-place-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-pick-place-s1000-eval",
+          "script": "scripts/eval_rl.py",
+          "args": [
+            "--run-dir",
+            "runs/t1stack-drm-pick-place-s1000",
+            "--train-job",
+            "t1stack-drm-pick-place-s1000",
+            "--workers",
+            "3",
+            "--envs-per-worker",
+            "8"
+          ],
+          "mem_gb": 3,
+          "ram_gb": 6,
+          "oom_score_adj": 400,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-pick-place-s1001": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-pick-place-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-pick-place-s1001",
+          "script": "scripts/train_rl.py",
+          "args": [
+            "--task",
+            "pick-place",
+            "--encoder",
+            "splatter4d",
+            "--seed",
+            "1001",
+            "--run-dir",
+            "runs/t1stack-drm-pick-place-s1001",
+            "--set",
+            "train.num_train_steps=1000000",
+            "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+            "vision.frame_features=stack"
+          ],
+          "mem_gb": 4,
+          "ram_gb": 7,
+          "oom_score_adj": 300,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-pick-place-s1001-eval": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-pick-place-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-pick-place-s1001-eval",
+          "script": "scripts/eval_rl.py",
+          "args": [
+            "--run-dir",
+            "runs/t1stack-drm-pick-place-s1001",
+            "--train-job",
+            "t1stack-drm-pick-place-s1001",
+            "--workers",
+            "3",
+            "--envs-per-worker",
+            "8"
+          ],
+          "mem_gb": 3,
+          "ram_gb": 6,
+          "oom_score_adj": 400,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-pick-place-s1002": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-pick-place-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-pick-place-s1002",
+          "script": "scripts/train_rl.py",
+          "args": [
+            "--task",
+            "pick-place",
+            "--encoder",
+            "splatter4d",
+            "--seed",
+            "1002",
+            "--run-dir",
+            "runs/t1stack-drm-pick-place-s1002",
+            "--set",
+            "train.num_train_steps=1000000",
+            "vision.export_path=runs/exports/s2ab-t1-seed0-pick-place-200k.pt",
+            "vision.frame_features=stack"
+          ],
+          "mem_gb": 4,
+          "ram_gb": 7,
+          "oom_score_adj": 300,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        },
+        "t1stack-drm-pick-place-s1002-eval": {
+          "gpu": "any",
+          "priority": 2,
+          "deps": [
+            "export-s2ab-t1-seed0-pick-place-200k"
+          ],
+          "max_restarts": 1,
+          "id": "t1stack-drm-pick-place-s1002-eval",
+          "script": "scripts/eval_rl.py",
+          "args": [
+            "--run-dir",
+            "runs/t1stack-drm-pick-place-s1002",
+            "--train-job",
+            "t1stack-drm-pick-place-s1002",
+            "--workers",
+            "3",
+            "--envs-per-worker",
+            "8"
+          ],
+          "mem_gb": 3,
+          "ram_gb": 6,
+          "oom_score_adj": 400,
+          "host": "local",
+          "stage": 5,
+          "variant": "t1_stack",
+          "variant_definition": "runs/setup/mpf-definition-20261023.json"
+        }
+      },
+      "queue_sha256_before": "ed0c5908ace388423c8577201f96a7f77d9a4aeb820bd932de099a409cdb3753",
+      "queue_sha256_after": "ffb55b5b90bf0549021ac879978f4ca1af214376f2ada4eceab82e336ca29456"
+    }
+  ]
 }

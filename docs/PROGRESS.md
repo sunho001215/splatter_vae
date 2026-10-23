@@ -435,10 +435,14 @@ diff inline.
 | 2026-10-19 21:59 | remote 2.89 TB (bxs-snerl-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
-1. Remote controller: verified exports > baseline/final200k pretraining > RL fill; job-by-job admission as capacity
-   frees, full numerical result sync, offline W&B attempt, completed replay retained. Old speculative300k stays out.
-2. Stage3: six final200k encoders -> guarded exports -> eight-task RL seeds2000-2002; two dev encoders reused.
-3. Stage2 local driver (`runs/setup/tools/stage2_local_driver.py`, every5min): verified closeouts -> eval configs/
-   exports -> RL; job-by-job below the 150 GB budget (clean disk cache excluded, option (b)) with growth and a 10 GB margin. Report against the recorded margins once each
-   comparison's runs are all complete; no post-freeze method/hyperparameter selection.
-4. Continue SinCro/ReViWo Stage4. New SNeRL/DynaMo/3D-MVP execution remains blocked; no unaccepted release or long run.
+(updated 2026-10-23 16:0x; earlier action lists are in docs/EXPERIMENT_LOG.md)
+1. chamfer_lean eight-task (candidate, not adopted): remaining pretrains peg-insert-side, peg-unplug-side, stick-push
+   -> exports -> DrM seeds 2000-2002 + evaluators; then the comprehensive original / future_k2 / chamfer_lean report.
+2. Pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`): chamfer_lean_randmask, perframe_spatial,
+   perframe_temporal (200k -> export -> DrM x 3) and T=1 stacked DrM (seeds 1000-1002). Reported before any new
+   eight-task expansion; never restart future_k2 + Chamfer.
+3. Diagnostics (`runs/setup/variants-compare-20261023/`): future_k2 history interventions (8 tasks, running); probes,
+   200k renders and gradient checks for the remaining chamfer_lean tasks once their exports exist.
+4. Host-neutral pool (user 2026-10-23): unstarted rows move to the host with capacity (`runs/setup/tools/
+   pool_placement.py`, manifest `runs/setup/pool-placement.json`); the remote driver pulls overflow onto release 7aacd74
+   (typed verification in progress), retries keep their first commit. Remote SNeRL pretrains end about 10-24 05:00.
