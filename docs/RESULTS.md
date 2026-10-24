@@ -52,11 +52,13 @@ arm, so these describe single encoders.
   `reports/results-artifact/chl/summary_pilots_200k.json`). Protocol: 40 validation samples x 22 target cameras per
   task, paired by image, episode bootstrap B = 1000. The per-frame pilots render frame t from the set decoded from
   image t alone; the joint models decode t-4, t-2 and t. Values are hammer / pick-place:
-  - **Masking leaves rendering unchanged.** chlrm - chamfer_lean is +0.04 / +0.05 dB PSNR over all images, +0.17 /
-    +0.07 held-out and -0.05 / +0.04 moving. LPIPS is +0.01.
+  - **Masking leaves rendering nearly unchanged.** chlrm - chamfer_lean is +0.04 / +0.05 dB PSNR over all images,
+    +0.17 / +0.07 held-out, -0.05 / +0.04 moving and -0.25 / +0.12 on novel training cameras (all within 0.25 dB).
+    LPIPS is +0.01.
   - **Temporal supervision improves per-frame rendering.** pft - pfs is +0.60 [+0.57, +0.65] / +0.26
     [+0.23, +0.28] dB over all images. It is +0.78 / +0.45 on the moving range, +0.41 / +0.05 held-out and +0.45 /
-    +0.27 on the robot and object region. LPIPS is -0.02.
+    +0.27 on the robot and object region. LPIPS is -0.02. The novel training cameras are the exception: -0.09
+    [-0.37, +0.13] / -0.33 [-0.60, -0.04].
   - **The Chamfer models keep chamfer_lean's pattern against the original.** This covers chamfer_lean and the three
     Chamfer-based pilots. They are +0.3 to +2.0 dB better on novel training cameras and -1.4 to -2.3 dB worse on the
     moving range. On the distant background they are -1.0 to -1.6 dB worse. Their 3D Chamfer distance is about 100x
@@ -80,21 +82,26 @@ arm, so these describe single encoders.
   - Positions are decodable for every arm: hand R² 0.94-0.98, object R² 0.85-0.97. Object-minus-hand position is not
     (R² <= 0.10). Hand probes do not transfer to the held-out cameras (R² <= 0.23, mostly negative).
 
-Reading (descriptive; hypotheses, not established):
-- **Masking is the only change with a clear RL effect.** chlrm recovers chamfer_lean's pick-place deficit (last-5
-  0.498 vs 0.271) and improves hammer. Its renders are unchanged. Its states depend less on history and carry slightly
-  less velocity information. So reconstruction quality and linear decodability do not explain the gain. The
-  eight-task expansion approved by the user is running.
-- **Pair-conditioned temporal reconstruction helps rendering and probes but not RL.** It improves the per-frame
-  encoder's renders (+0.3 to +0.6 dB, mostly the moving cameras) and its velocity probes (+0.06 to +0.11 R²). RL does
-  not improve: last-5 +0.063 [-0.058, +0.148], AUC -0.058. On hammer it learns more slowly than perframe_spatial (AUC
-  0.638 vs 0.771).
-- **Both per-frame pilots lose on pick-place** (last-5 0.13 and 0.22 vs 0.51 for the original) while matching it on
-  hammer. The stacked T=1 Stage 2 encoder is also per-frame, and it does not lose (0.53). The cause is not identified.
-  The per-frame pilots differ from it in their reconstruction terms (Chamfer-based), masking and per-frame invariance.
-  The T=1 runs also use other seeds.
-- **Rendering and probe quality did not predict the RL ranking in any pilot.** This matches the earlier chamfer_lean
-  diagnostics.
+Reading (descriptive; hypotheses, not established; wording revised after the Codex review):
+- **Masking is the only registered change whose training-camera RL intervals exclude zero** (last-5 and AUC). Its
+  held-out and moving intervals include zero. chlrm recovers chamfer_lean's pick-place deficit (last-5 0.498 vs
+  0.271) and improves hammer. Its renders are nearly unchanged. Its states depend less on history and carry slightly
+  less hand-velocity information. So these render and probe measurements do not account for the gain; they cannot
+  rule out other reconstruction or representation explanations. The eight-task expansion approved by the user is
+  running.
+- **Pair-conditioned temporal reconstruction improves rendering and some probes, with no detectable RL gain.** Renders
+  improve by +0.3 to +0.6 dB over all images, mostly on the moving cameras, but not on the novel training cameras.
+  Hand-velocity probes on the training and moving cameras improve by +0.06 to +0.11 R². Object velocity is unchanged
+  on hammer, and held-out hand velocity is worse. RL: last-5 +0.063 [-0.058, +0.148], AUC -0.058
+  [-0.174, +0.045]; both intervals include zero. On hammer its AUC is lower than perframe_spatial's (0.638 vs 0.771,
+  seed means).
+- **Both per-frame pilots are below the original on pick-place** (last-5 0.13 and 0.22 vs 0.51). Their hammer point
+  estimates are at or above it. The stacked T=1 Stage 2 encoder is also per-frame and reaches 0.53 on pick-place, but
+  with other seeds. The cause is not identified. The per-frame pilots differ from it in their reconstruction terms
+  (Chamfer-based), masking and per-frame invariance.
+- **The render and probe differences do not line up with the RL differences in these pilots.** pft beats pfs on
+  both, without an RL gain. chlrm renders like chamfer_lean but does better in RL. No predictive analysis was run,
+  and some point-estimate rankings do agree.
 
 Compute: median logged s/it of the 200k pretraining. The hardware was shared, so this is not a controlled timing.
 Values are hammer / pick-place:
@@ -109,7 +116,7 @@ Caveats:
 - The T=1 rows use seeds 1000-1002 and an earlier launch.
 
 Decision: none is automatic. No eight-task expansion of the per-frame pilots is proposed: neither beats the original,
-and temporal supervision shows no RL gain. Under directive 1, any expansion is the user's decision.
+and temporal supervision shows no detectable RL gain. Under directive 1, any expansion is the user's decision.
 
 ### Vision-only DrM: our frozen encoder vs CNN without proprioception (2026-10-25 06:10; preregistered, descriptive)
 

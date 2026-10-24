@@ -4465,3 +4465,9 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   Reading: render and probe quality did not predict RL in any pilot. Decision: none. No per-frame eight-task expansion
   is proposed; any expansion is the user's decision (directive 1). The chlrm eight-task expansion approved on 10-24
   continues. Never restart future_k2 + Chamfer.
+  Codex review of the section, given inline because Codex cannot read files here: no number mismatch, and no bias in
+  the PerFrame wrapper or the paired bootstrap. The Reading was revised for overstatement: masking's clear effect is
+  on the training cameras only; "no detectable RL gain" replaces "not RL"; the render and probe measurements "do not
+  account for" the gain rather than ruling explanations out; the probe gains are hand velocity only. The line above,
+  "render and probe quality did not predict RL in any pilot", should read: the differences did not line up, and no
+  predictive analysis was run.
