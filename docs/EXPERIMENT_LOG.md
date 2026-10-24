@@ -4328,3 +4328,22 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   Verified 17:50 KST: `vo-drm-cnn-hammer-s2000` attempt 3 and `vo-drm-cnn-pick-place-s2000` attempt 2 (both remote,
   GPU ca65, f3538b1) each logged `{"event": "resumed", "step": 150000}` in events.jsonl — checkpoint resume, not
   from scratch. Wall-clock accounting for these runs excludes the frozen (local SIGSTOP) and migration intervals.
+
+- (10-24 18:25 KST) **Pool placement: CNN stick-push pairs to the remote.** `vo-drm-cnn-stick-push-s200{0,1,2}` and
+  their evaluators (never launched, no registry entry or run directory) moved local → remote with
+  `pool_placement.move` (host fields only; same args, seeds, results, fingerprints; recorded in
+  runs/setup/pool-placement.json). Reason: the local admission accounting is at its 140 GB cap (replay growth
+  reserves), each CNN trainer is charged 48 GB of mapped pixel replay, and CNN DrM runs ~25–37 fps on the remote vs
+  ~8 fps locally. CNN arm status at the move: 6 of 24 pairs done (door-open ×3, coffee-push s2002, bin-picking s2002,
+  peg-insert-side s2000), 12 running on the remote (5 of them the migrated trainers, all verified resumed from
+  150k/50k), 3 migrated trainers pending on the remote, stick-push ×3 now pending on the remote.
+
+- (10-24 19:45 KST) **Pilot interim: SinCro-style random masking on chamfer_lean, hammer (3 seeds).** chlrm hammer
+  complete (3 trainers + 3 evaluators, local). `pilots_rl.py` → `reports/results-artifact/pilots/rl.json` (previous
+  copy `rl.before-chlrm-hammer-20261024.json`). Masking comparison chlrm − chl (hammer only, IQM over 3 runs per arm,
+  bootstrap within task): training last-5 0.972 vs 0.817, +0.156 [+0.087, +0.237]; training AUC 0.780 vs 0.588,
+  +0.192 [+0.169, +0.213]; final +0.147 [+0.100, +0.197]; moving cameras last-5 +0.095 [+0.050, +0.135]; held-out
+  last-5 +0.015 [−0.069, +0.131]. For reference, the original method on hammer: last-5 0.890, AUC 0.662 (seed means,
+  variants/rl.json). One task and 3 seeds only — pick-place chlrm (registered pair) still training; no adoption decision
+  and no expansion before the pilot report (directive 1). Also complete: pft pick-place ×3 (trainers + evaluators);
+  pfs pick-place trainers ×3 done, evaluators queued; pfs hammer DrM ×3 running; pft hammer pretraining running.
