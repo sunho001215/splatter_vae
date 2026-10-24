@@ -444,9 +444,9 @@ diff inline.
 3. chamfer_lean_randmask eight-task expansion (user 2026-10-24, after the masking pilot;
    `runs/setup/chlrm-registration-eight-task-20261024.json`): pretraining / export / DrM x 3 for the six non-pilot tasks,
    priority 2 (ahead of SNeRL), either host. Then the eight-task comparison with chamfer_lean and the original method.
-4. Vision-only DrM campaign (`runs/setup/vision-only-registration-20261023.json`): our encoder's arm complete; CNN arm
-   all 24 pairs launched on the remote (8 migrated trainers verified resumed). Then `vision_only_rl.py` and the
-   preregistered report.
+4. Done: vision-only DrM campaign (2026-10-25; docs/RESULTS.md "Vision-only DrM"): primary training AUC ours − CNN
+   +0.012 [−0.031, +0.045] (with proprio +0.101); our advantage shrinks by −0.090 [−0.174, −0.023]. Add it to the
+   results artifact with the next update.
 5. Done: SNeRL eight-task RL (2026-10-25; training-camera IQM 0.544 vs ours 0.756; docs/BASELINES.md "Eight-task
    results: SNeRL"). Add it to the results artifact with the next update.
 6. Host-neutral pool: unstarted rows move to the host with capacity (`pool_placement.py`); started runs move only via a

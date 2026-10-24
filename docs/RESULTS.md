@@ -4,6 +4,101 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Vision-only DrM: our frozen encoder vs CNN without proprioception (2026-10-25 06:10; preregistered, descriptive)
+
+Protocol: `runs/setup/vision-only-definition-20261023.json` (user, 2026-10-23), registered before any result. The
+policy receives the 3-frame RGB history only (`env.proprio_indices=[]`; actor, critics, value network and dormant-ratio
+passes get no hand, gripper or other simulator-state feature). Everything else is the final-comparison protocol: 8
+tasks x seeds 2000-2002 x 1M agent steps, the same evaluation schedule and episodes, the frozen original encoder
+(method-frozen-v1, C + D0 + M3D, 200k) and the DrM CNN with random shift. The matched with-proprio arms are the
+completed final-comparison runs. Analysis: `reports/results-artifact/src/vision_only_rl.py` ->
+`reports/results-artifact/vision_only/rl.json`. Statistics: IQM over 24 runs per arm and task-stratified bootstrap 95 %
+intervals (B = 2000, seeds resampled within task, arms independent). Curves:
+`docs/figures/vision_only/success_curves.png`. Decision rule: none (descriptive campaign, no adoption).
+
+Success, IQM over 24 runs; difference = ours - CNN [95 % CI]:
+
+| | vision-only: ours | CNN | ours - CNN | with proprio: ours - CNN | change of the gap |
+|---|---|---|---|---|---|
+| **training, AUC (primary)** | 0.434 | 0.423 | **+0.012 [-0.031, +0.045]** | +0.101 [+0.042, +0.168] | -0.090 [-0.174, -0.023] |
+| training, early AUC (<= 200k) | 0.152 | 0.101 | +0.051 [+0.028, +0.074] | +0.097 [+0.052, +0.146] | -0.046 [-0.098, +0.006] |
+| training, last-5 | 0.667 | 0.733 | -0.066 [-0.156, +0.030] | +0.038 [-0.062, +0.117] | -0.104 [-0.224, +0.034] |
+| training, final | 0.670 | 0.724 | -0.054 [-0.155, +0.055] | +0.042 [-0.051, +0.130] | -0.096 [-0.235, +0.053] |
+| held-out, AUC | 0.081 | 0.012 | +0.069 [+0.057, +0.082] | +0.093 [+0.083, +0.103] | -0.024 [-0.040, -0.007] |
+| held-out, last-5 | 0.089 | 0.011 | +0.078 [+0.055, +0.104] | +0.118 [+0.100, +0.133] | -0.040 [-0.069, -0.009] |
+| moving, AUC | 0.417 | 0.401 | +0.016 [-0.090, +0.113] | +0.071 [+0.009, +0.129] | -0.055 [-0.173, +0.059] |
+| moving, early AUC | 0.163 | 0.078 | +0.084 [+0.011, +0.131] | +0.124 [+0.076, +0.177] | -0.039 [-0.131, +0.029] |
+| moving, last-5 | 0.610 | 0.730 | -0.120 [-0.207, -0.012] | -0.050 [-0.132, +0.014] | -0.070 [-0.176, +0.062] |
+
+Effect of removing proprioception within each arm (vision-only - with proprio):
+- **Ours:** training AUC 0.434 vs 0.510, -0.076 [-0.128, -0.031]; last-5 -0.090 [-0.194, +0.022]; moving last-5
+  -0.112 [-0.183, -0.031]; held-out last-5 -0.037 [-0.066, -0.007].
+- **CNN:** training AUC +0.014 [-0.039, +0.078]; early AUC +0.021 [+0.009, +0.034]; last-5 +0.015 [-0.061, +0.083];
+  held-out unchanged (about 0.01).
+
+Training-camera success by task, seed means, last-5 / AUC:
+
+| task | vision-only ours | vision-only CNN | with-proprio ours | with-proprio CNN |
+|---|---|---|---|---|
+| hammer | 0.86 / 0.53 | 0.72 / 0.50 | 0.89 / 0.66 | 0.52 / 0.36 |
+| pick-place | 0.42 / 0.24 | 0.58 / 0.20 | 0.51 / 0.30 | 0.55 / 0.20 |
+| bin-picking | 0.27 / 0.08 | 0.52 / 0.25 | 0.62 / 0.26 | 0.63 / 0.28 |
+| door-open | 0.95 / 0.79 | 0.99 / 0.80 | 0.97 / 0.79 | 0.91 / 0.73 |
+| coffee-push | 0.39 / 0.29 | 0.78 / 0.45 | 0.44 / 0.29 | 0.72 / 0.42 |
+| peg-insert-side | 0.15 / 0.06 | 0.51 / 0.21 | 0.12 / 0.04 | 0.49 / 0.19 |
+| peg-unplug-side | 0.82 / 0.65 | 0.78 / 0.48 | 0.82 / 0.69 | 0.82 / 0.53 |
+| stick-push | 0.98 / 0.82 | 0.97 / 0.70 | 1.00 / 0.87 | 0.94 / 0.74 |
+
+Training-camera episode return, last-5 seed means (vision-only ours / CNN; with-proprio ours / CNN), per task only
+because the scales differ:
+- hammer 1696 / 1608; 1782 / 1290
+- pick-place 696 / 963; 782 / 920
+- bin-picking 490 / 978; 1155 / 1078
+- door-open 1755 / 1945; 1796 / 1872
+- coffee-push 122 / 1195; 141 / 984
+- peg-insert-side 435 / 1078; 475 / 1077
+- peg-unplug-side 837 / 1298; 999 / 1418
+- stick-push 1552 / 1723; 1704 / 1782
+
+Reading:
+- **Primary result:** without proprioception, our frozen encoder and the CNN learn about equally fast over the full
+  budget. The training-camera AUC difference is +0.012 [-0.031, +0.045]. With proprioception, ours was ahead by +0.101.
+- **Ours loses, the CNN does not.** The advantage shrinks by -0.090 [-0.174, -0.023]. Ours loses AUC without
+  proprioception (-0.076). The CNN does not (+0.014), and it even learns slightly faster in the first 200k steps.
+  Most of our loss comes from bin-picking (last-5 0.27 vs 0.62) and hammer (AUC 0.53 vs 0.66). Door-open,
+  peg-unplug-side and stick-push change by at most 0.05.
+- **Early learning** still favours ours: training early AUC +0.051 [+0.028, +0.074] and moving early AUC +0.084.
+  By the end the CNN is level or ahead: training last-5 -0.066 [-0.156, +0.030], moving last-5 -0.120
+  [-0.207, -0.012].
+- **Held-out cameras:** ours stays ahead (last-5 +0.078 [+0.055, +0.104]), but held-out success is low for both arms
+  (0.089 vs 0.011). Ours reaches 0.36 on door-open and 0.18 on coffee-push.
+- **By task,** the CNN leads on coffee-push, peg-insert-side, bin-picking and pick-place (last-5). Ours leads on hammer,
+  peg-unplug-side (AUC) and stick-push (AUC), and door-open is level. Coffee-push and peg-insert-side already favoured
+  the CNN with proprioception.
+
+Wall-clock efficiency, reported apart from sample efficiency (training wall time per run from the registry, one
+segment per attempt; medians):
+- Vision-only ours: 5.1 h on local MIG 1g.24gb (18 runs) and 4.8 h on the remote (6).
+- Vision-only CNN: 10.3 h on the remote (16 single-host runs).
+- Eight CNN runs moved from local MIG to the remote (2026-10-24): 10.1-13.3 h active (2.5-4.5 h local plus 6.6-9.5 h
+  remote). This excludes the 3.86 h SIGSTOP freeze and the wait for remote capacity, and 6k-47k steps were retrained
+  from the checkpoint. They are listed per run in `rl.json` and are left out of the per-host medians.
+- With proprio: ours 4.3 h and CNN 13.6 h, both remote. One CNN run (pick-place s2000: out of memory at 693k,
+  resumed from its 650k checkpoint) took 13.1 h on local full GPUs.
+- Remote hours depend on how many containers shared each GPU, so they compare only roughly.
+
+Pretraining cost (reported separately): the eight original 200k encoders took 112.3 GPU-hours from their logged step
+times, 12.0-16.3 per task. Hammer and pick-place ran on a local full GPU, the other six on remote GPUs. This cost is
+not included in the RL wall time above.
+
+Caveats:
+- Three RL seeds and one pretraining seed per task; bootstrap intervals over three seeds are coarse.
+- The eight migrated CNN runs resumed from their checkpoints under the same job ids, release and configuration.
+  The steps after each checkpoint that were later abandoned are kept in `runs/<id>/superseded-local-a1/` and are not
+  evaluated.
+- Vision-only and with-proprio runs use different launch commits and hosts. The with-proprio arms are the completed
+  final-comparison runs.
+
 ### No-consistency and misscaled-none RL arms: within margin on every condition (2026-10-17 01:20; attribution only)
 
 Registered 2026-10-16 17:42, before any result of these arms (`runs/setup/stage2-extra-rl-registration-20261016.json`;

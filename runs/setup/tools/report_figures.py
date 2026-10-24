@@ -8,7 +8,8 @@ STEPS = list(range(10000, 1000001, 10000))
 
 COLORS = {'full': '#1f77b4', 'crop': '#d62728', 'shift': '#2ca02c', 'cnn': '#7f7f7f', 'cnnnoshift': '#ff7f0e',
           'ours': '#1f77b4', 'sincro': '#9467bd', 'reviwo': '#8c564b', 'dynamo': '#e377c2',
-          'mvp3d-multiview': '#bcbd22', 'mvp3d-single': '#17becf', 'snerl': '#000000'}
+          'mvp3d-multiview': '#bcbd22', 'mvp3d-single': '#17becf', 'snerl': '#000000',
+          'vo_ours': '#1f77b4', 'p_ours': '#9ecae1', 'vo_cnn': '#d62728', 'p_cnn': '#fcae91'}
 
 
 def svg_curves(path, title, panels, arms):

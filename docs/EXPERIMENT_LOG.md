@@ -4414,3 +4414,25 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   stick-push 0.64 vs 1.00, pick-place 0.12 vs 0.51, peg-insert-side 0.00 vs 0.12. Descriptive; no decision rule.
   The four launch commits differ in RL code only on paths SNeRL does not use (frame-feature mode and history-stride
   check of our exports, zero-width replay fields). docs/BASELINES.md "Eight-task results: SNeRL".
+
+- (10-25 06:10 KST) **Vision-only DrM campaign complete** (preregistered, `vision-only-definition-20261023.json`; last
+  job vo-drm-cnn-stick-push-s2002-eval at 05:59, remote). `vision_only_rl.py` → `reports/results-artifact/vision_only/rl.json`
+  (previous `rl.before-final-20261025.json`); curves `docs/figures/vision_only/success_curves.png`
+  (`reports/results-artifact/src/vision_only_figure.py`; `report_figures.py` gains four arm colours). Report:
+  docs/RESULTS.md "Vision-only DrM". IQM over 24 runs, task-stratified bootstrap:
+  - Primary, training-camera AUC, vision-only ours − CNN: 0.434 vs 0.423, +0.012 [−0.031, +0.045]. With proprio:
+    +0.101 [+0.042, +0.168]. Change of the gap: −0.090 [−0.174, −0.023].
+  - Early AUC (≤ 200k): +0.051 [+0.028, +0.074]. Training last-5: −0.066 [−0.156, +0.030]. Held-out last-5:
+    +0.078 [+0.055, +0.104] (0.089 vs 0.011). Moving last-5: −0.120 [−0.207, −0.012]; moving early AUC +0.084.
+  - Without proprio, ours loses training AUC −0.076 [−0.128, −0.031]; the CNN is unchanged (+0.014 [−0.039, +0.078];
+    early AUC +0.021 [+0.009, +0.034]).
+  - Wall clock (medians): vision-only ours 5.1 h local MIG / 4.8 h remote; vision-only CNN 10.3 h remote (16
+    single-host runs; the 8 migrated runs 10.1–13.3 h active, listed per run). Pretraining: 112.3 GPU-h for the eight
+    200k encoders.
+  - Descriptive; no decision.
+  Two corrections to the analysis code before this run:
+  - A `reset` re-admits a job that resumes from its checkpoint, so its earlier segments now count. CNN pick-place
+    s2000 with proprio is 13.1 h, not 2.8 h.
+  - The 05:00 entry above says "no result read for this choice", which is inaccurate. The test run of the new
+    wall-clock code printed the interim seven-task pooled differences. The change concerns wall-clock bookkeeping
+    only, and it does not enter any success or return statistic.
