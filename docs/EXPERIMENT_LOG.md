@@ -4376,3 +4376,17 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   +0.114], moving last-5 +0.062 [−0.011, +0.094], held-out last-5 −0.057 [−0.076, +0.036] (held-out success near zero
   for both). Two tasks only. Per directive 1, no eight-task chlrm expansion without the user; remaining pilots: pfs
   hammer (s2001, s2002 training; s2000 done), pft hammer (pretraining → export → DrM ×3).
+
+- (10-24 22:55 KST) **User decision: chamfer_lean_randmask (chlrm) gets an eight-task expansion** ("chlrm should get an
+  eight-task expansion", after the masking pilot report). Registered before any result:
+  `runs/setup/chlrm-registration-eight-task-20261024.json` via `runs/setup/tools/register_chlrm_eight_task_20261024.py`
+  — 48 rows for the six non-pilot tasks (bin-picking, coffee-push, door-open, peg-insert-side, peg-unplug-side,
+  stick-push): chlrm-seed0-<task>-200k (pretraining seed 0, 200k), chlrm-export-seed0-<task>-200k, chlrm-drm-<task>-s2000..2002
+  + evaluators. Definition unchanged (`mpf-definition-20261023.json`). Checks: every row equals its chamfer_lean control
+  row as registered (`chl-registration-eight-task-20261022.json`) apart from names and the variant file
+  `chamfer_lean_randmask.yaml`, and equals the chlrm hammer pilot row as registered apart from the task (scheduling
+  fields included). hammer and pick-place are the completed pilot runs. Scheduling: pretraining / RL priority 2 (ahead
+  of the SNeRL DrM rows, priority 3; no vision-only rows pending), exports 0; registered local, either host via the
+  pool. Local driver admits the registration (`baseline_local_driver.py`, backup `.before-chlrm8-20261024.py`); dry
+  run: would admit chlrm-seed0-bin-picking-200k and chlrm-seed0-coffee-push-200k now. Not an adoption: Chamfer and
+  chlrm stay candidates; the remaining pilots (pfs / pft hammer) and the pilot report continue.

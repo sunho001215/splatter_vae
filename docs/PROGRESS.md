@@ -435,16 +435,19 @@ diff inline.
 | 2026-10-19 21:59 | remote 2.89 TB (bxs-snerl-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
-(updated 2026-10-24 14:xx; earlier action lists are in docs/EXPERIMENT_LOG.md)
+(updated 2026-10-24 22:55; earlier action lists are in docs/EXPERIMENT_LOG.md)
 1. Done: chamfer_lean and future_k2 eight-task comparisons with the frozen method and their 200k diagnostics (results
    artifact v11); neither adopted, Chamfer remains a candidate.
-2. Pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`): T=1 stacked complete; chamfer_lean_randmask,
-   perframe_spatial, perframe_temporal pretraining / exports / DrM x 3 in progress (`pilots_rl.py`). Reported before any
-   new eight-task expansion; never restart future_k2 + Chamfer.
-3. Vision-only DrM campaign (`runs/setup/vision-only-registration-20261023.json`): our encoder's 24 runs trained,
-   remaining evaluations queued; CNN arm running on the remote, including the eight CNN trainers migrated from local
-   at their checkpoints (`migrate_cnn_to_remote_20261024.py`). Then `vision_only_rl.py` and the preregistered report.
-4. SNeRL: all eight pretrains complete; its 21 DrM pairs (priority 3) follow the vision-only campaign.
-5. Host-neutral pool: unstarted rows move to the host with capacity (`pool_placement.py`); started runs move only via a
+2. Pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`): T=1 stacked, chamfer_lean_randmask and
+   per-frame pick-place complete; pfs hammer trainers done (evaluators finishing); pft hammer pretraining -> export ->
+   DrM x 3. Then `pilots_rl.py`, targeted diagnostics and the full pilot report. Never restart future_k2 + Chamfer.
+3. chamfer_lean_randmask eight-task expansion (user 2026-10-24, after the masking pilot;
+   `runs/setup/chlrm-registration-eight-task-20261024.json`): pretraining / export / DrM x 3 for the six non-pilot tasks,
+   priority 2 (ahead of SNeRL), either host. Then the eight-task comparison with chamfer_lean and the original method.
+4. Vision-only DrM campaign (`runs/setup/vision-only-registration-20261023.json`): our encoder's arm complete; CNN arm
+   all 24 pairs launched on the remote (8 migrated trainers verified resumed). Then `vision_only_rl.py` and the
+   preregistered report.
+5. SNeRL: all eight pretrains complete; its 21 DrM pairs (priority 3) follow the vision-only campaign.
+6. Host-neutral pool: unstarted rows move to the host with capacity (`pool_placement.py`); started runs move only via a
    `migrated` registry event after an intentional checkpoint pause. Local CNN DrM trainers are charged their declared
    48 GB (mapped pixel replay).
