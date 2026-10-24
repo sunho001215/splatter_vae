@@ -4311,3 +4311,20 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   [-0.066, -0.008]. Largest per-task change bin-picking (last-5 0.274 vs 0.618); door-open, peg-unplug-side and
   stick-push unchanged within 0.02. The primary comparison (vision-only ours - CNN) waits for the CNN arm (0 of 8
   tasks complete; eight of its trainers migrated to the remote).
+
+- (10-24 17:43–17:50 KST) **CNN migration, first remote launch crashed on run identity; fixed without data loss.**
+  `vo-drm-cnn-hammer-s2000` attempt 2 (remote, GPU ca65, release f3538b1) exited 1 before touching the run:
+  `scripts/remote/entry.py` → `start_remote_run` → `_check_previous`: "Existing remote run has a different host".
+  Cause: the migration upload (`upload_cnn_migration_20261024.py`) copied the local attempt-1 `provenance.json`
+  (host local, commit 6f2e029) into the remote run directory, and the remote entry refuses an existing provenance with a
+  different host / commit. The checkpoint, replay memmaps, snapshots and train.jsonl were untouched (remote mtimes
+  unchanged). Fix, for all eight migrated runs (none active; hammer-s2000 crashed with failures 1 ≤ max_restarts 1,
+  the other seven pending): on the remote, `provenance.json` renamed to `provenance.local-a1.json` after checking that
+  its sha256 equals the local copy in `runs/<id>/superseded-local-a1/attempt1-files/provenance.json` (no-clobber
+  rename, nothing deleted). The remote attempt now writes a fresh remote provenance; the local attempt-1 provenance
+  stays preserved locally (run dir until the result sync overwrites it, and superseded-local-a1/). The scheduler
+  re-queues hammer-s2000 for its one remaining restart; resume from `latest.pt` (150k) to be verified on that launch.
+  The evaluator `vo-drm-cnn-hammer-s2000-eval` (attempt 1) is running and unaffected.
+  Verified 17:50 KST: `vo-drm-cnn-hammer-s2000` attempt 3 and `vo-drm-cnn-pick-place-s2000` attempt 2 (both remote,
+  GPU ca65, f3538b1) each logged `{"event": "resumed", "step": 150000}` in events.jsonl — checkpoint resume, not
+  from scratch. Wall-clock accounting for these runs excludes the frozen (local SIGSTOP) and migration intervals.
