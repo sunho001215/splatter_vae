@@ -4347,3 +4347,12 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   variants/rl.json). One task and 3 seeds only — pick-place chlrm (registered pair) still training; no adoption decision
   and no expansion before the pilot report (directive 1). Also complete: pft pick-place ×3 (trainers + evaluators);
   pfs pick-place trainers ×3 done, evaluators queued; pfs hammer DrM ×3 running; pft hammer pretraining running.
+
+- (10-24 20:35 KST) **Pilot interim: per-frame temporal vs spatial supervision, pick-place (3 seeds each).** pfs and
+  pft pick-place complete (trainers + evaluators, local). `pilots_rl.py` (previous output kept as
+  `pilots/rl.before-pfs-pick-place-20261024.json`). temporal_supervision = pft − pfs (IQM, 3 runs per arm): training
+  last-5 0.221 vs 0.129, +0.092 [−0.048, +0.246]; training AUC 0.089 vs 0.066, +0.023 [−0.058, +0.104]; moving
+  cameras last-5 +0.023 [−0.050, +0.098]; held-out ≈ 0 for both. Both per-frame arms are far below the original
+  method on pick-place (seed means: last-5 0.506, AUC 0.299) and below chamfer_lean (last-5 0.271, AUC 0.168).
+  Hammer pfs DrM ×3 running, pft hammer pretraining running; chlrm pick-place DrM ×3 running. No decision before the
+  pilot report.
