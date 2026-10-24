@@ -84,6 +84,42 @@ def test_intentional_pause_after_observed_exit_refunds_only_that_attempt(tmp_pat
     assert state["status"] == "crashed" and state["failures"] == 0 and state["failed_attempts"] == []
 
 
+def test_migration_after_intentional_checkpoint_stop_moves_the_run_to_the_destination_release(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    jobs.record({"event": "launched", "id": "a", "pid": 1, "gpu": GPU4, "attempt": 1, "commit": "c" * 40,
+                 "job_sha256": "1" * 64}, registry)
+    migration = {"event": "migrated", "id": "a", "from_host": "local", "host": "remote", "checkpoint_step": 150000,
+                 "commit": "d" * 40, "image_digest": "sha256:" + "e" * 64, "sources_identical": True}
+    jobs.record(migration, registry)
+    with pytest.raises(ValueError, match="invalid migration"):  # still running
+        jobs.read_registry(registry)
+    registry.unlink()
+    jobs.record({"event": "launched", "id": "a", "pid": 1, "gpu": GPU4, "attempt": 1, "commit": "c" * 40,
+                 "job_sha256": "1" * 64}, registry)
+    jobs.record({"event": "checkpoint_paused", "id": "a", "attempt": 1, "checkpoint_step": 150000,
+                 "checkpoint_sha256": "0" * 64, "reason": "migration", "intentional_stop": True}, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 1, "code": -1}, registry)
+    for wrong in ({"checkpoint_step": 100000}, {"from_host": "remote"}, {"host": "local"}, {"sources_identical": False},
+                  {"commit": ""}):
+        trial = tmp_path / "trial.jsonl"
+        trial.write_text(registry.read_text())
+        jobs.record({**migration, **wrong}, trial)
+        with pytest.raises(ValueError, match="invalid migration"):
+            jobs.read_registry(trial)
+    jobs.record(migration, registry)
+    state = jobs.read_registry(registry)["a"]
+    assert state["status"] == "pending" and state["host"] == "remote" and state["failures"] == 0
+    assert state["commit"] == "d" * 40 and state["image_digest"] == "sha256:" + "e" * 64
+    assert state["job_sha256"] == "1" * 64 and state["attempts"] == 1  # same run identity; the next launch is attempt 2
+    assert state["migrated_from"] == {"host": "local", "attempt": 1, "checkpoint_step": 150000}
+    jobs.record({"event": "launched", "id": "a", "host": "remote", "gpu": "GPU-x", "attempt": 2, "commit": "d" * 40,
+                 "image_digest": "sha256:" + "e" * 64}, registry)
+    assert jobs.read_registry(registry)["a"]["status"] == "running"
+    jobs.record(migration, registry)  # a second migration of a running job is refused
+    with pytest.raises(ValueError, match="invalid migration"):
+        jobs.read_registry(registry)
+
+
 def test_only_proven_refused_launch_can_release_its_job_fingerprint(tmp_path):
     registry = tmp_path / "registry.jsonl"
     jobs.record({"event": "launching", "id": "a", "host": "remote", "attempt": 1,

@@ -196,6 +196,19 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                     # There was no execution or checkpoint: a corrected launch specification is not a run retry.
                     job.pop("job_sha256", None)
                 job.update(status=PENDING)
+            elif kind == "migrated":
+                # an owned run stopped at a recorded checkpoint pause moves to another host and resumes there from that
+                # checkpoint under the same job id; its sources are identical in the destination release (user 2026-10-24)
+                stops = [stop for stop in job.get("intentional_stops", []) if stop.get("attempt") == job.get("attempt")]
+                if (job["status"] in ACTIVE or job.get("host", "local") != event.get("from_host") or not stops
+                        or stops[-1].get("checkpoint_step") != event.get("checkpoint_step")
+                        or event.get("host") not in {"local", "remote"} or event.get("host") == event.get("from_host")
+                        or event.get("sources_identical") is not True
+                        or not all(isinstance(event.get(key), str) and event[key] for key in ("commit", "image_digest"))):
+                    raise ValueError(f"invalid migration event for {event['id']}")
+                job.update(status=PENDING, host=event["host"], commit=event["commit"], image_digest=event["image_digest"],
+                           migrated_from={"host": event["from_host"], "attempt": job["attempt"],
+                                          "checkpoint_step": event["checkpoint_step"]})
             elif kind == "host_unreachable":
                 job.update(status="unreachable", host=event["host"], outage_started=event["time"])
             elif kind == "host_reconnected":

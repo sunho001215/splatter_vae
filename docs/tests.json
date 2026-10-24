@@ -1,35 +1,35 @@
 {
-  "started_utc": "2026-10-23T11:36:00.596310+00:00",
+  "started_utc": "2026-10-24T03:31:36.390308+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
-  "host": "remote",
-  "expected_commit": "f3538b1890c358a01ecbbaaa660c1822f8d89a44",
-  "expected_image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+  "host": "local",
+  "expected_commit": null,
+  "expected_image_digest": null,
   "gpu_mapping": [
     {
       "index": 0,
-      "uuid": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
-      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+      "uuid": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
     }
   ],
   "pytest_args": [
-    "/workspace/splatter4d/tests",
+    "/home/ws/ws/splatter4d/.worktrees/migrate/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/compu/kaist/sunho/runtime/verification/verify-native-f3538b1-cc/a1/evidence/tests.junit.xml",
+    "--junitxml=/home/ws/ws/splatter4d/.worktrees/migrate/docs/tests.junit.xml",
     "-o",
-    "cache_dir=/home/compu/kaist/sunho/runtime/verification/verify-native-f3538b1-cc/a1/evidence/pytest-cache"
+    "cache_dir=/home/ws/ws/splatter4d/.worktrees/migrate/docs/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 421.19054283201694,
+  "duration_seconds": 563.5386250100564,
   "counts": {
-    "passed": 1000,
+    "passed": 1001,
     "error": 0,
     "failed": 0,
     "skipped": 0
   },
-  "total": 1000,
+  "total": 1001,
   "full_suite_passed": true,
   "source_sha256": {
     "mujoco_mig_setup.py": "5fe3af1ebccfbfde5345a92fde874e574ca9da04cdc8fd3521e823d8e147238c",
@@ -160,7 +160,7 @@
     "scripts/gpu_env.sh": "f4c238da8273a3f49783cd499136e97e7d878b15d491ce5f611b05466bf56ce4",
     "scripts/heartbeat.py": "cf1fe22d25d143a7ab413cba48d12c7111279b784bf04ee672776da8b96c8ddf",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
-    "scripts/jobs.py": "8679e408c1f00c055ec562c688f55b6eeb6a5f542f25628053b23e9a92e55e8f",
+    "scripts/jobs.py": "33f2c0f4c68598b84399d82f3e87c2272f8bae748a8e982b128d9f5f8719f6ce",
     "scripts/mvp3d_figures.py": "cdea2610c236ec9da01d5d0f1239b2a85f04887b31057ad651e40b3ebe090b81",
     "scripts/mvp3d_size.py": "39b915c080303e35973236e9c3871bafe6efb73d7a9e5e3bb18b88369b219563",
     "scripts/remote/check_tunnel.sh": "c95493cb575d1e3cd0aa217b3ae39dcc0adef84483a206667a835c4e6b4b30bc",
@@ -219,7 +219,7 @@
     "tests/test_gpu_guard.py": "71de7a6b8db0070c6da90f40e90798509ca399b75428de9cf0632214fbb92630",
     "tests/test_gpu_isolation.py": "14c84e37f537b52354105771b1669262bc37693d713a6bb1308f23afe76157bb",
     "tests/test_heldout.py": "be7a3b67f632c7c82a65411f89b14b6e8e4cffc34c22b79a4bd42c4c09d11bce",
-    "tests/test_jobs.py": "734ead554cd8b3392d9a707e430f924ed3ea2c7123f2411d1dd8385e0772a262",
+    "tests/test_jobs.py": "5b7158fdd075822fb2c76e2279b99f4112322bd05e51e0be1bacb53f62823d8f",
     "tests/test_masking_perframe.py": "8c282a04fb526c5d8b86b21a4482daeb85ccf1b26dd9073d0ece51d6244c3f92",
     "tests/test_metaworld_checks.py": "00375c8f67fc86f57489addf924e7d32490e472915444861ce768ac56c4de220",
     "tests/test_motion.py": "22464ab9c4fd7913d609d460c56a39706b1b9d81c41fb9c1ea5add93fc0c2d20",
@@ -463,7 +463,7 @@
     "scripts/gpu_env.sh": "f4c238da8273a3f49783cd499136e97e7d878b15d491ce5f611b05466bf56ce4",
     "scripts/heartbeat.py": "cf1fe22d25d143a7ab413cba48d12c7111279b784bf04ee672776da8b96c8ddf",
     "scripts/inspect_droid_sample.py": "a8738051d939c2ec5c368cc221a1af8c6471f862d7c6ce2eeb302f89b7ece122",
-    "scripts/jobs.py": "8679e408c1f00c055ec562c688f55b6eeb6a5f542f25628053b23e9a92e55e8f",
+    "scripts/jobs.py": "33f2c0f4c68598b84399d82f3e87c2272f8bae748a8e982b128d9f5f8719f6ce",
     "scripts/mvp3d_figures.py": "cdea2610c236ec9da01d5d0f1239b2a85f04887b31057ad651e40b3ebe090b81",
     "scripts/mvp3d_size.py": "39b915c080303e35973236e9c3871bafe6efb73d7a9e5e3bb18b88369b219563",
     "scripts/remote/check_tunnel.sh": "c95493cb575d1e3cd0aa217b3ae39dcc0adef84483a206667a835c4e6b4b30bc",
@@ -522,7 +522,7 @@
     "tests/test_gpu_guard.py": "71de7a6b8db0070c6da90f40e90798509ca399b75428de9cf0632214fbb92630",
     "tests/test_gpu_isolation.py": "14c84e37f537b52354105771b1669262bc37693d713a6bb1308f23afe76157bb",
     "tests/test_heldout.py": "be7a3b67f632c7c82a65411f89b14b6e8e4cffc34c22b79a4bd42c4c09d11bce",
-    "tests/test_jobs.py": "734ead554cd8b3392d9a707e430f924ed3ea2c7123f2411d1dd8385e0772a262",
+    "tests/test_jobs.py": "5b7158fdd075822fb2c76e2279b99f4112322bd05e51e0be1bacb53f62823d8f",
     "tests/test_masking_perframe.py": "8c282a04fb526c5d8b86b21a4482daeb85ccf1b26dd9073d0ece51d6244c3f92",
     "tests/test_metaworld_checks.py": "00375c8f67fc86f57489addf924e7d32490e472915444861ce768ac56c4de220",
     "tests/test_motion.py": "22464ab9c4fd7913d609d460c56a39706b1b9d81c41fb9c1ea5add93fc0c2d20",
@@ -1984,19 +1984,5 @@
     ]
   },
   "problems": [],
-  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
-  "adopted_evidence": {
-    "host": "remote",
-    "job": "verify-native-f3538b1-cc",
-    "commit": "f3538b1890c358a01ecbbaaa660c1822f8d89a44",
-    "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
-    "report": "runs/verify-native-f3538b1-cc/evidence/tests.json",
-    "report_sha256": "6226f695b7a26689f9f408e190b4ecdab2ae2b5809f5a14306829186ff718482",
-    "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
-    "adopted_at": "2026-10-23T20:44:09+0900",
-    "local_runs": [
-      "tests/test_vision_only.py: 9 passed at the f3538b1 sources on local MIG-05a151e7 (incl. the real-environment worker); tests/test_rl.py 23 passed"
-    ],
-    "policy": "user instruction 2026-10-23: remote RAM for the remaining validation; the full native suite of the exact sources on the remote host is accepted as the launch-gate evidence when the local host lacks the suite headroom; provenance kept here (not a local run)"
-  }
+  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance."
 }
