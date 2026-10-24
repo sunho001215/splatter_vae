@@ -4401,3 +4401,16 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   Hours are reported per host; these eight mixed-host runs are listed per run and left out of the per-host summary.
   Pretraining cost (preregistered, separate): GPU-hours of the eight original 200k encoders from their logged
   seconds per iteration (evaluation time excluded). Also fixed a print of the difference-in-differences entry.
+
+- (10-25 05:10 KST) **SNeRL eight-task RL complete** (48/48 jobs: 24 DrM trainers + evaluators, local MIG; last:
+  s4-drm-snerl-stick-push-s2002-eval). `baselines_eight_task_report.py` gains a SNeRL row ("multi-view RGB + poses
+  (privileged)"; backup `.before-snerl-20261025.py`); `report_figures.py` gets a SNeRL colour and legend rows of seven
+  (identical layout up to seven arms; backup `.before-snerl-20261025.py`). Report
+  `runs/setup/baselines-eight-task-report-20261025-050930.json` (+ `.md`; an identical earlier run `-050845` differs
+  only in the figure legend). The earlier rows reproduce the 2026-10-18 report exactly. SNeRL IQM success, last-5
+  [95 % CI]: training 0.544 [0.382, 0.712] (AUC 0.366), held-out 0.054 [0.046, 0.066], moving 0.317 [0.238, 0.420];
+  ours 0.756 / 0.126 / 0.721; CNN 0.718 / 0.008 / 0.771. Per task (training last-5, SNeRL vs ours): door-open 0.98 vs
+  0.97, coffee-push 0.50 vs 0.44, peg-unplug-side 0.79 vs 0.82, hammer 0.78 vs 0.89, bin-picking 0.32 vs 0.62,
+  stick-push 0.64 vs 1.00, pick-place 0.12 vs 0.51, peg-insert-side 0.00 vs 0.12. Descriptive; no decision rule.
+  The four launch commits differ in RL code only on paths SNeRL does not use (frame-feature mode and history-stride
+  check of our exports, zero-width replay fields). docs/BASELINES.md "Eight-task results: SNeRL".

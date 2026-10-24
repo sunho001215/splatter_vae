@@ -222,6 +222,44 @@ IQM success over 8 tasks × 3 seeds, last-5 (AUC) [stratified bootstrap 95% CI o
     no provenance file; its host (local) comes from the registry.
 - SNeRL's eight-task runs follow its hammer acceptance (passed 2026-10-19; see its report above).
 
+### Eight-task results: SNeRL (2026-10-25)
+
+All 24 SNeRL DrM runs are complete: 8 tasks × seeds 2000–2002 × 1M agent steps, 240 episodes per point, encoders from
+the official 2.4M-step recipe (one pretraining per task, seed 0; registration
+`runs/setup/baselines-snerl-eight-task-registration-20261020.json`). Descriptive, like DynaMo and 3D-MVP; no new
+decision rule. Tool: `runs/setup/tools/baselines_eight_task_report.py`, which now has a SNeRL row. Report:
+`runs/setup/baselines-eight-task-report-20261025-050930.json` and its `.md` digest; curves:
+`docs/figures/baselines/eight_task/success_curves.png` (previous figure kept as `success_curves.before-snerl-20261025.*`).
+The other rows reproduce the 2026-10-18 report exactly.
+
+IQM success over 8 tasks × 3 seeds, last-5 (AUC) [stratified bootstrap 95% CI on last-5]:
+
+| method (input) | training cameras | held-out cameras | trajectories |
+|---|---|---|---|
+| Splatter4D (ours), single RGB | **0.756** (0.510) [0.670, 0.811] | **0.126** (0.105) [0.111, 0.140] | 0.721 (0.509) [0.650, 0.771] |
+| DrM CNN, single RGB | 0.718 (0.409) [0.666, 0.768] | 0.008 (0.012) [0.004, 0.014] | **0.771** (0.438) [0.735, 0.809] |
+| SNeRL, multi-view RGB + poses (privileged) | 0.544 (0.366) [0.382, 0.712] | 0.054 (0.059) [0.046, 0.066] | 0.317 (0.232) [0.238, 0.420] |
+
+Training-camera last-5 by task, seed means (SNeRL vs ours):
+
+| | bin-picking | coffee-push | door-open | hammer | peg-insert-side | peg-unplug-side | pick-place | stick-push |
+|---|---|---|---|---|---|---|---|---|
+| SNeRL | 0.32 | 0.50 | 0.98 | 0.78 | 0.00 | 0.79 | 0.12 | 0.64 |
+| ours | 0.62 | 0.44 | 0.97 | 0.89 | 0.12 | 0.82 | 0.51 | 1.00 |
+
+- **SNeRL** is the strongest of the added baselines on training cameras (0.544, vs DynaMo 0.199 and 3D-MVP B 0.325)
+  but below ours and the CNN. It matches ours on door-open and peg-unplug-side and is ahead on coffee-push (0.50 vs
+  0.44). The gap comes from pick-place (0.12 vs 0.51), stick-push (0.64 vs 1.00), bin-picking (0.32 vs 0.62) and
+  peg-insert-side (0.00 vs 0.12). Its wide interval reflects this spread across tasks.
+- **Held-out and moving cameras** are not like-for-like. SNeRL sees three training-camera views plus poses, and the
+  shift evaluation replaces one view and keeps two fixed (user, 2026-10-14). Even so, its held-out IQM (0.054) is
+  below ours (0.126).
+- **Fairness:** no RL config differs from ours outside the encoder and input fields, and every point has 240 episodes.
+  All 24 runs ran on local MIG from four launch commits (5234987 ×7, 6f2e029 ×11, 6cda464 ×3, 9352d86 ×3). Between
+  them, the RL code differs only in our encoder's frame-feature mode, a history-stride check for our exports, and
+  zero-width replay fields for vision-only runs. None of these touches SNeRL's path, so the runs are behaviour-preserving
+  for SNeRL.
+
 The remainder documents the already-accepted SinCro/ReViWo adaptations. Their rule is **upstream code, original
 hyperparameters, changes only at the data interface**; exceptions are listed explicitly.
 

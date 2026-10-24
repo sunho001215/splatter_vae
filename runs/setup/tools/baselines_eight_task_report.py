@@ -3,7 +3,8 @@
 Reporting standard of rl_reporting.py, unchanged: success and return as last-5 / final / AUC for training cameras,
 held-out cameras and trajectories; per task (seed mean, per-seed values, seed bootstrap 95 % CI) and IQM over
 8 tasks x seeds 2000-2002 with the stratified bootstrap CI (success only; returns are task-scaled). Rows: ours, SinCro,
-ReViWo, CNN (the completed final comparison) and DynaMo, 3D-MVP A "multi-view RGB-D + extrinsics (privileged)",
+ReViWo, CNN (the completed final comparison), SNeRL (registration baselines-snerl-eight-task-registration-20261020.json;
+"multi-view RGB + poses (privileged)") and DynaMo, 3D-MVP A "multi-view RGB-D + extrinsics (privileged)",
 3D-MVP B "single RGB-D + extrinsics (privileged)" as separate rows with their input labels. Descriptive: no new
 decision rule. Fairness: RL config keys differing from ours outside the encoder/input fields, hosts and commits,
 evaluation episodes per point.
@@ -35,7 +36,7 @@ TASKS = ('bin-picking', 'coffee-push', 'door-open', 'hammer', 'peg-insert-side',
          'stick-push')
 SEEDS = (2000, 2001, 2002)
 METHODS = {'ours': 'Splatter4D (ours)', 'sincro': 'SinCro', 'reviwo': 'ReViWo', 'cnn': 'DrM CNN',
-           'dynamo': 'DynaMo', 'mvp3d-multiview': '3D-MVP A, multi-view RGB-D + extrinsics (privileged)',
+           'snerl': 'SNeRL, multi-view RGB + poses (privileged)', 'dynamo': 'DynaMo', 'mvp3d-multiview': '3D-MVP A, multi-view RGB-D + extrinsics (privileged)',
            'mvp3d-single': '3D-MVP B, single RGB-D + extrinsics (privileged)'}
 ENCODER_FIELDS = ('encoder_name', 'vision.', 'env.cameras', 'env.depth', 'env.views', 'agent.feature_dim')
 B = 10000
@@ -164,13 +165,13 @@ for task in TASKS + ('mean over tasks',):
             else:
                 series[m] = np.array([runs[run_id(m, task, s)]['curves'][kind] for s in SEEDS])
         panels.append((f'{task} / {kind}', series))
-title = 'Eight-task final comparison incl. DynaMo and 3D-MVP (success, seeds 2000-2002)'
+title = 'Eight-task final comparison incl. SNeRL, DynaMo and 3D-MVP (success, seeds 2000-2002)'
 svg_curves(figures / 'success_curves.svg', title, panels, tuple(METHODS))
 png_curves(figures / 'success_curves.png', title, panels, tuple(METHODS))
 
 out = SETUP / f'baselines-eight-task-report-{datetime.now():%Y%m%d-%H%M%S}.json'
 out.write_text(json.dumps(report, indent=1, default=str) + '\n')
-L = [f'# Eight-task final comparison with DynaMo and 3D-MVP ({report["recorded_local"]})', '',
+L = [f'# Eight-task final comparison with SNeRL, DynaMo and 3D-MVP ({report["recorded_local"]})', '',
      f'JSON: `{out.relative_to(ROOT)}`; figure: `docs/figures/baselines/eight_task/success_curves.png`', '',
      '## IQM of success over 8 tasks x 3 seeds [stratified bootstrap 95% CI]', '',
      '| method | camera | last-5 | final | AUC |', '|---|---|---|---|---|']
