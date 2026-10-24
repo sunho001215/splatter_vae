@@ -4228,3 +4228,79 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   success IQM 0.560 vs original 0.641, -0.081 [-0.254, +0.096]; AUC -0.014 [-0.121, +0.079]; held-out -0.025
   [-0.038, -0.012]; moving cameras -0.034 [-0.189, +0.122]. Per task: peg-insert-side 0.096 vs 0.122. Two tasks follow
   (peg-unplug-side RL running, stick-push pretraining).
+- (10-24 02:5x) chamfer_lean eight-task: stick-push pretraining done (200k, exit 0) and exported; its three DrM pairs
+  are queued (memory-limited admission). The remaining 200k diagnostics (probes, matched renders, loss gradients) for
+  peg-insert-side, peg-unplug-side and stick-push run now with the same commands as the first five tasks, one process
+  at a time on MIG-2ebd9e11 (scratchpad `chl_diag_remaining.sh`); the 200k metrics are then regenerated for all eight
+  tasks (previous five-task `summary_200k.json` / run log kept as `*.5task-20261023.*`).
+- (10-24 03:3x) chamfer_lean vs original 200k diagnostics, now all eight tasks (chain above, all exit 0; the five
+  earlier tasks' regenerated metrics are identical to the five-task summary). The three added tasks follow the
+  earlier pattern. PSNR chl - ref, input / novel training / held-out / moving cameras: peg-insert-side +1.13 / +0.93
+  / -0.29 / -1.65 dB, peg-unplug-side +1.47 / +0.78 / -0.37 / -1.57, stick-push +0.38 / +0.48 / -0.52 / -1.80; the
+  dynamic region changes little (-0.30 to +0.24) and the losses are in the distant background (moving cameras -2.0 to
+  -2.6 dB); LPIPS better; 3D Chamfer about 100x smaller; static contributing fraction 0.78-0.79 vs 0.52-0.61.
+  Probes (training cameras, hand / object velocity R^2): original 0.90/0.81, 0.70/0.16, 0.74/0.77; chamfer_lean
+  0.91/0.81, 0.73/0.18, 0.60/0.77; future_k2 0.35/0.16, 0.38/0.04, 0.54/0.74. Stick-push is the one task where
+  chamfer_lean's hand velocity is clearly lower. State-gradient group cosines (reconstruction-geometry, geometry-motion):
+  original 0.85-0.88 / 0.33-0.36, chamfer_lean 0.22-0.31 / 0.16-0.20, as before. Outputs: `chl/summary_200k.json`,
+  `runs/setup/variants-compare-20261023/{probes,grad}/<task>.json`.
+- (10-24 03:5x) chamfer_lean RL, interim, seven tasks (peg-unplug-side added; `variants_rl.py`, previous output kept
+  as `variants/rl.6task-20261024.json`): training-camera last-5 success IQM 0.635 vs original 0.689, -0.054 [-0.196,
+  +0.062]; AUC -0.014 [-0.108, +0.054]; held-out -0.024 [-0.036, -0.012]; moving cameras -0.022 [-0.145, +0.088].
+  Per task (last-5, seed means): peg-unplug-side 0.809 vs 0.823; pick-place remains the largest gap (0.271 vs 0.506).
+  Stick-push RL is running (s2000/s2001 remote, s2002 queued).
+- (10-24 06:0x) Throughput note: since about 04:30 the local pilot pretrains slowed where vision-only CNN DrM trainers
+  share their MIG slice (normal placement, <= 3 jobs per slice): s/step chlrm pick-place 0.42 -> 0.97 (two CNN
+  trainers on the slice), chlrm hammer 0.37 -> 0.61, pfs hammer 0.45 -> 0.74, pft hammer 0.70 -> 0.88; pfs
+  pick-place (no CNN neighbour) unchanged at 0.40. Steps 131k / 114k / 105k / 69k / 117k of 200k. No job was moved
+  or paused; placement unchanged. Our-encoder vision-only arm: hammer, pick-place, bin-picking, door-open and
+  coffee-push complete (3 seeds each, evaluated to 1M).
+- (10-24 07:5x) Remote driver fault, fixed: at 07:08 the pool moved the first end-to-end CNN pair to the remote
+  (vo-drm-cnn-bin-picking-s2002 + eval); the pool RL readiness check (`remote_campaign_driver.py` ready(), kind
+  pool_rl) assumed every trainer has a frozen export to upload and raised StopIteration, so every pass from 07:08 to
+  07:49 exited before dispatch (running remote jobs unaffected; the scheduler daemon kept syncing finished remote results). Fix: a pool
+  trainer without `vision.export_path` has nothing to upload (backup `remote_campaign_driver.before-cnn-pool-20261024.py`).
+  No job settings changed.
+- (10-24 08:37) Local budget incident: 147.8 GB at 08:34 (alert >= 147; ceiling 150), rising ~3 GB / 10 min. Cause:
+  the eight local vision-only CNN DrM trainers (registered local like the other vision-only rows; their with-proprio
+  originals ran remote) keep a 49 GB pixel replay memmap each whose resident pages are mapped and therefore counted
+  (Pss_File, option (b)); 4.8-10.7 GB each at 97k-220k steps, growing ~0.74 MB/s each, about 390 GB in total by 1M.
+  The local driver charged them the frozen-encoder DrM footprint (3.5 GB) instead of their declared ram_gb 48.
+  Action (lossless, reversible): SIGSTOP of the eight train_rl.py processes at 08:37:26 (wrappers, W&B helpers,
+  checkpoints and replay untouched; `runs/setup/cnn-freeze-20261024.json`, log `cnn-freeze-20261024.log`); budget
+  steady at 148.0 GB. Local driver: CNN DrM trainers now charged their declared ram_gb (no further local CNN
+  admission; pending CNN pairs go to the remote through the pool); frozen trainers add no projected growth (backup
+  `baseline_local_driver.before-cnn-footprint-20261024.py`). Wall-clock analysis of these eight runs must subtract
+  the frozen interval. How to continue them (migrate to the remote from their checkpoints, or thaw locally a few at a
+  time) is the user's decision.
+- (10-24 12:2x-12:4x) Migration of the eight frozen local CNN trainers to the remote (user: "Move them to the
+  remote"). (1) Stopped at 12:28 after verifying owned identity and latest.pt (SIGTERM + SIGCONT of the frozen
+  session; `stop_frozen_cnn_for_migration_20261024.py`); recorded as intentional checkpoint pauses, no failure charged.
+  Checkpoints / last logged step: hammer s2000 150k/156k, s2001 150k/195k, s2002 200k/220k; pick-place s2000
+  150k/167k, s2001 150k/174k, s2002 100k/133k; bin-picking s2000 50k/97k, s2001 150k/176k (6k-47k steps to redo).
+  Local budget 148 -> 56 GB. (2) Snapshots and train.jsonl lines after each checkpoint (the abandoned continuation)
+  moved to `runs/<id>/superseded-local-a1/` (full train.jsonl and attempt-1 config / console / provenance / events
+  kept there), so the evaluator never sees them. (3) Scheduler: new `migrated` registry event (commit 6d8e8bd, full
+  suite 1001/1001 in worktree .worktrees/migrate, fast-forwarded; daemon restarted on it): a run with an intentional
+  checkpoint pause of its latest attempt moves host under the same job id onto a named release whose sources must be
+  identical. The local launches' 301 source fingerprints equal the accepted pool release f3538b1
+  (`runs/remote/acceptance/f3538b1-cc/tests.json`). (4) Run directories (checkpoint, snapshots <= checkpoint, replay
+  memmaps, logs) uploaded with sha256 verification (`upload_cnn_migration_20261024.py`, record
+  `cnn-migration-upload-20261024.json`, ~4.5 min per run). (5) `migrate_cnn_to_remote_20261024.py`: queue rows change
+  only in host fields (pool_placement.placed_row; job fingerprints unchanged), `migrated` events, move appended to
+  `pool-placement.json`. Trainer and evaluator pairs then wait for remote capacity (GPU load 2.4-2.7 of 2.8; the
+  running remote CNN trainers are at 0.1-0.54M steps, ~25-29 steps/s). The local driver no longer admits these ids.
+- (10-24 14:xx) chamfer_lean eight-task RL complete (chl-drm-stick-push-s2002-eval was the last job). Final
+  comparison with the frozen method (`variants_rl.py`; seven-task output kept as `variants/rl.7task-20261024.json`),
+  IQM over 24 runs, task-stratified bootstrap:
+  - chamfer_lean: training last-5 0.705 vs 0.756, -0.051 [-0.167, +0.056]; AUC -0.014 [-0.083, +0.047]; final -0.040
+    [-0.160, +0.061]; held-out last-5 -0.022 [-0.041, -0.002], AUC -0.024 [-0.035, -0.012]; moving last-5 -0.014
+    [-0.120, +0.076], AUC -0.001 [-0.070, +0.062]. Per task (last-5): pick-place -0.234, hammer -0.073, others within
+    +-0.03 (stick-push 0.992 vs 0.998).
+  - future_k2 (unchanged, complete earlier): training last-5 -0.070 [-0.168, +0.040]; AUC -0.056 [-0.108, -0.005];
+    moving AUC -0.057 [-0.104, -0.009].
+  - Reading: neither variant improves on the original; no adoption (Chamfer remains a candidate, user 2026-10-23).
+  Results artifact v11 (https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73): new section "Pretraining variants"
+  (`src/variants_section.py`: pooled table, curves, per-task table), "Reconstruction vs RL" regenerated with all eight
+  tasks and the completed T=1-stack pilot (`src/gap_section.py`), status chips and status section updated (backup
+  `site/index.v10-before-variants-20261024.html`).
