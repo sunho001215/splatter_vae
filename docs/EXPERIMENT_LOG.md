@@ -4356,3 +4356,11 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   method on pick-place (seed means: last-5 0.506, AUC 0.299) and below chamfer_lean (last-5 0.271, AUC 0.168).
   Hammer pfs DrM ×3 running, pft hammer pretraining running; chlrm pick-place DrM ×3 running. No decision before the
   pilot report.
+
+- (10-24 22:12 KST) **CNN migration complete: all eight migrated trainers resumed on the remote.** Verified
+  `{"event": "resumed"}` at the recorded checkpoint for every one: hammer s2000 150k (attempt 3), s2001 150k, s2002
+  200k; pick-place s2000 150k, s2001 150k, s2002 100k; bin-picking s2000 50k, s2001 150k (attempt 2 unless noted).
+  22:04 REMOTE_HOST_DISK_LOW: scheduler admission only (df free 1.8 TB; free minus the 50 GiB reservation of every
+  active remote job ≈ 1.18 TB vs the 15 % floor 1.13 TB) — pick-place s2002 waited until a CNN trainer finished
+  (22:10) and then launched; stick-push s2002 waits for the next one. Nothing deleted. About 640 GB of the remote
+  run tree is replay memmaps of finished CNN runs (≈46 GB each), noted in case disk becomes binding (user decision).
