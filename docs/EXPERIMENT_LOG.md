@@ -4390,3 +4390,14 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   pool. Local driver admits the registration (`baseline_local_driver.py`, backup `.before-chlrm8-20261024.py`); dry
   run: would admit chlrm-seed0-bin-picking-200k and chlrm-seed0-coffee-push-200k now. Not an adoption: Chamfer and
   chlrm stay candidates; the remaining pilots (pfs / pft hammer) and the pilot report continue.
+
+- (10-25 05:00 KST) Vision-only analysis, wall clock and pretraining cost (analysis code only, before the CNN arm's
+  last run; no result read for this choice). `reports/results-artifact/src/vision_only_rl.py` (backup
+  `.before-wallclock-20261025`): wall clock is now one segment per attempt, from the attempt's first `launched` event
+  (the scheduler repeats `launched` when it re-confirms a running container after an SSH outage, e.g. 10-25 00:39–00:40)
+  to its `exited` event; segments before a `reset` are reported as discarded. The eight migrated CNN trainers count
+  local time only up to the SIGSTOP (`cnn-freeze-20261024.json`, 08:37:26); the 3.86 h frozen interval and the wait
+  for remote capacity are excluded, and the steps between checkpoint and freeze are recorded as redone (6k–47k).
+  Hours are reported per host; these eight mixed-host runs are listed per run and left out of the per-host summary.
+  Pretraining cost (preregistered, separate): GPU-hours of the eight original 200k encoders from their logged
+  seconds per iteration (evaluation time excluded). Also fixed a print of the difference-in-differences entry.
