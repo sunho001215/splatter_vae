@@ -4364,3 +4364,15 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   active remote job ≈ 1.18 TB vs the 15 % floor 1.13 TB) — pick-place s2002 waited until a CNN trainer finished
   (22:10) and then launched; stick-push s2002 waits for the next one. Nothing deleted. About 640 GB of the remote
   run tree is replay memmaps of finished CNN runs (≈46 GB each), noted in case disk becomes binding (user decision).
+
+- (10-24 22:50 KST) **Masking pilot complete (chlrm, hammer + pick-place, 3 seeds each).** `pilots_rl.py` (previous
+  output `pilots/rl.before-chlrm-pick-place-20261024.json`). Registered comparison chlrm − chamfer_lean, IQM over 6
+  runs per arm, task-stratified bootstrap: training last-5 0.745 vs 0.593, +0.152 [+0.080, +0.329]; training AUC
+  0.542 vs 0.416, +0.127 [+0.101, +0.240]; moving cameras last-5 +0.075 [−0.017, +0.270]; held-out last-5 −0.013
+  [−0.034, +0.082]. Per task (seed means, last-5 / AUC): hammer chlrm 0.972 / 0.780 vs chl 0.817 / 0.588 vs original
+  0.890 / 0.662; pick-place chlrm 0.498 / 0.296 vs chl 0.271 / 0.168 vs original 0.506 / 0.299 — masking removes
+  chamfer_lean's pick-place deficit. Exploratory supplement (not a registered comparison; same estimator, original =
+  s3-drm-splatter4d, seeds 2000–2002): chlrm − original training last-5 +0.023 [−0.022, +0.114], AUC +0.075 [+0.004,
+  +0.114], moving last-5 +0.062 [−0.011, +0.094], held-out last-5 −0.057 [−0.076, +0.036] (held-out success near zero
+  for both). Two tasks only. Per directive 1, no eight-task chlrm expansion without the user; remaining pilots: pfs
+  hammer (s2001, s2002 training; s2000 done), pft hammer (pretraining → export → DrM ×3).
