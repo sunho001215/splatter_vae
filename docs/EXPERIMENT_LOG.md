@@ -4304,3 +4304,10 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   (`src/variants_section.py`: pooled table, curves, per-task table), "Reconstruction vs RL" regenerated with all eight
   tasks and the completed T=1-stack pilot (`src/gap_section.py`), status chips and status section updated (backup
   `site/index.v10-before-variants-20261024.html`).
+- (10-24) Vision-only campaign, interim: our-encoder arm complete (24 trainers + 24 evaluators; `vision_only_rl.py`,
+  preregistered). Our encoder without vs with proprioception (IQM over 24 runs, task-stratified bootstrap): training
+  AUC 0.434 vs 0.510, -0.076 [-0.129, -0.029]; early AUC (<= 200k) -0.025 [-0.077, +0.024]; last-5 0.667 vs 0.756, -0.090
+  [-0.192, +0.031]; moving cameras last-5 -0.112 [-0.184, -0.035], AUC -0.092 [-0.136, -0.051]; held-out last-5 -0.037
+  [-0.066, -0.008]. Largest per-task change bin-picking (last-5 0.274 vs 0.618); door-open, peg-unplug-side and
+  stick-push unchanged within 0.02. The primary comparison (vision-only ours - CNN) waits for the CNN arm (0 of 8
+  tasks complete; eight of its trainers migrated to the remote).
