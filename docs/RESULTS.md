@@ -4,6 +4,113 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Pilots: masking, per-frame structure and T=1 stacking, hammer + pick-place (2026-10-25 08:30; registered, descriptive)
+
+Protocol: `runs/setup/mpf-definition-20261023.json` and `mpf-registration-20261023.json` (user directive 2026-10-23),
+registered before any result. Each arm: 200k pretraining (seed 0) per task, then 1M DrM x 3 seeds (2000-2002; the
+T=1 rows reuse the Stage 2 exports and seeds 1000-1002), with proprioception as in the final comparison. Analysis:
+`reports/results-artifact/src/pilots_rl.py` -> `reports/results-artifact/pilots/rl.json`. Statistics: IQM over 6 runs
+(2 tasks x 3 seeds), task-stratified bootstrap 95 % intervals (B = 2000). Decision rule: none (descriptive pilots);
+Chamfer and chlrm remain candidates, not adopted.
+
+Registered comparisons, success IQM over 6 runs; difference = first - second [95 % CI]:
+
+| comparison | training last-5 | training AUC | held-out last-5 | moving last-5 |
+|---|---|---|---|---|
+| masking: chamfer_lean_randmask - chamfer_lean | 0.745 vs 0.593, **+0.152 [+0.080, +0.329]** | 0.542 vs 0.416, +0.127 [+0.101, +0.240] | -0.013 [-0.034, +0.082] | +0.075 [-0.017, +0.270] |
+| temporal supervision: perframe_temporal - perframe_spatial | 0.599 vs 0.536, +0.063 [-0.058, +0.148] | 0.357 vs 0.415, -0.058 [-0.174, +0.045] | +0.013 [-0.035, +0.055] | -0.008 [-0.105, +0.084] |
+| stacking: T=1 stacked - T=1 newest frame | 0.795 vs 0.798, -0.004 [-0.199, +0.071] | 0.493 vs 0.542, -0.049 [-0.203, +0.107] | -0.006 [-0.032, +0.021] | +0.029 [-0.140, +0.122] |
+| T=1 stacked - full Stage 2 | 0.795 vs 0.723, +0.072 [-0.141, +0.191] | 0.493 vs 0.455, +0.038 [-0.102, +0.163] | -0.036 [-0.078, +0.003] | +0.120 [-0.010, +0.189] |
+
+Exploratory supplement, not registered: each pilot arm - the original method (the final-comparison runs
+s3-drm-splatter4d, seeds 2000-2002), same estimator (`pilots_rl_vs_original.py` ->
+`pilots/rl_vs_original_exploratory.json`):
+
+| arm - original | training last-5 | training AUC | held-out last-5 | moving last-5 |
+|---|---|---|---|---|
+| chamfer_lean | -0.128 [-0.289, -0.020] | -0.052 [-0.169, -0.014] | -0.044 [-0.065, -0.022] | -0.012 [-0.223, +0.064] |
+| chamfer_lean_randmask | +0.023 [-0.022, +0.114] | +0.075 [+0.004, +0.114] | -0.057 [-0.077, +0.037] | +0.062 [-0.010, +0.092] |
+| perframe_spatial | -0.185 [-0.248, -0.078] | -0.052 [-0.126, +0.003] | -0.037 [-0.071, +0.009] | -0.155 [-0.218, -0.109] |
+| perframe_temporal | -0.123 [-0.228, -0.008] | -0.110 [-0.233, -0.007] | -0.024 [-0.047, +0.004] | -0.162 [-0.261, -0.081] |
+
+Training-camera success by task, seed means, last-5 / AUC (moving-camera last-5 in brackets):
+
+| arm | hammer | pick-place |
+|---|---|---|
+| original (final comparison) | 0.890 / 0.662 (0.865) | 0.506 / 0.299 (0.438) |
+| chamfer_lean | 0.817 / 0.588 (0.835) | 0.271 / 0.168 (0.295) |
+| chamfer_lean_randmask | 0.972 / 0.780 (0.930) | 0.498 / 0.296 (0.442) |
+| perframe_spatial | 0.946 / 0.771 (0.887) | 0.129 / 0.066 (0.087) |
+| perframe_temporal | 0.929 / 0.638 (0.855) | 0.221 / 0.089 (0.110) |
+| T=1, newest frame (Stage 2) | 0.933 / 0.692 (0.907) | 0.664 / 0.418 (0.612) |
+| T=1, stacked | 0.935 / 0.671 (0.958) | 0.530 / 0.333 (0.522) |
+| full Stage 2 | 0.935 / 0.652 (0.882) | 0.463 / 0.278 (0.423) |
+
+Diagnostics (inference only) on the 200k seed-0 checkpoints behind the RL exports. There is one pretraining seed per
+arm, so these describe single encoders.
+- **Renders** (`chl_analysis_render.py`, `pilot_render_metrics.py` ->
+  `reports/results-artifact/chl/summary_pilots_200k.json`). Protocol: 40 validation samples x 22 target cameras per
+  task, paired by image, episode bootstrap B = 1000. The per-frame pilots render frame t from the set decoded from
+  image t alone; the joint models decode t-4, t-2 and t. Values are hammer / pick-place:
+  - **Masking leaves rendering unchanged.** chlrm - chamfer_lean is +0.04 / +0.05 dB PSNR over all images, +0.17 /
+    +0.07 held-out and -0.05 / +0.04 moving. LPIPS is +0.01.
+  - **Temporal supervision improves per-frame rendering.** pft - pfs is +0.60 [+0.57, +0.65] / +0.26
+    [+0.23, +0.28] dB over all images. It is +0.78 / +0.45 on the moving range, +0.41 / +0.05 held-out and +0.45 /
+    +0.27 on the robot and object region. LPIPS is -0.02.
+  - **The Chamfer models keep chamfer_lean's pattern against the original.** This covers chamfer_lean and the three
+    Chamfer-based pilots. They are +0.3 to +2.0 dB better on novel training cameras and -1.4 to -2.3 dB worse on the
+    moving range. On the distant background they are -1.0 to -1.6 dB worse. Their 3D Chamfer distance is about 100x
+    smaller.
+- **Representation probes** (`variant_repr_probes.py` ->
+  `runs/setup/variants-compare-20261023/probes/pilots-<task>.json`). These use RL-spaced windows and the exact policy
+  state, with ridge regression fitted on the training cameras. Values are hammer / pick-place:
+  - Hand-velocity R² on the training cameras:
+
+    | original | chamfer_lean | chlrm | pfs | pft | T=1 stacked |
+    |---|---|---|---|---|---|
+    | 0.89 / 0.84 | 0.89 / 0.89 | 0.86 / 0.84 | 0.67 / 0.76 | 0.78 / 0.82 | 0.71 / 0.79 |
+
+    On the moving cameras the same arms reach 0.76 / 0.79, 0.80 / 0.83, 0.70 / 0.68, 0.52 / 0.61, 0.60 / 0.67 and
+    0.59 / 0.66.
+  - Object-velocity R² on the training cameras: original 0.84 / 0.65, chamfer_lean 0.85 / 0.65, chlrm 0.81 / 0.66,
+    pfs 0.81 / 0.51, pft 0.81 / 0.58.
+  - **History dependence.** This is the cosine between the intact state and the state with both history frames
+    replaced by the current frame. It is 0.85 / 0.91 for the original and for chamfer_lean, 0.95 / 0.97 for chlrm,
+    and 0.93-0.97 for the per-frame and T=1 stacked states.
+  - Positions are decodable for every arm: hand R² 0.94-0.98, object R² 0.85-0.97. Object-minus-hand position is not
+    (R² <= 0.10). Hand probes do not transfer to the held-out cameras (R² <= 0.23, mostly negative).
+
+Reading (descriptive; hypotheses, not established):
+- **Masking is the only change with a clear RL effect.** chlrm recovers chamfer_lean's pick-place deficit (last-5
+  0.498 vs 0.271) and improves hammer. Its renders are unchanged. Its states depend less on history and carry slightly
+  less velocity information. So reconstruction quality and linear decodability do not explain the gain. The
+  eight-task expansion approved by the user is running.
+- **Pair-conditioned temporal reconstruction helps rendering and probes but not RL.** It improves the per-frame
+  encoder's renders (+0.3 to +0.6 dB, mostly the moving cameras) and its velocity probes (+0.06 to +0.11 R²). RL does
+  not improve: last-5 +0.063 [-0.058, +0.148], AUC -0.058. On hammer it learns more slowly than perframe_spatial (AUC
+  0.638 vs 0.771).
+- **Both per-frame pilots lose on pick-place** (last-5 0.13 and 0.22 vs 0.51 for the original) while matching it on
+  hammer. The stacked T=1 Stage 2 encoder is also per-frame, and it does not lose (0.53). The cause is not identified.
+  The per-frame pilots differ from it in their reconstruction terms (Chamfer-based), masking and per-frame invariance.
+  The T=1 runs also use other seeds.
+- **Rendering and probe quality did not predict the RL ranking in any pilot.** This matches the earlier chamfer_lean
+  diagnostics.
+
+Compute: median logged s/it of the 200k pretraining. The hardware was shared, so this is not a controlled timing.
+Values are hammer / pick-place:
+- chamfer_lean 0.38 / 0.48 and chlrm 0.36 / 0.38 (local MIG slices).
+- pfs 0.45 / 0.41 (local MIG slices).
+- pft 0.63 on hammer (local MIG slice) and 0.30 on pick-place (remote full GPU).
+
+Caveats:
+- Two tasks, with three RL seeds and one pretraining seed per arm. Bootstrap intervals over three seeds per task are
+  coarse.
+- pft pick-place was pretrained on the remote; every other pilot was pretrained locally.
+- The T=1 rows use seeds 1000-1002 and an earlier launch.
+
+Decision: none is automatic. No eight-task expansion of the per-frame pilots is proposed: neither beats the original,
+and temporal supervision shows no RL gain. Under directive 1, any expansion is the user's decision.
+
 ### Vision-only DrM: our frozen encoder vs CNN without proprioception (2026-10-25 06:10; preregistered, descriptive)
 
 Protocol: `runs/setup/vision-only-definition-20261023.json` (user, 2026-10-23), registered before any result. The

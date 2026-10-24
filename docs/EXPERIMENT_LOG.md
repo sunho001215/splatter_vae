@@ -4436,3 +4436,32 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   - The 05:00 entry above says "no result read for this choice", which is inaccurate. The test run of the new
     wall-clock code printed the interim seven-task pooled differences. The change concerns wall-clock bookkeeping
     only, and it does not enter any success or return statistic.
+
+- (10-25 08:30 KST) **Pilot report complete: masking, per-frame temporal vs spatial, T=1 stacking (hammer + pick-place).**
+  pft hammer DrM x 3 and evaluators finished 07:35-08:01 (local), so every registered pilot row is complete. Report:
+  docs/RESULTS.md "Pilots". Files:
+  - `pilots_rl.py`; previous output kept as `pilots/rl.before-pft-hammer-20261025.json`.
+  - Exploratory pilot - original supplement: `pilots_rl_vs_original.py` -> `pilots/rl_vs_original_exploratory.json`.
+    It uses the same estimator, with the original = s3-drm-splatter4d seeds 2000-2002, and is not registered.
+  - Targeted diagnostics, per the registered reporting:
+    - `variant_repr_probes.py` on all six arms per task -> `runs/setup/variants-compare-20261023/probes/pilots-<task>.json`.
+      These are new files; the earlier probe files are unchanged.
+    - The 200k render analysis: `chl_analysis_render.py` (backup `.before-pilots-20261025`) gains the pilot
+      checkpoints and a per-frame wrapper that decodes frame t from image t alone with zero displacements. The default
+      model list is unchanged. Metrics: new `pilot_render_metrics.py` -> `chl/summary_pilots_200k.json`. The
+      chl200 / ref200 renders from 2026-10-23 were read only.
+  Registered comparisons, IQM over 6 runs:
+  - temporal_supervision (pft - pfs): training last-5 0.599 vs 0.536, +0.063 [-0.058, +0.148]; AUC -0.058
+    [-0.174, +0.045]; held-out +0.013; moving -0.008.
+  - masking: +0.152 [+0.080, +0.329] (unchanged from the 10-24 22:50 report).
+  - stacking: -0.004 [-0.199, +0.071].
+  Supplement (arm - original, training last-5): pfs -0.185 [-0.248, -0.078], pft -0.123 [-0.228, -0.008], chlrm
+  +0.023 [-0.022, +0.114]. The per-frame deficit is on pick-place (0.13 / 0.22 vs 0.51); hammer matches.
+  Diagnostics:
+  - pft improves per-frame renders over pfs (+0.60 / +0.26 dB over all images, +0.78 / +0.45 on the moving range)
+    and its velocity probes (+0.11 / +0.06 R²), with no RL gain.
+  - chlrm renders as chamfer_lean (+0.04 / +0.05 dB). Its states depend less on history (cosine 0.95 / 0.97 vs
+    0.85 / 0.91).
+  Reading: render and probe quality did not predict RL in any pilot. Decision: none. No per-frame eight-task expansion
+  is proposed; any expansion is the user's decision (directive 1). The chlrm eight-task expansion approved on 10-24
+  continues. Never restart future_k2 + Chamfer.

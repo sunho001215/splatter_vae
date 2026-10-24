@@ -435,12 +435,13 @@ diff inline.
 | 2026-10-19 21:59 | remote 2.89 TB (bxs-snerl-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
-(updated 2026-10-25 05:10; earlier action lists are in docs/EXPERIMENT_LOG.md)
+(updated 2026-10-25 08:30; earlier action lists are in docs/EXPERIMENT_LOG.md)
 1. Done: chamfer_lean and future_k2 eight-task comparisons with the frozen method and their 200k diagnostics (results
    artifact v11); neither adopted, Chamfer remains a candidate.
-2. Pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`): T=1 stacked, chamfer_lean_randmask and
-   per-frame pick-place complete; pfs hammer trainers done (evaluators finishing); pft hammer pretraining -> export ->
-   DrM x 3. Then `pilots_rl.py`, targeted diagnostics and the full pilot report. Never restart future_k2 + Chamfer.
+2. Done: pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`; docs/RESULTS.md "Pilots",
+   2026-10-25): masking +0.152 [+0.080, +0.329] training last-5; temporal supervision (pft - pfs) +0.063
+   [-0.058, +0.148]; both per-frame pilots below the original on pick-place; render and probe diagnostics done. No
+   per-frame expansion proposed (user decision). Add to the results artifact. Never restart future_k2 + Chamfer.
 3. chamfer_lean_randmask eight-task expansion (user 2026-10-24, after the masking pilot;
    `runs/setup/chlrm-registration-eight-task-20261024.json`): pretraining / export / DrM x 3 for the six non-pilot tasks,
    priority 2 (ahead of SNeRL), either host. Then the eight-task comparison with chamfer_lean and the original method.
