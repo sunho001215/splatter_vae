@@ -27,7 +27,8 @@
     "hardneg_within_episode_top1": "pairwise cross-view form (the convention of the existing cross-view retrieval): for every ordered training-camera pair (a, b), a != b, the anchor from camera a is more similar (cosine) to its own window from camera b than to the negative window from camera b (two candidates, chance 0.5), over valid samples",
     "hardneg_hand_disp_mean": "mean hand displacement of the valid negatives (m)",
     "hardneg_gallery_top1": "gallery form (added after the Codex review, before any result): per anchor from camera a, its best match among its own window's other cameras beats its best match among all cameras of the negative window, the same camera a included"
-   }
+   },
+   "masking": "User decision 2026-10-25 (after registration, before any hn row started; it confirms the registered implementation, no code or row change): each negative row, i.e. each of the 6 training cameras of the negative window, gets a fresh, independent uniform-random 48-of-192 temporal-token mask, drawn exactly as an anchor's mask is drawn (same mask_mode 'random', ratio 0.75, training mode, the same encoder call path). The anchors' visible tokens are never copied. Rationale (user): the requirement meant the same masking procedure, so that masking cannot become a cue that separates anchors from negatives; positives already use independent masks, and copied masks would create pairs whose only change is hidden in both inputs."
   },
   "cs": {
    "file": "configs/metaworld/variants/enc_cs.yaml",
@@ -71,7 +72,7 @@
   }
  },
  "implementation_choices": [
-  "hn masking: 'exactly the anchors' masking (uniform random 75 %, 48 of 192 temporal tokens)' is implemented as the same masking procedure: every negative row draws its own uniform random 48-of-192 mask through the same encoder call path as the anchors (as every anchor row draws its own); the anchors' visible-token indices are not copied to the negatives. Reading recorded before any result and reported to the user.",
+  "hn masking: confirmed by the user on 2026-10-25 (see arms.hn.masking): every negative row draws its own independent uniform random 48-of-192 mask through the same encoder call path as the anchors (as every anchor row draws its own); the anchors' visible-token indices are not copied.",
   "cs GroupNorm: 8 groups in every stem layer (unspecified in the directive; fixed before any result).",
   "cs convolutions have no bias (each is followed by GroupNorm); the 1x1 projection has a bias.",
   "cs stem parameters keep the module name patch_embed, so the optimizer's existing rule (no weight decay for names containing 'embed') applies to the stem as it applies to the patchify convolution.",
@@ -198,5 +199,14 @@
   "rule": "strictly below every row registered before (maximum 3); local (baseline_local_driver.py): enc rows only when no earlier-registered row of that driver is still pending (eligible or waiting on unfailed dependencies), and after every other candidate; remote (remote_campaign_driver.py): enc rows after every other row and never after an earlier row failed to fit in the same pass; configured RAM / disk budgets and the remote load limit unchanged",
   "hosts": "registered local; the host-neutral pool may move unstarted rows to the remote (host recorded per run)"
  },
- "recorded": "2026-10-25T14:38:45.459834+09:00"
+ "recorded": "2026-10-25T14:38:45.459834+09:00",
+ "amendments": [
+  {
+   "time": "2026-10-25T14:51:31+09:00",
+   "what": "arms.hn.masking added and implementation_choices[0] updated: the user confirmed the registered reading of \"exactly the anchors' masking\" (same procedure, independent fresh masks; no copied visible tokens).",
+   "effect": "none on code, configuration, rows or results; no hn row had started (all enc rows were held by ENC_HOLD)",
+   "as_registered": "runs/setup/encp-definition-20261025.as-registered.json",
+   "as_registered_sha256": "7c0f6e7e1f8f2d8623e393830f4cb3a7cefa0138be9a1c490c9c8dc3734445eb"
+  }
+ ]
 }

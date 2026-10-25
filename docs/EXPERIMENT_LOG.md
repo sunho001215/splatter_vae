@@ -4559,3 +4559,11 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - Metrics: last-5, final, AUC and early AUC (<= 200k).
 - **Diagnostics tool:** `runs/setup/tools/encp_repr_diagnostics.py`, tested on the hammer reference exports. Render
   diagnostics will extend `chl_analysis_render.py` once the 200k checkpoints exist.
+- (10-25, after registration) **hn masking confirmed by the user:** each negative row, i.e. each of the 6 cameras of the
+  negative window, gets a fresh, independent uniform-random 48-of-192 mask, drawn exactly as an anchor's mask (same
+  mode, ratio and training mode). The anchors' visible tokens are never copied. Rationale: the requirement meant the
+  same procedure, so that masking cannot become a cue separating anchors from negatives. Positives already use
+  independent masks, and copied masks would make pairs whose only change is hidden in both inputs.
+  - This is the registered implementation: no code, configuration or row changes, and no hn row had started.
+  - Recorded as `arms.hn.masking` and an amendment in `runs/setup/encp-definition-20261025.json`. The registered file
+    is kept as `encp-definition-20261025.as-registered.json` (sha256 7c0f6e7e…).
