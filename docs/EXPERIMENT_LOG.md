@@ -4567,3 +4567,29 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - This is the registered implementation: no code, configuration or row changes, and no hn row had started.
   - Recorded as `arms.hn.masking` and an amendment in `runs/setup/encp-definition-20261025.json`. The registered file
     is kept as `encp-definition-20261025.as-registered.json` (sha256 7c0f6e7e…).
+
+### 2026-10-25 16:10–16:25 — Capacity-based scheduling replaces ENC_HOLD / no-backfill (user instruction)
+
+- **Instruction:** Replace experiment-by-experiment waiting with capacity-based scheduling. Ready higher-priority jobs
+  get first access; the remaining capacity goes to any other ready registered job on either host. Earlier jobs waiting
+  for unfinished dependencies must not block unrelated experiments. This supersedes the blanket ENC_HOLD / no-backfill
+  restriction. Priorities, experiment settings and resource limits are unchanged; no running job was touched.
+- **Change** (tools edited in place, backups `*.before-capacity-20261025`; installed atomically at 16:12:39):
+  - `runs/setup/tools/baseline_local_driver.py`: ENC_HOLD removed. Ready candidates are offered in priority order
+    (enc rows, priority 4, after every other candidate) and every row that fits the memory cap and per-slice MIG limits
+    is admitted.
+  - `runs/setup/tools/remote_campaign_driver.py`: the `enc_gate.earlier_pending` hold and the `earlier_waiting`
+    no-backfill flag removed from the direct loop and the pool pass. Enc rows still rank last and still need their
+    accepted release (d281258). The remote load limit (2.8 per GPU, 90 GB GPU memory) is unchanged.
+  - `runs/setup/tools/enc_gate.py`: retired (no longer imported), kept for the record.
+  - The pilot definition records the new rule as a scheduling amendment, keeping the earlier one
+    (`scheduling.rule_before_2026-10-25T16`); no enc row had started before the change.
+- **Verification:** dry runs of both drivers showed no hold and the expected priority order (local: the six chlrm
+  door-open DrM rows first, then enc pretrainings up to the memory cap). The first real passes (16:13) started:
+  - remote: chlrm-drm-door-open-s200{0,1,2}(+eval), moved from local by the pool; enc-hn-seed0-{hammer,
+    pick-place,bin-picking}-200k and enc-cs-seed0-hammer-200k on d281258;
+  - local: enc-cs-seed0-{pick-place,bin-picking}-200k, enc-h2-seed0-{hammer,pick-place,bin-picking}-200k,
+    enc-w4-seed0-hammer-200k.
+  - The Stage 2 yield rule in the local driver only counts ready Stage 2 rows; none exist, so it is inert. The
+    s3spec rows (a Stage 3 specification gated on a 300k freeze) and the superseded local sanity rows stay unadmitted
+    by design: they are not ready experiments.

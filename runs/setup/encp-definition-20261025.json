@@ -196,8 +196,9 @@
  },
  "scheduling": {
   "priority": 4,
-  "rule": "strictly below every row registered before (maximum 3); local (baseline_local_driver.py): enc rows only when no earlier-registered row of that driver is still pending (eligible or waiting on unfailed dependencies), and after every other candidate; remote (remote_campaign_driver.py): enc rows after every other row and never after an earlier row failed to fit in the same pass; configured RAM / disk budgets and the remote load limit unchanged",
-  "hosts": "registered local; the host-neutral pool may move unstarted rows to the remote (host recorded per run)"
+  "rule": "priority 4 (unchanged; every other row <= 3). Capacity-based (user 2026-10-25 ~16:10, superseding the blanket ENC_HOLD / no-backfill rule): ready rows are offered in priority order on either host (local: baseline_local_driver.py, enc rows after every other ready candidate; remote: remote_campaign_driver.py, enc rows rank after every other row, the pool moves unstarted rows to free remote capacity), and every ready row that fits the remaining capacity starts; rows waiting for unfinished dependencies never block others. Running jobs are never stopped or preempted. Configured RAM / disk budgets, the per-slice MIG limits and the remote load limit unchanged.",
+  "hosts": "registered local; the host-neutral pool may move unstarted rows to the remote (host recorded per run)",
+  "rule_before_2026-10-25T16": "strictly below every row registered before (maximum 3); local (baseline_local_driver.py): enc rows only when no earlier-registered row of that driver is still pending (eligible or waiting on unfailed dependencies), and after every other candidate; remote (remote_campaign_driver.py): enc rows after every other row and never after an earlier row failed to fit in the same pass; configured RAM / disk budgets and the remote load limit unchanged"
  },
  "recorded": "2026-10-25T14:38:45.459834+09:00",
  "amendments": [
@@ -207,6 +208,12 @@
    "effect": "none on code, configuration, rows or results; no hn row had started (all enc rows were held by ENC_HOLD)",
    "as_registered": "runs/setup/encp-definition-20261025.as-registered.json",
    "as_registered_sha256": "7c0f6e7e1f8f2d8623e393830f4cb3a7cefa0138be9a1c490c9c8dc3734445eb"
+  },
+  {
+   "time": "2026-10-25T16:13:38+09:00",
+   "what": "scheduling.rule: the user replaced experiment-by-experiment waiting (ENC_HOLD in baseline_local_driver.py, enc_gate.py + the earlier_waiting no-backfill flag in remote_campaign_driver.py) with capacity-based scheduling; the earlier rule is kept as scheduling.rule_before_2026-10-25T16",
+   "effect": "scheduling only: priorities, rows, configurations, the RL protocol, the analysis and the resource limits unchanged; no enc row had started before this change",
+   "previous_sha256": "dcefb8814394cc4daa3bbdfb680c40a1405f743abb63c9f178724975c9bdc4dc"
   }
  ]
 }

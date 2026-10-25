@@ -49,7 +49,7 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  # chamfer_lean_randmask eight-task expansion, the six non-pilot tasks (user instruction 2026-10-24)
                  'chlrm-registration-eight-task-20261024.json',
                  # encoder pilots on chlrm, hammer / pick-place / bin-picking (user directive 2026-10-25): lowest
-                 # priority, free capacity only (ENC gate below)
+                 # priority (4); capacity-based admission after every other ready row (user 2026-10-25 16:xx)
                  'encp-registration-20261025.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
@@ -157,17 +157,11 @@ candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local
 if stage2_waiting:
     messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
     candidates = []
-# Encoder pilots (user directive 2026-10-25): strictly below every earlier registration and on free capacity only. Their
-# rows are considered only when no earlier-registered row of this driver is still pending (eligible, or waiting for its
-# dependencies unless one failed), so they never take local capacity that registered work will need; then last.
+# Encoder pilots (user directive 2026-10-25): lowest priority (4). Capacity-based scheduling (user 2026-10-25 16:xx,
+# superseding the blanket ENC_HOLD): ready rows are offered in priority order and every ready row that fits the
+# remaining capacity is admitted; rows waiting for unfinished dependencies never block others. Encoder-pilot rows are
+# offered after every other ready candidate.
 ENC = 'enc-'
-earlier_pending = [j['id'] for j in registered if not j['id'].startswith(ENC) and status(j['id']) == jobs.PENDING
-                   and not any(state.get(d, {}).get('status') == jobs.FAILED for d in j.get('deps', []))]
-held_enc = [j['id'] for j in candidates if j['id'].startswith(ENC)]
-if earlier_pending and held_enc:
-    messages.append(f'ENC_HOLD {len(held_enc)} encoder-pilot rows wait for {len(earlier_pending)} earlier rows, '
-                    f'e.g. {earlier_pending[:2]}')
-    candidates = [j for j in candidates if not j['id'].startswith(ENC)]
 # evaluators of already finished trainers first (short, and they release the run's cached snapshots), then by
 # priority with trainers before their companions
 candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'

@@ -1,4 +1,8 @@
-"""Encoder-pilot admission gate (user directive 2026-10-25: new rows use free capacity only, strictly below every
+"""RETIRED 2026-10-25 16:xx: no driver imports this module any more. The user replaced experiment-by-experiment waiting
+with capacity-based scheduling (ready higher-priority rows first, remaining capacity to any other ready row on either
+host), superseding the blanket ENC_HOLD / no-backfill rule. Kept for the record of the earlier rule.
+
+Encoder-pilot admission gate (user directive 2026-10-25: new rows use free capacity only, strictly below every
 registered row). Encoder-pilot rows (enc-*) may take capacity only when no earlier-registered admissible row is still
 pending: the rows of the registrations the local baseline driver admits (the active campaign registrations, the same
 list as baseline_local_driver.py; the pool moves their unstarted rows between hosts). A row counts while it is pending
