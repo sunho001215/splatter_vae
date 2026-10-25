@@ -1,0 +1,4008 @@
+{
+  "prepared_at": "2026-10-25T14:38:45.459913+09:00",
+  "purpose": "Encoder pilots on top of chamfer_lean_randmask (chlrm): hard negatives (hn), patch-local conv stem (cs), head dim 64 at\nfixed size (h2), SinCro-shaped ViT body (w4) and width 256 at depth 8 (w8), on hammer, pick-place and bin-picking (user\ndirective 2026-10-25; registered before any result of these runs). Definition: runs/setup/encp-definition-20261025.json\n(written here). Source: branch encoder-pilots-20261025, merged after the full suite and review.",
+  "tasks": [
+    "hammer",
+    "pick-place",
+    "bin-picking"
+  ],
+  "arms": [
+    "hn",
+    "cs",
+    "h2",
+    "w4",
+    "w8"
+  ],
+  "definition": "runs/setup/encp-definition-20261025.json",
+  "priority": 4,
+  "variant_files_sha256": {
+    "hn": "13deb6e2729b663b9dbf3336b64cea2b222bb6d88ed3ee10564472c72787e52d",
+    "cs": "4ae7a334da00edfc5a2ffa9ddbd7126729b05f1432b7b2aac89db1c83391f8b8",
+    "h2": "82009acda76804835b333df33b01b20102e88a65849c6ff55a0378ce3101a83d",
+    "w4": "81a5ec8c8c7a14ec914c2b9e09d64434791592b41e62318082db4f56b16b57d4",
+    "w8": "efb51a9842d83018caf9bdf6aa57b9d04998062476045b02f54686f8be39afbc"
+  },
+  "counts": {
+    "enc_hn": {
+      "train.py": 3,
+      "export_encoder.py": 3,
+      "train_rl.py": 9,
+      "eval_rl.py": 9
+    },
+    "enc_cs": {
+      "train.py": 3,
+      "export_encoder.py": 3,
+      "train_rl.py": 9,
+      "eval_rl.py": 9
+    },
+    "enc_h2": {
+      "train.py": 3,
+      "export_encoder.py": 3,
+      "train_rl.py": 9,
+      "eval_rl.py": 9
+    },
+    "enc_w4": {
+      "train.py": 3,
+      "export_encoder.py": 3,
+      "train_rl.py": 9,
+      "eval_rl.py": 9
+    },
+    "enc_w8": {
+      "train.py": 3,
+      "export_encoder.py": 3,
+      "train_rl.py": 9,
+      "eval_rl.py": 9
+    }
+  },
+  "jobs": [
+    {
+      "id": "enc-hn-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_hn.yaml",
+        "--name",
+        "enc-hn-seed0-hammer-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-hn-export-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-hn-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-hn-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-hn-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-hn-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-hammer-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-hn-drm-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-hammer-s2000",
+        "--train-job",
+        "enc-hn-drm-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-hammer-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-hn-drm-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-hammer-s2001",
+        "--train-job",
+        "enc-hn-drm-hammer-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-hammer-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-hammer-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-hn-drm-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-hammer-s2002",
+        "--train-job",
+        "enc-hn-drm-hammer-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-hammer-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-hn-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_hn.yaml",
+        "--name",
+        "enc-hn-seed0-pick-place-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-hn-export-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-hn-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-hn-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-hn-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-hn-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-pick-place-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-hn-drm-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-pick-place-s2000",
+        "--train-job",
+        "enc-hn-drm-pick-place-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-pick-place-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-hn-drm-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-pick-place-s2001",
+        "--train-job",
+        "enc-hn-drm-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-hn-drm-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-pick-place-s2002",
+        "--train-job",
+        "enc-hn-drm-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-hn-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_hn.yaml",
+        "--name",
+        "enc-hn-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-hn-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-hn-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-hn-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-hn-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-hn-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-hn-drm-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-bin-picking-s2000",
+        "--train-job",
+        "enc-hn-drm-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-hn-drm-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-bin-picking-s2001",
+        "--train-job",
+        "enc-hn-drm-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-hn-drm-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-hn-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-hn-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-hn-drm-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-hn-drm-bin-picking-s2002",
+        "--train-job",
+        "enc-hn-drm-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-hn-drm-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_hn",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-cs-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "--name",
+        "enc-cs-seed0-hammer-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-cs-export-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-cs-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-cs-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-cs-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-cs-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-hammer-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-cs-drm-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-hammer-s2000",
+        "--train-job",
+        "enc-cs-drm-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-hammer-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-cs-drm-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-hammer-s2001",
+        "--train-job",
+        "enc-cs-drm-hammer-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-hammer-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-hammer-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-cs-drm-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-hammer-s2002",
+        "--train-job",
+        "enc-cs-drm-hammer-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-hammer-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-cs-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "--name",
+        "enc-cs-seed0-pick-place-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-cs-export-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-cs-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-cs-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-cs-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-cs-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-pick-place-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-cs-drm-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-pick-place-s2000",
+        "--train-job",
+        "enc-cs-drm-pick-place-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-pick-place-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-cs-drm-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-pick-place-s2001",
+        "--train-job",
+        "enc-cs-drm-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-cs-drm-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-pick-place-s2002",
+        "--train-job",
+        "enc-cs-drm-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-cs-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "--name",
+        "enc-cs-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-cs-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-cs-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-cs-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-cs-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-cs-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-cs-drm-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-bin-picking-s2000",
+        "--train-job",
+        "enc-cs-drm-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-cs-drm-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-bin-picking-s2001",
+        "--train-job",
+        "enc-cs-drm-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-cs-drm-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-cs-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-cs-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-cs-drm-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-cs-drm-bin-picking-s2002",
+        "--train-job",
+        "enc-cs-drm-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-cs-drm-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_cs",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-h2-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_h2.yaml",
+        "--name",
+        "enc-h2-seed0-hammer-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-h2-export-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-h2-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-h2-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-h2-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-h2-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-hammer-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-h2-drm-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-hammer-s2000",
+        "--train-job",
+        "enc-h2-drm-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-hammer-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-h2-drm-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-hammer-s2001",
+        "--train-job",
+        "enc-h2-drm-hammer-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-hammer-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-hammer-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-h2-drm-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-hammer-s2002",
+        "--train-job",
+        "enc-h2-drm-hammer-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-hammer-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-h2-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_h2.yaml",
+        "--name",
+        "enc-h2-seed0-pick-place-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-h2-export-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-h2-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-h2-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-h2-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-h2-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-pick-place-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-h2-drm-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-pick-place-s2000",
+        "--train-job",
+        "enc-h2-drm-pick-place-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-pick-place-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-h2-drm-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-pick-place-s2001",
+        "--train-job",
+        "enc-h2-drm-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-h2-drm-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-pick-place-s2002",
+        "--train-job",
+        "enc-h2-drm-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-h2-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_h2.yaml",
+        "--name",
+        "enc-h2-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-h2-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-h2-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-h2-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-h2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-h2-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-h2-drm-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-bin-picking-s2000",
+        "--train-job",
+        "enc-h2-drm-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-h2-drm-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-bin-picking-s2001",
+        "--train-job",
+        "enc-h2-drm-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-h2-drm-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-h2-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-h2-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-h2-drm-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-h2-drm-bin-picking-s2002",
+        "--train-job",
+        "enc-h2-drm-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-h2-drm-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_h2",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w4-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-w4-seed0-hammer-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w4-export-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-w4-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-w4-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-w4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-w4-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-hammer-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-w4-drm-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-hammer-s2000",
+        "--train-job",
+        "enc-w4-drm-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-hammer-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-w4-drm-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-hammer-s2001",
+        "--train-job",
+        "enc-w4-drm-hammer-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-hammer-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-hammer-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-w4-drm-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-hammer-s2002",
+        "--train-job",
+        "enc-w4-drm-hammer-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-hammer-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w4-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-w4-seed0-pick-place-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w4-export-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-w4-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-w4-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-w4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-w4-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-pick-place-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-w4-drm-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-pick-place-s2000",
+        "--train-job",
+        "enc-w4-drm-pick-place-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-pick-place-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-w4-drm-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-pick-place-s2001",
+        "--train-job",
+        "enc-w4-drm-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-w4-drm-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-pick-place-s2002",
+        "--train-job",
+        "enc-w4-drm-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w4-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-w4-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w4-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-w4-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-w4-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-w4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-w4-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-w4-drm-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-bin-picking-s2000",
+        "--train-job",
+        "enc-w4-drm-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-w4-drm-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-bin-picking-s2001",
+        "--train-job",
+        "enc-w4-drm-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-w4-drm-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w4-drm-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w4-drm-bin-picking-s2002",
+        "--train-job",
+        "enc-w4-drm-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w4-drm-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w4",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w8-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_w8.yaml",
+        "--name",
+        "enc-w8-seed0-hammer-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w8-export-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-w8-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-w8-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-w8-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-w8-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-hammer-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-w8-drm-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-hammer-s2000",
+        "--train-job",
+        "enc-w8-drm-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-hammer-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-w8-drm-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-hammer-s2001",
+        "--train-job",
+        "enc-w8-drm-hammer-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-hammer-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-hammer-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-w8-drm-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-hammer-s2002",
+        "--train-job",
+        "enc-w8-drm-hammer-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-hammer-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w8-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_w8.yaml",
+        "--name",
+        "enc-w8-seed0-pick-place-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w8-export-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-w8-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-w8-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-w8-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-w8-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-pick-place-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-w8-drm-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-pick-place-s2000",
+        "--train-job",
+        "enc-w8-drm-pick-place-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-pick-place-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-pick-place-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-w8-drm-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-pick-place-s2001",
+        "--train-job",
+        "enc-w8-drm-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-pick-place-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-pick-place-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-w8-drm-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-pick-place-s2002",
+        "--train-job",
+        "enc-w8-drm-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-pick-place-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w8-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_w8.yaml",
+        "--name",
+        "enc-w8-seed0-bin-picking-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "id": "enc-w8-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-w8-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-w8-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-w8-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-w8-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-bin-picking-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-w8-drm-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-bin-picking-s2000",
+        "--train-job",
+        "enc-w8-drm-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-bin-picking-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-w8-drm-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-bin-picking-s2001",
+        "--train-job",
+        "enc-w8-drm-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-bin-picking-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-w8-drm-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-w8-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-w8-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-w8-drm-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-w8-drm-bin-picking-s2002",
+        "--train-job",
+        "enc-w8-drm-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-w8-drm-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "enc_w8",
+      "variant_definition": "runs/setup/encp-definition-20261025.json"
+    }
+  ],
+  "definition_sha256": "7c0f6e7e1f8f2d8623e393830f4cb3a7cefa0138be9a1c490c9c8dc3734445eb",
+  "registered_at": "2026-10-25T14:39:02.566228+09:00",
+  "queue_sha256_before": "01e77d231a117e8802c3c550ae2bffa5c66c50645f9e904758c957c5d1193bc7",
+  "queue_sha256_after": "0af94139ba022fc8dc178a6f74690b42ceb4e2fa1e6efb95b2a731b2fb2ce35f"
+}

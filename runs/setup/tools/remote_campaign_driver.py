@@ -37,6 +37,15 @@ RELEASES = {(COMMIT, IMAGE): MANIFEST,
             ('fed4c177949d367fa0dbefb1da7bc4690aa38d02', POOL_IMAGE): 'runs/remote/acceptance/fed4c17-cc/manifest.json',
             (POOL_COMMIT, POOL_IMAGE): f'runs/remote/acceptance/{POOL_COMMIT[:7]}-cc/manifest.json'}
 POOL_READY = (REPO / RELEASES[(POOL_COMMIT, POOL_IMAGE)]).is_file()
+# Encoder-pilot release (user directive 2026-10-25): d281258 = main with the encoder-pilot features (every new flag off by
+# default, bit-for-bit identity tests), derived image. ONLY enc-* rows (and their encsmoke-* smoke rows) run on it: earlier
+# code lacks the features (an enc row on it would fail on its missing variant file), and every other pool row keeps
+# POOL_COMMIT; retries keep the release of their first launch. Enc rows rank after every other row and never backfill
+# past an earlier row that is waiting for capacity (user: lowest priority, free capacity only).
+ENC_COMMIT = 'd281258ad1480e49a155882628e87765c60a5d9a'
+ENC_PREFIXES = ('enc-', 'encsmoke-')
+RELEASES[(ENC_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{ENC_COMMIT[:7]}-cc/manifest.json'
+ENC_READY = (REPO / RELEASES[(ENC_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -312,7 +321,9 @@ def ready(job):
         return True
     if k == 'pool_rl':  # the export (a local file) is uploaded once, checksum-verified, before the pair starts
         trainer = by_id[jid.removesuffix('-eval')]
-        export = next(a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path='))
+        export = next((a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path=')), None)
+        if export is None:  # end-to-end CNN trainer (2026-10-24): no frozen export to upload
+            return True
         local = REPO / export
         if not local.is_file():
             return False
@@ -380,6 +391,8 @@ def dispatch_key(job):
     rank = RANK[kind(job['id'])]
     if kind(job['id']) == 's2_pretrain' and job.get('stage2_extension') == 'followup-20261017':
         rank = 1.6  # the follow-up pretrains gate 24 RL pairs: after the baseline pretrains, before baseline RL
+    if job['id'].startswith(ENC_PREFIXES):
+        rank += 100  # encoder pilots: after every other remote row
     return rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
@@ -393,6 +406,17 @@ candidates = [j for j in jobs.eligible(remote, retry_view) if ready(j)]
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
     candidates = []
+# encoder pilots wait while any earlier-registered admissible row is pending (runs/setup/tools/enc_gate.py), so they never
+# take remote capacity that registered work will need (e.g. the chlrm expansion's RL pairs once their exports exist)
+sys.path.insert(0, str(REPO / 'runs/setup/tools'))
+import enc_gate  # noqa: E402
+
+ENC_WAITING_FOR = enc_gate.earlier_pending(retry_view)
+ENC_ALLOWED = ENC_READY and not ENC_WAITING_FOR
+if ENC_WAITING_FOR and any(j['id'].startswith('enc-') for j in jobs.eligible(queue['jobs'], retry_view)):
+    messages.append(f'ENC_HOLD encoder pilots wait for {len(ENC_WAITING_FOR)} earlier rows, e.g. {ENC_WAITING_FOR[:2]}')
+if not ENC_ALLOWED:
+    candidates = [j for j in candidates if not j['id'].startswith(ENC_PREFIXES)]
 candidates.sort(key=dispatch_key)
 active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.ACTIVE}
 reserved = sum(int(float(by_id.get(i, {}).get('ram_gb', 0)) * 2**30) for i in active)
@@ -404,6 +428,7 @@ for i, s in active.items():
         gpu_mem[s['gpu']] += float(by_id[i]['mem_gb'])
 reviwo = sum(1 for i in active if i.startswith('s4-reviwo-'))
 chosen, total, taken = [], reserved, set()
+earlier_waiting = False  # an earlier (non-enc) candidate did not fit: no enc row may take capacity this pass
 
 
 def place(job):
@@ -420,11 +445,16 @@ for job in candidates:
             continue
     if job['id'].startswith('s4-reviwo-') and reviwo >= MAX_REVIWO:
         continue
+    is_enc = job['id'].startswith(ENC_PREFIXES)
+    if is_enc and earlier_waiting:
+        continue
     need = int(float(job['ram_gb']) * 2**30)
     if total + need > CAP:
+        earlier_waiting |= not is_enc
         continue
     gpu = place(job)
     if gpu is None:
+        earlier_waiting |= not is_enc
         continue
     gpu_load[gpu] += load(job)
     gpu_mem[gpu] += float(job['mem_gb'])
@@ -448,9 +478,14 @@ if POOL_READY and not DRY and not held:
             continue
         members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
         units.append(members)
-    units.sort(key=lambda m: 0 if m[0]['script'] == 'scripts/train.py' else 1)
+    if not ENC_ALLOWED:
+        units = [m for m in units if not m[0]['id'].startswith(ENC_PREFIXES)]
+    # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
+    units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES), 0 if m[0]['script'] == 'scripts/train.py' else 1))
     plan = []
     for members in units:
+        if members[0]['id'].startswith(ENC_PREFIXES) and earlier_waiting:
+            break  # an earlier unit is waiting for remote capacity: encoder pilots never take it
         tentative = []
         for u in members:
             row_load = 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else 0.5)
@@ -465,6 +500,7 @@ if POOL_READY and not DRY and not held:
             total += need
             tentative.append((u['id'], g, row_load, float(u['mem_gb']), need))
         if len(tentative) != len(members):
+            earlier_waiting |= not members[0]['id'].startswith(ENC_PREFIXES)
             for _, g, row_load, mem, need in tentative:
                 gpu_load[g] -= row_load
                 gpu_mem[g] -= mem
@@ -497,6 +533,8 @@ def job_release(job):
     previous = state.get(job['id'], {})
     if previous.get('commit'):
         return previous['commit'], previous.get('image_digest', IMAGE)
+    if job['id'].startswith(ENC_PREFIXES):
+        return ENC_COMMIT, POOL_IMAGE
     return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)
 
 

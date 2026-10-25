@@ -1,0 +1,61 @@
+{
+  "acceptance_source": {
+    "path": "runs/remote/data/56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1.json",
+    "sha256": "cb120742f5a58b2f1e1fa65d6999731bc5d2e8800b6677ae1e0fd299b314c4b0"
+  },
+  "carried_over_from": "226d8ae (same files, same checksums, same remote paths)",
+  "commit": "d281258ad1480e49a155882628e87765c60a5d9a",
+  "files": [
+    {
+      "bytes": 19940581894,
+      "sha256": "e314fdfb0ee6a2e7f2d0e8dcb4120a59fc44ba9af4f1518048127adefbe83b68",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/hammer.hdf5",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/hammer.hdf5"
+    },
+    {
+      "bytes": 1773703148,
+      "sha256": "7ed9e75c9cadee0e067c62f69ecbfbff42221e6ad146fac51dae2dc7d9dbef8d",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/heldout_sets/hammer.hdf5",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/heldout_sets/hammer.hdf5"
+    },
+    {
+      "bytes": 2845,
+      "sha256": "86dd4340f819f4daa394c136312294e9bb88d7b21be85b414c1161d45e647bb3",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/splits/hammer_seed0.json",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/splits/hammer_seed0.json"
+    },
+    {
+      "bytes": 5467,
+      "sha256": "66d4e7499e5dbc7f74687cd0fdce7e7ecf641139c88e49605530e5812d30d41f",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/workspace_stats/hammer.json",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/workspace_stats/hammer.json"
+    },
+    {
+      "bytes": 17291959202,
+      "sha256": "97546b78952724f2878062b80357e26ca2ddc06f505553d9462788e12e27310d",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/pick-place.hdf5",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/pick-place.hdf5"
+    },
+    {
+      "bytes": 1604908380,
+      "sha256": "f2f400f3aa241ebee9bc5efad156a054148c8024718e04ca6ea454619d0053f7",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/heldout_sets/pick-place.hdf5",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/heldout_sets/pick-place.hdf5"
+    },
+    {
+      "bytes": 2849,
+      "sha256": "546721a5bcb45deca203b332218cf9e7fdedf15731686e5f0f6ce4dd66911e1a",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/splits/pick-place_seed0.json",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/splits/pick-place_seed0.json"
+    },
+    {
+      "bytes": 5465,
+      "sha256": "f0e1acab64e6453d715629df3053adff9e7eea64074bcd8379bbf9fd2b34d0f9",
+      "source": "/home/ws/data/metaworld/splatter4d_v1/workspace_stats/pick-place.json",
+      "target": "/home/compu/kaist/sunho/data/metaworld/splatter4d_v1/workspace_stats/pick-place.json"
+    }
+  ],
+  "identity_sha256": "56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1",
+  "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+  "verified_at": "2026-10-10T10:33:34.709135+00:00"
+}

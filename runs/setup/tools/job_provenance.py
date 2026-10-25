@@ -16,7 +16,7 @@ ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from scripts import jobs  # noqa: E402
 
-PREFIXES = ('chlrm-', 'pfs-', 'pft-', 't1stack-', 'chl-')
+PREFIXES = ('chlrm-', 'pfs-', 'pft-', 't1stack-', 'chl-', 'enc-', 'encsmoke-')  # enc: encoder pilots 2026-10-25
 DATA = Path('/home/ws/data/metaworld/splatter4d_v1')
 manifest_files = {}
 for path in sorted((ROOT / 'runs/remote/data').glob('*.json')):

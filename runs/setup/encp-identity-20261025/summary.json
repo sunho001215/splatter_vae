@@ -1,0 +1,59 @@
+{
+ "purpose": "chlrm with every new flag off: release code (branch encoder-pilots-20261025) vs the chlrm pilot commit e58f1c0, fixed real hammer batch (16 training windows), seed 0, real CUDA renderer, bf16; local MIG-c3511b41 (idle slice)",
+ "tool": "runs/setup/tools/enc_identity_check.py",
+ "old_source": "git archive e58f1c0 (s4d, scripts, configs)",
+ "new_source": ".worktrees/encp working tree",
+ "runs": {
+  "old": [
+   "old1",
+   "old2",
+   "old3",
+   "old4"
+  ],
+  "new": [
+   "new",
+   "new2",
+   "new3"
+  ]
+ },
+ "identical_across_all_runs": {
+  "resolved_config": true,
+  "batch_tensors": true,
+  "initial_parameters": true,
+  "step0_states": true,
+  "step0_gaussians": true
+ },
+ "loss_max_relative_difference": {
+  "step0": {
+   "same_code_pairs": {
+    "max": 2.2965860990557002e-05,
+    "median": 8.462154115797132e-08
+   },
+   "old_vs_new_pairs": {
+    "max": 2.296533357189859e-05,
+    "median": 4.231077415938858e-08
+   }
+  },
+  "step1": {
+   "same_code_pairs": {
+    "max": 0.000795367599511368,
+    "median": 0.0005602007001574046
+   },
+   "old_vs_new_pairs": {
+    "max": 0.0007924526851954448,
+    "median": 0.00011837836361842005
+   }
+  },
+  "step2": {
+   "same_code_pairs": {
+    "max": 0.000593528837437017,
+    "median": 0.00027726225955603575
+   },
+   "old_vs_new_pairs": {
+    "max": 0.000523240759662001,
+    "median": 0.00019978946264285542
+   }
+  }
+ },
+ "reading": "Every deterministic quantity is identical (config, batch, init, step-0 forward states and Gaussians). Losses carry GPU run-to-run noise (Chamfer kernel reduction at step 0; atomic rasteriser backward afterwards); old-vs-new differences lie within the same-code spread at every step. Bit-for-bit identity of forward, backward and AdamW is established on CPU by tests/test_encoder_pilots.py against tests/data/enc_flags_off_golden.json (written by the unchanged sources)."
+}

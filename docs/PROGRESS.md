@@ -435,7 +435,7 @@ diff inline.
 | 2026-10-19 21:59 | remote 2.89 TB (bxs-snerl-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
-(updated 2026-10-25 08:30; earlier action lists are in docs/EXPERIMENT_LOG.md)
+(updated 2026-10-25 14:45; earlier action lists are in docs/EXPERIMENT_LOG.md)
 1. Done: chamfer_lean and future_k2 eight-task comparisons with the frozen method and their 200k diagnostics (results
    artifact v11); neither adopted, Chamfer remains a candidate.
 2. Done: pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`; docs/RESULTS.md "Pilots",
@@ -445,6 +445,13 @@ diff inline.
 3. chamfer_lean_randmask eight-task expansion (user 2026-10-24, after the masking pilot;
    `runs/setup/chlrm-registration-eight-task-20261024.json`): pretraining / export / DrM x 3 for the six non-pilot tasks,
    priority 2 (ahead of SNeRL), either host. Then the eight-task comparison with chamfer_lean and the original method.
+   Bin-picking pretraining done (remote) and exported; its DrM pairs run; five tasks pretraining locally.
+7. Encoder pilots on chlrm (user 2026-10-25; `runs/setup/encp-definition-20261025.json`,
+   `encp-registration-20261025.json`): hn / cs / h2 / w4 / w8 on hammer, pick-place, bin-picking, 120 rows, priority 4.
+   Release d281258 accepted on both hosts; smoke passed. Held (ENC_HOLD) until every chlrm expansion row is admitted,
+   then free capacity only. While running: check the w4 / w8 fallback (`enc_fallback_check.py`) once past 20k steps.
+   After results: `enc_pilots_rl.py`, `encp_repr_diagnostics.py`, render diagnostics, RESULTS.md section. No adoption
+   or expansion without the user.
 4. Done: vision-only DrM campaign (2026-10-25; docs/RESULTS.md "Vision-only DrM"): primary training AUC ours − CNN
    +0.012 [−0.031, +0.045] (with proprio +0.101); our advantage shrinks by −0.090 [−0.174, −0.023]. Add it to the
    results artifact with the next update.

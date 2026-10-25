@@ -4471,3 +4471,91 @@ seeds 2000-2002, 1M agent steps, with evaluators (48 + 48 jobs); no other baseli
   account for" the gain rather than ruling explanations out; the probe gains are hand velocity only. The line above,
   "render and probe quality did not predict RL in any pilot", should read: the differences did not line up, and no
   predictive analysis was run.
+
+### 2026-10-25 13:25–14:45 — Encoder pilots on chlrm (hn, cs, h2, w4, w8): implemented, released, registered
+User directive (2026-10-25): five encoder pilots on top of chamfer_lean_randmask on hammer, pick-place and
+bin-picking. Descriptive, with no adoption rule; adoption or expansion is the user's decision. New rows use free
+capacity only and sit strictly below every registered row. Every new flag defaults to off, with a bit-for-bit test.
+The frozen method, the chlrm definition and the RL protocol are unchanged.
+- **Definition and registration** (before any result; registered 14:39):
+  - `runs/setup/encp-definition-20261025.json` and `runs/setup/encp-registration-20261025.json`.
+  - 120 rows: 15 pretrainings (200k, seed 0), 15 exports, and 45 DrM trainers plus 45 evaluators (seeds 2000-2002).
+  - Ids: `enc-<arm>-seed0-<task>-200k`, `enc-<arm>-export-…`, `enc-<arm>-drm-<task>-s200x[-eval]`.
+  - Each row equals its chlrm reference row as registered, apart from names, the variant file
+    (`configs/metaworld/variants/enc_<arm>.yaml`) and priority 4.
+  - References, never re-run: the chlrm pilot rows (hammer, pick-place) and the chlrm expansion rows (bin-picking,
+    still running; waited for). Context: the original method and chamfer_lean.
+- **Code** (branch encoder-pilots-20261025; main fast-forwarded to d281258):
+  - hn: `s4d/data/hardneg.py`, the dataset and contract fields, InfoNCE denominator-only extra columns, the negative
+    encoding in `forward_losses` and the hn metrics.
+  - cs: the patch-local CNN stem in the encoder.
+  - The encoder-only LR multiplier for the pre-registered w4 / w8 fallback.
+  - Exports omit the new `stem` field while it holds its default, so exports of the unchanged method stay readable by
+    older code.
+- **Behaviour with flags off:**
+  - CPU: bit-for-bit against a golden written by the unchanged sources (commit ffd4fb8). This covers fixture windows,
+    three chlrm training steps with backward, clipping and AdamW, and the full-size encoder, both with flags absent and
+    with flags explicitly off.
+  - GPU, vs the chlrm pilot commit e58f1c0 on 16 real hammer windows (`runs/setup/encp-identity-20261025/`): the
+    resolved config, batch, initial parameters and step-0 states and Gaussians are identical. Later losses differ only
+    within the same-code run-to-run spread from the atomic rasteriser backward (4 old and 3 new runs).
+- **Sizes** (FlopCounterMode, the BASELINES.md counter; chlrm reproduces 1,726,592 parameters and 0.214980
+  GFLOPs/frame). Every arm is within SinCro's 9,064,704 parameters and 1.786 GFLOPs/frame:
+
+  | arm | parameters | GFLOPs/frame |
+  |---|---:|---:|
+  | chlrm, hn, h2 | 1,726,592 | 0.215 |
+  | cs | 1,885,856 | 0.306 |
+  | w4 | 3,439,616 | 0.430 |
+  | w8 | 6,598,656 | 0.835 |
+- **hn pre-training report** (`runs/setup/encp-hardneg-report-20261025.json`, training episodes, thresholds as given,
+  not tuned):
+
+  | task | candidate pairs kept | samples with a valid negative | hand displacement, median [5 %, 95 %] |
+  |---|---:|---:|---|
+  | hammer | 88.0 % | 97.8 % | 6.8 cm [1.4, 19.6] |
+  | pick-place | 86.3 % | 95.9 % | 6.9 cm [1.7, 19.7] |
+  | bin-picking | 90.3 % | 98.3 % | 8.1 cm [1.3, 20.4] |
+- **Choices fixed before any result** (recorded in the definition):
+  - hn masking = the same procedure as the anchors: fresh uniform 48-of-192 masks per row; the anchors' token indices
+    are not copied. Reported to the user.
+  - cs GroupNorm uses 8 groups; the convolutions have no bias; the stem keeps the name patch_embed, so the existing
+    no-decay rule applies.
+  - Negatives are encoded after every other random draw of the step.
+  - Within-episode top-1: the pairwise cross-view form, plus a gallery form after the review.
+  - Fallback chance level: ln(127/7) = 2.898; "at chance" means >= 0.95 x chance over >= 2k consecutive steps in
+    (10k, 20k] (`enc_fallback_check.py`).
+  - Diagnostics: gripper "open" means an opening >= 0.9; the MLP-probe hyperparameters are as stated.
+- **Validation:**
+  - Full suite 1032 passed, 0 failed, both locally and remotely in the derived image.
+  - Codex review (inline): no defect in the sampler bounds, stem locality or flags-off paths.
+    - Its "hand displacement always zero" point was a transcription artefact; a test was added.
+    - Added: the gallery retrieval form, a two-rank Gloo test of the extra columns, a DROID rule test and
+      constructed-metric tests.
+  - Release d281258 accepted on image sha256:59082834… (`runs/remote/acceptance/d281258-cc/`).
+  - Smoke, 600 steps on hammer per arm (`runs/setup/encp-smoke-20261025.json`), all finite:
+
+    | arm | local MIG s/it | remote s/it | peak GPU (GB, both hosts) | local session PSS (GB) |
+    |---|---:|---:|---:|---:|
+    | chlrm | 0.307 | 0.200 | 2.92 | 9.5 |
+    | hn | 0.331 | 0.217 | 3.18 | 9.9 |
+    | cs | 0.342 | 0.199 | 3.79 | 9.2 |
+    | h2 | 0.302 | 0.197 | 2.92 | 9.7 |
+    | w4 | 0.297 | 0.202 | 2.96 | 9.1 |
+    | w8 | 0.307 | 0.201 | 3.24 | 9.3 |
+- **Scheduling:**
+  - Priority 4; every earlier row has priority <= 3.
+  - Enc rows are held while any earlier-registered admissible row is pending: locally inline in
+    `baseline_local_driver.py`; remotely through `enc_gate.py` in `remote_campaign_driver.py` (both edited in place
+    with `.before-encp-20261025` backups). At registration these were the 35 chlrm expansion rows; ENC_HOLD is
+    confirmed on both drivers. After that, enc rows come last and never backfill past a waiting earlier row.
+  - Remote enc rows run only on d281258 (driver ENC_COMMIT); every other pool row keeps f3538b1.
+  - Smoke rows `encsmoke-*` were release checks, not experiment rows.
+- **Analysis written before any result:** `reports/results-artifact/src/enc_pilots_rl.py`.
+  - Registered contrasts: each arm - chlrm over 9 runs.
+  - Factor contrasts: h2 - chlrm, w8 - h2, w8 - w4, w4 - chlrm.
+  - Exploratory: each arm vs the original and vs chamfer_lean.
+  - Supplementary: pick-place + bin-picking only.
+  - Metrics: last-5, final, AUC and early AUC (<= 200k).
+- **Diagnostics tool:** `runs/setup/tools/encp_repr_diagnostics.py`, tested on the hammer reference exports. Render
+  diagnostics will extend `chl_analysis_render.py` once the 200k checkpoints exist.

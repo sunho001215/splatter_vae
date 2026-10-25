@@ -45,7 +45,12 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  # masking ablation, per-frame pilots and T=1 stacking, hammer + pick-place (user instructions 2026-10-23)
                  'mpf-registration-20261023.json',
                  # vision-only DrM, original frozen encoder vs CNN, eight tasks (user instruction 2026-10-23)
-                 'vision-only-registration-20261023.json']
+                 'vision-only-registration-20261023.json',
+                 # chamfer_lean_randmask eight-task expansion, the six non-pilot tasks (user instruction 2026-10-24)
+                 'chlrm-registration-eight-task-20261024.json',
+                 # encoder pilots on chlrm, hammer / pick-place / bin-picking (user directive 2026-10-25): lowest
+                 # priority, free capacity only (ENC gate below)
+                 'encp-registration-20261025.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
@@ -114,6 +119,11 @@ def session_pss():
 def footprint(job):
     # DrM rows use the measured campaign footprints (scheduling rule: measured, not declared; observed baseline DrM
     # trainers 2.7-3.4 GB and evaluators ~1.9 GB RSS on 2026-10-17); other new-baseline jobs: declared ram_gb.
+    args = job['args']
+    if job['script'] == 'scripts/train_rl.py' and '--encoder' in args and args[args.index('--encoder') + 1] == 'cnn':
+        # end-to-end CNN DrM (2026-10-24): its pixel replay (49 GB at 1M steps) is a mapped memmap whose resident
+        # pages count in the budget (Pss_File) and grow with the steps; charge the declared ram_gb (48)
+        return int(float(job['ram_gb']) * 2**30)
     if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py'):
         # + the trainer's preallocated replay file, which DrM sampling keeps resident in the page cache (measured
         # 2026-10-17: DynaMo 1.1 GB, 3D-MVP 2.5 GB; evicting it refills within minutes)
@@ -137,15 +147,33 @@ for job in queue['jobs']:
         stage2_waiting.append(job['id'])
 deps = {d for j in registered for d in j.get('deps', [])}
 view = {i: ({**s, 'status': status(i)} if i in by_id else s) for i, s in state.items() if i in by_id or i in deps}
-candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local') == 'local']
+# CNN trainers frozen by SIGSTOP for the budget (2026-10-24; runs/setup/cnn-freeze-20261024.json) do not grow while
+# frozen (their current pages are in the measured charge); they and their evaluators migrate to the remote (user
+# 2026-10-24) and are never admitted locally again
+FROZEN = set(json.loads((SETUP / 'cnn-freeze-20261024.json').read_text())['frozen']) \
+    if (SETUP / 'cnn-freeze-20261024.json').is_file() else set()
+candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local') == 'local'
+              and j['id'].removesuffix('-eval') not in FROZEN]
 if stage2_waiting:
     messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
     candidates = []
+# Encoder pilots (user directive 2026-10-25): strictly below every earlier registration and on free capacity only. Their
+# rows are considered only when no earlier-registered row of this driver is still pending (eligible, or waiting for its
+# dependencies unless one failed), so they never take local capacity that registered work will need; then last.
+ENC = 'enc-'
+earlier_pending = [j['id'] for j in registered if not j['id'].startswith(ENC) and status(j['id']) == jobs.PENDING
+                   and not any(state.get(d, {}).get('status') == jobs.FAILED for d in j.get('deps', []))]
+held_enc = [j['id'] for j in candidates if j['id'].startswith(ENC)]
+if earlier_pending and held_enc:
+    messages.append(f'ENC_HOLD {len(held_enc)} encoder-pilot rows wait for {len(earlier_pending)} earlier rows, '
+                    f'e.g. {earlier_pending[:2]}')
+    candidates = [j for j in candidates if not j['id'].startswith(ENC)]
 # evaluators of already finished trainers first (short, and they release the run's cached snapshots), then by
 # priority with trainers before their companions
 candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
                                     and status(j['id'].removesuffix('-eval')) == jobs.DONE),
                                j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
+candidates.sort(key=lambda j: j['id'].startswith(ENC))  # stable: encoder-pilot rows after every other candidate
 memory = mb.snapshot()
 # Budget (user decision 2026-10-21, option (b); memory_budget.py): every byte of the cgroup except verified clean,
 # disk-backed file cache, active or inactive. Clean dataset and replay cache are therefore excluded, and no dataset-cache
@@ -184,7 +212,8 @@ def resident_replay(job_id):
 # remaining growth: footprint minus what the job already uses (its non-file PSS, and for trainers the part of the
 # resident replay cache that is in the working set: the resident bytes times the cgroup's active-file share)
 growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0))
-          for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE}
+          for i, s in state.items() if s.get('host', 'local') == 'local' and s['status'] in jobs.ACTIVE
+          and i not in FROZEN}
 total = charge + sum(growth.values()) + cache_reserve
 admitted, taken = [], set()
 for job in candidates:

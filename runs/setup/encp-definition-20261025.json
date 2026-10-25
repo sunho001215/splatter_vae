@@ -1,0 +1,202 @@
+{
+ "instructions": "User directive 2026-10-25: five encoder pilots on top of chamfer_lean_randmask (chlrm) on hammer, pick-place and bin-picking; descriptive, no adoption rule; adoption or expansion is the user's decision (directive 1). New rows use free capacity only at a priority strictly below every registered row; every new flag defaults to off with a bit-for-bit identity test; the frozen method and the chlrm definition are unchanged; the RL protocol is unchanged.",
+ "source_branch": "encoder-pilots-20261025",
+ "base": "base.yaml + tasks/<task>.yaml + variants/chamfer_lean.yaml + variants/chamfer_lean_randmask.yaml (chlrm, runs/setup/mpf-definition-20261023.json), plus one variant file per arm",
+ "protocol": {
+  "pretraining": "200k steps, seed 0 (train.steps=200000, train.seed=0), the chlrm row's settings",
+  "rl": "DrM, 1M agent steps, seeds 2000-2002, proprioception as in the final comparison, the same evaluation schedule (every 10k), camera groups and episodes; rows copied from the chlrm reference rows",
+  "tasks": [
+   "hammer",
+   "pick-place",
+   "bin-picking"
+  ]
+ },
+ "arms": {
+  "hn": {
+   "file": "configs/metaworld/variants/enc_hn.yaml",
+   "definition": "hard negatives: for each training sample (episode, first frame t0, stride s) one extra window of the same episode with the same stride and 2s+2 <= |t0'-t0| <= 40 simulator steps (no shared frame), drawn uniformly among the candidates that pass the robot-state rule; encoded from all 6 training cameras in training mode with the anchors' masking (uniform random 75 %, 48 of 192 temporal tokens, fresh masks per row as the anchors) and gradients; only in the InfoNCE denominator as extra columns (all-gathered like the features, invalid ones masked out, weight 1.0); positives stay 'same window, other cameras'; never decoded, rendered, given synthetic views, used in slot consistency or as a positive.",
+   "robot_state_rule": {
+    "fields": "robot state only: Meta-World obs[0:4] (hand xyz, gripper opening in [0,1]) = the RL proprio indices 0-3; DROID: probe_state[0:3] end-effector position and probe_state[6] normalised gripper position (s4d/data/hardneg.py ROBOT_COLUMNS)",
+    "valid_if": "|hand(t0+2s) - hand(t0'+2s)| >= hardneg_min_hand_m (0.01 m) or |grip(t0+2s) - grip(t0'+2s)| >= hardneg_min_gripper (0.1)",
+    "no_valid_candidate": "the negative is invalid and masked out"
+   },
+   "pre_training_report": "runs/setup/encp-hardneg-report-20261025.json (training episodes; kept candidate pairs 88.0 / 86.3 / 90.3 %, samples with a valid negative 97.8 / 95.9 / 98.3 %, hand displacement median 6.8 / 6.9 / 8.1 cm for hammer / pick-place / bin-picking); thresholds never tuned on any result",
+   "logging": {
+    "hardneg_cosine": "each anchor state vs its own sample's negative window from the same camera (valid samples)",
+    "hardneg_valid_fraction": "fraction of samples with a valid negative",
+    "hardneg_within_episode_top1": "pairwise cross-view form (the convention of the existing cross-view retrieval): for every ordered training-camera pair (a, b), a != b, the anchor from camera a is more similar (cosine) to its own window from camera b than to the negative window from camera b (two candidates, chance 0.5), over valid samples",
+    "hardneg_hand_disp_mean": "mean hand displacement of the valid negatives (m)",
+    "hardneg_gallery_top1": "gallery form (added after the Codex review, before any result): per anchor from camera a, its best match among its own window's other cameras beats its best match among all cameras of the negative window, the same camera a included"
+   }
+  },
+  "cs": {
+   "file": "configs/metaworld/variants/enc_cs.yaml",
+   "definition": "patch-local conv stem replacing the 16x16 stride-16 patchify convolution: per 16x16 patch independently, four 3x3 stride-2 convolutions 3 -> 32 -> 64 -> 128 -> 128 (padding 1, no bias), each followed by GroupNorm and GELU, then a 1x1 convolution (with bias) to the encoder width; same 64 tokens per frame, positional and temporal embeddings and ViT; receptive field inside the patch, so masking semantics are unchanged (Xiao et al., NeurIPS 2021 idea; their stem overlaps patches)."
+  },
+  "h2": {
+   "file": "configs/metaworld/variants/enc_h2.yaml",
+   "definition": "width 128, depth 8, 2 heads (head dim 64; chlrm 8 heads of 16); parameters and FLOPs unchanged"
+  },
+  "w4": {
+   "file": "configs/metaworld/variants/enc_w4.yaml",
+   "definition": "SinCro-shaped ViT body: width 256, depth 4, 4 heads (head dim 64), MLP 1024"
+  },
+  "w8": {
+   "file": "configs/metaworld/variants/enc_w8.yaml",
+   "definition": "width 256, depth 8, 4 heads (head dim 64), MLP 1024"
+  }
+ },
+ "common_h2_w4_w8": "slot_dim stays 256 (slot_proj = Linear(width, 256)); patch 16; the decoder (width 128) and all losses; the same learning rate and schedule as chlrm",
+ "sizes": {
+  "counter": "torch.utils.flop_counter.FlopCounterMode on CPU, multiply-add = 2 FLOPs, three-frame observation / 3, eval mode, no masking: the counter of docs/BASELINES.md (chlrm reproduces its 1,726,592 parameters and 0.214980 GFLOPs/frame)",
+  "limit": {
+   "params": 9064704,
+   "flops_per_frame": 1786078891
+  },
+  "params": {
+   "chlrm": 1726592,
+   "hn": 1726592,
+   "cs": 1885856,
+   "h2": 1726592,
+   "w4": 3439616,
+   "w8": 6598656
+  },
+  "gflops_per_frame": {
+   "chlrm": 0.21498,
+   "hn": 0.21498,
+   "cs": 0.305944,
+   "h2": 0.21498,
+   "w4": 0.42996,
+   "w8": 0.83471
+  }
+ },
+ "implementation_choices": [
+  "hn masking: 'exactly the anchors' masking (uniform random 75 %, 48 of 192 temporal tokens)' is implemented as the same masking procedure: every negative row draws its own uniform random 48-of-192 mask through the same encoder call path as the anchors (as every anchor row draws its own); the anchors' visible-token indices are not copied to the negatives. Reading recorded before any result and reported to the user.",
+  "cs GroupNorm: 8 groups in every stem layer (unspecified in the directive; fixed before any result).",
+  "cs convolutions have no bias (each is followed by GroupNorm); the 1x1 projection has a bias.",
+  "cs stem parameters keep the module name patch_embed, so the optimizer's existing rule (no weight decay for names containing 'embed') applies to the stem as it applies to the patchify convolution.",
+  "cs computes the stem on every patch (also masked ones) and then keeps the visible tokens, exactly as patchify; masked patches never influence a visible token (patch-local).",
+  "hn candidate windows: every stride-s window inside the episode (t0' in [0, L-1-2s]) within the gap bounds; anchors keep the dataset's existing eligibility (every stride fits).",
+  "hn negatives are encoded after every other random draw of the training step, so the rest of the step consumes exactly the random numbers it consumes in chlrm.",
+  "hn negatives are drawn with the DataLoader worker's torch generator (seeded by the loader as every other sample choice).",
+  "Exports omit the new encoder field 'stem' while it holds its default, so exports of the unchanged method stay readable by earlier code; cs exports carry stem='patch_cnn'.",
+  "Fallback chance level: the multi-positive InfoNCE at uniform similarities, ln((16*8-1)/(8-1)) = 2.898 (B = 16 windows x (6 training cameras + 2 synthetic views)); 'at chance' = every logged value (every 50 steps) >= 0.95 x 2.898 = 2.753 over >= 2000 consecutive steps in (10k, 20k] (runs/setup/tools/enc_fallback_check.py).",
+  "Diagnostics phase split: gripper open = Meta-World gripper opening obs[3] >= 0.9 (1 = fully open; the directive gives no threshold; fixed before any diagnostic); approach = open and hand-object distance (obs[0:3] vs obs[4:7]) > 3 cm, contact = otherwise.",
+  "Diagnostics MLP probe: Linear(D, 256) - GELU - Linear(256, out), inputs and targets standardised on the fit set, AdamW lr 1e-3, weight decay 1e-4, batch 256, at most 300 epochs, early stopping with patience 20 epochs on 20 % of the training episodes held back (episode-level split, seed 0), the best held-back epoch restored; fitted on training-camera, training-episode windows, as the ridge probe.",
+  "Diagnostics within-episode retrieval: query = a window's state from training camera a; gallery = from camera b != a, the same window and every window of the same episode and stride with 2s+2 <= |t0'-t0| <= 40 (no robot-state rule); top-1 = the same window ranks first (cosine)."
+ ],
+ "fallback_w4_w8": {
+  "trigger": "within the first 20k steps: non-finite loss, or InfoNCE at chance for 2000 consecutive steps after the 10k warm-up (operationalised above)",
+  "action": "restart that arm/task once with an encoder-only learning-rate multiplier of 0.6 (train.encoder_lr_mult=0.6; rows enc-<arm>lr06-seed0-<task>-200k, its export and DrM seeds 2000-2002 with evaluators, registered when triggered); report both attempts; the original rows are never stopped",
+  "applies_to": [
+   "w4",
+   "w8"
+  ]
+ },
+ "references": {
+  "chlrm": {
+   "hammer, pick-place": "completed pilot rows chlrm-*-<task> (mpf-registration-20261023.json, commit e58f1c0, local)",
+   "bin-picking": "registered expansion rows chlrm-seed0-bin-picking-200k, chlrm-export-seed0-bin-picking-200k, chlrm-drm-bin-picking-s2000..2002 and evaluators (chlrm-registration-eight-task-20261024.json); waited for, never duplicated or re-prioritised"
+  },
+  "context_only": {
+   "original": "final-comparison runs s3-drm-splatter4d-<task>-s2000..2002",
+   "chamfer_lean": "chl-drm-<task>-s2000..2002"
+  },
+  "never_rerun": true
+ },
+ "behaviour_preservation": {
+  "cpu_bit_for_bit": "tests/test_encoder_pilots.py::test_flags_off_reproduce_the_pre_change_training_bit_for_bit vs tests/data/enc_flags_off_golden.json (written by the unchanged sources, commit ffd4fb8 = main d9fb142): window samples, three chlrm training steps (forward, backward, clipping, AdamW), full-size encoder; flags absent and explicitly off",
+  "gpu_fixed_batch": "runs/setup/encp-identity-20261025/summary.json: vs the chlrm pilot commit e58f1c0 on 16 real hammer windows with the CUDA renderer: identical resolved config, batch, initial parameters and step-0 states / Gaussians; losses within the same-code GPU run-to-run spread (Chamfer kernel at step 0, atomic rasteriser backward afterwards)"
+ },
+ "analysis": {
+  "script": "reports/results-artifact/src/enc_pilots_rl.py (written before any result)",
+  "statistics": "IQM; task-stratified bootstrap 95 % CI (B = 2000, seeds resampled within task, arms independent); per-task seed means; returns per task only",
+  "registered": "each arm - chlrm, IQM over 9 runs (3 tasks x 3 seeds): hn, cs, h2, w4, w8",
+  "factor": {
+   "h2 - chlrm": "head dim at fixed size",
+   "w8 - h2": "width at depth 8 and head dim 64",
+   "w8 - w4": "depth at width 256",
+   "w4 - chlrm": "SinCro-shaped body vs the current one"
+  },
+  "exploratory": "each arm - original; each arm - chamfer_lean",
+  "metrics": "success last-5, final, AUC (all 100 evaluations) and early AUC (evaluations <= 200k agent steps) for the training, held-out and moving-camera groups",
+  "supplementary": "the same pooled contrasts over pick-place + bin-picking only (hammer near ceiling)"
+ },
+ "diagnostics": {
+  "scope": "inference only, eval mode, no masking (each script asserts not model.training); every new export and the chlrm, chamfer_lean and original exports of the three tasks",
+  "renders": "pilot-report protocol: 40 validation samples x 22 target cameras, paired by image, episode bootstrap; PSNR / SSIM / LPIPS by camera group (input, novel training, held-out, moving) and region (robot, object, distant background); 3D Chamfer",
+  "probes": "RL-spaced windows, exact policy state; ridge (as now) and a 2-layer MLP (hidden 256, weight decay, early stopping on held-back training episodes), both fitted on training-camera, training-episode windows; hand and object position and velocity: R^2 and mean Euclidean error (mm); object-minus-hand mean error and spread (mm) by phase (approach = gripper open and hand-object distance > 3 cm; contact = otherwise); transfer to the held-out cameras",
+  "retrieval": "cross-view top-1 (training, near, trajectory, held-out); within-episode retrieval at gaps in [2s+2, 40]; effective_rank_retrieval; history dependence (cosine to the static-history state); hard-negative cosine with the hn sampler and robot-state rule for every arm",
+  "cost": "parameters, GFLOPs/frame, median s/it per host, peak GPU memory, pretraining GPU-hours and RL wall time"
+ },
+ "caveats_to_report": [
+  "3 RL seeds and 1 pretraining seed per arm",
+  "reference runs from earlier launches / commits / hosts",
+  "hammer near ceiling",
+  "hn selects negatives with robot state: a binary gate only, never in the loss values; robot state is also the RL proprioception input"
+ ],
+ "deviations": [],
+ "review": {
+  "codex_2026_10_25": "P2 retrieval form -> gallery form added; P2 identical masks -> interpretation recorded (same procedure, fresh masks); P3 hand displacement zero -> not a defect (summary transcription; the code subtracts the negative's last frame; test added); test gaps -> two-rank Gloo hn InfoNCE vs concatenated reference, DROID rule, constructed metric values added. No defect found in candidate bounds, cs patch locality, flags-off optimizer/export/RNG paths."
+ },
+ "release": {
+  "commit": "d281258ad1480e49a155882628e87765c60a5d9a",
+  "branch_commits": [
+   "ffd4fb8 (flags-off reference written by the unchanged sources)",
+   "101f34f (implementation)",
+   "e9bbeb8 (review changes)",
+   "d281258 (suite evidence)"
+  ],
+  "local_suite": "1032 passed, 0 failed (docs/tests.json at d281258; main fast-forwarded to it)",
+  "remote_image": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a (derived gcc image)",
+  "remote_acceptance": "runs/remote/acceptance/d281258-cc/manifest.json (native suite 1032 passed, 0 failed; four GPU isolation checks)",
+  "remote_pinning": "remote driver ENC_COMMIT: enc-* rows run only on d281258 (earlier pool code lacks the features); other pool rows keep f3538b1"
+ },
+ "smoke": {
+  "summary": "runs/setup/encp-smoke-20261025.json",
+  "local": "runs/setup/encp-smoke-local-20261025/ (main .venv, MIG 1g.24gb slices)",
+  "remote": "rows encsmoke-<arm>-hammer (runs/setup/encp-remote-smoke-rows-20261025.json)",
+  "protocol": "hammer, 600 steps (train.steps=600: inside the 10k warm-up the learning rate equals the 200k schedule's), no start evaluation, end evaluation and checkpoint",
+  "median_s_per_it": {
+   "local": {
+    "chlrm": 0.307,
+    "hn": 0.331,
+    "cs": 0.342,
+    "h2": 0.302,
+    "w4": 0.297,
+    "w8": 0.307
+   },
+   "remote": {
+    "chlrm": 0.2,
+    "hn": 0.217,
+    "cs": 0.199,
+    "h2": 0.197,
+    "w4": 0.202,
+    "w8": 0.201
+   }
+  },
+  "peak_gpu_mem_gb": {
+   "chlrm": 2.92,
+   "hn": 3.18,
+   "cs": 3.79,
+   "h2": 2.92,
+   "w4": 2.96,
+   "w8": 3.24
+  },
+  "peak_session_pss_gb_local": {
+   "chlrm": 9.47,
+   "hn": 9.87,
+   "cs": 9.2,
+   "h2": 9.67,
+   "w4": 9.08,
+   "w8": 9.32
+  },
+  "note": "every arm finite; shared hardware, not a controlled timing (remote GPUs shared with the chlrm bin-picking DrM pairs and other smoke rows)"
+ },
+ "scheduling": {
+  "priority": 4,
+  "rule": "strictly below every row registered before (maximum 3); local (baseline_local_driver.py): enc rows only when no earlier-registered row of that driver is still pending (eligible or waiting on unfailed dependencies), and after every other candidate; remote (remote_campaign_driver.py): enc rows after every other row and never after an earlier row failed to fit in the same pass; configured RAM / disk budgets and the remote load limit unchanged",
+  "hosts": "registered local; the host-neutral pool may move unstarted rows to the remote (host recorded per run)"
+ },
+ "recorded": "2026-10-25T14:38:45.459834+09:00"
+}
