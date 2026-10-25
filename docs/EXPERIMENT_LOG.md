@@ -4676,3 +4676,11 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
       output; reset events with evidence), then launched as attempt 2 at 17:10–17:13.
   - enc-w8-seed0-bin-picking-200k started at 17:13, so all 15 encoder pretrainings are running.
   - 17:14 health: 40 active jobs (19 local, 21 remote = 21 running containers); no crash or non-zero exit since 16:00.
+
+### 2026-10-25 21:15 — w4/w8 divergence fallback not triggered
+
+- `enc_fallback_check.py` reports `ok` for all six w4/w8 pretrainings (last logged steps 47.1k–60.0k), so none
+  diverged within 20k steps. The ×0.6 encoder-LR fallback is not used and no `enc-*lr06-*` rows were registered.
+- The chlrm stick-push DrM rows were admitted under capacity-based scheduling: s2000 (+eval) on the remote; s2001
+  (+eval) and s2002 locally. s2002-eval is waiting at the local 140 GB admission cap.
+- chlrm-drm-peg-unplug-side-s2000 completed (1M steps, exit 0).
