@@ -17,6 +17,12 @@ history_motion_score (B,T,V,1,H,W)  float32  its masking score, from the history
 actions              (B,L,A)        float32  recorded actions[t:t+2*k2], zero beyond 2 * future_stride
 future_stride        (B,)           int64    k2 >= 1 (target spacing; never an encoder input)
 
+Hard negatives (encoder pilot hn; all optional, given together; training batches only):
+hardneg_images    (B,T,V,3,H,W)  uint8    a frame-disjoint window of the same episode and stride, training cameras
+hardneg_valid     (B,)           bool     False: no window passed the robot-state rule (images are zeros, masked out)
+hardneg_t0        (B,)           int64    its first frame (-1 when invalid)
+hardneg_hand_disp (B,)           float32  hand displacement (m) between the two windows' last frames (-1 when invalid)
+
 Motion targets take exactly one of two forms. Dense (Meta-World), on each pair's source pixel grid:
 motion3d      (B,P=3,V,3,H,W)   float32 world-frame displacement for PAIRS
 motion_weight (B,P,V,1,H,W)     float32 in [0,1]; 0 where no target
@@ -43,6 +49,7 @@ DENSE_MOTION = ("motion3d", "motion_weight")
 TRACK_MOTION = ("track_src", "track_disp", "track_weight", "track_count", "gripper_points", "gripper_weight")
 EVAL_FIELDS = ("eval_images", "eval_K", "eval_w2c", "eval_depth")
 HISTORY_FIELDS = ("history_images", "history_depth", "history_motion_score", "actions", "future_stride")
+HARDNEG_FIELDS = ("hardneg_images", "hardneg_valid", "hardneg_t0", "hardneg_hand_disp")
 
 
 class ContractError(ValueError):
@@ -183,6 +190,13 @@ def validate_batch(batch: dict, *, training: bool = True) -> dict:
         _check(bool(((k2 >= 1) & (2 * k2 <= L)).all()), "future_stride must satisfy 1 <= k2 and 2*k2 <= L")
         beyond = torch.arange(L, device=actions.device)[None] >= 2 * k2[:, None]
         _check(not bool((actions.abs().sum(-1) * beyond).any()), "actions must be zero beyond 2 * future_stride")
+    hardneg = [name for name in HARDNEG_FIELDS if name in batch]
+    if hardneg:
+        _check(len(hardneg) == len(HARDNEG_FIELDS), f"hard-negative fields must be given together, found {hardneg}")
+        _check_tensor(batch, "hardneg_images", (B, T, V, 3, H, W), torch.uint8)
+        _check_tensor(batch, "hardneg_valid", (B,), torch.bool)
+        _check_tensor(batch, "hardneg_t0", (B,), torch.int64)
+        _check_tensor(batch, "hardneg_hand_disp", (B,), torch.float32)
     # Held-out fields are optional in both regimes, including DROID validation.
     _check("meta" in batch and isinstance(batch["meta"], dict), "meta must be a dict")
     return {"B": B, "T": T, "V": V, "H": H, "W": W}

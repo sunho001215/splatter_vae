@@ -22,7 +22,7 @@ import torch  # noqa: E402
 
 from s4d.config import load_config  # noqa: E402
 from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
-from s4d.model.encoder import Encoder, EncoderConfig  # noqa: E402
+from s4d.model.encoder import DEFAULT_ONLY_FIELDS, Encoder, EncoderConfig  # noqa: E402
 
 EXPORT_FORMAT = "splatter4d-encoder-v1"
 
@@ -61,6 +61,9 @@ def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
     }
     if cfg.get("model", {}).get("perframe"):  # per-frame pilots: the policy input is the stack of per-frame states
         payload["policy_frames"] = "stack"
+    for key, default in DEFAULT_ONLY_FIELDS.items():  # fields added later are written only when they change something
+        if payload["encoder_config"][key] == default:
+            del payload["encoder_config"][key]
     payload["encoder_config"]["pretrained_path"] = None  # exported weights already contain the backbone
     payload["encoder_config"]["backbone"] = (
         "scratch" if payload["encoder_config"]["backbone"] == "dinov2_vits14" else payload["encoder_config"]["backbone"]

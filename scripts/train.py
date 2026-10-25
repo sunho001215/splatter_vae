@@ -68,6 +68,18 @@ def check_objective(cfg: dict) -> str:
     return objective
 
 
+def hardneg_settings(cfg: dict) -> dict | None:
+    """``data.hardneg`` (encoder pilot hn, default off): the robot-state rule of s4d/data/hardneg.py from
+    data.hardneg_max_gap / hardneg_min_hand_m / hardneg_min_gripper; None when off."""
+    if not bool(get(cfg, "data.hardneg", False)):
+        return None
+    if get(cfg, "data.regime", "metaworld") != "metaworld" or get(cfg, "data.objective", "reconstruct") != "reconstruct":
+        raise ValueError("data.hardneg is defined for Meta-World reconstruction pretraining")
+    from s4d.data.hardneg import DEFAULTS  # noqa: PLC0415
+
+    return {key: type(default)(get(cfg, f"data.hardneg_{key}", default)) for key, default in DEFAULTS.items()}
+
+
 def build_data(cfg: dict):
     """Return (train_dataset, val_loaders, probe_loaders, n_train_cams).
 
@@ -123,6 +135,9 @@ def build_data(cfg: dict):
             strides = tuple(int(s) for s in get(cfg, "data.strides"))
             val_strides = tuple(int(s) for s in get(cfg, "data.val_strides"))
             train_kw, val_kw = {"strides": strides}, {s: {"strides": (s,)} for s in val_strides}
+        hardneg = hardneg_settings(cfg)
+        if hardneg is not None:  # encoder pilot hn: the training windows only (never validation or probes)
+            train_kw["hardneg"] = hardneg
         train_ds = MetaworldWindowDataset(path, train_eps, seed=int(get(cfg, "train.seed", 0)), **train_kw)
         heldout = None
         if get(cfg, "eval.heldout_sets", False):  # near/trajectory held-out sets (validation episodes only)

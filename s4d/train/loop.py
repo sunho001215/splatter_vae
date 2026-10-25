@@ -177,6 +177,9 @@ def forward_losses(
     shift = aug.get("shift") if training else None
     if shift:
         enc_in, score_in = random_shift(enc_in, score_in, float(shift.get("prob", 0.5)), int(shift.get("pad", 4)))
+    hardneg = bool(get(cfg, "data.hardneg", False)) and training  # encoder pilot hn (off by default)
+    if hardneg != (training and "hardneg_images" in batch):
+        raise ValueError("data.hardneg requires hard-negative training batches (and only it provides them)")
     if source is None:
         source = torch.randint(V, (B,), device=device)
     bf16 = bool(get(cfg, "train.bf16", True))
@@ -346,11 +349,33 @@ def forward_losses(
         dyn_share = torch.where(moving_count > 0, dyn_share, dyn_share.new_tensor(float("nan")))
 
     # ---- invariance + visibility -------------------------------------------------------------
+    # encoder pilot hn: the hard-negative window of every sample, all V training cameras, encoded in training mode with
+    # the anchors' masking (fresh per-row masks of the same scheme and count) and gradients. It enters only the InfoNCE
+    # denominator (never decoded, rendered, given synthetic views or used in consistency). Encoded here, after every
+    # other random draw of the step, so the rest of the step consumes exactly the random numbers it does without it.
+    neg_states = neg_valid = None
+    if hardneg:
+        if future or single_frame or crop or shift or encoder.cfg.mask_mode != "random":
+            raise ValueError("hard negatives are defined for the reconstruction objective with mask_mode 'random' "
+                             "and without crop/shift augmentation")
+        neg_in = (batch["hardneg_images"].float() / 255.0).permute(0, 2, 1, 3, 4, 5).reshape(B * V, T, 3, H, W)
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
+            neg_slots = encoder(neg_in, None, mask_ratio=mask_ratio)["slots"]
+        neg_states = neg_slots.float().view(B, V, *neg_slots.shape[1:]).mean(2)  # (B,V,D), as the anchors' states
+        neg_valid = batch["hardneg_valid"].bool()
     inv_slots = slots if syn is None else torch.cat((slots, syn_slots), 1)  # synthetic views are extra positives
     slots_mean = slots.mean(2)
-    nce, nce_metrics = multi_positive_info_nce(
-        inv_slots.mean(2), float(loss_cfg.get("temperature", 0.1)), distributed=model.training
-    )
+    if neg_states is None:
+        nce, nce_metrics = multi_positive_info_nce(
+            inv_slots.mean(2), float(loss_cfg.get("temperature", 0.1)), distributed=model.training
+        )
+    else:
+        nce, nce_metrics = multi_positive_info_nce(
+            inv_slots.mean(2), float(loss_cfg.get("temperature", 0.1)), distributed=model.training,
+            negatives=neg_states.reshape(B * V, -1), negatives_valid=neg_valid[:, None].expand(B, V).reshape(-1),
+            negatives_weight=float(loss_cfg.get("hardneg_weight", 1.0)),
+        )
+        nce_metrics.update(hardneg_metrics(slots_mean, neg_states, neg_valid, batch["hardneg_hand_disp"]))
     cons = slot_consistency(inv_slots)
     self_w = float(loss_cfg.get("self_render", 0.0)) if training else 0.0
     if self_w > 0 and future:  # would force the encoding of rendered FUTURE frames to equal the history encoding
@@ -472,22 +497,52 @@ def forward_losses(
     return out
 
 
+@torch.no_grad()
+def hardneg_metrics(states: torch.Tensor, neg_states: torch.Tensor, valid: torch.Tensor, hand_disp: torch.Tensor) -> dict:
+    """Encoder pilot hn logging, over samples with a valid negative. states / neg_states (B,V,D) per training camera.
+
+    hardneg_cosine: each anchor state vs its own sample's negative window from the same camera.
+    hardneg_valid_fraction: samples whose negative passed the robot-state rule.
+    hardneg_within_episode_top1: for every ordered camera pair (a, b), a != b, the anchor from camera a retrieves its
+    own window from camera b rather than the negative window from camera b (cosine; two candidates, chance 0.5)."""
+    a = F.normalize(states.detach().float(), dim=-1)
+    n = F.normalize(neg_states.detach().float(), dim=-1)
+    V = a.shape[1]
+    nan = a.new_tensor(float("nan"))
+    out = {"hardneg_valid_fraction": valid.float().mean()}
+    if not bool(valid.any()):
+        return {**out, "hardneg_cosine": nan, "hardneg_within_episode_top1": nan, "hardneg_hand_disp_mean": nan}
+    off = ~torch.eye(V, dtype=torch.bool, device=a.device)
+    own = torch.einsum("bad,bcd->bac", a, a)[:, off]
+    neg = torch.einsum("bad,bcd->bac", a, n)[:, off]
+    return {**out, "hardneg_cosine": (a * n).sum(-1)[valid].mean(),
+            "hardneg_within_episode_top1": (own > neg)[valid].float().mean(),
+            "hardneg_hand_disp_mean": hand_disp[valid].float().mean()}
+
+
 # ------------------------------------------------------------------------------------------ training
 def build_optimizer(model: nn.Module, cfg: dict):
     """AdamW with decay/no-decay groups; ``train.decoder_lr_mult`` != 1 (review item 4a) splits them by module and
-    scales the decoder groups' learning rate (the schedule multiplies every group alike)."""
+    scales the decoder groups' learning rate (the schedule multiplies every group alike). ``train.encoder_lr_mult``
+    != 1 (the pre-registered fallback of the wide encoder pilots, 2026-10-25) does the same for the encoder groups; at 1
+    the groups and their order are exactly those without the key."""
     lr = float(get(cfg, "train.lr", 5e-4))
     mult = float(get(cfg, "train.decoder_lr_mult", 1.0))
-    groups: dict[tuple[bool, bool], list] = {}
+    enc_mult = float(get(cfg, "train.encoder_lr_mult", 1.0))
+    scale = {None: 1.0, "decoder": mult, "encoder": enc_mult}
+    groups: dict[tuple[str | None, bool], list] = {}
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
         no_decay = p.ndim <= 1 or name.endswith("anchors") or "token" in name or "embed" in name
-        groups.setdefault((mult != 1.0 and name.startswith("decoder."), no_decay), []).append(p)
+        scaled = ("decoder" if mult != 1.0 and name.startswith("decoder.")
+                  else "encoder" if enc_mult != 1.0 and name.startswith("encoder.") else None)
+        groups.setdefault((scaled, no_decay), []).append(p)
     wd = float(get(cfg, "train.weight_decay", 0.01))
     param_groups = [
-        {"params": groups[key], "weight_decay": 0.0 if key[1] else wd, "lr": lr * (mult if key[0] else 1.0)}
-        for key in ((False, False), (False, True), (True, False), (True, True))
+        {"params": groups[key], "weight_decay": 0.0 if key[1] else wd, "lr": lr * scale[key[0]]}
+        for key in ((None, False), (None, True), ("decoder", False), ("decoder", True), ("encoder", False),
+                    ("encoder", True))
         if key in groups
     ]
     opt = torch.optim.AdamW(param_groups, lr=lr, betas=(0.9, 0.95), fused=True)

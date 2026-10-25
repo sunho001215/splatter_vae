@@ -1,0 +1,10 @@
+# Encoder pilot cs (2026-10-25; a pilot, not the frozen method): patch-local convolutional stem on top of
+# chamfer_lean_randmask (job config list: base, task, chamfer_lean.yaml, chamfer_lean_randmask.yaml, this file).
+# The single 16x16 stride-16 patchify convolution is replaced by a small CNN applied to each 16x16 patch on its own:
+# four 3x3 stride-2 convolutions 3 -> 32 -> 64 -> 128 -> 128, each followed by GroupNorm (8 groups) and GELU, then a
+# 1x1 projection to the encoder width (s4d/model/encoder.py PatchCNNStem). Same 64 tokens per frame, positional and
+# temporal embeddings and ViT. The receptive field stays inside each patch, so masking hides exactly what it hid
+# before (cf. Xiao et al., NeurIPS 2021, whose stem overlaps patches and would leak masked content here).
+model:
+  encoder:
+    stem: patch_cnn

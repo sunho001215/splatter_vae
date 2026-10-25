@@ -5,6 +5,11 @@ frame, half of them the highest-scoring moving patches; "random" (SinCro-style a
 random subset of the T x N concatenated temporal tokens of each row, with no per-frame quota, no shared spatial mask and
 no motion prioritisation (for T = 1 this is per-image uniform random masking). Both keep
 ``visible_count(L, mask_ratio)`` tokens, L = N (tube) or T * N (random).
+
+Patch embedding (``stem``): "patchify" (default, the frozen method) is one patch_size x patch_size stride-patch_size
+convolution; "patch_cnn" (encoder pilot cs, 2026-10-25) applies a small CNN to every patch independently (four 3x3
+stride-2 convolutions 3 -> 32 -> 64 -> 128 -> 128, each with GroupNorm and GELU, then a 1x1 projection to the width), so
+a token depends only on its own patch's pixels and masking hides exactly what it hid before.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ class EncoderConfig:
     backbone: str = "scratch"  # or "dinov2_vits14"
     normalization: str = "signed"  # "signed" -> [-1,1]; "imagenet" -> ImageNet mean/std
     pretrained_path: str | None = None
+    stem: str = "patchify"  # "patchify" (one strided convolution) | "patch_cnn" (patch-local CNN, encoder pilot cs)
 
     @classmethod
     def dinov2_vits14(cls, **overrides) -> EncoderConfig:
@@ -68,6 +74,42 @@ class EncoderConfig:
     @property
     def num_patches(self) -> int:
         return self.grid[0] * self.grid[1]
+
+
+# Fields added after method-frozen-v1 and their defaults (the frozen behaviour): an export omits them while they keep the
+# default, so every earlier reader can load an export of the unchanged method (scripts/export_encoder.py).
+DEFAULT_ONLY_FIELDS = {"stem": "patchify"}
+
+STEM_CHANNELS = (32, 64, 128, 128)
+STEM_GROUPS = 8
+
+
+class PatchCNNStem(nn.Module):
+    """Patch-local convolutional stem: (N,3,H,W) -> (N,D,H/p,W/p), the layout of the patchify convolution.
+
+    Every p x p patch is cut out first and processed on its own (zero padding at its border, GroupNorm statistics of
+    that patch only), so no pixel of one patch reaches another patch's token before attention. With p = 16 the four
+    stride-2 convolutions reduce each patch to 1 x 1."""
+
+    def __init__(self, patch_size: int, width: int, channels: tuple[int, ...] = STEM_CHANNELS, groups: int = STEM_GROUPS):
+        super().__init__()
+        if patch_size != 2 ** len(channels):
+            raise ValueError(f"patch_cnn stem needs patch_size {2 ** len(channels)} ({len(channels)} stride-2 layers)")
+        layers, c_in = [], 3
+        for c in channels:
+            layers += [nn.Conv2d(c_in, c, 3, stride=2, padding=1, bias=False), nn.GroupNorm(groups, c), nn.GELU()]
+            c_in = c
+        self.convs = nn.Sequential(*layers)
+        self.proj = nn.Conv2d(c_in, width, 1)
+        self.patch_size = patch_size
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        N, C, H, W = x.shape
+        p = self.patch_size
+        gh, gw = H // p, W // p
+        patches = x.view(N, C, gh, p, gw, p).permute(0, 2, 4, 1, 3, 5).reshape(N * gh * gw, C, p, p)
+        y = self.proj(self.convs(patches))  # (N*gh*gw, D, 1, 1)
+        return y.view(N, gh, gw, -1).permute(0, 3, 1, 2)
 
 
 class Attention(nn.Module):
@@ -166,7 +208,14 @@ class Encoder(nn.Module):
         super().__init__()
         self.cfg = cfg
         D = cfg.width
-        self.patch_embed = nn.Conv2d(3, D, cfg.patch_size, cfg.patch_size)
+        if cfg.stem == "patchify":
+            self.patch_embed = nn.Conv2d(3, D, cfg.patch_size, cfg.patch_size)
+        elif cfg.stem == "patch_cnn":
+            if cfg.backbone != "scratch":
+                raise ValueError("the patch_cnn stem is defined for scratch encoders only")
+            self.patch_embed = PatchCNNStem(cfg.patch_size, D)
+        else:
+            raise ValueError(f"unknown encoder stem {cfg.stem!r}")
         self.pos_embed = nn.Parameter(torch.zeros(1, cfg.num_patches, D))
         self.temporal_embed = nn.Parameter(torch.zeros(1, cfg.num_frames, D))
         self.state_tokens = nn.Parameter(torch.zeros(1, cfg.num_slots, D))

@@ -1,0 +1,17 @@
+# Encoder pilot hn (2026-10-25; a pilot, not the frozen method): hard negatives on top of chamfer_lean_randmask
+# (job config list: base, task, chamfer_lean.yaml, chamfer_lean_randmask.yaml, this file).
+# Every training sample (episode, first frame t0, stride s) also draws one window of the same episode and stride with
+# 2s + 2 <= |t0' - t0| <= 40 simulator steps (no shared frame), uniformly among the candidates whose robot moved between
+# the two windows' last frames: hand displacement >= 1 cm or gripper-opening change >= 0.1 (robot state only, the RL
+# proprio indices 0-3; s4d/data/hardneg.py). It is encoded from all 6 training cameras in training mode with the
+# anchors' masking (48 of 192 temporal tokens, uniform random) and gradients, and enters ONLY the InfoNCE denominator as
+# extra columns (all-gathered, weight 1; invalid negatives masked out). Positives stay "same window, other cameras";
+# the negative is never decoded, rendered, given synthetic views or used in slot consistency.
+# Thresholds fixed before any result (user directive 2026-10-25); never tuned on results.
+data:
+  hardneg: true
+  hardneg_max_gap: 40
+  hardneg_min_hand_m: 0.01
+  hardneg_min_gripper: 0.1
+loss:
+  hardneg_weight: 1.0

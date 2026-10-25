@@ -1,0 +1,7 @@
+# Encoder pilot h2 (2026-10-25; a pilot, not the frozen method): head dimension 64 at fixed size, on top of
+# chamfer_lean_randmask (job config list: base, task, chamfer_lean.yaml, chamfer_lean_randmask.yaml, this file).
+# Width 128, depth 8, 2 heads (chlrm: 8 heads of 16). Parameters and FLOPs are unchanged. slot_dim 256, patch 16, the
+# decoder (width 128), every loss and the learning rate are unchanged.
+model:
+  encoder:
+    heads: 2

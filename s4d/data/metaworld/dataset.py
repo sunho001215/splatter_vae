@@ -83,6 +83,7 @@ class MetaworldWindowDataset(Dataset):
         history_stride: int = HISTORY_STRIDE,
         future_strides=FUTURE_STRIDES,
         eligibility_future: int | None = None,
+        hardneg: dict | None = None,
     ):
         """One sample per (episode, start frame, stride). Start frames are kept only where *every* stride fits,
         so each sample's stride is exactly uniform over ``strides``. Under the future objective ``strides`` is unused:
@@ -91,7 +92,12 @@ class MetaworldWindowDataset(Dataset):
         evaluate one k2 each share the identical anchors (and encoder windows) when given the training maximum.
 
         ``heldout``: near/trajectory held-out-set file (validation episodes only); with ``with_eval`` its views are
-        added as ``<set>_images/_depth/_K/_w2c/_c2w`` for episodes it contains."""
+        added as ``<set>_images/_depth/_K/_w2c/_c2w`` for episodes it contains.
+
+        ``hardneg`` (encoder pilot hn; reconstruction objective only): {max_gap, min_hand_m, min_gripper} of
+        s4d/data/hardneg.py; every sample then also carries one frame-disjoint window of its episode and stride that
+        passed the robot-state rule (``hardneg_*`` contract fields; training cameras, images only). None (default):
+        the sample is exactly the window itself and no random number is drawn."""
         self.path = str(path)
         self.episodes = list(episodes)
         self.strides = tuple(int(s) for s in strides)
@@ -140,6 +146,15 @@ class MetaworldWindowDataset(Dataset):
                         self.samples.extend((ep, t0, (s,)) for s in self.strides)
         if not self.samples:
             raise ValueError(f"no temporal windows in {self.path} for episodes {self.episodes[:3]}...")
+        self.hardneg = None
+        if hardneg is not None:
+            if objective != "reconstruct":
+                raise ValueError("hard negatives are defined for the reconstruction objective only")
+            from s4d.data.hardneg import HardNegativeSampler, robot_state  # noqa: PLC0415
+
+            with h5py.File(self.path, "r") as f:  # robot state only (proprio indices 0-3); no object state is read
+                robot = {ep: robot_state(f["episodes"][ep]["obs"][:, :4], "metaworld") for ep in self.episodes}
+            self.hardneg = HardNegativeSampler(robot, **hardneg)
 
     def __getstate__(self):
         state = dict(self.__dict__)
@@ -158,7 +173,10 @@ class MetaworldWindowDataset(Dataset):
         ep_key, t_anchor, valid = self.samples[index]
         if self.objective == "reconstruct":
             stride = valid[0]
-            return self._window(ep_key, [t_anchor + k * stride for k in range(T_WINDOW)], stride)
+            sample = self._window(ep_key, [t_anchor + k * stride for k in range(T_WINDOW)], stride)
+            if self.hardneg is not None:
+                sample.update(self._hardneg(ep_key, t_anchor, stride, sample["images"]))
+            return sample
         # future: targets (t, t+k2, t+2*k2) carry every supervision field; the fixed history (t-4, t-2, t) feeds the
         # encoder. Encoder-side metadata (meta["stride"], probe_state) is the history's; the future stride is separate.
         future_stride, h = valid[0], self.history_stride
@@ -184,6 +202,21 @@ class MetaworldWindowDataset(Dataset):
             for key in [k for k in history if k.endswith("_images") and k != "images"]:
                 sample[f"history_{key}"] = history[key]
         return sample
+
+    def _hardneg(self, ep_key: str, t0: int, stride: int, images: torch.Tensor) -> dict:
+        """The hard-negative window of sample (ep_key, t0, stride): images of the training cameras only."""
+        t_neg = self.hardneg.sample(ep_key, t0, stride)
+        if t_neg is None:
+            return {"hardneg_images": torch.zeros_like(images), "hardneg_valid": torch.tensor(False),
+                    "hardneg_t0": torch.tensor(-1, dtype=torch.int64),
+                    "hardneg_hand_disp": torch.tensor(-1.0, dtype=torch.float32)}
+        ep = self._h5()["episodes"][ep_key]
+        V = len(self.train_cams)
+        rgb = torch.from_numpy(np.stack([ep["rgb"][t_neg + k * stride, :V] for k in range(T_WINDOW)]))
+        return {"hardneg_images": rgb.permute(0, 1, 4, 2, 3).contiguous(), "hardneg_valid": torch.tensor(True),
+                "hardneg_t0": torch.tensor(t_neg, dtype=torch.int64),
+                "hardneg_hand_disp": torch.tensor(self.hardneg.hand_displacement(ep_key, t0, t_neg, stride),
+                                                  dtype=torch.float32)}
 
     def _window(self, ep_key: str, t_idx: list[int], stride: int) -> dict:
         """Every contract field of the frames ``t_idx`` (the original method's sample)."""

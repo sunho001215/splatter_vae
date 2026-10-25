@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -9,9 +11,20 @@ from s4d.train.ddp import all_gather_with_grad, rank, world_size
 
 
 def multi_positive_info_nce(
-    slots_mean: torch.Tensor, temperature: float = 0.1, *, distributed: bool = True
+    slots_mean: torch.Tensor,
+    temperature: float = 0.1,
+    *,
+    distributed: bool = True,
+    negatives: torch.Tensor | None = None,
+    negatives_valid: torch.Tensor | None = None,
+    negatives_weight: float = 1.0,
 ) -> tuple[torch.Tensor, dict]:
-    """slots_mean (B,V,D): positives are other views of the same sample, negatives other samples (all ranks)."""
+    """slots_mean (B,V,D): positives are other views of the same sample, negatives other samples (all ranks).
+
+    ``negatives`` (N,D) with ``negatives_valid`` (N,) (encoder pilot hn, 2026-10-25): extra states that enter ONLY the
+    denominator of every row, as extra columns all-gathered across ranks like the features themselves, each weighted
+    ``negatives_weight`` (exp(logit) * weight); invalid columns are left out. They are never positives. Without valid
+    extra columns the loss is computed exactly as without them."""
     B, V, D = slots_mean.shape
     local = F.normalize(slots_mean.float().reshape(B * V, D), dim=-1)
     if V < 2:
@@ -33,7 +46,21 @@ def multi_positive_info_nce(
     logits = local @ global_feats.t() / temperature
     neg_inf = torch.finfo(logits.dtype).min
     log_pos = torch.logsumexp(logits.masked_fill(~positive, neg_inf), dim=1)
-    log_den = torch.logsumexp(logits.masked_fill(~denominator, neg_inf), dim=1)
+    den_logits = logits.masked_fill(~denominator, neg_inf)
+    if negatives is not None:
+        extra = F.normalize(negatives.float().reshape(-1, D), dim=-1)
+        keep = torch.ones(len(extra), dtype=torch.bool, device=extra.device) if negatives_valid is None \
+            else negatives_valid.reshape(-1).bool()
+        if len(keep) != len(extra):
+            raise ValueError("negatives_valid must have one entry per extra negative")
+        global_extra = all_gather_with_grad(extra) if distributed else extra
+        global_keep = (all_gather_with_grad(keep.float()) > 0.5) if distributed else keep
+        if bool(global_keep.any()):
+            extra_logits = local @ global_extra[global_keep].t() / temperature
+            if negatives_weight != 1.0:
+                extra_logits = extra_logits + math.log(negatives_weight)
+            den_logits = torch.cat((den_logits, extra_logits), dim=1)
+    log_den = torch.logsumexp(den_logits, dim=1)
     loss = (log_den - log_pos).mean()
     with torch.no_grad():
         cos = local @ global_feats.t()
