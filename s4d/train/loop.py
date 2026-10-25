@@ -504,19 +504,26 @@ def hardneg_metrics(states: torch.Tensor, neg_states: torch.Tensor, valid: torch
     hardneg_cosine: each anchor state vs its own sample's negative window from the same camera.
     hardneg_valid_fraction: samples whose negative passed the robot-state rule.
     hardneg_within_episode_top1: for every ordered camera pair (a, b), a != b, the anchor from camera a retrieves its
-    own window from camera b rather than the negative window from camera b (cosine; two candidates, chance 0.5)."""
+    own window from camera b rather than the negative window from camera b (cosine; two candidates, chance 0.5), as the
+    cross-view retrieval convention (query and gallery from different cameras).
+    hardneg_gallery_top1: the harder gallery form, per anchor from camera a: its best match among its own window's other
+    cameras beats its best match among ALL cameras of the negative window (the same camera a included)."""
     a = F.normalize(states.detach().float(), dim=-1)
     n = F.normalize(neg_states.detach().float(), dim=-1)
     V = a.shape[1]
     nan = a.new_tensor(float("nan"))
     out = {"hardneg_valid_fraction": valid.float().mean()}
     if not bool(valid.any()):
-        return {**out, "hardneg_cosine": nan, "hardneg_within_episode_top1": nan, "hardneg_hand_disp_mean": nan}
-    off = ~torch.eye(V, dtype=torch.bool, device=a.device)
-    own = torch.einsum("bad,bcd->bac", a, a)[:, off]
-    neg = torch.einsum("bad,bcd->bac", a, n)[:, off]
+        return {**out, "hardneg_cosine": nan, "hardneg_within_episode_top1": nan, "hardneg_gallery_top1": nan,
+                "hardneg_hand_disp_mean": nan}
+    eye = torch.eye(V, dtype=torch.bool, device=a.device)
+    own_all = torch.einsum("bad,bcd->bac", a, a)  # (B,V,V) anchor a vs own window from camera c
+    neg_all = torch.einsum("bad,bcd->bac", a, n)  # anchor a vs negative window from camera c
+    own, neg = own_all[:, ~eye], neg_all[:, ~eye]
+    gallery = own_all.masked_fill(eye, float("-inf")).amax(-1) > neg_all.amax(-1)  # (B,V)
     return {**out, "hardneg_cosine": (a * n).sum(-1)[valid].mean(),
             "hardneg_within_episode_top1": (own > neg)[valid].float().mean(),
+            "hardneg_gallery_top1": gallery[valid].float().mean(),
             "hardneg_hand_disp_mean": hand_disp[valid].float().mean()}
 
 

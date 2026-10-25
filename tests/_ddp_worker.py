@@ -137,7 +137,16 @@ def main():
         features = global_features[args.rank * 2 : (args.rank + 1) * 2].clone().requires_grad_()
         info_loss, _ = multi_positive_info_nce(features, temperature=0.1)
         info_loss.backward()
-        record = {
+        # encoder pilot hn: extra denominator-only columns, mixed validity, rank 1 without any valid negative
+        hn_features = global_features[args.rank * 2 : (args.rank + 1) * 2].clone().requires_grad_()
+        global_negatives = torch.cos(torch.arange(16).reshape(4, 4).float() * 0.9)
+        negatives = global_negatives[args.rank * 2 : (args.rank + 1) * 2].clone().requires_grad_()
+        valid = torch.tensor([[True, False], [False, False]][args.rank])
+        hn_loss, _ = multi_positive_info_nce(hn_features, temperature=0.1, negatives=negatives, negatives_valid=valid)
+        hn_loss.backward()
+        record_hn = {"hn_loss": hn_loss.item(), "hn_feature_grad": hn_features.grad.tolist(),
+                     "hn_negative_grad": negatives.grad.tolist()}
+        record = {**record_hn,
             "rank": args.rank,
             "gathered": gathered.detach().tolist(),
             "grad": local.grad.tolist(),

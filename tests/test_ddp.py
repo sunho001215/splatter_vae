@@ -85,3 +85,17 @@ def test_two_rank_gather_gradient_and_infonce_equal_global_reference(tmp_path):
     )
     distributed_grad = torch.cat([torch.tensor(record["info_grad"]) for record in records]) / 2
     torch.testing.assert_close(distributed_grad, features.grad, atol=2e-6, rtol=2e-5)
+    # hard negatives (encoder pilot hn): gathered extra columns with mixed validity equal the concatenated reference
+    hn_features = torch.sin(torch.arange(32).reshape(4, 2, 4).float() * 0.7).requires_grad_()
+    negatives = torch.cos(torch.arange(16).reshape(4, 4).float() * 0.9).requires_grad_()
+    valid = torch.tensor([True, False, False, False])
+    hn_reference, _ = multi_positive_info_nce(hn_features, temperature=0.1, distributed=False, negatives=negatives,
+                                              negatives_valid=valid)
+    hn_reference.backward()
+    torch.testing.assert_close(torch.tensor([r["hn_loss"] for r in records]).mean(), hn_reference.detach(),
+                               atol=1e-6, rtol=1e-6)
+    torch.testing.assert_close(torch.cat([torch.tensor(r["hn_feature_grad"]) for r in records]) / 2, hn_features.grad,
+                               atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(torch.cat([torch.tensor(r["hn_negative_grad"]) for r in records]) / 2, negatives.grad,
+                               atol=2e-6, rtol=2e-5)
+    assert negatives.grad[1:].abs().sum() == 0 and negatives.grad[0].abs().sum() > 0

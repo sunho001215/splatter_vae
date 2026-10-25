@@ -132,6 +132,48 @@ def test_robot_rule_thresholds_hand_and_gripper():
         assert bool(robot_moved(torch.tensor(a), torch.tensor(b), 0.01, 0.1)) is moved, b
 
 
+def test_the_rule_applies_to_droid_robot_states():
+    """DROID probe_state = cartesian_position (xyz, Euler xyz) + gripper_position: only xyz and the gripper decide."""
+    a = torch.tensor([0.40, 0.00, 0.20, 0.1, 0.2, 0.3, 0.50])
+    for change, moved in (({0: 0.405}, False), ({0: 0.411}, True), ({6: 0.59}, False), ({6: 0.61}, True),
+                          ({3: 2.0, 4: -1.0, 5: 0.7}, False)):  # orientation alone never counts
+        b = a.clone()
+        for i, v in change.items():
+            b[i] = v
+        got = robot_moved(robot_state(a, "droid"), robot_state(b, "droid"), 0.01, 0.1)
+        assert bool(got) is moved, change
+
+
+def test_hand_displacement_is_between_the_two_last_frames():
+    states = np.zeros((60, 4))
+    states[:, 0] = np.arange(60) * 0.001  # 1 mm per frame
+    sampler = HardNegativeSampler({"ep": states}, 40, 0.01, 0.1)
+    assert sampler.hand_displacement("ep", 10, 30, 2) == pytest.approx(0.020)  # frames 14 and 34
+    assert sampler.hand_displacement("ep", 30, 10, 4) == pytest.approx(0.020)  # frames 38 and 18
+
+
+def test_hardneg_metrics_on_constructed_states():
+    from s4d.train.loop import hardneg_metrics
+
+    V = 3
+    a = torch.eye(4)[:V][None].repeat(2, 1, 1)  # anchors: camera c -> e_c
+    a[:, :, 3] = 1.0  # shared component: own views are similar (cos 0.5)
+    n = a.clone()
+    n[0] = torch.tensor([[1.0, 0, 0, 0.0]] * V)  # sample 0: every negative view equals e_0
+    n[1] = -a[1]  # sample 1: negatives opposite
+    valid = torch.tensor([True, True])
+    m = hardneg_metrics(a, n, valid, torch.tensor([0.02, 0.04]))
+    # sample 0: anchor cam 0 vs own cam b: 0.5; vs negative cam b: cos(e0+e3, e0) = 0.707 -> negative wins (pairs 0->1, 0->2)
+    #           anchors cams 1, 2 vs negative e0: 0 < 0.5 -> own wins (4 pairs); sample 1: all own wins (6 pairs)
+    assert float(m["hardneg_within_episode_top1"]) == pytest.approx(10 / 12)
+    assert float(m["hardneg_gallery_top1"]) == pytest.approx(5 / 6)  # only sample 0, camera 0 fails
+    cos0 = torch.tensor([0.7071068, 0.0, 0.0]).mean()
+    assert float(m["hardneg_cosine"]) == pytest.approx(float((cos0 + torch.tensor(-1.0)) / 2), abs=1e-5)
+    assert float(m["hardneg_hand_disp_mean"]) == pytest.approx(0.03)
+    none = hardneg_metrics(a, n, torch.tensor([False, False]), torch.tensor([-1.0, -1.0]))
+    assert float(none["hardneg_valid_fraction"]) == 0 and torch.isnan(none["hardneg_gallery_top1"])
+
+
 def test_robot_state_columns_are_the_proprio_and_the_droid_robot_fields():
     probe = torch.arange(11.0)[None]
     assert robot_state(probe, "metaworld").tolist() == [[0.0, 1.0, 2.0, 3.0]]
