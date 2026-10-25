@@ -4706,3 +4706,30 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
       peg-insert-side −0.038.
 - Interim reading (descriptive): the pilot's masking gain on hammer and pick-place does not carry over to the other
   tasks. Nothing is decided; the full eight-task result is reported to the user once stick-push is complete.
+
+### 2026-10-25 23:35 — chlrm eight-task RL complete; reported to the user
+
+- Last job: chlrm-drm-stick-push-s2000-eval, remote, exit 0, 100 rows. All 24 chlrm DrM runs and their evaluators are
+  complete.
+- `chlrm_rl.py` → `variants/chlrm.json`, also copied to `chlrm.8task-20261025.json`. The seven-task interim is in
+  `chlrm.7task-20261025.json`. IQM over 24 runs:
+  - chlrm − chamfer_lean:
+    - training: last-5 0.674 vs 0.705, −0.031 [−0.150, +0.090]; AUC −0.039 [−0.112, +0.025]
+    - held-out: last-5 −0.074 [−0.087, −0.059]; AUC −0.042 [−0.053, −0.032]
+    - moving: last-5 −0.049 [−0.143, +0.057]
+  - chlrm − original:
+    - training: last-5 −0.082 [−0.199, +0.034]
+    - held-out: last-5 −0.096 [−0.111, −0.077]
+    - return intervals exclude zero on the training, held-out and moving cameras
+  - Per task (training last-5, chlrm − chamfer_lean): higher on hammer +0.156 and pick-place +0.227; stick-push
+    +0.004; lower on the other five, by −0.038 to −0.266 (bin-picking).
+- Written up in docs/RESULTS.md, new top section. Codex reviewed the wording; accepted changes:
+  - "does not generalise" became "not established";
+  - stick-push is stated as +0.004;
+  - held-out wording no longer attributes the drop to masking;
+  - the selection-effect note now says the pilot rows are reused.
+- Rejected Codex suggestions (both statements are true from campaign records):
+  - removing the host-placement and diagnostics caveats;
+  - removing the non-adoption line, which follows the user's directive that Chamfer and chlrm are candidates only.
+- Nothing adopted. Whether to do anything further is the user's decision. The encoder pilots (on chlrm) continue
+  unchanged.

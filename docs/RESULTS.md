@@ -4,6 +4,79 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### chamfer_lean_randmask (chlrm) eight-task RL vs chamfer_lean and the original (2026-10-25 23:35; registered, descriptive)
+
+Protocol: variant from `runs/setup/mpf-definition-20261023.json`. Hammer and pick-place are the pilot rows
+(`mpf-registration-20261023.json`). The other six tasks are the eight-task expansion approved by the user on 2026-10-24
+(`runs/setup/chlrm-registration-eight-task-20261024.json`), registered before any of their results. Each task: 200k
+pretraining (seed 0), export, then 1M DrM × 3 seeds (2000–2002) with proprioception, as in the final comparison.
+Analysis: `reports/results-artifact/src/chlrm_rl.py` → `reports/results-artifact/variants/chlrm.json`; seven-task
+interim kept as `chlrm.7task-20261025.json`. Statistics: IQM over 24 runs (8 tasks × 3 seeds); task-stratified bootstrap
+95 % intervals (B = 2000; seeds resampled within task; arms independent). Decision rule: none (descriptive). chlrm and
+Chamfer remain candidates, not adopted.
+
+Success IQM over 24 runs; difference = first − second [95 % CI]:
+
+| comparison | training last-5 | training AUC | held-out last-5 | held-out AUC | moving last-5 | moving AUC |
+|---|---|---|---|---|---|---|
+| masking: chlrm − chamfer_lean | 0.674 vs 0.705, −0.031 [−0.150, +0.090] | 0.457 vs 0.496, −0.039 [−0.112, +0.025] | 0.030 vs 0.104, **−0.074 [−0.087, −0.059]** | **−0.042 [−0.053, −0.032]** | −0.049 [−0.143, +0.057] | −0.055 [−0.119, +0.010] |
+| chlrm − original | 0.674 vs 0.756, −0.082 [−0.199, +0.034] | 0.457 vs 0.510, −0.053 [−0.126, +0.011] | 0.030 vs 0.126, **−0.096 [−0.111, −0.077]** | **−0.066 [−0.078, −0.054]** | −0.063 [−0.157, +0.029] | −0.055 [−0.117, +0.001] |
+
+For reference, chamfer_lean − original from `variants_rl.py`: training last-5 −0.051 [−0.167, +0.056]; held-out
+last-5 −0.022 [−0.041, −0.002].
+
+Episodic return, chlrm − chamfer_lean:
+- Training last-5: −216 [−415, +26].
+- Held-out last-5: −27 [−35, −19].
+- Moving last-5: −231 [−354, −65].
+
+Episodic return, chlrm − original:
+- Training last-5: −294 [−497, −51].
+- Training AUC: −144 [−245, −24].
+- Held-out last-5: −30 [−40, −19].
+- Moving last-5: −266 [−393, −103].
+
+Success by task, seed means, last-5. Training cameras show last-5 / AUC; held-out and moving cameras show last-5
+only.
+
+| task | training: original | training: chamfer_lean | training: chlrm | held-out o / chl / chlrm | moving o / chl / chlrm |
+|---|---|---|---|---|---|
+| bin-picking | 0.618 / 0.264 | 0.594 / 0.304 | 0.328 / 0.167 | 0.000 / 0.000 / 0.000 | 0.583 / 0.550 / 0.255 |
+| coffee-push | 0.441 / 0.293 | 0.451 / 0.347 | 0.374 / 0.305 | 0.184 / 0.178 / 0.118 | 0.462 / 0.455 / 0.388 |
+| door-open | 0.966 / 0.792 | 0.970 / 0.746 | 0.856 / 0.598 | 0.355 / 0.271 / 0.088 | 0.967 / 0.980 / 0.897 |
+| hammer (pilot) | 0.890 / 0.662 | 0.817 / 0.588 | 0.972 / 0.780 | 0.148 / 0.093 / 0.108 | 0.865 / 0.835 / 0.930 |
+| peg-insert-side | 0.122 / 0.044 | 0.096 / 0.022 | 0.058 / 0.019 | 0.003 / 0.002 / 0.000 | 0.138 / 0.155 / 0.045 |
+| peg-unplug-side | 0.823 / 0.688 | 0.809 / 0.680 | 0.723 / 0.527 | 0.193 / 0.188 / 0.071 | 0.817 / 0.805 / 0.748 |
+| pick-place (pilot) | 0.506 / 0.299 | 0.271 / 0.168 | 0.498 / 0.296 | 0.027 / 0.002 / 0.007 | 0.438 / 0.295 / 0.442 |
+| stick-push | 0.998 / 0.870 | 0.992 / 0.908 | 0.996 / 0.863 | 0.156 / 0.149 / 0.009 | 0.980 / 0.982 / 0.972 |
+
+Reading (descriptive; hypotheses, not established):
+- **The pilot's masking advantage is not established across the eight tasks.** On the two pilot tasks, chlrm −
+  chamfer_lean training last-5 was +0.152 [+0.080, +0.329]. Over all eight tasks it is −0.031 [−0.150, +0.090]; the
+  interval includes both a decrease and an increase.
+  - Training last-5 seed means are higher than chamfer_lean's on hammer (+0.156) and pick-place (+0.227).
+  - They are essentially equal on stick-push (+0.004).
+  - They are lower on the other five tasks, by −0.038 to −0.266. The largest drop is bin-picking, 0.328 vs 0.594.
+- **chlrm's held-out-camera success is lower than both other arms'**, and the intervals exclude zero:
+  - vs chamfer_lean: last-5 −0.074, AUC −0.042;
+  - vs the original: last-5 −0.096.
+  - The per-task drops are largest on stick-push (0.009 vs 0.149), door-open (0.088 vs 0.271) and peg-unplug-side
+    (0.071 vs 0.188).
+  - Held-out success is low for every arm (IQM 0.03–0.13), so these are small absolute values.
+- **Relative to the original**, chlrm is below on training last-5 (−0.082 [−0.199, +0.034]) and on every held-out
+  measure. Its return intervals exclude zero on the training cameras (last-5 and AUC) and on the moving cameras.
+- Overlap: the hammer and pick-place rows in the eight-task estimate are the pilot runs themselves, and the
+  expansion followed their result. The pilot is therefore not an independent replication of the eight-task
+  estimate.
+
+Caveats:
+- One pretraining seed per task and three RL seeds. Bootstrap intervals over three seeds per task are coarse.
+- Host placement varied by task and seed; each run's host is recorded in its provenance.
+- No render or representation diagnostics were run for the six new tasks. The 200k render analysis and probes cover
+  the pilot tasks only.
+
+Decision: none is automatic. Neither Chamfer variant is adopted. Any further step is the user's decision.
+
 ### Pilots: masking, per-frame structure and T=1 stacking, hammer + pick-place (2026-10-25 08:30; registered, descriptive)
 
 Protocol: `runs/setup/mpf-definition-20261023.json` and `mpf-registration-20261023.json` (user directive 2026-10-23),
