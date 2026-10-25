@@ -1,0 +1,12 @@
+candidate checkpoint          432 files     13.6 GB
+kept RL run not eligible: container running                     319 files      7.6 GB
+kept final RL policy snapshot                                   223 files      5.7 GB
+kept final pretrained model                                      30 files      1.0 GB
+kept RL run not eligible: registry status failed host remote     21 files      1.0 GB
+kept 100k-multiple milestone (reported endpoints)                24 files      0.8 GB
+replay: deleted 0 of 0 (0.0 GB allocated)
+policy_snapshot: deleted 0 of 0 (0.0 GB allocated)
+checkpoint: deleted 432 of 432 (13.6 GB allocated)
+tmp: deleted 0 of 0 (0.0 GB allocated)
+skipped at recheck 0; remote free 3528.4 -> 3542.0 GB
+exit 0

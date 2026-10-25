@@ -1,0 +1,27 @@
+{
+  "recorded_local": "2026-10-25T17:06:11.031195+09:00",
+  "job_id": "enc-w4-seed0-bin-picking-200k",
+  "attempt": 1,
+  "container": "s4d-enc-w4-seed0-bin-picking-200k-a1",
+  "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 640.8,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/enc-w4-seed0-bin-picking-200k",
+  "accepted_release_dir": "/home/compu/kaist/sunho/releases/d281258ad1480e49a155882628e87765c60a5d9a/code",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-10-25T08:06:05Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "accepted_release_dir": "exists",
+      "remote_time_utc": "2026-10-25T08:06:11Z"
+    }
+  ],
+  "output_rule": "directory absent",
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}

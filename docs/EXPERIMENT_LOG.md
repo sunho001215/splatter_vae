@@ -4593,3 +4593,86 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - The Stage 2 yield rule in the local driver only counts ready Stage 2 rows; none exist, so it is inert. The
     s3spec rows (a Stage 3 specification gated on a 300k freeze) and the superseded local sanity rows stay unadmitted
     by design: they are not ready experiments.
+
+### 2026-10-25 16:20–17:00 — Disk cleanup on both hosts (user-authorized)
+
+- **Instruction:** Remove unnecessary files on both hosts without disrupting running work:
+  - safely regenerable caches, abandoned temporaries and verified redundant downloads;
+  - replay buffers of completed RL runs;
+  - stopped campaign containers, after verifying ownership and keeping any needed writable-layer files;
+  - obsolete intermediate checkpoints and policy snapshots that no remaining task needs.
+
+  Keep final/best models, recovery checkpoints, datasets, source code, results, logs and unsynced W&B data. Record
+  manifests. Records: `runs/setup/disk-cleanup-20261025/` (`summary.json` plus per-pass manifests).
+- **Rules:** the same as the reviewed 10-19 cleanup. Tools: `disk_cleanup_stage0_20261025.py`,
+  `disk_cleanup_local_models_20261025.py`, `disk_cleanup_remote_20261025.py`,
+  `remote_container_cleanup_20261025.py`.
+  - An RL run qualifies only if:
+    - its registry status is `done`, with a verified final sync if it ran on the remote;
+    - `final.json` reports the configured budget completed;
+    - its evaluator is closed out and the eval history ends at the total;
+    - no queued job that is not done depends on it;
+    - on the remote, no container is running for it and `final.json` matches the verified sync.
+  - From a qualifying run: the replay is deleted, and intermediate snapshots are deleted only at steps recorded in the
+    eval history.
+  - Pretraining checkpoints are deleted only if the step is not the final step, not a 100k multiple and not
+    referenced, and its `eval/step_N` summary exists.
+  - New today: the reference set also scans `reports/results-artifact/src`, `analysis`, `scripts` and `s4d`, and expands
+    templated paths. This keeps, for example, the intermediate `i2-m3d-seed1-*/step_0050000.pt` that
+    `chl_analysis_render.py` still reads.
+  - Every candidate was rechecked immediately before deletion.
+- **Local** (free 7,486.8 → 7,885.7 GB, **+398.9 GB**):
+  - 7,474 abandoned live-sync partials of finished, verified remote runs (55.7 GB);
+  - stale pytest trees and worktree `.cache` copies (5.8 GB);
+  - replay of 179 completed runs' files (133.0 GB);
+  - 10,695 intermediate policy snapshots (189.4 GB);
+  - 474 intermediate pretraining checkpoints (15.0 GB);
+  - 0 skipped at recheck. There is no Docker on the local host.
+- **Remote** (`/home/compu/kaist/sunho` only; free 1,635.9 → 3,542.0 GB, **+1,906.1 GB**):
+  - replay, 272 files (1,390.1 GB);
+  - 19,957 intermediate snapshots (503.7 GB);
+  - 432 intermediate checkpoints of 24 completed pretraining runs (13.6 GB);
+  - 1,160 abandoned container TMPDIR entries (3.5 MB), each older than every running container.
+  - **Containers:** 82 stopped containers of ours were inspected; 75 were removed and verified absent:
+    - 62 verification containers, 12 failed-job containers and 1 runtime-integrity container;
+    - each one's Docker log, inspect record and `docker diff` were archived with checksums and a receipt;
+    - each removal was a plain `docker rm` by id after an identity recheck under a lock.
+    - Their writable layers (read-only root filesystem) held only NVIDIA toolkit injections, ldconfig caches and
+      mount stubs.
+  - **Follow-up removal:** the first `--apply` refused 6 failed-attempt containers whose run directories no longer
+    exist. A follow-up (`--archive-missing-rundir`) archived them under `runtime/container-archive/` and removed them:
+    81 removed in total.
+  - **Kept:** `s4d-verify-native-e267ba8-20261011-a1` (no registry record carries its container id, and the registry
+    has its run as unknown). The 2 containers that are not ours were listed only. Images, volumes and networks were
+    untouched. The host now has 24 containers.
+- **Kept:** every final RL snapshot and `latest.pt`; final pretrained models; 100k milestones; referenced paths; running,
+  failed, unknown and unsynced runs; datasets; code and worktrees; exports, eval histories, results and logs; W&B
+  files; release verification evidence (`runtime/verification`, 31.6 GB); releases.
+- **Incidents (all reconciled):**
+  - Remote pass 1 scanned its own dry-run manifest as a reference, so it kept every snapshot and checkpoint. Its
+    deletion SSH call hit the wrapper timeout and was retried, losing output lines. An existence check confirmed the
+    result.
+  - Pass 2 crashed after deleting: 2,000 paths in one SSH argument exceeded the argument-length limit. An existence
+    check confirmed what it had deleted.
+  - Pass 3 used paced 400-path batches.
+  - Remote SSH outages at 16:39:56–16:42:11 and 16:47:32–16:48:09 coincided with heavy cleanup traffic; there was also
+    one at 08:40 without it. All remote jobs were marked unknown, then reconciled as running. No job crashed or
+    restarted.
+- Free space was measured with `df` on shared partitions; other users' writes also move it.
+
+### 2026-10-25 16:51 — Remote per-GPU load limit 2.8 → 4.0 (user instruction)
+
+- `runs/setup/remote-gpu-load-limit.txt` changed 2.8 → 4.0 (backup `.before-4.0-20261025`). `remote_campaign_driver.py`
+  reads it on every pass; row loads are 1.0 per pretraining, 0.5 per RL trainer and 0.3 per evaluator. The 90 GB
+  GPU-memory cap, priorities and every other limit and setting are unchanged.
+- The manual pass at 16:51 moved six rows to the remote: chlrm-drm-peg-insert-side-s2002 (+eval),
+  enc-w4-seed0-{pick-place,bin-picking}-200k and enc-w8-seed0-{hammer,pick-place}-200k.
+  - Started: chlrm-drm-peg-insert-side-s2002 and enc-w4-seed0-pick-place-200k; at 16:57, enc-w8-seed0-hammer-200k.
+  - Refused: three launches were refused by the launcher's isolation check ("Foreign process on selected GPU"):
+    chlrm-drm-peg-insert-side-s2002-eval, enc-w4-seed0-bin-picking-200k and enc-w8-seed0-pick-place-200k.
+    - No container was created. At 17:07 the four GPUs showed only our processes, so the foreign process was
+      transient; a likely cause is short-lived evaluator child processes missing from the launch snapshot.
+    - Each was reconciled with `reconcile_unlaunched_remote.py` after its 10-minute minimum age (no container, no
+      output; reset events with evidence), then launched as attempt 2 at 17:10–17:13.
+  - enc-w8-seed0-bin-picking-200k started at 17:13, so all 15 encoder pretrainings are running.
+  - 17:14 health: 40 active jobs (19 local, 21 remote = 21 running containers); no crash or non-zero exit since 16:00.

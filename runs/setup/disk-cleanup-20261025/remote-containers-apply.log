@@ -1,0 +1,86 @@
+containers 104; ours stopped 82; plan 81; kept 1; not ours 2
+KEEP s4d-verify-native-e267ba8-20261011-a1 no registry record of this run with this container id
+Counter({('verification', 'done'): 55, ('job', 'failed'): 18, ('verification', 'crashed'): 5, ('verification', 'failed'): 2, ('runtime_integrity', None): 1})
+s4d-verify-isolation-3-f3538b1-cc-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "c
+s4d-verify-isolation-0-200e5e6-20261010-a1 0 {"removed": true, "log_sha256": "bb889dfef16dcf10a3c949d8c61bae294e778fbd35c05f28f0a5845bc241e5bc", "inspect_sha256": "0
+s4d-verify-isolation-2-200e5e6-20261010-a1 0 {"removed": true, "log_sha256": "d325a901f9b44aef739d2780beb6f9a196d127a094c69a771f61dfa631da814a", "inspect_sha256": "b
+s4d-s3spec-m3d-seed0-hammer-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "5
+s4d-s4-reviwo-door-open-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "b
+s4d-s4-reviwo-coffee-push-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "2
+s4d-verify-native-7c0d0d2-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "4
+s4d-verify-isolation-3-d281258-cc-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "5
+s4d-s4-sincro-hammer-rem-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "7
+s4d-verify-isolation-0-f3538b1-cc-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "c
+s4d-s3spec-m3d-seed0-pick-place-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "c
+s4d-verify-isolation-1-7c0d0d2-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "c
+s4d-verify-native-226d8ae-20261012-a1 0 {"removed": true, "log_sha256": "0b6815958deb816f3c1364aef46541defe0116c5a8f5e1aa568dbd08ad44d620", "inspect_sha256": "0
+s4d-s4-snerl-hammer-rem-a1 4 
+s4d-verify-v2-remote-e267ba8-20261011-a1 0 {"removed": true, "log_sha256": "e2418010a3cc9561eb3b87210188910a2f555912a8bf73b03efc6b9245df2764", "inspect_sha256": "4
+s4d-verify-isolation-0-d281258-cc-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "a
+s4d-s4-drm-cnn-bin-picking-s2000-r3-eval-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "1
+s4d-s4-sincro-door-open-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "3
+s4d-verify-native-fed4c17-a2 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "4
+s4d-s4-sincro-coffee-push-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "9
+s4d-verify-isolation-3-fed4c17-cc-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "5
+s4d-verify-isolation-2-cffa071-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "3
+s4d-verify-isolation-1-5a7177e-20261011-a1 0 {"removed": true, "log_sha256": "e13f3e892a1f52dd7ab3bd98c229e7b34d3450fb8823531d5b35478344e77727", "inspect_sha256": "7
+s4d-verify-isolation-0-e267ba8-20261011-a1 0 {"removed": true, "log_sha256": "77f03a68d36748ce447faabec90003a1ce6c2ebc15cef6c970876fa509a569d4", "inspect_sha256": "4
+s4d-verify-isolation-2-226d8ae-20261012-a1 0 {"removed": true, "log_sha256": "1d871a654b370d4e22945047b9e13bf8967055914e06de439aebd08ba5e7444e", "inspect_sha256": "f
+s4d-verify-isolation-0-cffa071-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "c
+s4d-verify-native-aaff495-cc-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "8
+s4d-verify-isolation-1-f3538b1-cc-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "4
+s4d-verify-isolation-3-fed4c17-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "5
+s4d-verify-isolation-3-226d8ae-20261012-a1 0 {"removed": true, "log_sha256": "407e5e30e577e55fce84f091fcb6b6a4f573752f0791dd09e23b1d6f27ddf47c", "inspect_sha256": "c
+s4d-verify-native-d281258-cc-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "3
+s4d-verify-isolation-2-7c0d0d2-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "7
+s4d-verify-native-e267ba8-20261011b-a1 0 {"removed": true, "log_sha256": "e00a3857e1ef2aedebcb54e1581dd8253a940cfa13758e29ed24011b0c64de92", "inspect_sha256": "1
+s4d-verify-isolation-0-fed4c17-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "8
+s4d-verify-isolation-2-e4206f1-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "7
+s4d-verify-isolation-1-200e5e6-20261010-a1 0 {"removed": true, "log_sha256": "2f8a0535069209f187fc660aa1d204eab3679577c459552a63393fc30461c0f1", "inspect_sha256": "0
+s4d-verify-isolation-3-5a7177e-20261011-a1 0 {"removed": true, "log_sha256": "f003cff5f7b931f76440954bdbce8bdf3fab7f5f4f3ee6cb9014190e5d11cfbc", "inspect_sha256": "8
+s4d-verify-isolation-0-7c0d0d2-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "e
+s4d-verify-isolation-1-d281258-cc-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "9
+s4d-s4-dynamo-hammer-rem-a1 4 
+s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1 4 
+s4d-verify-isolation-3-cffa071-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "d
+s4d-s4-sincro-pick-place-rem-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "a
+s4d-verify-native-f3538b1-cc-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "a
+s4d-verify-isolation-3-7c0d0d2-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "c
+s4d-verify-isolation-0-226d8ae-20261012-a1 0 {"removed": true, "log_sha256": "070b15e01bf92ddbabf9de4de35b9576136f087c72d84e80dc8f70e576db2877", "inspect_sha256": "d
+s4d-runtime-integrity-03cca5218096dc88 0 {"removed": true, "log_sha256": "bd68d15a9ff656f76d4ac6ab9d4b0c7d82ae29af5fdf2db4e635c9f1941b8411", "inspect_sha256": "d
+s4d-s4-drm-cnn-bin-picking-s2000-r3-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "e
+s4d-verify-native-21a0e12-a2 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "6
+s4d-verify-native-200e5e6-20261010-a1 0 {"removed": true, "log_sha256": "dbe6c7ce79b3775b5b3d7c02b691afa3df8da1095453f096da8a7175d99a5b8d", "inspect_sha256": "a
+s4d-verify-isolation-1-e4206f1-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "6
+s4d-verify-isolation-2-fed4c17-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "f
+s4d-s4-drm-cnn-bin-picking-s2000-r2-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "2
+s4d-verify-native-7aacd74-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "2
+s4d-verify-isolation-0-5a7177e-20261011-a1 0 {"removed": true, "log_sha256": "84d524fc4bb2be8df253a95b4ff3d87bcef5c22cfb2acdf2d41ce1509acc3b50", "inspect_sha256": "f
+s4d-verify-native-cffa071-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "6
+s4d-verify-native-e4206f1-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "b
+s4d-verify-isolation-2-e267ba8-20261011-a1 0 {"removed": true, "log_sha256": "526e7ae4ff362039a54e76d81577310ac8763a67862cca56c61157706a3e9c2b", "inspect_sha256": "d
+s4d-verify-isolation-1-fed4c17-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "6
+s4d-verify-isolation-3-e267ba8-20261011-a1 0 {"removed": true, "log_sha256": "8a17d79f1ed28ed541071e6df91081c74ec969542c71b5f92b9693f4413a56ca", "inspect_sha256": "f
+s4d-verify-native-15cf6e3-a2 0 {"removed": true, "log_sha256": "e32b329caa6047eec7a23983a08eb693d60e142e5b449fac995db9f7afb0b5e8", "inspect_sha256": "8
+s4d-verify-isolation-3-200e5e6-20261010-a1 0 {"removed": true, "log_sha256": "d3b30dfd235121180943c06812d973de0245d7081d625a93c18a6c60976cc17b", "inspect_sha256": "b
+s4d-verify-native-fed4c17-cc-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "8
+s4d-verify-isolation-1-fed4c17-cc-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "a
+s4d-verify-native-5a7177e-20261011-a1 0 {"removed": true, "log_sha256": "9590a2fb62fefc3bd5647d0e7e2b3fae291a2858464a13acc76a0b05d5585511", "inspect_sha256": "9
+s4d-verify-isolation-1-e267ba8-20261011-a1 0 {"removed": true, "log_sha256": "291635b859a00441f9e08f732c8817a8ddc4d6b9682240cab1a2627708ac2063", "inspect_sha256": "0
+s4d-bxs-snerl-hammer-rand-s1000-rem-a1 4 
+s4d-bxs-dynamo-hammer-rand-s1001-rem-a1 4 
+s4d-verify-isolation-0-e4206f1-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "5
+s4d-verify-isolation-0-fed4c17-cc-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "d
+s4d-verify-isolation-3-e4206f1-a1 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "e
+s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1 4 
+s4d-verify-isolation-1-cffa071-a1 0 {"removed": true, "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e", "inspect_sha256": "7
+s4d-verify-isolation-1-226d8ae-20261012-a1 0 {"removed": true, "log_sha256": "5b4925735cf4b90b47add5bb1747474149a568cf5eda85fe446bff5e7f71bc26", "inspect_sha256": "a
+s4d-verify-isolation-2-5a7177e-20261011-a1 0 {"removed": true, "log_sha256": "9832f1b773187b7cb47ac1dbfa10309aca7258b77c5b2425ec266c08c23f4901", "inspect_sha256": "0
+s4d-verify-isolation-2-f3538b1-cc-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "8
+s4d-s4-drm-cnn-bin-picking-s2000-r2-eval-a1 0 {"removed": true, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "inspect_sha256": "9
+s4d-verify-isolation-2-fed4c17-cc-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "e
+s4d-verify-isolation-2-d281258-cc-a1 0 {"removed": true, "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee", "inspect_sha256": "1
+s4d-verify-native-efa152a-a1 0 {"removed": true, "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6", "inspect_sha256": "f
+s4d-verify-native-7aacd74-a2 0 {"removed": true, "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f", "inspect_sha256": "1
+removed (verified absent) 75 of 81; containers now 31
+exit 0

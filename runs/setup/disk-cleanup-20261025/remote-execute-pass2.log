@@ -1,0 +1,22 @@
+candidate policy_snapshot   19957 files    503.7 GB
+candidate replay               16 files     12.2 GB
+candidate checkpoint          432 files     13.6 GB
+kept RL run not eligible: container running                     296 files      7.3 GB
+kept final RL policy snapshot                                   223 files      5.7 GB
+kept final pretrained model                                      30 files      1.0 GB
+kept RL run not eligible: registry status failed host remote     21 files      1.0 GB
+kept 100k-multiple milestone (reported endpoints)                24 files      0.8 GB
+replay: deleted 16 of 16 (12.2 GB allocated)
+Traceback (most recent call last):
+  File "/home/ws/ws/splatter4d/runs/setup/tools/disk_cleanup_remote_20261025.py", line 335, in <module>
+    out = ssh(f"cd {REMOTE} && while IFS= read -r p; do if [ -e \"$p\" ] || [ -L \"$p\" ]; then echo PRESENT \"$p\"; "
+  File "/home/ws/ws/splatter4d/runs/setup/tools/disk_cleanup_remote_20261025.py", line 49, in ssh
+    result = subprocess.run([sys.executable, '-I', str(ROOT / 's4d/remote_access.py'), 'ssh', '--idempotent', '--',
+  File "/root/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/subprocess.py", line 503, in run
+    with Popen(*popenargs, **kwargs) as process:
+  File "/root/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/subprocess.py", line 971, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/root/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/lib/python3.10/subprocess.py", line 1863, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+OSError: [Errno 7] Argument list too long: '/home/ws/ws/splatter4d/.venv/bin/python'
+exit 1

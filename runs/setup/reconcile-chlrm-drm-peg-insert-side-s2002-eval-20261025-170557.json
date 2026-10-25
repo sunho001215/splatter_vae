@@ -1,0 +1,27 @@
+{
+  "recorded_local": "2026-10-25T17:05:57.680071+09:00",
+  "job_id": "chlrm-drm-peg-insert-side-s2002-eval",
+  "attempt": 1,
+  "container": "s4d-chlrm-drm-peg-insert-side-s2002-eval-a1",
+  "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 777.3,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/chlrm-drm-peg-insert-side-s2002-eval",
+  "trainer_run_dir": "/home/compu/kaist/sunho/runs/chlrm-drm-peg-insert-side-s2002",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "trainer_run_dir": "exists",
+      "remote_time_utc": "2026-10-25T08:05:52Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "trainer_run_dir": "exists",
+      "remote_time_utc": "2026-10-25T08:05:57Z"
+    }
+  ],
+  "output_rule": "directory absent",
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}

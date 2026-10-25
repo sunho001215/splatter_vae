@@ -1,0 +1,194 @@
+{
+ "recorded_local": "2026-10-25T17:13:05.219408+09:00",
+ "host": "remote",
+ "containers_total": 29,
+ "ours_stopped_inspected": 7,
+ "running_ours": 20,
+ "not_ours_listed_only": [
+  {
+   "name": "retargeting_proj_2",
+   "state": "running"
+  },
+  {
+   "name": "kimi-k26-server",
+   "state": "exited"
+  }
+ ],
+ "plan": [
+  {
+   "id": "2eb56d8c16fd6c05872f8a48f9ea3291d936810c667b40529b8cea8219c8eac7",
+   "name": "s4d-s4-snerl-hammer-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "s4-snerl-hammer-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "2eb56d8c16fd6c05872f8a48f9ea3291d936810c667b40529b8cea8219c8eac7|exited|1|true|remote|s4-snerl-hammer-rem|1|/s4d-s4-snerl-hammer-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job_without_run_dir",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-s4-snerl-hammer-rem-a1"
+  },
+  {
+   "id": "878361ff6492c5eb12f5e0218d81c940f54e13ab17d088878d73c21c02a37110",
+   "name": "s4d-s4-dynamo-hammer-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "s4-dynamo-hammer-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "878361ff6492c5eb12f5e0218d81c940f54e13ab17d088878d73c21c02a37110|exited|1|true|remote|s4-dynamo-hammer-rem|1|/s4d-s4-dynamo-hammer-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job_without_run_dir",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-s4-dynamo-hammer-rem-a1"
+  },
+  {
+   "id": "8c60a9f15915b47ac2a528509fd55b68f08e4991eebcb33cfca5593a5b721c7a",
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-dynamo-hammer-rand-s1001-rem-eval",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "8c60a9f15915b47ac2a528509fd55b68f08e4991eebcb33cfca5593a5b721c7a|exited|1|true|remote|bxs-dynamo-hammer-rand-s1001-rem-eval|1|/s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1|true||",
+   "registry_status": "failed",
+   "kind": "job_without_run_dir",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1"
+  },
+  {
+   "id": "c9e24e89348720b8af704c2943cca9428c138482cfaf36143bfea651ffb5ab3d",
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-snerl-hammer-rand-s1000-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "c9e24e89348720b8af704c2943cca9428c138482cfaf36143bfea651ffb5ab3d|exited|1|true|remote|bxs-snerl-hammer-rand-s1000-rem|1|/s4d-bxs-snerl-hammer-rand-s1000-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job_without_run_dir",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-bxs-snerl-hammer-rand-s1000-rem-a1"
+  },
+  {
+   "id": "ce6207110052ad67a79e228492c35c3796ed68bbd06c94e1dd9721750cf70825",
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-dynamo-hammer-rand-s1001-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "ce6207110052ad67a79e228492c35c3796ed68bbd06c94e1dd9721750cf70825|exited|1|true|remote|bxs-dynamo-hammer-rand-s1001-rem|1|/s4d-bxs-dynamo-hammer-rand-s1001-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job_without_run_dir",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-bxs-dynamo-hammer-rand-s1001-rem-a1"
+  },
+  {
+   "id": "dccd86b57089967ea279b44e6966b0382aaf3276ab0e0c537a3888437e445ddd",
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-snerl-hammer-rand-s1000-rem-eval",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "dccd86b57089967ea279b44e6966b0382aaf3276ab0e0c537a3888437e445ddd|exited|1|true|remote|bxs-snerl-hammer-rand-s1000-rem-eval|1|/s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1|true||",
+   "registry_status": "failed",
+   "kind": "job_without_run_dir",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1"
+  }
+ ],
+ "kept": [
+  {
+   "id": "144b63ae4716a78c71a890723845e56704a9d9ddb4114ecdce38d94e6709a63f",
+   "name": "s4d-verify-native-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "144b63ae4716a78c71a890723845e56704a9d9ddb4114ecdce38d94e6709a63f|exited|0|true|remote|verify-native-e267ba8-20261011|1|/s4d-verify-native-e267ba8-20261011-a1|true|native_suite|",
+   "kept": "no registry record of this run with this container id"
+  }
+ ],
+ "applied_local": "2026-10-25T17:13:43.697351+09:00",
+ "results": [
+  {
+   "name": "s4d-s4-snerl-hammer-rem-a1",
+   "id": "2eb56d8c16fd6c05872f8a48f9ea3291d936810c667b40529b8cea8219c8eac7",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e1a10036ddf3ab79d59baf7e05c39809474b4076911adfc11db8182e280f75d6",
+    "inspect_sha256": "9ee4242256a53c76ea5683b9a42bd16f4a3411afa81cbb3da3c26c61699a9366"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-dynamo-hammer-rem-a1",
+   "id": "878361ff6492c5eb12f5e0218d81c940f54e13ab17d088878d73c21c02a37110",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e1a10036ddf3ab79d59baf7e05c39809474b4076911adfc11db8182e280f75d6",
+    "inspect_sha256": "1ba9bc6a922ef631c1f2793bc543a4d4d3a53caef03dc922e4fa13e02c419ad4"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1",
+   "id": "8c60a9f15915b47ac2a528509fd55b68f08e4991eebcb33cfca5593a5b721c7a",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e1a10036ddf3ab79d59baf7e05c39809474b4076911adfc11db8182e280f75d6",
+    "inspect_sha256": "a70630455c4c9632008422c7e3a1a2cad405e945016440c3137d6919cad3ebe9"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-a1",
+   "id": "c9e24e89348720b8af704c2943cca9428c138482cfaf36143bfea651ffb5ab3d",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e1a10036ddf3ab79d59baf7e05c39809474b4076911adfc11db8182e280f75d6",
+    "inspect_sha256": "a71c6a67a071cdd265fbad51f0f2d6249823ccfc439060c33eb287d1f5804ce5"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-a1",
+   "id": "ce6207110052ad67a79e228492c35c3796ed68bbd06c94e1dd9721750cf70825",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e1a10036ddf3ab79d59baf7e05c39809474b4076911adfc11db8182e280f75d6",
+    "inspect_sha256": "4032e6b304eafe02c86a1aa01962c31c53d8300f99740d2dac98e47d6a1886d7"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1",
+   "id": "dccd86b57089967ea279b44e6966b0382aaf3276ab0e0c537a3888437e445ddd",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e1a10036ddf3ab79d59baf7e05c39809474b4076911adfc11db8182e280f75d6",
+    "inspect_sha256": "2b3ed5e316708e88356365908e0f0a1fb26cb2615462a32614623d393b8d47e5"
+   },
+   "stderr": "",
+   "verified_absent": true
+  }
+ ],
+ "removed_verified": 6,
+ "containers_after": 24
+}

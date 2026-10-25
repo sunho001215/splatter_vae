@@ -1,0 +1,2119 @@
+{
+ "recorded_local": "2026-10-25T16:48:39.329097+09:00",
+ "host": "remote",
+ "containers_total": 104,
+ "ours_stopped_inspected": 82,
+ "running_ours": 20,
+ "not_ours_listed_only": [
+  {
+   "name": "retargeting_proj_2",
+   "state": "running"
+  },
+  {
+   "name": "kimi-k26-server",
+   "state": "exited"
+  }
+ ],
+ "plan": [
+  {
+   "id": "03d44867f7ae2c4cf823c44c00f665757f5bb38477a134a9a63dd6307d23963c",
+   "name": "s4d-verify-isolation-3-f3538b1-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-f3538b1-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "03d44867f7ae2c4cf823c44c00f665757f5bb38477a134a9a63dd6307d23963c|exited|0|true|remote|verify-isolation-3-f3538b1-cc|1|/s4d-verify-isolation-3-f3538b1-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-f3538b1-cc-a1"
+  },
+  {
+   "id": "05d41e6b0be5e4737470fbc996af8ded591fd9ab1337fe35a4696e68e0440ba1",
+   "name": "s4d-verify-isolation-0-200e5e6-20261010-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-200e5e6-20261010",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "05d41e6b0be5e4737470fbc996af8ded591fd9ab1337fe35a4696e68e0440ba1|exited|0|true|remote|verify-isolation-0-200e5e6-20261010|1|/s4d-verify-isolation-0-200e5e6-20261010-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-200e5e6-20261010-a1"
+  },
+  {
+   "id": "07dff1c915a104eecd23cfd96598bbb8a0b2d1e88c94d70301544d1efe8c1fe1",
+   "name": "s4d-verify-isolation-2-200e5e6-20261010-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-200e5e6-20261010",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "07dff1c915a104eecd23cfd96598bbb8a0b2d1e88c94d70301544d1efe8c1fe1|exited|0|true|remote|verify-isolation-2-200e5e6-20261010|1|/s4d-verify-isolation-2-200e5e6-20261010-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-200e5e6-20261010-a1"
+  },
+  {
+   "id": "08cefaa8e58c2fa2b6420f0970af07fcc9de9536af5a8c553cfa38a14a1468cb",
+   "name": "s4d-s3spec-m3d-seed0-hammer-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s3spec-m3d-seed0-hammer",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "08cefaa8e58c2fa2b6420f0970af07fcc9de9536af5a8c553cfa38a14a1468cb|exited|143|true|remote|s3spec-m3d-seed0-hammer|1|/s4d-s3spec-m3d-seed0-hammer-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s3spec-m3d-seed0-hammer/containers"
+  },
+  {
+   "id": "0a3e6f38440e25cea4780fbc2a7193a2f7b8b5c64524abc172ec9988e40ab09e",
+   "name": "s4d-s4-reviwo-door-open-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-reviwo-door-open",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "0a3e6f38440e25cea4780fbc2a7193a2f7b8b5c64524abc172ec9988e40ab09e|exited|143|true|remote|s4-reviwo-door-open|1|/s4d-s4-reviwo-door-open-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-reviwo-door-open/containers"
+  },
+  {
+   "id": "0c86e7770e16e6f977a656e7fec738e2936b710095706df9b2a88af42856c50c",
+   "name": "s4d-s4-reviwo-coffee-push-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-reviwo-coffee-push",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "0c86e7770e16e6f977a656e7fec738e2936b710095706df9b2a88af42856c50c|exited|143|true|remote|s4-reviwo-coffee-push|1|/s4d-s4-reviwo-coffee-push-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-reviwo-coffee-push/containers"
+  },
+  {
+   "id": "145c845431316d340280aa8f05cdb1e6d9707c6f48ee18cd18581c69d1560e26",
+   "name": "s4d-verify-native-7c0d0d2-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-7c0d0d2",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "145c845431316d340280aa8f05cdb1e6d9707c6f48ee18cd18581c69d1560e26|exited|0|true|remote|verify-native-7c0d0d2|1|/s4d-verify-native-7c0d0d2-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-7c0d0d2-a1"
+  },
+  {
+   "id": "17dedf95f62fe597a476b08780dac0007e9beebe1937846240c4a4b50e090390",
+   "name": "s4d-verify-isolation-3-d281258-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-d281258-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "17dedf95f62fe597a476b08780dac0007e9beebe1937846240c4a4b50e090390|exited|0|true|remote|verify-isolation-3-d281258-cc|1|/s4d-verify-isolation-3-d281258-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-d281258-cc-a1"
+  },
+  {
+   "id": "1c652bc334ca7ab9b4b51c1e231159317c699ebdcfbed65837563f2036403df1",
+   "name": "s4d-s4-sincro-hammer-rem-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-sincro-hammer-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "1c652bc334ca7ab9b4b51c1e231159317c699ebdcfbed65837563f2036403df1|exited|143|true|remote|s4-sincro-hammer-rem|1|/s4d-s4-sincro-hammer-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-sincro-hammer-rem/containers"
+  },
+  {
+   "id": "1ee94ee6fc667b6e207ec48453c494aeb8789034213cfe4b811fd5c83b1a8691",
+   "name": "s4d-verify-isolation-0-f3538b1-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-f3538b1-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "1ee94ee6fc667b6e207ec48453c494aeb8789034213cfe4b811fd5c83b1a8691|exited|0|true|remote|verify-isolation-0-f3538b1-cc|1|/s4d-verify-isolation-0-f3538b1-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-f3538b1-cc-a1"
+  },
+  {
+   "id": "20ce7a0388b5b8b18446c491160b63511b9ea30c0ab84b61863471440e53af77",
+   "name": "s4d-s3spec-m3d-seed0-pick-place-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s3spec-m3d-seed0-pick-place",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "20ce7a0388b5b8b18446c491160b63511b9ea30c0ab84b61863471440e53af77|exited|143|true|remote|s3spec-m3d-seed0-pick-place|1|/s4d-s3spec-m3d-seed0-pick-place-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s3spec-m3d-seed0-pick-place/containers"
+  },
+  {
+   "id": "2a261d47d22b6a5dc1c00a1fb0dd1ee88a0dbc953e2cc649bbe2cfcc08ae1ec7",
+   "name": "s4d-verify-isolation-1-7c0d0d2-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-7c0d0d2",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "2a261d47d22b6a5dc1c00a1fb0dd1ee88a0dbc953e2cc649bbe2cfcc08ae1ec7|exited|0|true|remote|verify-isolation-1-7c0d0d2|1|/s4d-verify-isolation-1-7c0d0d2-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-7c0d0d2-a1"
+  },
+  {
+   "id": "2ce329b1d8fc8b3848c796a94d13d103783b888007df5c2db50fcdb4f0f32daf",
+   "name": "s4d-verify-native-226d8ae-20261012-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-226d8ae-20261012",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "2ce329b1d8fc8b3848c796a94d13d103783b888007df5c2db50fcdb4f0f32daf|exited|0|true|remote|verify-native-226d8ae-20261012|1|/s4d-verify-native-226d8ae-20261012-a1|true|native_suite|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-226d8ae-20261012-a1"
+  },
+  {
+   "id": "2eb56d8c16fd6c05872f8a48f9ea3291d936810c667b40529b8cea8219c8eac7",
+   "name": "s4d-s4-snerl-hammer-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "s4-snerl-hammer-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "2eb56d8c16fd6c05872f8a48f9ea3291d936810c667b40529b8cea8219c8eac7|exited|1|true|remote|s4-snerl-hammer-rem|1|/s4d-s4-snerl-hammer-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-snerl-hammer-rem/containers"
+  },
+  {
+   "id": "33982befada8962ce3cca66fbc00128794e838654f653a3c0d205dd78e32433c",
+   "name": "s4d-verify-v2-remote-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-v2-remote-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "cross_host_v2",
+   "identity": "33982befada8962ce3cca66fbc00128794e838654f653a3c0d205dd78e32433c|exited|1|true|remote|verify-v2-remote-e267ba8-20261011|1|/s4d-verify-v2-remote-e267ba8-20261011-a1|true|cross_host_v2|",
+   "registry_status": "crashed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-v2-remote-e267ba8-20261011-a1"
+  },
+  {
+   "id": "3cab54e4d1a3efe4e56281627587d48e5abcff2c0bd9f50bc3063e8b567735d4",
+   "name": "s4d-verify-isolation-0-d281258-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-d281258-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "3cab54e4d1a3efe4e56281627587d48e5abcff2c0bd9f50bc3063e8b567735d4|exited|0|true|remote|verify-isolation-0-d281258-cc|1|/s4d-verify-isolation-0-d281258-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-d281258-cc-a1"
+  },
+  {
+   "id": "4533eb5e9165c62ef39b494f3c8096329b9af4fcf12531c6648f65b0e6317256",
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r3-eval-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-drm-cnn-bin-picking-s2000-r3-eval",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "4533eb5e9165c62ef39b494f3c8096329b9af4fcf12531c6648f65b0e6317256|exited|143|true|remote|s4-drm-cnn-bin-picking-s2000-r3-eval|1|/s4d-s4-drm-cnn-bin-picking-s2000-r3-eval-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-drm-cnn-bin-picking-s2000-r3-eval/containers"
+  },
+  {
+   "id": "48ef7824333436bcc7f6c4dd6d5d8378432874be9c4d84acdf737ff8fcc7e7f0",
+   "name": "s4d-s4-sincro-door-open-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-sincro-door-open",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "48ef7824333436bcc7f6c4dd6d5d8378432874be9c4d84acdf737ff8fcc7e7f0|exited|143|true|remote|s4-sincro-door-open|1|/s4d-s4-sincro-door-open-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-sincro-door-open/containers"
+  },
+  {
+   "id": "4dff2475f01d3addeabbc937a0fbb1af82feafa3ca75fd83e013f9147b006331",
+   "name": "s4d-verify-native-fed4c17-a2",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-fed4c17",
+   "attempt": "2",
+   "verification_purpose": "native_suite",
+   "identity": "4dff2475f01d3addeabbc937a0fbb1af82feafa3ca75fd83e013f9147b006331|exited|0|true|remote|verify-native-fed4c17|2|/s4d-verify-native-fed4c17-a2|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-fed4c17-a2"
+  },
+  {
+   "id": "506ca50b0827a2fe4baf1176d40363c7ffd28f5011361651ebe69f7f75734971",
+   "name": "s4d-s4-sincro-coffee-push-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-sincro-coffee-push",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "506ca50b0827a2fe4baf1176d40363c7ffd28f5011361651ebe69f7f75734971|exited|143|true|remote|s4-sincro-coffee-push|1|/s4d-s4-sincro-coffee-push-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-sincro-coffee-push/containers"
+  },
+  {
+   "id": "523fc98f3f521b6021420c9a76e357fc7f8105a5f9714afad0e59e0ab8d81994",
+   "name": "s4d-verify-isolation-3-fed4c17-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-fed4c17-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "523fc98f3f521b6021420c9a76e357fc7f8105a5f9714afad0e59e0ab8d81994|exited|0|true|remote|verify-isolation-3-fed4c17-cc|1|/s4d-verify-isolation-3-fed4c17-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-fed4c17-cc-a1"
+  },
+  {
+   "id": "52781ab178a57dabdb2e64b2f122234289cb642fbad88e8302b13f95842491eb",
+   "name": "s4d-verify-isolation-2-cffa071-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-cffa071",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "52781ab178a57dabdb2e64b2f122234289cb642fbad88e8302b13f95842491eb|exited|0|true|remote|verify-isolation-2-cffa071|1|/s4d-verify-isolation-2-cffa071-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-cffa071-a1"
+  },
+  {
+   "id": "53885fb6ce3336204f49d084f4376bf8dbe90c1a0a7b7103be8e219f97c553c7",
+   "name": "s4d-verify-isolation-1-5a7177e-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-5a7177e-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "53885fb6ce3336204f49d084f4376bf8dbe90c1a0a7b7103be8e219f97c553c7|exited|0|true|remote|verify-isolation-1-5a7177e-20261011|1|/s4d-verify-isolation-1-5a7177e-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-5a7177e-20261011-a1"
+  },
+  {
+   "id": "53981d70946fd57f74f352292032bfdfd08a99ce451da059d318403245b1cb51",
+   "name": "s4d-verify-isolation-0-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "53981d70946fd57f74f352292032bfdfd08a99ce451da059d318403245b1cb51|exited|0|true|remote|verify-isolation-0-e267ba8-20261011|1|/s4d-verify-isolation-0-e267ba8-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-e267ba8-20261011-a1"
+  },
+  {
+   "id": "53a023df79d65470b2d2652e6f6ebd00fdf7ea9118867cc38b2d2c83de3521a4",
+   "name": "s4d-verify-isolation-2-226d8ae-20261012-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-226d8ae-20261012",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "53a023df79d65470b2d2652e6f6ebd00fdf7ea9118867cc38b2d2c83de3521a4|exited|0|true|remote|verify-isolation-2-226d8ae-20261012|1|/s4d-verify-isolation-2-226d8ae-20261012-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-226d8ae-20261012-a1"
+  },
+  {
+   "id": "557fc8817a247fcdb509e795199f00dcf958c5e0b9c4fdd199ffc5f6c4ec5677",
+   "name": "s4d-verify-isolation-0-cffa071-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-cffa071",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "557fc8817a247fcdb509e795199f00dcf958c5e0b9c4fdd199ffc5f6c4ec5677|exited|0|true|remote|verify-isolation-0-cffa071|1|/s4d-verify-isolation-0-cffa071-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-cffa071-a1"
+  },
+  {
+   "id": "57164bd626819457c2155b1a5bce6df360bf29596a30c49b07e5654330d54836",
+   "name": "s4d-verify-native-aaff495-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-aaff495-cc",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "57164bd626819457c2155b1a5bce6df360bf29596a30c49b07e5654330d54836|exited|0|true|remote|verify-native-aaff495-cc|1|/s4d-verify-native-aaff495-cc-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-aaff495-cc-a1"
+  },
+  {
+   "id": "5dc2576b7101fd74b180671f4fddf7eb3487454288cb72531d9b41a372e39490",
+   "name": "s4d-verify-isolation-1-f3538b1-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-f3538b1-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "5dc2576b7101fd74b180671f4fddf7eb3487454288cb72531d9b41a372e39490|exited|0|true|remote|verify-isolation-1-f3538b1-cc|1|/s4d-verify-isolation-1-f3538b1-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-f3538b1-cc-a1"
+  },
+  {
+   "id": "616b973c5e77a6a37d590e6ac4816fc039bfe97fd050b042962e16e111551650",
+   "name": "s4d-verify-isolation-3-fed4c17-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-fed4c17",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "616b973c5e77a6a37d590e6ac4816fc039bfe97fd050b042962e16e111551650|exited|0|true|remote|verify-isolation-3-fed4c17|1|/s4d-verify-isolation-3-fed4c17-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-fed4c17-a1"
+  },
+  {
+   "id": "61da390172873acb06a9102b8b58334196466ad2e14821f690275e23336061ae",
+   "name": "s4d-verify-isolation-3-226d8ae-20261012-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-226d8ae-20261012",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "61da390172873acb06a9102b8b58334196466ad2e14821f690275e23336061ae|exited|0|true|remote|verify-isolation-3-226d8ae-20261012|1|/s4d-verify-isolation-3-226d8ae-20261012-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-226d8ae-20261012-a1"
+  },
+  {
+   "id": "64985604b31bf220417b7c9b46013e3aff016c7068df42d0c69b8726a9720c2f",
+   "name": "s4d-verify-native-d281258-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-d281258-cc",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "64985604b31bf220417b7c9b46013e3aff016c7068df42d0c69b8726a9720c2f|exited|0|true|remote|verify-native-d281258-cc|1|/s4d-verify-native-d281258-cc-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-d281258-cc-a1"
+  },
+  {
+   "id": "6ac2955afc9f874022adca0d623ba2aeea66b77758286a7a5251dd66b9bdfbfa",
+   "name": "s4d-verify-isolation-2-7c0d0d2-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-7c0d0d2",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "6ac2955afc9f874022adca0d623ba2aeea66b77758286a7a5251dd66b9bdfbfa|exited|0|true|remote|verify-isolation-2-7c0d0d2|1|/s4d-verify-isolation-2-7c0d0d2-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-7c0d0d2-a1"
+  },
+  {
+   "id": "6caf3315e78dd23945edb0a9816836b942c7f4794e0270d5a7c61af39dd47d1f",
+   "name": "s4d-verify-native-e267ba8-20261011b-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-e267ba8-20261011b",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "6caf3315e78dd23945edb0a9816836b942c7f4794e0270d5a7c61af39dd47d1f|exited|0|true|remote|verify-native-e267ba8-20261011b|1|/s4d-verify-native-e267ba8-20261011b-a1|true|native_suite|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-e267ba8-20261011b-a1"
+  },
+  {
+   "id": "7dbe3abeb45e2bc9ed114117b31915188a2b1bd87dce812edb61859637592914",
+   "name": "s4d-verify-isolation-0-fed4c17-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-fed4c17",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "7dbe3abeb45e2bc9ed114117b31915188a2b1bd87dce812edb61859637592914|exited|0|true|remote|verify-isolation-0-fed4c17|1|/s4d-verify-isolation-0-fed4c17-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-fed4c17-a1"
+  },
+  {
+   "id": "825ed10e6cd9036dfbae66ebb15e289e4a9ecc5315facd683f23f49e0de37c2d",
+   "name": "s4d-verify-isolation-2-e4206f1-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-e4206f1",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "825ed10e6cd9036dfbae66ebb15e289e4a9ecc5315facd683f23f49e0de37c2d|exited|0|true|remote|verify-isolation-2-e4206f1|1|/s4d-verify-isolation-2-e4206f1-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-e4206f1-a1"
+  },
+  {
+   "id": "827bbcf12a9206258952a6cb8beb5897a7438e0dd59c21703d0c465dbfc25e61",
+   "name": "s4d-verify-isolation-1-200e5e6-20261010-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-200e5e6-20261010",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "827bbcf12a9206258952a6cb8beb5897a7438e0dd59c21703d0c465dbfc25e61|exited|0|true|remote|verify-isolation-1-200e5e6-20261010|1|/s4d-verify-isolation-1-200e5e6-20261010-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-200e5e6-20261010-a1"
+  },
+  {
+   "id": "8307fec3c325e462148dc8620a0d2ee2d0476ddbfcd4164550a35a5a5fd303d8",
+   "name": "s4d-verify-isolation-3-5a7177e-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-5a7177e-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "8307fec3c325e462148dc8620a0d2ee2d0476ddbfcd4164550a35a5a5fd303d8|exited|0|true|remote|verify-isolation-3-5a7177e-20261011|1|/s4d-verify-isolation-3-5a7177e-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-5a7177e-20261011-a1"
+  },
+  {
+   "id": "83e3d87f79ca669e3a374f92c6f3253b327065421ce254eebe5e53eb5687a06b",
+   "name": "s4d-verify-isolation-0-7c0d0d2-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-7c0d0d2",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "83e3d87f79ca669e3a374f92c6f3253b327065421ce254eebe5e53eb5687a06b|exited|0|true|remote|verify-isolation-0-7c0d0d2|1|/s4d-verify-isolation-0-7c0d0d2-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-7c0d0d2-a1"
+  },
+  {
+   "id": "84690c90cdac24f1403da732d3d76f3b3d257ba955a6991689c4f405c1545302",
+   "name": "s4d-verify-isolation-1-d281258-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-d281258-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "84690c90cdac24f1403da732d3d76f3b3d257ba955a6991689c4f405c1545302|exited|0|true|remote|verify-isolation-1-d281258-cc|1|/s4d-verify-isolation-1-d281258-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-d281258-cc-a1"
+  },
+  {
+   "id": "878361ff6492c5eb12f5e0218d81c940f54e13ab17d088878d73c21c02a37110",
+   "name": "s4d-s4-dynamo-hammer-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "s4-dynamo-hammer-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "878361ff6492c5eb12f5e0218d81c940f54e13ab17d088878d73c21c02a37110|exited|1|true|remote|s4-dynamo-hammer-rem|1|/s4d-s4-dynamo-hammer-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-dynamo-hammer-rem/containers"
+  },
+  {
+   "id": "8c60a9f15915b47ac2a528509fd55b68f08e4991eebcb33cfca5593a5b721c7a",
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-dynamo-hammer-rand-s1001-rem-eval",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "8c60a9f15915b47ac2a528509fd55b68f08e4991eebcb33cfca5593a5b721c7a|exited|1|true|remote|bxs-dynamo-hammer-rand-s1001-rem-eval|1|/s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/bxs-dynamo-hammer-rand-s1001-rem-eval/containers"
+  },
+  {
+   "id": "8d027eddde05f39277e2290104076aa3426310fbbdac8280fd9b65af05ba22ea",
+   "name": "s4d-verify-isolation-3-cffa071-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-cffa071",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "8d027eddde05f39277e2290104076aa3426310fbbdac8280fd9b65af05ba22ea|exited|0|true|remote|verify-isolation-3-cffa071|1|/s4d-verify-isolation-3-cffa071-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-cffa071-a1"
+  },
+  {
+   "id": "908e7f05d4997befd0499fedf6775458fa6d9d6e45e57704020ecdc5a2d1e61e",
+   "name": "s4d-s4-sincro-pick-place-rem-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-sincro-pick-place-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "908e7f05d4997befd0499fedf6775458fa6d9d6e45e57704020ecdc5a2d1e61e|exited|143|true|remote|s4-sincro-pick-place-rem|1|/s4d-s4-sincro-pick-place-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-sincro-pick-place-rem/containers"
+  },
+  {
+   "id": "9114c13d270c78cba92ec60b42347871d74ee40d33ad4df9b15baa1c18481285",
+   "name": "s4d-verify-native-f3538b1-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-f3538b1-cc",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "9114c13d270c78cba92ec60b42347871d74ee40d33ad4df9b15baa1c18481285|exited|0|true|remote|verify-native-f3538b1-cc|1|/s4d-verify-native-f3538b1-cc-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-f3538b1-cc-a1"
+  },
+  {
+   "id": "914081441c2c310f88aacc664399478180e3f31a584b61a1a4cc00d7bf9957fe",
+   "name": "s4d-verify-isolation-3-7c0d0d2-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-7c0d0d2",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "914081441c2c310f88aacc664399478180e3f31a584b61a1a4cc00d7bf9957fe|exited|0|true|remote|verify-isolation-3-7c0d0d2|1|/s4d-verify-isolation-3-7c0d0d2-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-7c0d0d2-a1"
+  },
+  {
+   "id": "92bac8eac362cf085fcd75eb0d8bbe248ebbb0f59c254692b635fde37de1557f",
+   "name": "s4d-verify-isolation-0-226d8ae-20261012-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-226d8ae-20261012",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "92bac8eac362cf085fcd75eb0d8bbe248ebbb0f59c254692b635fde37de1557f|exited|0|true|remote|verify-isolation-0-226d8ae-20261012|1|/s4d-verify-isolation-0-226d8ae-20261012-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-226d8ae-20261012-a1"
+  },
+  {
+   "id": "9401ba7abb6d7e5a0dfd40bf96094faa054d40be6c68e0f0547e94bc2d2f0397",
+   "name": "s4d-runtime-integrity-03cca5218096dc88",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "<no value>",
+   "attempt": "<no value>",
+   "verification_purpose": "",
+   "identity": "9401ba7abb6d7e5a0dfd40bf96094faa054d40be6c68e0f0547e94bc2d2f0397|exited|0|true|<no value>|<no value>|<no value>|/s4d-runtime-integrity-03cca5218096dc88|true||false",
+   "kind": "runtime_integrity",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-runtime-integrity-03cca5218096dc88"
+  },
+  {
+   "id": "946e91a3d77a5a7da79d3af0404996a6b4638bba334810ff03452f2de21609cb",
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r3-a1",
+   "status": "exited",
+   "code": "143",
+   "readonly_rootfs": "true",
+   "run_id": "s4-drm-cnn-bin-picking-s2000-r3",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "946e91a3d77a5a7da79d3af0404996a6b4638bba334810ff03452f2de21609cb|exited|143|true|remote|s4-drm-cnn-bin-picking-s2000-r3|1|/s4d-s4-drm-cnn-bin-picking-s2000-r3-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-drm-cnn-bin-picking-s2000-r3/containers"
+  },
+  {
+   "id": "954681941ec9eabafe1669d2f7bec49caa6b7fd118f2009276c5950cd7f02892",
+   "name": "s4d-verify-native-21a0e12-a2",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-21a0e12",
+   "attempt": "2",
+   "verification_purpose": "native_suite",
+   "identity": "954681941ec9eabafe1669d2f7bec49caa6b7fd118f2009276c5950cd7f02892|exited|1|true|remote|verify-native-21a0e12|2|/s4d-verify-native-21a0e12-a2|true|native_suite|false",
+   "registry_status": "crashed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-21a0e12-a2"
+  },
+  {
+   "id": "a1763af58cf3c87b6a4bd5a32737b54eba552d39aa150317271faf248797c93b",
+   "name": "s4d-verify-native-200e5e6-20261010-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-200e5e6-20261010",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "a1763af58cf3c87b6a4bd5a32737b54eba552d39aa150317271faf248797c93b|exited|1|true|remote|verify-native-200e5e6-20261010|1|/s4d-verify-native-200e5e6-20261010-a1|true|native_suite|",
+   "registry_status": "crashed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-200e5e6-20261010-a1"
+  },
+  {
+   "id": "ad37322cc29c531b70e91121ebfeca315811bd3a91a4eb2434f99a214ed787c8",
+   "name": "s4d-verify-isolation-1-e4206f1-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-e4206f1",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "ad37322cc29c531b70e91121ebfeca315811bd3a91a4eb2434f99a214ed787c8|exited|0|true|remote|verify-isolation-1-e4206f1|1|/s4d-verify-isolation-1-e4206f1-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-e4206f1-a1"
+  },
+  {
+   "id": "b162c50ef911657e0c250b42d38f273f589b94783c8fd72e2d529c991d21dd91",
+   "name": "s4d-verify-isolation-2-fed4c17-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-fed4c17",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "b162c50ef911657e0c250b42d38f273f589b94783c8fd72e2d529c991d21dd91|exited|0|true|remote|verify-isolation-2-fed4c17|1|/s4d-verify-isolation-2-fed4c17-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-fed4c17-a1"
+  },
+  {
+   "id": "b27d86daec59afbcb66016c45c2cae0c26dd3f47efd03937479d7e8041f025d9",
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r2-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "s4-drm-cnn-bin-picking-s2000-r2",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "b27d86daec59afbcb66016c45c2cae0c26dd3f47efd03937479d7e8041f025d9|exited|1|true|remote|s4-drm-cnn-bin-picking-s2000-r2|1|/s4d-s4-drm-cnn-bin-picking-s2000-r2-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-drm-cnn-bin-picking-s2000-r2/containers"
+  },
+  {
+   "id": "b337560cf1c1da234a944a884e2d879d55c361f9bfc6acd950a239c394382c21",
+   "name": "s4d-verify-native-7aacd74-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-7aacd74",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "b337560cf1c1da234a944a884e2d879d55c361f9bfc6acd950a239c394382c21|exited|1|true|remote|verify-native-7aacd74|1|/s4d-verify-native-7aacd74-a1|true|native_suite|false",
+   "registry_status": "failed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-7aacd74-a1"
+  },
+  {
+   "id": "b37fe801779650abb7adcf26c90d25e8800e13a5ee3376c4e39e219273c4f03d",
+   "name": "s4d-verify-isolation-0-5a7177e-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-5a7177e-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "b37fe801779650abb7adcf26c90d25e8800e13a5ee3376c4e39e219273c4f03d|exited|0|true|remote|verify-isolation-0-5a7177e-20261011|1|/s4d-verify-isolation-0-5a7177e-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-5a7177e-20261011-a1"
+  },
+  {
+   "id": "b86023da6998cc43f21f490aee9dfb6f592641afad0476dea6c7efcc602f4009",
+   "name": "s4d-verify-native-cffa071-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-cffa071",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "b86023da6998cc43f21f490aee9dfb6f592641afad0476dea6c7efcc602f4009|exited|0|true|remote|verify-native-cffa071|1|/s4d-verify-native-cffa071-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-cffa071-a1"
+  },
+  {
+   "id": "ba12808c6d3d1a1149050ec60589d29b78dc8d5a95b3d2395b800e238e3fc0ff",
+   "name": "s4d-verify-native-e4206f1-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-e4206f1",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "ba12808c6d3d1a1149050ec60589d29b78dc8d5a95b3d2395b800e238e3fc0ff|exited|0|true|remote|verify-native-e4206f1|1|/s4d-verify-native-e4206f1-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-e4206f1-a1"
+  },
+  {
+   "id": "bc41cf0a0ff08112120cf02d3bbb110d985651c6f1e129a225c6c2d1aea7bbef",
+   "name": "s4d-verify-isolation-2-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "bc41cf0a0ff08112120cf02d3bbb110d985651c6f1e129a225c6c2d1aea7bbef|exited|0|true|remote|verify-isolation-2-e267ba8-20261011|1|/s4d-verify-isolation-2-e267ba8-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-e267ba8-20261011-a1"
+  },
+  {
+   "id": "be0418348b188755b2b0401ce5b2527bf2e894d7d5a10120a3c3e195bb5d75e8",
+   "name": "s4d-verify-isolation-1-fed4c17-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-fed4c17",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "be0418348b188755b2b0401ce5b2527bf2e894d7d5a10120a3c3e195bb5d75e8|exited|0|true|remote|verify-isolation-1-fed4c17|1|/s4d-verify-isolation-1-fed4c17-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-fed4c17-a1"
+  },
+  {
+   "id": "be2a11aba8f5e688e8363109c183feba5dcf84a61da73e419d48daa7c46b59b2",
+   "name": "s4d-verify-isolation-3-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "be2a11aba8f5e688e8363109c183feba5dcf84a61da73e419d48daa7c46b59b2|exited|0|true|remote|verify-isolation-3-e267ba8-20261011|1|/s4d-verify-isolation-3-e267ba8-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-e267ba8-20261011-a1"
+  },
+  {
+   "id": "c0d2884d0aa6430665b15b92843a0945b66be769d7cc6384984c3e90397c6858",
+   "name": "s4d-verify-native-15cf6e3-a2",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-15cf6e3",
+   "attempt": "2",
+   "verification_purpose": "native_suite",
+   "identity": "c0d2884d0aa6430665b15b92843a0945b66be769d7cc6384984c3e90397c6858|exited|1|true|remote|verify-native-15cf6e3|2|/s4d-verify-native-15cf6e3-a2|true|native_suite|false",
+   "registry_status": "crashed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-15cf6e3-a2"
+  },
+  {
+   "id": "c12c1fa96119269ed536d8f4e89e0dbc049940f410ba6b1fc39eb979667230b3",
+   "name": "s4d-verify-isolation-3-200e5e6-20261010-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-200e5e6-20261010",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "c12c1fa96119269ed536d8f4e89e0dbc049940f410ba6b1fc39eb979667230b3|exited|0|true|remote|verify-isolation-3-200e5e6-20261010|1|/s4d-verify-isolation-3-200e5e6-20261010-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-200e5e6-20261010-a1"
+  },
+  {
+   "id": "c393738986e179c79918c263bcd1bbbe40e55ea384ff70db8d04793dd65b43bf",
+   "name": "s4d-verify-native-fed4c17-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-fed4c17-cc",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "c393738986e179c79918c263bcd1bbbe40e55ea384ff70db8d04793dd65b43bf|exited|0|true|remote|verify-native-fed4c17-cc|1|/s4d-verify-native-fed4c17-cc-a1|true|native_suite|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-fed4c17-cc-a1"
+  },
+  {
+   "id": "c4357b381c0150f0c4608eb8430b7ba25780cdb8a361c634330de03000c3738d",
+   "name": "s4d-verify-isolation-1-fed4c17-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-fed4c17-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "c4357b381c0150f0c4608eb8430b7ba25780cdb8a361c634330de03000c3738d|exited|0|true|remote|verify-isolation-1-fed4c17-cc|1|/s4d-verify-isolation-1-fed4c17-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-fed4c17-cc-a1"
+  },
+  {
+   "id": "c6f85a6474c65d9633b42946da766e6fb8b889d14ab462d461bcac774eb0072a",
+   "name": "s4d-verify-native-5a7177e-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-5a7177e-20261011",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "c6f85a6474c65d9633b42946da766e6fb8b889d14ab462d461bcac774eb0072a|exited|0|true|remote|verify-native-5a7177e-20261011|1|/s4d-verify-native-5a7177e-20261011-a1|true|native_suite|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-5a7177e-20261011-a1"
+  },
+  {
+   "id": "c771f1d37e4c52f77c12aa488e1eb691f19f21aa9403802a1d5d98ff8ac7e9e9",
+   "name": "s4d-verify-isolation-1-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "c771f1d37e4c52f77c12aa488e1eb691f19f21aa9403802a1d5d98ff8ac7e9e9|exited|0|true|remote|verify-isolation-1-e267ba8-20261011|1|/s4d-verify-isolation-1-e267ba8-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-e267ba8-20261011-a1"
+  },
+  {
+   "id": "c9e24e89348720b8af704c2943cca9428c138482cfaf36143bfea651ffb5ab3d",
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-snerl-hammer-rand-s1000-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "c9e24e89348720b8af704c2943cca9428c138482cfaf36143bfea651ffb5ab3d|exited|1|true|remote|bxs-snerl-hammer-rand-s1000-rem|1|/s4d-bxs-snerl-hammer-rand-s1000-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/bxs-snerl-hammer-rand-s1000-rem/containers"
+  },
+  {
+   "id": "ce6207110052ad67a79e228492c35c3796ed68bbd06c94e1dd9721750cf70825",
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-dynamo-hammer-rand-s1001-rem",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "ce6207110052ad67a79e228492c35c3796ed68bbd06c94e1dd9721750cf70825|exited|1|true|remote|bxs-dynamo-hammer-rand-s1001-rem|1|/s4d-bxs-dynamo-hammer-rand-s1001-rem-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/bxs-dynamo-hammer-rand-s1001-rem/containers"
+  },
+  {
+   "id": "d28a458b8dbd281ce25969a05b472d1ff6c8171288ae799f57460720f7e70583",
+   "name": "s4d-verify-isolation-0-e4206f1-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-e4206f1",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "d28a458b8dbd281ce25969a05b472d1ff6c8171288ae799f57460720f7e70583|exited|0|true|remote|verify-isolation-0-e4206f1|1|/s4d-verify-isolation-0-e4206f1-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-e4206f1-a1"
+  },
+  {
+   "id": "d2d115730910051c08d1a9e65138468e7023721eb0c50476d9ad1e8f6d109aaf",
+   "name": "s4d-verify-isolation-0-fed4c17-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-0-fed4c17-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "d2d115730910051c08d1a9e65138468e7023721eb0c50476d9ad1e8f6d109aaf|exited|0|true|remote|verify-isolation-0-fed4c17-cc|1|/s4d-verify-isolation-0-fed4c17-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-0-fed4c17-cc-a1"
+  },
+  {
+   "id": "db77271f723285d4c3ac4a2961bcb056d2a70f85b86ff4886267127b640f7aeb",
+   "name": "s4d-verify-isolation-3-e4206f1-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-3-e4206f1",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "db77271f723285d4c3ac4a2961bcb056d2a70f85b86ff4886267127b640f7aeb|exited|0|true|remote|verify-isolation-3-e4206f1|1|/s4d-verify-isolation-3-e4206f1-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-3-e4206f1-a1"
+  },
+  {
+   "id": "dccd86b57089967ea279b44e6966b0382aaf3276ab0e0c537a3888437e445ddd",
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "bxs-snerl-hammer-rand-s1000-rem-eval",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "dccd86b57089967ea279b44e6966b0382aaf3276ab0e0c537a3888437e445ddd|exited|1|true|remote|bxs-snerl-hammer-rand-s1000-rem-eval|1|/s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/bxs-snerl-hammer-rand-s1000-rem-eval/containers"
+  },
+  {
+   "id": "e021d58e658ed29c950418136546a09f43f1d97c262189b7fcce441abe56d0c7",
+   "name": "s4d-verify-isolation-1-cffa071-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-cffa071",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "e021d58e658ed29c950418136546a09f43f1d97c262189b7fcce441abe56d0c7|exited|0|true|remote|verify-isolation-1-cffa071|1|/s4d-verify-isolation-1-cffa071-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-cffa071-a1"
+  },
+  {
+   "id": "e10ff275c587ef6fcdc43f0fe7b5f03bf4f82215b44c6b94d7bcc712e8166f78",
+   "name": "s4d-verify-isolation-1-226d8ae-20261012-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-1-226d8ae-20261012",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "e10ff275c587ef6fcdc43f0fe7b5f03bf4f82215b44c6b94d7bcc712e8166f78|exited|0|true|remote|verify-isolation-1-226d8ae-20261012|1|/s4d-verify-isolation-1-226d8ae-20261012-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-1-226d8ae-20261012-a1"
+  },
+  {
+   "id": "e2dedbe20d55eae329f5c9ab3ba4552e291c4b6967a0be0e287e58e722cb3b9e",
+   "name": "s4d-verify-isolation-2-5a7177e-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-5a7177e-20261011",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "e2dedbe20d55eae329f5c9ab3ba4552e291c4b6967a0be0e287e58e722cb3b9e|exited|0|true|remote|verify-isolation-2-5a7177e-20261011|1|/s4d-verify-isolation-2-5a7177e-20261011-a1|true|gpu_isolation|",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-5a7177e-20261011-a1"
+  },
+  {
+   "id": "e698fc6203369a3d3f3b054ff61aa7d806c8e91b2b5e1903add4b5825df7e243",
+   "name": "s4d-verify-isolation-2-f3538b1-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-f3538b1-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "e698fc6203369a3d3f3b054ff61aa7d806c8e91b2b5e1903add4b5825df7e243|exited|0|true|remote|verify-isolation-2-f3538b1-cc|1|/s4d-verify-isolation-2-f3538b1-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-f3538b1-cc-a1"
+  },
+  {
+   "id": "ec480cc26a0175f6355030df49b7920f5b11c8063bf1b5feab9894e2e9ee3e07",
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r2-eval-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "s4-drm-cnn-bin-picking-s2000-r2-eval",
+   "attempt": "1",
+   "verification_purpose": "",
+   "identity": "ec480cc26a0175f6355030df49b7920f5b11c8063bf1b5feab9894e2e9ee3e07|exited|1|true|remote|s4-drm-cnn-bin-picking-s2000-r2-eval|1|/s4d-s4-drm-cnn-bin-picking-s2000-r2-eval-a1|true||",
+   "registry_status": "failed",
+   "kind": "job",
+   "keep_dir": "/home/compu/kaist/sunho/runs/s4-drm-cnn-bin-picking-s2000-r2-eval/containers"
+  },
+  {
+   "id": "f13c4e437f6f76a30d7fa1a7aeea1c0ed0754f554a97f97a1ad043fc2feff485",
+   "name": "s4d-verify-isolation-2-fed4c17-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-fed4c17-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "f13c4e437f6f76a30d7fa1a7aeea1c0ed0754f554a97f97a1ad043fc2feff485|exited|0|true|remote|verify-isolation-2-fed4c17-cc|1|/s4d-verify-isolation-2-fed4c17-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-fed4c17-cc-a1"
+  },
+  {
+   "id": "f3b778c64ce001704ed21f3d4a8fbe67cb708f446c3da885cd263fc7fbc80752",
+   "name": "s4d-verify-isolation-2-d281258-cc-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-isolation-2-d281258-cc",
+   "attempt": "1",
+   "verification_purpose": "gpu_isolation",
+   "identity": "f3b778c64ce001704ed21f3d4a8fbe67cb708f446c3da885cd263fc7fbc80752|exited|0|true|remote|verify-isolation-2-d281258-cc|1|/s4d-verify-isolation-2-d281258-cc-a1|true|gpu_isolation|false",
+   "registry_status": "done",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-isolation-2-d281258-cc-a1"
+  },
+  {
+   "id": "f7812b2cae3b7f88d7ee95064fa12c946873811391bd91845d8a8df94dd5e3cc",
+   "name": "s4d-verify-native-efa152a-a1",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-efa152a",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "f7812b2cae3b7f88d7ee95064fa12c946873811391bd91845d8a8df94dd5e3cc|exited|1|true|remote|verify-native-efa152a|1|/s4d-verify-native-efa152a-a1|true|native_suite|false",
+   "registry_status": "crashed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-efa152a-a1"
+  },
+  {
+   "id": "fd2f7fb8bc2fc23dd952f3b5b645faf73290a3e67032c6a2fc3dff6695f3680d",
+   "name": "s4d-verify-native-7aacd74-a2",
+   "status": "exited",
+   "code": "1",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-7aacd74",
+   "attempt": "2",
+   "verification_purpose": "native_suite",
+   "identity": "fd2f7fb8bc2fc23dd952f3b5b645faf73290a3e67032c6a2fc3dff6695f3680d|exited|1|true|remote|verify-native-7aacd74|2|/s4d-verify-native-7aacd74-a2|true|native_suite|false",
+   "registry_status": "failed",
+   "kind": "verification",
+   "keep_dir": "/home/compu/kaist/sunho/runtime/container-archive/s4d-verify-native-7aacd74-a2"
+  }
+ ],
+ "kept": [
+  {
+   "id": "144b63ae4716a78c71a890723845e56704a9d9ddb4114ecdce38d94e6709a63f",
+   "name": "s4d-verify-native-e267ba8-20261011-a1",
+   "status": "exited",
+   "code": "0",
+   "readonly_rootfs": "true",
+   "run_id": "verify-native-e267ba8-20261011",
+   "attempt": "1",
+   "verification_purpose": "native_suite",
+   "identity": "144b63ae4716a78c71a890723845e56704a9d9ddb4114ecdce38d94e6709a63f|exited|0|true|remote|verify-native-e267ba8-20261011|1|/s4d-verify-native-e267ba8-20261011-a1|true|native_suite|",
+   "kept": "no registry record of this run with this container id"
+  }
+ ],
+ "applied_local": "2026-10-25T16:56:24.997579+09:00",
+ "results": [
+  {
+   "name": "s4d-verify-isolation-3-f3538b1-cc-a1",
+   "id": "03d44867f7ae2c4cf823c44c00f665757f5bb38477a134a9a63dd6307d23963c",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "cbacb62fe54f57c9af902b421c7e879e5dfcb6b36ff7e40b3b9c83f4758e19e7"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-200e5e6-20261010-a1",
+   "id": "05d41e6b0be5e4737470fbc996af8ded591fd9ab1337fe35a4696e68e0440ba1",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "bb889dfef16dcf10a3c949d8c61bae294e778fbd35c05f28f0a5845bc241e5bc",
+    "inspect_sha256": "02a44d67b0d8c278e2cdc25bb476cdfaf5c49517f031c9b39278106ff7b42c30"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-200e5e6-20261010-a1",
+   "id": "07dff1c915a104eecd23cfd96598bbb8a0b2d1e88c94d70301544d1efe8c1fe1",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "d325a901f9b44aef739d2780beb6f9a196d127a094c69a771f61dfa631da814a",
+    "inspect_sha256": "b3dc9f54dab6a541e2bfd7ace0b3c8a702e24b33095e0a802729dd8ea9d815e8"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s3spec-m3d-seed0-hammer-a1",
+   "id": "08cefaa8e58c2fa2b6420f0970af07fcc9de9536af5a8c553cfa38a14a1468cb",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "507ba864f9a33eac600a093adf8c2810f90447a7d7383a728fa2ec774aefa1ab"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-reviwo-door-open-a1",
+   "id": "0a3e6f38440e25cea4780fbc2a7193a2f7b8b5c64524abc172ec9988e40ab09e",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "b0b4292a00000afc119f879945e39d8aaa20b4a3056b588213ae408801aba9a4"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-reviwo-coffee-push-a1",
+   "id": "0c86e7770e16e6f977a656e7fec738e2936b710095706df9b2a88af42856c50c",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "2f8eb23873d1bfb2e9961f3dbbdb515ebc132ad632bc440d6d3c12e20d5024bd"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-7c0d0d2-a1",
+   "id": "145c845431316d340280aa8f05cdb1e6d9707c6f48ee18cd18581c69d1560e26",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "426ee25bad8cb73654d453ae69957ea47efc1ab6bf8432b352d20ce1ef019386"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-d281258-cc-a1",
+   "id": "17dedf95f62fe597a476b08780dac0007e9beebe1937846240c4a4b50e090390",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "52749b63fafbf5889a4f6cba84065a5d6a00a0ff7f99e5e27661dab68af323b7"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-sincro-hammer-rem-a1",
+   "id": "1c652bc334ca7ab9b4b51c1e231159317c699ebdcfbed65837563f2036403df1",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "74280a4902aa70092c59b25b9d33d10c0535a09f19dbbc8d6b76bca83effe0b6"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-f3538b1-cc-a1",
+   "id": "1ee94ee6fc667b6e207ec48453c494aeb8789034213cfe4b811fd5c83b1a8691",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "c51ac9202eed256f700ee618d562da4454096812075df52b9fe3cd0878037eea"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s3spec-m3d-seed0-pick-place-a1",
+   "id": "20ce7a0388b5b8b18446c491160b63511b9ea30c0ab84b61863471440e53af77",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "c0373a54910a93c5c4a21ab2142017e5beeef5093762cdd21ee4aa2663705799"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-7c0d0d2-a1",
+   "id": "2a261d47d22b6a5dc1c00a1fb0dd1ee88a0dbc953e2cc649bbe2cfcc08ae1ec7",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "c9e77b1ee145d3a1d75bf54c4979ee3fd3458e29cd5d6aeb18f3ca99b5ab16e8"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-226d8ae-20261012-a1",
+   "id": "2ce329b1d8fc8b3848c796a94d13d103783b888007df5c2db50fcdb4f0f32daf",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0b6815958deb816f3c1364aef46541defe0116c5a8f5e1aa568dbd08ad44d620",
+    "inspect_sha256": "0a150d5a56c5435060f516e8d3d377ccc9f81f7bdd4b7f626bb7aa14753b5f16"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-snerl-hammer-rem-a1",
+   "id": "2eb56d8c16fd6c05872f8a48f9ea3291d936810c667b40529b8cea8219c8eac7",
+   "returncode": 4,
+   "result": null,
+   "stderr": "",
+   "verified_absent": false
+  },
+  {
+   "name": "s4d-verify-v2-remote-e267ba8-20261011-a1",
+   "id": "33982befada8962ce3cca66fbc00128794e838654f653a3c0d205dd78e32433c",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e2418010a3cc9561eb3b87210188910a2f555912a8bf73b03efc6b9245df2764",
+    "inspect_sha256": "4d74c2f6fc5f29cd80ae415126e0418766ed25cdee3b73f2f21c1e0a5b6d2b98"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-d281258-cc-a1",
+   "id": "3cab54e4d1a3efe4e56281627587d48e5abcff2c0bd9f50bc3063e8b567735d4",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "addc7dafc6744ab248b357f822acc1a4c0b91d03bca052e2944c8caacdba1710"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r3-eval-a1",
+   "id": "4533eb5e9165c62ef39b494f3c8096329b9af4fcf12531c6648f65b0e6317256",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "181371c9769d8f6777793fdee6f1a6d40672adc0a5c452d3b57af5ed1e6bc24d"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-sincro-door-open-a1",
+   "id": "48ef7824333436bcc7f6c4dd6d5d8378432874be9c4d84acdf737ff8fcc7e7f0",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "3febb1de6236d41a631247426413932eb92ef14927bd17fc950f883d1ef8d0bd"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-fed4c17-a2",
+   "id": "4dff2475f01d3addeabbc937a0fbb1af82feafa3ca75fd83e013f9147b006331",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "4e0e41084e135056af305f22ab7cf41c2dda30e1f301c486b355dfdec2a2cba3"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-sincro-coffee-push-a1",
+   "id": "506ca50b0827a2fe4baf1176d40363c7ffd28f5011361651ebe69f7f75734971",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "9f3440cbef98299390157b29b771ae3a8be2f7338c114044118a534171f6e301"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-fed4c17-cc-a1",
+   "id": "523fc98f3f521b6021420c9a76e357fc7f8105a5f9714afad0e59e0ab8d81994",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "55006509f748907b44ead51a2d35e7c7ee11f73295374030b5ea4f026ce6974a"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-cffa071-a1",
+   "id": "52781ab178a57dabdb2e64b2f122234289cb642fbad88e8302b13f95842491eb",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "324342d8e7116320d620b42f9f3e4ab88fc779cdb4387143763776daa3e48253"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-5a7177e-20261011-a1",
+   "id": "53885fb6ce3336204f49d084f4376bf8dbe90c1a0a7b7103be8e219f97c553c7",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e13f3e892a1f52dd7ab3bd98c229e7b34d3450fb8823531d5b35478344e77727",
+    "inspect_sha256": "7726a4859736bfc58f240b697e0b97edb49c7d5a13533104e6851ef05942dab3"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-e267ba8-20261011-a1",
+   "id": "53981d70946fd57f74f352292032bfdfd08a99ce451da059d318403245b1cb51",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "77f03a68d36748ce447faabec90003a1ce6c2ebc15cef6c970876fa509a569d4",
+    "inspect_sha256": "4802cbad3b75d29042a236564e29e4a6fbc5d9dcd615181905769063dff3a4a6"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-226d8ae-20261012-a1",
+   "id": "53a023df79d65470b2d2652e6f6ebd00fdf7ea9118867cc38b2d2c83de3521a4",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "1d871a654b370d4e22945047b9e13bf8967055914e06de439aebd08ba5e7444e",
+    "inspect_sha256": "fd21e335723f2131187409a00617acc9de6b9e55c09d68256941f30907e04c85"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-cffa071-a1",
+   "id": "557fc8817a247fcdb509e795199f00dcf958c5e0b9c4fdd199ffc5f6c4ec5677",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "c93f41754b1fb5b745d071b665bdaf57009751c04d964b51f0ac3ccee9ee0e82"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-aaff495-cc-a1",
+   "id": "57164bd626819457c2155b1a5bce6df360bf29596a30c49b07e5654330d54836",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "8a0634e63d47f489dcca6ac028d958f348c72832fe1414375b1ac7d38b04a27b"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-f3538b1-cc-a1",
+   "id": "5dc2576b7101fd74b180671f4fddf7eb3487454288cb72531d9b41a372e39490",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "4d1f3b78fdfb8fa06efcb25ad853dfbf91423ea1f08ce5f59250771b6f6a9bb3"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-fed4c17-a1",
+   "id": "616b973c5e77a6a37d590e6ac4816fc039bfe97fd050b042962e16e111551650",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "50f9134204ebb2701f1d7c0baca8b1d37b8f4b7da57603142bb032fce075bafc"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-226d8ae-20261012-a1",
+   "id": "61da390172873acb06a9102b8b58334196466ad2e14821f690275e23336061ae",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "407e5e30e577e55fce84f091fcb6b6a4f573752f0791dd09e23b1d6f27ddf47c",
+    "inspect_sha256": "cf9cbda68f2f5881543fa8d1b058e812592c70f67cf517b4745204198157adee"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-d281258-cc-a1",
+   "id": "64985604b31bf220417b7c9b46013e3aff016c7068df42d0c69b8726a9720c2f",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "3736aa3a2b9f9b338474b5ae50d56b900ef43360b5b2e4cfe2e0879d21ac9876"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-7c0d0d2-a1",
+   "id": "6ac2955afc9f874022adca0d623ba2aeea66b77758286a7a5251dd66b9bdfbfa",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "7f39cbfc6cca73d54077c2f67d2113dd2a6f32d5dbf77d9e95fb2efbe893ec81"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-e267ba8-20261011b-a1",
+   "id": "6caf3315e78dd23945edb0a9816836b942c7f4794e0270d5a7c61af39dd47d1f",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e00a3857e1ef2aedebcb54e1581dd8253a940cfa13758e29ed24011b0c64de92",
+    "inspect_sha256": "18c206905bad439c046ee454120ad81f45353b6cea5c2a0b91c9490e6741a775"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-fed4c17-a1",
+   "id": "7dbe3abeb45e2bc9ed114117b31915188a2b1bd87dce812edb61859637592914",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "8f90a342e7aefb283ae913399e19bd5d8a88f8440589b70757b33f797132c12c"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-e4206f1-a1",
+   "id": "825ed10e6cd9036dfbae66ebb15e289e4a9ecc5315facd683f23f49e0de37c2d",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "7c21ae3e797718e0c780b286ee484f93b5d5c37ad920ccfc1716da94f612494b"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-200e5e6-20261010-a1",
+   "id": "827bbcf12a9206258952a6cb8beb5897a7438e0dd59c21703d0c465dbfc25e61",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2f8a0535069209f187fc660aa1d204eab3679577c459552a63393fc30461c0f1",
+    "inspect_sha256": "0c7dc1baa60d3ca55f89d041c316a59d1d77fabcc37c1246cfc4052c12796c78"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-5a7177e-20261011-a1",
+   "id": "8307fec3c325e462148dc8620a0d2ee2d0476ddbfcd4164550a35a5a5fd303d8",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f003cff5f7b931f76440954bdbce8bdf3fab7f5f4f3ee6cb9014190e5d11cfbc",
+    "inspect_sha256": "8e0251f6f880b6c7ffc454a7dd2736c27887f5ba2d1b3d1c53dae4d2ef2535ed"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-7c0d0d2-a1",
+   "id": "83e3d87f79ca669e3a374f92c6f3253b327065421ce254eebe5e53eb5687a06b",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "e55e13b562835a50c63e7a2253e6e49930c00f011191fd887f022874bd96ee10"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-d281258-cc-a1",
+   "id": "84690c90cdac24f1403da732d3d76f3b3d257ba955a6991689c4f405c1545302",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "9692ba60e68108d822d0f80a62ce222ab60e0495a2714ccaba454960da96b739"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-dynamo-hammer-rem-a1",
+   "id": "878361ff6492c5eb12f5e0218d81c940f54e13ab17d088878d73c21c02a37110",
+   "returncode": 4,
+   "result": null,
+   "stderr": "",
+   "verified_absent": false
+  },
+  {
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1",
+   "id": "8c60a9f15915b47ac2a528509fd55b68f08e4991eebcb33cfca5593a5b721c7a",
+   "returncode": 4,
+   "result": null,
+   "stderr": "",
+   "verified_absent": false
+  },
+  {
+   "name": "s4d-verify-isolation-3-cffa071-a1",
+   "id": "8d027eddde05f39277e2290104076aa3426310fbbdac8280fd9b65af05ba22ea",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "d51321abc8f596c1f6ad0843eeba260f6972ace78ef41cf6478ce163f2dcc231"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-sincro-pick-place-rem-a1",
+   "id": "908e7f05d4997befd0499fedf6775458fa6d9d6e45e57704020ecdc5a2d1e61e",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "a5a5a5a0bf09520de412c8f747d034d7127214c2b6d9154eca1019f130f53279"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-f3538b1-cc-a1",
+   "id": "9114c13d270c78cba92ec60b42347871d74ee40d33ad4df9b15baa1c18481285",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "a67eac2641e065798ee8cd2c63a4d7a18887878364c879b43511b954b0307e81"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-7c0d0d2-a1",
+   "id": "914081441c2c310f88aacc664399478180e3f31a584b61a1a4cc00d7bf9957fe",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "cc443836da6d31d315b16b3a1f2325b314e171e9b71e6062ecaeda99988bee86"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-226d8ae-20261012-a1",
+   "id": "92bac8eac362cf085fcd75eb0d8bbe248ebbb0f59c254692b635fde37de1557f",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "070b15e01bf92ddbabf9de4de35b9576136f087c72d84e80dc8f70e576db2877",
+    "inspect_sha256": "d6a9f61d74eaeece6719ed78019b5b46f6ffff79fd71457f10a63e60ee934a07"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-runtime-integrity-03cca5218096dc88",
+   "id": "9401ba7abb6d7e5a0dfd40bf96094faa054d40be6c68e0f0547e94bc2d2f0397",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "bd68d15a9ff656f76d4ac6ab9d4b0c7d82ae29af5fdf2db4e635c9f1941b8411",
+    "inspect_sha256": "ddde2a592c36649708a112941515631f0264ea50ea2ad7451b4ad07464b2fdc7"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r3-a1",
+   "id": "946e91a3d77a5a7da79d3af0404996a6b4638bba334810ff03452f2de21609cb",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "e17674c684b302dfe12b72a1de3972b692b43be60897ae9019d360430d1b2372"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-21a0e12-a2",
+   "id": "954681941ec9eabafe1669d2f7bec49caa6b7fd118f2009276c5950cd7f02892",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "65f142bf1ac6db0fd7ac97a863abc48fcbf46120768a5789ab0e0da1b67f32a2"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-200e5e6-20261010-a1",
+   "id": "a1763af58cf3c87b6a4bd5a32737b54eba552d39aa150317271faf248797c93b",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "dbe6c7ce79b3775b5b3d7c02b691afa3df8da1095453f096da8a7175d99a5b8d",
+    "inspect_sha256": "a6012feb92c317277aaa331b88fd38d88c569319725cac0e8f71f4feb9ce86af"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-e4206f1-a1",
+   "id": "ad37322cc29c531b70e91121ebfeca315811bd3a91a4eb2434f99a214ed787c8",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "69aca51c8e5169b49c5607c0805301660a61344a53b6f26f285b8dd22cd38a91"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-fed4c17-a1",
+   "id": "b162c50ef911657e0c250b42d38f273f589b94783c8fd72e2d529c991d21dd91",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "fadbb6f0472e658ac28d39129e9159f2a0c5c910f762639b5ccb282ac06b77ae"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r2-a1",
+   "id": "b27d86daec59afbcb66016c45c2cae0c26dd3f47efd03937479d7e8041f025d9",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "2b288fd7c8f535e08623528668de143ae68396cf1ca3057aed402dfaf1fbc0ad"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-7aacd74-a1",
+   "id": "b337560cf1c1da234a944a884e2d879d55c361f9bfc6acd950a239c394382c21",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "23fb05da4a0ee4c63db628b106db5cb616e50bdff2c06b9a1a8d0e2dce4c383d"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-5a7177e-20261011-a1",
+   "id": "b37fe801779650abb7adcf26c90d25e8800e13a5ee3376c4e39e219273c4f03d",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "84d524fc4bb2be8df253a95b4ff3d87bcef5c22cfb2acdf2d41ce1509acc3b50",
+    "inspect_sha256": "f8c6964c84265f43d77a0dabe5b9d32db9ed6d8e8776c1e17a79c5d6aa945375"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-cffa071-a1",
+   "id": "b86023da6998cc43f21f490aee9dfb6f592641afad0476dea6c7efcc602f4009",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "6efe4caff34bfce40431dda2c344cc05bdf5b03407fa18466ea62557c876e0cd"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-e4206f1-a1",
+   "id": "ba12808c6d3d1a1149050ec60589d29b78dc8d5a95b3d2395b800e238e3fc0ff",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "b79641514f48538c9d0d6a187670da1535e6dd05af59bff52f58a3a9aed9b1d8"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-e267ba8-20261011-a1",
+   "id": "bc41cf0a0ff08112120cf02d3bbb110d985651c6f1e129a225c6c2d1aea7bbef",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "526e7ae4ff362039a54e76d81577310ac8763a67862cca56c61157706a3e9c2b",
+    "inspect_sha256": "d8d2aacc9e6115b34ba82f80afa226f0df514f7cef99d6c661f02cb6fcc98ad0"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-fed4c17-a1",
+   "id": "be0418348b188755b2b0401ce5b2527bf2e894d7d5a10120a3c3e195bb5d75e8",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "6b85db4e490f3ad4e5585039306416620d97505aaf19a7426dd057dbf60934b7"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-e267ba8-20261011-a1",
+   "id": "be2a11aba8f5e688e8363109c183feba5dcf84a61da73e419d48daa7c46b59b2",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "8a17d79f1ed28ed541071e6df91081c74ec969542c71b5f92b9693f4413a56ca",
+    "inspect_sha256": "fd9ace12939fe30477759ce6c2c4203aad8a58d6b9963001b62812bf5176fd7a"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-15cf6e3-a2",
+   "id": "c0d2884d0aa6430665b15b92843a0945b66be769d7cc6384984c3e90397c6858",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e32b329caa6047eec7a23983a08eb693d60e142e5b449fac995db9f7afb0b5e8",
+    "inspect_sha256": "80ca682664640e24e46bb6b2f1000aac18e17287c205ed90393a63a56c2f1be9"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-200e5e6-20261010-a1",
+   "id": "c12c1fa96119269ed536d8f4e89e0dbc049940f410ba6b1fc39eb979667230b3",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "d3b30dfd235121180943c06812d973de0245d7081d625a93c18a6c60976cc17b",
+    "inspect_sha256": "b592fd2c9ab4f4074342ae94e0ca4674c17110239f91ae7e1b41f85ca4e23734"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-fed4c17-cc-a1",
+   "id": "c393738986e179c79918c263bcd1bbbe40e55ea384ff70db8d04793dd65b43bf",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "886f186ddd1dc1632e87405a1d071ca0f7b10e78f42c6db60c70bebc499a615a"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-fed4c17-cc-a1",
+   "id": "c4357b381c0150f0c4608eb8430b7ba25780cdb8a361c634330de03000c3738d",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "a6312a9bc1f55194bb96cf23ae1e7cd99862724d15a008608c471f5d79a5d8e2"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-5a7177e-20261011-a1",
+   "id": "c6f85a6474c65d9633b42946da766e6fb8b889d14ab462d461bcac774eb0072a",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "9590a2fb62fefc3bd5647d0e7e2b3fae291a2858464a13acc76a0b05d5585511",
+    "inspect_sha256": "99d55059b3b6f3272b872aaa304c5a0e55bc01737e7d4fc146c5941a783fc9da"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-e267ba8-20261011-a1",
+   "id": "c771f1d37e4c52f77c12aa488e1eb691f19f21aa9403802a1d5d98ff8ac7e9e9",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "291635b859a00441f9e08f732c8817a8ddc4d6b9682240cab1a2627708ac2063",
+    "inspect_sha256": "0f1df5246cdb2268f8e1261e9e72d4fc92a972983f60049e1ac22087356e4f35"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-a1",
+   "id": "c9e24e89348720b8af704c2943cca9428c138482cfaf36143bfea651ffb5ab3d",
+   "returncode": 4,
+   "result": null,
+   "stderr": "",
+   "verified_absent": false
+  },
+  {
+   "name": "s4d-bxs-dynamo-hammer-rand-s1001-rem-a1",
+   "id": "ce6207110052ad67a79e228492c35c3796ed68bbd06c94e1dd9721750cf70825",
+   "returncode": 4,
+   "result": null,
+   "stderr": "",
+   "verified_absent": false
+  },
+  {
+   "name": "s4d-verify-isolation-0-e4206f1-a1",
+   "id": "d28a458b8dbd281ce25969a05b472d1ff6c8171288ae799f57460720f7e70583",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "53c061ec55da7d0d566e1f392d3adbaf821bc68b423d7d4f54f340f0ad7cdc10"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-0-fed4c17-cc-a1",
+   "id": "d2d115730910051c08d1a9e65138468e7023721eb0c50476d9ad1e8f6d109aaf",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "d0e398bd366b11fb643a3686f9b62646228bae04b8dcc0ca95ab2df4d5934872"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-3-e4206f1-a1",
+   "id": "db77271f723285d4c3ac4a2961bcb056d2a70f85b86ff4886267127b640f7aeb",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "e8def87b5b7dcb32327c040a47a2ec50a01d7868b2f4d60155d48935cb130c14"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1",
+   "id": "dccd86b57089967ea279b44e6966b0382aaf3276ab0e0c537a3888437e445ddd",
+   "returncode": 4,
+   "result": null,
+   "stderr": "",
+   "verified_absent": false
+  },
+  {
+   "name": "s4d-verify-isolation-1-cffa071-a1",
+   "id": "e021d58e658ed29c950418136546a09f43f1d97c262189b7fcce441abe56d0c7",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "f22e64dbe065ca486415f80281395f515e3011b196a4b2089fa53dbe31ddb73e",
+    "inspect_sha256": "73bf6b23893f42a1fafe73574902de0e161c2b90423271b8b91e6be1787326c6"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-1-226d8ae-20261012-a1",
+   "id": "e10ff275c587ef6fcdc43f0fe7b5f03bf4f82215b44c6b94d7bcc712e8166f78",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "5b4925735cf4b90b47add5bb1747474149a568cf5eda85fe446bff5e7f71bc26",
+    "inspect_sha256": "a0c7b7aeeedad41aadf8423b79f477bd59d7e625909c1f51d1c04dd9e0ee7a08"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-5a7177e-20261011-a1",
+   "id": "e2dedbe20d55eae329f5c9ab3ba4552e291c4b6967a0be0e287e58e722cb3b9e",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "9832f1b773187b7cb47ac1dbfa10309aca7258b77c5b2425ec266c08c23f4901",
+    "inspect_sha256": "0d8f2bffabedd36e24339527d69690f438b1ca78e3264780c0dae87fb3c25b3a"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-f3538b1-cc-a1",
+   "id": "e698fc6203369a3d3f3b054ff61aa7d806c8e91b2b5e1903add4b5825df7e243",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "81458d4e84dfd19dc98259c20b5b8a3225138d89e39a49b768bbe15fa03cf4dc"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-s4-drm-cnn-bin-picking-s2000-r2-eval-a1",
+   "id": "ec480cc26a0175f6355030df49b7920f5b11c8063bf1b5feab9894e2e9ee3e07",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inspect_sha256": "95ccc8eac1f35dd7f9872e4cdd8932a18f121e16ad173671bafe0b5f295aeaf0"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-fed4c17-cc-a1",
+   "id": "f13c4e437f6f76a30d7fa1a7aeea1c0ed0754f554a97f97a1ad043fc2feff485",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "ef7430a016c67e570a2668620dcd343ccde003f3da36714b8c9336dbd1541898"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-isolation-2-d281258-cc-a1",
+   "id": "f3b778c64ce001704ed21f3d4a8fbe67cb708f446c3da885cd263fc7fbc80752",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "0440d9b36c934e5b60ecb3d45be39e583fee635a6aeb913ed2d0c1c2a4f932ee",
+    "inspect_sha256": "1cac06761816fa0010a4c29b982dd6071d5bcec40f7d0e2859648d4d44fff119"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-efa152a-a1",
+   "id": "f7812b2cae3b7f88d7ee95064fa12c946873811391bd91845d8a8df94dd5e3cc",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "2cd81b575b3106ad97aa4391652ff9c692e1d0e0617d13be87ccf611d56368f6",
+    "inspect_sha256": "ff7622cb72fc2a52dec6d796daa42a49e18890eb0a41ccc8726aef5c6ffcbb45"
+   },
+   "stderr": "",
+   "verified_absent": true
+  },
+  {
+   "name": "s4d-verify-native-7aacd74-a2",
+   "id": "fd2f7fb8bc2fc23dd952f3b5b645faf73290a3e67032c6a2fc3dff6695f3680d",
+   "returncode": 0,
+   "result": {
+    "removed": true,
+    "log_sha256": "75214edd399534198cb2582ebd2eeb04cb767f99ec0de8704fd41a9b95526d8f",
+    "inspect_sha256": "15da42968d2d7617347e3848bf02460993cfc7edac4e0c0aecb5d392eccf5139"
+   },
+   "stderr": "",
+   "verified_absent": true
+  }
+ ],
+ "removed_verified": 75,
+ "containers_after": 31
+}

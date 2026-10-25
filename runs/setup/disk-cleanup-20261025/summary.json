@@ -1,0 +1,186 @@
+{
+ "recorded_local": "2026-10-25T16:57:43.553404+09:00",
+ "request": "user 2026-10-25 ~16:20: clean unnecessary files on both hosts (regenerable caches, abandoned temporaries, redundant downloads; replay of completed RL runs; stopped campaign containers; obsolete intermediate checkpoints/snapshots) without disrupting running work; record a deletion manifest",
+ "local": {
+  "free_gb_before": 7486.8,
+  "free_gb_after": 7885.7,
+  "stage0": {
+   "partial_download": {
+    "items": 7474,
+    "gb": 55.7
+   },
+   "pytest_tmp": {
+    "items": 5,
+    "gb": 1.4
+   },
+   "worktree_cache_copy": {
+    "items": 9,
+    "gb": 4.4
+   }
+  },
+  "models": {
+   "replay": {
+    "files": 179,
+    "gb": 133.0,
+    "skipped": 0
+   },
+   "policy_snapshot": {
+    "files": 10695,
+    "gb": 189.4,
+    "skipped": 0
+   },
+   "checkpoint": {
+    "files": 474,
+    "gb": 15.0,
+    "skipped": 0
+   }
+  },
+  "tools": [
+   "runs/setup/tools/disk_cleanup_stage0_20261025.py",
+   "runs/setup/tools/disk_cleanup_local_models_20261025.py"
+  ],
+  "manifests": [
+   "runs/setup/disk-cleanup-20261025/stage0-manifest.json.gz",
+   "runs/setup/disk-cleanup-20261025/local-models-manifest.json.gz"
+  ],
+  "docker": "no Docker on the local host",
+  "reclaimed_gb_df": 398.9
+ },
+ "remote": {
+  "free_gb_before": 1635.9,
+  "free_gb_after": 3542.0,
+  "pass1": {
+   "replay": {
+    "files": 256,
+    "of": 256,
+    "bytes": 1377909542912
+   },
+   "tmp": {
+    "files": 1160,
+    "of": 1160,
+    "bytes": 3518464
+   },
+   "policy_snapshot": {
+    "files": 0,
+    "of": 0,
+    "bytes": 0
+   },
+   "checkpoint": {
+    "files": 0,
+    "of": 0,
+    "bytes": 0
+   }
+  },
+  "pass2": {
+   "replay": {
+    "absent": 16,
+    "of": 16,
+    "bytes": 12186300416
+   },
+   "policy_snapshot": {
+    "absent": 19957,
+    "of": 19957,
+    "bytes": 503650074624
+   },
+   "checkpoint": {
+    "absent": 0,
+    "of": 432,
+    "bytes": 0
+   },
+   "tmp": {
+    "absent": 0,
+    "of": 0,
+    "bytes": 0
+   }
+  },
+  "pass3": {
+   "replay": {
+    "files": 0,
+    "bytes": 0,
+    "not_deleted": []
+   },
+   "policy_snapshot": {
+    "files": 0,
+    "bytes": 0,
+    "not_deleted": []
+   },
+   "checkpoint": {
+    "files": 432,
+    "bytes": 13580771328,
+    "not_deleted": []
+   },
+   "tmp": {
+    "files": 0,
+    "bytes": 0,
+    "not_deleted": []
+   }
+  },
+  "containers": {
+   "stopped_ours_inspected": 82,
+   "removed_verified_absent": 75,
+   "removed_by_kind": {
+    "verification": 62,
+    "job": 12,
+    "runtime_integrity": 1
+   },
+   "refused_run_dir_missing": [
+    "s4d-s4-snerl-hammer-rem-a1",
+    "s4d-s4-dynamo-hammer-rem-a1",
+    "s4d-bxs-dynamo-hammer-rand-s1001-rem-eval-a1",
+    "s4d-bxs-snerl-hammer-rand-s1000-rem-a1",
+    "s4d-bxs-dynamo-hammer-rand-s1001-rem-a1",
+    "s4d-bxs-snerl-hammer-rand-s1000-rem-eval-a1"
+   ],
+   "kept": [
+    {
+     "name": "s4d-verify-native-e267ba8-20261011-a1",
+     "why": "no registry record of this run with this container id"
+    }
+   ],
+   "not_ours_listed_only": 2,
+   "archive": "docker log, inspect record, docker diff and a removal receipt per container (runs/<id>/containers/ or runtime/container-archive/<name>/)",
+   "followup_run_dir_missing": {
+    "removed_verified_absent": 6,
+    "archive": "runtime/container-archive/<name>/",
+    "record": "runs/setup/disk-cleanup-20261025/remote-containers-rundir-missing.json"
+   },
+   "removed_total_verified_absent": 81,
+   "containers_on_host_after": 24
+  },
+  "tools": [
+   "runs/setup/tools/disk_cleanup_remote_20261025.py",
+   "runs/setup/tools/remote_container_cleanup_20261025.py"
+  ],
+  "manifests": [
+   "runs/setup/disk-cleanup-20261025/remote-manifest-pass1-replay-tmp.json",
+   "runs/setup/disk-cleanup-20261025/remote-manifest-pass2-planned.json.gz",
+   "runs/setup/disk-cleanup-20261025/remote-manifest-pass3-checkpoints.json",
+   "runs/setup/disk-cleanup-20261025/remote-containers.json"
+  ],
+  "reclaimed_gb_df": 1906.1
+ },
+ "kept": [
+  "every final RL policy snapshot and checkpoints/latest.pt; final pretrained models; 100k-step milestones; every path referenced in campaign records, report/analysis scripts (templated paths expanded) or the queue",
+  "all running, failed, unknown or unsynced runs; datasets; source code and worktrees; results, eval histories, exports, logs; W&B files; release verification evidence; releases"
+ ],
+ "incidents": [
+  "remote pass 1: the dry-run manifest (runs/setup/**.json) was scanned as a reference, so all snapshots/checkpoints were kept; the deletion SSH call timed out and was retried, losing DEL lines (reconciled by existence check)",
+  "remote pass 2: crashed after deleting (2000 paths in one SSH argument exceeded the argument limit); reconciled by existence check; pass 3 deleted the remaining checkpoints with paced 400-path batches",
+  "remote SSH outages 16:39:56-16:42:11 and 16:47:32-16:48:09 during heavy cleanup traffic (also one at 08:40 without it): jobs were marked unknown and reconciled as running; no job crashed or restarted",
+  "three launches (chlrm-drm-peg-insert-side-s2002-eval 16:52, enc-w4-seed0-bin-picking-200k 16:55, enc-w8-seed0-pick-place-200k 16:58) were refused by the launcher's isolation check (\"Foreign process on selected GPU\"; no container created); reconciled with reconcile_unlaunched_remote.py after its 10-minute minimum age and relaunched 17:10-17:13 as attempt 2"
+ ],
+ "health_after": {
+  "checked_local": "2026-10-25 17:14",
+  "crashes_or_nonzero_exits_since_16_00": 0,
+  "active_jobs": {
+   "local": 19,
+   "remote": 21
+  },
+  "remote_running_campaign_containers": 21,
+  "unknown": [
+   "verify-native-e267ba8-20261011",
+   "s4-drm-cnn-bin-picking-s2000"
+  ],
+  "unknown_note": "both unknown since 2026-10-11, unrelated to this cleanup"
+ }
+}
