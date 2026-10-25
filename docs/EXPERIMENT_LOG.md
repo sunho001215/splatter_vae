@@ -4684,3 +4684,25 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
 - The chlrm stick-push DrM rows were admitted under capacity-based scheduling: s2000 (+eval) on the remote; s2001
   (+eval) and s2002 locally. s2002-eval is waiting at the local 140 GB admission cap.
 - chlrm-drm-peg-unplug-side-s2000 completed (1M steps, exit 0).
+
+### 2026-10-25 22:15 — chlrm eight-task RL, interim (seven tasks)
+
+- Tool: `reports/results-artifact/src/chlrm_rl.py` (new; reuses the `variants_rl.py` loaders and statistics) →
+  `variants/chlrm.json`, with the seven-task output kept as `variants/chlrm.7task-20261025.json`. It makes two direct
+  comparisons: chlrm − chamfer_lean (the registered masking comparison) and chlrm − original. The published
+  chamfer_lean − original numbers stay those from `variants_rl.py`; the chlrm_rl copy differs only in the bootstrap
+  stream (−0.051 [−0.171, +0.055] vs [−0.167, +0.056]).
+- Seven tasks complete; stick-push DrM is still running. IQM over 21 runs, task-stratified bootstrap:
+  - chlrm − chamfer_lean:
+    - training: last-5 0.581 vs 0.635, −0.054 [−0.179, +0.104]; AUC −0.043 [−0.126, +0.056]
+    - held-out: last-5 −0.053 [−0.066, −0.038]; AUC −0.032 [−0.042, −0.021]
+    - moving: last-5 −0.060 [−0.183, +0.072]
+  - chlrm − original:
+    - training: last-5 0.581 vs 0.689, −0.108 [−0.238, +0.032]; AUC −0.057 [−0.138, +0.021]
+    - held-out: last-5 −0.076 [−0.089, −0.061]
+  - Per task, training last-5, chlrm − chamfer_lean:
+    - higher on the two pilot tasks: hammer +0.156, pick-place +0.227;
+    - lower on the other five: bin-picking −0.266, door-open −0.114, peg-unplug-side −0.086, coffee-push −0.077,
+      peg-insert-side −0.038.
+- Interim reading (descriptive): the pilot's masking gain on hammer and pick-place does not carry over to the other
+  tasks. Nothing is decided; the full eight-task result is reported to the user once stick-push is complete.
