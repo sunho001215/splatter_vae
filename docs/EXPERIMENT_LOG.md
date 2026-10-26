@@ -4773,3 +4773,21 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   earlier, spherical version, as it was.
 - Resources: MIG-2ebd9e11 (the least loaded) for about 6 min in total at nice 15; 8 CPU workers for about 20 s per
   composite. No campaign job touched.
+
+### 2026-10-26 14:45 — Encoder pilots RL, interim (4 of 5 arms complete)
+
+- hn, h2, w4 and w8 are complete: 3 tasks × 3 seeds, all trainers at 1M steps and every evaluator at 100 rows. cs is
+  running on the remote: hammer is done; pick-place and bin-picking have 12 jobs left.
+- `enc_pilots_rl.py` (registered) → `encp/rl.json`, copied to `encp/rl.interim-4arms-20261026.json`. IQM over 9 runs;
+  each arm − chlrm, training-camera success:
+  - hn: last-5 0.341 vs 0.686, −0.345 [−0.577, −0.001]; AUC −0.294 [−0.379, −0.112]
+  - h2: last-5 −0.274 [−0.464, −0.041]; AUC −0.189 [−0.257, −0.064]
+  - w4: last-5 −0.054 [−0.371, +0.292]; AUC −0.102 [−0.233, +0.056]
+  - w8: last-5 −0.008 [−0.299, +0.317]; AUC −0.037 [−0.195, +0.141]
+  - Held-out success is near zero for every arm (0.005–0.020).
+- Factor contrasts:
+  - width at depth 8 (w8 − h2): last-5 +0.266 [−0.022, +0.419]; moving cameras +0.182 [+0.011, +0.277]
+  - depth at width 256 (w8 − w4): +0.046 [−0.244, +0.361]
+- Interim reading (descriptive): hard negatives (hn) and the smaller head dimension (h2) are below chlrm with intervals
+  excluding zero; the wider encoders (w4, w8) are indistinguishable from chlrm. Nothing is decided; the full report,
+  with cs, the diagnostics and the cost table, follows completion. No adoption or expansion without the user.
