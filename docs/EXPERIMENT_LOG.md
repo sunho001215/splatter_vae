@@ -4791,3 +4791,37 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
 - Interim reading (descriptive): hard negatives (hn) and the smaller head dimension (h2) are below chlrm with intervals
   excluding zero; the wider encoders (w4, w8) are indistinguishable from chlrm. Nothing is decided; the full report,
   with cs, the diagnostics and the cost table, follows completion. No adoption or expansion without the user.
+
+### 2026-10-26 17:00–17:45 — Encoder pilots complete: RL, rendering, representation and cost
+
+- All 120 encp jobs are done (5 arms × 3 tasks; the last was enc-cs-drm-bin-picking-s2002-eval at 17:00, exit 0, 100
+  rows). Outputs, all under `reports/results-artifact/`:
+  - `encp/rl.json`: full; the 4-arm interim is kept as `rl.interim-4arms-20261026.json`.
+  - `encp/render_200k.json`: new `src/encp_render_metrics.py`, derived from `pilot_render_metrics.py`.
+  - `encp/repr__<task>.json`: `encp_repr_diagnostics.py`.
+  - `encp/cost.json`: new `src/encp_cost.py`. Its parameter and GFLOP counts equal the registered `sizes` exactly.
+- Renders: `chl_analysis_render.py` gained the `enc_<arm>200` models plus a fallback to runs/<id> for remote
+  pretraining (backup `.before-encp-20261026`). Runner `encp/run_diagnostics_20261026.sh`, one task per idle MIG slice
+  (8da55219, c4ec2a95, 423203d9) at nice 15, about 45 min; logs in `encp/logs/`.
+- RL, each arm − chlrm, training last-5:
+  - hn: −0.345 [−0.577, −0.001]
+  - h2: −0.274 [−0.464, −0.041]
+  - cs: −0.056 [−0.274, +0.262]
+  - w4: −0.054 [−0.371, +0.292]
+  - w8: −0.008 [−0.299, +0.317]
+  - Per task: chlrm bin-picking is 0.33, against cs 0.85, w4 0.63, w8 0.61 and h2 0.00.
+- Rendering: every pilot is within about ±0.2 dB of chlrm overall; cs is better on the novel training cameras.
+- Representation: hn's hard-negative separation, retrieval and rank all improved, but its RL is worse; h2 and w4 show
+  the lowest hand-velocity probes.
+- Written up in docs/RESULTS.md, new top section, descriptive. No adoption and no expansion; the next step is the
+  user's decision.
+- Codex wording review of the RESULTS section; all points applied:
+  - correction: h2 has 2 heads of dim 64, a LARGER head dimension than chlrm's 8 of 16, not a smaller one. The
+    14:45 interim entry above called it "the smaller head dimension"; that is wrong.
+  - "indistinguishable" replaced by "intervals include zero but are wide"; the negative early-AUC intervals of cs and
+    w4 are now noted.
+  - the diagnostic-vs-RL statement narrowed to what co-occurred.
+  - the render comparison is given as ranges (pilot − chlrm −0.23 to 0.00 dB; chlrm − original −0.86 to −1.08 dB)
+    instead of an order-of-magnitude claim.
+  - h2 / w4 hammer novel-camera drops are given in dB.
+  - cs / w8 probe and retrieval claims are made concrete.

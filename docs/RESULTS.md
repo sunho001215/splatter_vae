@@ -4,6 +4,152 @@ Final numbers only; each links to its run. Thresholds are never relaxed. Process
 
 ## Meta-World campaign (2026-10-07 onward)
 
+### Encoder pilots on chlrm: hard negatives, conv stem, width / heads (hammer, pick-place, bin-picking) (2026-10-26 17:40; registered, descriptive)
+
+**Protocol.**
+- Definition and registration: `runs/setup/encp-definition-20261025.json` and `encp-registration-20261025.json` (user
+  directive 2026-10-25; 120 jobs, registered before any result).
+- Base for every arm: chamfer_lean_randmask (chlrm), plus one variant per arm. Each arm and task gets 200k pretraining
+  (seed 0), an export, and 1M DrM × 3 seeds (2000–2002) with proprioception.
+- No deviation was recorded. The w4 / w8 divergence fallback was not triggered (all ok past 20k steps).
+- Arms:
+  - **hn**: hard negatives, i.e. one same-episode window per sample, robot-state gated, added only to the InfoNCE
+    denominator.
+  - **cs**: a patch-local conv stem replacing the 16×16 patchify convolution.
+  - **h2**: width 128, depth 8, 2 heads of dim 64; chlrm has 8 heads of 16; same parameters and FLOPs.
+  - **w4**: SinCro-shaped body, width 256, depth 4, 4 heads.
+  - **w8**: width 256, depth 8, 4 heads.
+- Analysis: `reports/results-artifact/src/enc_pilots_rl.py` → `encp/rl.json` (written before any result). IQM over 9
+  runs (3 tasks × 3 seeds); task-stratified bootstrap 95 % intervals (B = 2000).
+- Diagnostics: render (`encp_render_metrics.py`), representation (`encp_repr_diagnostics.py`) and cost
+  (`encp_cost.py`).
+
+Registered contrasts, each arm − chlrm, success IQM over 9 runs; difference [95 % CI]:
+
+| arm − chlrm | training last-5 | training AUC | training early AUC (≤ 200k) | held-out last-5 | moving last-5 |
+|---|---|---|---|---|---|
+| hn | 0.341 vs 0.686, **−0.345 [−0.577, −0.001]** | **−0.294 [−0.379, −0.112]** | −0.045 [−0.073, −0.036] | +0.006 [−0.030, +0.013] | −0.381 [−0.539, −0.088] |
+| cs | 0.630 vs 0.686, −0.056 [−0.274, +0.262] | −0.136 [−0.278, +0.103] | −0.045 [−0.060, −0.006] | +0.004 [−0.024, +0.023] | −0.141 [−0.354, +0.174] |
+| h2 | 0.412 vs 0.686, **−0.274 [−0.464, −0.041]** | **−0.189 [−0.257, −0.064]** | −0.031 [−0.050, +0.015] | −0.003 [−0.039, +0.006] | −0.248 [−0.373, −0.051] |
+| w4 | 0.632 vs 0.686, −0.054 [−0.371, +0.292] | −0.102 [−0.233, +0.056] | −0.015 [−0.043, −0.003] | +0.008 [−0.028, +0.019] | −0.077 [−0.274, +0.186] |
+| w8 | 0.678 vs 0.686, −0.008 [−0.299, +0.317] | −0.037 [−0.195, +0.141] | −0.027 [−0.054, +0.011] | −0.007 [−0.034, +0.013] | −0.066 [−0.249, +0.155] |
+
+Factor contrasts, training last-5:
+- head dim at fixed size (h2 − chlrm): −0.274 [−0.464, −0.041].
+- width at depth 8 (w8 − h2): +0.266 [−0.022, +0.419]; on the moving cameras +0.182 [+0.011, +0.277].
+- depth at width 256 (w8 − w4): +0.046 [−0.244, +0.361].
+- SinCro-shaped body (w4 − chlrm): −0.054 [−0.371, +0.292].
+
+Supplementary, pick-place + bin-picking only (hammer is near its ceiling), training last-5:
+
+| arm | − chlrm |
+|---|---|
+| hn | −0.252 [−0.570, +0.044] |
+| cs | +0.146 [−0.197, +0.339] |
+| h2 | −0.200 [−0.552, −0.020] |
+| w4 | +0.016 [−0.484, +0.343] |
+| w8 | +0.104 [−0.397, +0.407] |
+
+Exploratory, against the original method (training last-5):
+
+| arm | − original |
+|---|---|
+| hn | −0.416 [−0.610, −0.115] |
+| cs | −0.127 [−0.325, +0.151] |
+| h2 | −0.345 [−0.460, −0.087] |
+| w4 | −0.125 [−0.403, +0.171] |
+| w8 | −0.079 [−0.355, +0.200] |
+
+Training-camera success by task, seed means, last-5 / AUC:
+
+| arm | hammer | pick-place | bin-picking |
+|---|---|---|---|
+| original | 0.890 / 0.662 | 0.506 / 0.299 | 0.618 / 0.264 |
+| chamfer_lean | 0.817 / 0.588 | 0.271 / 0.168 | 0.594 / 0.304 |
+| chlrm | 0.972 / 0.780 | 0.498 / 0.296 | 0.328 / 0.167 |
+| hn | 0.844 / 0.581 | 0.150 / 0.057 | 0.232 / 0.063 |
+| cs | 0.737 / 0.520 | 0.219 / 0.128 | 0.851 / 0.391 |
+| h2 | 0.922 / 0.651 | 0.381 / 0.202 | 0.001 / 0.001 |
+| w4 | 0.918 / 0.682 | 0.212 / 0.106 | 0.627 / 0.250 |
+| w8 | 0.913 / 0.666 | 0.342 / 0.181 | 0.612 / 0.335 |
+
+**Rendering at 200k** (pilot-report protocol: 40 validation samples × 22 target cameras per task, paired by image,
+episode bootstrap; `encp/render_200k.json`):
+- Every pilot renders within about ±0.2 dB PSNR of chlrm over all images on every task.
+- cs is better on the novel training cameras:
+  - pick-place +0.71 [+0.39, +1.10] dB;
+  - bin-picking +0.50 [+0.38, +0.63] dB.
+- h2 and w4 are 1.51 and 1.32 dB below chlrm on hammer's novel training cameras (29.05 / 29.24 vs 30.56 dB).
+- Over all images, pilot − chlrm differences range from −0.23 to 0.00 dB. chlrm − original is −0.86 to −1.08 dB over
+  all images and −1.8 to −2.0 dB on the moving cameras.
+
+**Representation diagnostics** (exact frozen policy states, RL-spaced windows; `encp/repr__<task>.json`):
+
+hn:
+- The hard-negative objective acted as intended. Same-camera cosine to the hard negative is 0.29 / 0.31 / 0.21 vs
+  chlrm 0.41 / 0.46 / 0.29 (hammer / pick-place / bin-picking).
+- Cross-view top-1 is higher (0.49 / 0.44 / 0.62 vs 0.44 / 0.38 / 0.56).
+- Effective rank is higher (28–30 vs 22–24).
+- Within-episode retrieval is higher.
+- Velocity probes are lower: hand-velocity MLP R² 0.73 / 0.60 / 0.83 vs 0.82 / 0.70 / 0.91.
+
+h2 and w4 have lower hand-velocity probe R² than chlrm:
+- MLP R² on pick-place 0.32 and 0.39 vs 0.70.
+- Ridge R² on hammer 0.77 and 0.76 vs 0.85.
+
+cs and w8:
+- Hand-velocity MLP R² is higher than chlrm's for cs on all three tasks (0.88 / 0.85 / 0.93) and for w8 on two of
+  three (0.78 / 0.80 / 0.93).
+- Cross-view top-1 is higher for cs on all three tasks (0.46 / 0.44 / 0.59) and for w8 on two (0.44 / 0.42 / 0.61).
+
+Position probes are similar for every arm (ridge R² 0.87–0.99). Held-out-camera transfer is poor for every arm,
+as for chlrm.
+
+**Cost** (`encp/cost.json`; hosts were shared, so times are not controlled measurements):
+
+| arm | encoder params | GFLOPs / frame | smoke peak GPU memory (GB) | pretraining s/it (median, host per task: hammer / pick-place / bin-picking) | RL wall time, median (h) |
+|---|---|---|---|---|---|
+| chlrm | 1.73 M | 0.215 | 2.92 | 0.36 L / 0.38 L / 0.20 R | 4.8 |
+| hn | 1.73 M | 0.215 | 3.18 | 0.27 R / 0.22 R / 0.22 R | 4.7 |
+| cs | 1.89 M | 0.306 | 3.79 | 0.22 R / 0.32 L / 0.32 L | 4.2 |
+| h2 | 1.73 M | 0.215 | 2.92 | 0.29 L / 0.29 L / 0.28 L | 4.2 |
+| w4 | 3.44 M | 0.430 | 2.96 | 0.28 L / 0.22 R / 0.20 R | 4.5 |
+| w8 | 6.60 M | 0.835 | 3.24 | 0.21 R / 0.21 R / 0.23 R | 5.1 |
+
+L = local MIG 1g.24gb slice, R = remote full GPU (shared).
+
+**Reading** (descriptive; hypotheses, not established):
+- **Hard negatives (hn) and the two-head arm (h2: 2 heads of dim 64 instead of 8 of 16) are below chlrm.** Both
+  training-camera intervals exclude zero (last-5 −0.345 and −0.274; AUC −0.294 and −0.189).
+- **For hn, better encoder diagnostics came with worse RL.** Its higher retrieval and rank and lower hard-negative
+  cosine co-occurred with lower RL scores. This pilot does not test whether such diagnostics predict RL.
+- **The conv stem (cs) and the wider bodies (w4, w8):**
+  - Their pooled last-5 and AUC intervals include zero, but they are wide (about ±0.3), so substantial differences in
+    either direction remain possible.
+  - Their early-AUC (≤ 200k) intervals exclude zero for cs (−0.045 [−0.060, −0.006]) and w4 (−0.015 [−0.043, −0.003]),
+    both negative.
+  - Per task they differ strongly. On bin-picking they reach 0.61–0.85, where chlrm reaches 0.33 and the original 0.62.
+    On pick-place they are below chlrm (0.21–0.34 vs 0.50).
+  - Each arm and task has three RL seeds and one pretraining seed, so variability across pretraining seeds is
+    unmeasured.
+- **Rendering:** all-images PSNR differences between pilots and chlrm are small. The paired cs − chlrm differences on
+  the novel training cameras are positive: pick-place +0.71 [+0.39, +1.10] dB, bin-picking +0.50 [+0.38, +0.63] dB.
+- **Probes and RL do not line up consistently.** For example, w4 has lower hand-velocity MLP R² than chlrm on all three
+  tasks, while its last-5 RL difference is −0.054 [−0.371, +0.292].
+- **Against the original (exploratory):** all pooled last-5 point estimates are below the original; hn and h2 have
+  intervals excluding zero, and the others include zero.
+
+Caveats:
+- 3 RL seeds and 1 pretraining seed per arm.
+- The reference runs (chlrm, original, chamfer_lean) come from earlier launches, commits and hosts.
+- hammer is near its ceiling.
+- hn selects its negatives with the robot state (a binary gate only, never part of the loss values); robot state is
+  also the RL proprioception input.
+- Pretraining hosts differ by arm and task (table above).
+
+Decision: none is automatic. No pilot is adopted, and no expansion is proposed by default. Under the directive, any
+follow-up is the user's decision.
+
 ### chamfer_lean_randmask (chlrm) eight-task RL vs chamfer_lean and the original (2026-10-25 23:35; registered, descriptive)
 
 Protocol: variant from `runs/setup/mpf-definition-20261023.json`. Hammer and pick-place are the pilot rows
