@@ -4932,3 +4932,15 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   (−0.19 to +0.03).
 - **Pending for the artifact:** the 2×2 results, recommendation and paper-environment write-up; SNeRL renders from its
   final checkpoints on the seven interim tasks (read-only checkpoint copy running); a Codex wording review.
+- 22:0x (10-26) **Codex wording review of v12, all points applied** (artifact version 14):
+  - "registered margin" for Stage 2 → the margin rule fixed before the Stage 2 results.
+  - "necessary for RL", "prevents collapse", "no later change improved control" and "none improves RL" → statements of
+    what was observed: the removal lowered success beyond the margin for this encoder; collapse was 0 of 4 vs 3 of 4;
+    no RL improvement was established; several intervals allow gains.
+  - Chamfer mechanism → measured changes only; the four terms and the mechanism are not isolated.
+  - "Best control", "learns earliest", "collects more reward", "CNN unchanged" → observed IQMs, a descriptive early AUC,
+    the normalised-return IQM, and the CNN's AUC point estimate rising by +0.014.
+  - Means vs IQMs clarified in the curve caption; "bimodal" → seeds split; masking captions softened ("favour",
+    "can be hidden"); "net gap"; held-out probes stated as non-positive average R².
+  - The chamfer_lean 200k distribution figures were redrawn in the report palette (`src/chl200_distributions_v12.py`,
+    same arrays).
