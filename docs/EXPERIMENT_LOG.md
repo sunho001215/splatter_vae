@@ -4990,3 +4990,17 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - At batch 256 the conv stem roughly doubles latency and peak memory (1.49 vs 0.62 GB); the w4 body is fastest at
     batch 1.
   - These numbers stay separate from the shared-hardware wall times.
+- 01:40 (10-27) **Artifact version 16: paper-environment selection and controlled latency added to Q6.**
+  - The environment figure (`src/env_selection_figure.py`) draws only on the frozen `encx/env_selection.json`. Main set:
+    hammer, pick-place, coffee-push, door-open, peg-insert-side, peg-unplug-side.
+    - stick-push dropped as redundant with hammer (ρ 0.75); bin-picking dropped as redundant with pick-place (ρ 0.72,
+      separation 0.3).
+    - Seven of nine leave-one-method-out reruns give the same six.
+    - The architecture decision stays on the registered eight-task analysis.
+  - The cost figure gained a controlled GPU-latency panel, kept separate from the shared-hardware wall hours.
+  - Prepared for the 2×2 results (inference only; nothing launched):
+    - chlrm200 render diagnostics now cover all eight tasks (five new, three idle slices, about 1 min each);
+    - `src/encx_render_metrics.py` implements the registered reconstruction diagnostic: eight tasks, camera groups,
+      robot / object / far-background regions, paired episode bootstrap, pooled contrasts and the 2×2 interaction,
+      with SNeRL and SinCro as context. Its code path was checked in `--smoke` mode with w8 standing in for csw4; the
+      output went to the scratchpad and is not a result.
