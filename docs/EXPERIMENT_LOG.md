@@ -4944,3 +4944,28 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     "can be hidden"); "net gap"; held-out probes stated as non-positive average R².
   - The chamfer_lean 200k distribution figures were redrawn in the report palette (`src/chl200_distributions_v12.py`,
     same arrays).
+- 01:10 (10-27) **Rendering comparison now uses SNeRL's completed 2.4M checkpoint on all eight tasks** (artifact
+  version 15). Previously seven tasks used interim snapshots (250k–510k).
+  - Checkpoints: read-only copies (`src/fetch_snerl_final.py`).
+  - Renders: `render_compare.py --methods snerl_final`, the same rows, ground truth and protocol, on one idle local
+    slice (~18 min/task). Existing renders were not overwritten. Hammer's earlier render already used 2.4M, so it is
+    linked rather than re-rendered.
+  - `src/render_sources.py` maps the reported key `snerl` to the final renders; the interim ones are kept as
+    `snerl_interim`, shown only in the exact table. Metrics, region diagnostics, per-task figures and the pick-place
+    video were recomputed. Pre-change outputs are in `reports/results-artifact/backups/v12-before-snerlfinal-20261027/`.
+  - The final checkpoints score 0.7–2.4 dB higher on the training cameras than the interim ones. Eight-task means,
+    PSNR (novel training / held-out / moving):
+    - SNeRL 30.7 / 18.1 / 24.8
+    - ours 28.3 / 16.6 / 23.0
+    - SinCro 3-view 29.4 / 17.0 / 23.3
+  - LPIPS: SNeRL is lowest except at held-out cameras, where it ties with ours (0.250 vs 0.251; ours lower on 5 of 8
+    tasks).
+  - **Changed conclusions (Q4 and the overview):**
+    - Object-region PSNR on the training cameras is now on par with SNeRL (23.3 vs 23.5 dB), no longer best.
+    - Ours remains best on robot PSNR (23.9 vs 22.4 dB at the input camera) and on crop LPIPS for robot, objects and
+      moving pixels in every camera group.
+    - Far background (≥ 1.3 m) carries 62 % [56–67 %] of the novel-training MSE gap to SNeRL (previously 127 %, when
+      ours led elsewhere) and 60 % to SinCro 3-view (unchanged).
+    - At held-out cameras, ours trails SNeRL only on unseen far background, marker sites and depthless pixels.
+  - Two figure label overlaps were fixed (region-panel titles, summary x labels).
+  - The open item "SNeRL rendering interim" was removed.
