@@ -4969,3 +4969,24 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     - At held-out cameras, ours trails SNeRL only on unseen far background, marker sites and depthless pixels.
   - Two figure label overlaps were fixed (region-panel titles, summary x labels).
   - The open item "SNeRL rendering interim" was removed.
+- 01:20 (10-27) **Controlled encoder latency** (`reports/results-artifact/src/encx_latency.py` → `encx/latency.json`),
+  for the cost axis of the 2×2 recommendation.
+  - Setup: inference only. `policy_state` on 3-frame 128×128 windows, fp32, on one idle local MIG 1g.24gb slice, one
+    encoder at a time; 30 warm-up calls and 200 timed calls (CUDA events).
+  - csw4 uses its architecture-identical smoke export, since the weights do not affect the timing.
+  - Median ms at batch 1 / batch 256:
+
+    | Encoder | Batch 1 | Batch 256 |
+    |---|---|---|
+    | original | 2.77 | 23.1 |
+    | chlrm | 2.81 | 23.1 |
+    | hn | 2.78 | 23.1 |
+    | h2 | 2.76 | 21.7 |
+    | cs | 3.22 | 45.5 |
+    | w4 | 1.62 | 24.4 |
+    | w8 | 2.80 | 40.6 |
+    | csw4 | 2.04 | 45.4 |
+
+  - At batch 256 the conv stem roughly doubles latency and peak memory (1.49 vs 0.62 GB); the w4 body is fastest at
+    batch 1.
+  - These numbers stay separate from the shared-hardware wall times.
