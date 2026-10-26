@@ -4754,3 +4754,22 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - Feature cells: summaries of the policy's actual input features.
 - Resources: one MIG slice (MIG-2ebd9e11, the least loaded) for about 8 min in total at nice 15, peak about 1 GB of GPU
   memory; 8 CPU workers for about 20 s per composite. No campaign job, queue or result touched.
+
+### 2026-10-26 14:15–14:30 — Promo, pretraining-concept cut (user request; the original video is preserved)
+
+- New, separate project: `reports/promo-video-pretrain/` (git-excluded). Outputs in its `out/`:
+  - `splatter4d_pretraining_2800x800.mp4`: 10.00 s, 30 fps, white #FFFFFF, no text, no audio.
+  - the still;
+  - editable source: `_source_lite.tar.gz` (14 kB; code, timeline, provenance) and `_source_full.tar.gz` (511 MB;
+    also the rendered assets).
+  - `reports/promo-video/out/` is unchanged.
+- Content: only the pretraining concept. Viewpoints of held-out episode ep098 (train0/2/4) take turns through one
+  shared encoder; the real prediction comes from the i2-m3d pick-place 200k checkpoint, one camera at a time. A stage
+  camera first rests at the active input viewpoint (the reconstruction matches the card), then moves away to reveal
+  3D.
+- Fix to the image-to-3D display device: the flat starting state is now a thin slab perpendicular to the input camera
+  axis (depth D0 + λ(z − D0), λ ≥ 0.03). This keeps the rasteriser's depth order, and the input-camera image equals
+  the unmodified render: MAE 0.00 against 17.1 for the earlier spherical flattening. The original promo keeps its
+  earlier, spherical version, as it was.
+- Resources: MIG-2ebd9e11 (the least loaded) for about 6 min in total at nice 15; 8 CPU workers for about 20 s per
+  composite. No campaign job touched.
