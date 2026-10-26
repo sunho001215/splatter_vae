@@ -4733,3 +4733,24 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - removing the non-adoption line, which follows the user's directive that Chamfer and chlrm are candidates only.
 - Nothing adopted. Whether to do anything further is the user's decision. The encoder pilots (on chlrm) continue
   unchanged.
+
+### 2026-10-26 13:45–14:15 — Promotional video (user request; spare resources only, no training)
+
+- Deliverables in `reports/promo-video/out/` (git-excluded):
+  - `splatter4d_promo_2600x800.mp4`: 13.00 s, 30 fps, H.264, silent, loops.
+  - `splatter4d_promo_still.png`.
+  - Editable source: `splatter4d_promo_source_lite.tar.gz` (4 MB; code, timeline, provenance, rollout states) and
+    `splatter4d_promo_source.tar.gz` (584 MB; also the rendered assets).
+  - The project lives in `reports/promo-video/` (`timeline.json`, `src/assets.py` on the GPU, `src/compose.py` on the
+    CPU); its README records the story, provenance and review.
+- Content: all real data and checkpoints, inference and rendering only.
+  - Observation views: pick-place validation episode ep098, re-rendered at 640 px from its stored states; replay is
+    pixel-identical at 128 px.
+  - Gaussian scene: the i2-m3d pick-place 200k checkpoint, the source of the final policy's frozen encoder export. It
+    is fed one camera at a time.
+  - Rollout: the final DrM policy s3-drm-splatter4d-pick-place-s2000, run on the 1M-step evaluation episodes of the
+    training cameras in order. The first successful episode is shown: the 3rd tried, success at step 32. This is a
+    qualitative example, not a success rate.
+  - Feature cells: summaries of the policy's actual input features.
+- Resources: one MIG slice (MIG-2ebd9e11, the least loaded) for about 8 min in total at nice 15, peak about 1 GB of GPU
+  memory; 8 CPU workers for about 20 s per composite. No campaign job, queue or result touched.
