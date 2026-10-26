@@ -4825,3 +4825,76 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     instead of an order-of-magnitude claim.
   - h2 / w4 hammer novel-camera drops are given in dB.
   - cs / w8 probe and retrieval claims are made concrete.
+
+### 2026-10-26 20:30–21:37 — Encoder 2×2 on all eight tasks registered before any result (user directive)
+- **Directive (user, 2026-10-26 ~20:30):**
+  - Evaluate cs, w4 and cs+w4 on all eight tasks on the chlrm recipe, reusing the completed cs / w4 pilot runs.
+  - Register definitions, comparisons and analysis before results, including the full 2×2 (chlrm, cs, w4, cs+w4).
+  - Verify the combined configuration, briefly review with Codex, then dispatch without a pilot gate.
+  - Run capacity-based on both hosts with priorities and limits unchanged; no reruns of references and no new w8 runs.
+  - In parallel, reorganise the results artifact. After the results: recommend an architecture and six (or four) paper
+    environments, and list the missing controls without launching them.
+- **cs+w4 (csw4) needs no new code.** It stacks the existing `enc_cs.yaml` and `enc_w4.yaml`:
+  - The resolved config (`load_config`) differs from w4 only in `model.encoder.stem = patch_cnn`, and from cs only
+    in width 256 / depth 4 / heads 4. File order does not matter.
+  - The patch-local stem's 1×1 projection maps 128 → 256.
+  - 3,516,960 parameters and 0.510438 GFLOPs/frame, within SinCro's limits; policy state 256.
+  - Every other setting is unchanged: patches, masking, slot_dim, decoder, losses, optimiser, RL protocol.
+  - It runs on the encoder release d281258, which contains both files. Local s4d/scripts/configs/tests are identical
+    to d281258.
+- **Smoke** (`runs/setup/encx-smoke-20261026.json`; tool `runs/setup/tools/encx_smoke_local.py`; MIG c3511b41;
+  worktree checkout d281258; not experiment rows):
+  - Pretraining: 600 hammer steps, finite, 0.342 s/it, 3.83 GB peak GPU, loss 4.23 → 3.09, PSNR 14.7 → 17.7 dB.
+  - Export and reload: PatchCNNStem projecting to 256, policy state [1, 256], finite.
+  - DrM: 6000 agent steps with updates; the evaluator wrote its record.
+  - The first attempt failed only because the tool did not create the export directory. Fixed; the finished
+    pretraining was reused.
+- **Rows** (`runs/setup/encx-registration-20261026.json`; registration tool
+  `runs/setup/tools/register_encx_eight_task_20261026.py`; definition `runs/setup/encx-definition-20261026.json`):
+  - cs and w4 on coffee-push, door-open, peg-insert-side, peg-unplug-side and stick-push; csw4 on all eight tasks.
+  - 18 pretrainings, 18 exports, 54 DrM trainers and 54 evaluators: 144 rows at priority 4.
+  - Each row equals its chlrm reference row apart from names, variant file(s), priority and bookkeeping.
+  - The builder reproduces the registered cs / w4 pilot rows exactly.
+  - Registered 21:36; all 144 pending, none started at registration.
+- **Analysis written before results:** `reports/results-artifact/src/encx_rl.py` (hashes in
+  `runs/setup/encx-preregistration-hashes-20261026.json`).
+  - Primary: eight tasks, training-camera success last-5; the other cameras are reported separately.
+  - Confirmatory family: {cs, w4, csw4} − chlrm, with a Bonferroni-adjusted interval (α 0.05/3) in addition to the
+    95 % interval.
+  - 2×2 contrasts: csw4 − cs, csw4 − w4, and the interaction (csw4 − w4) − (cs − chlrm) on pooled IQMs.
+  - Context and sensitivity: each arm − original; candidate pairs; per task; leave-one-task-out.
+  - Common evaluation grid asserted; records after 1M dropped.
+  - Recommendation rule:
+    - "Supported improvement" needs the Bonferroni interval of X − chlrm to lie above 0.
+    - "Non-inferior to the original" needs the 95 % lower bound of X − original to lie above −0.10.
+    - "Clear winner" needs both, plus all leave-one-task-out contrasts positive, AUC not below chlrm's, and pairwise
+      intervals above the other two candidates.
+    - Otherwise a practical choice: rank by last-5 IQM with a 0.05 tie band; break ties by early AUC, then the mean of
+      held-out and moving last-5, then GFLOPs, then simplicity.
+- **Paper environments: criteria fixed now, before the new results** (`encx/env_selection.json`, frozen; script
+  `src/encx_env_selection.py`).
+  - Only pre-existing results feed the criteria: nine non-candidate methods' training success plus simulator
+    segmentation.
+  - Criteria: skill-family diversity, method-independent object visibility, redundancy (same family and Spearman
+    ρ ≥ 0.7, or ρ ≥ 0.9), saturation, and separation.
+  - Selected: hammer, pick-place, coffee-push, door-open, peg-insert-side, peg-unplug-side.
+    - Excluded: stick-push (redundant with hammer, ρ 0.75, lower separation) and bin-picking (redundant with
+      pick-place, ρ 0.72, separation 0.29).
+  - **Pre-registration change** (recorded in the definition): the first draft also flagged tasks whose frozen-method
+    object-region PSNR was > 3 dB below the median.
+    - A dry run on pre-existing data showed it would drop pick-place, bin-picking and coffee-push.
+    - It was removed because it measures one method's reconstruction, not the environment, and was replaced by the
+      ≥ 16-pixel visibility share. No task is flagged now.
+  - **Disclosure:** the criteria were fixed after the three-task pilot results were known (cs did best on
+    bin-picking). The eight-task analysis stays primary; the subset is for presentation.
+  - Leave-one-method-out sensitivity, reported only: 7 of 9 reruns give the same six.
+- **Codex review** (inline):
+  - No defect found in the csw4 construction, the config differences, sizes, the 144 rows or the interaction algebra.
+  - Changes applied: the multiplicity family with Bonferroni intervals; a stricter clear-winner rule with pairwise
+    intervals and an explicit non-inferiority margin; claims limited to these pretrained encoders; the grid and horizon
+    check; success-only metric fields with a tie-break order; the selection disclosure and its sensitivity.
+  - Not changed: evaluator deps = [export], because `eval_rl.py` only finishes after `final.json` or a failed training
+    row, exactly as in every reference row.
+- **Report:** the results artifact is being reorganised (v12). v11 is kept as
+  `site/index.v11-before-v12-reorg-20261026.html`; v11 figures and data are in `figures.v11-20261026/` and
+  `site/data.v11-20261026/`.

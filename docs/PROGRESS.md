@@ -435,7 +435,7 @@ diff inline.
 | 2026-10-19 21:59 | remote 2.89 TB (bxs-snerl-hammer-pre-s1002-rem-b completed with final eval at 400k; remote replay retained) |
 
 ## Next actions
-(updated 2026-10-26 17:45; earlier action lists are in docs/EXPERIMENT_LOG.md)
+(updated 2026-10-26 21:40; earlier action lists are in docs/EXPERIMENT_LOG.md)
 1. Done: chamfer_lean and future_k2 eight-task comparisons with the frozen method and their 200k diagnostics (results
    artifact v11); neither adopted, Chamfer remains a candidate.
 2. Done: pilots, hammer + pick-place (`runs/setup/mpf-registration-20261023.json`; docs/RESULTS.md "Pilots",
@@ -454,6 +454,16 @@ diff inline.
    (both below chlrm); cs −0.056, w4 −0.054, w8 −0.008 (intervals about ±0.3, include zero). Rendering is within
    ±0.2 dB. Diagnostics and cost are in `reports/results-artifact/encp/`. No adoption or expansion; the user decides.
    Add to the results artifact with the next update.
+9. Running (user 2026-10-26): encoder 2×2 on all eight tasks — chlrm, cs, w4 and cs+w4 (csw4 = enc_cs.yaml +
+   enc_w4.yaml stacked; no new code). 144 rows registered 21:36 (`runs/setup/encx-registration-20261026.json`,
+   definition `runs/setup/encx-definition-20261026.json`): cs / w4 on the five non-pilot tasks, csw4 on all eight;
+   18 pretrainings, 54 DrM + evaluators, priority 4, capacity-based on both hosts. Analysis `src/encx_rl.py`
+   (confirmatory {cs, w4, csw4} − chlrm with Bonferroni intervals; recommendation rule in the definition) and paper
+   environment selection (frozen: hammer, pick-place, coffee-push, door-open, peg-insert-side, peg-unplug-side) were
+   fixed before any result. After results: diagnostics (renders, cost), the architecture recommendation, the paper
+   environment write-up and the missing-controls plan (no ablation is launched without the user).
+10. In progress: results artifact v12, a question-driven reorganisation (v11 kept as
+   `site/index.v11-before-v12-reorg-20261026.html`), with items 2–5 and 7 added.
 4. Done: vision-only DrM campaign (2026-10-25; docs/RESULTS.md "Vision-only DrM"): primary training AUC ours − CNN
    +0.012 [−0.031, +0.045] (with proprio +0.101); our advantage shrinks by −0.090 [−0.174, −0.023]. Add it to the
    results artifact with the next update.
