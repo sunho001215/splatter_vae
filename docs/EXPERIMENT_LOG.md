@@ -4944,7 +4944,7 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     "can be hidden"); "net gap"; held-out probes stated as non-positive average R².
   - The chamfer_lean 200k distribution figures were redrawn in the report palette (`src/chl200_distributions_v12.py`,
     same arrays).
-- 01:10 (10-27) **Rendering comparison now uses SNeRL's completed 2.4M checkpoint on all eight tasks** (artifact
+- 01:08 (10-27) **Rendering comparison now uses SNeRL's completed 2.4M checkpoint on all eight tasks** (artifact
   version 15). Previously seven tasks used interim snapshots (250k–510k).
   - Checkpoints: read-only copies (`src/fetch_snerl_final.py`).
   - Renders: `render_compare.py --methods snerl_final`, the same rows, ground truth and protocol, on one idle local
@@ -4969,7 +4969,7 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     - At held-out cameras, ours trails SNeRL only on unseen far background, marker sites and depthless pixels.
   - Two figure label overlaps were fixed (region-panel titles, summary x labels).
   - The open item "SNeRL rendering interim" was removed.
-- 01:20 (10-27) **Controlled encoder latency** (`reports/results-artifact/src/encx_latency.py` → `encx/latency.json`),
+- 01:12 (10-27) **Controlled encoder latency** (`reports/results-artifact/src/encx_latency.py` → `encx/latency.json`),
   for the cost axis of the 2×2 recommendation.
   - Setup: inference only. `policy_state` on 3-frame 128×128 windows, fp32, on one idle local MIG 1g.24gb slice, one
     encoder at a time; 30 warm-up calls and 200 timed calls (CUDA events).
@@ -4990,7 +4990,7 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   - At batch 256 the conv stem roughly doubles latency and peak memory (1.49 vs 0.62 GB); the w4 body is fastest at
     batch 1.
   - These numbers stay separate from the shared-hardware wall times.
-- 01:40 (10-27) **Artifact version 16: paper-environment selection and controlled latency added to Q6.**
+- 01:19 (10-27) **Artifact version 16: paper-environment selection and controlled latency added to Q6.**
   - The environment figure (`src/env_selection_figure.py`) draws only on the frozen `encx/env_selection.json`. Main set:
     hammer, pick-place, coffee-push, door-open, peg-insert-side, peg-unplug-side.
     - stick-push dropped as redundant with hammer (ρ 0.75); bin-picking dropped as redundant with pick-place (ρ 0.72,
