@@ -4898,3 +4898,37 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
 - **Report:** the results artifact is being reorganised (v12). v11 is kept as
   `site/index.v11-before-v12-reorg-20261026.html`; v11 figures and data are in `figures.v11-20261026/` and
   `site/data.v11-20261026/`.
+
+### 2026-10-26 21:45 — Results artifact v12: question-driven reorganisation (published; experiments still running)
+- **Same artifact, rebuilt in place.** https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73, versions 12 (page, PNG, CSV,
+  data, scripts) and 13 (SVG/PDF).
+  - v11 is preserved as `site/index.v11-before-v12-reorg-20261026.html`, `figures.v11-20261026/` and
+    `site/data.v11-20261026/`.
+  - Source is now built: `src/page_v12/*.html` + `99_script.js`, assembled by `src/build_page.py`. The build injects the
+    CSV list and the 2×2 progress and fails on any missing figure or duplicate id.
+- **Inputs.** The whole experiment log was read (three digests), plus RESULTS, PROGRESS and the v11 inventory. Seven
+  findings were missing from v11: SNeRL eight-task RL, the pilots, chlrm on eight tasks, the encoder pilots, vision-only,
+  chamfer_lean at 200k, and the v11 status text that was out of date.
+- **Structure.**
+  - Overview with six evidence cards.
+  - Method schematic and baseline matrix.
+  - Six questions: Q1 control on training cameras; Q2 camera changes; Q3 pretraining choices; Q4 reconstruction;
+    Q5 reconstruction vs control; Q6 encoder architecture.
+  - Rollouts, status, and an appendix (statistics, protocols, history, papers, sources, downloads).
+- **New figures** (`src/make_v12_figures.py`, `masking_examples.py`, `chl200_distributions_v12.py`):
+  - main comparison, now including SNeRL: training-camera IQMs (last-5, final, AUC, early AUC), curves, per-task, and
+    camera groups;
+  - vision-only; the ablation map (every study vs its own reference); reconstruction vs RL; rendering summary and
+    regions; probes; encoder pilots; cost (controlled vs shared hardware);
+  - matched-image masking examples (tube vs uniform random, drawn with the encoder's own functions on ep098 windows);
+  - chamfer_lean vs original at 200k on all 8 tasks.
+- **Updated existing figures and data.** `extract.py` gained SNeRL in the final group plus variant, pilot, encoder and
+  vision groups and an early AUC ≤ 200k. The final-comparison figures and time-to-0.5 were regenerated with SNeRL. A
+  single palette now covers every arm (figstyle).
+  - The aggregates reproduce the logged values: ours 0.756, SNeRL 0.544, chlrm 0.674, held-out 0.126.
+  - The early AUC of the main comparison is labelled descriptive (not registered there).
+- **Corrections while writing:** the held-out wording now separates single-camera RGB methods (≤ 0.020) from SNeRL
+  (0.054); "other baselines collapse" became "every other method ≤ 0.32"; variant effects are now stated as a range
+  (−0.19 to +0.03).
+- **Pending for the artifact:** the 2×2 results, recommendation and paper-environment write-up; SNeRL renders from its
+  final checkpoints on the seven interim tasks (read-only checkpoint copy running); a Codex wording review.
