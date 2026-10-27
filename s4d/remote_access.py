@@ -25,7 +25,18 @@ CREDENTIAL_KEYS = {"SSH_HOST", "SSH_USER", "SSH_PASSWORD", "REMOTE_ROOT"}
 # (with checkpoints=True) checkpoints and exports. "media" is the bulk evaluation imagery and video, copied by the
 # separate scripts/sync_media.py worker so that it never delays admission. "all" is the union (the former behaviour).
 MEDIA_NAMES = ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.mp4", "*.pdf", "*.html")
-RESULT_SCOPES = ("all", "essential", "media")
+WEIGHT_NAMES = ("*.pt", "*.pth", "*.ckpt")
+# "checkpoints": the weights of a completed run that its final scheduler sync did not need (only the required
+# checkpoints advance dependencies); copied later by the bulk worker like media.
+RESULT_SCOPES = ("all", "essential", "media", "checkpoints")
+# Shared remote -> local download budget (user directive 2026-10-27: the user's interactive SSH to the remote host
+# shares this path). Every campaign download (results, checkpoints, media, W&B) runs one at a time under
+# download-budget.lock with rsync --bwlimit, so the aggregate stays within the budget. Transfers that advance
+# dependencies ("dependency") go first: bulk transfers ("bulk") run in short chunks and yield between chunks while a
+# dependency transfer waits. state_dir/download-budget.json {"kib_per_s": N} overrides the default.
+DOWNLOAD_BUDGET_KIB = 600
+BULK_CHUNK_FILES = 48
+LEGACY_WAIT_SECONDS = 900.0
 
 
 class RemoteUnreachable(RuntimeError):
@@ -255,10 +266,70 @@ class RemoteClient:
             raise ValueError("Local transfer path is outside authorized repository/data roots")
         return resolved
 
+    def download_budget_kib(self) -> int:
+        try:
+            value = json.loads((self.state_dir / "download-budget.json").read_text())["kib_per_s"]
+        except FileNotFoundError:
+            return DOWNLOAD_BUDGET_KIB
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise ValueError("Invalid download budget file") from exc
+        if type(value) is not int or not 1 <= value <= 1_000_000:
+            raise ValueError("Download budget must be an integer KiB/s in [1, 1000000]")
+        return value
+
+    def _legacy_downloads(self) -> list[int]:
+        """Local rsync processes downloading from the remote host without a bandwidth limit (started before the
+        budget existed, or outside it). New downloads wait for them so the aggregate stays within the budget."""
+        found = []
+        prefix = (self.target + ":").encode()
+        for name in os.listdir("/proc"):
+            if not name.isdigit() or int(name) == os.getpid():
+                continue
+            try:
+                argv = Path("/proc", name, "cmdline").read_bytes().split(b"\0")
+            except OSError:
+                continue
+            if (argv and os.path.basename(argv[0].decode(errors="replace")) == "rsync"
+                    and any(arg.startswith(prefix) for arg in argv)
+                    and not any(arg.startswith(b"--bwlimit") for arg in argv)):
+                found.append(int(name))
+        return found
+
+    @contextlib.contextmanager
+    def download_slot(self, priority: str):
+        """Exclusive use of the shared download budget. "dependency" announces itself on download-priority.lock
+        (shared) before queueing; "bulk" first waits until no dependency transfer is announced. Inside the slot,
+        downloads without a bandwidth limit that are still running elsewhere are waited for (up to
+        LEGACY_WAIT_SECONDS, then the transfer is refused and retried later). Yields the limit in KiB/s."""
+        if priority not in ("dependency", "bulk"):
+            raise ValueError("Unknown download priority")
+        with (self.state_dir / "download-priority.lock").open("a") as announce, \
+                (self.state_dir / "download-budget.lock").open("a") as budget:
+            if priority == "dependency":
+                fcntl.flock(announce, fcntl.LOCK_SH)
+            else:
+                fcntl.flock(announce, fcntl.LOCK_EX)
+                fcntl.flock(announce, fcntl.LOCK_UN)
+            fcntl.flock(budget, fcntl.LOCK_EX)
+            deadline = time.monotonic() + LEGACY_WAIT_SECONDS
+            while self._legacy_downloads():
+                if time.monotonic() > deadline:
+                    raise RemoteCommandError("Download budget busy with transfers started without a limit")
+                time.sleep(5.0)
+            yield self.download_budget_kib()
+
     def _rsync(self, source: str, target: str, extra: list[str] | None = None, wait: bool = True,
-               append: bool = True, accept: tuple[int, ...] = (0,)) -> None:
+               append: bool = True, accept: tuple[int, ...] = (0,), priority: str = "bulk") -> None:
+        if source.startswith(self.target + ":"):  # remote -> local: inside the shared download budget
+            with self.download_slot(priority) as kib:
+                self._rsync_run(source, target, [f"--bwlimit={kib}", *(extra or [])], wait, append, accept)
+        else:
+            self._rsync_run(source, target, list(extra or []), wait, append, accept)
+
+    def _rsync_run(self, source: str, target: str, extra: list[str], wait: bool, append: bool,
+                   accept: tuple[int, ...]) -> None:
         args = ["rsync", "-rt", "--partial", *(["--append-verify"] if append else []), "--checksum", "--protect-args",
-                "-e", shlex.join(self.ssh_args()), *(extra or []), "--", source, target]
+                "-e", shlex.join(self.ssh_args()), *extra, "--", source, target]
         if any(self.credentials.password in arg for arg in args):
             raise ValueError("Credential must not appear in transfer arguments")
         for attempt in range(3):
@@ -321,14 +392,15 @@ class RemoteClient:
                 raise RemoteCommandError("Source changed during checksum verification")
             return
         partial = self._local_path(local.with_name(local.name + ".s4d-partial-" + before))
-        self._rsync(f"{self.target}:{remote}", str(partial), wait=wait)
+        self._rsync(f"{self.target}:{remote}", str(partial), wait=wait, priority="dependency")
         after = self._remote_checksum(remote, wait=wait)
         if before != after or sha256(partial) != after:
             raise RemoteCommandError("Downloaded file changed or failed checksum verification")
         self._local_path(local)
         os.replace(partial, local)
 
-    def download_batch(self, remote: str, local: Path, wanted: dict[str, str], name: str, wait: bool = True) -> list[str]:
+    def download_batch(self, remote: str, local: Path, wanted: dict[str, str], name: str, wait: bool = True,
+                       priority: str = "dependency") -> list[str]:
         """Copy many files of one remote directory in a single rsync connection (``--files-from``).
 
         ``wanted`` maps paths relative to ``remote`` (from a ``_result_manifest``, so regular files under real
@@ -347,13 +419,24 @@ class RemoteClient:
             self._local_path(staging / relative)
             self._local_path(base / relative)
         listing = self._local_path(self.network_dir / "staging" / (name + ".files"))
-        listing.write_text("".join(relative + "\n" for relative in sorted(wanted)))
-        # No append mode: a stale staged copy (rejected earlier, or of a file rewritten since) may be as long as the
-        # source, which --append would skip forever; rsync's delta transfer updates it and still resumes partials.
-        # Exit 23/24 (some files unreadable or vanished) are accepted here: the per-file digest check below and the
-        # caller's after-manifest check decide what is synchronized.
-        self._rsync(f"{self.target}:{remote}/", str(staging) + "/", extra=["--files-from=" + str(listing)], wait=wait,
-                    append=False, accept=(0, 23, 24))
+        # A dependency batch is one transfer; a bulk batch is split into short chunks (each weight, video or array
+        # file alone, other files BULK_CHUNK_FILES at a time) so that it releases the budget between chunks.
+        ordered = sorted(wanted)
+        if priority == "bulk":
+            heavy = (".pt", ".pth", ".ckpt", ".npz", ".mp4")
+            chunks = [[r] for r in ordered if r.endswith(heavy)]
+            light = [r for r in ordered if not r.endswith(heavy)]
+            chunks += [light[i:i + BULK_CHUNK_FILES] for i in range(0, len(light), BULK_CHUNK_FILES)]
+        else:
+            chunks = [ordered]
+        for chunk in chunks:
+            listing.write_text("".join(relative + "\n" for relative in chunk))
+            # No append mode: a stale staged copy (rejected earlier, or of a file rewritten since) may be as long as
+            # the source, which --append would skip forever; rsync's delta transfer updates it and still resumes
+            # partials. Exit 23/24 (some files unreadable or vanished) are accepted here: the per-file digest check
+            # below and the caller's after-manifest check decide what is synchronized.
+            self._rsync(f"{self.target}:{remote}/", str(staging) + "/", extra=["--files-from=" + str(listing)],
+                        wait=wait, append=False, accept=(0, 23, 24), priority=priority)
         placed = []
         for relative, digest in sorted(wanted.items()):
             staged = self._local_path(staging / relative)
@@ -568,7 +651,7 @@ class RemoteClient:
         return entries
 
     def sync_results(self, run_id: str, checkpoints: bool = False, final: bool = False, wait: bool = True,
-                     scope: str = "all") -> dict:
+                     scope: str = "all", only_checkpoints: list[str] | None = None) -> dict:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", run_id):
             raise ValueError("Unsafe run id")
         if scope not in RESULT_SCOPES:
@@ -576,41 +659,58 @@ class RemoteClient:
         # Media copies use their own lock: their file set is disjoint from the essential one, so the bulk worker never
         # blocks a scheduler sync of the same run.
         # Scope "all" covers both sets and takes both locks, always results- before media-.
-        names = {"essential": ["results-"], "media": ["media-"], "all": ["results-", "media-"]}[scope]
+        names = {"essential": ["results-"], "media": ["media-"], "checkpoints": ["media-"],
+                 "all": ["results-", "media-"]}[scope]
         with contextlib.ExitStack() as stack:
             for prefix in names:
                 lock = stack.enter_context((self.state_dir / (prefix + run_id + ".lock")).open("a"))
                 fcntl.flock(lock, fcntl.LOCK_EX)
-            return self._sync_results(run_id, checkpoints, final, wait, scope)
+            return self._sync_results(run_id, checkpoints, final, wait, scope, only_checkpoints)
 
-    def _sync_results(self, run_id: str, checkpoints: bool, final: bool, wait: bool, scope: str = "all") -> dict:
+    def _sync_results(self, run_id: str, checkpoints: bool, final: bool, wait: bool, scope: str = "all",
+                      only_checkpoints: list[str] | None = None) -> dict:
+        if scope == "checkpoints":
+            checkpoints = True
+        if only_checkpoints is not None:
+            if scope != "essential" or not checkpoints:
+                raise ValueError("only_checkpoints restricts an essential sync with checkpoints")
+            for name in only_checkpoints:
+                candidate = PurePosixPath(name)
+                if (candidate.is_absolute() or ".." in candidate.parts or candidate.parts[:1] != ("checkpoints",)
+                        or not re.fullmatch(r"[A-Za-z0-9_./-]+", name)):
+                    raise ValueError("Unsafe required checkpoint path")
         remote = self.ensure_remote_path("runs/" + run_id, wait=wait)
         local = self._local_path(self.main_repo / "runs" / run_id)
         local.mkdir(parents=True, exist_ok=True)
         excluded = ["replay", "wandb", ".cache"] + ([] if checkpoints else ["checkpoints", "snapshots"])
         names = ["exit_code", "*.json", "*.jsonl", "*.yaml", "*.yml", "*.txt", "*.log", "*.csv",
                  *MEDIA_NAMES, "*.npz"]
-        if checkpoints:
-            names += ["*.pt", "*.pth", "*.ckpt"]
+        if checkpoints and only_checkpoints is None:
+            names += list(WEIGHT_NAMES)
         if scope == "essential":
             names = [name for name in names if name not in MEDIA_NAMES]
         elif scope == "media":
             names = list(MEDIA_NAMES)
+        elif scope == "checkpoints":
+            names = list(WEIGHT_NAMES)
         pruned = " -o ".join("-name " + shlex.quote(name) for name in excluded)
         patterns = " -o ".join("-name " + shlex.quote(name) for name in names)
-        if scope != "media":
+        if scope not in ("media", "checkpoints"):
             patterns += " -o -path './encoder.pt' -o -path './encoder_init.pt' -o -path './exports/*'"
+        for name in only_checkpoints or []:  # the required weights only; the rest follow in scope "checkpoints"
+            patterns += " -o -path " + shlex.quote("./" + name)
         if scope == "essential":  # disjoint from the media scope everywhere, exports/ included
             media = " -o ".join("-name " + shlex.quote(name) for name in MEDIA_NAMES)
             patterns = "\\( " + patterns + " \\) ! \\( " + media + " \\)"
         manifest_cmd = ("set -eu; cd " + shlex.quote(remote) + "; find . -type d \\( " + pruned
                         + " \\) -prune -o -type f \\( " + patterns + " \\) -exec sha256sum -- {} +")
         before = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
-        if final and not before and scope != "media":
+        if final and not before and scope not in ("media", "checkpoints"):
             raise RemoteCommandError("Final result snapshot is empty")
         for relative in before:
             self._local_path(local / relative)
-        output = self.network_dir / ("results-media" if scope == "media" else "results") / (run_id + ".json")
+        output = self.network_dir / {"media": "results-media", "checkpoints": "results-checkpoints"}.get(
+            scope, "results") / (run_id + ".json")
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps({"run_id": run_id, "host": "remote", "verified": False, "scope": scope,
                                       "final": False, "sync_started_at": datetime.now(timezone.utc).isoformat()}))
@@ -620,7 +720,8 @@ class RemoteClient:
             if not destination.is_file() or sha256(destination) != digest:
                 wanted[relative] = digest
         if wanted:
-            self.download_batch(remote, local, wanted, run_id + "-" + scope, wait=wait)
+            self.download_batch(remote, local, wanted, run_id + "-" + scope, wait=wait,
+                                priority="dependency" if scope == "essential" else "bulk")
         after = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
         if final and before != after:
             raise RemoteCommandError("Final results changed during synchronization")
@@ -629,6 +730,7 @@ class RemoteClient:
             if not path.is_file() or sha256(path) != digest:
                 raise RemoteCommandError("Result checksum mismatch; results are not decision-ready")
         result = {"run_id": run_id, "host": "remote", "verified": True, "scope": scope,
+                  **({"checkpoints": "required"} if only_checkpoints is not None else {}),
                   "verified_at": datetime.now(timezone.utc).isoformat(), "final": final, "files": after}
         temp = output.with_suffix(".tmp")
         temp.write_text(json.dumps(result, indent=2, sort_keys=True))

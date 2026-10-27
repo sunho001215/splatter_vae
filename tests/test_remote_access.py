@@ -557,8 +557,8 @@ class RemoteAccessTests(unittest.TestCase):
     def fake_rsync(self, remote, calls):
         """Stand-in for _rsync: copies the --files-from list from the local stand-in remote into the target."""
         def transfer(source, target, extra=None, wait=True, **options):
-            calls.append((source, target, list(extra or []), wait))
-            assert options == {"append": False, "accept": (0, 23, 24)}
+            calls.append((source, target, list(extra or []), wait, options.get("priority")))
+            assert options["append"] is False and options["accept"] == (0, 23, 24)
             listing = Path([arg for arg in extra if arg.startswith("--files-from=")][0].split("=", 1)[1])
             for relative in listing.read_text().splitlines():
                 destination = Path(target) / relative
@@ -577,7 +577,8 @@ class RemoteAccessTests(unittest.TestCase):
         with patch.object(self.client, "_rsync", side_effect=self.fake_rsync(remote, calls)):
             placed = self.client.download_batch(str(remote), local, wanted, "batched-media", wait=False)
         self.assertEqual(len(calls), 1)
-        source, target, extra, wait = calls[0]
+        source, target, extra, wait, priority = calls[0]
+        self.assertEqual(priority, "dependency")
         self.assertTrue(source.endswith(str(remote) + "/") and not wait)
         self.assertEqual(Path(target), self.client.network_dir / "staging" / "batched-media")
         self.assertEqual(placed, ["eval/step_1/a.png", "eval/step_1/b.png"])
@@ -631,7 +632,9 @@ class RemoteAccessTests(unittest.TestCase):
             media = self.client.sync_results("split", final=True, scope="media")
             self.assertEqual(set(media["files"]), {"eval/step_1/motion.png", "media/clip.mp4", "exports/preview.png"})
             everything = self.client.sync_results("split", final=True)
-        self.assertEqual(len(calls), 2)  # one batch per scope; the "all" pass finds everything already in place
+        # essential: one dependency batch; media: bulk chunks (the video alone, the images together); the "all" pass
+        # finds everything already in place
+        self.assertEqual([call[4] for call in calls], ["dependency", "bulk", "bulk"])
         self.assertEqual(set(everything["files"]), set(essential["files"]) | set(media["files"]))
         self.assertEqual((essential["scope"], media["scope"], everything["scope"]), ("essential", "media", "all"))
         record = json.loads((self.client.network_dir / "results-media" / "split.json").read_text())
@@ -649,6 +652,123 @@ class RemoteAccessTests(unittest.TestCase):
             self.assertTrue(result["verified"] and result["final"] and result["files"] == {})
             with self.assertRaisesRegex(access.RemoteCommandError, "empty"):
                 self.client.sync_results("no-media", final=True, scope="essential")
+
+    def test_downloads_are_budgeted_and_rate_limited_while_uploads_are_not(self):
+        with patch.object(self.client, "check_tunnel"), \
+                patch.object(self.client, "_legacy_downloads", return_value=[]), \
+                patch.object(access.subprocess, "run", return_value=self.result()) as run:
+            self.client._rsync(f"{self.client.target}:/remote/runs/x/a.json", "local-target")
+            self.assertIn("--bwlimit=600", run.call_args.args[0])
+            self.client._rsync("local-source", f"{self.client.target}:/remote/runs/x/a.json")
+            self.assertFalse(any(arg.startswith("--bwlimit") for arg in run.call_args.args[0]))
+            (self.client.state_dir / "download-budget.json").write_text(json.dumps({"kib_per_s": 300}))
+            self.client._rsync(f"{self.client.target}:/remote/runs/x/a.json", "local-target", priority="dependency")
+            self.assertIn("--bwlimit=300", run.call_args.args[0])
+        (self.client.state_dir / "download-budget.json").write_text(json.dumps({"kib_per_s": 0}))
+        with self.assertRaises(ValueError):
+            self.client.download_budget_kib()
+        with self.assertRaises(ValueError):
+            with self.client.download_slot("urgent"):
+                pass
+
+    def test_one_download_at_a_time_and_dependency_transfers_go_before_bulk(self):
+        import threading
+        order, held = [], threading.Event()
+        with patch.object(self.client, "_legacy_downloads", return_value=[]):
+            def bulk():
+                with self.client.download_slot("bulk"):
+                    order.append("bulk")
+
+            def dependency():
+                with self.client.download_slot("dependency"):
+                    held.set()
+                    order.append("dependency-start")
+                    worker.start()
+                    worker.join(0.5)
+                    self.assertTrue(worker.is_alive())  # the budget is exclusive: bulk waits for this slot
+                    order.append("dependency-end")
+
+            worker = threading.Thread(target=bulk)
+            dependency()
+            worker.join(5)
+            # a dependency transfer only announced (waiting for the budget) also holds bulk back
+            with (self.client.state_dir / "download-priority.lock").open("a") as announce:
+                access.fcntl.flock(announce, access.fcntl.LOCK_SH)
+                second = threading.Thread(target=bulk)
+                second.start()
+                second.join(0.5)
+                self.assertTrue(second.is_alive())
+                access.fcntl.flock(announce, access.fcntl.LOCK_UN)
+            second.join(5)
+        self.assertEqual(order, ["dependency-start", "dependency-end", "bulk", "bulk"])
+
+    def test_new_downloads_wait_for_transfers_started_without_a_limit(self):
+        legacy = subprocess.Popen(["rsync", "-c", "sleep 30", f"{self.client.target}:/remote/runs/x/"], executable="/bin/sh")
+        self.addCleanup(legacy.kill)
+        limited = subprocess.Popen(["rsync", "-c", "sleep 30", "--bwlimit=600", f"{self.client.target}:/remote/runs/y/"],
+                                   executable="/bin/sh")
+        self.addCleanup(limited.kill)
+        found = self.client._legacy_downloads()
+        self.assertIn(legacy.pid, found)
+        self.assertNotIn(limited.pid, found)
+        waits = []
+        with patch.object(self.client, "_legacy_downloads", side_effect=[[legacy.pid], [legacy.pid], []]), \
+                patch.object(access.time, "sleep", side_effect=waits.append):
+            with self.client.download_slot("bulk") as kib:
+                self.assertEqual(kib, 600)
+        self.assertEqual(waits, [5.0, 5.0])
+        with patch.object(self.client, "_legacy_downloads", return_value=[legacy.pid]), \
+                patch.object(access, "LEGACY_WAIT_SECONDS", 0.0), patch.object(access.time, "sleep"):
+            with self.assertRaisesRegex(access.RemoteCommandError, "without a limit"):
+                with self.client.download_slot("dependency"):
+                    pass
+
+    def test_bulk_batches_release_the_budget_between_short_chunks(self):
+        local = self.repo / "runs" / "chunks"
+        local.mkdir(parents=True)
+        wanted = {f"eval/{i:03d}.png": "0" * 64 for i in range(100)}
+        wanted.update({"checkpoints/step_1.pt": "0" * 64, "checkpoints/step_2.pt": "0" * 64, "media/clip.mp4": "0" * 64})
+        listings = []
+
+        def transfer(source, target, extra=None, wait=True, **options):
+            listing = Path([arg for arg in extra if arg.startswith("--files-from=")][0].split("=", 1)[1])
+            listings.append((options["priority"], listing.read_text().splitlines()))
+
+        with patch.object(self.client, "_rsync", side_effect=transfer):
+            self.client.download_batch("/remote/runs/chunks", local, wanted, "chunks-media", priority="bulk")
+            self.client.download_batch("/remote/runs/chunks", local, wanted, "chunks-essential")
+        bulk = [files for priority, files in listings if priority == "bulk"]
+        self.assertEqual([len(files) for files in bulk], [1, 1, 1, access.BULK_CHUNK_FILES, access.BULK_CHUNK_FILES, 4])
+        self.assertEqual(sorted(f for files in bulk for f in files), sorted(wanted))
+        self.assertEqual([(priority, len(files)) for priority, files in listings][-1], ("dependency", len(wanted)))
+
+    def test_final_essential_sync_can_take_only_the_required_checkpoints(self):
+        remote = self.remote_fixture({"metrics.jsonl": b"m", "checkpoints/step_0100000.pt": b"a",
+                                      "checkpoints/step_0200000.pt": b"b", "snapshots/latest.pt": b"s",
+                                      "eval/step_1/motion.png": b"p"})
+
+        def manifest(command, **kwargs):
+            return subprocess.run(["sh", "-c", command], capture_output=True, text=True, check=True)
+
+        calls = []
+        with patch.object(self.client, "ensure_remote_path", return_value=str(remote)), \
+                patch.object(self.client, "checked_ssh", side_effect=manifest), \
+                patch.object(self.client, "_rsync", side_effect=self.fake_rsync(remote, calls)):
+            needed = self.client.sync_results("weights", checkpoints=True, final=True, scope="essential",
+                                              only_checkpoints=["checkpoints/step_0200000.pt"])
+            rest = self.client.sync_results("weights", final=True, scope="checkpoints")
+            with self.assertRaises(ValueError):
+                self.client.sync_results("weights", checkpoints=True, final=True, scope="essential",
+                                         only_checkpoints=["../outside.pt"])
+            with self.assertRaises(ValueError):
+                self.client.sync_results("weights", final=True, scope="media", only_checkpoints=["checkpoints/a.pt"])
+        self.assertEqual(set(needed["files"]), {"metrics.jsonl", "checkpoints/step_0200000.pt"})
+        self.assertEqual(needed["checkpoints"], "required")
+        self.assertEqual(set(rest["files"]), {"checkpoints/step_0100000.pt", "checkpoints/step_0200000.pt",
+                                              "snapshots/latest.pt"})
+        self.assertEqual([call[4] for call in calls], ["dependency", "bulk", "bulk"])  # step_0200000 already local
+        record = json.loads((self.client.network_dir / "results-checkpoints" / "weights.json").read_text())
+        self.assertTrue(record["verified"] and record["final"] and record["scope"] == "checkpoints")
 
 
 if __name__ == "__main__":

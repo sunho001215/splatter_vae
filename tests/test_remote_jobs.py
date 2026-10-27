@@ -120,7 +120,7 @@ class FakeBackend:
             return {"absent": True}
         return {"removed": True, "log_sha256": "0" * 64, "inspect_sha256": "1" * 64}
 
-    def sync_results(self, run_id, final=False, checkpoints=False, scope="all"):
+    def sync_results(self, run_id, final=False, checkpoints=False, scope="all", only_checkpoints=None):
         self.syncs.append((run_id, final))
         self.scopes.append(scope)
         if self.sync_error:
@@ -392,8 +392,8 @@ def test_explicit_checkpoint_requirement_requests_checkpoint_transfer(tmp_path, 
     launch_event(tmp_path, required_results=required)
     original, flags = backend.sync_results, []
 
-    def transfer(run_id, final=False, checkpoints=False, scope="all"):
-        flags.append((checkpoints, scope))
+    def transfer(run_id, final=False, checkpoints=False, scope="all", only_checkpoints=None):
+        flags.append((checkpoints, scope, only_checkpoints))
         result = original(run_id, final)
         if checkpoints:
             path = backend.runs / run_id / "checkpoints/final.pt"
@@ -406,7 +406,9 @@ def test_explicit_checkpoint_requirement_requests_checkpoint_transfer(tmp_path, 
     monkeypatch.setattr(backend, "sync_results", transfer)
     tick(tmp_path, queued, backend)
     # the final scheduler sync carries checkpoints but not bulk media (scripts/sync_media.py copies those)
-    assert flags == [(True, "essential")] and jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done"
+    # only the required weights advance the dependency; the run's other checkpoints follow in the bulk worker
+    assert flags == [(True, "essential", ["checkpoints/final.pt"])]
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done"
 
 
 def test_nonzero_exit_is_failed_only_after_observation(tmp_path):

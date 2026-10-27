@@ -486,7 +486,9 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             if current.get("verification_purpose") is not None:
                 synced = backend.sync_verification_results(job_id, current, final=True)
             elif any(Path(name).parts[0] == "checkpoints" for name in current.get("required_results", [])):
-                synced = backend.sync_results(job_id, final=True, checkpoints=True, scope=ESSENTIAL)
+                # only the required weights; the run's other checkpoints follow in the bulk worker (download budget)
+                synced = backend.sync_results(job_id, final=True, checkpoints=True, scope=ESSENTIAL, only_checkpoints=[
+                    name for name in current.get("required_results", []) if Path(name).parts[0] == "checkpoints"])
             else:
                 synced = backend.sync_results(job_id, final=True, scope=ESSENTIAL)
             _verify_synced_exit(job_id, current, synced, runs)

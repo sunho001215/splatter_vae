@@ -30,3 +30,19 @@ def test_media_worker_selects_deferred_completed_and_active_remote_campaign_runs
         {"verified": False, "final": False, "scope": "media"}))  # an interrupted copy is retried
     final, live = sync_media.candidates(state, client)
     assert final == ["deferred"] and live == ["live", "pending-sync"]
+
+
+def test_bulk_worker_copies_deferred_checkpoints_of_completed_runs_last(tmp_path):
+    client = SimpleNamespace(network_dir=tmp_path)
+    state = {
+        "required-only": {"host": "remote", "status": "done", "sync": {"final": True, "scope": "essential",
+                                                                       "checkpoints": "required"}},
+        "all-weights": {"host": "remote", "status": "done", "sync": {"final": True, "scope": "essential"}},
+        "copied": {"host": "remote", "status": "done", "sync": {"final": True, "scope": "essential",
+                                                                "checkpoints": "required"}},
+        "running": {"host": "remote", "status": "running"},
+    }
+    (tmp_path / "results-checkpoints").mkdir()
+    (tmp_path / "results-checkpoints" / "copied.json").write_text(json.dumps(
+        {"verified": True, "final": True, "scope": "checkpoints"}))
+    assert sync_media.checkpoint_candidates(state, client) == ["required-only"]
