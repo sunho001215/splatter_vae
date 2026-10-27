@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from s4d import remote_artifact_check
 from s4d import remote_jobs as remote
 from s4d.gpu_guard import APPROVED_HOST_GPUS
 from scripts._nvidia_query import QueryUnavailable
@@ -85,6 +86,11 @@ class FakeBackend:
                                            200, 1000 * GIB, 800 * GIB, {})
         self.launches, self.syncs, self.scopes = [], [], []
         self.snapshot_error = self.launch_error = self.sync_error = self.ready_error = self.remove_error = None
+        # 2026-10-27: the tick verifies finished runs in place on the remote (verify_remote_artifacts) and completes them
+        # from the bulk worker's local backup record (backup_record). The fake emulates both from the same files its
+        # sync_results writes, so tampering with those results fails both checks; backup_ready=False models a backup
+        # that the worker has not made yet.
+        self.backup_ready, self.inspections, self.backups = True, [], []
         self.removals = []
         self.registry = runs.parent / "registry.jsonl"
 
@@ -139,6 +145,22 @@ class FakeBackend:
             (folder / name).write_bytes(data)
             files[name] = hashlib.sha256(data).hexdigest()
         return {"run_id": run_id, "host": "remote", "final": final, "verified": True, "files": files}
+
+    def verify_remote_artifacts(self, run_id, names):
+        self.inspections.append(run_id)
+        if self.sync_error:
+            raise self.sync_error
+        self.sync_results(run_id, True)
+        report = remote_artifact_check.inspect_run(str(self.runs / run_id), names)
+        report["root"] = f"{remote.ROOT}/runs/{run_id}"
+        return report
+
+    def backup_record(self, run_id):
+        if not self.backup_ready or self.sync_error:
+            return None
+        self.backups.append(run_id)
+        result = self.sync_results(run_id, True)
+        return {**result, "scope": result.get("scope", "essential")}
 
 
 def tick(tmp_path, queue, backend, **kwargs):
@@ -384,31 +406,54 @@ def test_final_numerical_provenance_must_match_declared_identity(tmp_path, monke
     assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "sync_pending"
 
 
-def test_explicit_checkpoint_requirement_requests_checkpoint_transfer(tmp_path, monkeypatch):
+def test_required_checkpoint_is_verified_in_place_and_completed_from_the_backup(tmp_path, monkeypatch):
+    """The tick downloads nothing: the required checkpoint's archive is inspected on the remote (integrity, encoder
+    tensors), and the job completes from the worker's backup record, which must carry the same checkpoint checksum."""
+    import torch
+
     required = ["metrics.jsonl", "checkpoints/final.pt"]
     queued = write_queue(tmp_path, [job(required_results=required)])
     backend = FakeBackend(tmp_path / "runs")
     backend.value.containers["s4d-r-a1"] = inspected(status="exited")
     launch_event(tmp_path, required_results=required)
-    original, flags = backend.sync_results, []
+    original = backend.sync_results
 
     def transfer(run_id, final=False, checkpoints=False, scope="all", only_checkpoints=None):
-        flags.append((checkpoints, scope, only_checkpoints))
         result = original(run_id, final)
-        if checkpoints:
-            path = backend.runs / run_id / "checkpoints/final.pt"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            payload = b"checksum-transfer-fixture"
-            path.write_bytes(payload)
-            result["files"]["checkpoints/final.pt"] = hashlib.sha256(payload).hexdigest()
+        path = backend.runs / run_id / "checkpoints/final.pt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            torch.save({"step": 7, "encoder": {"w": torch.zeros(2, 3)}}, path)
+        result["files"]["checkpoints/final.pt"] = hashlib.sha256(path.read_bytes()).hexdigest()
         return result
 
     monkeypatch.setattr(backend, "sync_results", transfer)
+    backend.backup_ready = False
     tick(tmp_path, queued, backend)
-    # the final scheduler sync carries checkpoints but not bulk media (scripts/sync_media.py copies those)
-    # only the required weights advance the dependency; the run's other checkpoints follow in the bulk worker
-    assert flags == [(True, "essential", ["checkpoints/final.pt"])]
-    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done"
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "sync_pending" and backend.inspections == ["r"] and not backend.backups
+    assert state["remote_verified"]["checks"]["checkpoints"] == {"checkpoints/final.pt": {"step": 7, "encoder_tensors": 1}}
+    backend.backup_ready = True
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "done" and backend.inspections == ["r"] and backend.backups == ["r"]
+    assert state["sync"]["files"]["checkpoints/final.pt"] == state["remote_verified"]["files"]["checkpoints/final.pt"]
+
+
+def test_backup_with_different_checksums_than_the_remote_verification_never_completes(tmp_path, monkeypatch):
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.backup_ready = False
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["remote_verified"]["attempt"] == 1
+    backend.backup_ready = True
+    original = backend.backup_record
+    monkeypatch.setattr(backend, "backup_record", lambda run_id: {
+        **original(run_id), "files": {**original(run_id)["files"], "metrics.jsonl": "0" * 64}})
+    tick(tmp_path, queued, backend)
+    assert jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "sync_pending"
 
 
 def test_nonzero_exit_is_failed_only_after_observation(tmp_path):
@@ -493,7 +538,9 @@ def test_local_nvml_failure_does_not_block_remote(tmp_path, monkeypatch, failure
     state = jobs.read_registry(tmp_path / "registry.jsonl")
     assert any("GPU process query failed" in message and "on local" in message for message in messages)
     assert state["active"]["status"] == ("done" if remote_status == "exited" else "running")
-    assert ("active", remote_status == "exited") in backend.syncs
+    # nothing is downloaded inside the tick; a finished run is inspected in place and completed from its backup record
+    assert not [sync for sync in backend.syncs if sync[1] is False]
+    assert backend.inspections == (["active"] if remote_status == "exited" else [])
     assert [payload["id"] for payload in backend.launches] == ["r"]
     assert "local" not in state
 
@@ -1323,11 +1370,11 @@ def test_cleared_keep_records_reenable_cleanup(tmp_path):
     assert state["containers_kept"] == []
 
 
-def test_scheduler_syncs_only_essential_results_and_admits_dependents_without_media(tmp_path, monkeypatch):
-    """Live and final scheduler syncs use scope "essential" (status, completion records, metrics, checkpoints,
-    exports); bulk evaluation media are left to scripts/sync_media.py, so a dependent local job is admitted in the
-    same tick that verifies the remote job's completion."""
-    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"])])
+def test_scheduler_downloads_nothing_and_cross_host_dependents_wait_for_the_backup(tmp_path, monkeypatch):
+    """2026-10-27: no live or final download inside the tick. A local dependent of a remote job (cross-host) starts only
+    once the bulk worker's verified final backup completes the remote job; a remote dependent (same host) starts as soon
+    as the finished run is verified in place on the remote."""
+    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"]), job("same", deps=["active"])])
     backend = FakeBackend(tmp_path / "runs")
     launch_event(tmp_path, "active")
     backend.value.containers["s4d-active-a1"] = inspected("active", status="running")
@@ -1337,9 +1384,114 @@ def test_scheduler_syncs_only_essential_results_and_admits_dependents_without_me
     monkeypatch.setattr(jobs, "launch", lambda job_row, gpu, attempt, runs: launched.append(job_row["id"]) or 4242)
     monkeypatch.setattr(jobs, "source_identity", lambda: {"commit": COMMIT, "source_sha256": {}})
     tick(tmp_path, queued, backend)
-    assert backend.syncs == [("active", False)] and backend.scopes == ["essential"] and not launched
+    assert backend.syncs == [] and not launched and not backend.launches
     backend.value.containers["s4d-active-a1"] = inspected("active", status="exited")
+    backend.backup_ready = False
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")
-    assert backend.syncs[-1] == ("active", True) and backend.scopes == ["essential", "essential"]
+    assert state["active"]["status"] == "sync_pending" and state["active"]["remote_verified"]["attempt"] == 1
+    assert [payload["id"] for payload in backend.launches] == ["same"] and not launched
+    backend.backup_ready = True
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
     assert state["active"]["status"] == "done" and launched == ["after"]
+    assert [payload["id"] for payload in backend.launches] == ["same"]
+
+
+def test_compute_complete_remote_jobs_reserve_no_gpu_slot(tmp_path):
+    """A container that exited 0 and awaits verification or backup (sync_pending) holds no GPU slot or memory."""
+    queued = write_queue(tmp_path, [job("a"), job("b"), job("c")])  # limit: 2 jobs per remote GPU
+    backend = FakeBackend(tmp_path / "runs")
+    for run_id in ("a", "b"):
+        launch_event(tmp_path, run_id)
+        backend.value.containers[f"s4d-{run_id}-a1"] = inspected(run_id, status="exited")
+    backend.backup_ready = False
+    backend.sync_error = remote.RemoteJobError("not verifiable yet")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert state["a"]["status"] == state["b"]["status"] == "sync_pending"
+    assert [payload["id"] for payload in backend.launches] == ["c"]
+
+
+def test_failed_remote_verification_keeps_same_host_dependents_blocked(tmp_path):
+    queued = write_queue(tmp_path, [job(), job("dependent", deps=["r"])])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.sync_error = remote.RemoteJobError("inspection failed")
+    messages = tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert state["r"]["status"] == "sync_pending" and "remote_verified" not in state["r"] and not backend.launches
+    assert any("same-host dependents remain blocked" in message for message in messages)
+
+
+def test_remote_verification_belongs_to_its_attempt(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    launch_event(tmp_path)
+    jobs.record({"event": "remote_exited", "id": "r", "host": "remote", "code": 0, "container_id": CONTAINER_ID}, registry)
+    jobs.record({"event": "remote_verified", "id": "r", "host": "remote", "attempt": 1, "files": {}, "checks": {}}, registry)
+    state = jobs.read_registry(registry)["r"]
+    assert jobs.dependency_ready({"host": "remote"}, state) and not jobs.dependency_ready({"host": "local"}, state)
+    jobs.record({"event": "launching", "id": "r", "host": "remote", "gpu": REMOTE, "attempt": 2}, registry)
+    state = jobs.read_registry(registry)["r"]
+    assert "remote_verified" not in state and not jobs.dependency_ready({"host": "remote"}, state)
+
+
+@pytest.mark.parametrize("steps,released", [(9, False), (10, True)])
+def test_pretraining_budget_must_be_complete_before_same_host_release(tmp_path, monkeypatch, steps, released):
+    args = ["--config", "x.yaml", "--set", "train.steps=10", "train.seed=0"]
+    required = ["completion.json", "metrics.jsonl"]
+    queued = write_queue(tmp_path, [job(script="scripts/train.py", args=args, required_results=required),
+                                    job("dependent", deps=["r"])])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path, script="scripts/train.py", args=args, required_results=required)
+    original = backend.sync_results
+    numeric = {"train": {"seed": 0, "steps": 10}}
+    digest = hashlib.sha256(json.dumps(numeric, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def trained(run_id, final=False, **kwargs):
+        result = original(run_id, final)
+        folder = backend.runs / run_id
+        report = json.loads((folder / "provenance.json").read_text())
+        report.update(numeric_config=numeric, config_sha256=digest)
+        for name, content in (("provenance.json", report), ("completion.json", {"status": "completed", "steps": steps})):
+            data = json.dumps(content).encode()
+            (folder / name).write_bytes(data)
+            result["files"][name] = hashlib.sha256(data).hexdigest()
+        return result
+
+    monkeypatch.setattr(backend, "sync_results", trained)
+    backend.backup_ready = False
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert ("remote_verified" in state["r"]) is released
+    assert [payload["id"] for payload in backend.launches] == (["dependent"] if released else [])
+
+
+def test_remote_export_must_be_a_weights_only_export_of_its_source_with_the_configured_signature(tmp_path):
+    import dataclasses
+    import datetime
+
+    import torch
+
+    from s4d.model.encoder import Encoder, EncoderConfig
+    config = EncoderConfig(width=32, depth=1, heads=2)
+    encoder = Encoder(config)
+    state = {"args": ["--run", "runs/pre", "--checkpoint", "runs/pre/checkpoints/step_0000010.pt",
+                      "--out", "runs/exp/encoder.pt"]}
+    payload = {"format": "splatter4d-encoder-v1", "encoder_config": dataclasses.asdict(config),
+               "state_dict": encoder.state_dict(), "step": 10, "source_checkpoint": state["args"][3], "run_name": "pre"}
+
+    def inspect(**changes):
+        folder = tmp_path / str(len(list(tmp_path.iterdir())))
+        folder.mkdir()
+        torch.save({**payload, **changes}, folder / "encoder.pt")
+        return remote_artifact_check.inspect_run(str(folder), ["encoder.pt"])["archives"]["encoder.pt"]
+    checks = jobs._verify_remote_export(state, inspect())
+    assert checks["step"] == 10 and checks["tensors"] == len(encoder.state_dict())
+    wider = dataclasses.asdict(EncoderConfig(width=64, depth=1, heads=2))
+    for changes in ({"step": 9}, {"run_name": "other"}, {"source_checkpoint": "runs/pre/checkpoints/latest.pt"},
+                    {"format": "other"}, {"encoder_config": wider}, {"extra": datetime.timedelta(days=1)}):
+        with pytest.raises(remote.RemoteJobError):
+            jobs._verify_remote_export(state, inspect(**changes))

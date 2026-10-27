@@ -46,3 +46,30 @@ def test_bulk_worker_copies_deferred_checkpoints_of_completed_runs_last(tmp_path
     (tmp_path / "results-checkpoints" / "copied.json").write_text(json.dumps(
         {"verified": True, "final": True, "scope": "checkpoints"}))
     assert sync_media.checkpoint_candidates(state, client) == ["required-only"]
+
+
+def test_backups_cover_compute_complete_runs_with_cross_host_dependencies_first(tmp_path):
+    """2026-10-27: the worker makes the final local backups (the tick downloads nothing); runs a pending local job
+    depends on come first; a verified final backup of the run's attempt is not repeated."""
+    client = SimpleNamespace(network_dir=tmp_path / "net", main_repo=tmp_path / "repo")
+    state = {
+        "a": {"host": "remote", "status": "sync_pending", "code": 0, "attempts": 1},
+        "b": {"host": "remote", "status": "sync_pending", "code": 0, "attempts": 1},
+        "copied": {"host": "remote", "status": "sync_pending", "code": 0, "attempts": 2},
+        "stale": {"host": "remote", "status": "sync_pending", "code": 0, "attempts": 2},
+        "verification": {"host": "remote", "status": "sync_pending", "code": 0, "attempts": 1,
+                         "verification_purpose": "native_suite"},
+        "running": {"host": "remote", "status": "running", "attempts": 1},
+        "done": {"host": "remote", "status": "done", "attempts": 1},
+    }
+    for run_id, attempt in (("copied", 2), ("stale", 1)):  # "stale": the record is of an earlier attempt
+        (client.network_dir / "results").mkdir(parents=True, exist_ok=True)
+        (client.network_dir / "results" / f"{run_id}.json").write_text(json.dumps(
+            {"verified": True, "final": True, "scope": "essential"}))
+        (client.main_repo / "runs" / run_id).mkdir(parents=True, exist_ok=True)
+        (client.main_repo / "runs" / run_id / "exit.json").write_text(json.dumps({"attempt": attempt}))
+    queue = [{"id": "export-b", "host": "local", "deps": ["b"]}, {"id": "remote-a", "host": "remote", "deps": ["a"]}]
+    assert sync_media.backup_candidates(state, client, queue) == ["b", "a", "stale"]
+    assert sync_media.running(state) == ["running"]
+    assert sync_media.required_checkpoints({"required_results": ["metrics.jsonl", "checkpoints/step_1.pt"]}) == [
+        "checkpoints/step_1.pt"]

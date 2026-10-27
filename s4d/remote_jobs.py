@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import math
@@ -29,6 +30,7 @@ RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+RESULT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)*\Z")
 ROOT = "/home/compu/kaist/sunho"
 # A local device ID (MIG instance or its parent GPU) that the remote isolation check must reject.
 LOCAL_DEVICES = set(APPROVED_HOST_GPUS["local"]) | set(LOCAL_MIG_PARENTS)
@@ -673,6 +675,41 @@ class RemoteBackend:
                 or any(not SHA256.fullmatch(value) for value in result["files"].values())):
             raise RemoteJobError("Remote result synchronization returned no checksum evidence")
         return result
+
+    def verify_remote_artifacts(self, run_id: str, names: list[str]) -> dict:
+        """Inspect a finished run in place on the remote host, read-only: s4d/remote_artifact_check.py (standard library
+        only) runs under the host's python3 and returns one small JSON report (checksums and sizes, the small records'
+        text, archive integrity and tensor structure of .pt files). No result file is transferred."""
+        if not RUN_ID.fullmatch(run_id) or not names or any(
+                not isinstance(name, str) or not RESULT_NAME.fullmatch(name) or ".." in Path(name).parts for name in names):
+            raise ValueError("Unsafe run id or artifact name")
+        source = (Path(__file__).with_name("remote_artifact_check.py")).read_bytes()
+        loader = ("import base64,sys;exec(compile(base64.b64decode('" + base64.b64encode(source).decode()
+                  + "'),'remote_artifact_check','exec'))")
+        run_dir = f"{ROOT}/runs/{run_id}"
+        command = (f"set -eu; test -d {shlex.quote(run_dir)}; test ! -L {shlex.quote(run_dir)}; exec python3 -I -c "
+                   + shlex.quote(loader) + " " + shlex.quote(run_dir) + " " + " ".join(shlex.quote(n) for n in names))
+        try:
+            response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=900)
+        except RemoteUnreachable:
+            self._save_snapshot(reachable=False, query_ok=False)
+            raise
+        report = json.loads(response.stdout)
+        if not isinstance(report, dict) or report.get("root") != run_dir:
+            raise RemoteJobError("Remote artifact inspection returned an unexpected report")
+        report["checker_sha256"] = hashlib.sha256(source).hexdigest()
+        return report
+
+    def backup_record(self, run_id: str) -> dict | None:
+        """The local essential-scope result record of ``run_id`` (written by RemoteClient.sync_results, e.g. from the
+        bulk worker scripts/sync_media.py), or None."""
+        if not RUN_ID.fullmatch(run_id):
+            raise ValueError("Unsafe run id")
+        path = self.client.network_dir / "results" / f"{run_id}.json"
+        try:
+            return json.loads(path.read_text())
+        except FileNotFoundError:
+            return None
 
     def sync_verification_results(self, run_id: str, state: dict, *, final: bool = False) -> dict:
         purpose = validate_verification({**state, "id": run_id, "attempt": state["attempts"]})

@@ -22,8 +22,14 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
 from s4d.remote_access import sha256 as file_sha256  # noqa: E402
-from s4d.remote_jobs import (ContainerRemovalRefused, RemoteBackend, RemoteJobError, RemoteUnreachable,  # noqa: E402
-                             validate_container)
+from s4d.remote_jobs import ROOT as REMOTE_ROOT  # noqa: E402
+from s4d.remote_jobs import (  # noqa: E402
+    ContainerRemovalRefused,
+    RemoteBackend,
+    RemoteJobError,
+    RemoteUnreachable,
+    validate_container,
+)
 from s4d.remote_verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 from scripts._nvidia_query import mig_query  # noqa: E402
@@ -36,6 +42,9 @@ GIB = 2**30
 GUARD_CALL = re.compile(r"^(\w+\s*=\s*)?(guard_gpus|enforce_allowed_gpus)\(\)\s*$", re.MULTILINE)
 DONE, FAILED, RUNNING, PENDING = "done", "failed", "running", "pending"
 ACTIVE = {RUNNING, "launching", "sync_pending"}
+# Capacity is reserved only while a job can still execute: a remote job whose container exited ("sync_pending": compute
+# complete, awaiting artifact verification or local backup) holds no GPU, RAM or disk-growth reservation (2026-10-27).
+RESERVING = {RUNNING, "launching"}
 # Remote result syncs inside the scheduler tick copy only what advances dependencies (status, completion records,
 # metrics, checkpoints, exports); bulk evaluation media follow in scripts/sync_media.py (2026-10-27).
 ESSENTIAL = "essential"
@@ -117,6 +126,7 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                            host=event.get("host", "local"), attempt=event["attempt"],
                            attempts=max(job["attempts"], event["attempt"]), since=event["time"], unknown=False)
                 job.pop("sync", None)
+                job.pop("remote_verified", None)  # recorded only after an exit, so a launch always starts a new attempt
                 if kind == "launched" and event.get("container_id"):
                     job.setdefault("attempt_containers", {})[str(event["attempt"])] = {
                         "container": event.get("container"), "container_id": event["container_id"]}
@@ -126,6 +136,11 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 job.update(status="sync_pending", code=event["code"], unknown=False)
             elif kind == "results_synced":
                 job.update(sync=event["sync"], unknown=False)
+            elif kind == "remote_verified":
+                # compute complete and the artifacts verified in place on the remote host (small records only): releases
+                # same-host dependents; the job becomes done only after its local backup is verified (2026-10-27)
+                job["remote_verified"] = {key: event[key] for key in ("attempt", "files", "checks") if key in event}
+                job["unknown"] = False
             elif kind == "container_removed":
                 job.setdefault("containers_removed", []).append(event.get("container_id"))
             elif kind == "container_kept":
@@ -264,12 +279,22 @@ def check_guarded(script: str) -> Path:
     return path
 
 
+def dependency_ready(job: dict, dep: dict) -> bool:
+    """A dependency is satisfied once it is done (results verified locally, the only case for a local job), or, for a
+    remote job, once a remote dependency's artifacts are verified in place on the remote host for its final attempt
+    (``remote_verified``): the files the dependent reads are there; the local backup follows separately."""
+    if dep.get("status") == DONE:
+        return True
+    return (job.get("host", "local") == "remote" and dep.get("host") == "remote" and dep.get("status") == "sync_pending"
+            and (dep.get("remote_verified") or {}).get("attempt") == dep.get("attempts"))
+
+
 def eligible(jobs: list[dict], state: dict[str, dict]) -> list[dict]:
     ready = []
     for order, job in enumerate(jobs):
         if state.get(job["id"], {}).get("status", PENDING) != PENDING:
             continue
-        if all(state.get(dep, {}).get("status") == DONE for dep in job.get("deps", [])):
+        if all(dependency_ready(job, state.get(dep, {})) for dep in job.get("deps", [])):
             ready.append((job.get("priority", 5), order, job))
     return [job for _, _, job in sorted(ready, key=lambda item: item[:2])]
 
@@ -380,10 +405,6 @@ def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> N
     if (("verification_purpose" in result and (purpose is None or result["verification_purpose"] != purpose))
             or result.get("campaign_eligible", campaign_eligible) is not campaign_eligible):
         raise RemoteJobError("Remote result synchronization job kind differs")
-    expected = {"host": "remote", "job_id": run_id, "attempt": state["attempts"],
-                "git_commit": state["commit"], "image_digest": state["image_digest"], "gpu_uuids": [state["gpu"]]}
-    if purpose is not None:
-        expected.update(verification_purpose=purpose, campaign_eligible=False)
     required = state.get("required_results")
     if not required or not any(name not in {"exit.json", "provenance.json"} for name in required):
         raise RemoteJobError("Remote numerical result requirements are missing")
@@ -395,10 +416,27 @@ def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> N
             raise RemoteJobError("Required numerical result is missing or outside its run")
         if file_sha256(path) != result.get("files", {}).get(name):
             raise RemoteJobError("Required numerical result checksum is missing or changed")
+    _check_exit_records(run_id, state, purpose, {name: (runs / run_id / name).read_bytes()
+                                                 for name in ("exit.json", "provenance.json")}, result.get("files", {}))
+    if purpose is not None:
+        if not isinstance(state.get("source_sha256"), dict) or not state["source_sha256"]:
+            raise RemoteJobError("Verification source identity is missing")
+        name = "tests.json" if purpose == "native_suite" else "gpu_isolation.json"
+        validate_report(purpose, json.loads((root / "evidence" / name).read_text()), state["source_sha256"],
+                        state["commit"], state["image_digest"], state["gpu"])
+
+
+def _check_exit_records(run_id: str, state: dict, purpose: str | None, payloads: dict[str, bytes],
+                        files: dict[str, str]) -> None:
+    """Identity checks of a finished remote attempt's exit.json and provenance.json (payload bytes and their recorded
+    checksums), shared by the local-backup and the in-place remote verification."""
+    expected = {"host": "remote", "job_id": run_id, "attempt": state["attempts"],
+                "git_commit": state["commit"], "image_digest": state["image_digest"], "gpu_uuids": [state["gpu"]]}
+    if purpose is not None:
+        expected.update(verification_purpose=purpose, campaign_eligible=False)
     for name in ("exit.json", "provenance.json"):
-        path = runs / run_id / name
-        payload = path.read_bytes()
-        if hashlib.sha256(payload).hexdigest() != result.get("files", {}).get(name):
+        payload = payloads[name]
+        if hashlib.sha256(payload).hexdigest() != files.get(name):
             raise RemoteJobError("Final remote exit/provenance checksums are missing or changed")
         report = json.loads(payload)
         if purpose is None and ("verification_purpose" in report or report.get("campaign_eligible", True) is not True):
@@ -426,12 +464,125 @@ def _verify_synced_exit(run_id: str, state: dict, result: dict, runs: Path) -> N
             if (state.get("expected_config_sha256") is not None
                     and report.get("config_sha256") != state["expected_config_sha256"]):
                 raise RemoteJobError("Final remote numerical config differs from declared config")
-    if purpose is not None:
-        if not isinstance(state.get("source_sha256"), dict) or not state["source_sha256"]:
-            raise RemoteJobError("Verification source identity is missing")
-        name = "tests.json" if purpose == "native_suite" else "gpu_isolation.json"
-        validate_report(purpose, json.loads((root / "evidence" / name).read_text()), state["source_sha256"],
-                        state["commit"], state["image_digest"], state["gpu"])
+
+
+WEIGHTS_ONLY_GLOBALS = re.compile(r"collections\.OrderedDict|torch\._utils\._rebuild_tensor_v2|torch\.[A-Za-z0-9]+Storage")
+STORAGE_NAMES = {"float32": "FloatStorage", "float64": "DoubleStorage", "float16": "HalfStorage",
+                 "bfloat16": "BFloat16Storage", "int64": "LongStorage", "int32": "IntStorage", "bool": "BoolStorage",
+                 "uint8": "ByteStorage"}
+
+
+def remote_check_names(state: dict) -> list[str]:
+    return sorted(set(state["required_results"]) | {"exit.json", "provenance.json"})
+
+
+def _override(args: list, prefix: str) -> str | None:
+    values = [str(value).split("=", 1)[1] for value in args if str(value).startswith(prefix)]
+    return values[-1] if values else None
+
+
+def _option(args: list, flag: str) -> str | None:
+    args = list(map(str, args))
+    return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
+
+
+def encoder_signature(encoder_config: dict) -> dict[str, list]:
+    """{parameter / buffer name: [storage dtype, shape]} of the encoder an export's configuration builds (CPU; the
+    signature a strict ``load_state_dict`` of the export requires)."""
+    import torch  # noqa: F401  (lazy: only exports need it)
+
+    from s4d.model.encoder import Encoder, EncoderConfig
+    config = {**encoder_config, "backbone": "scratch", "pretrained_path": None}
+    module = Encoder(EncoderConfig(**config))
+    return {name: [STORAGE_NAMES[str(value.dtype).removeprefix("torch.")], list(value.shape)]
+            for name, value in module.state_dict().items()}
+
+
+def _verify_remote_export(state: dict, archive: dict) -> dict:
+    args = list(map(str, state.get("args", [])))
+    checkpoint, run = _option(args, "--checkpoint"), _option(args, "--run")
+    match = re.search(r"step_(\d+)\.pt$", checkpoint or "")
+    if match is None or run is None:
+        raise RemoteJobError("Export row does not name its source run and step checkpoint")
+    if (archive.get("zip_ok") is not True or archive.get("format") != "splatter4d-encoder-v1"
+            or not all(WEIGHTS_ONLY_GLOBALS.fullmatch(name) for name in archive.get("globals", [""]))):
+        raise RemoteJobError("Remote export is not an intact weights-only splatter4d encoder export")
+    if (archive.get("step") != int(match.group(1)) or archive.get("source_checkpoint") != checkpoint
+            or archive.get("run_name") != Path(run).name):
+        raise RemoteJobError("Remote export step / source checkpoint / run identity differs")
+    tensors = archive.get("state_dict") or {}
+    found = {name: [value["dtype"], list(value["shape"])] for name, value in tensors.items()}
+    if not found or archive.get("state_dict_storage_problems") or found != encoder_signature(archive["encoder_config"]):
+        raise RemoteJobError("Remote export tensors do not match the encoder its configuration builds")
+    digest = hashlib.sha256(json.dumps(found, sort_keys=True).encode()).hexdigest()
+    return {"step": archive["step"], "tensors": len(found), "signature_sha256": digest,
+            "policy_frames": archive.get("policy_frames"), "encoder_config": archive["encoder_config"]}
+
+
+def _verify_remote_exit(run_id: str, state: dict, report: dict) -> dict:
+    """In-place verification of a finished remote campaign attempt from the remote inspection report
+    (``RemoteBackend.verify_remote_artifacts``): every required result present and nonempty with its checksum, the
+    exit / provenance identity checks of the local path, the configured training budget (pretraining: completion.json
+    steps = train.steps; RL: final.json completed at train.num_train_steps), training-checkpoint archive integrity and
+    step, and for an encoder export its archive integrity, weights-only content, step / source / run identity and a
+    tensor signature equal to the encoder its configuration builds. Returns the summary recorded with the event."""
+    if validate_verification({**state, "id": run_id, "attempt": state["attempts"]}) is not None:
+        raise RemoteJobError("Verification jobs complete through their own evidence synchronization")
+    names = remote_check_names(state)
+    files = report.get("files") or {}
+    if report.get("root") != f"{REMOTE_ROOT}/runs/{run_id}" or report.get("problems") or set(files) != set(names):
+        raise RemoteJobError("Remote artifact inspection reported missing or unsafe files")
+    if any(not isinstance(value, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(value.get("sha256")))
+           or type(value.get("bytes")) is not int or value["bytes"] <= 0 for value in files.values()):
+        raise RemoteJobError("Remote artifact checksums are incomplete")
+    digests = {name: value["sha256"] for name, value in files.items()}
+    texts = report.get("payloads") or {}
+
+    def record_of(name: str) -> dict:
+        text = texts.get(name)
+        if not isinstance(text, str) or hashlib.sha256(text.encode()).hexdigest() != digests.get(name):
+            raise RemoteJobError(f"Remote {name} is missing or differs from its checksum")
+        return json.loads(text)
+    _check_exit_records(run_id, state, None, {name: str(texts.get(name, "")).encode()
+                                              for name in ("exit.json", "provenance.json")}, digests)
+    script, args, checks = Path(state.get("script", "")).name, state.get("args", []), {}
+    if script == "train.py":
+        target, completion = _override(args, "train.steps="), record_of("completion.json")
+        if target is None or completion.get("status") != "completed" or completion.get("steps") != int(target):
+            raise RemoteJobError("Remote pretraining did not complete its configured budget")
+        checks["steps"] = int(target)
+    elif script == "train_rl.py":
+        target, final = _override(args, "train.num_train_steps="), record_of("final.json")
+        if target is None or final.get("completed") is not True or final.get("steps") != int(target):
+            raise RemoteJobError("Remote RL training did not complete its configured budget")
+        checks["steps"] = int(target)
+    archives = report.get("archives") or {}
+    for name in names:
+        if name.startswith("checkpoints/") and name.endswith(".pt"):
+            archive = archives.get(name) or {}
+            if (archive.get("zip_ok") is not True or not archive.get("encoder") or archive.get("encoder_storage_problems")
+                    or ("steps" in checks and archive.get("step") != checks["steps"])):
+                raise RemoteJobError(f"Remote checkpoint {name} failed its integrity / step check")
+            checks.setdefault("checkpoints", {})[name] = {"step": archive["step"],
+                                                          "encoder_tensors": len(archive["encoder"])}
+    if script == "export_encoder.py":
+        if "encoder.pt" not in names:
+            raise RemoteJobError("Export rows must require encoder.pt")
+        checks["export"] = _verify_remote_export(state, archives.get("encoder.pt") or {})
+    return checks
+
+
+def _verify_backup(run_id: str, state: dict, backup: dict, runs: Path) -> None:
+    """A local backup completes a remote job: a checksum-verified final essential copy (scripts/sync_media.py) whose
+    files pass the local checks and, when the attempt was verified in place on the remote, carry the same checksums."""
+    if (backup.get("run_id") != run_id or backup.get("host") != "remote" or backup.get("verified") is not True
+            or backup.get("final") is not True or backup.get("scope") != ESSENTIAL):
+        raise RemoteJobError("No verified final local backup")
+    verified = state.get("remote_verified")
+    if verified is not None and (verified.get("attempt") != state["attempts"] or any(
+            backup.get("files", {}).get(name) != digest for name, digest in verified.get("files", {}).items())):
+        raise RemoteJobError("Local backup differs from the artifacts verified on the remote")
+    _verify_synced_exit(run_id, state, backup, runs)
 
 
 def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path,
@@ -458,11 +609,10 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
                         "attempt": current["attempts"], "container": current["container"], "container_id": item["Id"],
                         "commit": current["commit"], "image_digest": current["image_digest"],
                         "gpu_backend": current["gpu_backend"]}, registry)
+            if current.get("verification_purpose") is None:
+                continue  # campaign runs: live copies are made by scripts/sync_media.py, never inside the tick
             try:
-                if current.get("verification_purpose") is not None:
-                    backend.sync_verification_results(job_id, current, final=False)
-                else:  # status, logs and metrics only; bulk media are copied by scripts/sync_media.py
-                    backend.sync_results(job_id, final=False, scope=ESSENTIAL)
+                backend.sync_verification_results(job_id, current, final=False)
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 reachable = False
@@ -482,29 +632,60 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
         if current["status"] != "sync_pending":
             record({"event": "remote_exited", "id": job_id, "host": "remote", "code": 0,
                     "container_id": item["Id"]}, registry)
-        try:
-            if current.get("verification_purpose") is not None:
+        if current.get("verification_purpose") is not None:
+            try:
                 synced = backend.sync_verification_results(job_id, current, final=True)
-            elif any(Path(name).parts[0] == "checkpoints" for name in current.get("required_results", [])):
-                # only the required weights; the run's other checkpoints follow in the bulk worker (download budget)
-                synced = backend.sync_results(job_id, final=True, checkpoints=True, scope=ESSENTIAL, only_checkpoints=[
-                    name for name in current.get("required_results", []) if Path(name).parts[0] == "checkpoints"])
-            else:
-                synced = backend.sync_results(job_id, final=True, scope=ESSENTIAL)
-            _verify_synced_exit(job_id, current, synced, runs)
-            if current.get("verification_purpose") is not None:
+                _verify_synced_exit(job_id, current, synced, runs)
                 synced = {**synced, "verification_purpose": current["verification_purpose"], "campaign_eligible": False}
-        except RemoteUnreachable:
-            _host_reachability(registry, False, "RemoteUnreachable")
-            reachable = False
-            _unknown(job_id, registry, "final result sync SSH unavailable", messages)
+            except RemoteUnreachable:
+                _host_reachability(registry, False, "RemoteUnreachable")
+                reachable = False
+                _unknown(job_id, registry, "final result sync SSH unavailable", messages)
+                continue
+            except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                messages.append(f"{job_id}: final result checksums not verified; dependencies remain blocked")
+                continue
+            record({"event": "results_synced", "id": job_id, "host": "remote", "final": True, "sync": synced}, registry)
+            record({"event": "exited", "id": job_id, "host": "remote", "attempt": current["attempts"], "code": 0},
+                   registry)
+            messages.append(f"{job_id} exited with 0 on remote; results checksum verified")
             continue
-        except (RemoteJobError, OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-            messages.append(f"{job_id}: final result checksums not verified; dependencies remain blocked")
-            continue
-        record({"event": "results_synced", "id": job_id, "host": "remote", "final": True, "sync": synced}, registry)
+        # Campaign job, compute complete (2026-10-27): (1) its artifacts are verified in place on the remote host from
+        # one small inspection report, which releases same-host dependents; (2) it is done only once scripts/sync_media.py
+        # has made a checksum-verified final local backup (cross-host dependents, closeouts, container cleanup).
+        # Neither step downloads results inside the tick.
+        if (current.get("remote_verified") or {}).get("attempt") != current["attempts"]:
+            try:
+                report = backend.verify_remote_artifacts(job_id, remote_check_names(current))
+                checks = _verify_remote_exit(job_id, current, report)
+            except RemoteUnreachable:
+                _host_reachability(registry, False, "RemoteUnreachable")
+                reachable = False
+                _unknown(job_id, registry, "remote artifact check SSH unavailable", messages)
+                continue
+            except (RemoteJobError, OSError, ValueError, KeyError, TypeError, RuntimeError,
+                    subprocess.SubprocessError) as exc:
+                checks = None
+                messages.append(f"{job_id}: artifacts not verified on the remote ({str(exc)[:160]}); "
+                                "same-host dependents remain blocked")
+            if checks is not None:
+                files = {name: value["sha256"] for name, value in report["files"].items()}
+                record({"event": "remote_verified", "id": job_id, "host": "remote", "attempt": current["attempts"],
+                        "container_id": item["Id"], "files": files, "checks": checks}, registry)
+                current = {**current, "remote_verified": {"attempt": current["attempts"], "files": files,
+                                                          "checks": checks}}
+                messages.append(f"{job_id} exited with 0 on remote; artifacts verified on the remote "
+                                "(same-host dependents released; local backup pending)")
+        try:
+            backup = backend.backup_record(job_id)
+            if backup is None:
+                continue
+            _verify_backup(job_id, current, backup, runs)
+        except (RemoteJobError, OSError, ValueError, KeyError, TypeError):
+            continue  # no verified final backup yet: the job stays compute-complete (sync_pending), reserving nothing
+        record({"event": "results_synced", "id": job_id, "host": "remote", "final": True, "sync": backup}, registry)
         record({"event": "exited", "id": job_id, "host": "remote", "attempt": current["attempts"], "code": 0}, registry)
-        messages.append(f"{job_id} exited with 0 on remote; results checksum verified")
+        messages.append(f"{job_id}: local backup checksum verified; done")
     return owned, reachable
 
 
@@ -671,7 +852,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 messages.append(f"{job_id} exhausted restarts; diagnose before retrying")
     running = [{"host": current.get("host", "local"), "gpu": current["gpu"],
                 "mem_gb": reservation(current, jobs.get(job_id, {}), "mem_gb"), "pid": current.get("pid")}
-               for job_id, current in state.items() if current["status"] in ACTIVE]
+               for job_id, current in state.items() if current["status"] in RESERVING]
     try:
         usage = gpu_usage() if usage is None else usage
         sessions = {item["pid"] for item in running if item["host"] == "local"}
@@ -688,7 +869,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         host = queue["hosts"].get(host_name, {})
         ramp = 60 * float(host.get("host_ram_ramp_minutes", 10))
         for job_id, current in state.items():
-            if current.get("host", "local") == host_name and current["status"] in ACTIVE:
+            if current.get("host", "local") == host_name and current["status"] in RESERVING:
                 if now - float(current.get("since", 0)) < ramp:
                     resource["available"] -= reservation(current, jobs.get(job_id, {}), "ram_gb")
                 resource["disk_free"] -= reservation(current, jobs.get(job_id, {}), "disk_gb") * GIB
