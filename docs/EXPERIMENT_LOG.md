@@ -5036,3 +5036,44 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     disk. Version 17 holds 507 files, so later additions need consolidation first.
   - Backups: `src/page_v12.bak-20261027-chlcmp-bars/`, `site/index.v16-before-chlcmp-bars-20261027.html`,
     `src/package.py.before-chlcmp-bars-20261027` and `src/publish_map.py.before-chlcmp-bars-20261027`.
+- 15:30–16:55 (10-27) **Scheduler sync split: job admission no longer waits for bulk media (user request).**
+  - Bottleneck: every scheduler cycle copied each remote run's whole result tree, 3,444 evaluation images and videos
+    per run, one SSH connection per file, inside the registry lock. One daemon cycle took 78 min (14:18 → 15:36), and
+    finished pretrainings could not advance.
+  - Change (cfc1ce4, 6090c50; full native suite 1038/0/0/0, e5282e1):
+    - The scheduler copies only result scope "essential": status, completion records, logs, metrics, configs, arrays,
+      the required checkpoints and exports. The scope is disjoint from media.
+    - Bulk media and the remaining checkpoints moved to a separate worker, `scripts/sync_media.py`. It runs as one
+      batched, checksum-verified rsync per run, never writes the registry and admits nothing.
+    - Integrity and completion checks are unchanged.
+  - Result: cycles of about 55 s (including the 30 s sleep). The first driver pass on the new code launched six
+    exports at 16:38:06, all done by 16:39:10. The media worker takes 3–9 s per run for 3,444 files.
+- 16:35–20:35 (10-27) **Shared remote → local download budget (user request), then a lower operating value.**
+  - Change (cfaed7d, 33217a4; full native suite 1045/0/0/0, 965b72a):
+    - One budgeted download at a time (`s4d.remote_access.download_slot`), using rsync `--bwlimit` and `--timeout=300`.
+    - Dependency transfers go first: bulk work backs off when one is announced.
+    - The limit applies to checkpoints, media and W&B pulls. Callers cannot pass their own limit. It applies to new
+      transfers; downloads started without a limit are waited for, up to 900 s.
+    - The daemon was restarted at a cycle boundary: PID 1562653 exited 16:53:13, PID 1727740 started 16:53:18.
+    - Not covered: SSH command output, such as the remote checksum manifests, is outside the budget.
+  - Interim guards: plain files placed at the 14 staging paths of the unfinished encoder runs, plus 11 staged partial
+    copies moved aside, held bulk transfers back until the budget existed.
+    - Retired 20:25:29. All 28 guard files were moved, not deleted, to
+      `runs/remote/staging/.interim-guard-20261027/guard-files/`, and the 11 staged copies were restored in place.
+  - Measured with a read-only probe (scratchpad `net_probe.py`, `net_probe2.py`). It reads the campaign's SSH
+    byte counters and times TCP connects to the remote port 22 every 0.5 s. A new SSH connection pays this handshake,
+    and its replies cross the same congested remote → local leg as the downloads.
+
+    | Condition (time) | Campaign download | TCP connect median | p90 |
+    |---|---|---|---|
+    | unthrottled transfers (16:30) | 1,082 KiB/s | 1,383 ms | – |
+    | guards in place, no bulk (20:25) | 12 KiB/s | 15 ms | 16 ms |
+    | 600 KiB/s budget, first transfer (20:28) | 435 KiB/s | 1,167 ms | 4,975 ms |
+    | 300 KiB/s budget (20:36–20:40) | 275 KiB/s | 20 ms | 471 ms (max 2.9 s) |
+    | 200 KiB/s budget (20:41–20:45) | 235 KiB/s | 16 ms | 173 ms (max 1.6 s) |
+
+    - The rsync rate itself was flat at the limit. At 300 KiB/s, latency spikes came and went while our rate stayed
+      constant, so other traffic shares the path, and 600 KiB/s leaves no headroom.
+    - Multiplexed campaign SSH commands stayed at 0.07–0.2 s throughout.
+  - Operating value: **200 KiB/s** from 20:41, set in the override file `runs/remote/access/download-budget.json`.
+    This is inside the authorized 600 KiB/s cap. Deleting the file restores 600; the user decides.
