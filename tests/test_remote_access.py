@@ -444,7 +444,7 @@ class RemoteAccessTests(unittest.TestCase):
         text = access.sha256(metric) + "  ./metrics.json\n"
         with patch.object(self.client, "ensure_remote_path", side_effect=lambda p, **kw: self.client.remote_path(p)), \
                 patch.object(self.client, "checked_ssh", return_value=self.result(stdout=text)) as manifest, \
-                patch.object(self.client, "rsync_download") as download:
+                patch.object(self.client, "download_batch") as download:
             result = self.client.sync_results(run_id, final=True)
         self.assertTrue(result["verified"])
         self.assertTrue(result["final"])
@@ -468,13 +468,15 @@ class RemoteAccessTests(unittest.TestCase):
         def manifest(command, **kwargs):
             return subprocess.run(["sh", "-c", command], capture_output=True, text=True, check=True)
 
-        def download(source, destination, **kwargs):
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(Path(source).read_bytes())
+        def download(source, local, wanted, name, **kwargs):
+            for relative in wanted:
+                destination = local / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((Path(source) / relative).read_bytes())
 
         with patch.object(self.client, "ensure_remote_path", return_value=str(remote)), \
                 patch.object(self.client, "checked_ssh", side_effect=manifest) as snapshots, \
-                patch.object(self.client, "rsync_download", side_effect=download):
+                patch.object(self.client, "download_batch", side_effect=download):
             result = self.client.sync_results("baseline", checkpoints=False, final=True)
             self.assertEqual(result["files"], {"encoder.pt": access.sha256(remote / "encoder.pt")})
             self.assertNotIn("-name '*.pt'", snapshots.call_args.args[0])
@@ -491,13 +493,13 @@ class RemoteAccessTests(unittest.TestCase):
         before = access.sha256(content) + "  ./metrics.json\n"
         after = "0" * 64 + "  ./metrics.json\n"
 
-        def download(remote, local, **kwargs):
-            local.write_text("before")
+        def download(remote, local, wanted, name, **kwargs):
+            (local / "metrics.json").write_text("before")
 
         responses = [self.result(stdout=before), self.result(stdout=after)]
         with patch.object(self.client, "ensure_remote_path", side_effect=lambda p, **kw: self.client.remote_path(p)), \
                 patch.object(self.client, "checked_ssh", side_effect=responses), \
-                patch.object(self.client, "rsync_download", side_effect=download):
+                patch.object(self.client, "download_batch", side_effect=download):
             with self.assertRaisesRegex(access.RemoteCommandError, "changed"):
                 self.client.sync_results(run_id, final=True)
         marker = json.loads((self.client.network_dir / "results" / (run_id + ".json")).read_text())
@@ -510,16 +512,16 @@ class RemoteAccessTests(unittest.TestCase):
         source.write_text("data")
         text = access.sha256(source) + "  ./metrics.json\n"
 
-        def download(remote, local, **kwargs):
+        def download(remote, local, wanted, name, **kwargs):
             self.assertFalse(kwargs["wait"])
-            local.write_text("data")
+            (local / "metrics.json").write_text("data")
 
         with (
             patch.object(
                 self.client, "ensure_remote_path", side_effect=lambda p, **kw: self.client.remote_path(p),
             ) as validate,
             patch.object(self.client, "checked_ssh", return_value=self.result(stdout=text)) as snapshots,
-            patch.object(self.client, "rsync_download", side_effect=download),
+            patch.object(self.client, "download_batch", side_effect=download),
         ):
             self.client.sync_results(run_id, final=True, wait=False)
         self.assertFalse(validate.call_args.kwargs["wait"])
@@ -543,6 +545,82 @@ class RemoteAccessTests(unittest.TestCase):
                 patch.object(self.client, "checked_ssh", return_value=self.result()):
             with self.assertRaisesRegex(access.RemoteCommandError, "empty"):
                 self.client.sync_results("empty", final=True)
+
+    def remote_fixture(self, files):
+        remote = self.repo / "remote-run"
+        for relative, content in files.items():
+            path = remote / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        return remote
+
+    def fake_rsync(self, remote, calls):
+        """Stand-in for _rsync: copies the --files-from list from the local stand-in remote into the target."""
+        def transfer(source, target, extra=None, wait=True):
+            calls.append((source, target, list(extra or []), wait))
+            listing = Path([arg for arg in extra if arg.startswith("--files-from=")][0].split("=", 1)[1])
+            for relative in listing.read_text().splitlines():
+                destination = Path(target) / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes((remote / relative).read_bytes())
+        return transfer
+
+    def test_batched_download_uses_one_connection_and_places_only_verified_files(self):
+        remote = self.remote_fixture({"eval/step_1/a.png": b"a", "eval/step_1/b.png": b"b", "metrics.jsonl": b"m"})
+        local = self.repo / "runs" / "batched"
+        local.mkdir(parents=True)
+        digest = lambda relative: access.sha256(remote / relative)  # noqa: E731
+        wanted = {"eval/step_1/a.png": digest("eval/step_1/a.png"), "eval/step_1/b.png": digest("eval/step_1/b.png"),
+                  "metrics.jsonl": "0" * 64}  # metrics.jsonl changed after the manifest: it must not be placed
+        calls = []
+        with patch.object(self.client, "_rsync", side_effect=self.fake_rsync(remote, calls)):
+            placed = self.client.download_batch(str(remote), local, wanted, "batched-media", wait=False)
+        self.assertEqual(len(calls), 1)
+        source, target, extra, wait = calls[0]
+        self.assertTrue(source.endswith(str(remote) + "/") and not wait)
+        self.assertEqual(Path(target), self.client.network_dir / "staging" / "batched-media")
+        self.assertEqual(placed, ["eval/step_1/a.png", "eval/step_1/b.png"])
+        self.assertEqual((local / "eval/step_1/b.png").read_bytes(), b"b")
+        self.assertFalse((local / "metrics.jsonl").exists())
+        self.assertTrue((self.client.network_dir / "staging" / "batched-media" / "metrics.jsonl").exists())
+        with self.assertRaises(ValueError):
+            self.client.download_batch(str(remote), local, {"x.png": "0" * 64}, "../escape")
+
+    def test_essential_and_media_scopes_split_the_result_set_with_separate_records_and_locks(self):
+        remote = self.remote_fixture({"metrics.jsonl": b"m", "encoder.pt": b"w", "eval/step_1/motion.png": b"p",
+                                      "eval/step_1/summary.json": b"{}", "media/clip.mp4": b"v"})
+
+        def manifest(command, **kwargs):
+            return subprocess.run(["sh", "-c", command], capture_output=True, text=True, check=True)
+
+        calls = []
+        with patch.object(self.client, "ensure_remote_path", return_value=str(remote)), \
+                patch.object(self.client, "checked_ssh", side_effect=manifest), \
+                patch.object(self.client, "_rsync", side_effect=self.fake_rsync(remote, calls)):
+            essential = self.client.sync_results("split", final=True, scope="essential")
+            self.assertEqual(set(essential["files"]), {"metrics.jsonl", "encoder.pt", "eval/step_1/summary.json"})
+            self.assertFalse((self.repo / "runs/split/eval/step_1/motion.png").exists())
+            media = self.client.sync_results("split", final=True, scope="media")
+            self.assertEqual(set(media["files"]), {"eval/step_1/motion.png", "media/clip.mp4"})
+            everything = self.client.sync_results("split", final=True)
+        self.assertEqual(len(calls), 2)  # one batch per scope; the "all" pass finds everything already in place
+        self.assertEqual(set(everything["files"]), set(essential["files"]) | set(media["files"]))
+        self.assertEqual((essential["scope"], media["scope"], everything["scope"]), ("essential", "media", "all"))
+        record = json.loads((self.client.network_dir / "results-media" / "split.json").read_text())
+        self.assertTrue(record["verified"] and record["final"] and record["scope"] == "media")
+        self.assertEqual(json.loads((self.client.network_dir / "results" / "split.json").read_text())["scope"], "all")
+        self.assertTrue((self.client.state_dir / "media-split.lock").exists())
+        self.assertTrue((self.client.state_dir / "results-split.lock").exists())
+        with self.assertRaises(ValueError):
+            self.client.sync_results("split", scope="images")
+
+    def test_final_media_sync_of_a_run_without_media_is_complete(self):
+        with patch.object(self.client, "ensure_remote_path", side_effect=lambda p, **kw: self.client.remote_path(p)), \
+                patch.object(self.client, "checked_ssh", return_value=self.result()):
+            result = self.client.sync_results("no-media", final=True, scope="media")
+            self.assertTrue(result["verified"] and result["final"] and result["files"] == {})
+            with self.assertRaisesRegex(access.RemoteCommandError, "empty"):
+                self.client.sync_results("no-media", final=True, scope="essential")
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ class FakeBackend:
         self.runs = runs
         self.value = remote.RemoteSnapshot({uuid: [] for uuid in APPROVED_HOST_GPUS["remote"]},
                                            200, 1000 * GIB, 800 * GIB, {})
-        self.launches, self.syncs = [], []
+        self.launches, self.syncs, self.scopes = [], [], []
         self.snapshot_error = self.launch_error = self.sync_error = self.ready_error = self.remove_error = None
         self.removals = []
         self.registry = runs.parent / "registry.jsonl"
@@ -120,8 +120,9 @@ class FakeBackend:
             return {"absent": True}
         return {"removed": True, "log_sha256": "0" * 64, "inspect_sha256": "1" * 64}
 
-    def sync_results(self, run_id, final=False, checkpoints=False):
+    def sync_results(self, run_id, final=False, checkpoints=False, scope="all"):
         self.syncs.append((run_id, final))
+        self.scopes.append(scope)
         if self.sync_error:
             raise self.sync_error
         current = jobs.read_registry(self.registry)[run_id]
@@ -313,7 +314,7 @@ def test_container_code_zero_without_matching_exit_file_blocks_dependencies(tmp_
     launch_event(tmp_path)
     original = backend.sync_results
 
-    def mismatched(run_id, final=False):
+    def mismatched(run_id, final=False, scope="all"):
         result = original(run_id, final)
         path = backend.runs / run_id / "exit.json"
         report = json.loads(path.read_text())
@@ -336,7 +337,7 @@ def test_wrapper_only_results_do_not_unblock_dependencies(tmp_path, monkeypatch)
     launch_event(tmp_path)
     original = backend.sync_results
 
-    def wrapper_only(run_id, final=False):
+    def wrapper_only(run_id, final=False, scope="all"):
         result = original(run_id, final)
         result["files"].pop("metrics.jsonl")
         (backend.runs / run_id / "metrics.jsonl").unlink()
@@ -367,8 +368,8 @@ def test_final_numerical_provenance_must_match_declared_identity(tmp_path, monke
     launch_event(tmp_path)
     original = backend.sync_results
 
-    def altered(run_id, final=False):
-        result = original(run_id, final)
+    def altered(run_id, final=False, scope="all"):
+        result = original(run_id, final, scope=scope)
         path = backend.runs / run_id / "provenance.json"
         report = json.loads(path.read_text())
         report.update(numeric_config={"train": {"seed": 0, "steps": 10}}, config_sha256="0" * 64)
@@ -391,8 +392,8 @@ def test_explicit_checkpoint_requirement_requests_checkpoint_transfer(tmp_path, 
     launch_event(tmp_path, required_results=required)
     original, flags = backend.sync_results, []
 
-    def transfer(run_id, final=False, checkpoints=False):
-        flags.append(checkpoints)
+    def transfer(run_id, final=False, checkpoints=False, scope="all"):
+        flags.append((checkpoints, scope))
         result = original(run_id, final)
         if checkpoints:
             path = backend.runs / run_id / "checkpoints/final.pt"
@@ -404,7 +405,8 @@ def test_explicit_checkpoint_requirement_requests_checkpoint_transfer(tmp_path, 
 
     monkeypatch.setattr(backend, "sync_results", transfer)
     tick(tmp_path, queued, backend)
-    assert flags == [True] and jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done"
+    # the final scheduler sync carries checkpoints but not bulk media (scripts/sync_media.py copies those)
+    assert flags == [(True, "essential")] and jobs.read_registry(tmp_path / "registry.jsonl")["r"]["status"] == "done"
 
 
 def test_nonzero_exit_is_failed_only_after_observation(tmp_path):
@@ -1317,3 +1319,25 @@ def test_cleared_keep_records_reenable_cleanup(tmp_path):
     state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
     assert len(backend.removals) == 2 and state["containers_removed"] == [CONTAINER_ID]
     assert state["containers_kept"] == []
+
+
+def test_scheduler_syncs_only_essential_results_and_admits_dependents_without_media(tmp_path, monkeypatch):
+    """Live and final scheduler syncs use scope "essential" (status, completion records, metrics, checkpoints,
+    exports); bulk evaluation media are left to scripts/sync_media.py, so a dependent local job is admitted in the
+    same tick that verifies the remote job's completion."""
+    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"])])
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path, "active")
+    backend.value.containers["s4d-active-a1"] = inspected("active", status="running")
+    monkeypatch.setattr(jobs, "mig_query", lambda devices, state_dir, timeout: {
+        uuid: {"processes": []} for uuid in devices})
+    launched = []
+    monkeypatch.setattr(jobs, "launch", lambda job_row, gpu, attempt, runs: launched.append(job_row["id"]) or 4242)
+    monkeypatch.setattr(jobs, "source_identity", lambda: {"commit": COMMIT, "source_sha256": {}})
+    tick(tmp_path, queued, backend)
+    assert backend.syncs == [("active", False)] and backend.scopes == ["essential"] and not launched
+    backend.value.containers["s4d-active-a1"] = inspected("active", status="exited")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")
+    assert backend.syncs[-1] == ("active", True) and backend.scopes == ["essential", "essential"]
+    assert state["active"]["status"] == "done" and launched == ["after"]

@@ -20,6 +20,11 @@ REMOTE_USER = "compu"
 REMOTE_ROOT = "/home/compu/kaist/sunho"
 DATA_ROOT = Path("/home/ws/data/metaworld/splatter4d_v1")
 CREDENTIAL_KEYS = {"SSH_HOST", "SSH_USER", "SSH_PASSWORD", "REMOTE_ROOT"}
+# Result-sync scopes (2026-10-27). "essential" is what job admission needs: status, logs, metrics, configs, arrays and
+# (with checkpoints=True) checkpoints and exports. "media" is the bulk evaluation imagery and video, copied by the
+# separate scripts/sync_media.py worker so that it never delays admission. "all" is the union (the former behaviour).
+MEDIA_NAMES = ("*.png", "*.jpg", "*.jpeg", "*.gif", "*.mp4", "*.pdf", "*.html")
+RESULT_SCOPES = ("all", "essential", "media")
 
 
 class RemoteUnreachable(RuntimeError):
@@ -321,6 +326,38 @@ class RemoteClient:
         self._local_path(local)
         os.replace(partial, local)
 
+    def download_batch(self, remote: str, local: Path, wanted: dict[str, str], name: str, wait: bool = True) -> list[str]:
+        """Copy many files of one remote directory in a single rsync connection (``--files-from``).
+
+        ``wanted`` maps paths relative to ``remote`` (from a ``_result_manifest``, so regular files under real
+        directories) to their manifest SHA-256. Files land in a per-run staging directory (partial files are kept and
+        resumed), and each is moved into ``local`` only if its SHA-256 equals the manifest digest; a file that changed
+        on the remote meanwhile stays in staging and is retried by the next sync. The caller's after-manifest check
+        decides whether the synchronized set is complete. Returns the relative paths that were placed."""
+        if not wanted:
+            return []
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
+            raise ValueError("Unsafe staging name")
+        base = self._local_path(local)
+        staging = self._local_path(self.network_dir / "staging" / name)
+        staging.mkdir(parents=True, exist_ok=True)
+        for relative in wanted:
+            self._local_path(staging / relative)
+            self._local_path(base / relative)
+        listing = self._local_path(self.network_dir / "staging" / (name + ".files"))
+        listing.write_text("".join(relative + "\n" for relative in sorted(wanted)))
+        self._rsync(f"{self.target}:{remote}/", str(staging) + "/", extra=["--files-from=" + str(listing)], wait=wait)
+        placed = []
+        for relative, digest in sorted(wanted.items()):
+            staged = self._local_path(staging / relative)
+            if not staged.is_file() or staged.is_symlink() or sha256(staged) != digest:
+                continue
+            destination = self._local_path(base / relative)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(staged, destination)
+            placed.append(relative)
+        return placed
+
     def _git(self, *args: str, timeout: float = 90, cwd: Path | None = None) -> str:
         env = {k: v for k, v in os.environ.items() if k not in CREDENTIAL_KEYS | {"SSHPASS"}}
         result = subprocess.run(["git", "-C", str(cwd or self.repo), *args], capture_output=True, text=True, env=env,
@@ -523,40 +560,54 @@ class RemoteClient:
             entries[relative] = digest
         return entries
 
-    def sync_results(self, run_id: str, checkpoints: bool = False, final: bool = False, wait: bool = True) -> dict:
+    def sync_results(self, run_id: str, checkpoints: bool = False, final: bool = False, wait: bool = True,
+                     scope: str = "all") -> dict:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", run_id):
             raise ValueError("Unsafe run id")
-        with (self.state_dir / ("results-" + run_id + ".lock")).open("a") as lock:
+        if scope not in RESULT_SCOPES:
+            raise ValueError("Unknown result-sync scope")
+        # Media copies use their own lock: their file set is disjoint from the essential one, so the bulk worker never
+        # blocks a scheduler sync of the same run.
+        lock_name = ("media-" if scope == "media" else "results-") + run_id + ".lock"
+        with (self.state_dir / lock_name).open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            return self._sync_results(run_id, checkpoints, final, wait)
+            return self._sync_results(run_id, checkpoints, final, wait, scope)
 
-    def _sync_results(self, run_id: str, checkpoints: bool, final: bool, wait: bool) -> dict:
+    def _sync_results(self, run_id: str, checkpoints: bool, final: bool, wait: bool, scope: str = "all") -> dict:
         remote = self.ensure_remote_path("runs/" + run_id, wait=wait)
         local = self._local_path(self.main_repo / "runs" / run_id)
         local.mkdir(parents=True, exist_ok=True)
         excluded = ["replay", "wandb", ".cache"] + ([] if checkpoints else ["checkpoints", "snapshots"])
         names = ["exit_code", "*.json", "*.jsonl", "*.yaml", "*.yml", "*.txt", "*.log", "*.csv",
-                 "*.png", "*.jpg", "*.jpeg", "*.gif", "*.mp4", "*.pdf", "*.html", "*.npz"]
+                 *MEDIA_NAMES, "*.npz"]
         if checkpoints:
             names += ["*.pt", "*.pth", "*.ckpt"]
+        if scope == "essential":
+            names = [name for name in names if name not in MEDIA_NAMES]
+        elif scope == "media":
+            names = list(MEDIA_NAMES)
         pruned = " -o ".join("-name " + shlex.quote(name) for name in excluded)
         patterns = " -o ".join("-name " + shlex.quote(name) for name in names)
-        patterns += " -o -path './encoder.pt' -o -path './encoder_init.pt' -o -path './exports/*'"
+        if scope != "media":
+            patterns += " -o -path './encoder.pt' -o -path './encoder_init.pt' -o -path './exports/*'"
         manifest_cmd = ("set -eu; cd " + shlex.quote(remote) + "; find . -type d \\( " + pruned
                         + " \\) -prune -o -type f \\( " + patterns + " \\) -exec sha256sum -- {} +")
         before = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
-        if final and not before:
+        if final and not before and scope != "media":
             raise RemoteCommandError("Final result snapshot is empty")
         for relative in before:
             self._local_path(local / relative)
-        output = self.network_dir / "results" / (run_id + ".json")
+        output = self.network_dir / ("results-media" if scope == "media" else "results") / (run_id + ".json")
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps({"run_id": run_id, "host": "remote", "verified": False,
+        output.write_text(json.dumps({"run_id": run_id, "host": "remote", "verified": False, "scope": scope,
                                       "final": False, "sync_started_at": datetime.now(timezone.utc).isoformat()}))
+        wanted = {}
         for relative, digest in before.items():
             destination = self._local_path(local / relative)
             if not destination.is_file() or sha256(destination) != digest:
-                self.rsync_download(remote + "/" + relative, destination, wait=wait)
+                wanted[relative] = digest
+        if wanted:
+            self.download_batch(remote, local, wanted, run_id + "-" + scope, wait=wait)
         after = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
         if final and before != after:
             raise RemoteCommandError("Final results changed during synchronization")
@@ -564,7 +615,7 @@ class RemoteClient:
             path = self._local_path(local / relative)
             if not path.is_file() or sha256(path) != digest:
                 raise RemoteCommandError("Result checksum mismatch; results are not decision-ready")
-        result = {"run_id": run_id, "host": "remote", "verified": True,
+        result = {"run_id": run_id, "host": "remote", "verified": True, "scope": scope,
                   "verified_at": datetime.now(timezone.utc).isoformat(), "final": final, "files": after}
         temp = output.with_suffix(".tmp")
         temp.write_text(json.dumps(result, indent=2, sort_keys=True))
@@ -588,6 +639,7 @@ def main() -> int:
     results.add_argument("run_id")
     results.add_argument("--checkpoint", "--checkpoints", action="store_true")
     results.add_argument("--final", action="store_true")
+    results.add_argument("--scope", choices=RESULT_SCOPES, default="all")
     args = parser.parse_args()
     try:
         client = RemoteClient()
@@ -609,7 +661,7 @@ def main() -> int:
         elif args.command == "sync-data":
             print(json.dumps(client.sync_data(args.manifest), indent=2))
         else:
-            print(json.dumps(client.sync_results(args.run_id, args.checkpoint, args.final), indent=2))
+            print(json.dumps(client.sync_results(args.run_id, args.checkpoint, args.final, scope=args.scope), indent=2))
         return 0
     except RemoteUnreachable as exc:
         print(str(exc), file=sys.stderr)

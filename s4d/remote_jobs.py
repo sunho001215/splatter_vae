@@ -660,9 +660,9 @@ class RemoteBackend:
             return payload
         raise RemoteJobError("Container removal returned an unexpected result")
 
-    def sync_results(self, run_id: str, *, final: bool = False, checkpoints: bool = False) -> dict:
+    def sync_results(self, run_id: str, *, final: bool = False, checkpoints: bool = False, scope: str = "all") -> dict:
         try:
-            result = self.client.sync_results(run_id, checkpoints=checkpoints, final=final, wait=False)
+            result = self.client.sync_results(run_id, checkpoints=checkpoints, final=final, wait=False, scope=scope)
         except RemoteUnreachable:
             self._save_snapshot(reachable=False, query_ok=False)
             raise

@@ -36,6 +36,9 @@ GIB = 2**30
 GUARD_CALL = re.compile(r"^(\w+\s*=\s*)?(guard_gpus|enforce_allowed_gpus)\(\)\s*$", re.MULTILINE)
 DONE, FAILED, RUNNING, PENDING = "done", "failed", "running", "pending"
 ACTIVE = {RUNNING, "launching", "sync_pending"}
+# Remote result syncs inside the scheduler tick copy only what advances dependencies (status, completion records,
+# metrics, checkpoints, exports); bulk evaluation media follow in scripts/sync_media.py (2026-10-27).
+ESSENTIAL = "essential"
 HOST_EVENT_ID = "__host_remote__"
 
 
@@ -458,8 +461,8 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             try:
                 if current.get("verification_purpose") is not None:
                     backend.sync_verification_results(job_id, current, final=False)
-                else:
-                    backend.sync_results(job_id, final=False)
+                else:  # status, logs and metrics only; bulk media are copied by scripts/sync_media.py
+                    backend.sync_results(job_id, final=False, scope=ESSENTIAL)
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 reachable = False
@@ -483,9 +486,9 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             if current.get("verification_purpose") is not None:
                 synced = backend.sync_verification_results(job_id, current, final=True)
             elif any(Path(name).parts[0] == "checkpoints" for name in current.get("required_results", [])):
-                synced = backend.sync_results(job_id, final=True, checkpoints=True)
+                synced = backend.sync_results(job_id, final=True, checkpoints=True, scope=ESSENTIAL)
             else:
-                synced = backend.sync_results(job_id, final=True)
+                synced = backend.sync_results(job_id, final=True, scope=ESSENTIAL)
             _verify_synced_exit(job_id, current, synced, runs)
             if current.get("verification_purpose") is not None:
                 synced = {**synced, "verification_purpose": current["verification_purpose"], "campaign_eligible": False}
