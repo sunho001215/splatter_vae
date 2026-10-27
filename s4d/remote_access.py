@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -254,8 +255,9 @@ class RemoteClient:
             raise ValueError("Local transfer path is outside authorized repository/data roots")
         return resolved
 
-    def _rsync(self, source: str, target: str, extra: list[str] | None = None, wait: bool = True) -> None:
-        args = ["rsync", "-rt", "--partial", "--append-verify", "--checksum", "--protect-args",
+    def _rsync(self, source: str, target: str, extra: list[str] | None = None, wait: bool = True,
+               append: bool = True, accept: tuple[int, ...] = (0,)) -> None:
+        args = ["rsync", "-rt", "--partial", *(["--append-verify"] if append else []), "--checksum", "--protect-args",
                 "-e", shlex.join(self.ssh_args()), *(extra or []), "--", source, target]
         if any(self.credentials.password in arg for arg in args):
             raise ValueError("Credential must not appear in transfer arguments")
@@ -268,7 +270,7 @@ class RemoteClient:
                 if attempt < 2:
                     continue
                 raise RemoteUnreachable("Transfer timed out; no remote job state changed") from None
-            if result.returncode == 0:
+            if result.returncode in accept:
                 self._network_event(True)
                 return
             if result.returncode in (10, 12, 30, 35, 255):
@@ -346,7 +348,12 @@ class RemoteClient:
             self._local_path(base / relative)
         listing = self._local_path(self.network_dir / "staging" / (name + ".files"))
         listing.write_text("".join(relative + "\n" for relative in sorted(wanted)))
-        self._rsync(f"{self.target}:{remote}/", str(staging) + "/", extra=["--files-from=" + str(listing)], wait=wait)
+        # No append mode: a stale staged copy (rejected earlier, or of a file rewritten since) may be as long as the
+        # source, which --append would skip forever; rsync's delta transfer updates it and still resumes partials.
+        # Exit 23/24 (some files unreadable or vanished) are accepted here: the per-file digest check below and the
+        # caller's after-manifest check decide what is synchronized.
+        self._rsync(f"{self.target}:{remote}/", str(staging) + "/", extra=["--files-from=" + str(listing)], wait=wait,
+                    append=False, accept=(0, 23, 24))
         placed = []
         for relative, digest in sorted(wanted.items()):
             staged = self._local_path(staging / relative)
@@ -568,9 +575,12 @@ class RemoteClient:
             raise ValueError("Unknown result-sync scope")
         # Media copies use their own lock: their file set is disjoint from the essential one, so the bulk worker never
         # blocks a scheduler sync of the same run.
-        lock_name = ("media-" if scope == "media" else "results-") + run_id + ".lock"
-        with (self.state_dir / lock_name).open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        # Scope "all" covers both sets and takes both locks, always results- before media-.
+        names = {"essential": ["results-"], "media": ["media-"], "all": ["results-", "media-"]}[scope]
+        with contextlib.ExitStack() as stack:
+            for prefix in names:
+                lock = stack.enter_context((self.state_dir / (prefix + run_id + ".lock")).open("a"))
+                fcntl.flock(lock, fcntl.LOCK_EX)
             return self._sync_results(run_id, checkpoints, final, wait, scope)
 
     def _sync_results(self, run_id: str, checkpoints: bool, final: bool, wait: bool, scope: str = "all") -> dict:
@@ -590,6 +600,9 @@ class RemoteClient:
         patterns = " -o ".join("-name " + shlex.quote(name) for name in names)
         if scope != "media":
             patterns += " -o -path './encoder.pt' -o -path './encoder_init.pt' -o -path './exports/*'"
+        if scope == "essential":  # disjoint from the media scope everywhere, exports/ included
+            media = " -o ".join("-name " + shlex.quote(name) for name in MEDIA_NAMES)
+            patterns = "\\( " + patterns + " \\) ! \\( " + media + " \\)"
         manifest_cmd = ("set -eu; cd " + shlex.quote(remote) + "; find . -type d \\( " + pruned
                         + " \\) -prune -o -type f \\( " + patterns + " \\) -exec sha256sum -- {} +")
         before = self._result_manifest(self.checked_ssh(manifest_cmd, idempotent=True, wait=wait).stdout, excluded)
