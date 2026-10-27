@@ -127,6 +127,7 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                            attempts=max(job["attempts"], event["attempt"]), since=event["time"], unknown=False)
                 job.pop("sync", None)
                 job.pop("remote_verified", None)  # recorded only after an exit, so a launch always starts a new attempt
+                job.pop("remote_verification_failed", None)
                 if kind == "launched" and event.get("container_id"):
                     job.setdefault("attempt_containers", {})[str(event["attempt"])] = {
                         "container": event.get("container"), "container_id": event["container_id"]}
@@ -141,6 +142,10 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                 # same-host dependents; the job becomes done only after its local backup is verified (2026-10-27)
                 job["remote_verified"] = {key: event[key] for key in ("attempt", "files", "checks") if key in event}
                 job["unknown"] = False
+                job.pop("remote_verification_failed", None)
+            elif kind == "remote_verification_failed":  # content check failed: the job cannot complete until resolved
+                job["remote_verification_failed"] = {"attempt": event.get("attempt"), "time": event["time"],
+                                                     "reason": event.get("reason", "")}
             elif kind == "container_removed":
                 job.setdefault("containers_removed", []).append(event.get("container_id"))
             elif kind == "container_kept":
@@ -467,6 +472,7 @@ def _check_exit_records(run_id: str, state: dict, purpose: str | None, payloads:
 
 
 WEIGHTS_ONLY_GLOBALS = re.compile(r"collections\.OrderedDict|torch\._utils\._rebuild_tensor_v2|torch\.[A-Za-z0-9]+Storage")
+REMOTE_RECHECK_SECONDS = 300  # a failed in-place verification of the same attempt is retried at most this often
 STORAGE_NAMES = {"float32": "FloatStorage", "float64": "DoubleStorage", "float16": "HalfStorage",
                  "bfloat16": "BFloat16Storage", "int64": "LongStorage", "int32": "IntStorage", "bool": "BoolStorage",
                  "uint8": "ByteStorage"}
@@ -560,11 +566,12 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict) -> dict:
     for name in names:
         if name.startswith("checkpoints/") and name.endswith(".pt"):
             archive = archives.get(name) or {}
-            if (archive.get("zip_ok") is not True or not archive.get("encoder") or archive.get("encoder_storage_problems")
+            if (archive.get("zip_ok") is not True or archive.get("encoder_storage_problems")
+                    or (script == "train.py" and not archive.get("encoder"))
                     or ("steps" in checks and archive.get("step") != checks["steps"])):
                 raise RemoteJobError(f"Remote checkpoint {name} failed its integrity / step check")
-            checks.setdefault("checkpoints", {})[name] = {"step": archive["step"],
-                                                          "encoder_tensors": len(archive["encoder"])}
+            checks.setdefault("checkpoints", {})[name] = {"step": archive.get("step"),
+                                                          "encoder_tensors": len(archive.get("encoder") or {})}
     if script == "export_encoder.py":
         if "encoder.pt" not in names:
             raise RemoteJobError("Export rows must require encoder.pt")
@@ -573,14 +580,15 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict) -> dict:
 
 
 def _verify_backup(run_id: str, state: dict, backup: dict, runs: Path) -> None:
-    """A local backup completes a remote job: a checksum-verified final essential copy (scripts/sync_media.py) whose
-    files pass the local checks and, when the attempt was verified in place on the remote, carry the same checksums."""
+    """A local backup completes a remote job: a checksum-verified final essential copy (scripts/sync_media.py) of an
+    attempt verified in place on the remote, carrying the same checksums and passing the local checks."""
     if (backup.get("run_id") != run_id or backup.get("host") != "remote" or backup.get("verified") is not True
             or backup.get("final") is not True or backup.get("scope") != ESSENTIAL):
         raise RemoteJobError("No verified final local backup")
     verified = state.get("remote_verified")
-    if verified is not None and (verified.get("attempt") != state["attempts"] or any(
-            backup.get("files", {}).get(name) != digest for name, digest in verified.get("files", {}).items())):
+    if verified is None or verified.get("attempt") != state["attempts"]:
+        raise RemoteJobError("The attempt was not verified in place on the remote; a backup alone cannot complete it")
+    if any(backup.get("files", {}).get(name) != digest for name, digest in verified.get("files", {}).items()):
         raise RemoteJobError("Local backup differs from the artifacts verified on the remote")
     _verify_synced_exit(run_id, state, backup, runs)
 
@@ -654,7 +662,10 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
         # one small inspection report, which releases same-host dependents; (2) it is done only once scripts/sync_media.py
         # has made a checksum-verified final local backup (cross-host dependents, closeouts, container cleanup).
         # Neither step downloads results inside the tick.
-        if (current.get("remote_verified") or {}).get("attempt") != current["attempts"]:
+        failed = current.get("remote_verification_failed") or {}
+        recheck = (failed.get("attempt") != current["attempts"]
+                   or time.time() - float(failed.get("time", 0)) >= REMOTE_RECHECK_SECONDS)
+        if (current.get("remote_verified") or {}).get("attempt") != current["attempts"] and recheck:
             try:
                 report = backend.verify_remote_artifacts(job_id, remote_check_names(current))
                 checks = _verify_remote_exit(job_id, current, report)
@@ -666,8 +677,11 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
             except (RemoteJobError, OSError, ValueError, KeyError, TypeError, RuntimeError,
                     subprocess.SubprocessError) as exc:
                 checks = None
-                messages.append(f"{job_id}: artifacts not verified on the remote ({str(exc)[:160]}); "
-                                "same-host dependents remain blocked")
+                reason = f"{type(exc).__name__}: {str(exc)[:300]}"
+                record({"event": "remote_verification_failed", "id": job_id, "host": "remote",
+                        "attempt": current["attempts"], "reason": reason}, registry)
+                messages.append(f"{job_id}: artifacts not verified on the remote ({reason[:160]}); the job cannot "
+                                "complete and its dependents remain blocked (rechecked every 5 min)")
             if checks is not None:
                 files = {name: value["sha256"] for name, value in report["files"].items()}
                 record({"event": "remote_verified", "id": job_id, "host": "remote", "attempt": current["attempts"],

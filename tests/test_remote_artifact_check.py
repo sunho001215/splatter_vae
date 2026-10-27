@@ -36,13 +36,15 @@ def test_reports_checksums_small_records_and_archive_structure(tmp_path):
 
 
 def test_missing_symlinked_outside_and_corrupt_files_are_reported(tmp_path):
+    (tmp_path / "outside.json").write_text("{}")
+    tmp_path = tmp_path / "run"
+    tmp_path.mkdir()
     torch.save({"step": 1, "encoder": {"a": torch.zeros(1000)}}, tmp_path / "good.pt")
     data = bytearray((tmp_path / "good.pt").read_bytes())
     data[len(data) // 2] ^= 0xFF  # flip one byte inside the tensor data: the member CRC fails
     (tmp_path / "corrupt.pt").write_bytes(bytes(data))
     (tmp_path / "truncated.pt").write_bytes(bytes(data[: len(data) // 3]))
     os.symlink(tmp_path / "good.pt", tmp_path / "link.pt")
-    (tmp_path.parent / "outside.json").write_text("{}")
     names = ["missing.json", "link.pt", "../outside.json", "corrupt.pt", "truncated.pt"]
     report = check.inspect_run(str(tmp_path), names)
     assert [p["name"] for p in report["problems"]] == ["missing.json", "link.pt", "../outside.json"]

@@ -319,6 +319,7 @@ def test_remote_success_waits_for_checksum_sync_and_exit_identity(tmp_path, monk
     backend.sync_error = remote.RemoteJobError("checksum mismatch")
     launch_event(tmp_path)
     monkeypatch.setattr(jobs, "pid_alive", lambda _: pytest.fail("remote PID checked"))
+    monkeypatch.setattr(jobs, "REMOTE_RECHECK_SECONDS", 0)  # the failed check is retried on the next tick
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")
     assert state["r"]["status"] == "sync_pending" and not backend.launches
@@ -1422,7 +1423,7 @@ def test_failed_remote_verification_keeps_same_host_dependents_blocked(tmp_path)
     messages = tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")
     assert state["r"]["status"] == "sync_pending" and "remote_verified" not in state["r"] and not backend.launches
-    assert any("same-host dependents remain blocked" in message for message in messages)
+    assert any("dependents remain blocked" in message for message in messages)
 
 
 def test_remote_verification_belongs_to_its_attempt(tmp_path):
@@ -1495,3 +1496,21 @@ def test_remote_export_must_be_a_weights_only_export_of_its_source_with_the_conf
                     {"format": "other"}, {"encoder_config": wider}, {"extra": datetime.timedelta(days=1)}):
         with pytest.raises(remote.RemoteJobError):
             jobs._verify_remote_export(state, inspect(**changes))
+
+
+def test_a_backup_never_completes_an_attempt_that_failed_its_in_place_verification(tmp_path, monkeypatch):
+    """Codex review 2026-10-27: a failed remote verification must not fall through to completion via the backup."""
+    queued = write_queue(tmp_path, [job(), job("local-dependent", "local", deps=["r"])])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    monkeypatch.setattr(jobs, "_verify_remote_exit", lambda *args: (_ for _ in ()).throw(
+        remote.RemoteJobError("budget shortfall")))
+    monkeypatch.setattr(jobs, "launch", lambda *args: pytest.fail("a dependent was released"))
+    for _ in range(2):
+        tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "sync_pending" and state["remote_verification_failed"]["attempt"] == 1
+    assert backend.inspections == ["r"]  # rechecked at most every REMOTE_RECHECK_SECONDS, not every tick
+    events = [json.loads(line)["event"] for line in (tmp_path / "registry.jsonl").read_text().splitlines()]
+    assert events.count("remote_verification_failed") == 1 and "results_synced" not in events
