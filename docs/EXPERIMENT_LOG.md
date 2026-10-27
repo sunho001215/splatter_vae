@@ -5004,3 +5004,35 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
       robot / object / far-background regions, paired episode bootstrap, pooled contrasts and the 2×2 interaction,
       with SNeRL and SinCro as context. Its code path was checked in `--smoke` mode with w8 standing in for csw4; the
       output went to the scratchpad and is not a result.
+- 14:20–14:45 (10-27) **Artifact version 17: original vs Chamfer_lean rendering section (Q4b) and final-success bar
+  charts (Q2), two user requests; inference and existing logs only, nothing launched or changed.**
+  - Q4b uses the existing matched 200k renders (`chl/render/<task>__{ref200,chl200}.npz`, 40 samples × 22 cameras,
+    eight tasks). It is labelled as the Chamfer_lean *variant* comparison, because several loss terms changed at once.
+    - Metrics (`src/chlcmp_metrics.py` → `chl/chlcmp_200k.json`): PSNR, SSIM, LPIPS and robot / object / far-background
+      PSNR per camera group, paired episode bootstrap, stratified eight-task pooling. They reproduce the existing
+      per-task table.
+    - Training cameras (all six): +1.16 dB [+1.03, +1.32], SSIM +0.034, LPIPS −0.046, better on 8/8 tasks.
+    - Held-out: −0.46 dB [−0.50, −0.42]. Moving: −1.57 dB [−1.63, −1.51]. Both 0/8, driven by far background
+      (−0.70 / −2.10 dB) and the robot (−0.22 / −0.15 dB). SSIM and LPIPS still improve on all eight tasks.
+    - Example images (`src/chlcmp_figures.py`): per camera group, the image closest to the group's median paired
+      difference among images with the robot and an object visible. A first rule (most visible object) was dropped
+      before publishing: on hammer it picked a sample where the variant was worse even on training cameras, which
+      misrepresented the measured effect.
+    - Zoom windows come from ground-truth masks only. The robot window is centred on the robot centroid; the object
+      window is the densest object window (hammer has two moving objects); the far-background window is the densest
+      far-background window.
+    - Videos (`src/chlcmp_video.py`) are new inference from the same two checkpoints: eight tasks, about 10 s each, on
+      MIG-c3511b41. Ground-truth masks were replayed per frame; the replay matched the stored ground truth (worst case
+      6e-5 of pixels).
+  - Final-success bars (`src/final_bars.py` → `data/final_bars.json`, `data/final_bars_per_seed.csv`):
+    - Source: every final-comparison run's evaluation at exactly step 1M (240 episodes). Training = mean of the six
+      training cameras; moving = mean of the two moving paths. Drop = training − moving, paired per seed.
+    - All 192 runs are complete, and every value equals `summary.json` "final". Single-camera methods come first, the
+      two three-view methods († SNeRL, 3D-MVP A) last.
+    - Eight-task mean drop: ours +1.0 pp [−1.3, +3.4], CNN +0.7, 3D-MVP B +0.8, 3D-MVP A −2.8, SinCro +25.8,
+      SNeRL +15.6, DynaMo +12.7, ReViWo +10.8.
+  - Publishing hit the 511-file version cap. `src/publish_map.py` now publishes only figures the page references, which
+    removed 36 superseded files: the 50k-pilot `chl_*` figures and the old per-task `tsne_<task>` plots. They remain on
+    disk. Version 17 holds 507 files, so later additions need consolidation first.
+  - Backups: `src/page_v12.bak-20261027-chlcmp-bars/`, `site/index.v16-before-chlcmp-bars-20261027.html`,
+    `src/package.py.before-chlcmp-bars-20261027` and `src/publish_map.py.before-chlcmp-bars-20261027`.
