@@ -5077,3 +5077,83 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     - Multiplexed campaign SSH commands stayed at 0.07–0.2 s throughout.
   - Operating value: **200 KiB/s** from 20:41, set in the override file `runs/remote/access/download-budget.json`.
     This is inside the authorized 600 KiB/s cap. Deleting the file restores 600; the user decides.
+- 20:45–22:10 (10-27) **Remote-first completion: finished remote runs advance without waiting for downloads (user
+  request).**
+  - **Blockers found:**
+    - `scripts/jobs.py` `_reconcile_remote` made the final "essential" copy inline, inside the tick and under the
+      registry lock: logs, metrics and the required 32 MB checkpoint, through the shared download budget. A bulk chunk
+      in flight (one file per chunk) made the tick wait. Live copies of running remote jobs were also made inline.
+      - From 20:25 to 21:58 the daemon made no progress. First a driver tick held the lock while downloading the 12
+        finished pretrainings; then the daemon held it, waiting for the budget lock behind a media chunk.
+    - `eligible()` accepted only dependencies with status done, which for remote jobs means a verified local
+      download. Remote export and RL therefore waited for the download.
+    - `sync_pending` (container exited 0) counted as ACTIVE, so finished containers kept GPU slots, memory, the RAM
+      ramp and the disk reservation in `jobs.py`, and GPU load and RAM in the remote driver's accounting.
+    - Placement: `pool_placement.py` kept every export local, the remote driver had no export kind, and `ready()` for
+      RL rows required a local export to upload.
+    - The interim download guards had been retired at 20:25:29, with their files preserved.
+    - Local admission sat at its memory cap (137 of 140 GB). Local exports and evaluators could not start until the
+      local trainers finished, 21:37–21:58.
+  - **Change** (commits 40a2c33, c64c474, 908840d; full native suite 1060/0/0/0, b79663f):
+    - Three separate states:
+      - compute complete: exit 0, `sync_pending`, no capacity reserved (`RESERVING` = running, launching);
+      - artifacts verified on the remote: new event `remote_verified`;
+      - local backup verified: `results_synced` + exited, then done.
+    - In-place verification: `s4d/remote_artifact_check.py` is a read-only checker that uses only the standard
+      library. It runs under the remote host's python3 via SSH, and one report of about 10 KB comes back.
+      `_verify_remote_exit` then checks:
+      - the required results and their checksums;
+      - the unchanged exit / provenance identity checks: attempt, commit, image, GPU, data, script, arguments and
+        configuration checksum;
+      - the training budget: completion.json steps = `train.steps`; RL final.json completed at
+        `train.num_train_steps`;
+      - checkpoints: zip CRC, step and encoder tensors;
+      - exports: weights-only content, step / source / run identity, a tensor signature equal to the encoder its
+        configuration builds, and that the export reads its producer's verified checkpoint at the producer's budget.
+        Contiguity and bounds of every tensor are checked too.
+    - `dependency_ready`: a remote job may start on a remote dependency once that dependency is verified in place for
+      its current attempt. Local (cross-host) dependents still wait for the verified backup.
+    - The tick downloads nothing for campaign runs. `scripts/sync_media.py` makes the final backups, cross-host
+      dependencies first, and the live copies.
+      - A backup completes only an attempt that was verified in place, with identical checksums.
+      - A failed in-place check is recorded (`remote_verification_failed`, watcher event) and retried every 5 min; it
+        never falls through to completion.
+    - Remote driver and pool (in place, `.before-remotefirst-20261027` backups kept):
+      - exports of remote pretrainings move to the remote (kind `pool_export`, load 0.1);
+      - a local row is offered if it would be eligible on the remote;
+      - RL rows of a remote export need no upload;
+      - after the backup, the export is closed out with a real `torch.load(weights_only=True)`.
+    - Tested on live data: inspecting the finished remote run enc-csw4-seed0-hammer-200k took 8.8 s and returned a
+      9.9 KB report; the four local exports (cs, w4, csw4) pass the export check and a tampered one fails.
+  - **Codex review** (inline). Fixed:
+    - the fall-through from a failed check to completion;
+    - binding the export to its producer and budget before release;
+    - the tensor stride / offset check;
+    - an attempt-bound skip test in the backup worker;
+    - mandatory completion records;
+    - the inspection timeout, cut from 900 s to 300 s.
+  - **Residual risks, reported:**
+    - The accepted release's export script writes `encoder.pt` in place, not atomically, and RL runs do not record the
+      digest they loaded. A successful export is never re-run, and jobs write only into their own run directory.
+    - The structural check stands in for, but is not identical to, a real `torch.load`; the closeout performs the
+      real one after the backup.
+    - A local consumer of a remote export still waits for the producer's whole essential backup.
+  - **Activation at a safe boundary:**
+    - 21:56:40 merged; 21:56:51 driver and pool files installed.
+    - 21:58:13: the two driver passes still on the old code were ended while blocked on the registry lock (no transfer
+      or launch in flight); their loops restarted them on the new code.
+    - 21:58:29: daemon 1727740 stopped while waiting on the budget lock, with no transfer of its own and no children.
+      The new daemon 3690101 started at once; it is the only instance, and pushed.
+    - Training was not touched.
+  - **Effect:**
+    - The 12 remote pretrainings had all completed on the old path by 21:35, before activation. Their exports ran
+      locally, so the remote-export path has not yet been used on a real run; the next remote pretrainings will use it.
+    - Since activation, 29 jobs launched by 22:07: 5 remote RL rows (w4 peg-insert-side and peg-unplug-side pairs,
+      csw4 hammer) and 24 local. The local ones were 12 evaluators that had waited for local memory, 5 csw4 trainers
+      with 3 evaluators, and the 4 remaining csw4 exports, done 22:08:40.
+    - Two remote launches were refused by the launcher's foreign-process check, before `docker run`. The check reads
+      the GPU processes and the container list at different moments, so a container starting or exiting in between
+      trips it. Both were reconciled with `runs/setup/tools/reconcile_unlaunched_remote.py`: one at 22:00:39, one
+      scheduled. After such a refusal the tick stops remote launches for that pass, so six w4 RL pairs wait for the
+      next pass.
+    - Genuine waits: the 12 csw4 RL pairs of the four exports that finished at 22:08 (next passes).
