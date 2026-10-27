@@ -659,6 +659,9 @@ class RemoteAccessTests(unittest.TestCase):
                 patch.object(access.subprocess, "run", return_value=self.result()) as run:
             self.client._rsync(f"{self.client.target}:/remote/runs/x/a.json", "local-target")
             self.assertIn("--bwlimit=600", run.call_args.args[0])
+            self.assertIn("--timeout=300", run.call_args.args[0])
+            with self.assertRaises(ValueError):  # callers cannot raise or bypass the budget
+                self.client._rsync(f"{self.client.target}:/remote/runs/x/a.json", "local-target", extra=["--bwlimit=0"])
             self.client._rsync("local-source", f"{self.client.target}:/remote/runs/x/a.json")
             self.assertFalse(any(arg.startswith("--bwlimit") for arg in run.call_args.args[0]))
             (self.client.state_dir / "download-budget.json").write_text(json.dumps({"kib_per_s": 300}))
@@ -703,14 +706,19 @@ class RemoteAccessTests(unittest.TestCase):
         self.assertEqual(order, ["dependency-start", "dependency-end", "bulk", "bulk"])
 
     def test_new_downloads_wait_for_transfers_started_without_a_limit(self):
-        legacy = subprocess.Popen(["rsync", "-c", "sleep 30", f"{self.client.target}:/remote/runs/x/"], executable="/bin/sh")
+        legacy = subprocess.Popen(["rsync", "-c", "sleep 30", f"{self.client.target}:/remote/runs/x/", "/local/x/"],
+                                  executable="/bin/sh")
         self.addCleanup(legacy.kill)
-        limited = subprocess.Popen(["rsync", "-c", "sleep 30", "--bwlimit=600", f"{self.client.target}:/remote/runs/y/"],
-                                   executable="/bin/sh")
+        limited = subprocess.Popen(["rsync", "-c", "sleep 30", "--bwlimit=600", f"{self.client.target}:/remote/runs/y/",
+                                    "/local/y/"], executable="/bin/sh")
         self.addCleanup(limited.kill)
+        upload = subprocess.Popen(["rsync", "-c", "sleep 30", "/local/file", f"{self.client.target}:/remote/runs/z/"],
+                                  executable="/bin/sh")
+        self.addCleanup(upload.kill)
         found = self.client._legacy_downloads()
         self.assertIn(legacy.pid, found)
         self.assertNotIn(limited.pid, found)
+        self.assertNotIn(upload.pid, found)  # uploads (remote destination) are not downloads
         waits = []
         with patch.object(self.client, "_legacy_downloads", side_effect=[[legacy.pid], [legacy.pid], []]), \
                 patch.object(access.time, "sleep", side_effect=waits.append):
@@ -769,6 +777,29 @@ class RemoteAccessTests(unittest.TestCase):
         self.assertEqual([call[4] for call in calls], ["dependency", "bulk", "bulk"])  # step_0200000 already local
         record = json.loads((self.client.network_dir / "results-checkpoints" / "weights.json").read_text())
         self.assertTrue(record["verified"] and record["final"] and record["scope"] == "checkpoints")
+
+    def test_bulk_backs_off_when_a_dependency_is_announced_after_it_won_the_budget(self):
+        import threading
+        calls = {"n": 0}
+        real_flock = access.fcntl.flock
+        announced = (self.client.state_dir / "download-priority.lock").open("a")
+        self.addCleanup(announced.close)
+
+        def flock(handle, operation):
+            # the first time bulk tries the non-blocking announce check, a dependency has just announced itself
+            if operation == access.fcntl.LOCK_EX | access.fcntl.LOCK_NB and calls["n"] == 0:
+                calls["n"] += 1
+                real_flock(announced, access.fcntl.LOCK_SH)
+                threading.Timer(0.3, lambda: real_flock(announced, access.fcntl.LOCK_UN)).start()
+            return real_flock(handle, operation)
+
+        with patch.object(self.client, "_legacy_downloads", return_value=[]), \
+                patch.object(access.fcntl, "flock", side_effect=flock):
+            started = access.time.monotonic()
+            with self.client.download_slot("bulk"):
+                waited = access.time.monotonic() - started
+        self.assertEqual(calls["n"], 1)
+        self.assertGreaterEqual(waited, 0.25)  # it released the budget and waited for the announced dependency
 
 
 if __name__ == "__main__":

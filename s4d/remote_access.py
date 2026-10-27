@@ -289,8 +289,10 @@ class RemoteClient:
                 argv = Path("/proc", name, "cmdline").read_bytes().split(b"\0")
             except OSError:
                 continue
-            if (argv and os.path.basename(argv[0].decode(errors="replace")) == "rsync"
-                    and any(arg.startswith(prefix) for arg in argv)
+            operands = [arg for arg in argv[1:] if arg and not arg.startswith(b"-")]
+            # a download names the remote as a source operand; the last operand (the destination) is local
+            if (argv and os.path.basename(argv[0].decode(errors="replace")) == "rsync" and len(operands) >= 2
+                    and not operands[-1].startswith(prefix) and any(arg.startswith(prefix) for arg in operands[:-1])
                     and not any(arg.startswith(b"--bwlimit") for arg in argv)):
                 found.append(int(name))
         return found
@@ -307,10 +309,19 @@ class RemoteClient:
                 (self.state_dir / "download-budget.lock").open("a") as budget:
             if priority == "dependency":
                 fcntl.flock(announce, fcntl.LOCK_SH)
+                fcntl.flock(budget, fcntl.LOCK_EX)
             else:
-                fcntl.flock(announce, fcntl.LOCK_EX)
-                fcntl.flock(announce, fcntl.LOCK_UN)
-            fcntl.flock(budget, fcntl.LOCK_EX)
+                while True:  # flock wakes waiters in no fixed order: bulk backs off whenever a dependency is announced
+                    fcntl.flock(announce, fcntl.LOCK_EX)
+                    fcntl.flock(announce, fcntl.LOCK_UN)
+                    fcntl.flock(budget, fcntl.LOCK_EX)
+                    try:
+                        fcntl.flock(announce, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        fcntl.flock(budget, fcntl.LOCK_UN)
+                        continue
+                    fcntl.flock(announce, fcntl.LOCK_UN)
+                    break
             deadline = time.monotonic() + LEGACY_WAIT_SECONDS
             while self._legacy_downloads():
                 if time.monotonic() > deadline:
@@ -320,9 +331,14 @@ class RemoteClient:
 
     def _rsync(self, source: str, target: str, extra: list[str] | None = None, wait: bool = True,
                append: bool = True, accept: tuple[int, ...] = (0,), priority: str = "bulk") -> None:
+        if any(arg.startswith(("--bwlimit", "--timeout")) for arg in extra or []):
+            raise ValueError("Transfer limits are set by the download budget only")
         if source.startswith(self.target + ":"):  # remote -> local: inside the shared download budget
+            # --timeout: a stalled transfer ends after 300 s without data (exit 30, retried) instead of holding the
+            # budget for the full subprocess timeout
             with self.download_slot(priority) as kib:
-                self._rsync_run(source, target, [f"--bwlimit={kib}", *(extra or [])], wait, append, accept)
+                self._rsync_run(source, target, [f"--bwlimit={kib}", "--timeout=300", *(extra or [])], wait, append,
+                                accept)
         else:
             self._rsync_run(source, target, list(extra or []), wait, append, accept)
 
