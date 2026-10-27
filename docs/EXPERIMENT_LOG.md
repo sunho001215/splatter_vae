@@ -5314,3 +5314,23 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
         paths were removed first; PDF and CSV were then republished.
     - Verified: the live listing has 444 files; all 154 SVG members decode with clean CRCs; the scripts bundle holds
       65 files. Backups: `publish_bundles.py` and `publish_map.py` `.before-paper-20261028`.
+- 05:30–06:00 (10-28) **Rollout labels fixed; ablation analysis prepared before results.**
+  - **Rollout labels.** PIL's default face drew "×" and "†" in the method labels as empty boxes. `src/rollouts.py` now
+    uses DejaVu Sans, falling back to the default (backup `.before-font-20261028`). The 12 paper composites were
+    re-rendered on MIGs 8da55219 and c4ec2a95 (niced, about 12 min). Keyframes were regenerated
+    (`paper_rollouts.py`) and the web copies re-encoded. Artifact version 24 republished those 21 files and the page.
+  - **Episode-level variability, disclosed in the caption.** Re-rendering the same seeded episodes changed some
+    results:
+    - 48 of 96 returns differ.
+    - 2 of 96 successes flipped, both baselines: 3D-MVP B on hammer eval0 and DynaMo on hammer traj_circular.
+    - Ours is unchanged on all 12.
+    - Cause: small numerical differences in single-environment inference grow over an episode. Single rollouts are
+      illustrative only; the evaluation rates are the reference.
+  - **Ablation analysis** (`src/paper_ablations.py`, written before any ablation result):
+    - per arm: seed means with a 95 % bootstrap; arm − reference with independent seed resampling (each arm has its
+      own encoder) and P(improvement) over the 3 × 3 seed pairs;
+    - curves for all three camera groups, success and return, AUC / last-5 / final; raw data exported;
+    - every arm is reported, and pending arms are drawn as pending.
+    - Checked on the reference alone: return AUC 1282, last-5 1637, success last-5 0.86.
+    - The reconstruction and geometry part follows once the arm checkpoints exist; T=1 temporal metrics will be
+      marked not applicable.
