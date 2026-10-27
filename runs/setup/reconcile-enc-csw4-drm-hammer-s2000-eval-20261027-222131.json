@@ -1,0 +1,27 @@
+{
+  "recorded_local": "2026-10-27T22:21:31.704786+09:00",
+  "job_id": "enc-csw4-drm-hammer-s2000-eval",
+  "attempt": 1,
+  "container": "s4d-enc-csw4-drm-hammer-s2000-eval-a1",
+  "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 899.9,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/enc-csw4-drm-hammer-s2000-eval",
+  "trainer_run_dir": "/home/compu/kaist/sunho/runs/enc-csw4-drm-hammer-s2000",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "trainer_run_dir": "exists",
+      "remote_time_utc": "2026-10-27T13:21:26Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "trainer_run_dir": "exists",
+      "remote_time_utc": "2026-10-27T13:21:31Z"
+    }
+  ],
+  "output_rule": "directory absent",
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}

@@ -85,6 +85,8 @@ S2_KINDS = {'scripts/train.py': 's2_pretrain', 'scripts/evaluate.py': 's2_eval',
 def kind(job_id):
     row = globals().get('by_id', {}).get(job_id)
     if row is not None and str(row.get('placement', '')).startswith('pool'):
+        if row['script'] == 'scripts/export_encoder.py':  # 2026-10-27: exports of remote pretrainings run remotely
+            return 'pool_export'
         return 'pool_pretrain' if row['script'] == 'scripts/train.py' else 'pool_rl'
     if job_id in S2_REMOTE:
         return S2_KINDS[S2_REMOTE[job_id]['script']]
@@ -112,7 +114,7 @@ def kind(job_id):
 
 def load(job):
     jid = job['id']
-    if kind(jid) == 'final_export':
+    if kind(jid) in ('final_export', 'pool_export'):
         return 0.1
     if kind(jid) == 's2_eval':
         return 0.6
@@ -188,6 +190,25 @@ for job in remote:
                       step=payload['step'], source_checkpoint_sha256=expected, source_job=source)
         (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
         messages.append(f'EXPORT_VERIFIED {jid}')
+        continue
+    if kind(jid) == 'pool_export':  # 2026-10-27: a remote export, closed out after its verified local backup
+        import torch
+
+        export = run / 'encoder.pt'
+        payload = torch.load(export, map_location='cpu', weights_only=True)
+        source = job['deps'][0]
+        checkpoint = job['args'][job['args'].index('--checkpoint') + 1]
+        assert payload['format'] == 'splatter4d-encoder-v1' and payload['run_name'] == source, jid
+        assert payload['source_checkpoint'] == checkpoint and payload['step'] == pretrain_target(by_id[source]), jid
+        digest = hashlib.sha256(export.read_bytes()).hexdigest()
+        assert digest == state[jid]['sync']['files']['encoder.pt'], jid
+        verified = state[jid].get('remote_verified') or {}
+        assert verified.get('files', {}).get('encoder.pt', digest) == digest, jid
+        record.update(encoder_sha256=digest, step=payload['step'], source_job=source, remote_export=True,
+                      source_checkpoint_sha256=(state[source].get('remote_verified') or {}).get('files', {}).get(
+                          checkpoint.split('/', 2)[2]))
+        (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+        messages.append(f'EXPORT_VERIFIED {jid} (remote export)')
         continue
     if kind(jid) in ('proxy', 'brl', 'orl', 'nbrl', 'pool_rl'):
         if state.get(f'{jid}-eval', {}).get('status') != jobs.DONE:
@@ -320,11 +341,19 @@ def ready(job):
             client.rsync_upload(config, f'{ROOT}/runs/{jid}/config.yaml')
             marker.write_text(json.dumps({'sha256': digest, 'uploaded': stamp.isoformat()}) + '\n')
         return True
+    if k == 'pool_export':  # inputs are the remote pretraining's files, released by the dependency on that run
+        return True
     if k == 'pool_rl':  # the export (a local file) is uploaded once, checksum-verified, before the pair starts
         trainer = by_id[jid.removesuffix('-eval')]
         export = next((a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path=')), None)
         if export is None:  # end-to-end CNN trainer (2026-10-24): no frozen export to upload
             return True
+        producer = by_id.get(trainer['deps'][0]) if trainer.get('deps') else None
+        if (producer is not None and producer.get('host') == 'remote'
+                and producer['script'] == 'scripts/export_encoder.py'):
+            # 2026-10-27: exported on the remote, so the file is already there; the scheduler's dependency check
+            # (done, or verified in place on the remote) released this row
+            return jobs.dependency_ready({**trainer, 'host': 'remote'}, state.get(producer['id'], {}))
         local = REPO / export
         if not local.is_file():
             return False
@@ -378,7 +407,7 @@ def ready(job):
     return need <= targets
 
 
-RANK = {'proxy': 0, 'final_export': 0, 's2_eval': 0, 's2_rl': 0.5, 'baseline': 1,
+RANK = {'proxy': 0, 'final_export': 0, 'pool_export': 0, 's2_eval': 0, 's2_rl': 0.5, 'baseline': 1,
         'final_pretrain': 1, 'nbaseline': 1.5, 'pool_pretrain': 1.6, 'brl': 2, 'orl': 2, 'pool_rl': 2, 'nbrl': 2.2,
         's2_pretrain': 2.5, 'stage3': 3}
 
@@ -413,7 +442,8 @@ ENC_ALLOWED = ENC_READY
 if not ENC_ALLOWED:
     candidates = [j for j in candidates if not j['id'].startswith(ENC_PREFIXES)]
 candidates.sort(key=dispatch_key)
-active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.ACTIVE}
+# 2026-10-27: capacity is reserved only by executing jobs; a compute-complete container awaiting backup holds none
+active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
 reserved = sum(int(float(by_id.get(i, {}).get('ram_gb', 0)) * 2**30) for i in active)
 gpu_load = {g: 0.0 for g in GPUS}
 gpu_mem = {g: 0.0 for g in GPUS}
@@ -460,9 +490,17 @@ if POOL_READY and not DRY and not held:
     import pool_placement  # noqa: E402
 
     units = []
-    for job in jobs.eligible(queue['jobs'], retry_view):
-        if job.get('host', 'local') != 'local' or job['script'] not in ('scripts/train.py', 'scripts/train_rl.py'):
+    # 2026-10-27: a local row is offered if it would be eligible on the remote, so rows whose dependencies are verified
+    # in place there (remote exports of remote pretrainings, RL pairs of remote exports) move without a local download
+    as_remote = [{**j, 'host': 'remote'} if j.get('host', 'local') == 'local' else j for j in queue['jobs']]
+    for job in jobs.eligible(as_remote, retry_view):
+        job = by_id[job['id']]
+        if job.get('host', 'local') != 'local' or job['script'] not in ('scripts/train.py', 'scripts/train_rl.py',
+                                                                         'scripts/export_encoder.py'):
             continue
+        if job['script'] == 'scripts/export_encoder.py' and not all(
+                state.get(d, {}).get('host') == 'remote' for d in job.get('deps', [])):
+            continue  # an export of a local pretraining stays local (its input is here)
         if not pool_placement.movable(job, state, by_id):
             continue
         members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
@@ -470,12 +508,14 @@ if POOL_READY and not DRY and not held:
     if not ENC_ALLOWED:
         units = [m for m in units if not m[0]['id'].startswith(ENC_PREFIXES)]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
-    units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES), 0 if m[0]['script'] == 'scripts/train.py' else 1))
+    units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES),
+                              {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
     plan = []
     for members in units:
         tentative = []
         for u in members:
-            row_load = 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else 0.5)
+            row_load = 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else (
+                0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5))
             need = int(float(u['ram_gb']) * 2**30)
             fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
                        and gpu_mem[g] + float(u['mem_gb']) <= 90]

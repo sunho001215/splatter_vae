@@ -6,7 +6,8 @@ ONLY its host-specific execution fields (HOST_FIELDS) in experiments/queue.yaml,
 and the local admission lock (so no local or remote driver can admit it concurrently). Every move is appended to
 runs/setup/pool-placement.json with the original and the effective row; the drivers apply ``effective_rows()`` as an
 overlay to their registration files. RL trainers always move together with their evaluator (the evaluator reads the
-trainer's run directory); exports stay local (seconds of work, inputs synced back). Remote results synchronise from
+trainer's run directory); exports of local pretrainings stay local (seconds of work); since
+2026-10-27 the export of a remote pretraining moves to the remote and runs on its files verified there (no download). Remote results synchronise from
 runs/<job id>, so a pretraining row moved to the remote writes there (--output-root runs instead of runs/pretrain) and
 its local export row reads from there: an output-location rewrite only, recorded with both rows. Code per host: local jobs run the
 main checkout, remote jobs the accepted release recorded in their dispatch (sources identical to main at acceptance);
@@ -35,7 +36,7 @@ SETUP = ROOT / 'runs/setup'
 MANIFEST = SETUP / 'pool-placement.json'
 ADMISSION_LOCK = SETUP / 'stage2-driver.lock'  # held by both local admission drivers for their whole pass
 HOST_FIELDS = ('host', 'placement', 'required_results', 'disk_gb', 'cpu_threads')
-SCRIPTS = ('scripts/train.py', 'scripts/train_rl.py', 'scripts/eval_rl.py')
+SCRIPTS = ('scripts/train.py', 'scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/export_encoder.py')
 
 
 def effective_rows() -> dict:
