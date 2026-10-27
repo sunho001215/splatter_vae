@@ -5157,3 +5157,160 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
       scheduled. After such a refusal the tick stops remote launches for that pass, so six w4 RL pairs wait for the
       next pass.
     - Genuine waits: the 12 csw4 RL pairs of the four exports that finished at 22:08 (next passes).
+- 04:02–04:10 (10-28) **Encoder 2×2 complete; paper setting chosen and frozen by the pre-registered rule (user
+  directive 2026-10-27, step 1).** Performance-informed selection.
+  - **Completion:** all 192 2×2 rows (cs, w4, csw4 on eight tasks: pretraining, export, DrM seeds 2000–2002 and
+    evaluators) done at 04:02. The remote rows were verified in place and then backed up; nothing was skipped or
+    reused. chlrm and DrM+CNN rows were already complete.
+  - **Rule:** `runs/setup/paper-definition-20261027.json` → `selection`, written before any 2×2 result.
+    Script: `reports/results-artifact/src/paper_selection.py --write --freeze`. It now also applies the ablation
+    environment rule (`ablation_environment()`, the definition's text unchanged); backup `.before-freeze-20261028`.
+    Output: `paper/selection.json` (sha256 55c10d81…) and `paper/selection_table.csv`.
+  - **Finding (training-camera return vs DrM+CNN, expert-normalized, three seeds each):**
+    - Every candidate is *clear* on hammer only:
+      - chlrm: d_AUC +0.44, d_last5 +0.53, P = 1.00;
+      - csw4: d_AUC +0.38, d_last5 +0.46, P = 1.00.
+    - bin-picking is at *parity* for cs (+0.07 / +0.20, P 0.56) and csw4 (+0.09 / +0.24, P 0.67).
+    - DrM+CNN is better on the other six tasks for all four candidates:
+      - pick-place: d_last5 −0.17 to −0.32;
+      - coffee-push and peg-insert-side: −0.5 to −0.8;
+      - peg-unplug-side: about −1.0.
+    - Held-out and moving cameras (r) do not reverse this either; r is positive only on hammer (+0.56 for csw4) and
+      marginally on bin-picking, door-open and stick-push.
+    - So neither six nor four environments with a clear advantage exist. The definition's fallback applies: four
+      environments, reported as a **narrower scope (1 clear task)**:
+      - the clear task;
+      - the parity task;
+      - then the least-disadvantaged remaining tasks by e, with a new skill family first.
+  - **Choice:** architecture **csw4** (chlrm + cs stem + w4 body). Environment set **hammer, bin-picking, door-open,
+    peg-insert-side**.
+    - Every candidate has one clear task in its set. On mean e, csw4 is +0.018, cs −0.005, chlrm −0.040 and
+      w4 −0.078; the tie band is 0.02, so csw4 is ahead by 0.023.
+    - Supporting: csw4 has the best mean success last-5 difference (+0.048) and the best robustness (+0.051) on the set.
+    - Its compute is the highest: 0.51 GFLOPs/frame vs 0.21 for chlrm.
+  - **Sensitivity:**
+    - M 0.03 / 0.07 and P 6/9 / 8/9 → csw4 with the same set.
+    - Leave one seed index out → w4 (without 2000), csw4 (without 2001), cs (without 2002), always the same set.
+    - The architecture choice is therefore marginal and seed-sensitive; the set is stable.
+  - **Ablation environment:** the definition's rule, applied within the set before any ablation outcome.
+    - Eligible tasks (success AUC ≥ 0.25 and last-5 in [0.30, 0.92]):
+      - bin-picking: AUC 0.358, last-5 0.868, h 0.50;
+      - door-open: AUC 0.631, last-5 0.857, h 2.32.
+    - Not eligible:
+      - hammer, at ceiling (last-5 0.949);
+      - peg-insert-side, nearly unsolved (0.068).
+    - No clear task is eligible, so the highest h wins → **door-open**.
+  - History kept: the eight-task encx decision and the six-task `encx/env_selection.json` set are unchanged.
+  - Frozen 04:03:56 +0900. Next: register the five ablation arms (csw4, door-open) after a dry run and a brief Codex
+    review, then the main figures.
+- 04:05–04:11 (10-28) **Five matched ablations registered (csw4, door-open), before any ablation result.**
+  - Tool: `runs/setup/tools/register_paper_ablations_20261027.py --arch csw4 --task door-open --publish`.
+    Record: `runs/setup/paper-ablation-registration-csw4-door-open-20261027.json`.
+  - 40 rows: five arms × (pretraining 200k seed 0, export, DrM seeds 2000–2002, evaluators), priority 4,
+    `enc-abl-<arm>-csw4-…`.
+  - **Reference, reused and not rerun:** enc-csw4-seed0-door-open-200k, its export, and enc-csw4-drm-door-open-s2000–2002
+    with their evaluators. All complete, all on the encoder release d281258; the new rows run on the same release.
+  - **Checks:**
+    - Each arm's resolved configuration differs from the reference only in its listed keys:
+      - invariance 1→0;
+      - motion 5→0;
+      - num_frames 3→1, plus motion_head, temporal_branch and perframe.temporal off;
+      - depth_l1 1→0;
+      - chamfer 5→0.
+    - Every row equals its reference row apart from names, the change, priority and bookkeeping.
+    - No equivalent completed run exists for csw4, so nothing was reused.
+  - **Smoke:** the csw4 T=1 smoke had passed on 10-27; see the smoke record.
+  - **Codex review (brief, material inline): OK to register.**
+    - The evaluator reads the trainer's resolved config, so it inherits `frame_features=stack` and the ablation export.
+    - Appending to the existing `--set` list is correct. A second `--set` would replace it; none is added.
+    - The id substitutions cannot reach the reference's directories.
+    - Disclosures to carry into the paper:
+      - t1_spatial changes temporal fusion and supervision together, and uses a 768-d policy input with a larger
+        projection;
+      - the results are conditional on csw4 and pretraining seed 0, so pretraining variability is not measured;
+      - the preregistered selection limits but does not remove selection bias.
+    - Checked after the review:
+      - The zero-weight arms multiply the term by its weight in a plain sum (`s4d/train/loop.py`,
+        `s4d/train/perframe.py`), with no renormalization. InfoNCE, depth L1 and M3D are still computed, so the RNG
+        stream is unchanged.
+      - Chamfer skips its block, including its random draw, as the definition already states.
+- 04:12–05:45 (10-28) **Paper figures, qualitative comparisons and artifact versions 18–23 (user directive 2026-10-27,
+  steps 2, 3, 4 and 6).** Frozen setting: cs+w4; hammer, bin-picking, door-open and peg-insert-side.
+  - **Main comparison** (`reports/results-artifact/src/paper_figures.py` → `paper/`):
+    - figures:
+      - training-camera episode-return curves (2×2) and success curves, all baselines, means and 95 % bootstrap
+        bands, identical 5-evaluation smoothing;
+      - training vs moving success at exactly 1M (paired bars, within-seed drop, return drop);
+      - the eight-task supplement;
+    - data: raw curves `paper_rl_curves_raw.csv` and `supp_rl_curves_raw_8.csv`; summary `paper_rl_summary.csv` and
+      `supp_rl_summary_8.csv` (AUC, last-5, final per task, group and seed). `paper_figures.py` gained the
+      eight-task tables (backup `.before-supp-data-20261028`).
+    - Set means at 1M:
+
+      | Method | Training-camera success | Moving-camera success | Within-seed drop |
+      |---|---|---|---|
+      | Ours | 68.9 % | 61.7 % | 7.2 pp |
+      | DrM CNN | 63.8 % | 56.5 % | 7.3 pp |
+
+      Normalized return AUC: ours 0.551, CNN 0.526. Per task at 1M:
+
+      | Task | Ours | CNN |
+      |---|---|---|
+      | hammer | 1838 | 1287 |
+      | bin-picking | 1445 | 1081 |
+      | door-open | 1624 | 1871 |
+      | peg-insert-side | 409 | 1094 |
+  - **Rendering** (`src/paper_render.py`, new; metrics read from `encx/render_200k.json`, nothing recomputed): ground
+    truth, ours (cs+w4 200k), SinCro (3 views) and SNeRL (posed views); 40 samples × 22 cameras per task; camera
+    groups separate.
+    - Held-out cameras, ours vs SNeRL vs SinCro:
+
+      | Measure | Ours | SNeRL | SinCro |
+      |---|---|---|---|
+      | LPIPS | 0.196 | 0.227 | 0.351 |
+      | SSIM | 0.729 | 0.707 | 0.619 |
+      | Object PSNR (dB) | 19.9 | 18.8 | 14.7 |
+      | Full-image PSNR (dB) | 16.0 | 17.3 | 15.8 |
+      | Far-background PSNR (dB) | 8.0 | 11.3 | 11.4 |
+
+      SNeRL's higher full-image PSNR comes from the far background.
+    - Gallery rule: per task and camera group, the sample with ours' median PSNR, the same sample for every method.
+      Crops are 64 × 64 around the ground-truth robot, object and far-background centroids.
+  - **Rollouts, t-SNE, retrieval and geometry** (produced by a delegated session on MIGs 8da55219 and c4ec2a95, about
+    12 minutes of inference, niced, no scheduler job affected):
+    - `src/rollouts.py` paper plan (backup `.before-paper-20261028`); `media/rollouts/index.json` unchanged.
+      Selection rule: RL seed 2000, the first episode of each camera group at the 1M evaluation, with its exact
+      initial-condition seed for every method; every rollout is shown. Nine final policies that existed only
+      remotely were copied read-only (`src/fetch_paper_policies.py`, shared download budget, checksums verified).
+    - t-SNE: cs+w4 added to `tsne_demo.py`; fits merged (`fits.before-paper-20261028.json`); `paper_tsne_*`.
+    - Retrieval (`src/paper_retrieval.py`), expert demonstration, top-1 within ±2 steps:
+
+      | Pair | Ours | Best comparison |
+      |---|---|---|
+      | Training cameras | 0.96–1.00 | |
+      | Moving path vs base camera | 0.88–1.00 | |
+      | Held-out vs nearest training camera | 0.14–0.35 | 3D-MVP A 0.87–0.96 |
+
+      Validation-episode retrieval: cs+w4 ≈ chlrm.
+    - Geometry (`src/paper_geometry.py`): 0.89–0.92 of the predicted Gaussians lie within 2 cm, for both cs+w4 and
+      chlrm.
+  - **Historical eight-task 2×2 rule** (`encx_rl.py`, rerun on the complete data; previous output kept as
+    `encx/rl.before-complete-20261028.json`): no clear winner.
+    - Last-5 IQM: cs+w4 0.706, chlrm 0.674, w4 0.674, cs 0.672, all within the 0.05 tie band. cs+w4 − chlrm is
+      +0.032, Bonferroni [−0.073, +0.142].
+    - No candidate is non-inferior to the original method (0.756).
+  - **Artifact** (https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73, versions 18–23, the same URL):
+    - New "Paper comparison" section (`src/page_v12/12_paper.html`) with compact, graph-led conclusions, the selection
+      table, an eight-task supplement and a rollout video selector.
+    - Q6 marks the 2×2 complete and keeps the superseded six-task set as history. Overview chips and the status
+      list are updated. Page backups: `*.before-paper-20261028`; previous page `site/index.v17b-before-paper-20261028.html`.
+    - **Consolidation.** ZIP is not a served artifact type, so the 2026-10-27 zip design was replaced:
+      - every shown figure's PDF and plotted-value CSV are published directly;
+      - SVGs and the report scripts are base64-encoded zip text (`bundles/*.b64.txt`), unpacked in the browser by
+        JSZip;
+      - the videos are CRF 24/28/30 web copies (`site/web_media`, 91 → 19 MB for the older ones; originals kept in
+        `media/rollouts`);
+      - result: 444 files (limit 511) and 220 MB (limit 256). 341 obsolete individual SVG / PDF / CSV / script
+        paths were removed first; PDF and CSV were then republished.
+    - Verified: the live listing has 444 files; all 154 SVG members decode with clean CRCs; the scripts bundle holds
+      65 files. Backups: `publish_bundles.py` and `publish_map.py` `.before-paper-20261028`.

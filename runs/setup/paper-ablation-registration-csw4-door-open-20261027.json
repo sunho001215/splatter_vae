@@ -1,0 +1,1401 @@
+{
+  "prepared_at": "2026-10-28T04:10:26.953567+09:00",
+  "purpose": "Five matched ablations of the selected paper architecture on one environment (user directive 2026-10-27; definition\nruns/setup/paper-definition-20261027.json \"ablations\"). Run only after the architecture and the environment set are\nfrozen (paper/selection.json) and the ablation environment is recorded in docs/EXPERIMENT_LOG.md; registered before any\nablation result.",
+  "arch": "csw4",
+  "task": "door-open",
+  "reference": {
+    "pretraining": "enc-csw4-seed0-door-open-200k",
+    "export": "enc-csw4-export-seed0-door-open-200k",
+    "rl": [
+      "enc-csw4-drm-door-open-s2000",
+      "enc-csw4-drm-door-open-s2001",
+      "enc-csw4-drm-door-open-s2002"
+    ]
+  },
+  "resolved_config_differences": {
+    "noinfonce": {
+      "loss.invariance": [
+        1.0,
+        0.0
+      ]
+    },
+    "nomotion": {
+      "loss.motion": [
+        5.0,
+        0.0
+      ]
+    },
+    "t1spatial": {
+      "model.perframe.temporal": [
+        null,
+        false
+      ],
+      "model.decoder.temporal_branch": [
+        null,
+        false
+      ],
+      "model.encoder.num_frames": [
+        3,
+        1
+      ],
+      "model.decoder.motion_head": [
+        null,
+        false
+      ]
+    },
+    "nodepth": {
+      "loss.depth_l1": [
+        1.0,
+        0.0
+      ]
+    },
+    "nochamfer": {
+      "loss.chamfer": [
+        5.0,
+        0.0
+      ]
+    }
+  },
+  "reused_equivalent": {},
+  "definition": "runs/setup/paper-definition-20261027.json",
+  "definition_sha256": "2f493a51d79fc4fd391cc69ff3e19d150fa62ef8fecc66be824c8a7a3183dde1",
+  "counts": {
+    "scripts/eval_rl.py": 15,
+    "scripts/export_encoder.py": 5,
+    "scripts/train.py": 5,
+    "scripts/train_rl.py": 15
+  },
+  "jobs": [
+    {
+      "id": "enc-abl-noinfonce-csw4-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-abl-noinfonce-csw4-seed0-door-open-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "loss.invariance=0.0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-noinfonce-csw4-export-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-abl-noinfonce-csw4-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-abl-noinfonce-csw4-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-abl-noinfonce-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-noinfonce-csw4-drm-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-noinfonce-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-noinfonce-csw4-drm-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2000",
+        "--train-job",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-noinfonce-csw4-drm-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-noinfonce-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-noinfonce-csw4-drm-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2001",
+        "--train-job",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-noinfonce-csw4-drm-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-noinfonce-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-noinfonce-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-noinfonce-csw4-drm-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2002",
+        "--train-job",
+        "enc-abl-noinfonce-csw4-drm-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-noinfonce-csw4-drm-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_noinfonce_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-nomotion-csw4-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-abl-nomotion-csw4-seed0-door-open-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "loss.motion=0.0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-nomotion-csw4-export-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-abl-nomotion-csw4-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-abl-nomotion-csw4-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-abl-nomotion-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nomotion-csw4-drm-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nomotion-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nomotion-csw4-drm-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2000",
+        "--train-job",
+        "enc-abl-nomotion-csw4-drm-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nomotion-csw4-drm-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nomotion-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nomotion-csw4-drm-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2001",
+        "--train-job",
+        "enc-abl-nomotion-csw4-drm-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nomotion-csw4-drm-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nomotion-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nomotion-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nomotion-csw4-drm-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2002",
+        "--train-job",
+        "enc-abl-nomotion-csw4-drm-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nomotion-csw4-drm-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nomotion_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-t1spatial-csw4-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/perframe_spatial.yaml",
+        "--name",
+        "enc-abl-t1spatial-csw4-seed0-door-open-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-t1spatial-csw4-export-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-abl-t1spatial-csw4-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-abl-t1spatial-csw4-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-abl-t1spatial-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-t1spatial-csw4-drm-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-t1spatial-csw4-export-seed0-door-open-200k/encoder.pt",
+        "vision.frame_features=stack"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 7,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-t1spatial-csw4-drm-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2000",
+        "--train-job",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-t1spatial-csw4-drm-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-t1spatial-csw4-export-seed0-door-open-200k/encoder.pt",
+        "vision.frame_features=stack"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 7,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-t1spatial-csw4-drm-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2001",
+        "--train-job",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-t1spatial-csw4-drm-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-t1spatial-csw4-export-seed0-door-open-200k/encoder.pt",
+        "vision.frame_features=stack"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 7,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-t1spatial-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-t1spatial-csw4-drm-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2002",
+        "--train-job",
+        "enc-abl-t1spatial-csw4-drm-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-t1spatial-csw4-drm-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_t1spatial_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-nodepth-csw4-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-abl-nodepth-csw4-seed0-door-open-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "loss.depth_l1=0.0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-nodepth-csw4-export-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-abl-nodepth-csw4-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-abl-nodepth-csw4-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-abl-nodepth-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nodepth-csw4-drm-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nodepth-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nodepth-csw4-drm-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2000",
+        "--train-job",
+        "enc-abl-nodepth-csw4-drm-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nodepth-csw4-drm-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nodepth-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nodepth-csw4-drm-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2001",
+        "--train-job",
+        "enc-abl-nodepth-csw4-drm-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nodepth-csw4-drm-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nodepth-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nodepth-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nodepth-csw4-drm-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2002",
+        "--train-job",
+        "enc-abl-nodepth-csw4-drm-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nodepth-csw4-drm-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nodepth_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-nochamfer-csw4-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/door-open.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "enc-abl-nochamfer-csw4-seed0-door-open-200k",
+        "--output-root",
+        "runs/pretrain",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0",
+        "loss.chamfer=0.0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 4,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 5,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "id": "enc-abl-nochamfer-csw4-export-seed0-door-open-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/pretrain/enc-abl-nochamfer-csw4-seed0-door-open-200k",
+        "--checkpoint",
+        "runs/pretrain/enc-abl-nochamfer-csw4-seed0-door-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/enc-abl-nochamfer-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nochamfer-csw4-drm-door-open-s2000",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nochamfer-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nochamfer-csw4-drm-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2000",
+        "--train-job",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nochamfer-csw4-drm-door-open-s2001",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nochamfer-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nochamfer-csw4-drm-door-open-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2001",
+        "--train-job",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2001-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nochamfer-csw4-drm-door-open-s2002",
+      "script": "scripts/train_rl.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-abl-nochamfer-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 4,
+      "deps": [
+        "enc-abl-nochamfer-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 5,
+      "id": "enc-abl-nochamfer-csw4-drm-door-open-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2002",
+        "--train-job",
+        "enc-abl-nochamfer-csw4-drm-door-open-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/enc-abl-nochamfer-csw4-drm-door-open-s2002-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "abl_nochamfer_csw4",
+      "variant_definition": "runs/setup/paper-definition-20261027.json"
+    }
+  ],
+  "registered_at": "2026-10-28T04:10:38.146661+09:00",
+  "queue_sha256_before": "b5ddd4b18450e26c70f27c1771fe36c98680fc298730b04815e3784e838684e5",
+  "queue_sha256_after": "7c6f6da047a75b26d36882ff564813c78f0242dedcd957010cb9f43e8d3e2982"
+}
