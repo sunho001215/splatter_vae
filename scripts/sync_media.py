@@ -28,6 +28,7 @@ runs are themselves downloads).
 """
 import argparse
 import fcntl
+import hashlib
 import json
 import sys
 import time
@@ -52,15 +53,24 @@ def media_done(client: RemoteClient, run_id: str) -> bool:
     return scope_done(client, run_id, "media")
 
 
-def backup_done(client: RemoteClient, run_id: str, attempt: int) -> bool:
-    """A verified final essential record of this attempt (its exit.json names the attempt)."""
+def backup_done(client: RemoteClient, run_id: str, current: dict) -> bool:
+    """A verified final essential record of this attempt: its checksums equal the attempt's in-place verification, or,
+    before that exists, its exit.json checksum equals the local exit.json naming this attempt (Codex review 2026-10-27:
+    a record of an earlier attempt must never suppress the backup)."""
     try:
         record = json.loads((client.network_dir / "results" / (run_id + ".json")).read_text())
-        exit_report = json.loads((client.main_repo / "runs" / run_id / "exit.json").read_text())
+        exit_path = client.main_repo / "runs" / run_id / "exit.json"
+        exit_report = json.loads(exit_path.read_text())
     except (OSError, ValueError):
         return False
-    return (record.get("verified") is True and record.get("final") is True and record.get("scope") == jobs.ESSENTIAL
-            and exit_report.get("attempt") == attempt)
+    if record.get("verified") is not True or record.get("final") is not True or record.get("scope") != jobs.ESSENTIAL:
+        return False
+    files = record.get("files") or {}
+    verified = current.get("remote_verified") or {}
+    if verified.get("attempt") == current.get("attempts") and verified.get("files"):
+        return all(files.get(name) == digest for name, digest in verified["files"].items())
+    return (exit_report.get("attempt") == current.get("attempts")
+            and files.get("exit.json") == hashlib.sha256(exit_path.read_bytes()).hexdigest())
 
 
 def backup_candidates(state: dict, client: RemoteClient, queue_jobs: list[dict]) -> list[str]:
@@ -70,7 +80,7 @@ def backup_candidates(state: dict, client: RemoteClient, queue_jobs: list[dict])
     found = [job_id for job_id, current in state.items()
              if current.get("host") == "remote" and current.get("verification_purpose") is None
              and current.get("campaign_eligible") is not False and current.get("status") == "sync_pending"
-             and current.get("code") == 0 and not backup_done(client, job_id, current.get("attempts"))]
+             and current.get("code") == 0 and not backup_done(client, job_id, current)]
     return sorted(found, key=lambda job_id: job_id not in needed_locally)
 
 

@@ -109,8 +109,14 @@ def tensors(mapping, entries, prefix):
             size *= int(dim)
         element = ELEMENT.get(storage.kind)
         record = entries.get(prefix + "data/" + storage.key)
-        if element is None or record is None or record != storage.numel * element:
-            problems.append(name)
+        contiguous, step = [], 1
+        for dim in reversed(value.size):
+            contiguous.insert(0, step)
+            step *= int(dim)
+        extent = int(value.offset) + sum((int(d) - 1) * int(st) for d, st in zip(value.size, value.stride)) + 1
+        if (element is None or record is None or record != storage.numel * element or int(value.offset) < 0
+                or (size and (list(value.stride) != contiguous or extent > storage.numel))):
+            problems.append(name)  # storage size, offset, contiguity and bounds as a weights-only load expects
         out[name] = {"dtype": storage.kind, "shape": list(value.size)}
     return out, problems
 

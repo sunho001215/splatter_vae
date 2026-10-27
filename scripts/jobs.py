@@ -479,7 +479,11 @@ STORAGE_NAMES = {"float32": "FloatStorage", "float64": "DoubleStorage", "float16
 
 
 def remote_check_names(state: dict) -> list[str]:
-    return sorted(set(state["required_results"]) | {"exit.json", "provenance.json"})
+    """Files inspected in place: the required results, the exit / provenance records, and the completion record the
+    script's budget check needs (pretraining completion.json, RL final.json)."""
+    script = Path(state.get("script", "")).name
+    mandatory = {"train.py": {"completion.json"}, "train_rl.py": {"final.json"}}.get(script, set())
+    return sorted(set(state["required_results"]) | {"exit.json", "provenance.json"} | mandatory)
 
 
 def _override(args: list, prefix: str) -> str | None:
@@ -504,7 +508,13 @@ def encoder_signature(encoder_config: dict) -> dict[str, list]:
             for name, value in module.state_dict().items()}
 
 
-def _verify_remote_export(state: dict, archive: dict) -> dict:
+def signature_sha256(tensors: dict) -> str:
+    """Digest of {name: [storage dtype, shape]} (inspection report form)."""
+    found = {name: [value["dtype"], list(value["shape"])] for name, value in tensors.items()}
+    return hashlib.sha256(json.dumps(found, sort_keys=True).encode()).hexdigest()
+
+
+def _verify_remote_export(state: dict, archive: dict, registry_state: dict | None = None) -> dict:
     args = list(map(str, state.get("args", [])))
     checkpoint, run = _option(args, "--checkpoint"), _option(args, "--run")
     match = re.search(r"step_(\d+)\.pt$", checkpoint or "")
@@ -520,12 +530,27 @@ def _verify_remote_export(state: dict, archive: dict) -> dict:
     found = {name: [value["dtype"], list(value["shape"])] for name, value in tensors.items()}
     if not found or archive.get("state_dict_storage_problems") or found != encoder_signature(archive["encoder_config"]):
         raise RemoteJobError("Remote export tensors do not match the encoder its configuration builds")
-    digest = hashlib.sha256(json.dumps(found, sort_keys=True).encode()).hexdigest()
+    digest = signature_sha256(tensors)
+    if registry_state is not None:
+        # Codex review 2026-10-27: the export must come from its producer's verified checkpoint at the producer's
+        # completed budget, checked before any consumer is released (not only at the later local closeout).
+        producer = registry_state.get(Path(run).name) or {}
+        relative = checkpoint.split("/", 2)[2] if checkpoint.startswith(f"runs/{Path(run).name}/") else None
+        verified = producer.get("remote_verified") or {}
+        evidence = (verified.get("files") if verified.get("attempt") == producer.get("attempts")
+                    else (producer.get("sync") or {}).get("files") if producer.get("status") == DONE else None) or {}
+        produced = (verified.get("checks") or {}).get("checkpoints", {}).get(relative, {})
+        declared = _override(producer.get("args", []), "train.steps=")
+        budget = (verified.get("checks") or {}).get("steps") or (int(declared) if declared else None)
+        if relative is None or relative not in evidence or budget != archive["step"]:
+            raise RemoteJobError("Remote export does not read its producer's verified checkpoint at the producer's budget")
+        if produced.get("encoder_signature_sha256") not in (None, digest):
+            raise RemoteJobError("Remote export tensors differ from its source checkpoint's encoder")
     return {"step": archive["step"], "tensors": len(found), "signature_sha256": digest,
             "policy_frames": archive.get("policy_frames"), "encoder_config": archive["encoder_config"]}
 
 
-def _verify_remote_exit(run_id: str, state: dict, report: dict) -> dict:
+def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: dict | None = None) -> dict:
     """In-place verification of a finished remote campaign attempt from the remote inspection report
     (``RemoteBackend.verify_remote_artifacts``): every required result present and nonempty with its checksum, the
     exit / provenance identity checks of the local path, the configured training budget (pretraining: completion.json
@@ -566,16 +591,19 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict) -> dict:
     for name in names:
         if name.startswith("checkpoints/") and name.endswith(".pt"):
             archive = archives.get(name) or {}
+            named = re.search(r"step_(\d+)\.pt$", name)
+            expected = int(named.group(1)) if named else checks.get("steps")
             if (archive.get("zip_ok") is not True or archive.get("encoder_storage_problems")
                     or (script == "train.py" and not archive.get("encoder"))
-                    or ("steps" in checks and archive.get("step") != checks["steps"])):
+                    or (expected is not None and archive.get("step") != expected)):
                 raise RemoteJobError(f"Remote checkpoint {name} failed its integrity / step check")
-            checks.setdefault("checkpoints", {})[name] = {"step": archive.get("step"),
-                                                          "encoder_tensors": len(archive.get("encoder") or {})}
+            checks.setdefault("checkpoints", {})[name] = {
+                "step": archive.get("step"), "encoder_tensors": len(archive.get("encoder") or {}),
+                "encoder_signature_sha256": signature_sha256(archive["encoder"]) if archive.get("encoder") else None}
     if script == "export_encoder.py":
         if "encoder.pt" not in names:
             raise RemoteJobError("Export rows must require encoder.pt")
-        checks["export"] = _verify_remote_export(state, archives.get("encoder.pt") or {})
+        checks["export"] = _verify_remote_export(state, archives.get("encoder.pt") or {}, registry_state)
     return checks
 
 
@@ -668,7 +696,7 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
         if (current.get("remote_verified") or {}).get("attempt") != current["attempts"] and recheck:
             try:
                 report = backend.verify_remote_artifacts(job_id, remote_check_names(current))
-                checks = _verify_remote_exit(job_id, current, report)
+                checks = _verify_remote_exit(job_id, current, report, state)
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 reachable = False

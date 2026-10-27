@@ -433,7 +433,9 @@ def test_required_checkpoint_is_verified_in_place_and_completed_from_the_backup(
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
     assert state["status"] == "sync_pending" and backend.inspections == ["r"] and not backend.backups
-    assert state["remote_verified"]["checks"]["checkpoints"] == {"checkpoints/final.pt": {"step": 7, "encoder_tensors": 1}}
+    assert state["remote_verified"]["checks"]["checkpoints"] == {"checkpoints/final.pt": {
+        "step": 7, "encoder_tensors": 1, "encoder_signature_sha256": jobs.signature_sha256({
+            "w": {"dtype": "FloatStorage", "shape": [2, 3]}})}}
     backend.backup_ready = True
     tick(tmp_path, queued, backend)
     state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
@@ -1514,3 +1516,30 @@ def test_a_backup_never_completes_an_attempt_that_failed_its_in_place_verificati
     assert backend.inspections == ["r"]  # rechecked at most every REMOTE_RECHECK_SECONDS, not every tick
     events = [json.loads(line)["event"] for line in (tmp_path / "registry.jsonl").read_text().splitlines()]
     assert events.count("remote_verification_failed") == 1 and "results_synced" not in events
+
+
+def test_remote_export_must_read_its_producers_verified_checkpoint_at_the_producers_budget(tmp_path):
+    """Codex review 2026-10-27: producer identity, budget and checkpoint evidence are checked before release."""
+    import dataclasses
+
+    import torch
+
+    from s4d.model.encoder import Encoder, EncoderConfig
+    config = EncoderConfig(width=32, depth=1, heads=2)
+    encoder = Encoder(config)
+    state = {"args": ["--run", "runs/pre", "--checkpoint", "runs/pre/checkpoints/step_0000010.pt",
+                      "--out", "runs/exp/encoder.pt"]}
+    torch.save({"format": "splatter4d-encoder-v1", "encoder_config": dataclasses.asdict(config),
+                "state_dict": encoder.state_dict(), "step": 10, "source_checkpoint": state["args"][3],
+                "run_name": "pre"}, tmp_path / "encoder.pt")
+    archive = remote_artifact_check.inspect_run(str(tmp_path), ["encoder.pt"])["archives"]["encoder.pt"]
+    signature = jobs.signature_sha256(archive["state_dict"])
+
+    def producer(steps=10, files=("checkpoints/step_0000010.pt",), digest=signature, attempt=1):
+        return {"pre": {"host": "remote", "status": "sync_pending", "attempts": 1, "args": [], "remote_verified": {
+            "attempt": attempt, "files": {name: "a" * 64 for name in files}, "checks": {"steps": steps, "checkpoints": {
+                "checkpoints/step_0000010.pt": {"step": 10, "encoder_signature_sha256": digest}}}}}}
+    assert jobs._verify_remote_export(state, archive, producer())["step"] == 10
+    for registry in (producer(steps=20), producer(files=()), producer(digest="0" * 64), producer(attempt=0), {}):
+        with pytest.raises(remote.RemoteJobError):
+            jobs._verify_remote_export(state, archive, registry)

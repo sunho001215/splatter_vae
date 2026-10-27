@@ -60,3 +60,11 @@ def test_no_pickled_global_is_resolved(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "system", lambda *args: called.append(args))
     archive = check.inspect_run(str(tmp_path), ["evil.pt"])["archives"]["evil.pt"]
     assert archive["zip_ok"] and "posix.system" in archive["globals"] and not called
+
+
+def test_non_contiguous_or_out_of_bounds_tensors_are_storage_problems(tmp_path):
+    base = torch.arange(12.0)
+    torch.save({"step": 1, "encoder": {"view": base.view(3, 4).t(), "slice": base[4:8], "ok": torch.zeros(2, 2)}},
+               tmp_path / "views.pt")
+    archive = check.inspect_run(str(tmp_path), ["views.pt"])["archives"]["views.pt"]
+    assert archive["encoder_storage_problems"] == ["view"]  # an offset slice is valid, a transposed view is not

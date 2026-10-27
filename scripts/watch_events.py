@@ -97,6 +97,9 @@ def registry_events(state: dict) -> list[str]:
             events.append(f"REMOTE_RESULTS_SYNCED id={job_id} host={host}")
         elif kind == "remote_verified":  # verified in place on the remote; same-host dependents released (2026-10-27)
             events.append(f"REMOTE_ARTIFACTS_VERIFIED id={job_id} host={host} attempt={event.get('attempt')}")
+        elif kind == "remote_verification_failed":  # the job cannot complete until diagnosed
+            events.append(f"REMOTE_VERIFICATION_FAILED id={job_id} host={host} attempt={event.get('attempt')} "
+                          f"reason={str(event.get('reason', ''))[:120]!r}")
         elif kind == "launched":
             job.update(gpu=event["gpu"], attempt=event["attempt"], host=host)
             state["log_offsets"][job_id] = Path(log_path(job_id)).stat().st_size if Path(log_path(job_id)).is_file() else 0

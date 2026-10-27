@@ -1,4 +1,5 @@
 """scripts/sync_media.py: which remote runs the bulk media worker copies (it never writes the registry)."""
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -64,10 +65,14 @@ def test_backups_cover_compute_complete_runs_with_cross_host_dependencies_first(
     }
     for run_id, attempt in (("copied", 2), ("stale", 1)):  # "stale": the record is of an earlier attempt
         (client.network_dir / "results").mkdir(parents=True, exist_ok=True)
-        (client.network_dir / "results" / f"{run_id}.json").write_text(json.dumps(
-            {"verified": True, "final": True, "scope": "essential"}))
         (client.main_repo / "runs" / run_id).mkdir(parents=True, exist_ok=True)
-        (client.main_repo / "runs" / run_id / "exit.json").write_text(json.dumps({"attempt": attempt}))
+        payload = json.dumps({"attempt": attempt}).encode()
+        (client.main_repo / "runs" / run_id / "exit.json").write_bytes(payload)
+        (client.network_dir / "results" / f"{run_id}.json").write_text(json.dumps(
+            {"verified": True, "final": True, "scope": "essential",
+             "files": {"exit.json": hashlib.sha256(payload).hexdigest()}}))
+    # a record whose checksums differ from the attempt's in-place verification is not a backup of that attempt
+    state["b"]["remote_verified"] = {"attempt": 1, "files": {"exit.json": "0" * 64}}
     queue = [{"id": "export-b", "host": "local", "deps": ["b"]}, {"id": "remote-a", "host": "remote", "deps": ["a"]}]
     assert sync_media.backup_candidates(state, client, queue) == ["b", "a", "stale"]
     assert sync_media.running(state) == ["running"]

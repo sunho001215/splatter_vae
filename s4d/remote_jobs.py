@@ -690,7 +690,7 @@ class RemoteBackend:
         command = (f"set -eu; test -d {shlex.quote(run_dir)}; test ! -L {shlex.quote(run_dir)}; exec python3 -I -c "
                    + shlex.quote(loader) + " " + shlex.quote(run_dir) + " " + " ".join(shlex.quote(n) for n in names))
         try:
-            response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=900)
+            response = self.client.checked_ssh(command, wait=False, idempotent=True, timeout=300)
         except RemoteUnreachable:
             self._save_snapshot(reachable=False, query_ok=False)
             raise
