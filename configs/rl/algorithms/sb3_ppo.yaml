@@ -1,0 +1,31 @@
+# PPO pilot (user directive 2026-10-28): Stable-Baselines3 v2.9.0 PPO (third_party/stable-baselines3 @ 8908708, MIT)
+# unchanged, on the shared reference protocol of configs/rl/base.yaml (environment, cameras, 128 px, 3-frame history,
+# action repeat 2, 125 agent steps, proprioception, evaluation). Values: SB3's PPO defaults (a), except the rollout
+# split over parallel environments (8 x 256 = SB3's default 2048 transitions per update) and the policy width, widened
+# from SB3's 64-64 to 256-256 for every arm because the frozen features have hundreds to thousands of dimensions.
+# Observation and reward normalisation: SB3 VecNormalize, the standard SB3 continuous-control setting (rl-baselines3-zoo),
+# identically for every arm (frozen arms: feature + proprioception; CNN arm: proprioception, images / 255 by the policy).
+algorithm: sb3_ppo
+agent:
+  learning_rate: 3.0e-4     # (a)
+  n_envs: 8
+  n_steps: 256              # per environment: 2048 transitions per update, (a)'s n_steps 2048 for one environment
+  batch_size: 64            # (a)
+  n_epochs: 10              # (a)
+  gamma: 0.99               # (a)
+  gae_lambda: 0.95          # (a)
+  clip_range: 0.2           # (a)
+  ent_coef: 0.0             # (a)
+  vf_coef: 0.5              # (a)
+  max_grad_norm: 0.5        # (a)
+  net_arch: [256, 256]      # separate policy and value MLPs of this width (a: [64, 64]), Tanh as (a)
+  normalize_observations: true
+  normalize_rewards: true
+  clip_obs: 10.0            # VecNormalize default
+train:
+  num_train_steps: 1000000  # agent steps (2M simulator steps), the common budget; registered extension to 5M for
+                            # every arm only if all arms stay at the floor (PPO is sample-hungry: Meta-World PPO used 20M)
+  cpu_threads: 8
+  log_every_steps: 1000
+  checkpoint_every_steps: 50000
+  rolling_window: 10
