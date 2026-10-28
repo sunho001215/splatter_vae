@@ -10,3 +10,9 @@
 [submodule "dino"]
 	path = third_party/dino
 	url = https://github.com/facebookresearch/dino.git
+[submodule "third_party/stable-baselines3"]
+	path = third_party/stable-baselines3
+	url = https://github.com/DLR-RM/stable-baselines3
+[submodule "third_party/dreamer-pytorch"]
+	path = third_party/dreamer-pytorch
+	url = https://github.com/yusukeurakami/dreamer-pytorch
