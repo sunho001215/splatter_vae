@@ -286,7 +286,13 @@ def local_writers(run_dir: Path, run_id: str, session: int | None = None, proc: 
                         if len(line.split(None, 5)) == 6]
         except FileNotFoundError:
             continue  # exited meanwhile
-        except OSError as exc:  # fail closed: a process that cannot be inspected may be a writer
+        except OSError as exc:  # fail closed: a process of ours that cannot be inspected may be a writer
+            try:
+                owner = base.stat().st_uid
+            except FileNotFoundError:
+                continue
+            if isinstance(exc, PermissionError) and owner != os.geteuid():
+                continue  # another user's process: the replay files are ours (mode 0644), it cannot write them
             found.append(f"{label} cannot be inspected ({type(exc).__name__})")
             continue
         if any(target == replay or target.startswith(replay + "/") for target in targets):
