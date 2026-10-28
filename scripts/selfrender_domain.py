@@ -315,7 +315,7 @@ def support_png(decision: dict, out: Path) -> None:
     Image.fromarray(np.kron(img, np.ones((12, 12, 1), dtype=np.uint8))).save(out / "domain_map.png")
 
 
-def relate_eval(domain_path: Path, grid_json: Path) -> dict:
+def relate_eval(domain_path: Path, grid_json: Path, suite: str = "v1") -> dict:
     """AFTER freezing (never an input of the domain): where the existing evaluation cameras lie relative to the frozen
     domain -- the fixed held-out cameras eval0..3 (s4d/rl/env.py HELDOUT_PATHS) and the lateral / circular trajectories
     around train1 (trajectory_path). A pose is inside when its (azimuth, elevation) falls in a domain cell (+-2.5 deg);
@@ -347,12 +347,30 @@ def relate_eval(domain_path: Path, grid_json: Path) -> dict:
                 "nearest_grid_point": [int(grid[g, 0]), int(grid[g, 1])], "grid_point_in_domain": bool(full["domain"][g]),
                 "support_at_grid_point": support}
 
+    def azimuth_range(poses) -> list[float]:
+        # Wrap-aware: offsets from the path's first pose, so a path around +-180 deg is not reported as -180..180.
+        a0 = poses[0]["azimuth"]
+        offsets = [((p["azimuth"] - a0 + 180.0) % 360.0) - 180.0 for p in poses]
+        return [round(a0 + min(offsets), 3), round(a0 + max(offsets), 3)]
+
     out = {"domain": str(domain_path), "fixed": {name: describe(path[0]) for name, path in HELDOUT_PATHS.items()}}
-    for kind in ("lateral", "circular"):
+    kinds = ("lateral", "circular")
+    if suite == "v2":
+        # Camera suite v2 (s4d.rl.camera_suites; frozen before any policy evaluation): the common held-out rig
+        # vis0..3, every task-specific exception camera, and the stronger moving levels.
+        from s4d.rl.camera_suites import HELDOUT_V2_TASK_EXCEPTIONS, STRONGER_TRAJECTORIES
+        from s4d.rl.env import HELDOUT_V2_PATHS, orbit_camera
+
+        out = {"domain": str(domain_path),
+               "fixed": {name: describe(path[0]) for name, path in HELDOUT_V2_PATHS.items()},
+               "task_exceptions": {f"{task}:{name}": describe(orbit_camera(*cam))
+                                   for task, cams in HELDOUT_V2_TASK_EXCEPTIONS.items() for name, cam in cams.items()}}
+        kinds = tuple(STRONGER_TRAJECTORIES)
+    for kind in kinds:
         poses = [describe(c) for c in trajectory_path(kind)]
         out[f"traj_{kind}"] = {
             "poses": len(poses), "inside_fraction": float(np.mean([p["inside"] for p in poses])),
-            "azimuth_range": [min(p["azimuth"] for p in poses), max(p["azimuth"] for p in poses)],
+            "azimuth_range": azimuth_range(poses),
             "elevation_range": [min(p["elevation"] for p in poses), max(p["elevation"] for p in poses)],
             "distance_range": [min(p["distance"] for p in poses), max(p["distance"] for p in poses)],
             "max_nearest_domain_cell_deg": max(p["nearest_domain_cell_deg"] for p in poses),
@@ -366,13 +384,16 @@ def main() -> None:
     ap.add_argument("--write-domain", default=None, help="freeze: write the domain YAML here")
     ap.add_argument("--no-renders", action="store_true")
     ap.add_argument("--relate-eval", default=None, help="after freezing: relate the evaluation cameras to this domain YAML")
+    ap.add_argument("--suite", choices=("v1", "v2"), default="v1",
+                    help="--relate-eval: v1 = eval0..3 and the 1x paths; v2 = camera suite v2 (own output file)")
     args = ap.parse_args()
     out = Path(args.out)
     out = out if out.is_absolute() else REPO / out
     out.mkdir(parents=True, exist_ok=True)
     if args.relate_eval:
-        result = relate_eval(Path(args.relate_eval), out / "support_grid.json")
-        (out / "eval_relationship.json").write_text(json.dumps(result, indent=1))
+        result = relate_eval(Path(args.relate_eval), out / "support_grid.json", args.suite)
+        name = "eval_relationship.json" if args.suite == "v1" else "eval_relationship_cameras_v2.json"
+        (out / name).write_text(json.dumps(result, indent=1))
         print(json.dumps({k: v if k.startswith("traj") else {n: {f: d[f] for f in ("azimuth", "elevation", "inside",
                           "nearest_domain_cell_deg", "grid_point_in_domain")} for n, d in v.items()}
                           for k, v in result.items() if k != "domain"}, indent=1))

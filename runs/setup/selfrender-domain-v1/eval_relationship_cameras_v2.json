@@ -1,0 +1,299 @@
+{
+ "domain": "configs/metaworld/selfrender_domain_v1.yaml",
+ "fixed": {
+  "vis0": {
+   "azimuth": 140.0,
+   "elevation": -55.0,
+   "distance": 1.0,
+   "inside": true,
+   "nearest_domain_cell_deg": 0.0,
+   "nearest_grid_point": [
+    140,
+    -55
+   ],
+   "grid_point_in_domain": true,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.90601,
+     "support2": 0.95285,
+     "ws_visible": 0.52021,
+     "ws_support2": 0.85013
+    },
+    "pick-place": {
+     "coverage": 0.90698,
+     "support2": 0.95254,
+     "ws_visible": 0.45012,
+     "ws_support2": 0.76839
+    },
+    "bin-picking": {
+     "coverage": 0.90642,
+     "support2": 0.95487,
+     "ws_visible": 0.3532,
+     "ws_support2": 0.75751
+    }
+   }
+  },
+  "vis1": {
+   "azimuth": -160.0,
+   "elevation": -25.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 15.57,
+   "nearest_grid_point": [
+    -160,
+    -25
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.64625,
+     "support2": 0.85231,
+     "ws_visible": 0.39622,
+     "ws_support2": 0.90474
+    },
+    "pick-place": {
+     "coverage": 0.71906,
+     "support2": 0.92967,
+     "ws_visible": 0.3195,
+     "ws_support2": 0.93162
+    },
+    "bin-picking": {
+     "coverage": 0.71618,
+     "support2": 0.92396,
+     "ws_visible": 0.27645,
+     "ws_support2": 0.88815
+    }
+   }
+  },
+  "vis2": {
+   "azimuth": -60.0,
+   "elevation": -40.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 10.0,
+   "nearest_grid_point": [
+    -60,
+    -40
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.77136,
+     "support2": 0.93864,
+     "ws_visible": 0.35648,
+     "ws_support2": 0.91853
+    },
+    "pick-place": {
+     "coverage": 0.78429,
+     "support2": 0.94204,
+     "ws_visible": 0.32278,
+     "ws_support2": 0.9216
+    },
+    "bin-picking": {
+     "coverage": 0.78181,
+     "support2": 0.92058,
+     "ws_visible": 0.37002,
+     "ws_support2": 0.84829
+    }
+   }
+  },
+  "vis3": {
+   "azimuth": -20.0,
+   "elevation": -25.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 10.89,
+   "nearest_grid_point": [
+    -20,
+    -25
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.71809,
+     "support2": 0.95414,
+     "ws_visible": 0.37607,
+     "ws_support2": 0.90274
+    },
+    "pick-place": {
+     "coverage": 0.71128,
+     "support2": 0.93388,
+     "ws_visible": 0.28957,
+     "ws_support2": 0.91676
+    },
+    "bin-picking": {
+     "coverage": 0.71129,
+     "support2": 0.92354,
+     "ws_visible": 0.29383,
+     "ws_support2": 0.88252
+    }
+   }
+  }
+ },
+ "task_exceptions": {
+  "door-open:vis1": {
+   "azimuth": 120.0,
+   "elevation": -25.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 19.56,
+   "nearest_grid_point": [
+    120,
+    -25
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.67065,
+     "support2": 0.90196,
+     "ws_visible": 0.42057,
+     "ws_support2": 0.8489
+    },
+    "pick-place": {
+     "coverage": 0.63821,
+     "support2": 0.91526,
+     "ws_visible": 0.29354,
+     "ws_support2": 0.90089
+    },
+    "bin-picking": {
+     "coverage": 0.63609,
+     "support2": 0.90295,
+     "ws_visible": 0.26421,
+     "ws_support2": 0.87664
+    }
+   }
+  },
+  "door-open:vis2": {
+   "azimuth": 80.0,
+   "elevation": -50.0,
+   "distance": 1.0,
+   "inside": true,
+   "nearest_domain_cell_deg": 0.0,
+   "nearest_grid_point": [
+    80,
+    -50
+   ],
+   "grid_point_in_domain": true,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.83531,
+     "support2": 0.94216,
+     "ws_visible": 0.46706,
+     "ws_support2": 0.8014
+    },
+    "pick-place": {
+     "coverage": 0.85648,
+     "support2": 0.93854,
+     "ws_visible": 0.40158,
+     "ws_support2": 0.69831
+    },
+    "bin-picking": {
+     "coverage": 0.85524,
+     "support2": 0.93744,
+     "ws_visible": 0.37335,
+     "ws_support2": 0.74134
+    }
+   }
+  },
+  "window-open:vis3": {
+   "azimuth": -100.0,
+   "elevation": -40.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 15.0,
+   "nearest_grid_point": [
+    -100,
+    -40
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.67676,
+     "support2": 0.91178,
+     "ws_visible": 0.32243,
+     "ws_support2": 0.89833
+    },
+    "pick-place": {
+     "coverage": 0.75721,
+     "support2": 0.94329,
+     "ws_visible": 0.31923,
+     "ws_support2": 0.9161
+    },
+    "bin-picking": {
+     "coverage": 0.74892,
+     "support2": 0.92498,
+     "ws_visible": 0.33592,
+     "ws_support2": 0.84128
+    }
+   }
+  }
+ },
+ "traj_lateral_2x": {
+  "poses": 72,
+  "inside_fraction": 1.0,
+  "azimuth_range": [
+   -198.502,
+   -161.498
+  ],
+  "elevation_range": [
+   -45.0,
+   -43.48
+  ],
+  "distance_range": [
+   1.0,
+   1.0276
+  ],
+  "max_nearest_domain_cell_deg": 2.24
+ },
+ "traj_circular_2x": {
+  "poses": 72,
+  "inside_fraction": 0.7916666666666666,
+  "azimuth_range": [
+   -200.0,
+   -160.0
+  ],
+  "elevation_range": [
+   -57.0,
+   -33.0
+  ],
+  "distance_range": [
+   1.0,
+   1.0
+  ],
+  "max_nearest_domain_cell_deg": 8.32
+ },
+ "traj_lateral_3x": {
+  "poses": 72,
+  "inside_fraction": 0.9305555555555556,
+  "azimuth_range": [
+   -206.654,
+   -153.346
+  ],
+  "elevation_range": [
+   -45.0,
+   -41.788
+  ],
+  "distance_range": [
+   1.0,
+   1.0611
+  ],
+  "max_nearest_domain_cell_deg": 3.43
+ },
+ "traj_circular_3x": {
+  "poses": 72,
+  "inside_fraction": 0.6388888888888888,
+  "azimuth_range": [
+   -210.0,
+   -150.0
+  ],
+  "elevation_range": [
+   -63.0,
+   -27.0
+  ],
+  "distance_range": [
+   1.0,
+   1.0
+  ],
+  "max_nearest_domain_cell_deg": 13.15
+ }
+}
