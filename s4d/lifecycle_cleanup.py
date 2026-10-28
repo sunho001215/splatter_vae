@@ -60,7 +60,9 @@ class Trainer:
 # Per-script settings (by file name); unlisted trainers use the defaults. New downstream trainers (e.g. train_sac.py,
 # train_ppo.py, train_dreamer.py) add an entry when their budget key, replay names or policy modules differ.
 TRAINERS = {"train_rl.py": Trainer(policy_keys=("encoder", "actor")),
-            "train_sac.py": Trainer(policy_keys=("actor",))}  # SNeRL-code SAC snapshots hold the actor (2026-10-28)
+            "train_sac.py": Trainer(policy_keys=("actor",)),  # SNeRL-code SAC snapshots hold the actor (2026-10-28)
+            "train_ppo.py": Trainer(policy_keys=("policy",)),  # SB3 PPO: policy state dict (+ observation statistics)
+            "train_dreamer.py": Trainer(policy_keys=("world_model", "actor"))}  # Dreamer v1: encoder/RSSM + actor
 DEFAULT_TRAINER = Trainer()
 # Companion jobs that only read a run's saved policies; their rows and processes never block replay cleanup.
 READ_ONLY_CONSUMERS = frozenset({"eval_rl.py"})

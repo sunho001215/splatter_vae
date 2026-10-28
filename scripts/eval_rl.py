@@ -73,12 +73,10 @@ def main() -> None:
     drm = cfg.get("algorithm", "drm") == "drm"
     if drm:
         agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
-    else:  # SNeRL-code SAC (user directive 2026-10-28): same evaluation, the deterministic mean of its actor
-        from s4d.rl.snerl_sac import SNeRLSAC  # noqa: PLC0415
+    else:  # downstream algorithms (user directive 2026-10-28): same evaluation, each algorithm's deterministic policy
+        from s4d.rl.algorithms import evaluation_policy  # noqa: PLC0415
 
-        if cfg["algorithm"] != "snerl_sac":
-            raise ValueError(f"no evaluator for algorithm {cfg['algorithm']!r}")
-        agent = SNeRLSAC(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
+        agent = evaluation_policy(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
     out = output_dir / "eval.jsonl"
     wandb_run = init_wandb(

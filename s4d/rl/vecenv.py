@@ -79,7 +79,11 @@ class EnvPool:
             obs = [None if s is None else s[0] for s in state]
             proprio = [None if s is None else s[1] for s in state]
             active = list(range(len(wave)))
+            if hasattr(act, "begin_wave"):  # recurrent policies (Dreamer, 2026-10-28): fresh state per episode
+                act.begin_wave(len(wave))
             while active:
+                if hasattr(act, "active"):
+                    act.active = list(active)  # wave positions of the observations passed in this call
                 actions = act(stack_observations([obs[k] for k in active]), np.stack([proprio[k] for k in active]))
                 commands = [None] * self.size
                 for k, action in zip(active, actions):
