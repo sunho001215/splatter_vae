@@ -50,7 +50,9 @@ ENC_READY = (REPO / RELEASES[(ENC_COMMIT, POOL_IMAGE)]).is_file()
 # Downstream-algorithm campaign release (user directive 2026-10-28): ds-* rows (SNeRL-code SAC, new-task pretraining)
 # run on DS_COMMIT (scripts/train_sac.py, s4d/rl/snerl_sac.py, new task configs) on the derived image; offered only once
 # its acceptance manifest exists. Retries keep the release of their first launch.
-DS_COMMIT = '27640d0c1fae78fab0342125946d3b30aa2207dc'  # SAC + cleanup + PPO + Dreamer (main 2026-10-28; release_chain.py)
+DS_COMMIT = 'b9196a8f292c5a6b1782a20ef2af0ba653cdd078'  # + camera suite v2, self-render, FlashSAC, new-task baselines
+# (main 2026-10-29; release_chain.py, accepted runs/remote/acceptance/b9196a8-cc; previously 27640d0, which launched rows
+# keep: job_release pins a retry to its first launch's commit)
 DS_PREFIXES = ('ds-', 'sr-')  # sr-: self-render replacement pretraining (user 2026-10-29)
 if DS_COMMIT:
     RELEASES[(DS_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{DS_COMMIT[:7]}-cc/manifest.json'

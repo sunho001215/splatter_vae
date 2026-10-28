@@ -6024,3 +6024,38 @@ snapshot.
 
 **Cleanup.** The automatic retry (attempt 2) of the failing verification was stopped. It was our own verification
 container. It is recorded as failed, with retries exhausted. The release chain was then rerun on b9196a8.
+
+### 2026-10-29 04:25 — Release b9196a8 accepted; comparison registered and dispatched by capacity
+
+**Release.**
+- Remote native suite: 1212 passed, 0 failed, 0 errors, 0 skipped.
+- The four GPU isolation checks passed.
+- Accepted manifest: `runs/remote/acceptance/b9196a8-cc`.
+- Main was fast-forwarded to b9196a8, and the remote suite was adopted as the gate evidence (d00ff12). The FlashSAC
+  submodule is checked out in main at 87edc90.
+- `DS_COMMIT` is now b9196a8. Backup: `remote_campaign_driver.before-ds-b9196a8-20261029.py`. Rows that already
+  launched keep 27640d0.
+
+**Registered.**
+
+| Group | Rows | Host | Priority | Notes |
+|---|---|---|---|---|
+| Self-render, combined warm-up + expanded-viewpoint recipe (`sr-csw4-*`) | 6: pretraining 200k, seed 0, + export, on hammer, pick-place, bin-picking | remote | 2 | `selfrender-registration-20261029.json` |
+| New-task baseline pretraining (`ds-pre-<baseline>-<task>`) | 20: SinCro, ReViWo, DynaMo, SNeRL, 3D-MVP × drawer-open, window-open, soccer, sweep-into | remote | 3 | |
+| Camera v2 re-evaluation (`ds-cv2-<run>-eval`) | 216: every completed DrM run of csw4, CNN, CNN without shift, SinCro, ReViWo, DynaMo, SNeRL, 3D-MVP A and B; 8 tasks × seeds 2000–2002 | 110 local, 106 remote | 1 for csw4 and CNN, 2 for the rest | `--suites v2 --snapshots final`, on the host holding the snapshot |
+| FlashSAC, labelled a no-image-augmentation adaptation | 297 trainers + 297 evaluators, 1M agent steps | local frozen-encoder families; remote CNN | 2 | `flashsac-registration-20261029.json` |
+
+FlashSAC runs 12 tasks × {csw4, CNN, SinCro, ReViWo, DynaMo, SNeRL, 3D-MVP A, 3D-MVP B} × seeds 2000–2002, plus
+sr-csw4 on its three tasks. Within each seed, csw4 and CNN come first.
+
+Every new-task row depends explicitly on its own task's export (`ds-csw4-export-*`, `ds-pre-*`, `sr-csw4-export-*`).
+
+**Measured cost** (1g MIG, per 1M steps):
+- csw4 ~5.4 h; SNeRL ~7.2 h; 3D-MVP A ~11 h.
+- CNN ~18 h, which the remote driver charges as one full GPU.
+- Frozen-encoder FlashSAC rows are local and not pool-movable.
+
+**Drivers.**
+- The local driver admits the re-evaluation and FlashSAC registrations. An evaluator's training run is read from its
+  `reevaluates` field.
+- The remote driver treats a re-evaluation row as ready: its snapshot and export are already on that host.

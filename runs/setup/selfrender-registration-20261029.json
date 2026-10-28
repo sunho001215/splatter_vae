@@ -1,0 +1,224 @@
+{
+  "prepared_at": "2026-10-29T04:16:48.052414+09:00",
+  "purpose": "Self-render replacement pretraining on csw4 (user directive 2026-10-29 items 4-5, amendment 2026-10-29 ~00:40):\nthe combined warm-up + expanded-viewpoint self-render recipe (configs/metaworld/variants/selfrender_replace_v2.yaml:\nno self-render contribution 0-20k, linear ramp 20k-40k, full 40k-200k; cameras from the frozen training-supported domain\nconfigs/metaworld/selfrender_domain_v1.yaml) on hammer, pick-place and bin-picking, 200k steps, pretraining seed 0.",
+  "variant_file": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+  "viewpoint_domain": "configs/metaworld/selfrender_domain_v1.yaml",
+  "label": "combined warm-up + expanded-viewpoint self-render recipe",
+  "tasks": [
+    "hammer",
+    "pick-place",
+    "bin-picking"
+  ],
+  "jobs": [
+    {
+      "id": "sr-csw4-seed0-hammer-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/selfrender_replace_v2.yaml",
+        "--name",
+        "sr-csw4-seed0-hammer-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 7,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "selfrender_replace_v2",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+      "placement": "pool 2026-10-29T04:16:44+09:00 (registered on the remote: self-render replacement pretraining)"
+    },
+    {
+      "id": "sr-csw4-export-seed0-hammer-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/sr-csw4-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/sr-csw4-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/sr-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 2,
+      "deps": [
+        "sr-csw4-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 7,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "selfrender_replace_v2",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+      "placement": "pool 2026-10-29T04:16:44+09:00 (registered on the remote: self-render replacement pretraining)"
+    },
+    {
+      "id": "sr-csw4-seed0-pick-place-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/selfrender_replace_v2.yaml",
+        "--name",
+        "sr-csw4-seed0-pick-place-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 7,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "selfrender_replace_v2",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+      "placement": "pool 2026-10-29T04:16:44+09:00 (registered on the remote: self-render replacement pretraining)"
+    },
+    {
+      "id": "sr-csw4-export-seed0-pick-place-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/sr-csw4-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/sr-csw4-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/sr-csw4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 2,
+      "deps": [
+        "sr-csw4-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 7,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "selfrender_replace_v2",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+      "placement": "pool 2026-10-29T04:16:44+09:00 (registered on the remote: self-render replacement pretraining)"
+    },
+    {
+      "id": "sr-csw4-seed0-bin-picking-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/selfrender_replace_v2.yaml",
+        "--name",
+        "sr-csw4-seed0-bin-picking-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 7,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "selfrender_replace_v2",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+      "placement": "pool 2026-10-29T04:16:44+09:00 (registered on the remote: self-render replacement pretraining)"
+    },
+    {
+      "id": "sr-csw4-export-seed0-bin-picking-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/sr-csw4-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/sr-csw4-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/sr-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 2,
+      "deps": [
+        "sr-csw4-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 7,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "selfrender_replace_v2",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+      "placement": "pool 2026-10-29T04:16:44+09:00 (registered on the remote: self-render replacement pretraining)"
+    }
+  ],
+  "registered_at": "2026-10-29T04:16:59.944212+09:00",
+  "queue_sha256_before": "81560b60c48972bd901abf1d344550d3161d7f2c49e1f32b643a7f4235cec40a",
+  "queue_sha256_after": "76554696c9b298ebcfee476c42e31a3cc1f5941b2064c47a373732930b2be34e"
+}

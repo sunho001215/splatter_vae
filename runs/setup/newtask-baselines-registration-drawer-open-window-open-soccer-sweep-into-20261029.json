@@ -1,0 +1,661 @@
+{
+  "prepared_at": "2026-10-29T04:17:03.692220+09:00",
+  "purpose": "Baseline encoder pretraining for the new tasks (user directive 2026-10-29: register the missing new-task dependencies\nexplicitly, never substitute another task's encoder).",
+  "tasks": [
+    "drawer-open",
+    "window-open",
+    "soccer",
+    "sweep-into"
+  ],
+  "references": {
+    "sincro": "s4-sincro-door-open-b",
+    "reviwo": "s4-reviwo-door-open-b",
+    "dynamo": "s4-dynamo-door-open-rem-b",
+    "snerl": "s4-snerl-door-open-rem-b",
+    "mvp3d": "s4-mvp3d-door-open-rem-b"
+  },
+  "counts": {
+    "scripts/train_dynamo.py": 4,
+    "scripts/train_mvp3d.py": 4,
+    "scripts/train_reviwo.py": 4,
+    "scripts/train_sincro.py": 4,
+    "scripts/train_snerl.py": 4
+  },
+  "jobs": [
+    {
+      "id": "ds-pre-sincro-drawer-open",
+      "host": "remote",
+      "script": "scripts/train_sincro.py",
+      "args": [
+        "--config",
+        "configs/baselines/sincro/drawer-open.yaml",
+        "--name",
+        "ds-pre-sincro-drawer-open",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 24,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-reviwo-drawer-open",
+      "host": "remote",
+      "script": "scripts/train_reviwo.py",
+      "args": [
+        "--config",
+        "configs/baselines/reviwo/drawer-open.yaml",
+        "--name",
+        "ds-pre-reviwo-drawer-open",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 16,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-dynamo-drawer-open",
+      "host": "remote",
+      "script": "scripts/train_dynamo.py",
+      "args": [
+        "--config",
+        "configs/baselines/dynamo/drawer-open.yaml",
+        "--name",
+        "ds-pre-dynamo-drawer-open",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 48,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "dynamo",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-snerl-drawer-open",
+      "host": "remote",
+      "script": "scripts/train_snerl.py",
+      "args": [
+        "--config",
+        "configs/baselines/snerl/drawer-open.yaml",
+        "--name",
+        "ds-pre-snerl-drawer-open",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 16,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "snerl",
+      "stage": 6,
+      "baseline_expansion": "snerl-eight-task-20261020",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-mvp3d-drawer-open",
+      "host": "remote",
+      "script": "scripts/train_mvp3d.py",
+      "args": [
+        "--config",
+        "configs/baselines/mvp3d/drawer-open.yaml",
+        "--name",
+        "ds-pre-mvp3d-drawer-open",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "mvp3d",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_mvp3d",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-sincro-window-open",
+      "host": "remote",
+      "script": "scripts/train_sincro.py",
+      "args": [
+        "--config",
+        "configs/baselines/sincro/window-open.yaml",
+        "--name",
+        "ds-pre-sincro-window-open",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 24,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-reviwo-window-open",
+      "host": "remote",
+      "script": "scripts/train_reviwo.py",
+      "args": [
+        "--config",
+        "configs/baselines/reviwo/window-open.yaml",
+        "--name",
+        "ds-pre-reviwo-window-open",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 16,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-dynamo-window-open",
+      "host": "remote",
+      "script": "scripts/train_dynamo.py",
+      "args": [
+        "--config",
+        "configs/baselines/dynamo/window-open.yaml",
+        "--name",
+        "ds-pre-dynamo-window-open",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 48,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "dynamo",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-snerl-window-open",
+      "host": "remote",
+      "script": "scripts/train_snerl.py",
+      "args": [
+        "--config",
+        "configs/baselines/snerl/window-open.yaml",
+        "--name",
+        "ds-pre-snerl-window-open",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 16,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "snerl",
+      "stage": 6,
+      "baseline_expansion": "snerl-eight-task-20261020",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-mvp3d-window-open",
+      "host": "remote",
+      "script": "scripts/train_mvp3d.py",
+      "args": [
+        "--config",
+        "configs/baselines/mvp3d/window-open.yaml",
+        "--name",
+        "ds-pre-mvp3d-window-open",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "mvp3d",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_mvp3d",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-sincro-soccer",
+      "host": "remote",
+      "script": "scripts/train_sincro.py",
+      "args": [
+        "--config",
+        "configs/baselines/sincro/soccer.yaml",
+        "--name",
+        "ds-pre-sincro-soccer",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 24,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-reviwo-soccer",
+      "host": "remote",
+      "script": "scripts/train_reviwo.py",
+      "args": [
+        "--config",
+        "configs/baselines/reviwo/soccer.yaml",
+        "--name",
+        "ds-pre-reviwo-soccer",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 16,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-dynamo-soccer",
+      "host": "remote",
+      "script": "scripts/train_dynamo.py",
+      "args": [
+        "--config",
+        "configs/baselines/dynamo/soccer.yaml",
+        "--name",
+        "ds-pre-dynamo-soccer",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 48,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "dynamo",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-snerl-soccer",
+      "host": "remote",
+      "script": "scripts/train_snerl.py",
+      "args": [
+        "--config",
+        "configs/baselines/snerl/soccer.yaml",
+        "--name",
+        "ds-pre-snerl-soccer",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 16,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "snerl",
+      "stage": 6,
+      "baseline_expansion": "snerl-eight-task-20261020",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-mvp3d-soccer",
+      "host": "remote",
+      "script": "scripts/train_mvp3d.py",
+      "args": [
+        "--config",
+        "configs/baselines/mvp3d/soccer.yaml",
+        "--name",
+        "ds-pre-mvp3d-soccer",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "mvp3d",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_mvp3d",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-sincro-sweep-into",
+      "host": "remote",
+      "script": "scripts/train_sincro.py",
+      "args": [
+        "--config",
+        "configs/baselines/sincro/sweep-into.yaml",
+        "--name",
+        "ds-pre-sincro-sweep-into",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 24,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-reviwo-sweep-into",
+      "host": "remote",
+      "script": "scripts/train_reviwo.py",
+      "args": [
+        "--config",
+        "configs/baselines/reviwo/sweep-into.yaml",
+        "--name",
+        "ds-pre-reviwo-sweep-into",
+        "--output-root",
+        "runs"
+      ],
+      "gpu": "any",
+      "mem_gb": 20,
+      "ram_gb": 16,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt",
+        "metrics.jsonl"
+      ],
+      "variant": "baseline_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-dynamo-sweep-into",
+      "host": "remote",
+      "script": "scripts/train_dynamo.py",
+      "args": [
+        "--config",
+        "configs/baselines/dynamo/sweep-into.yaml",
+        "--name",
+        "ds-pre-dynamo-sweep-into",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 8,
+      "ram_gb": 48,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "dynamo",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-snerl-sweep-into",
+      "host": "remote",
+      "script": "scripts/train_snerl.py",
+      "args": [
+        "--config",
+        "configs/baselines/snerl/sweep-into.yaml",
+        "--name",
+        "ds-pre-snerl-sweep-into",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 16,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "snerl",
+      "stage": 6,
+      "baseline_expansion": "snerl-eight-task-20261020",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    },
+    {
+      "id": "ds-pre-mvp3d-sweep-into",
+      "host": "remote",
+      "script": "scripts/train_mvp3d.py",
+      "args": [
+        "--config",
+        "configs/baselines/mvp3d/sweep-into.yaml",
+        "--name",
+        "ds-pre-mvp3d-sweep-into",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 12,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "mvp3d",
+      "stage": 6,
+      "baseline_expansion": "eight-task-20261017",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_mvp3d",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-29T04:17:00+09:00 (registered on the remote: new-task baseline pretraining)"
+    }
+  ],
+  "registered_at": "2026-10-29T04:17:13.574251+09:00",
+  "queue_sha256_before": "76554696c9b298ebcfee476c42e31a3cc1f5941b2064c47a373732930b2be34e",
+  "queue_sha256_after": "8e49cce130cd9965f2c4531998ca5b6dfab5aa9574a302906670b4ceb4304d68"
+}

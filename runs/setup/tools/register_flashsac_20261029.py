@@ -7,7 +7,7 @@ Exports are always the task's own (never another task's encoder): existing tasks
 registered DrM row (as register_downstream_sac_20261028.py); new tasks use ds-csw4-export-seed0-<task>-200k (csw4) and
 ds-pre-<baseline>-<task>/encoder.pt (register_newtask_baselines_20261029.py; 3D-MVP's export serves A and B), as
 dependencies. Rows ds-flashsac-<family>-<task>-s<seed>[-eval]; ordered seed 2000 first, csw4 and CNN first within a seed.
-Placement by measured cost (FlashSAC port report 2026-10-29): frozen-encoder families are local pool rows (movable; 1g
+Placement by measured cost (FlashSAC port report 2026-10-29): frozen-encoder families are local rows (not pool-movable; 1g
 MIG: csw4 ~5.4 h, SNeRL ~7.2 h, 3D-MVP A ~11 h per 1M; RSS ~2.4 GB, replay 0.2-2.5 GB RAM), the end-to-end CNN is a
 remote row (~18 h per 1M on a 1g MIG, GPU-bound, 46 GB disk replay; charged a full GPU unit by the remote driver).
 Evaluators: eval_rl defaults (6 workers x 8 envs; peak 4-6 GB GPU, ~1 GB RAM per worker).
@@ -97,7 +97,7 @@ for seed in sorted(args.seeds):
             rid = f'ds-flashsac-{fam}-{task}-s{seed}'
             remote = fam == 'cnn'
             placement = (f'pool {STAMP} (registered on the remote: end-to-end CNN, GPU-bound, disk replay)' if remote
-                         else f'pool {STAMP} (registered local; movable by pool_placement.py)')
+                         else f'pool {STAMP} (registered local: frozen-encoder FlashSAC, local MIG; not a pool-movable script)')
             meta = {'stage': STAGE, 'variant': f'flashsac_{fam}', 'variant_definition': DEFINITION, 'placement': placement,
                     'priority': PRIORITY}
             sets = ['train.num_train_steps=1000000'] + ([f'vision.export_path={export}'] if export else [])
