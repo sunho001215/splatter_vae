@@ -5759,3 +5759,25 @@ launched.
 
   Measured on 2026-10-28: 7 pixel trainers per GPU ran at 4–5 agent steps/s each, at 99 % utilisation and the power
   cap. Running jobs keep running, and the 4.0 limit then prevents further oversubscription.
+
+## 2026-10-29 00:40 — Amendment: self-render warm-up and expanded training-supported viewpoint sampling (before any self-render run)
+
+**Amendment (user, ~00:40 KST).**
+- **Schedule.** Steps 0–20k: no self-render contribution. 20k–40k: linear ramp to full strength. 40k–200k: full
+  strength. Only the self-render contribution ramps; real-view reconstruction, geometry, InfoNCE and consistency keep
+  their existing schedules. At weight 0, generated features touch no positives, negatives or loss normalisation.
+- **No fallback.** There is no point-cloud fallback, and the producer stays detached.
+- **Camera domain.** Self-render cameras are sampled from the training-supported viewpoint domain: the training-camera
+  poses plus wider intermediate viewpoints that the training observations support. The domain is defined only from
+  training-camera geometry and training observations, after inspecting workspace visibility, observed-surface support
+  and representative renders. A bounding box or a full 360° orbit is not acceptable.
+- **Unchanged.** View count, temporal construction (each camera fixed over the 3 timestamps), masking and loss weights.
+  Detached coverage validity is used, and opacity is not taken as proof of geometry. No teacher networks, new losses or
+  sampler search.
+- **Evaluation separation.** No held-out images, depth, policy results or extreme moving paths enter the design, and no
+  evaluation pose is targeted. The domain and its relation to every evaluation suite are recorded. An evaluation pose
+  inside the support is reported as generalisation to unseen poses.
+- **Runs.** Unstarted runs take the amended recipe. No self-render run has been registered or started (the variant is
+  still being implemented), so the matched 3-task pretraining is registered only with the amended recipe. It is reported
+  as the combined warm-up + expanded-viewpoint self-render recipe.
+- **Diagnostics.** Inspected around 20k and 40k; they are diagnostics, not a search.
