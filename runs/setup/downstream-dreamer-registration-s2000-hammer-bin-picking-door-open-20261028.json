@@ -1,0 +1,1841 @@
+{
+  "prepared_at": "2026-10-28T17:20:55.208689+09:00",
+  "purpose": "PPO and Dreamer pilot comparison groups (user directive 2026-10-28, authorisation of the external reference code the\nsame day): scripts/train_ppo.py (Stable-Baselines3 v2.9.0 PPO, budget 1M agent steps) and scripts/train_dreamer.py\n(Dreamer v1, dreamer-pytorch b51af83, budget 500k agent steps = 1M simulator steps, registered for every arm), on\nhammer, bin-picking and door-open, the eight registered families, seed 2000 first. Built from the SAC registration below\n(same families, exports and evaluator settings).",
+  "algorithm": "dreamer_v1",
+  "algorithm_config": "configs/rl/algorithms/dreamer_v1.yaml",
+  "budget_agent_steps": 500000,
+  "seeds": [
+    2000
+  ],
+  "tasks": [
+    "hammer",
+    "bin-picking",
+    "door-open"
+  ],
+  "families": [
+    "csw4",
+    "cnn",
+    "sincro",
+    "reviwo",
+    "dynamo",
+    "snerl",
+    "mvp3d-multiview",
+    "mvp3d-single"
+  ],
+  "references": {
+    "csw4/hammer": {
+      "drm_reference": "enc-csw4-drm-hammer-s2000",
+      "encoder": "splatter4d",
+      "export": "runs/enc-csw4-export-seed0-hammer-200k/encoder.pt",
+      "deps": [
+        "enc-csw4-export-seed0-hammer-200k"
+      ]
+    },
+    "cnn/hammer": {
+      "drm_reference": "s4-drm-cnn-hammer-s2000",
+      "encoder": "cnn",
+      "export": null,
+      "deps": []
+    },
+    "sincro/hammer": {
+      "drm_reference": "s4-drm-sincro-hammer-s2000",
+      "encoder": "sincro",
+      "export": "runs/s4-sincro-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-sincro-hammer-rem-b"
+      ]
+    },
+    "reviwo/hammer": {
+      "drm_reference": "s4-drm-reviwo-hammer-s2000",
+      "encoder": "reviwo",
+      "export": "runs/s4-reviwo-hammer-rem/encoder.pt",
+      "deps": [
+        "s4-reviwo-hammer-rem"
+      ]
+    },
+    "dynamo/hammer": {
+      "drm_reference": "s4-drm-dynamo-hammer-s2000",
+      "encoder": "dynamo",
+      "export": "runs/s4-dynamo-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ]
+    },
+    "snerl/hammer": {
+      "drm_reference": "s4-drm-snerl-hammer-s2000",
+      "encoder": "snerl",
+      "export": "runs/s4-snerl-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-snerl-hammer-rem-b"
+      ]
+    },
+    "mvp3d-multiview/hammer": {
+      "drm_reference": "s4-drm-mvp3d-multiview-hammer-s2000",
+      "encoder": "mvp3d_multiview",
+      "export": "runs/s4-mvp3d-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ]
+    },
+    "mvp3d-single/hammer": {
+      "drm_reference": "s4-drm-mvp3d-single-hammer-s2000",
+      "encoder": "mvp3d_single",
+      "export": "runs/s4-mvp3d-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ]
+    },
+    "csw4/bin-picking": {
+      "drm_reference": "enc-csw4-drm-bin-picking-s2000",
+      "encoder": "splatter4d",
+      "export": "runs/enc-csw4-export-seed0-bin-picking-200k/encoder.pt",
+      "deps": [
+        "enc-csw4-export-seed0-bin-picking-200k"
+      ]
+    },
+    "cnn/bin-picking": {
+      "drm_reference": "s4-drm-cnn-bin-picking-s2000-r4",
+      "encoder": "cnn",
+      "export": null,
+      "deps": []
+    },
+    "sincro/bin-picking": {
+      "drm_reference": "s4-drm-sincro-bin-picking-s2000",
+      "encoder": "sincro",
+      "export": "runs/s4-sincro-bin-picking/encoder.pt",
+      "deps": [
+        "s4-sincro-bin-picking"
+      ]
+    },
+    "reviwo/bin-picking": {
+      "drm_reference": "s4-drm-reviwo-bin-picking-s2000",
+      "encoder": "reviwo",
+      "export": "runs/s4-reviwo-bin-picking-rem/encoder.pt",
+      "deps": [
+        "s4-reviwo-bin-picking-rem"
+      ]
+    },
+    "dynamo/bin-picking": {
+      "drm_reference": "s4-drm-dynamo-bin-picking-s2000",
+      "encoder": "dynamo",
+      "export": "runs/s4-dynamo-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-dynamo-bin-picking-rem-b"
+      ]
+    },
+    "snerl/bin-picking": {
+      "drm_reference": "s4-drm-snerl-bin-picking-s2000",
+      "encoder": "snerl",
+      "export": "runs/s4-snerl-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-snerl-bin-picking-rem-b"
+      ]
+    },
+    "mvp3d-multiview/bin-picking": {
+      "drm_reference": "s4-drm-mvp3d-multiview-bin-picking-s2000",
+      "encoder": "mvp3d_multiview",
+      "export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ]
+    },
+    "mvp3d-single/bin-picking": {
+      "drm_reference": "s4-drm-mvp3d-single-bin-picking-s2000",
+      "encoder": "mvp3d_single",
+      "export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ]
+    },
+    "csw4/door-open": {
+      "drm_reference": "enc-csw4-drm-door-open-s2000",
+      "encoder": "splatter4d",
+      "export": "runs/enc-csw4-export-seed0-door-open-200k/encoder.pt",
+      "deps": [
+        "enc-csw4-export-seed0-door-open-200k"
+      ]
+    },
+    "cnn/door-open": {
+      "drm_reference": "s4-drm-cnn-door-open-s2000",
+      "encoder": "cnn",
+      "export": null,
+      "deps": []
+    },
+    "sincro/door-open": {
+      "drm_reference": "s4-drm-sincro-door-open-s2000",
+      "encoder": "sincro",
+      "export": "runs/s4-sincro-door-open-b/encoder.pt",
+      "deps": [
+        "s4-sincro-door-open-b"
+      ]
+    },
+    "reviwo/door-open": {
+      "drm_reference": "s4-drm-reviwo-door-open-s2000",
+      "encoder": "reviwo",
+      "export": "runs/s4-reviwo-door-open-b/encoder.pt",
+      "deps": [
+        "s4-reviwo-door-open-b"
+      ]
+    },
+    "dynamo/door-open": {
+      "drm_reference": "s4-drm-dynamo-door-open-s2000",
+      "encoder": "dynamo",
+      "export": "runs/s4-dynamo-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-dynamo-door-open-rem-b"
+      ]
+    },
+    "snerl/door-open": {
+      "drm_reference": "s4-drm-snerl-door-open-s2000",
+      "encoder": "snerl",
+      "export": "runs/s4-snerl-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-snerl-door-open-rem-b"
+      ]
+    },
+    "mvp3d-multiview/door-open": {
+      "drm_reference": "s4-drm-mvp3d-multiview-door-open-s2000",
+      "encoder": "mvp3d_multiview",
+      "export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ]
+    },
+    "mvp3d-single/door-open": {
+      "drm_reference": "s4-drm-mvp3d-single-door-open-s2000",
+      "encoder": "mvp3d_single",
+      "export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ]
+    }
+  },
+  "definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+  "definition_sha256": "9d7e48cf05c4350e5c7bf2f197f45123ae45a026192bf03e0c438091f9dbd299",
+  "counts": {
+    "scripts/eval_rl.py": 24,
+    "scripts/train_dreamer.py": 24
+  },
+  "jobs": [
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-csw4-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-csw4-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/enc-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-csw4-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-csw4-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-csw4-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-csw4-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-dreamer-cnn-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-cnn-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-dreamer-cnn-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-cnn-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-cnn-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-cnn-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-sincro-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "sincro",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-sincro-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-sincro-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-sincro-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-sincro-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-sincro-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-sincro-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-reviwo-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "reviwo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-reviwo-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-reviwo-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-reviwo-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-reviwo-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-reviwo-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-reviwo-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-dynamo-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-dynamo-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-dynamo-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-dynamo-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-dynamo-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-dynamo-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-snerl-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-snerl-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-snerl-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-snerl-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-snerl-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-snerl-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-snerl-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-multiview-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-multiview-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-multiview-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-multiview-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-mvp3d-multiview-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-mvp3d-multiview-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-single-hammer-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-single-hammer-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-single-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-single-hammer-s2000",
+        "--train-job",
+        "ds-dreamer-mvp3d-single-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-mvp3d-single-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-csw4-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-csw4-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/enc-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-csw4-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-csw4-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-csw4-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-csw4-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-dreamer-cnn-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-cnn-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-dreamer-cnn-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-cnn-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-cnn-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-cnn-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-bin-picking"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-sincro-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "sincro",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-sincro-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-sincro-bin-picking/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-bin-picking"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-sincro-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-sincro-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-sincro-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-sincro-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-bin-picking-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-reviwo-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "reviwo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-reviwo-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-reviwo-bin-picking-rem/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-bin-picking-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-reviwo-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-reviwo-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-reviwo-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-reviwo-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-dynamo-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-dynamo-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-dynamo-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-dynamo-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-dynamo-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-dynamo-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-dynamo-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-snerl-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-snerl-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-snerl-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-snerl-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-snerl-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-snerl-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-snerl-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-multiview-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-multiview-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-multiview-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-multiview-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-mvp3d-multiview-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-mvp3d-multiview-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-single-bin-picking-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-single-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-single-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-single-bin-picking-s2000",
+        "--train-job",
+        "ds-dreamer-mvp3d-single-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-mvp3d-single-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-csw4-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-csw4-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/enc-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-csw4-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-csw4-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-csw4-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-csw4-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-dreamer-cnn-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-cnn-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-dreamer-cnn-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-cnn-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-cnn-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-cnn-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-sincro-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "sincro",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-sincro-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-sincro-door-open-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-sincro-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-sincro-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-sincro-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-sincro-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-reviwo-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "reviwo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-reviwo-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-reviwo-door-open-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-reviwo-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-reviwo-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-reviwo-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-reviwo-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-dynamo-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-dynamo-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-dynamo-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-dynamo-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-dynamo-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-dynamo-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-dynamo-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-snerl-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-snerl-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-snerl-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-snerl-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-snerl-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-snerl-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-snerl-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-multiview-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-multiview-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-multiview-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-multiview-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-mvp3d-multiview-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-mvp3d-multiview-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-single-door-open-s2000",
+      "script": "scripts/train_dreamer.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-single-door-open-s2000",
+        "--set",
+        "train.num_train_steps=500000",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 8,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-dreamer-mvp3d-single-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-dreamer-mvp3d-single-door-open-s2000",
+        "--train-job",
+        "ds-dreamer-mvp3d-single-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-dreamer-mvp3d-single-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "dreamer_v1_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:51+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    }
+  ],
+  "registered_at": "2026-10-28T17:21:14.542437+09:00",
+  "queue_sha256_before": "3bac4ffdcd0e19bcc5f64f95bb628af10b97fb151d3b2c74edf5bcbd85a5cd5e",
+  "queue_sha256_after": "81560b60c48972bd901abf1d344550d3161d7f2c49e1f32b643a7f4235cec40a"
+}

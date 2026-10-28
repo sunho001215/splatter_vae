@@ -5551,3 +5551,76 @@ The writer-start race on completed jobs is mitigated by the re-plan; a done job 
 - **window-open and drawer-open:** held-out sets re-rendered with the fixed check, then uploaded.
 - **Logging.** Each upload is logged as `MANIFEST` in `runs/setup/remote-data-sync-ds-20261028.log`, now one of the
   remote driver's data logs.
+
+## 2026-10-28 16:00–17:40 — PPO and Dreamer pilots implemented (user authorisation), release 27640d0
+
+**Authorisation (user, ~16:00).** Fetching, installing and executing external reference code for the PPO and Dreamer
+pilots is authorised: pinned official or established implementations, in isolated worktrees, with source, commit,
+licence and exact Dreamer version recorded, and SNeRL-compatible where practical. The ablations stay paused.
+
+**Pinned sources** (git submodules, nothing installed into the venv; core dependencies already present):
+
+| algorithm | source | commit | licence |
+|---|---|---|---|
+| PPO | Stable-Baselines3 v2.9.0, github.com/DLR-RM/stable-baselines3 | 8908708 | MIT |
+| Dreamer | **Dreamer v1** (Hafner et al. 2019), yusukeurakami/dreamer-pytorch | b51af83 | MIT |
+
+SNeRL's paper evaluated Dreamer v1, and its Table 3 hyperparameter names match this implementation. The SNeRL
+repository contains no Dreamer.
+
+**PPO** (`s4d/rl/sb3_ppo.py`, `scripts/train_ppo.py`, `configs/rl/algorithms/sb3_ppo.yaml`):
+- **Upstream.** SB3 PPO runs unchanged, including the time-limit bootstrap on `terminal_observation`.
+- **Environments.** 8 SubprocVecEnv workers run our protocol env; worker i uses seed + 10000 i.
+- **Frozen arms.** The backbone runs once per step in the main process; the policy observes [feature,
+  proprioception] through MlpPolicy. Terminal observations are encoded the same way.
+- **CNN arm.** SB3 MultiInputPolicy (NatureCNN on the 9-channel 128-px stack, plus proprioception).
+- **Normalisation.** VecNormalize normalises observations and rewards for every arm. Evaluation uses each snapshot's
+  observation statistics with the deterministic mean.
+- **Hyperparameters.** SB3 defaults; rollout 8 × 256 = SB3's 2048; policy and value widths 256-256 for every arm
+  (SB3 default 64-64; widened because the frozen features have hundreds to thousands of dimensions).
+- **Budget.** 1M agent steps. An extension to 5M for every arm is registered for the case where all arms stay at the
+  floor.
+- **Measured speed** on a shared 1g slice: csw4 ≈ 200 agent steps/s (about 1.4 h per 1M), CNN ≈ 88/s (about 3.2 h).
+
+**Dreamer v1** (`s4d/rl/dreamer_v1.py`, `scripts/train_dreamer.py`, `configs/rl/algorithms/dreamer_v1.yaml`; implemented
+by a delegated agent, reviewed):
+- **Upstream code.** `models.py`, `utils.py`, `env.py` and `memory.py` run unchanged (sha256-pinned in tests); the
+  `main.py` loop is reproduced with line references.
+- **Representation interface.** Every arm decodes the SAME target: the current frame of the episode's first camera,
+  area-downsampled 128→64 px, with bit depth 5, through upstream's visual ObservationModel.
+  - Frozen arms feed their cached frozen feature into upstream's symbolic Encoder (an MLP to 1024).
+  - The CNN arm uses upstream's visual Encoder on the 3-frame 64-px stack (first convolution with 9 channels).
+  - Proprioception is concatenated to the embedding for every arm.
+- **Hyperparameters.** SNeRL Table 3: belief 128, state 30, action noise 0.3, batch 32, model lr 1e-3, actor and
+  value lr 5e-5, γ 0.99, replay 100k, horizon 15, Adam eps 1e-7. Embedding 1024 for every arm; the other values are
+  upstream defaults. 25 updates per 125-step episode, which is upstream's 0.2 updates per agent step.
+- **Budget.** 500k agent steps (1M simulator steps, Dreamer's standard budget), registered for every arm.
+- **Measured speed.** About 17 (csw4) and 15 (CNN) agent steps/s, i.e. about 8–9 h per run on a 1g slice and
+  about 11 h for 3D-MVP A.
+
+**Codex review of PPO and Dreamer.** No issues in Dreamer imagination, lambda returns, losses, optimisers or update
+ratios, or in PPO's evaluation statistics. Fixed:
+- **Dreamer chunks** now stay inside one episode. This is the one deviation from upstream sampling: with 125-step
+  episodes, 39 % of 50-step chunks would cross a reset, against about 10 % in upstream's 1000-step DMC episodes.
+- **Dreamer budgets** must end on episode boundaries.
+- **PPO checkpoint** is a single atomic file.
+- **PPO resume** offsets the workers' seeds, so earlier episodes do not repeat.
+
+Kept as upstream and disclosed: Dreamer evaluation samples the posterior and approximates the action mode by
+upstream's Monte Carlo procedure (not bit-reproducible); rewards and states are unnormalised in the symbolic path.
+
+**Release 27640d0 = main.** It contains SAC, the cleanup, the held-out fix, PPO and Dreamer.
+- **Earlier remote attempts.** The native suite at 4632f44 and 974f1ba failed only on the cleanup CLI test, which read
+  the real process table. Inside the unprivileged container, other processes, including our own user's, cannot be
+  inspected. The test now uses an empty fake process directory; the /proc semantics have their own tests.
+- **Local suite.** Not run: the 150 GB rule's projection is 155 GB with 24 SAC trainers running. The remote full native
+  suite on the exact sources serves as the gate evidence (`adopt_remote_suite_evidence.py`, the established route).
+  Local admissions fail closed until then.
+
+**Registered** (priority 2, `ds-` prefix):
+- **SAC screening:** 64 pairs.
+- **New tasks:** 4 tasks × (pretraining, export, SAC with csw4 and CNN).
+- **PPO pilots:** 24 pairs (hammer, bin-picking, door-open × 8 families).
+- **Dreamer pilots:** 24 pairs (all remote).
+
+Remote rows start once the 27640d0 release is accepted (`remote_campaign_driver.py` `DS_COMMIT`).

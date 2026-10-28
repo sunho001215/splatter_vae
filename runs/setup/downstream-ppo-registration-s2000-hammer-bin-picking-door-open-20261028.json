@@ -1,0 +1,1841 @@
+{
+  "prepared_at": "2026-10-28T17:20:37.373945+09:00",
+  "purpose": "PPO and Dreamer pilot comparison groups (user directive 2026-10-28, authorisation of the external reference code the\nsame day): scripts/train_ppo.py (Stable-Baselines3 v2.9.0 PPO, budget 1M agent steps) and scripts/train_dreamer.py\n(Dreamer v1, dreamer-pytorch b51af83, budget 500k agent steps = 1M simulator steps, registered for every arm), on\nhammer, bin-picking and door-open, the eight registered families, seed 2000 first. Built from the SAC registration below\n(same families, exports and evaluator settings).",
+  "algorithm": "sb3_ppo",
+  "algorithm_config": "configs/rl/algorithms/sb3_ppo.yaml",
+  "budget_agent_steps": 1000000,
+  "seeds": [
+    2000
+  ],
+  "tasks": [
+    "hammer",
+    "bin-picking",
+    "door-open"
+  ],
+  "families": [
+    "csw4",
+    "cnn",
+    "sincro",
+    "reviwo",
+    "dynamo",
+    "snerl",
+    "mvp3d-multiview",
+    "mvp3d-single"
+  ],
+  "references": {
+    "csw4/hammer": {
+      "drm_reference": "enc-csw4-drm-hammer-s2000",
+      "encoder": "splatter4d",
+      "export": "runs/enc-csw4-export-seed0-hammer-200k/encoder.pt",
+      "deps": [
+        "enc-csw4-export-seed0-hammer-200k"
+      ]
+    },
+    "cnn/hammer": {
+      "drm_reference": "s4-drm-cnn-hammer-s2000",
+      "encoder": "cnn",
+      "export": null,
+      "deps": []
+    },
+    "sincro/hammer": {
+      "drm_reference": "s4-drm-sincro-hammer-s2000",
+      "encoder": "sincro",
+      "export": "runs/s4-sincro-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-sincro-hammer-rem-b"
+      ]
+    },
+    "reviwo/hammer": {
+      "drm_reference": "s4-drm-reviwo-hammer-s2000",
+      "encoder": "reviwo",
+      "export": "runs/s4-reviwo-hammer-rem/encoder.pt",
+      "deps": [
+        "s4-reviwo-hammer-rem"
+      ]
+    },
+    "dynamo/hammer": {
+      "drm_reference": "s4-drm-dynamo-hammer-s2000",
+      "encoder": "dynamo",
+      "export": "runs/s4-dynamo-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ]
+    },
+    "snerl/hammer": {
+      "drm_reference": "s4-drm-snerl-hammer-s2000",
+      "encoder": "snerl",
+      "export": "runs/s4-snerl-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-snerl-hammer-rem-b"
+      ]
+    },
+    "mvp3d-multiview/hammer": {
+      "drm_reference": "s4-drm-mvp3d-multiview-hammer-s2000",
+      "encoder": "mvp3d_multiview",
+      "export": "runs/s4-mvp3d-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ]
+    },
+    "mvp3d-single/hammer": {
+      "drm_reference": "s4-drm-mvp3d-single-hammer-s2000",
+      "encoder": "mvp3d_single",
+      "export": "runs/s4-mvp3d-hammer-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ]
+    },
+    "csw4/bin-picking": {
+      "drm_reference": "enc-csw4-drm-bin-picking-s2000",
+      "encoder": "splatter4d",
+      "export": "runs/enc-csw4-export-seed0-bin-picking-200k/encoder.pt",
+      "deps": [
+        "enc-csw4-export-seed0-bin-picking-200k"
+      ]
+    },
+    "cnn/bin-picking": {
+      "drm_reference": "s4-drm-cnn-bin-picking-s2000-r4",
+      "encoder": "cnn",
+      "export": null,
+      "deps": []
+    },
+    "sincro/bin-picking": {
+      "drm_reference": "s4-drm-sincro-bin-picking-s2000",
+      "encoder": "sincro",
+      "export": "runs/s4-sincro-bin-picking/encoder.pt",
+      "deps": [
+        "s4-sincro-bin-picking"
+      ]
+    },
+    "reviwo/bin-picking": {
+      "drm_reference": "s4-drm-reviwo-bin-picking-s2000",
+      "encoder": "reviwo",
+      "export": "runs/s4-reviwo-bin-picking-rem/encoder.pt",
+      "deps": [
+        "s4-reviwo-bin-picking-rem"
+      ]
+    },
+    "dynamo/bin-picking": {
+      "drm_reference": "s4-drm-dynamo-bin-picking-s2000",
+      "encoder": "dynamo",
+      "export": "runs/s4-dynamo-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-dynamo-bin-picking-rem-b"
+      ]
+    },
+    "snerl/bin-picking": {
+      "drm_reference": "s4-drm-snerl-bin-picking-s2000",
+      "encoder": "snerl",
+      "export": "runs/s4-snerl-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-snerl-bin-picking-rem-b"
+      ]
+    },
+    "mvp3d-multiview/bin-picking": {
+      "drm_reference": "s4-drm-mvp3d-multiview-bin-picking-s2000",
+      "encoder": "mvp3d_multiview",
+      "export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ]
+    },
+    "mvp3d-single/bin-picking": {
+      "drm_reference": "s4-drm-mvp3d-single-bin-picking-s2000",
+      "encoder": "mvp3d_single",
+      "export": "runs/s4-mvp3d-bin-picking-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ]
+    },
+    "csw4/door-open": {
+      "drm_reference": "enc-csw4-drm-door-open-s2000",
+      "encoder": "splatter4d",
+      "export": "runs/enc-csw4-export-seed0-door-open-200k/encoder.pt",
+      "deps": [
+        "enc-csw4-export-seed0-door-open-200k"
+      ]
+    },
+    "cnn/door-open": {
+      "drm_reference": "s4-drm-cnn-door-open-s2000",
+      "encoder": "cnn",
+      "export": null,
+      "deps": []
+    },
+    "sincro/door-open": {
+      "drm_reference": "s4-drm-sincro-door-open-s2000",
+      "encoder": "sincro",
+      "export": "runs/s4-sincro-door-open-b/encoder.pt",
+      "deps": [
+        "s4-sincro-door-open-b"
+      ]
+    },
+    "reviwo/door-open": {
+      "drm_reference": "s4-drm-reviwo-door-open-s2000",
+      "encoder": "reviwo",
+      "export": "runs/s4-reviwo-door-open-b/encoder.pt",
+      "deps": [
+        "s4-reviwo-door-open-b"
+      ]
+    },
+    "dynamo/door-open": {
+      "drm_reference": "s4-drm-dynamo-door-open-s2000",
+      "encoder": "dynamo",
+      "export": "runs/s4-dynamo-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-dynamo-door-open-rem-b"
+      ]
+    },
+    "snerl/door-open": {
+      "drm_reference": "s4-drm-snerl-door-open-s2000",
+      "encoder": "snerl",
+      "export": "runs/s4-snerl-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-snerl-door-open-rem-b"
+      ]
+    },
+    "mvp3d-multiview/door-open": {
+      "drm_reference": "s4-drm-mvp3d-multiview-door-open-s2000",
+      "encoder": "mvp3d_multiview",
+      "export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ]
+    },
+    "mvp3d-single/door-open": {
+      "drm_reference": "s4-drm-mvp3d-single-door-open-s2000",
+      "encoder": "mvp3d_single",
+      "export": "runs/s4-mvp3d-door-open-rem-b/encoder.pt",
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ]
+    }
+  },
+  "definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+  "definition_sha256": "9d7e48cf05c4350e5c7bf2f197f45123ae45a026192bf03e0c438091f9dbd299",
+  "counts": {
+    "scripts/eval_rl.py": 24,
+    "scripts/train_ppo.py": 24
+  },
+  "jobs": [
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-csw4-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-csw4-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-csw4-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-csw4-hammer-s2000",
+        "--train-job",
+        "ds-ppo-csw4-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-csw4-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-ppo-cnn-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-cnn-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-ppo-cnn-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-cnn-hammer-s2000",
+        "--train-job",
+        "ds-ppo-cnn-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-cnn-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-sincro-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "sincro",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-sincro-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-sincro-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-sincro-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-sincro-hammer-s2000",
+        "--train-job",
+        "ds-ppo-sincro-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-sincro-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-reviwo-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "reviwo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-reviwo-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-reviwo-hammer-rem/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-hammer-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-reviwo-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-reviwo-hammer-s2000",
+        "--train-job",
+        "ds-ppo-reviwo-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-reviwo-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-dynamo-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-dynamo-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-dynamo-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-dynamo-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-dynamo-hammer-s2000",
+        "--train-job",
+        "ds-ppo-dynamo-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-dynamo-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-snerl-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-snerl-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-snerl-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-snerl-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-snerl-hammer-s2000",
+        "--train-job",
+        "ds-ppo-snerl-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-snerl-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-multiview-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-multiview-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-multiview-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-multiview-hammer-s2000",
+        "--train-job",
+        "ds-ppo-mvp3d-multiview-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-mvp3d-multiview-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-single-hammer-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-single-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-mvp3d-hammer-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-hammer-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-single-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-single-hammer-s2000",
+        "--train-job",
+        "ds-ppo-mvp3d-single-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-mvp3d-single-hammer-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-csw4-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-csw4-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-csw4-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-csw4-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-csw4-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-csw4-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-ppo-cnn-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-cnn-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-ppo-cnn-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-cnn-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-cnn-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-cnn-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-bin-picking"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-sincro-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "sincro",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-sincro-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-sincro-bin-picking/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-bin-picking"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-sincro-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-sincro-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-sincro-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-sincro-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-bin-picking-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-reviwo-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "reviwo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-reviwo-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-reviwo-bin-picking-rem/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-bin-picking-rem"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-reviwo-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-reviwo-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-reviwo-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-reviwo-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-dynamo-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-dynamo-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-dynamo-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-dynamo-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-dynamo-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-dynamo-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-dynamo-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-snerl-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-snerl-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-snerl-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-snerl-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-snerl-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-snerl-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-snerl-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-multiview-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-multiview-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-multiview-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-multiview-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-mvp3d-multiview-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-mvp3d-multiview-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-single-bin-picking-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-single-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-mvp3d-bin-picking-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-bin-picking-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-single-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-single-bin-picking-s2000",
+        "--train-job",
+        "ds-ppo-mvp3d-single-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-mvp3d-single-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-csw4-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-csw4-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/enc-csw4-export-seed0-door-open-200k/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "enc-csw4-export-seed0-door-open-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-csw4-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-csw4-door-open-s2000",
+        "--train-job",
+        "ds-ppo-csw4-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-csw4-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-ppo-cnn-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-cnn-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-ppo-cnn-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-cnn-door-open-s2000",
+        "--train-job",
+        "ds-ppo-cnn-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-cnn-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_cnn",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-sincro-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "sincro",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-sincro-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-sincro-door-open-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-sincro-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-sincro-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-sincro-door-open-s2000",
+        "--train-job",
+        "ds-ppo-sincro-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-sincro-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_sincro",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-reviwo-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "reviwo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-reviwo-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-reviwo-door-open-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-reviwo-door-open-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-reviwo-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-reviwo-door-open-s2000",
+        "--train-job",
+        "ds-ppo-reviwo-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-reviwo-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_reviwo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-dynamo-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "dynamo",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-dynamo-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-dynamo-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-dynamo-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-dynamo-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-dynamo-door-open-s2000",
+        "--train-job",
+        "ds-ppo-dynamo-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-dynamo-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_dynamo",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-snerl-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-snerl-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-snerl-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-snerl-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-snerl-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-snerl-door-open-s2000",
+        "--train-job",
+        "ds-ppo-snerl-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-snerl-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered on the remote: pixel replay, per-update convolutions)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-multiview-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_multiview",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-multiview-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-multiview-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-multiview-door-open-s2000",
+        "--train-job",
+        "ds-ppo-mvp3d-multiview-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-mvp3d-multiview-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-multiview",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-single-door-open-s2000",
+      "script": "scripts/train_ppo.py",
+      "args": [
+        "--task",
+        "door-open",
+        "--encoder",
+        "mvp3d_single",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-single-door-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/s4-mvp3d-door-open-rem-b/encoder.pt"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "priority": 2,
+      "deps": [
+        "s4-mvp3d-door-open-rem-b"
+      ],
+      "max_restarts": 1,
+      "id": "ds-ppo-mvp3d-single-door-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-ppo-mvp3d-single-door-open-s2000",
+        "--train-job",
+        "ds-ppo-mvp3d-single-door-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-ppo-mvp3d-single-door-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 6,
+      "variant": "sb3_ppo_mvp3d-single",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T17:20:33+09:00 (registered local; movable by pool_placement.py)"
+    }
+  ],
+  "registered_at": "2026-10-28T17:20:51.239244+09:00",
+  "queue_sha256_before": "dc8670437b7ba3a95771247c62d1ad21bade39cda202d8f2076626b7c770d860",
+  "queue_sha256_after": "3bac4ffdcd0e19bcc5f64f95bb628af10b97fb151d3b2c74edf5bcbd85a5cd5e"
+}

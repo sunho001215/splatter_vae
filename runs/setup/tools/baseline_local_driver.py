@@ -56,7 +56,9 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'encx-registration-20261026.json',
                  # SNeRL-code SAC comparison groups (user directive 2026-10-28): priority 2, ds- rows (local pool rows of the
                  # frozen-encoder families; the CNN and SNeRL rows are remote)
-                 'downstream-sac-registration-s2000-20261028.json']
+                 'downstream-sac-registration-s2000-20261028.json',
+                 # PPO pilot (user authorisation 2026-10-28; Dreamer pilot rows are remote)
+                 'downstream-ppo-registration-s2000-hammer-bin-picking-door-open-20261028.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
