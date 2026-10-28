@@ -62,7 +62,8 @@ class Trainer:
 TRAINERS = {"train_rl.py": Trainer(policy_keys=("encoder", "actor")),
             "train_sac.py": Trainer(policy_keys=("actor",)),  # SNeRL-code SAC snapshots hold the actor (2026-10-28)
             "train_ppo.py": Trainer(policy_keys=("policy",)),  # SB3 PPO: policy state dict (+ observation statistics)
-            "train_dreamer.py": Trainer(policy_keys=("world_model", "actor"))}  # Dreamer v1: encoder/RSSM + actor
+            "train_dreamer.py": Trainer(policy_keys=("world_model", "actor")),  # Dreamer v1: encoder/RSSM + actor
+            "train_flashsac.py": Trainer(policy_keys=("encoder", "actor"))}  # FlashSAC: visual encoder + actor
 DEFAULT_TRAINER = Trainer()
 # Companion jobs that only read a run's saved policies; their rows and processes never block replay cleanup.
 READ_ONLY_CONSUMERS = frozenset({"eval_rl.py"})
