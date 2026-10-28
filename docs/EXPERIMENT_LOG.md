@@ -5483,3 +5483,71 @@ the established recipe; script `runs/setup/collect_task_batch1_20261028.sh`).
   reconstruction target for every arm) or an established DreamerV1 PyTorch port for Dreamer.
 - **What is blocked.** The permission layer refused fetching and executing external code. These pilots wait for the
   user's permission, and nothing was worked around.
+
+## 2026-10-28 15:00–15:50 — Release 4632f44 (SAC + cleanup), SAC screening launched, selection rule amended, new-task data
+
+**Codex review of the SAC port.**
+- **Confirmed unchanged:** the SAC/CURL maths, optimiser sets, detach paths, target and CURL wiring, the EMA order,
+  entropy tuning, the 0-based update step, and the identity crop at 128 px.
+- **Fixed before any result:**
+  - checkpoint every 10k steps (a resume keeps at least 90 % of the 100k replay);
+  - the replay window is sized by transitions (100k transitions, as upstream; our replay counts states);
+  - stack-level frozen features use MeanEncoder's 63-wide shared layers over three projected blocks.
+- **Disclosed, not changed:** SNeRL keeps its pretrained head initialisation (upstream behaviour) while the other
+  encoders' heads start randomly initialised; a resume restarts the episode in progress (as DrM does).
+
+**Selection rule amendment a1** (`runs/setup/downstream-selection-rule-20261028-a1.json`, sha256 9d7e48cf…, registered
+before any result; the original is kept). Following the review:
+- The bootstrap resamples every method and recomputes the strongest comparator in each draw.
+- "Within tolerance" (point estimate) and the uncertainty floor (L ≥ −0.15) are reported as separate statements. A
+  formal 5 % non-inferiority claim (L ≥ −0.05) is made only when it holds.
+- Confirmation on fresh seeds: Δ on seeds 2001–2002 alone must be ≥ −0.05.
+- The search is bounded: SAC, plus PPO and Dreamer pilots, at most three batches of four new tasks. It stops when six
+  environments qualify or the bound is exhausted; the result is then reported as provisional.
+
+**Codex review of the cleanup.** Fixed:
+- traversal references are never treated as harmless;
+- an uninspectable process of our user blocks deletion;
+- each run is re-planned right before its deletion;
+- an oversized receipt journal leads to a refusal;
+- a verified sync_pending job survives a lost removal reply;
+- checkpoint paths must be canonical.
+
+The writer-start race on completed jobs is mitigated by the re-plan; a done job is never relaunched by any driver.
+
+**Release.**
+- **Main.** Main is now 4632f44: the SAC port, lifecycle cleanup, the held-out check fix, and the scheduler, remote
+  launch and cleanup treating `train_sac.py` like `train_rl.py`. Full local suite passed (1140).
+- **Remote.** The release chain at 4632f44 on the derived image: the remote native suite failed one test because the
+  writer scan refused unreadable host root processes in the unprivileged container. Fixed in f87d3ab (unreadable
+  processes block only if they run as our user); suite and release rerun.
+- **Two flaky suite runs** were caused by the new held-out test importing MuJoCo before its EGL patch; fixed.
+
+**Held-out check.**
+- **Cause.** window-open and drawer-open render their reset frame with the arm 0.35–0.5 mm off the forward kinematics
+  of the stored qpos. 0.17–0.29 % of pixels then differ at frame 0; every later frame is exact.
+- **Fix.** The check now allows frame 0 up to 0.5 % of pixels only when that kinematic deviation is measured and lies
+  in (1e-5, 1e-3] m. Frame 1 is always checked strictly.
+- **Effect.** All validation episodes of both tasks pass. soccer and sweep-into passed the original check.
+
+**Screening launched 15:32.**
+- **Rows.** 64 SNeRL-code SAC pairs at seed 2000: 8 tasks × {csw4, CNN, SinCro, ReViWo, DynaMo, SNeRL, 3D-MVP A,
+  3D-MVP B}. 48 frozen-family rows are local pool rows; the 16 CNN and SNeRL rows are remote, waiting for the
+  ds- release.
+- **Started.** The first 12 local trainers started; evaluators follow.
+- **Speed and footprint.** Measured 55–76 agent steps/s with replay still small; RSS 2.0–2.2 GB. Admission and the
+  suite memory check now charge `train_sac.py` the DrM trainer's measured 3.5 GB instead of the 6–16 GB declared,
+  which were inherited from the DrM rows (`memory_watch.py`, `baseline_local_driver.py`, backups
+  `*.before-sac-footprint-20261028`).
+
+**Scheduler and cleanup.**
+- **Daemon.** Restarted 15:28 on the merged code.
+- **Local replay cleanup.** First live pass running: 74 completed runs, 45.4 GB by the dry run.
+- **Remote cleanup.** Follows the release.
+- **Paused ablation containers.** They become removal targets now that the daemon runs the new code.
+
+**New-task data.**
+- **soccer and sweep-into:** complete and uploading to the remote with sha256 verification.
+- **window-open and drawer-open:** held-out sets re-rendered with the fixed check, then uploaded.
+- **Logging.** Each upload is logged as `MANIFEST` in `runs/setup/remote-data-sync-ds-20261028.log`, now one of the
+  remote driver's data logs.

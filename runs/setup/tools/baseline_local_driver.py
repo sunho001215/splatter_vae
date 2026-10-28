@@ -137,6 +137,8 @@ def footprint(job):
         return int(MEASURED[job['script']])
     if job['script'] == 'scripts/train.py':  # our pretraining trainer: measured 10.77 GB max sampled PSS (rule 2026-10-11)
         return int(MEASURED[job['script']])
+    if job['script'] == 'scripts/train_sac.py' and job.get('host', 'local') == 'local':  # frozen-encoder SAC (2026-10-28)
+        return int(MEASURED[job['script']])
     return int(float(job['ram_gb']) * 2**30)
 
 
@@ -189,7 +191,10 @@ charge = memory['budget_usage']
 active_share = memory['active_file'] / max(1, memory['active_file'] + memory['inactive_file'])
 pss = session_pss()
 # Measured footprints of the existing campaign scripts (the Stage 2 driver's table); new-baseline jobs: declared ram_gb.
-MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/eval_rl.py': 4.5e9,
+# scripts/train_sac.py (2026-10-28): measured 2.0-2.2 GB RSS for frozen-encoder SAC (csw4, ReViWo, 3D-MVP A, 100k-latent replay);
+# charged as the DrM trainer's 3.5 GB
+MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/train_sac.py': 3.5e9,
+            'scripts/eval_rl.py': 4.5e9,
             'scripts/evaluate.py': 10.0e9}
 
 

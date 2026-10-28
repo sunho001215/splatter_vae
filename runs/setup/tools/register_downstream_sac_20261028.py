@@ -82,13 +82,13 @@ for task in args.tasks:
                        'args': ['--task', task, '--encoder', encoder, '--seed', str(seed), '--run-dir', f'runs/{rid}',
                                 '--set', 'train.num_train_steps=1000000', *exports],
                        **res, 'required_results': ['final.json', 'train.jsonl'], **meta}
-            ev_ref = in_queue[ref_id + '-eval']
-            evaluator = copy.deepcopy(ev_ref)
-            evaluator.update(host=trainer['host'], priority=PRIORITY, deps=list(ref.get('deps', [])), id=rid + '-eval',
-                             **meta)
-            evaluator['args'] = [x.replace(ref_id, rid) for x in ev_ref['args']]
-            evaluator.pop('continues', None)
-            assert evaluator['script'] == 'scripts/eval_rl.py' and f'runs/{rid}' in evaluator['args']
+            # evaluator: the DrM evaluator settings (6 workers x 8 envs, 240 episodes), always with its own output
+            # directory and explicit resources (required for remote rows and pool moves)
+            evaluator = {'host': trainer['host'], 'gpu': 'any', 'priority': PRIORITY, 'deps': list(ref.get('deps', [])),
+                         'max_restarts': 1, 'id': rid + '-eval', 'script': 'scripts/eval_rl.py',
+                         'args': ['--run-dir', f'runs/{rid}', '--train-job', rid, '--workers', '6', '--envs-per-worker',
+                                  '8', '--output-dir', f'runs/{rid}-eval'],
+                         'mem_gb': 3, 'ram_gb': 8, 'disk_gb': 1, 'required_results': ['eval.jsonl'], **meta}
             new_jobs += [trainer, evaluator]
 ids = [j['id'] for j in new_jobs]
 assert len(ids) == len(set(ids)) and not set(ids) & set(in_queue), 'duplicate or already registered'

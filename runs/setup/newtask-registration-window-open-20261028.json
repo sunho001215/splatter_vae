@@ -1,0 +1,227 @@
+{
+  "prepared_at": "2026-10-28T16:41:45.525777+09:00",
+  "purpose": "New-task screening rows (user directive 2026-10-28, step 5): the fixed csw4 recipe on a new Meta-World task and the\nSNeRL-code SAC screen of csw4 against the matched end-to-end CNN control.",
+  "tasks": [
+    "window-open"
+  ],
+  "seeds": [
+    2000
+  ],
+  "reference_rows": [
+    "enc-csw4-seed0-door-open-200k",
+    "enc-csw4-export-seed0-door-open-200k",
+    "s4-drm-cnn-door-open-s2000"
+  ],
+  "screening": "runs/setup/task-screening-20261028/summary.json",
+  "definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+  "counts": {
+    "scripts/eval_rl.py": 2,
+    "scripts/export_encoder.py": 1,
+    "scripts/train.py": 1,
+    "scripts/train_sac.py": 2
+  },
+  "jobs": [
+    {
+      "id": "ds-csw4-seed0-window-open-200k",
+      "host": "remote",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/window-open.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "--name",
+        "ds-csw4-seed0-window-open-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 2,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 6,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "enc_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T16:41:42+09:00 (registered on the remote: new-task screening)"
+    },
+    {
+      "id": "ds-csw4-export-seed0-window-open-200k",
+      "host": "remote",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/ds-csw4-seed0-window-open-200k",
+        "--checkpoint",
+        "runs/ds-csw4-seed0-window-open-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/ds-csw4-export-seed0-window-open-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 2,
+      "deps": [
+        "ds-csw4-seed0-window-open-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 6,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "enc_csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T16:41:42+09:00 (registered on the remote: new-task screening)"
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "deps": [
+        "ds-csw4-export-seed0-window-open-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-sac-csw4-window-open-s2000",
+      "script": "scripts/train_sac.py",
+      "args": [
+        "--task",
+        "window-open",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-sac-csw4-window-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/ds-csw4-export-seed0-window-open-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "snerl_sac_csw4",
+      "stage": 6,
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T16:41:42+09:00 (registered on the remote: new-task screening)",
+      "priority": 2
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "deps": [
+        "ds-csw4-export-seed0-window-open-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-sac-csw4-window-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-sac-csw4-window-open-s2000",
+        "--train-job",
+        "ds-sac-csw4-window-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-sac-csw4-window-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "snerl_sac_csw4",
+      "stage": 6,
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T16:41:42+09:00 (registered on the remote: new-task screening)",
+      "priority": 2
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-sac-cnn-window-open-s2000",
+      "script": "scripts/train_sac.py",
+      "args": [
+        "--task",
+        "window-open",
+        "--encoder",
+        "cnn",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-sac-cnn-window-open-s2000",
+        "--set",
+        "train.num_train_steps=1000000"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 12,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "variant": "snerl_sac_cnn",
+      "stage": 6,
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T16:41:42+09:00 (registered on the remote: new-task screening)",
+      "priority": 2
+    },
+    {
+      "host": "remote",
+      "gpu": "any",
+      "deps": [],
+      "max_restarts": 1,
+      "id": "ds-sac-cnn-window-open-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-sac-cnn-window-open-s2000",
+        "--train-job",
+        "ds-sac-cnn-window-open-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-sac-cnn-window-open-s2000-eval"
+      ],
+      "mem_gb": 3,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "variant": "snerl_sac_cnn",
+      "stage": 6,
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-28T16:41:42+09:00 (registered on the remote: new-task screening)",
+      "priority": 2
+    }
+  ],
+  "registered_at": "2026-10-28T16:41:57.579461+09:00",
+  "queue_sha256_before": "6c8afa2460f51b76f15c9a40771c8d8063abb958c9a692253b733b842a900897",
+  "queue_sha256_after": "d3bcd8b4a7aef8d8102c25136487c52052745dbf4312b65d2ed666d2cd9f3dad"
+}

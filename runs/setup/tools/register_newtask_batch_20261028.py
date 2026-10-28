@@ -73,11 +73,12 @@ for task in args.tasks:
                        'args': ['--task', task, '--encoder', encoder, '--seed', str(seed), '--run-dir', f'runs/{rid}',
                                 '--set', 'train.num_train_steps=1000000', *sets],
                        **res, 'required_results': ['final.json', 'train.jsonl'], 'variant': f'snerl_sac_{fam}', **meta}
-            evaluator = copy.deepcopy(ev_ref)
-            evaluator['args'] = [x.replace(ev_ref['id'].removesuffix('-eval'), rid) for x in ev_ref['args']]
-            evaluator.pop('continues', None)
-            evaluator.update(id=rid + '-eval', host='remote', deps=list(deps), variant=f'snerl_sac_{fam}', **meta)
-            assert f'runs/{rid}' in evaluator['args']
+            evaluator = {'host': 'remote', 'gpu': 'any', 'deps': list(deps), 'max_restarts': 1, 'id': rid + '-eval',
+                         'script': 'scripts/eval_rl.py',
+                         'args': ['--run-dir', f'runs/{rid}', '--train-job', rid, '--workers', '6', '--envs-per-worker',
+                                  '8', '--output-dir', f'runs/{rid}-eval'],
+                         'mem_gb': 3, 'ram_gb': 8, 'disk_gb': 1, 'required_results': ['eval.jsonl'],
+                         'variant': f'snerl_sac_{fam}', **meta}
             new_jobs += [trainer, evaluator]
 ids = [j['id'] for j in new_jobs]
 assert len(ids) == len(set(ids)) and not set(ids) & set(in_queue), 'duplicate or already registered'

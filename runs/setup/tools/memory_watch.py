@@ -24,7 +24,10 @@ ROOT = Path('/home/ws/ws/splatter4d')
 ALERT_BUDGET = 147_000_000_000
 ALERT_PSI_FULL_AVG60 = 5.0
 ALERT_IO_FULL_AVG60 = 20.0
-MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/eval_rl.py': 4.5e9,
+# scripts/train_sac.py (2026-10-28): measured 2.0-2.2 GB RSS for frozen-encoder SAC (csw4, ReViWo, 3D-MVP A, 100k-latent replay);
+# charged as the DrM trainer's 3.5 GB
+MEASURED = {'scripts/train.py': 10.77e9, 'scripts/train_rl.py': 3.5e9, 'scripts/train_sac.py': 3.5e9,
+            'scripts/eval_rl.py': 4.5e9,
             'scripts/evaluate.py': 10.0e9}
 
 
