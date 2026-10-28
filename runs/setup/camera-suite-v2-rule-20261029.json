@@ -1,0 +1,294 @@
+{
+  "name": "camera suite v2 held-out selection rule",
+  "date": "2026-10-29",
+  "statement": "Camera suite v2 held-out selection rule (registered 2026-10-29, before any candidate camera was measured; inputs are\nsimulator geometry, MuJoCo segmentation and depth only -- no policy, baseline return, reconstruction quality or\nrepresentation score of any method is read).\n\n1. Candidates: the training rig's orbit (look-at (0, 0.6, 0), radius 1.0 m, fovy 45 deg, 128x128), tilt 25..65 deg in\n   5 deg steps x azimuth 0..350 deg in 10 deg steps, keeping those whose viewing direction is at least 25 deg from every\n   training camera (the training cameras are 23-28 deg from their nearest neighbour, so a held-out camera is at\n   least as far from the training set as the training cameras are from each other).\n2. Measurement: for every candidate and each of the 12 campaign tasks, the representative trajectories (10 scripted-\n   expert episodes, 2 at each collection noise level 0/0.05/0.15/0.30/0.50 with collect.py's smooth noise, and 5\n   uniform-random episodes; fixed seeds; RL timing: one render at reset and one per agent step, 125 agent steps of 2\n   simulator steps) are rendered every 5th render (26 frames per episode) in the normal scene and in a diagnostic\n   render without the robot's proximal links (every robot body except the wrist and gripper). Per frame: visible\n   pixels of the manipulated object(s) and the gripper, visible points of the goal location (5 points; visible if\n   unoccluded within 2 cm or covered by the object / goal body), each with and without the arm, and the table-surface\n   workspace grid's in-image and unoccluded fractions (task definitions in s4d/rl/visibility.py).\n3. Per (camera, task): visibility_k = mean over frames of (visible / arm-free pixels or points of target k; 0 when\n   the target is not visible even without the arm), hidden_k = share of frames with nothing visible, arm_occlusion_k =\n   mean arm-hidden share of the arm-free footprint, arm_heavy_k = share of frames with more than half of it hidden;\n   score = mean over k in {object, gripper, goal} of (visibility_k - hidden_k).\n4. Eligibility (every one of the 12 tasks must pass; thresholds are computed from the training cameras' own\n   measurement on the same trajectories and recorded below, per task): for each target k, hidden_k <= its maximum\n   over the training cameras + 0.02, arm_occlusion_k <= that maximum + 0.02 and arm_heavy_k <= that maximum + 0.02;\n   workspace in-image fraction at every frame >= its minimum over the training cameras - 0.05; mean unoccluded\n   workspace fraction >= that minimum - 0.05; score >= its minimum over the training cameras. A held-out camera is\n   thus, on every task and criterion, at least as observable as the least observable training camera on that task\n   (up to the stated slack). An undefined arm occlusion (target never visible even without the arm) is caught by\n   hidden_k.\n5. Selection of four static cameras for a common rig: vis0 = the eligible candidate with the best worst-task score\n   (ties: mean score, then lower tilt, then lower azimuth). vis1..vis3: repeatedly the eligible candidate farthest\n   (largest minimum angular separation) from the training cameras and the cameras already chosen, among those at\n   least 30 deg from every chosen camera; candidates within 1 deg of the largest separation are tied and the best\n   worst-task score wins. This spreads the suite around the workspace and maximises novelty subject to visibility.\n6. Confirmation: the chosen cameras are re-measured on every frame (stride 1); each must still pass step 4, otherwise\n   it is replaced by the next pick of the same procedure.\n7. Task-specific exceptions: only if fewer than four eligible cameras can be chosen. Then the fewest tasks whose\n   exclusion from step 4 allows four are named; the common rig is chosen without them, and for each such task every\n   failing vis camera is replaced, for that task only, by the eligible candidate (on that task) closest in viewing\n   direction. Every exception is recorded with its numbers before any policy evaluation and applied to every method.\n8. Moving paths (lateral/circular at 2x and 3x, train1 base, 72-pose period, original starting phase) are validated\n   with the same measurement on every frame: no frame with the workspace grid wholly outside the image or wholly\n   occluded; >= 50% of the grid inside the image at every frame; nothing closer than 0.10 m to the camera (near plane\n   0.023 m: no clipping); camera centre >= 0.05 m outside every rendered geom's bounding box; per task, hidden-frame\n   shares of object, gripper and goal at most 0.10 above the static base camera train1, and no hidden run longer\n   than 12 renders (object, gripper) or 24 renders (goal) unless train1 itself has a longer one. A failing level is\n   reduced in steps of 10% of its target amplitudes until it passes, and the reduction is recorded.\n",
+  "rig": {
+    "lookat": [
+      0.0,
+      0.6,
+      0.0
+    ],
+    "radius_m": 1.0,
+    "fovy_deg": 45.0,
+    "image_size": 128
+  },
+  "tasks": [
+    "hammer",
+    "bin-picking",
+    "door-open",
+    "peg-insert-side",
+    "peg-unplug-side",
+    "pick-place",
+    "stick-push",
+    "coffee-push",
+    "drawer-open",
+    "window-open",
+    "soccer",
+    "sweep-into"
+  ],
+  "candidates": {
+    "tilt_range": [
+      25,
+      66,
+      5
+    ],
+    "azimuth_range": [
+      0,
+      360,
+      10
+    ],
+    "min_separation_from_training_deg": 25.0
+  },
+  "search_frame_stride": 5,
+  "confirmation_frame_stride": 1,
+  "trajectories": {
+    "expert_noise_levels": [
+      0.0,
+      0.05,
+      0.15,
+      0.3,
+      0.5
+    ],
+    "expert_per_level": 2,
+    "random_episodes": 5,
+    "construction_seed": 1,
+    "expert_seed_base": 900000,
+    "random_seed_base": 900100,
+    "agent_steps": 125,
+    "action_repeat": 2,
+    "renders_per_episode": 126
+  },
+  "eligibility": {
+    "hidden_fraction_max": {
+      "obj": {
+        "hammer": 0.02,
+        "bin-picking": 0.0216,
+        "door-open": 0.02,
+        "peg-insert-side": 0.2692,
+        "peg-unplug-side": 0.0301,
+        "pick-place": 0.02,
+        "stick-push": 0.02,
+        "coffee-push": 0.1168,
+        "drawer-open": 0.02,
+        "window-open": 0.02,
+        "soccer": 0.1057,
+        "sweep-into": 0.0406
+      },
+      "ee": {
+        "hammer": 0.0221,
+        "bin-picking": 0.02,
+        "door-open": 0.0861,
+        "peg-insert-side": 0.0274,
+        "peg-unplug-side": 0.0211,
+        "pick-place": 0.02,
+        "stick-push": 0.1121,
+        "coffee-push": 0.02,
+        "drawer-open": 0.0226,
+        "window-open": 0.0248,
+        "soccer": 0.0644,
+        "sweep-into": 0.0306
+      },
+      "goal": {
+        "hammer": 0.2523,
+        "bin-picking": 0.0967,
+        "door-open": 0.2115,
+        "peg-insert-side": 0.1528,
+        "peg-unplug-side": 0.165,
+        "pick-place": 0.0507,
+        "stick-push": 0.3851,
+        "coffee-push": 0.0782,
+        "drawer-open": 0.0613,
+        "window-open": 0.3978,
+        "soccer": 0.0406,
+        "sweep-into": 0.0385
+      }
+    },
+    "arm_occlusion_mean_max": {
+      "obj": {
+        "hammer": 0.1037,
+        "bin-picking": 0.0578,
+        "door-open": 0.0743,
+        "peg-insert-side": 0.044,
+        "peg-unplug-side": 0.1737,
+        "pick-place": 0.0546,
+        "stick-push": 0.2827,
+        "coffee-push": 0.1157,
+        "drawer-open": 0.0293,
+        "window-open": 0.1311,
+        "soccer": 0.1248,
+        "sweep-into": 0.107
+      },
+      "ee": {
+        "hammer": 0.1133,
+        "bin-picking": 0.4994,
+        "door-open": 0.4393,
+        "peg-insert-side": 0.4107,
+        "peg-unplug-side": 0.0442,
+        "pick-place": 0.1203,
+        "stick-push": 0.2201,
+        "coffee-push": 0.0613,
+        "drawer-open": 0.2451,
+        "window-open": 0.2359,
+        "soccer": 0.2125,
+        "sweep-into": 0.2501
+      },
+      "goal": {
+        "hammer": 0.2591,
+        "bin-picking": 0.0547,
+        "door-open": 0.2251,
+        "peg-insert-side": 0.1411,
+        "peg-unplug-side": 0.063,
+        "pick-place": 0.1011,
+        "stick-push": 0.3956,
+        "coffee-push": 0.0555,
+        "drawer-open": 0.0721,
+        "window-open": 0.102,
+        "soccer": 0.0469,
+        "sweep-into": 0.0581
+      }
+    },
+    "arm_heavy_fraction_max": {
+      "obj": {
+        "hammer": 0.0301,
+        "bin-picking": 0.0232,
+        "door-open": 0.0597,
+        "peg-insert-side": 0.0316,
+        "peg-unplug-side": 0.0496,
+        "pick-place": 0.02,
+        "stick-push": 0.2846,
+        "coffee-push": 0.0794,
+        "drawer-open": 0.02,
+        "window-open": 0.02,
+        "soccer": 0.1033,
+        "sweep-into": 0.0771
+      },
+      "ee": {
+        "hammer": 0.0232,
+        "bin-picking": 0.448,
+        "door-open": 0.3877,
+        "peg-insert-side": 0.3745,
+        "peg-unplug-side": 0.0422,
+        "pick-place": 0.0475,
+        "stick-push": 0.121,
+        "coffee-push": 0.0274,
+        "drawer-open": 0.0438,
+        "window-open": 0.0459,
+        "soccer": 0.1602,
+        "sweep-into": 0.1544
+      },
+      "goal": {
+        "hammer": 0.2613,
+        "bin-picking": 0.05,
+        "door-open": 0.2261,
+        "peg-insert-side": 0.1419,
+        "peg-unplug-side": 0.0603,
+        "pick-place": 0.0771,
+        "stick-push": 0.4001,
+        "coffee-push": 0.0559,
+        "drawer-open": 0.0705,
+        "window-open": 0.1032,
+        "soccer": 0.0475,
+        "sweep-into": 0.0629
+      }
+    },
+    "workspace_in_view_min": {
+      "hammer": 0.9197,
+      "bin-picking": 0.9197,
+      "door-open": 0.9197,
+      "peg-insert-side": 0.9197,
+      "peg-unplug-side": 0.9197,
+      "pick-place": 0.9197,
+      "stick-push": 0.9197,
+      "coffee-push": 0.9197,
+      "drawer-open": 0.9197,
+      "window-open": 0.9197,
+      "soccer": 0.9197,
+      "sweep-into": 0.9136
+    },
+    "workspace_visible_mean_min": {
+      "hammer": 0.6993,
+      "bin-picking": 0.6115,
+      "door-open": 0.5182,
+      "peg-insert-side": 0.4786,
+      "peg-unplug-side": 0.7175,
+      "pick-place": 0.8126,
+      "stick-push": 0.6969,
+      "coffee-push": 0.65,
+      "drawer-open": 0.6961,
+      "window-open": 0.7191,
+      "soccer": 0.7999,
+      "sweep-into": 0.7837
+    },
+    "score_floor": {
+      "hammer": 0.7798,
+      "bin-picking": 0.8306,
+      "door-open": 0.7168,
+      "peg-insert-side": 0.708,
+      "peg-unplug-side": 0.8765,
+      "pick-place": 0.9205,
+      "stick-push": 0.6163,
+      "coffee-push": 0.9197,
+      "drawer-open": 0.9017,
+      "window-open": 0.7232,
+      "soccer": 0.8694,
+      "sweep-into": 0.8753
+    },
+    "slack": {
+      "hidden": 0.02,
+      "arm": 0.02,
+      "arm_heavy": 0.02,
+      "workspace": 0.05
+    },
+    "thresholds_from": "training cameras train0..5, reference measurement on every frame"
+  },
+  "selection": {
+    "count": 4,
+    "min_pairwise_separation_deg": 30.0,
+    "tie_deg": 1.0,
+    "first": "best worst-task score",
+    "next": "farthest from training + chosen"
+  },
+  "moving_paths": {
+    "levels_target": {
+      "lateral_2x": {
+        "kind": "lateral",
+        "lateral_amplitude": 0.24
+      },
+      "circular_2x": {
+        "kind": "circular",
+        "circular_azimuth_deg": 20.0,
+        "circular_elevation_deg": 12.0
+      },
+      "lateral_3x": {
+        "kind": "lateral",
+        "lateral_amplitude": 0.36
+      },
+      "circular_3x": {
+        "kind": "circular",
+        "circular_azimuth_deg": 30.0,
+        "circular_elevation_deg": 18.0
+      }
+    },
+    "validation": {
+      "workspace_longest_lost_run_max": 0,
+      "workspace_in_view_min": 0.5,
+      "min_depth_m": 0.1,
+      "min_clearance_m": 0.05,
+      "hidden_fraction_excess_over_base_max": 0.1,
+      "longest_hidden_run_max": {
+        "obj": 12,
+        "ee": 12,
+        "goal": 24
+      }
+    },
+    "reduction_step": "10% of the target amplitudes"
+  },
+  "reference_measurement_sha256": "f7b9f5bb52f717c8b51ad444c20ecde31cdbf6669426931996ce3a13a75f2db2",
+  "forbidden_inputs": [
+    "returns or success of any method",
+    "baseline returns",
+    "reconstruction quality",
+    "representation scores"
+  ],
+  "rule_sha256": "983a71690902f9cbb667b4750494116903fb0f39dad6434e4086c772b4366b05"
+}

@@ -27,6 +27,7 @@ from s4d.data.metaworld.cameras import (
     opengl_to_opencv_c2w,
     orbit_c2w_opengl,
 )
+from s4d.rl.camera_suites import HELDOUT_V2_CAMERAS, HELDOUT_V2_NAMES, STRONGER_TRAJECTORIES, heldout_v2_cameras
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,13 @@ def orbit_camera(theta: float, phi: float) -> FreeCamera:
 
 TRAIN_PATHS = {f"train{i}": [orbit_camera(t, p)] for i, (t, p) in enumerate(TRAIN_CAMERAS)}
 HELDOUT_PATHS = {f"eval{i}": [orbit_camera(t, p)] for i, (t, p) in enumerate(EVAL_CAMERAS)}
+# Camera suite v2 (evaluation only, 2026-10-29; s4d.rl.camera_suites): distinct names, never mixed with eval0..3.
+HELDOUT_V2_PATHS = {name: [orbit_camera(t, p)] for name, (t, p) in zip(HELDOUT_V2_NAMES, HELDOUT_V2_CAMERAS)}
+
+
+def heldout_v2_paths(task: str | None = None) -> dict[str, list[FreeCamera]]:
+    """The v2 held-out paths used for ``task``: the common rig with the task's registered exceptions applied."""
+    return {name: [orbit_camera(t, p)] for name, (t, p) in heldout_v2_cameras(task).items()}
 
 
 def _forward(camera: FreeCamera) -> np.ndarray:
@@ -74,7 +82,13 @@ def trajectory_path(
     circular_azimuth_deg: float = 10.0,
     circular_elevation_deg: float = 6.0,
 ) -> list[FreeCamera]:
-    """Reference ``evaluate_camera_trajectory.py`` defaults: base cam1, 72 poses, 0.12 m, +/-10 deg az, +/-6 deg el."""
+    """Reference ``evaluate_camera_trajectory.py`` defaults: base cam1, 72 poses, 0.12 m, +/-10 deg az, +/-6 deg el.
+
+    The stronger evaluation-only levels of camera suite v2 (``lateral_2x``, ``circular_3x``, ...) are the same paths
+    with the amplitudes of ``camera_suites.STRONGER_TRAJECTORIES`` (same base camera, period and starting phase)."""
+    if kind in STRONGER_TRAJECTORIES:
+        reference, amplitudes = STRONGER_TRAJECTORIES[kind]
+        return trajectory_path(reference, base, num_frames, **amplitudes)
     theta, phi = TRAIN_CAMERAS[int(base.removeprefix("train"))]
     camera = orbit_camera(theta, phi)
     if kind == "lateral":

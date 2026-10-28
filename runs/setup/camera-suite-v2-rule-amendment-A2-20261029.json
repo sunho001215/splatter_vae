@@ -1,0 +1,24 @@
+{
+  "name": "camera suite v2 selection rule, amendment A2",
+  "date": "2026-10-29",
+  "amends_amendment_sha256": "2cf66138f8701cccd6a6856611c7563f345a1826fd49792ebf7989c86512c7ee",
+  "statement": "Amendment A2 to the camera suite v2 selection rule (2026-10-29), registered after amendment A1 also admitted no\ncamera (0 of 138: the registered per-task score floors, each task's minimum over the six training cameras, 0.62-0.92,\nare not met on all 12 tasks by any viewpoint at least 25 deg from the training rig), and before computing its own\noutcome. Threshold eligibility anchored per task to the training rig is replaced by a maximin choice that returns the\nmost observable admissible rig. Inputs remain visibility only.\n\n  1. Admissible: the registered candidates (>= 25 deg from every training camera); measurement and per-task score\n     unchanged (steps 1-3).\n  2. S(c) = minimum over the 12 tasks of score(c, task).\n  3. The common rig is the set of 4 admissible candidates, pairwise >= 30 deg apart, that maximises the smallest\n     S(c) of its members; ties: larger sum of S, then larger minimum pairwise separation, then smaller\n     (tilt, azimuth) tuples. vis0..vis3 are numbered by increasing azimuth.\n  4. Task-specific exceptions use the training rig's global worst case (largest value over all training cameras and\n     all tasks, + 0.02 slack for hidden shares; smallest score): a chosen camera whose object, gripper or goal\n     hidden-frame share on a task exceeds that envelope, or whose score on a task is below it, is replaced for that\n     task only by the admissible candidate closest in viewing direction that meets the envelope on that task.\n  5. Confirmation on every frame (step 6, checked against step 4 of this amendment) and the moving-path validation\n     (step 8) are unchanged.\n",
+  "evidence_under_amendment_a1": {
+    "eligible_candidates": 0,
+    "candidates": 138,
+    "selection_json_sha256": "d2034dc4d01990275872dcba350c983d7ed1236ff9612db86b6054f9ce0996f8"
+  },
+  "selection": {
+    "mode": "maximin",
+    "count": 4,
+    "min_pairwise_separation_deg": 30.0,
+    "exception_envelope": {
+      "obj_hidden_fraction_max": 0.2692,
+      "ee_hidden_fraction_max": 0.1121,
+      "goal_hidden_fraction_max": 0.3978,
+      "score_min": 0.6163
+    },
+    "envelope_from": "training cameras train0..5 over all 12 tasks, reference measurement"
+  },
+  "amendment_sha256": "c1db5b5c310bb2f6eadf8e59225d0ba598d4a2c6ebafa96ed33af2758492e12c"
+}
