@@ -7,6 +7,8 @@ import types
 import numpy as np
 import pytest
 
+import mujoco_mig_setup  # noqa: E402,F401  (EGL patch before the first mujoco import, as the module requires)
+
 hr = pytest.importorskip("s4d.data.metaworld.heldout_render")
 
 
