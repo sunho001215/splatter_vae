@@ -5701,3 +5701,252 @@ capacity then goes to their evaluators, the remaining frozen SAC tasks and the P
 
 The paper section is marked superseded and kept as history; the contents list has a new entry. Only the changed files
 were published (26, 46 MB).
+
+## 2026-10-29 00:00 — User directive: visible held-out cameras, stronger moving cameras, Gaussian self-render replacement, FlashSAC (no image augmentation)
+
+**Directive (user, ~00:00 KST), additive to 2026-10-28.** Running work is not disrupted; the ablations stay paused;
+fetching and executing pinned FlashSAC code is authorised. The new work:
+1. **Visible held-out suite.** A new versioned suite of about four unseen static views that keep the manipulation
+   observable. Selection uses only method-independent visibility criteria (simulator geometry, segmentation,
+   expert/random trajectories, arm-occlusion diagnostics) and is frozen before any policy evaluation. Contact sheets
+   and preview videos are published. The original eval0..3 are kept as a separately labelled occlusion-heavy stress
+   test.
+2. **Stronger moving paths.** 2× (lateral ±0.24 m; circular azimuth ±20°, elevation ±12°) and 3× (±0.36 m; ±30°,
+   ±18°) at the 72-pose period. These test range and speed together, and the evaluation reports them as such.
+3. **Re-evaluation.** Completed policies are re-evaluated on the new suites without retraining: csw4 and CNN first.
+4. **Self-render variant.** A Gaussian self-render REPLACEMENT augmentation variant of csw4. Decoded-Gaussian renders
+   from 2 near cameras at the 3 reconstruction times are re-encoded as same-scene positives, with the producer
+   detached. The point-cloud synthetic-view branch and its reconstruction targets are disabled; Chamfer stays. It is
+   labelled an augmentation-bundle replacement.
+5. **Self-render comparison.** Pretrain it on hammer, pick-place and bin-picking (200k, pretraining seed 0) and compare
+   with csw4 under FlashSAC, seeds 2000–2002.
+6. **FlashSAC port.** Official FlashSAC (github.com/Holiday-Robot/FlashSAC), pinned, with the smallest adapters and NO
+   stochastic RL image augmentation. Our env and protocol are used, and raw returns are reported.
+7. **FlashSAC registration.** 12 tasks (8 existing + drawer-open, window-open, soccer, sweep-into) × {csw4, CNN, SinCro,
+   ReViWo, DynaMo, SNeRL, 3D-MVP A, 3D-MVP B} × seeds 2000–2002 at 1M steps. Missing new-task baseline exports are
+   registered explicitly.
+8. **Scheduling.** Cost is measured before concurrency is set, without oversubscribing the GPUs; same limits; brief
+   Codex review.
+9. **Artifact.** Updated in place, with camera definitions recorded before any policy result.
+
+**Plan (00:05).** Three isolated worktrees, run in parallel by delegated agents and reviewed before release:
+- camera suite and evaluator groups (`cameras-v2`);
+- FlashSAC port (`flashsac`);
+- self-render replacement variant (`selfrender`).
+
+I integrate, register and schedule. The camera selection is frozen and logged here before any re-evaluation is
+launched.
+
+**00:00–00:30 setup for the 2026-10-29 directive.**
+- **Delegated agents** (each in its own worktree, reviewed before release):
+  - camera suite v2 and the stronger moving paths, plus evaluator groups (`cameras-v2-20261029`);
+  - FlashSAC port (`flashsac-20261029`);
+  - Gaussian self-render replacement (`selfrender-20261029`).
+- **New-task baseline configs** (`integ-20261029`, commit 5967b28): SinCro, ReViWo, DynaMo, SNeRL and 3D-MVP for
+  drawer-open, window-open, soccer and sweep-into. Each is the door-open file with the task's data paths; nothing else
+  changes.
+- **Registration tool** `runs/setup/tools/register_newtask_baselines_20261029.py`: 20 rows `ds-pre-<baseline>-<task>`,
+  each equal to the door-open row apart from task and name, priority 3. It publishes with the next release.
+- **Measured baseline pretraining cost** on the original tasks: 3D-MVP ~3 h, DynaMo ~5 h, ReViWo ~6 h, SinCro ~21 h,
+  SNeRL ~103 h. For four new tasks that is about 530 GPU-h, dominated by SNeRL.
+- **Scheduling by measured cost** (`remote_campaign_driver.py`, backup `*.before-measured-load-20261029.py`). These
+  rows now count 1.0 GPU load unit instead of 0.5:
+  - pixel SAC trainers (CNN, SNeRL);
+  - PPO CNN;
+  - every Dreamer arm;
+  - FlashSAC CNN;
+  - new-task baseline pretraining.
+
+  Measured on 2026-10-28: 7 pixel trainers per GPU ran at 4–5 agent steps/s each, at 99 % utilisation and the power
+  cap. Running jobs keep running, and the 4.0 limit then prevents further oversubscription.
+
+## 2026-10-29 00:40 — Amendment: self-render warm-up and expanded training-supported viewpoint sampling (before any self-render run)
+
+**Amendment (user, ~00:40 KST).**
+- **Schedule.** Steps 0–20k: no self-render contribution. 20k–40k: linear ramp to full strength. 40k–200k: full
+  strength. Only the self-render contribution ramps; real-view reconstruction, geometry, InfoNCE and consistency keep
+  their existing schedules. At weight 0, generated features touch no positives, negatives or loss normalisation.
+- **No fallback.** There is no point-cloud fallback, and the producer stays detached.
+- **Camera domain.** Self-render cameras are sampled from the training-supported viewpoint domain: the training-camera
+  poses plus wider intermediate viewpoints that the training observations support. The domain is defined only from
+  training-camera geometry and training observations, after inspecting workspace visibility, observed-surface support
+  and representative renders. A bounding box or a full 360° orbit is not acceptable.
+- **Unchanged.** View count, temporal construction (each camera fixed over the 3 timestamps), masking and loss weights.
+  Detached coverage validity is used, and opacity is not taken as proof of geometry. No teacher networks, new losses or
+  sampler search.
+- **Evaluation separation.** No held-out images, depth, policy results or extreme moving paths enter the design, and no
+  evaluation pose is targeted. The domain and its relation to every evaluation suite are recorded. An evaluation pose
+  inside the support is reported as generalisation to unseen poses.
+- **Runs.** Unstarted runs take the amended recipe. No self-render run has been registered or started (the variant is
+  still being implemented), so the matched 3-task pretraining is registered only with the amended recipe. It is reported
+  as the combined warm-up + expanded-viewpoint self-render recipe.
+- **Diagnostics.** Inspected around 20k and 40k; they are diagnostics, not a search.
+
+## 2026-10-29 01:30 — Self-render replacement recipe frozen before any result (`selfrender_replace_v2`, branch selfrender-20261029 @ 087506f)
+
+**Recipe.** "Self-render replacement, warm-up 20k + ramp to 40k, training-supported viewpoints". It is an
+augmentation-bundle replacement, not an isolated test of the image generator.
+- **Resolved-config differences vs csw4** (tested):
+  - `aug.synth_render` true → false: no synthetic-view reconstruction targets.
+  - `aug.synth_source` → `gaussian_self_render`.
+  - `aug.synth_ramp_steps` → [20000, 40000].
+  - `aug.synth_camera_domain` → `configs/metaworld/selfrender_domain_v1.yaml`.
+- **Unchanged:** synth_views 2, the 3 reconstruction times, random masking 0.75 (48 of 192 tokens per view), Chamfer
+  and every loss weight, the optimiser, 200k steps, and the encoder (RGB history only, no actions).
+- **Per sample:** the existing decoded scene is rendered under `no_grad` from 2 domain cameras, each fixed over the 3
+  times. The renders are re-encoded with gradient, and token validity comes from detached alpha via the existing
+  ≥ 90 % patch-coverage rule. A view with too few eligible tokens is topped up with ineligible tokens, as csw4 does for
+  point-cloud views; this is logged as `synth_coverage_exception_rows`.
+- **Ramp.** L = L_real + w (L_joint − L_real) for both InfoNCE and consistency. L_real is the 6-real-view objective;
+  L_joint adds the 2 rendered encodings as positives and negatives, exactly as csw4 adds its point-cloud ones.
+  - w = 0 at 0–20k: nothing is rendered, and the step is bit-identical to csw4 with `synth_views: 0` (tested).
+  - w is linear from 0 to 1 over 20k–40k.
+  - w = 1 at 40k–200k.
+  - Real-view terms keep weight 1, and no point-cloud positive is used at any step.
+- **Decoder isolation (tested).** With InfoNCE and consistency isolated, decoder gradients are None and encoder
+  gradients are nonzero.
+- **Training-supported viewpoint domain v1** (`scripts/selfrender_domain.py`, frozen file and inspection renders in
+  `runs/setup/selfrender-domain-v1/`):
+  - **Inputs:** only training-camera geometry and the training split of hammer, pick-place and bin-picking, cameras
+    0–5 only.
+  - **Measures** per 5° orbit cell: pixel coverage of the fused training-depth splat, surface seen by ≥ 2 training
+    cameras, robot/object visibility, robot/object pixels seen by ≥ 2 training cameras.
+  - **Thresholds:** for each measure, the minimum over the six training poses and three tasks, i.e. at least as
+    supported as the least-supported training camera. One pre-freeze revision replaced an absolute coverage threshold of
+    0.9, which excluded two training cameras, with this training-relative minimum.
+  - **Domain:** the supported components that contain training poses: 314 cells, elevation −70°…−30°, 1.414 sr,
+    distance 1.0.
+  - **Inspection (csw4 200k Gaussians):** PSNR is similar on training poses and domain cells (25–28 dB) and lower on
+    rejected cells (21–25 dB). Alpha is ≈ 0.95 in both, so opacity alone does not discriminate.
+- **Relation to the existing evaluation cameras** (computed after freezing):
+  - eval2 and eval3 lie INSIDE the domain, so results there are described as unseen poses inside the training support.
+  - eval0 and eval1 lie outside, 5–6° from the nearest cell.
+  - The lateral path is inside in angle for 72/72 poses; the circular path for 61/72.
+  - The relation to the new evaluation suite is added when that suite is frozen.
+- **Cost (hammer, 300 steps, shared slice):** csw4 0.58 s/step and 3.8 GB; the variant at full strength 0.51 s/step and
+  3.5 GB. Rendering and re-encoding cost ≈ +0.05 s/step, while the removed point-cloud bundle cost ≈ +0.11 s/step.
+- **Rows** (registered with the next release): `sr-csw4-seed0-{hammer,pick-place,bin-picking}-200k` with the
+  `enc-csw4` args plus `selfrender_replace_v2.yaml`, and their exports. Diagnostics at 20k/40k use
+  `scripts/selfrender_diagnostics.py`; these are diagnostics, not a search.
+- **Open risks:**
+  - the csw4 Gaussians drop the small pick-place object, so rendered positives may teach invariance to it;
+  - the real–rendered cosine is ≈ 0.57 at 20k, so a loss jump is possible when the ramp starts.
+
+## 2026-10-29 02:05 — Camera suite v2: selection rule amended twice before outcomes (visibility-only)
+
+The camera-suite selection is method-independent: visibility only, with no policy, reconstruction or representation
+numbers. Its pre-registered rule (cameras-v2 commit 74372da) required each candidate to match the worst training camera
+on about 180 per-task criteria.
+- **Original rule:** 0 of 138 admissible candidates qualified (admissible: ≥ 25° from every training camera). Its
+  fallback would have needed task-specific exceptions on 6 of 12 tasks.
+- **Amendment A1** (commit 92a670d, registered before its outcome was computed): per-task score floors of 0.62–0.92.
+  Again 0 of 138: the floors are unattainable ≥ 25° away from the training rig.
+- **Amendment A2** (registered before its outcome was computed): choose the 4 admissible cameras (≥ 25° from every
+  training camera, ≥ 30° apart pairwise) that maximise the minimum worst-task visibility score. A task-specific
+  exception is allowed only where a chosen camera falls below the training rig's own global worst case (object /
+  gripper / goal hidden-frame share and score).
+
+The original rule, A1, A2 and all three outcomes are recorded in the suite's definition file. The suite is frozen before
+any policy is evaluated on it.
+
+### 2026-10-29 02:30 — stronger moving paths: amendment A3 (before any policy evaluation)
+
+The camera agent validated the requested evaluation-only levels with method-independent renders over the expert and
+random trajectories:
+
+- **2×:** lateral ±0.24 m; circular azimuth ±20°, elevation ±12°.
+- **3×:** lateral ±0.36 m; circular azimuth ±30°, elevation ±18°.
+
+The levels meet the directive's reduction criteria:
+
+- **No collision:** camera clearance ≥ 0.165 m.
+- **No clipping:** one 5 cm depth reading was a single-pixel spike in MuJoCo's own depth buffer. It is now removed by a
+  3×3 median that is used only in the clipping diagnostic, never in policy observations.
+- **No loss of the workspace:** at least 96 % of the workspace grid stays in view in every frame.
+- **Hidden-frame shares:** within 0.10 of train1.
+
+The only failures came from the agent's own registered limit on how long a single target may stay hidden. For example,
+the door-open gripper was hidden for 19–25 consecutive renders, about 0.5–0.6 s. That limit is not a directive
+criterion, and it is inconsistent:
+
+- It also fails the unchanged 1× circular path, where the goal is hidden for 30 renders.
+- It is non-monotonic: circular 27/16.2, 24/14.4, 21/12.6, 16/9.6, 14/8.4 and 12/7.2 fail, while 18/10.8 passes. Its
+  10 % reduction rule would therefore have made circular 3× identical to circular 2×.
+
+**Amendment A3** (approved; registered before any policy is evaluated on these paths):
+
+- The hidden-run limit is dropped as a gate. Its values are still reported for each task, target and level.
+- The requested 2× and 3× levels are frozen unchanged.
+- The literal alternative (lateral 0.216 / 0.288 m; circular 18° / 10.8° for both levels) is recorded in the definition
+  file as not adopted. It is not evaluated.
+
+### 2026-10-29 02:50 — Camera suite v2 frozen (definitions recorded before any policy evaluation)
+
+The suite was built on branch `cameras-v2-20261029` (5 commits, 74372da..8d9e314) and merged into `integ-20261029`
+(1fbf035). No policy has been evaluated on it. The only selection inputs were MuJoCo segmentation and depth along fixed
+representative trajectories: 10 scripted-expert episodes per task (2 at each collection noise level) and 5
+uniform-random episodes, with fixed seeds and the RL timing of 126 renders.
+
+The selection rule was pre-registered. Every amendment (A1–A3) was registered before its own outcome was computed. All
+files are hash-chained in `runs/setup/camera-suite-v2-{rule,rule-amendment-A1..A3,definition}-20261029.*`.
+
+**Held-out v2: four static cameras.** All sit on the training orbit: look-at (0, 0.6, 0), radius 1 m, fovy 45°. The
+cameras are 36.5–116.8° apart pairwise.
+
+| camera | tilt, azimuth | separation from train0..5 | separation from eval0..3 | worst-task score | multi-view slot replaced |
+|---|---|---|---|---|---|
+| vis0 | 55°, 140° | 74, 27, 65, 36, 76, 26° | 53, 20, 69, 52° | 0.82 | train5 |
+| vis1 | 25°, 200° | 108, 26, 86, 36, 124, 44° | 105, 67, 75, 42° | 0.91 | train1 |
+| vis2 | 40°, 300° | 44, 79, 27, 56, 71, 105° | 83, 100, 15, 42° | 0.66 | train2 |
+| vis3 | 25°, 340° | 26, 108, 36, 86, 44, 124° | 67, 105, 42, 75° | 0.70 | train0 |
+
+The score of a task is the mean, over object, gripper and goal, of the visible share minus the hidden-frame share. For
+comparison, the training cameras' worst-task scores are 0.62–0.92. The old held-out cameras score −0.38 (eval0), 0.53
+(eval1), 0.26 (eval2) and 0.26 (eval3).
+
+**Task-specific exceptions** (rule A2) apply identically to every method:
+- **door-open vis1 → (25°, 120°):** the common camera hides the gripper in 28 % of frames.
+- **door-open vis2 → (50°, 80°):** the common camera hides the object in 23 % and the gripper in 23 % of frames.
+- **window-open vis3 → (40°, 260°):** the common camera hides the goal in 49 % of frames.
+
+All 48 evaluated (camera, task) pairs lie within the training cameras' worst case (object hidden ≤ 0.27, gripper
+≤ 0.11, goal ≤ 0.40, score ≥ 0.616). None of eval0..3 does. The old cameras stay unchanged in `eval.jsonl` as the
+**occlusion-heavy stress test**.
+
+**Stronger moving cameras.** All are evaluation only. Each keeps train1 as its base, the 72-pose period and the original
+starting phase, with one render per 25 ms agent step. Amplitude and speed rise together, so each level is a combined
+range-and-speed stress test.
+
+| path | azimuth | tilt | max step per agent step | max speed |
+|---|---|---|---|---|
+| lateral 1× (±0.12 m) | 170.5–189.5° | 44.6–45° | 6.8 mm, 0.55° | 0.27 m/s |
+| circular 1× (±10°/±6°) | 170–190° | 39–51° | 11.8 mm, 0.87° | 0.47 m/s |
+| lateral 2× (±0.24 m) | 161.5–198.5° | 43.5–45° | 13.5 mm, 1.10° | 0.54 m/s, 44°/s |
+| circular 2× (±20°/±12°) | 160–200° | 33–57° | 25.5 mm, 1.74° | 1.02 m/s, 70°/s |
+| lateral 3× (±0.36 m) | 153.3–206.7° | 41.8–45° | 20.3 mm, 1.64° | 0.81 m/s, 66°/s |
+| circular 3× (±30°/±18°) | 150–210° | 27–63° | 40.7 mm, 2.62° | 1.63 m/s, 105°/s |
+
+The path checks are those of A3: no collisions (camera clearance ≥ 0.165 m), no clipping, at least 96 % of the
+workspace in view in every frame, and hidden-frame shares within 0.04 of train1. The longest hidden runs are reported
+in the definition file.
+
+**Evaluator** (`scripts/eval_rl.py --suites v2`):
+- Groups: `vis0..3` and `traj_{lateral,circular}_{2x,3x}`, plus matched references on the same seeds: `ref_train0..5`
+  and `ref_traj_{lateral,circular}`. Each group has 20 episodes.
+- Seeds: one paired seed list per (run seed, evaluation index), from `default_rng([seed, eval_index, 7, 20261029])`,
+  shared by every v2 group and every method.
+- The existing multi-view replacement rule is kept, with per-frame calibration for moving paths.
+- Results go to a separate `eval_cameras_v2.jsonl`, with their own provenance and W&B run `<run>-eval-cameras-v2`.
+  `eval.jsonl` is never read or written.
+- `--snapshots last5` re-evaluates 960k–1M of a finished run without retraining.
+
+**Relation to the self-render training domain** (`runs/setup/selfrender-domain-v1/eval_relationship_cameras_v2.json`):
+- **Inside the domain** (generalisation to unseen poses within the training-supported region): vis0 and door-open
+  vis2 (50°, 80°).
+- **Outside the domain:** vis1 (15.6° from the nearest domain cell), vis2 (10.0°), vis3 (10.9°), door-open vis1
+  (19.6°) and window-open vis3 (15.0°).
+- **Moving paths inside the domain:** lateral 2× 72/72 poses, lateral 3× 67/72, circular 2× 57/72 and circular 3×
+  46/72. The furthest poses are 2.2°, 3.4°, 8.3° and 13.2° from the domain.
+
+The domain was frozen before the suite existed and used none of it. The 1× relation (eval2 and eval3 inside; lateral
+72/72, circular 61/72) is unchanged.

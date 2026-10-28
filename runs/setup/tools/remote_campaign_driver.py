@@ -121,8 +121,16 @@ def kind(job_id):
     return None
 
 
+# Measured GPU cost (2026-10-28/29): the pixel downstream trainers (upstream SNeRL/CURL SAC at 128 px, PPO's end-to-end
+# CNN, every Dreamer arm with its 64-px decoder, FlashSAC's CNN) saturate a GPU like a pretraining run; at 0.5 units
+# 7 of them per GPU ran at 4-5 agent steps/s each. Charge them a full unit (user 2026-10-29: do not oversubscribe).
+GPU_HEAVY = ('ds-sac-cnn-', 'ds-sac-snerl-', 'ds-ppo-cnn-', 'ds-dreamer-', 'ds-flashsac-cnn-', 'ds-pre-')  # ds-pre-: baseline pretraining
+
+
 def load(job):
     jid = job['id']
+    if jid.startswith(GPU_HEAVY) and not jid.endswith('-eval'):
+        return 1.0
     if kind(jid) in ('final_export', 'pool_export'):
         return 0.1
     if kind(jid) == 's2_eval':
@@ -534,8 +542,9 @@ if POOL_READY and not DRY and not held:
     for members in units:
         tentative = []
         for u in members:
-            row_load = 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else (
-                0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5))
+            row_load = load(u) if u['id'].startswith(GPU_HEAVY) else (
+                1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else (
+                    0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5)))
             need = int(float(u['ram_gb']) * 2**30)
             fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
                        and gpu_mem[g] + float(u['mem_gb']) <= 90]
