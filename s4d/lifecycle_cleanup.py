@@ -143,7 +143,10 @@ def continuations(run_id: str, rows: list[dict]) -> list[str]:
             continue
         consumer = Path(str(row.get("script", ""))).name in READ_ONLY_CONSUMERS
         values = [value for key, value in row.items() if key != "id"]
+        needle = f"runs/{run_id}"
         for text in _strings(values):
+            if needle not in text:  # cheap prefilter: every reference (relative or absolute) contains it
+                continue
             if any(_blocking(suffix, consumer) for suffix in references(text, run_id)):
                 found.append(f"{row.get('id')}: {text[:160]}")
                 break
