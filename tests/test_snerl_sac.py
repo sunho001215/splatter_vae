@@ -105,3 +105,16 @@ def test_agent_updates_and_state_round_trip(tmp_path, encoder):
     proprio = np.zeros((3, 4), np.float32)
     assert np.allclose(sac.act(x, proprio, 0, eval_mode=True), other.act(x, proprio, 0, eval_mode=True))
     other.load_policy(sac.policy_state())
+
+
+def test_scheduler_verifies_sac_trainers_like_drm_trainers():
+    from s4d.lifecycle_cleanup import TRAINERS
+    from s4d.remote_launch import validate_output_arguments
+    from scripts import jobs
+
+    state = {"script": "scripts/train_sac.py", "required_results": ["final.json", "train.jsonl"]}
+    assert {"final.json", "exit.json", "provenance.json"} <= set(jobs.remote_check_names(state))
+    validate_output_arguments("scripts/train_sac.py", ["--run-dir", "runs/ds-x"], "ds-x")
+    with pytest.raises(ValueError):
+        validate_output_arguments("scripts/train_sac.py", ["--run-dir", "runs/other"], "ds-x")
+    assert TRAINERS["train_sac.py"].policy_keys == ("actor",)

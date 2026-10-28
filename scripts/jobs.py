@@ -459,7 +459,7 @@ def _check_exit_records(run_id: str, state: dict, purpose: str | None, payloads:
                 raise RemoteJobError("Final remote data/config argument identity mismatch")
             normalized = report.get("numeric_config")
             if Path(state.get("script", "")).name in {
-                "train.py", "train_rl.py", "train_sincro.py", "train_reviwo.py",
+                "train.py", "train_rl.py", "train_sac.py", "train_sincro.py", "train_reviwo.py",
                 "train_snerl.py", "train_dynamo.py", "train_mvp3d.py",
             }:
                 if not isinstance(normalized, dict) or not normalized:
@@ -485,7 +485,8 @@ def remote_check_names(state: dict) -> list[str]:
     """Files inspected in place: the required results, the exit / provenance records, and the completion record the
     script's budget check needs (pretraining completion.json, RL final.json)."""
     script = Path(state.get("script", "")).name
-    mandatory = {"train.py": {"completion.json"}, "train_rl.py": {"final.json"}}.get(script, set())
+    mandatory = {"train.py": {"completion.json"}, "train_rl.py": {"final.json"}, "train_sac.py": {"final.json"}}.get(
+        script, set())
     return sorted(set(state["required_results"]) | {"exit.json", "provenance.json"} | mandatory)
 
 
@@ -585,7 +586,7 @@ def _verify_remote_exit(run_id: str, state: dict, report: dict, registry_state: 
         if target is None or completion.get("status") != "completed" or completion.get("steps") != int(target):
             raise RemoteJobError("Remote pretraining did not complete its configured budget")
         checks["steps"] = int(target)
-    elif script == "train_rl.py":
+    elif script in ("train_rl.py", "train_sac.py"):  # DrM and SNeRL-code SAC (2026-10-28) write the same final.json
         target, final = _override(args, "train.num_train_steps="), record_of("final.json")
         if target is None or final.get("completed") is not True or final.get("steps") != int(target):
             raise RemoteJobError("Remote RL training did not complete its configured budget")

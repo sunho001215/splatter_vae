@@ -69,7 +69,7 @@ def validate_output_arguments(script: str, arguments: list[str], job_id: str) ->
         if (_option(arguments, "--name") != job_id
                 or _output_path(_option(arguments, "--output-root")) != CONTAINER_REPO + "/runs"):
             raise ValueError("Remote pretraining artifacts must be under runs/<job_id>")
-    if script == "scripts/train_rl.py":
+    if script in ("scripts/train_rl.py", "scripts/train_sac.py"):
         if _output_path(_option(arguments, "--run-dir")) != f"{CONTAINER_REPO}/runs/{job_id}":
             raise ValueError("Remote RL artifacts must be under runs/<job_id>")
     if script == "scripts/eval_rl.py":
