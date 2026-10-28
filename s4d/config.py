@@ -25,6 +25,11 @@ def load_config(paths: list[str | Path], overrides: list[str] | None = None) -> 
     for path in paths:
         with open(path) as f:
             cfg = deep_update(cfg, yaml.safe_load(f) or {})
+    return apply_overrides(cfg, overrides)
+
+
+def apply_overrides(cfg: dict, overrides: list[str] | None) -> dict:
+    """Apply ``a.b.c=value`` overrides (values parsed as YAML) in place; returns ``cfg``."""
     for item in overrides or []:
         key, _, raw = item.partition("=")
         if not _:

@@ -19,3 +19,7 @@ assembly:        {difficulty: hard,      drm_overrides: {}}
 push-back:       {difficulty: hard,      drm_overrides: {}}
 drawer-open:     {difficulty: easy,      drm_overrides: {}}
 plate-slide:     {difficulty: easy,      drm_overrides: {}}
+# New-task batch 1 (user directive 2026-10-28; screened and verified 2026-10-28, runs/setup/task-screening-20261028).
+# drawer-open and sweep-into are listed above; difficulty as in MWM Appendix F (reporting only).
+window-open:     {difficulty: easy,      drm_overrides: {}}
+soccer:          {difficulty: medium,    drm_overrides: {}}

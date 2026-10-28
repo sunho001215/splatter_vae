@@ -1,0 +1,42 @@
+# SNeRL-code SAC (user directive 2026-10-28): the official SNeRL downstream agent (github.com/jayLEE0301/snerl_official
+# @ d01533b, third_party/snerl/snerl/curl_sac.py CurlSacAgent) on the shared reference protocol of configs/rl/base.yaml
+# (environment, cameras, 128 px, 3-frame history, action repeat 2, 125 agent steps, proprioception, evaluation).
+# Provenance of each value: (a) the executable argparse default of snerl/train.py, (b) the README training commands,
+# (c) the paper (PMLR v202, Table 2). Where they differ the value actually executed by the README commands is used
+# and the difference is noted. See s4d/rl/snerl_sac.py for the adapters and docs/EXPERIMENT_LOG.md (2026-10-28).
+algorithm: snerl_sac
+agent:
+  hidden_dim: 1024                # (a)(b)(c) actor and Q trunks: Linear-ReLU-Linear-ReLU-Linear
+  discount: 0.99                  # (a)(c)
+  init_temperature: 0.1           # (a)(c)
+  alpha_lr: 1.0e-4                # (a)(c)
+  alpha_beta: 0.5                 # (a)(c)
+  actor_lr: 1.0e-3                # (a)(c)
+  actor_beta: 0.9                 # (a)(c)
+  actor_log_std_min: -10          # (a)(c)
+  actor_log_std_max: 2            # (a)(c)
+  actor_update_freq: 2            # (a)(c)
+  critic_lr: 1.0e-3               # (a)(c)
+  critic_beta: 0.9                # (a)(c)
+  critic_tau: 0.01                # (a); (c) "tau for EMA 0.01"
+  critic_target_update_freq: 2    # (a)(c)
+  encoder_tau: 0.05               # (a) executable default used by the README commands; not stated in (c)
+  encoder_lr: 1.0e-3              # (a) CURL optimisers (end-to-end pixel encoder only)
+  num_layers: 4                   # (a) convolutions of the pixel / SNeRL encoders
+  num_filters: 32                 # (a)
+  curl_latent_dim: 128            # (a) passed to CURL's unused batch_size slot upstream (dead), kept as executed
+  cpc_update_freq: 1              # CurlSacAgent default (train.py does not pass it)
+  detach_encoder: false           # (a)
+  per_frame_feature: 63           # upstream MeanEncoder/PixelEncoder: encoder_feature_dim / frame_stack == 63
+  pre_transform_image_size: 128   # (a)(b)
+  image_size: 128                 # (b) --image_size 128: the CURL random crop 128 -> 128 is the identity
+train:
+  num_train_steps: 1000000        # agent steps (2M simulator steps): the common budget of the campaign
+  init_steps: 1000                # (a)(c) uniform random actions and no updates before this many agent steps
+  batch_size: 128                 # (b)(c) (argparse default 32 is not what the README commands run)
+  replay_size: 100000             # (a)(c)
+  update_every_steps: 1           # one update per agent step, before the environment step (train.py:319-324)
+  cpu_threads: 8
+  log_every_steps: 1000
+  checkpoint_every_steps: 50000
+  rolling_window: 10

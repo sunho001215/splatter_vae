@@ -1,4 +1,5 @@
-"""Evaluate every policy snapshot of one RL run with the full protocol (companion job of ``train_rl.py``).
+"""Evaluate every policy snapshot of one RL run with the full protocol (companion job of ``train_rl.py`` and
+``train_sac.py``; the run's ``config.yaml`` names its algorithm).
 
 Processes ``<run>/snapshots/step_*.pt`` in order, appending one record per snapshot to ``<output>/eval.jsonl``
 (``--output-dir``, default the run directory). Exits when the training run has written ``final.json`` and every
@@ -69,7 +70,15 @@ def main() -> None:
     torch.backends.cudnn.benchmark = True  # as in the official train_mw.py
     torch.set_num_threads(args.cpu_threads)
     pool = None
-    agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
+    drm = cfg.get("algorithm", "drm") == "drm"
+    if drm:
+        agent = DrMAgent(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
+    else:  # SNeRL-code SAC (user directive 2026-10-28): same evaluation, the deterministic mean of its actor
+        from s4d.rl.snerl_sac import SNeRLSAC  # noqa: PLC0415
+
+        if cfg["algorithm"] != "snerl_sac":
+            raise ValueError(f"no evaluator for algorithm {cfg['algorithm']!r}")
+        agent = SNeRLSAC(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
     out = output_dir / "eval.jsonl"
     wandb_run = init_wandb(
@@ -97,8 +106,11 @@ def main() -> None:
                 pool = EnvPool(cfg["task"], int(cfg["seed"]) + 1, args.workers, args.envs_per_worker, env_kwargs(cfg))
             for path in pending:
                 snapshot = torch.load(path, map_location=device, weights_only=True)
-                agent.encoder.load_state_dict(snapshot["policy"]["encoder"])
-                agent.actor.load_state_dict(snapshot["policy"]["actor"])
+                if drm:
+                    agent.encoder.load_state_dict(snapshot["policy"]["encoder"])
+                    agent.actor.load_state_dict(snapshot["policy"]["actor"])
+                else:
+                    agent.load_policy(snapshot["policy"])
                 step = int(snapshot["step"])
                 t0 = time.time()
                 metrics = evaluation_suite(pool, agent, step, step // every, int(cfg["seed"]), cfg["eval"],
