@@ -105,6 +105,7 @@ AGENT_STEPS, ACTION_REPEAT = 125, 2
 METRICS = (
     "obj_n", "obj_a", "ee_n", "ee_a", "goal_n", "goal_a",  # visible pixels (goal: of 5 points) with / without the arm
     "ws_inview", "ws_vis", "ws_vis_noarm", "goal_inview", "min_depth", "clearance",
+    "min_depth_robust",  # minimum after a 3x3 median: MuJoCo's depth buffer has isolated single-pixel spikes
 )
 GROUP_HIDDEN = 5  # analysis-only geom/site group of the robot arm (disabled in the diagnostic render)
 GROUP_TRANSLUCENT = 4  # disabled in both analysis renders (MuJoCo's default hides groups 3-5)
@@ -312,6 +313,12 @@ def max_depth_3x3(depth: np.ndarray) -> np.ndarray:
     return np.max([padded[i:i + h, j:j + w] for i in range(3) for j in range(3)], axis=0)
 
 
+def median_3x3(depth: np.ndarray) -> np.ndarray:
+    padded = np.pad(depth, 1, mode="edge")
+    h, w = depth.shape
+    return np.median([padded[i:i + h, j:j + w] for i in range(3) for j in range(3)], axis=0)
+
+
 def geom_clearance(model, data, geoms: np.ndarray, position: np.ndarray) -> float:
     """Smallest signed distance (m) from ``position`` to the oriented bounding boxes of ``geoms`` (negative inside);
     planes use the distance above the plane."""
@@ -391,13 +398,16 @@ class VisibilityProbe:
             row[8] = (inside & (z <= depth_d[r, c] + DEPTH_TOLERANCE_M)).mean()
             r, c, z, inside = project(goal_points, c2w, self.K, self.size)
             goal_bit = _bit("goal")
-            row[4] = np.count_nonzero(inside & ((z <= depth_n[r, c] + GOAL_DEPTH_TOLERANCE_M) | (cat_n[r, c] & goal_bit > 0)))
-            row[5] = np.count_nonzero(inside & ((z <= depth_d[r, c] + GOAL_DEPTH_TOLERANCE_M) | (cat_d[r, c] & goal_bit > 0)))
+            for slot, depth, cat in ((4, depth_n, cat_n), (5, depth_d, cat_d)):
+                seen = (z <= depth[r, c] + GOAL_DEPTH_TOLERANCE_M) | ((cat[r, c] & goal_bit) > 0)
+                row[slot] = np.count_nonzero(inside & seen)
             _, _, _, inside = project(goal_position[None], c2w, self.K, self.size)
             row[9] = float(inside[0])
             valid = (near_n > 0) & (near_n < 0.5 * env_model.vis.map.zfar * env_model.stat.extent)
             row[10] = float(near_n[valid].min()) if valid.any() else np.inf
             row[11] = geom_clearance(env_model, data, self.sets.solid_geoms, c2w[:3, 3])
+            robust = median_3x3(np.where(valid, near_n, np.inf))
+            row[12] = float(robust[np.isfinite(robust)].min()) if np.isfinite(robust).any() else np.inf
         return out
 
     def close(self) -> None:
@@ -482,7 +492,7 @@ def measure_task(task: str, views: dict[str, list], *, size: int = 128, frame_st
             if episodes is not None and e not in episodes:
                 continue
 
-            def on_frame(k: int) -> None:
+            def on_frame(k: int, e: int = e) -> None:
                 if k % frame_stride:
                     return
                 if k == 0:
@@ -510,7 +520,7 @@ def measure_task(task: str, views: dict[str, list], *, size: int = 128, frame_st
 
 def summarize(metrics: np.ndarray, frames: np.ndarray, image_pixels: int) -> dict:
     """Aggregate one view's per-frame metrics (frames, len(METRICS)) over all frames of one task."""
-    m = {name: metrics[:, i].astype(np.float64) for i, name in enumerate(METRICS)}
+    m = {name: metrics[:, i].astype(np.float64) for i, name in enumerate(METRICS[:metrics.shape[1]])}
     out: dict = {"frames": int(len(metrics))}
     for target in ("obj", "ee", "goal"):
         n, a = m[f"{target}_n"], m[f"{target}_a"]
@@ -540,7 +550,9 @@ def summarize(metrics: np.ndarray, frames: np.ndarray, image_pixels: int) -> dic
         "longest_lost_run": longest_run(lost, frames),
     }
     out["goal_point_in_view"] = float(m["goal_inview"].mean())
-    out["min_depth_m"] = float(m["min_depth"].min())
+    out["min_depth_m"] = float(m["min_depth"].min())  # raw: includes MuJoCo's isolated depth-buffer spikes
+    if "min_depth_robust" in m:
+        out["min_depth_robust_m"] = float(m["min_depth_robust"].min())
     out["min_clearance_m"] = float(m["clearance"].min())
     out["score"] = float(np.mean([out[t]["visibility"] - out[t]["hidden_fraction"] for t in ("obj", "ee", "goal")]))
     return out

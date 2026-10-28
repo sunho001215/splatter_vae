@@ -37,13 +37,26 @@ DEFINITION_FILE = "runs/setup/camera-suite-v2-definition-20261029.json"
 RULE_AMENDMENT_FILE = "runs/setup/camera-suite-v2-rule-amendment-A1-20261029.json"
 # Amendment A2 (registered after A1 also admitted no camera; before computing its own outcome): maximin selection.
 RULE_AMENDMENT_A2_FILE = "runs/setup/camera-suite-v2-rule-amendment-A2-20261029.json"
+# Amendment A3 (moving-path validation; registered after the path measurement): see the file.
+RULE_AMENDMENT_A3_FILE = "runs/setup/camera-suite-v2-rule-amendment-A3-20261029.json"
 
-# Frozen 2026-10-29 by scripts/camera_visibility.py (DEFINITION_FILE): (tilt deg, azimuth deg) on the training orbit.
-HELDOUT_V2_CAMERAS: tuple[tuple[float, float], ...] = ()
+# Frozen 2026-10-29 by scripts/camera_visibility.py (DEFINITION_FILE; rule + amendments A1, A2): (tilt deg, azimuth
+# deg) on the training orbit, numbered by azimuth. The common rig of all twelve tasks.
+HELDOUT_V2_CAMERAS: tuple[tuple[float, float], ...] = ((55.0, 140.0), (25.0, 200.0), (40.0, 300.0), (25.0, 340.0))
 HELDOUT_V2_NAMES = tuple(f"vis{i}" for i in range(len(HELDOUT_V2_CAMERAS)))
-# Task-specific exceptions (a task whose common-rig visibility fails the registered minimum): none unless listed here
-# with the numbers that justify them in DEFINITION_FILE; applied identically to every method.
-HELDOUT_V2_TASK_EXCEPTIONS: dict[str, dict[str, tuple[float, float]]] = {}
+# Task-specific exceptions (A2 step 4): on these tasks the listed vis camera falls outside the training rig's worst
+# case (numbers in DEFINITION_FILE) and is replaced, for that task only and for every method, by the admissible
+# candidate closest in viewing direction that meets it. The group keeps its name (vis1 on door-open is (25, 120)).
+HELDOUT_V2_TASK_EXCEPTIONS: dict[str, dict[str, tuple[float, float]]] = {
+    "door-open": {"vis1": (25.0, 120.0), "vis2": (50.0, 80.0)},
+    "window-open": {"vis3": (40.0, 260.0)},
+}
+
+
+def heldout_v2_cameras(task: str | None = None) -> dict[str, tuple[float, float]]:
+    """vis name -> (tilt, azimuth) used for ``task`` (the common rig with that task's exceptions applied)."""
+    cameras = dict(zip(HELDOUT_V2_NAMES, HELDOUT_V2_CAMERAS))
+    return cameras | HELDOUT_V2_TASK_EXCEPTIONS.get(task or "", {})
 
 # Stronger moving-camera levels: (path kind, amplitudes passed to s4d.rl.env.trajectory_path). The 1x reference paths
 # are 0.12 m lateral and +/-10 deg azimuth, +/-6 deg tilt; base camera, 72-pose period and starting phase unchanged.

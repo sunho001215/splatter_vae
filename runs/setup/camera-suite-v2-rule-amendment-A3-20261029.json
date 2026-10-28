@@ -1,0 +1,52 @@
+{
+  "name": "camera suite v2 rule, amendment A3 (moving-path validation)",
+  "date": "2026-10-29",
+  "amends_amendment_sha256": "c1db5b5c310bb2f6eadf8e59225d0ba598d4a2c6ebafa96ed33af2758492e12c",
+  "statement": "Amendment A3 to the camera suite v2 rule (2026-10-29): moving-path validation (step 8). Registered after the path\nmeasurement. Evidence: at the requested target levels every path keeps the camera >= 0.165 m outside all rendered\ngeometry, nothing comes closer than the near plane allows (after removing isolated single-pixel spikes that MuJoCo's\nown depth buffer contains, e.g. 0.054 m on a surface 0.70 m away, identical in mujoco.Renderer), at least 96% of the\nworkspace grid stays in the image at every frame and is never wholly occluded, and per task the hidden-frame shares of\nobject, gripper and goal stay within 0.10 of the static base camera train1. The only failures are the per-target\nhidden-run limits added in step 8 (12 renders for object/gripper, 24 for the goal, unless train1 has longer runs), e.g.\ndoor-open's gripper hidden behind the door for 19-25 consecutive renders (0.5-0.6 s). That limit also fails the\nunchanged 1x circular reference path (goal hidden for 26 and 30 renders on peg-insert-side and peg-unplug-side) and is\nnot monotonic in amplitude: of the registered 10% reductions, circular 27/16.2, 24/14.4, 21/12.6, 16/9.6, 14/8.4 and\n12/7.2 deg fail while 18/10.8 passes, so the step-8 reduction would make circular 3x identical to circular 2x.\nA3 removes the per-target hidden-run limit from the pass/fail decision (the runs stay reported per task, target and\nlevel, in renders and seconds, with the hidden-frame share against train1) and keeps every other step-8 criterion. The\nuser's stated criteria for the stronger paths -- no camera collision, no clipping, no prolonged loss of the entire\nworkspace, visibility checked across the episode -- are all kept, and the requested target levels are frozen. The\nliteral step-8 outcome (lateral 0.216 m and 0.288 m, circular 18/10.8 deg for both levels) is a documented,\nnon-adopted alternative and is not an evaluation group. Registered before any policy evaluation on these paths.\n\nThe 3x3 median used for the near-plane check (minimum depth) is diagnostic-only: it filters the analysis depth images\nof this tool and never touches policy observations or the renders used by evaluation.\n",
+  "evidence_paths_json_sha256": "447ef64ec125d32ebbbe9fedba968a1e9c9b0585db3b87bb681d983fddbda4cd",
+  "literal_step8_outcome": {
+    "lateral_2x": {
+      "lateral_amplitude": 0.216
+    },
+    "lateral_3x": {
+      "lateral_amplitude": 0.288
+    },
+    "circular_2x": {
+      "circular_azimuth_deg": 18.0,
+      "circular_elevation_deg": 10.8
+    },
+    "circular_3x": {
+      "circular_azimuth_deg": 18.0,
+      "circular_elevation_deg": 10.8
+    }
+  },
+  "validation": {
+    "longest_hidden_run_max": null,
+    "hidden_run_reported_only": true
+  },
+  "registered_utc": "2026-10-28T17:55:36+00:00",
+  "registered_before_policy_evaluation_on_these_paths": true,
+  "adopted_levels": {
+    "lateral_2x": {
+      "kind": "lateral",
+      "lateral_amplitude": 0.24
+    },
+    "circular_2x": {
+      "kind": "circular",
+      "circular_azimuth_deg": 20.0,
+      "circular_elevation_deg": 12.0
+    },
+    "lateral_3x": {
+      "kind": "lateral",
+      "lateral_amplitude": 0.36
+    },
+    "circular_3x": {
+      "kind": "circular",
+      "circular_azimuth_deg": 30.0,
+      "circular_elevation_deg": 18.0
+    }
+  },
+  "literal_step8_outcome_adopted": false,
+  "depth_median_filter": "diagnostic-only (analysis renders of scripts/camera_visibility.py); never applied to policy observations or evaluation renders",
+  "amendment_sha256": "e20d931c385f5bd8f5030ec36e4e8be6da24eb3ee6de186f3e26bf7a6b8ffcae"
+}
