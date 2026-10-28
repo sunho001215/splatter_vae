@@ -5395,3 +5395,91 @@ Immediate actions (13:55–14:10):
   never be relabelled as the combined InfoNCE + consistency ablation. When the ablations resume, the combined arm
   (`loss.invariance=0`, `loss.consistency=0`) is registered as its own arm. The InfoNCE-only run stays as recorded
   history. The other four arms are unaffected by the amendment.
+
+## 2026-10-28 14:10–15:00 — Ablations paused; SNeRL-code SAC port; new-task batch 1 collecting; cleanup implemented
+
+**Paper ablations: all five paused losslessly** (`runs/setup/paper-ablation-pause-20261028.log`, registry
+`checkpoint_paused`). Each pause stopped at a complete checkpoint, verified that latest.pt holds that step, lost no
+steps, and charged no failure. Every container exited 143. The admission pause keeps all 40 enc-abl rows from being
+admitted or relaunched.
+
+| arm (registered config) | paused at | checkpoint sha256 (prefix) |
+|---|---|---|
+| noinfonce (InfoNCE only: invariance 0, consistency 0.5 kept) | 180000 | 834e7a282325 |
+| nomotion | 180000 | 46544bcdabb9 |
+| t1spatial | 170000 | f8e6ee83569f |
+| nodepth | 180000 | 4e3e6c9f2ab7 |
+| nochamfer | 180000 | d197276e2ce9 |
+
+**SNeRL source audit** (pinned d01533b = upstream HEAD; paper text extracted from PMLR v202).
+- **Encoder, crop and CURL.** The official RL code freezes the SNeRL convolutions; fc/mlp1/mlp2/LayerNorm are
+  initialised from pretraining and trained separately by the actor and critic losses. CURL runs only for
+  `encoder_type pixel`. For SNeRL (`nerf`) there is no crop (it asserts pre_transform == image_size), and replay is
+  sampled with `sample_proprio`, which applies no augmentation. For the pixel path at the README size 128 the random
+  crop 128→128 is an IDENTITY. Upstream PixelEncoder raises for 128 px even though the README runs `--image_size 128`,
+  and maps 84 px to the 64-px output size (a bug).
+- **Settings actually executed.** The README commands use batch 128, hidden 1024, frame stack 2, init temperature 0.1,
+  α lr 1e-4 (β 0.5), actor/critic lr 1e-3 (β 0.9), critic τ 0.01, encoder τ 0.05 (the paper states only "EMA τ 0.01"),
+  replay 100k, 1000 initial random steps, γ 0.99, one update per step, and infinite bootstrap at the time limit.
+  `action_repeat 5` is a no-op upstream (`frame_skip` is unused), so the effective repeat is 1, with 500-step episodes.
+- **Dreamer.** The public repository contains no Dreamer. The paper used Dreamer v1 (Hafner 2019) with SNeRL's 63-d
+  feature as the embedding.
+
+**Port (worktree `downstream-20261028`, commit 27c49fe).**
+- **Code.** `s4d/rl/snerl_sac.py`, `scripts/train_sac.py`, `configs/rl/algorithms/snerl_sac.yaml`, an
+  algorithm-aware `resolve_config`, and `scripts/eval_rl.py` evaluating either algorithm.
+- **Upstream code unchanged.** `curl_sac.py`, `encoder.py` and `utils.py` are imported unchanged (sha256 pinned in
+  tests). Absent gym/cv2/skimage are stubbed only while `utils` is imported.
+- **Adapters.**
+  - Pixel: upstream PixelEncoder + CURL; the only change is that 128 px is accepted. The crop is an identity, as
+    executed upstream at 128.
+  - SNeRL: upstream MeanEncoder with our export (identical layer names) and the episode's real normalised poses.
+  - Frozen exports: cached features plus a trainable head with MeanEncoder's layers (63 per frame, or 63×3 for
+    stack-level features); tanh for the actor and logits for the critic, exactly as upstream.
+  - All families get the same 4-d proprioception, appended after the upstream representation. CURL sees pixels only.
+- **Protocol, common to all methods.** The common protocol is kept: MW v3, our cameras, 128 px, 3 frames,
+  repeat 2, 125 agent steps, evaluation (240 episodes, any-step success). The SAC budget is 1M agent steps. Feature dim
+  is 63×3 = 189 because the protocol uses 3 frames (upstream 126 for 2).
+- **Checks.** Smoke runs pass for csw4, DynaMo, SNeRL, CNN and 3D-MVP A (600 steps, snapshots, checkpoint). Timing at
+  batch 128 on a 1g MIG slice: csw4 95 agent steps/s (≈3 h per 1M); CNN 5/s and SNeRL 4/s, bound by per-update
+  convolutions and 113 MB pixel batches. Placement is therefore CNN and SNeRL on the remote, frozen families
+  local-first. The new unit tests (6) pass.
+- **Registration.** `runs/setup/tools/register_downstream_sac_20261028.py` builds the screening groups: 8 tasks × 8
+  methods (csw4, CNN, SinCro, ReViWo, DynaMo, SNeRL, 3D-MVP A, 3D-MVP B), seed 2000, rows
+  `ds-sac-<family>-<task>-s2000[-eval]`, priority 2. Each family reuses its DrM row's encoder and export. It publishes
+  after the release passes the suite and the brief Codex review.
+
+**New tasks, batch 1: drawer-open, window-open, soccer, sweep-into** (data collection started 14:07–14:10 locally with
+the established recipe; script `runs/setup/collect_task_batch1_20261028.sh`).
+- **Screening** (`runs/setup/task-screening-20261028`, same protocol as the normalisation screen). Expert success /
+  return and random return:
+
+  | task | expert success | expert return | random return |
+  |---|---|---|---|
+  | window-open | 1.0 | 845 | 110 |
+  | soccer | 0.94 | 1232 | 29 |
+  | drawer-open | 1.0 | 1800 | 317 |
+  | sweep-into | 0.90 | 1051 | 48 |
+
+  Collection-gate verification: window-open 1.0, soccer 0.90, drawer-open 1.0, sweep-into 0.95 (visibility ≥ 0.93).
+- **Choice.** window-open, drawer-open and soccer are three of SNeRL's four paper tasks. sweep-into adds a second
+  pushing task; lever-pull would have been a third articulated task. assembly is unsolved by CNN at 300k, so it was
+  not taken.
+- **Why local collection.** Collecting on the remote would need a new writable job kind plus data promotion. The local
+  route is the verified one (about 45 min per task, then an upload of about 20 min; uploads are not budget-limited).
+- **Next.** csw4 200k seed 0 (remote) and SAC screening with ours + CNN, once the data and the release are ready.
+
+**Lifecycle cleanup** (worktree `lifecycle-cleanup-20261028`, rebased onto 7ac35f4; review pending).
+- **Replay deletion.** Completed RL replay is deleted on both hosts when all of these hold: the full budget is reached,
+  the final snapshot loads, no writer is active, no continuation exists and no admission pause applies. Pending
+  evaluations do not block it.
+- **Container removal.** Our stopped remote containers are removed once the run is verified in place, without waiting
+  for the local backup, and paused attempts' containers once their checkpoint is present. The existing identity
+  checks, archived logs and plain `docker rm` stay.
+- **Local dry run.** 74 runs (45.4 GB) are eligible; nothing has been deleted yet.
+
+**Blocker: PPO and Dreamer reference code.**
+- **Recommended pins.** SB3 v2.9.0 (8908708, MIT) for PPO, and R2-Dreamer 7a93691 (DreamerV3 mode, MIT; same pixel
+  reconstruction target for every arm) or an established DreamerV1 PyTorch port for Dreamer.
+- **What is blocked.** The permission layer refused fetching and executing external code. These pilots wait for the
+  user's permission, and nothing was worked around.

@@ -47,6 +47,14 @@ ENC_COMMIT = 'd281258ad1480e49a155882628e87765c60a5d9a'
 ENC_PREFIXES = ('enc-', 'encsmoke-')
 RELEASES[(ENC_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{ENC_COMMIT[:7]}-cc/manifest.json'
 ENC_READY = (REPO / RELEASES[(ENC_COMMIT, POOL_IMAGE)]).is_file()
+# Downstream-algorithm campaign release (user directive 2026-10-28): ds-* rows (SNeRL-code SAC, new-task pretraining)
+# run on DS_COMMIT (scripts/train_sac.py, s4d/rl/snerl_sac.py, new task configs) on the derived image; offered only once
+# its acceptance manifest exists. Retries keep the release of their first launch.
+DS_COMMIT = None  # set to the accepted release commit after runs/setup/tools/release_chain.py
+DS_PREFIXES = ('ds-',)
+if DS_COMMIT:
+    RELEASES[(DS_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{DS_COMMIT[:7]}-cc/manifest.json'
+DS_READY = bool(DS_COMMIT) and (REPO / RELEASES[(DS_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -55,7 +63,8 @@ MAX_REVIWO = 8
 GPUS = ('GPU-4391fcee-537f-d408-d138-10d8a3866eea', 'GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea',
         'GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79', 'GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1')
 FINISHED = REPO / 'runs/remote/finished'
-DATA_LOGS = ['stage4-baseline-data-sync-20261012.log', 'remote-data-sync-w1-20261012.log',
+DATA_LOGS = ['remote-data-sync-ds-20261028.log',  # new-task batches (user 2026-10-28; upload_task_data_20261028.py)
+             'stage4-baseline-data-sync-20261012.log', 'remote-data-sync-w1-20261012.log',
              'remote-data-sync-w2-20261012.log', 'remote-data-sync-w3-20261012.log', 'remote-data-sync-w4-20261012.log']
 INITIAL_MANIFEST = '56bd8ce9c59e81077061f577888f708541c2c14d605248f0cbdf81521e54bae1'
 DRY = '--dry-run' in sys.argv
@@ -445,6 +454,8 @@ if (REPO / 'runs/setup/remote-hold-admissions').exists():
 ENC_ALLOWED = ENC_READY
 if not ENC_ALLOWED:
     candidates = [j for j in candidates if not j['id'].startswith(ENC_PREFIXES)]
+if not DS_READY:
+    candidates = [j for j in candidates if not j['id'].startswith(DS_PREFIXES)]
 candidates.sort(key=dispatch_key)
 # 2026-10-27: capacity is reserved only by executing jobs; a compute-complete container awaiting backup holds none
 active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
@@ -513,6 +524,8 @@ if POOL_READY and not DRY and not held:
         units.append(members)
     if not ENC_ALLOWED:
         units = [m for m in units if not m[0]['id'].startswith(ENC_PREFIXES)]
+    if not DS_READY:
+        units = [m for m in units if not m[0]['id'].startswith(DS_PREFIXES)]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
     units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
@@ -567,6 +580,8 @@ def job_release(job):
         return previous['commit'], previous.get('image_digest', IMAGE)
     if job['id'].startswith(ENC_PREFIXES):
         return ENC_COMMIT, POOL_IMAGE
+    if job['id'].startswith(DS_PREFIXES):
+        return DS_COMMIT, POOL_IMAGE
     return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)
 
 

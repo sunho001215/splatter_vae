@@ -53,7 +53,10 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'encp-registration-20261025.json',
                  # encoder 2x2 on all eight tasks (user directive 2026-10-26): cs / w4 on five tasks, cs+w4 on eight;
                  # priority 4, the same enc- handling (after every other ready candidate)
-                 'encx-registration-20261026.json']
+                 'encx-registration-20261026.json',
+                 # SNeRL-code SAC comparison groups (user directive 2026-10-28): priority 2, ds- rows (local pool rows of the
+                 # frozen-encoder families; the CNN and SNeRL rows are remote)
+                 'downstream-sac-registration-s2000-20261028.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
@@ -99,8 +102,8 @@ def status(job_id):
 
 
 def task_files(job):
-    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py'):
-        return []  # DrM simulates Meta-World live; it reads no dataset file
+    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py'):
+        return []  # DrM / SAC simulate Meta-World live; they read no dataset file
     trainer = by_id.get(job['id'].removesuffix('-eval'), job)
     args = trainer['args']
     task_cfg = [a for a in args if a.startswith('configs/metaworld/tasks/')]  # our pretraining (scripts/train.py)

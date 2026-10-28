@@ -1,0 +1,100 @@
+{
+ "registered_at": "2026-10-28T13:58:31+0900",
+ "directive": "user 2026-10-28 ~13:50 KST: one common downstream algorithm and exactly six environments where csw4 is best or practically competitive with the strongest compared method",
+ "registered_before": "any result of SNeRL-code SAC, PPO or Dreamer, and any new-task result",
+ "method": "csw4 (chlrm + cs + w4), frozen encoder, pretraining seed 0, 200k",
+ "comparators": [
+  "cnn (end-to-end control on the same algorithm path)",
+  "sincro",
+  "reviwo",
+  "dynamo",
+  "snerl",
+  "3d-mvp A (multi-view RGB-D)",
+  "3d-mvp B (single RGB-D)"
+ ],
+ "complete_group": "an environment is classified only when csw4 and EVERY comparator have all registered seeds (2000, 2001, 2002) complete under the same algorithm and the same registered budget; otherwise it is \"incomplete/provisional\"",
+ "main_measure": "last-5 training-camera evaluation episode return (mean of the last five evaluations of the registered budget; 960k-1M for 1M), environment return only (no entropy or auxiliary terms)",
+ "scale": "nR = (R - R_random) / (R_expert - R_random) with the fixed per-task random-policy and scripted-expert returns of reports/results-artifact/norm/screening/summary.json (method independent; new tasks get theirs from the same screening protocol before any RL result)",
+ "reported_alongside": {
+  "auc": "mean of all evaluations over the budget",
+  "early": "mean of the evaluations in the first 20 % of the budget (10k-200k for 1M)",
+  "final": "evaluation at the full budget",
+  "success": "last-5 training-camera success; also held-out and moving cameras as supporting"
+ },
+ "statistics": "per method the mean over seeds; Delta = mean nR(csw4) - max over comparators of mean nR(comparator); uncertainty by a percentile bootstrap that resamples the seeds of EVERY method independently and recomputes the strongest comparator in each draw (B = 10000, rng seed 0); L = one-sided 95 % lower bound (5th percentile) of Delta; with three seeds per method the bounds are exploratory (reported as such); seed values always shown",
+ "tolerance": {
+  "delta": 0.05,
+  "uncertainty_floor": -0.15,
+  "justification": "delta = 0.05 is 5 % of the random-to-expert return gap, below the median seed SD of last-5 nR across the eight-task DrM results (0.063): a deficit smaller than one typical seed-to-seed fluctuation is treated as practically equal. The floor L >= -0.15 (three tolerances) excludes cases where the data remain compatible with csw4 being substantially worse; overlapping intervals alone never qualify, because the point estimate must also be within delta.",
+  "interpretation": "two separate statements, never merged into a non-inferiority claim: the point estimate is within 0.05 of the strongest comparator, and the data do not allow csw4 to be more than 0.15 behind it (L >= -0.15). \"Practically competitive\" always carries this uncertainty qualification; a formal 5 % non-inferiority claim (L >= -0.05) is reported separately when it holds."
+ },
+ "classes": {
+  "highest": "Delta >= 0 and L >= -0.15",
+  "within_tolerance": "-0.05 <= Delta < 0 and L >= -0.15",
+  "inconclusive": "Delta >= -0.05 but L < -0.15, or the group is incomplete (provisional)",
+  "behind": "Delta < -0.05"
+ },
+ "qualifying": "highest or within_tolerance with a complete group",
+ "ranking_among_qualifying": [
+  "tier 1: every csw4 seed reaches last-5 nR >= 0.5 x the csw4 seed mean (consistent learning) AND csw4 last-5 training-camera success >= 0.2 (meaningful success); tier 2: the rest",
+  "within a tier: larger Delta_CNN = mean nR(csw4) - mean nR(cnn)",
+  "skill diversity: greedy pick in that order, skipping an environment whose skill family already has two picks while a qualifying environment of another family remains"
+ ],
+ "skill_families": {
+  "tool use": [
+   "hammer",
+   "stick-push",
+   "stick-pull"
+  ],
+  "pick and place": [
+   "pick-place",
+   "bin-picking",
+   "shelf-place",
+   "pick-out-of-hole"
+  ],
+  "pushing / sliding": [
+   "coffee-push",
+   "soccer",
+   "plate-slide",
+   "sweep-into",
+   "push",
+   "sweep",
+   "push-back"
+  ],
+  "articulated": [
+   "door-open",
+   "drawer-open",
+   "window-open",
+   "lever-pull",
+   "faucet-open",
+   "door-close",
+   "drawer-close",
+   "window-close"
+  ],
+  "insertion / assembly": [
+   "peg-insert-side",
+   "peg-unplug-side",
+   "assembly",
+   "disassemble"
+  ]
+ },
+ "algorithm_choice": "one common downstream algorithm for the main comparison: the algorithm with the most qualifying environments (counted up to six); ties -> larger sum of Delta_CNN over its six picks -> lower compute. Never a different algorithm per environment.",
+ "reporting": "exploratory and performance-informed selection; every tested environment, algorithm, seed and screening run stays visible (including unfavourable ones); if fewer than six qualify the selection is reported as provisional and the bounded exploration continues; the criterion is not changed afterwards",
+ "early_screening": "seed 2000 screening runs only decide which complete comparisons to expand to seeds 2000-2002; they never qualify an environment by themselves",
+ "amended_at": "2026-10-28T14:53:04+0900",
+ "amends": {
+  "file": "runs/setup/downstream-selection-rule-20261028.json",
+  "sha256": "c6905e242c1573a4287ccecfde613a56e99be3147ce412fb868a63fb49e1763a",
+  "why": "Codex review 2026-10-28 of the registered rule; amended before any SNeRL-code SAC, PPO, Dreamer or new-task result exists"
+ },
+ "confirmation": "selection optimism control: the screening seed 2000 only chooses which complete groups to expand; a qualifying environment additionally needs Delta computed on the fresh seeds 2001-2002 alone (all methods) to be >= -0.05, i.e. the classification must hold on data that did not drive the expansion",
+ "search_bound": {
+  "algorithms": [
+   "SNeRL-code SAC (8 existing tasks + new tasks)",
+   "PPO pilot (hammer, bin-picking, door-open)",
+   "Dreamer pilot (hammer, bin-picking, door-open)"
+  ],
+  "new_task_batches": "at most 3 batches of at most 4 tasks (batch 1: drawer-open, window-open, soccer, sweep-into)",
+  "stopping": "stop when six environments qualify under one algorithm, or when the bound is exhausted; then report the qualifying set as provisional with every tested setting"
+ }
+}
