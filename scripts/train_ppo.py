@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import io
 import json
 import os
 import pickle
@@ -94,7 +95,13 @@ def main() -> None:
     kwargs = env_kwargs(cfg)
     proprio_dim = len(cfg["env"]["proprio_indices"])
     n_envs = int(a["n_envs"])
-    fns = [sb3_ppo.make_env_fn(cfg["task"], seed + sb3_ppo.SEED_STRIDE * i, kwargs, proprio_dim, cfg) for i in range(n_envs)]
+    state = torch.load(latest, map_location="cpu", weights_only=False) if resume else None
+    # a resume starts the workers' episode schedules afresh: offset their seeds by the resume count, so resumed training
+    # never repeats the episodes (configurations, cameras) of earlier attempts (Codex review 2026-10-28)
+    resumes = int(state["counters"].get("resumes", 0)) + 1 if resume else 0
+    offset = resumes * sb3_ppo.SEED_STRIDE * n_envs
+    fns = [sb3_ppo.make_env_fn(cfg["task"], seed + offset + sb3_ppo.SEED_STRIDE * i, kwargs, proprio_dim, cfg)
+           for i in range(n_envs)]
     venv = SubprocVecEnv(fns, start_method="spawn")
     atexit.register(venv.close)
     cnn = sb3_ppo.is_cnn(cfg)
@@ -102,10 +109,11 @@ def main() -> None:
         venv = sb3_ppo.feature_vec_env(venv, sb3_ppo.FrozenFeatureExtractor(cfg, device), proprio_dim)
     norm_keys = ["proprio"] if cnn else None
     if resume:
-        state = torch.load(latest, map_location="cpu", weights_only=False)
-        venv = VecNormalize.load(str(ckpt_dir / "vecnormalize.pkl"), venv)
-        model = PPO.load(str(ckpt_dir / "model.zip"), env=venv, device=device)
-        counters = state["counters"]
+        vecnorm = pickle.loads(state["vecnormalize"])  # VecNormalize.load without a file
+        vecnorm.set_venv(venv)
+        venv = vecnorm
+        model = PPO.load(io.BytesIO(state["model_zip"]), env=venv, device=device)
+        counters = {**state["counters"], "resumes": resumes}
         append_jsonl(run_dir / "events.jsonl", {"event": "resumed", "step": counters["num_timesteps"], "time": time.time()})
     else:
         venv = VecNormalize(venv, norm_obs=bool(a["normalize_observations"]), norm_reward=bool(a["normalize_rewards"]),
@@ -115,7 +123,7 @@ def main() -> None:
                     gamma=float(a["gamma"]), gae_lambda=float(a["gae_lambda"]), clip_range=float(a["clip_range"]),
                     ent_coef=float(a["ent_coef"]), vf_coef=float(a["vf_coef"]), max_grad_norm=float(a["max_grad_norm"]),
                     policy_kwargs=sb3_ppo.policy_kwargs(cfg), seed=seed, device=device, verbose=0)
-        counters = {"num_timesteps": 0, "episodes": 0}
+        counters = {"num_timesteps": 0, "episodes": 0, "resumes": 0}
     total, every = int(tcfg["num_train_steps"]), int(cfg["eval"]["every_steps"])
     log_every, ckpt_every = int(tcfg["log_every_steps"]), int(tcfg["checkpoint_every_steps"])
     wandb_run = init_wandb(cfg, run_dir.name, cfg["wandb"]["project"], bool(cfg["wandb"]["enabled"]), run_dir)
@@ -171,13 +179,12 @@ def main() -> None:
             return True
 
     def save_checkpoint(model, step):
-        model.save(str(ckpt_dir / "model.tmp.zip"))
-        os.replace(ckpt_dir / "model.tmp.zip", ckpt_dir / "model.zip")
-        tmp = ckpt_dir / "vecnormalize.tmp.pkl"
-        with open(tmp, "wb") as stream:
-            pickle.dump(model.get_vec_normalize_env(), stream)  # VecNormalize.save, written atomically
-        os.replace(tmp, ckpt_dir / "vecnormalize.pkl")
-        atomic_save({"step": step, "counters": {**counters, "num_timesteps": step}}, latest)
+        """One atomic file (Codex review 2026-10-28): the SB3 model zip (policy, optimiser, counters) and the
+        VecNormalize statistics (VecNormalize.save's pickle) as bytes, with this run's counters."""
+        buffer = io.BytesIO()
+        model.save(buffer)
+        atomic_save({"step": step, "counters": {**counters, "num_timesteps": step}, "model_zip": buffer.getvalue(),
+                     "vecnormalize": pickle.dumps(model.get_vec_normalize_env())}, latest)
 
     model.learn(total_timesteps=total - model.num_timesteps, callback=Protocol(), reset_num_timesteps=not resume,
                 progress_bar=False)

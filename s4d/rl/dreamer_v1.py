@@ -180,7 +180,11 @@ def _make_replay_class(base: type) -> type:
         the CNN's atom is the frame itself), ``proprio``) plus ``episode_step`` (stack rebuild) and ``global_index``
         (resume). ``_sample_idx`` (uniform chunk start, never across the write index: memory.py:39-45) and ``sample``
         (memory.py:60-70) are upstream's; a chunk is redrawn while it touches a row not written in this run's
-        checkpointed history (rows of a crashed process after its checkpoint) or a stack frame already overwritten."""
+        checkpointed history (rows of a crashed process after its checkpoint) or a stack frame already overwritten, or
+        while it crosses an episode boundary. The last rule is the one deviation from upstream sampling (Codex review
+        2026-10-28): upstream's 1000-step DMC episodes let about 10 % of 50-step chunks cross a reset; our 125-step
+        Meta-World episodes would let about 39 % pair an episode's last action and reward with the next episode's reset
+        observation and camera, so chunks stay inside one episode (125 >= the chunk length 50)."""
 
         def __init__(self, directory, size, frame_shape, atom_shape, atom_dtype, atom_stack, proprio_dim, action_dim,
                      bit_depth, device, mode="w+"):
@@ -251,6 +255,9 @@ def _make_replay_class(base: type) -> type:
             if first < max(0, self.steps - self.size) or int(g[-1]) >= self.steps:
                 return False
             if not np.array_equal(g, first + np.arange(len(idxs))):
+                return False
+            start = int(self.episode_step[idxs[0]])  # inside one episode (see the class docstring)
+            if not np.array_equal(self.episode_step[idxs], start + np.arange(len(idxs))):
                 return False
             back = min(self.atom_stack - 1, int(self.episode_step[idxs[0]]))  # stack frames before the chunk
             if back:

@@ -88,6 +88,10 @@ def main() -> None:
     horizon = int(cfg["env"]["max_episode_steps"]) // int(cfg["env"]["action_repeat"])
     if int(tcfg["checkpoint_every_steps"]) % horizon:
         raise ValueError(f"train.checkpoint_every_steps must be a multiple of the {horizon}-step episode")
+    if total > SHORT_RUN_STEPS and total % horizon:  # the final checkpoint then ends an episode (Codex review 2026-10-28)
+        raise ValueError(f"train.num_train_steps must be a multiple of the {horizon}-step episode")
+    if int(tcfg["chunk_size"]) > horizon:  # chunks stay inside one episode (DreamerReplay)
+        raise ValueError("the chunk length must not exceed the episode")
     if int(tcfg["seed_episodes"]) * horizon <= int(tcfg["chunk_size"]):  # memory.py:42 draws below idx - chunk
         raise ValueError("the seed episodes must hold more rows than one chunk")
     ckpt_dir, snap_dir = run_dir / "checkpoints", run_dir / "snapshots"
