@@ -5781,3 +5781,53 @@ launched.
   still being implemented), so the matched 3-task pretraining is registered only with the amended recipe. It is reported
   as the combined warm-up + expanded-viewpoint self-render recipe.
 - **Diagnostics.** Inspected around 20k and 40k; they are diagnostics, not a search.
+
+## 2026-10-29 01:30 — Self-render replacement recipe frozen before any result (`selfrender_replace_v2`, branch selfrender-20261029 @ 087506f)
+
+**Recipe.** "Self-render replacement, warm-up 20k + ramp to 40k, training-supported viewpoints". It is an
+augmentation-bundle replacement, not an isolated test of the image generator.
+- **Resolved-config differences vs csw4** (tested):
+  - `aug.synth_render` true → false: no synthetic-view reconstruction targets.
+  - `aug.synth_source` → `gaussian_self_render`.
+  - `aug.synth_ramp_steps` → [20000, 40000].
+  - `aug.synth_camera_domain` → `configs/metaworld/selfrender_domain_v1.yaml`.
+- **Unchanged:** synth_views 2, the 3 reconstruction times, random masking 0.75 (48 of 192 tokens per view), Chamfer
+  and every loss weight, the optimiser, 200k steps, and the encoder (RGB history only, no actions).
+- **Per sample:** the existing decoded scene is rendered under `no_grad` from 2 domain cameras, each fixed over the 3
+  times. The renders are re-encoded with gradient, and token validity comes from detached alpha via the existing
+  ≥ 90 % patch-coverage rule. A view with too few eligible tokens is topped up with ineligible tokens, as csw4 does for
+  point-cloud views; this is logged as `synth_coverage_exception_rows`.
+- **Ramp.** L = L_real + w (L_joint − L_real) for both InfoNCE and consistency. L_real is the 6-real-view objective;
+  L_joint adds the 2 rendered encodings as positives and negatives, exactly as csw4 adds its point-cloud ones.
+  - w = 0 at 0–20k: nothing is rendered, and the step is bit-identical to csw4 with `synth_views: 0` (tested).
+  - w is linear from 0 to 1 over 20k–40k.
+  - w = 1 at 40k–200k.
+  - Real-view terms keep weight 1, and no point-cloud positive is used at any step.
+- **Decoder isolation (tested).** With InfoNCE and consistency isolated, decoder gradients are None and encoder
+  gradients are nonzero.
+- **Training-supported viewpoint domain v1** (`scripts/selfrender_domain.py`, frozen file and inspection renders in
+  `runs/setup/selfrender-domain-v1/`):
+  - **Inputs:** only training-camera geometry and the training split of hammer, pick-place and bin-picking, cameras
+    0–5 only.
+  - **Measures** per 5° orbit cell: pixel coverage of the fused training-depth splat, surface seen by ≥ 2 training
+    cameras, robot/object visibility, robot/object pixels seen by ≥ 2 training cameras.
+  - **Thresholds:** for each measure, the minimum over the six training poses and three tasks, i.e. at least as
+    supported as the least-supported training camera. One pre-freeze revision replaced an absolute coverage threshold of
+    0.9, which excluded two training cameras, with this training-relative minimum.
+  - **Domain:** the supported components that contain training poses: 314 cells, elevation −70°…−30°, 1.414 sr,
+    distance 1.0.
+  - **Inspection (csw4 200k Gaussians):** PSNR is similar on training poses and domain cells (25–28 dB) and lower on
+    rejected cells (21–25 dB). Alpha is ≈ 0.95 in both, so opacity alone does not discriminate.
+- **Relation to the existing evaluation cameras** (computed after freezing):
+  - eval2 and eval3 lie INSIDE the domain, so results there are described as unseen poses inside the training support.
+  - eval0 and eval1 lie outside, 5–6° from the nearest cell.
+  - The lateral path is inside in angle for 72/72 poses; the circular path for 61/72.
+  - The relation to the new evaluation suite is added when that suite is frozen.
+- **Cost (hammer, 300 steps, shared slice):** csw4 0.58 s/step and 3.8 GB; the variant at full strength 0.51 s/step and
+  3.5 GB. Rendering and re-encoding cost ≈ +0.05 s/step, while the removed point-cloud bundle cost ≈ +0.11 s/step.
+- **Rows** (registered with the next release): `sr-csw4-seed0-{hammer,pick-place,bin-picking}-200k` with the
+  `enc-csw4` args plus `selfrender_replace_v2.yaml`, and their exports. Diagnostics at 20k/40k use
+  `scripts/selfrender_diagnostics.py`; these are diagnostics, not a search.
+- **Open risks:**
+  - the csw4 Gaussians drop the small pick-place object, so rendered positives may teach invariance to it;
+  - the real–rendered cosine is ≈ 0.57 at 20k, so a loss jump is possible when the ramp starts.
