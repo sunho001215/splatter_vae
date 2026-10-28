@@ -1222,8 +1222,9 @@ def contact_sheet(title: str, subtitle: str, views: dict, cameras: dict, summary
                     f"goal in view {s['goal_point_in_view']:.2f}"])
                 row.append(_label(frames[task][view][k], lines, 12))
         rows.append(row)
-    grid = _stack(rows)
-    sheet = np.concatenate([_header(title, grid.shape[1], 26, subtitle), grid], axis=0)
+    grid = _stack(rows[1:])
+    head_strip = _stack(rows[:1])[:, :grid.shape[1]]
+    sheet = np.concatenate([_header(title, grid.shape[1], 26, subtitle), head_strip, grid], axis=0)
     from PIL import Image  # noqa: PLC0415
 
     out.parent.mkdir(parents=True, exist_ok=True)

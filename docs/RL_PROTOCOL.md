@@ -210,3 +210,73 @@ zero-size field cannot be memory-mapped). Runs carry the W&B tags `vision_only`,
 Tests: `tests/test_vision_only.py` (no proprio inputs; changing the simulator state with fixed images cannot change
 actions, Q or V values, while the with-proprio control does; updates, dormant ratios and replay resume; resolved configs
 differ only in `env.proprio_indices` and the tags).
+
+## Camera suite v2 (evaluation only, user directive 2026-10-29)
+
+The original held-out cameras eval0..3 often put the robot's proximal links between the camera and the workspace or
+lose task-relevant parts of the scene (measured with the tool below: eval0's arm hides on average 57% of the object
+footprint and the gripper is fully hidden in up to 50% of frames; eval3 never sees stick-push's goal and loses
+coffee-push's mug in 48% of frames; eval2 loses window-open's goal in 79%; eval1 loses stick-push's goal in 67%;
+`runs/setup/camera-suite-v2-definition-20261029.md`). They, the six training cameras, the
+training data, pretraining and RL training are unchanged; eval0..3 stay in `eval.jsonl` and are reported separately
+as an **occlusion-heavy stress test**. Camera suite v2 is a separate, versioned evaluation:
+
+- **Held-out cameras `heldout_v2` = vis0..vis3** (`s4d/rl/camera_suites.py`), on the training orbit (look-at
+  (0, 0.6, 0), radius 1 m, fovy 45 deg), one common rig for all twelve tasks:
+
+  | camera | tilt | azimuth | nearest training camera (= multi-view slot it replaces) |
+  |---|---|---|---|
+  | vis0 | 55 | 140 | train5, 26.0 deg |
+  | vis1 | 25 | 200 | train1, 25.7 deg |
+  | vis2 | 40 | 300 | train2, 27.3 deg |
+  | vis3 | 25 | 340 | train0, 25.7 deg |
+
+  The cameras are 36-117 deg apart; from the old held-out cameras vis0 is 20 deg (eval1) and vis2 15 deg (eval2)
+  away, the others at least 42 deg. Three registered task-specific exceptions (the common camera falls outside the
+  training rig's worst case on that task; numbers in the definition file), applied identically to every method:
+  door-open uses (25, 120) for vis1 (gripper hidden in 27% of frames) and (50, 80) for vis2 (object 24% / gripper 22%
+  hidden); window-open uses (40, 260) for vis3 (goal location hidden in 49% of frames).
+- **Selection, before any policy evaluation and without any return, reconstruction or representation score.** The
+  rule `runs/setup/camera-suite-v2-rule-20261029.json` was registered (commit 74372da) before any candidate was
+  measured. `scripts/camera_visibility.py` renders representative trajectories (per task 10 scripted-expert episodes
+  at the collection noise levels and 5 uniform-random episodes, fixed seeds, RL timing) and measures per frame, from
+  MuJoCo segmentation and depth, the visible share of the manipulated object(s), the gripper and the goal location,
+  each also in a diagnostic render without the robot's proximal links (arm occlusion), and the table workspace's
+  in-image and unoccluded fractions (`s4d/rl/visibility.py`). Diagnostic renders are analysis-only: policies always
+  receive the normal scene. Candidates (tilt 25-65 deg x azimuth 0-350 deg, >= 25 deg from every training camera)
+  were first required to match the least observable training camera on every criterion of every task (registered
+  rule; 0/138 eligible), then its per-task score (amendment A1; 0/138). Amendment A2 (registered before its outcome
+  was computed) chooses the 4 admissible cameras, pairwise >= 30 deg apart, that maximise the smallest worst-task
+  visibility score, with task exceptions only outside the training rig's global worst case; confirmed on every frame.
+  As evaluated, every (vis camera, task) pair is within that envelope (worst-task scores 0.66-0.91 vs 0.62-0.92 for
+  train0..5 and -0.38-0.53 for eval0..3). Frozen definition, rule history, numbers and hashes:
+  `runs/setup/camera-suite-v2-definition-20261029.{json,md}`.
+- **Stronger moving cameras** `traj_{lateral,circular}_{2x,3x}`: the reference paths (base train1, 72-pose period,
+  starting pose 0 at reset) with lateral +/-0.24 / +/-0.36 m and circular +/-20/12 / +/-30/18 deg (azimuth/tilt),
+  validated with the same measurement on every frame: camera >= 0.165 m outside all geometry, no clipping, >= 96% of
+  the workspace in view at every frame and never wholly occluded, hidden-frame shares within 0.04 of train1. The
+  requested levels are frozen (amendment A3: the per-target hidden-run limit added to the rule is reported, not a
+  gate, because it also fails the unchanged 1x circular path and is not monotonic in amplitude; the literal 10%
+  reductions are recorded as a non-adopted alternative). The period is fixed, so a larger amplitude is also a faster
+  camera: these are combined range-and-speed stress tests (3x: up to 0.81 m/s and 66 deg/s lateral, 1.63 m/s and
+  105 deg/s circular; one render per 25 ms agent step). Ranges, speeds per agent and simulator step, period, phase
+  and timing are in the definition file.
+- **Evaluation.** `scripts/eval_rl.py --suites v2` appends to a separate `eval_cameras_v2.jsonl` (never `eval.jsonl`)
+  with groups `vis0..3`, `traj_*_2x/3x` and, by default, matched references re-run in the same pass on the same
+  seeds: `ref_train0..5` and `ref_traj_{lateral,circular}` (`--v2-reference none|train|train+traj`). 20 episodes per
+  group (the historical per-camera count). Seeds are paired: one list per (run seed, evaluation index) from
+  `default_rng([run_seed, eval_index, 7, 20261029])`, used by every v2 group, so every method with the same run seed
+  and every camera condition share initial states; the v1 seed stream is untouched. Multi-view methods keep the
+  registered replacement rule (vis* replace their nearest training camera's slot, trajectories replace train1's) and
+  receive per-frame K and c2w of the pose actually rendered. `--snapshots last5` re-evaluates a finished run's
+  960k..1M snapshots (final = 1M; last-5 = mean of the five) and exits; `--snapshots final` only 1M.
+- **Cost.** With the default references a v2 point is 320 episodes (7 waves of the default 48-environment pool, vs 5
+  for v1): about 1.4x a v1 evaluation, i.e. ~60 s per snapshot for a frozen-encoder DrM policy (csw4: v1 median 42 s
+  locally) and ~45 s for DrM + CNN (v1 median 31 s on the remote hosts); `--v2-reference none` (160 episodes, 4
+  waves) costs ~0.8x. Last-5 re-evaluation of one run: 5 snapshots, about 5-6 minutes including pool start-up.
+- **Analysis-only filtering.** The visibility tool's near-plane check takes the minimum depth after a 3x3 median
+  (MuJoCo's depth buffer contains isolated single-pixel spikes, identical in `mujoco.Renderer`); this never touches
+  policy observations or evaluation renders.
+- **Reporting.** Per condition: `heldout_v2_*` (mean over vis0..3), `traj_2x_*`, `traj_3x_*` (lateral and circular
+  means), with `ref_train_cameras_*` and `ref_trajectories_*` as matched references; success and return, final and
+  last-5. Never average or pool v1 and v2 numbers.
