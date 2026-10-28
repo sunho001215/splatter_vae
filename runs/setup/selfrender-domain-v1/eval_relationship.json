@@ -1,0 +1,167 @@
+{
+ "domain": "configs/metaworld/selfrender_domain_v1.yaml",
+ "fixed": {
+  "eval0": {
+   "azimuth": 60.0,
+   "elevation": -40.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 6.21,
+   "nearest_grid_point": [
+    60,
+    -40
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.79443,
+     "support2": 0.9331,
+     "ws_visible": 0.47377,
+     "ws_support2": 0.77894
+    },
+    "pick-place": {
+     "coverage": 0.80783,
+     "support2": 0.93824,
+     "ws_visible": 0.39789,
+     "ws_support2": 0.74882
+    },
+    "bin-picking": {
+     "coverage": 0.81445,
+     "support2": 0.93301,
+     "ws_visible": 0.39068,
+     "ws_support2": 0.74128
+    }
+   }
+  },
+  "eval1": {
+   "azimuth": 120.0,
+   "elevation": -40.0,
+   "distance": 1.0,
+   "inside": false,
+   "nearest_domain_cell_deg": 5.0,
+   "nearest_grid_point": [
+    120,
+    -40
+   ],
+   "grid_point_in_domain": false,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.81387,
+     "support2": 0.94199,
+     "ws_visible": 0.49363,
+     "ws_support2": 0.8449
+    },
+    "pick-place": {
+     "coverage": 0.80491,
+     "support2": 0.94605,
+     "ws_visible": 0.35187,
+     "ws_support2": 0.86129
+    },
+    "bin-picking": {
+     "coverage": 0.80296,
+     "support2": 0.9392,
+     "ws_visible": 0.30576,
+     "ws_support2": 0.85412
+    }
+   }
+  },
+  "eval2": {
+   "azimuth": -60.0,
+   "elevation": -55.0,
+   "distance": 1.0,
+   "inside": true,
+   "nearest_domain_cell_deg": 0.0,
+   "nearest_grid_point": [
+    -60,
+    -55
+   ],
+   "grid_point_in_domain": true,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.87166,
+     "support2": 0.9426,
+     "ws_visible": 0.39279,
+     "ws_support2": 0.91865
+    },
+    "pick-place": {
+     "coverage": 0.87999,
+     "support2": 0.94789,
+     "ws_visible": 0.36829,
+     "ws_support2": 0.86498
+    },
+    "bin-picking": {
+     "coverage": 0.87429,
+     "support2": 0.91836,
+     "ws_visible": 0.42424,
+     "ws_support2": 0.78091
+    }
+   }
+  },
+  "eval3": {
+   "azimuth": -120.0,
+   "elevation": -55.0,
+   "distance": 1.0,
+   "inside": true,
+   "nearest_domain_cell_deg": 0.0,
+   "nearest_grid_point": [
+    -120,
+    -55
+   ],
+   "grid_point_in_domain": true,
+   "support_at_grid_point": {
+    "hammer": {
+     "coverage": 0.85256,
+     "support2": 0.91951,
+     "ws_visible": 0.42253,
+     "ws_support2": 0.90068
+    },
+    "pick-place": {
+     "coverage": 0.88753,
+     "support2": 0.94325,
+     "ws_visible": 0.41756,
+     "ws_support2": 0.89587
+    },
+    "bin-picking": {
+     "coverage": 0.87754,
+     "support2": 0.92676,
+     "ws_visible": 0.41822,
+     "ws_support2": 0.80625
+    }
+   }
+  }
+ },
+ "traj_lateral": {
+  "poses": 72,
+  "inside_fraction": 1.0,
+  "azimuth_range": [
+   -180.0,
+   179.726
+  ],
+  "elevation_range": [
+   -45.0,
+   -44.605
+  ],
+  "distance_range": [
+   1.0,
+   1.007
+  ],
+  "max_nearest_domain_cell_deg": 1.74
+ },
+ "traj_circular": {
+  "poses": 72,
+  "inside_fraction": 0.8472222222222222,
+  "azimuth_range": [
+   -180.0,
+   179.128
+  ],
+  "elevation_range": [
+   -51.0,
+   -39.0
+  ],
+  "distance_range": [
+   1.0,
+   1.0
+  ],
+  "max_nearest_domain_cell_deg": 4.71
+ }
+}

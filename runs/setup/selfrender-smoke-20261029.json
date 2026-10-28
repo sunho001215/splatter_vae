@@ -1,0 +1,187 @@
+{
+ "date": "2026-10-29",
+ "variant": "selfrender_replace_v2",
+ "branch": "selfrender-20261029 (base 795bec3)",
+ "host": "local",
+ "gpu": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (1g.24gb)",
+ "note": "Smoke runs, not experiment rows. Run through runs/setup/tools/selfrender_smoke_driver.py, which runs scripts/train.py unchanged except that the full-suite test-evidence gate is replaced by a notice (instruction: targeted tests and short smoke runs only). 300 hammer steps each, seed 0, no start evaluation, W&B off, end evaluation and checkpoint. smoke-sr-full-hammer overrides aug.synth_ramp_steps=[0,150] (smoke only) so the self-render path runs, at full strength from step 150; smoke-sr-warmup-hammer uses the registered schedule (weight 0 throughout 300 steps). Timings are means over the logged intervals of steps 151-300 on a shared MIG 1g slice; the 200k runs use full remote GPUs.",
+ "runs": {
+  "smoke-csw4-hammer": {
+   "logged_steps": [
+    1,
+    50,
+    100,
+    150,
+    200,
+    250,
+    300
+   ],
+   "step_time_s_steps_151_300": 0.580996356010437,
+   "gpu_time_s_steps_151_300": 0.5762049149576822,
+   "data_time_s_steps_151_300": 0.0005876350402832031,
+   "peak_gpu_mem_gb": 3.8188371658325195,
+   "all_logged_losses_metrics_finite": true,
+   "nonfinite_keys": [],
+   "first": {
+    "loss/total": 4.230120658874512,
+    "loss/infonce": 2.903069496154785,
+    "metric/psnr": 14.66768741607666
+   },
+   "last": {
+    "loss/total": 3.8453283309936523,
+    "loss/render": 0.5992884039878845,
+    "loss/motion": 0.07596606761217117,
+    "loss/infonce": 2.89776611328125,
+    "loss/consistency": 0.0009045953629538417,
+    "loss/synth_render": 0.34214311838150024,
+    "metric/psnr": 16.0462646484375,
+    "metric/psnr_moving": 14.150368690490723,
+    "metric/psnr_static": 16.47252655029297,
+    "metric/psnr_t0": 16.05498695373535,
+    "metric/psnr_moving_t0": 12.720098495483398,
+    "metric/psnr_t1": 16.0428466796875,
+    "metric/psnr_moving_t1": 17.106853485107422,
+    "metric/psnr_t2": 16.040964126586914,
+    "metric/psnr_moving_t2": 12.870530128479004,
+    "metric/positive_cosine": 0.9990954399108887
+   },
+   "selfrender_weight_by_step": {
+    "1": null,
+    "50": null,
+    "100": null,
+    "150": null,
+    "200": null,
+    "250": null,
+    "300": null
+   },
+   "completion": true
+  },
+  "smoke-sr-full-hammer": {
+   "logged_steps": [
+    1,
+    50,
+    100,
+    150,
+    200,
+    250,
+    300
+   ],
+   "step_time_s_steps_151_300": 0.5144847885767618,
+   "gpu_time_s_steps_151_300": 0.5085796297200521,
+   "data_time_s_steps_151_300": 0.0009120623270670573,
+   "peak_gpu_mem_gb": 3.531691551208496,
+   "all_logged_losses_metrics_finite": true,
+   "nonfinite_keys": [],
+   "first": {
+    "loss/total": 3.8005483150482178,
+    "loss/infonce": 2.976221799850464,
+    "metric/psnr": 14.66768741607666
+   },
+   "last": {
+    "loss/total": 3.4968910217285156,
+    "loss/render": 0.5945125222206116,
+    "loss/motion": 0.05169876664876938,
+    "loss/infonce": 2.898224353790283,
+    "loss/consistency": 0.0005792472511529922,
+    "loss/infonce_real": 2.944573163986206,
+    "loss/consistency_real": 0.000578311097342521,
+    "loss/infonce_joint": 2.898224353790283,
+    "loss/consistency_joint": 0.0005792472511529922,
+    "metric/psnr": 16.497488021850586,
+    "metric/psnr_moving": 14.030147552490234,
+    "metric/psnr_static": 17.06436538696289,
+    "metric/psnr_t0": 16.50223731994629,
+    "metric/psnr_moving_t0": 12.646080017089844,
+    "metric/psnr_t1": 16.49237632751465,
+    "metric/psnr_moving_t1": 16.917964935302734,
+    "metric/psnr_t2": 16.49785041809082,
+    "metric/psnr_moving_t2": 12.767047882080078,
+    "metric/positive_cosine": 0.9994217157363892,
+    "metric/selfrender_positive_cosine": 0.9994220733642578,
+    "metric/selfrender_weight": 1.0,
+    "metric/synth_alpha_mean": 0.9447426199913025,
+    "metric/synth_token_eligible_fraction": 0.8401693105697632,
+    "metric/synth_coverage_exception_rows": 0.0,
+    "metric/synth_kept_ineligible_fraction": 0.0
+   },
+   "selfrender_weight_by_step": {
+    "1": 0.0,
+    "50": 0.3266666531562805,
+    "100": 0.6600000262260437,
+    "150": 0.9933333396911621,
+    "200": 1.0,
+    "250": 1.0,
+    "300": 1.0
+   },
+   "completion": true
+  },
+  "smoke-sr-warmup-hammer": {
+   "logged_steps": [
+    1,
+    50,
+    100,
+    150,
+    200,
+    250,
+    300
+   ],
+   "step_time_s_steps_151_300": 0.46833690961201985,
+   "gpu_time_s_steps_151_300": 0.46224679056803386,
+   "data_time_s_steps_151_300": 0.0006221755345662435,
+   "peak_gpu_mem_gb": 3.236314296722412,
+   "all_logged_losses_metrics_finite": true,
+   "nonfinite_keys": [],
+   "first": {
+    "loss/total": 3.8005483150482178,
+    "loss/infonce": 2.976221799850464,
+    "metric/psnr": 14.66768741607666
+   },
+   "last": {
+    "loss/total": 3.5440497398376465,
+    "loss/render": 0.594975471496582,
+    "loss/motion": 0.05162658914923668,
+    "loss/infonce": 2.944629669189453,
+    "loss/consistency": 0.0011708972742781043,
+    "loss/infonce_real": 2.944629669189453,
+    "loss/consistency_real": 0.0011708972742781043,
+    "metric/psnr": 16.50005531311035,
+    "metric/psnr_moving": 14.030801773071289,
+    "metric/psnr_static": 17.069013595581055,
+    "metric/psnr_t0": 16.50438690185547,
+    "metric/psnr_moving_t0": 12.645679473876953,
+    "metric/psnr_t1": 16.495264053344727,
+    "metric/psnr_moving_t1": 16.92026138305664,
+    "metric/psnr_t2": 16.500516891479492,
+    "metric/psnr_moving_t2": 12.767252922058105,
+    "metric/positive_cosine": 0.998829185962677,
+    "metric/selfrender_weight": 0.0
+   },
+   "selfrender_weight_by_step": {
+    "1": 0.0,
+    "50": 0.0,
+    "100": 0.0,
+    "150": 0.0,
+    "200": 0.0,
+    "250": 0.0,
+    "300": 0.0
+   },
+   "completion": true
+  }
+ },
+ "cost_vs_csw4": {
+  "step_time_ratio_full_strength": 0.8855215411497687,
+  "step_time_ratio_warmup": 0.8060926798714839,
+  "selfrender_render_plus_reencode_s": 0.046332839152018246,
+  "pointcloud_bundle_s": 0.11395812438964836
+ },
+ "gpu_identity_reference_path": {
+  "tool": "runs/setup/tools/selfrender_gpu_identity.py",
+  "setup": "full-size csw4, hammer training windows (0, 37, 101, 250 of the first 20 training episodes), real gsplat, bf16, step 100",
+  "pre_change_source": "git archive 795bec3 (s4d, scripts, configs)",
+  "pre_vs_pre_losses_metrics_equal": true,
+  "pre_vs_pre_grads_equal": false,
+  "pre_vs_post_losses_metrics_rng_equal": true,
+  "note": "gsplat's backward is not bit-deterministic on CUDA (pre vs pre gradients differ), so gradients are compared bit for bit only on CPU (tests/test_selfrender_replace.py golden)",
+  "total_loss": 2.8930628299713135
+ }
+}

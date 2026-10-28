@@ -1,0 +1,60 @@
+{
+ "enc-csw4-seed0-hammer-200k_step_0020000": {
+  "recon_psnr_robot_object": 19.573678016662598,
+  "recon_psnr_rest": 28.393407821655273,
+  "recon_alpha_robot_object": 0.9969364106655121,
+  "recon_depth_absrel_robot_object": 0.0480106920003891,
+  "temporal_change_robot_object_rendered": 0.020771456882357597,
+  "temporal_change_robot_object_observed": 0.03158896043896675,
+  "temporal_change_robot_object_corr": 0.3920678198337555,
+  "temporal_flicker_static_rendered": 0.0013263862347230315,
+  "temporal_flicker_static_observed": 0.0006562747294083238,
+  "sr_alpha_mean": 0.9722837209701538,
+  "sr_token_eligible_fraction": 0.9342448115348816,
+  "sr_coverage_exception_views": 0.0,
+  "temporal_change_domain_rendered": 0.0035183695144951344,
+  "feat_cos_real_real_same_window": 0.9759236574172974,
+  "feat_cos_real_selfrender_same_window": 0.569034993648529,
+  "feat_cos_real_other_windows": 0.13231033086776733,
+  "feat_state_std_mean": 0.053610555827617645,
+  "feat_state_std_min": 0.009761358611285686,
+  "feat_effective_rank": 13.809667587280273,
+  "step": 20000,
+  "task": "hammer",
+  "windows": 16,
+  "split": "validation",
+  "variant_aug": {
+   "synth_views": 2,
+   "synth_render": true
+  }
+ },
+ "enc-csw4-seed0-hammer-200k_step_0040000": {
+  "recon_psnr_robot_object": 20.450719833374023,
+  "recon_psnr_rest": 28.696919441223145,
+  "recon_alpha_robot_object": 0.9975698292255402,
+  "recon_depth_absrel_robot_object": 0.03731175512075424,
+  "temporal_change_robot_object_rendered": 0.017662368714809418,
+  "temporal_change_robot_object_observed": 0.03158896043896675,
+  "temporal_change_robot_object_corr": 0.4731501042842865,
+  "temporal_flicker_static_rendered": 0.0010570510057732463,
+  "temporal_flicker_static_observed": 0.0006562747294083238,
+  "sr_alpha_mean": 0.9708483815193176,
+  "sr_token_eligible_fraction": 0.9283854365348816,
+  "sr_coverage_exception_views": 0.0,
+  "temporal_change_domain_rendered": 0.0028179645305499434,
+  "feat_cos_real_real_same_window": 0.9791660904884338,
+  "feat_cos_real_selfrender_same_window": 0.5824794769287109,
+  "feat_cos_real_other_windows": 0.13370588421821594,
+  "feat_state_std_mean": 0.051119476556777954,
+  "feat_state_std_min": 0.002608271548524499,
+  "feat_effective_rank": 14.494720458984375,
+  "step": 40000,
+  "task": "hammer",
+  "windows": 16,
+  "split": "validation",
+  "variant_aug": {
+   "synth_views": 2,
+   "synth_render": true
+  }
+ }
+}

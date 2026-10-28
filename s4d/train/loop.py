@@ -31,9 +31,12 @@ from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_hard_depth, render_rgbd
 from s4d.train import ddp
 from s4d.train.augment import (
+    PATCH_COVERAGE,
     coverage_visible,
     coverage_visible_tokens,
+    domain_cameras,
     jitter_cameras,
+    load_viewpoint_domain,
     random_resized_crop,
     random_shift,
     synthesize_views,
@@ -120,6 +123,142 @@ def _nanmean(x: torch.Tensor) -> torch.Tensor:
     return torch.nanmean(x) if torch.isfinite(x).any() else x.new_tensor(float("nan"))
 
 
+# ---- synthetic-view source (variant selfrender_replace_v2, user requirement 4 of 2026-10-29 + amendment) ---------------
+# "pointcloud" (default, the reference): the training cameras' GT depth + RGB fused and splatted into near-jittered cameras
+#   (augment.synthesize_views) are the synthetic encoder inputs (InfoNCE / consistency positives) and, with
+#   aug.synth_render, render targets.
+# "gaussian_self_render": the sample's own decoded Gaussian scene, rendered WITHOUT gradient at the three reconstruction
+#   times from aug.synth_views cameras (aug.synth_camera_domain: the frozen training-supported viewpoint domain; absent:
+#   the reference near-jitter), re-encoded WITH gradient; no point-cloud view is built and nothing rendered is ever a
+#   reconstruction target. Its contribution to InfoNCE / consistency is weighted by w(step) (aug.synth_ramp_steps
+#   [s0, s1]: 0 up to s0, linear to 1 at s1); see selfrender_representation.
+SYNTH_SOURCES = ("pointcloud", "gaussian_self_render")
+
+
+def synthetic_settings(aug: dict, *, future: bool, hardneg: bool) -> dict:
+    """Validated synthetic-view source settings; the reference (no new key) only reads the default."""
+    source = str(aug.get("synth_source", "pointcloud"))
+    if source not in SYNTH_SOURCES:
+        raise ValueError(f"aug.synth_source must be one of {SYNTH_SOURCES}, not {source!r}")
+    ramp, domain = aug.get("synth_ramp_steps"), aug.get("synth_camera_domain")
+    if source == "pointcloud":
+        if ramp is not None or domain is not None:
+            raise ValueError("aug.synth_ramp_steps / aug.synth_camera_domain are defined for gaussian_self_render only")
+        return {"source": source}
+    if aug.get("synth_render", False):
+        raise ValueError("self-rendered views are never reconstruction targets: aug.synth_render must be false with "
+                         "aug.synth_source gaussian_self_render")
+    if future:
+        raise ValueError("aug.synth_source gaussian_self_render is defined for the reconstruction objective only")
+    if hardneg:
+        raise ValueError("aug.synth_source gaussian_self_render is not combined with data.hardneg")
+    if ramp is not None:
+        if len(ramp) != 2 or not 0 <= int(ramp[0]) <= int(ramp[1]):
+            raise ValueError("aug.synth_ramp_steps must be [start, full] with 0 <= start <= full")
+        ramp = (int(ramp[0]), int(ramp[1]))
+    return {"source": source, "ramp": ramp, "domain": domain}
+
+
+def selfrender_weight(step: int, ramp: tuple[int, int] | None) -> float:
+    """Weight w of the self-render contribution: 0 for step <= start, (step - start) / (full - start) in between, 1 for
+    step >= full (no ramp: 1)."""
+    if ramp is None:
+        return 1.0
+    start, full = ramp
+    if step <= start:
+        return 0.0
+    if step >= full:
+        return 1.0
+    return (step - start) / (full - start)
+
+
+def self_render_positives(
+    encoder: Encoder, gs: GaussianSet, xyz_seq: torch.Tensor, cams: dict, frames: int, mask_ratio: float | None,
+    bf16: bool, near: float, far: float,
+) -> tuple[torch.Tensor, dict]:
+    """Synthetic-view encodings from the sample's own decoded scene (variant selfrender_replace_v2).
+
+    The scene (``gs`` with centres ``xyz_seq`` (B,T,N,3) at the reconstruction times) is rendered into ``cams``
+    (B,n,...; one camera per view for every timestep) under ``torch.no_grad``: the rendered RGB history and its alpha are
+    constants, so no gradient of these encodings reaches the decoder or any Gaussian parameter. The RGB history is
+    re-encoded by ``encoder`` WITH gradient (the RGB-history-only encoder; no action input exists).
+    Token validity follows the point-cloud views' rule with the detached alpha as coverage: a token is eligible when the
+    mean alpha of its patch is >= PATCH_COVERAGE (0.9) in its own frame (mask_mode "random"; "tube": in every frame);
+    exactly the visible count of the real views' masking (75 %: 48 of 192 temporal tokens) is kept, uniformly among
+    eligible tokens; a row with fewer eligible tokens is filled with ineligible ones (the existing coverage exception),
+    so each view always yields one encoding. Returns slots (B,n,K,D) float and detached coverage statistics."""
+    B, n = cams["w2c"].shape[:2]
+    T = xyz_seq.shape[1]
+    H, W = encoder.cfg.image_height, encoder.cfg.image_width
+    with torch.no_grad():
+        r = render_rgbd(gs, xyz_seq, cams["w2c"], cams["K"], H, W, near, far)
+    rgb = r["rgb"].detach().clamp(0.0, 1.0).permute(0, 2, 1, 3, 4, 5).reshape(B * n, T, 3, H, W)[:, :frames]
+    alpha = r["alpha"].detach().clamp(0.0, 1.0).permute(0, 2, 1, 3, 4, 5).reshape(B * n, T, 1, H, W)[:, :frames]
+    cfg = encoder.cfg
+    ratio = cfg.mask_ratio if mask_ratio is None else mask_ratio
+    frac = F.avg_pool2d(alpha.flatten(0, 1), cfg.patch_size).view(B * n, frames, -1)
+    if cfg.mask_mode == "random":
+        keep = visible_count(frames * cfg.num_patches, ratio)
+        visible = coverage_visible_tokens(alpha, cfg.patch_size, keep)
+        eligible = (frac >= PATCH_COVERAGE).flatten(1)
+    else:
+        keep = visible_count(cfg.num_patches, ratio)
+        visible = coverage_visible(alpha, cfg.patch_size, keep)
+        eligible = frac.amin(1) >= PATCH_COVERAGE
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
+        slots = encoder.forward_visible(rgb, visible)["slots"]
+    stats = {
+        "synth_alpha_mean": alpha.mean(),
+        "synth_token_eligible_fraction": eligible.float().mean(),
+        "synth_coverage_exception_rows": (eligible.sum(1) < keep).float().mean(),
+        "synth_kept_ineligible_fraction": (visible & ~eligible).sum() / visible.sum().clamp_min(1),
+    }
+    return slots.float().view(B, n, *slots.shape[1:]), stats
+
+
+def selfrender_representation(
+    slots: torch.Tensor, syn_slots: torch.Tensor | None, weight: float, temperature: float, distributed: bool
+) -> tuple[torch.Tensor, torch.Tensor, dict, dict]:
+    """Multi-positive InfoNCE and slot consistency with the self-render contribution weighted by ``weight`` = w.
+
+    L_real: the existing objectives over the V real training-camera encodings per sample (positives: the sample's other
+    real views; negatives: every other sample's real views). L_joint: the same objectives over the V real + n
+    self-rendered encodings per sample, exactly the reference's form with the point-cloud encodings replaced (the
+    self-rendered encodings are same-scene positives of the real ones and of each other, negatives of other samples, and
+    anchors themselves; the mean runs over all V + n anchors / ordered view pairs). The self-render contribution is
+    the change it makes, L_joint - L_real, and the loss is
+
+        L = L_real + w * (L_joint - L_real)      (InfoNCE and consistency alike)
+
+    so the real-view term L_real enters with weight 1 at every step (its own schedule is unchanged) and only the
+    self-render contribution is scaled. w = 0: L = L_real exactly, computed without the self-rendered encodings (they are
+    not rendered at all), so they influence no positive, negative, logit, denominator or normalisation; w = 1:
+    L = L_joint exactly. Returns (infonce, consistency, InfoNCE metrics of L_real, extra loss entries)."""
+    real_mean = slots.mean(2)
+    if syn_slots is None or weight <= 0.0:
+        nce, metrics = multi_positive_info_nce(real_mean, temperature, distributed=distributed)
+        cons = slot_consistency(slots)
+        return nce, cons, metrics, {"infonce_real": nce.detach(), "consistency_real": cons.detach()}
+    joint = torch.cat((slots, syn_slots), 1)
+    nce_joint, _ = multi_positive_info_nce(joint.mean(2), temperature, distributed=distributed)
+    cons_joint = slot_consistency(joint)
+    with torch.set_grad_enabled(torch.is_grad_enabled() and weight < 1.0):  # at w = 1 L_real is only logged
+        nce_real, metrics = multi_positive_info_nce(real_mean, temperature, distributed=distributed)
+        cons_real = slot_consistency(slots)
+    if weight >= 1.0:
+        nce, cons = nce_joint, cons_joint
+    else:
+        nce = nce_real + weight * (nce_joint - nce_real)
+        cons = cons_real + weight * (cons_joint - cons_real)
+    with torch.no_grad():
+        r = F.normalize(real_mean.float(), dim=-1)
+        s = F.normalize(syn_slots.mean(2).float(), dim=-1)
+        metrics = {**metrics, "selfrender_positive_cosine": torch.einsum("bvd,bwd->bvw", r, s).mean()}
+    extra = {"infonce_real": nce_real.detach(), "consistency_real": cons_real.detach(),
+             "infonce_joint": nce_joint.detach(), "consistency_joint": cons_joint.detach()}
+    return nce, cons, metrics, extra
+
+
 def forward_losses(
     model: Model,
     batch: dict,
@@ -140,6 +279,8 @@ def forward_losses(
 
     Per-frame pilots (``model.perframe``) use ``s4d.train.perframe.forward_losses_perframe`` (same output keys)."""
     if get(cfg, "model.perframe"):
+        if str(get(cfg, "aug.synth_source", "pointcloud")) != "pointcloud":
+            raise ValueError("aug.synth_source gaussian_self_render is not defined for the per-frame pilots")
         from s4d.train.perframe import forward_losses_perframe
 
         return forward_losses_perframe(model, batch, cfg, step, source=source, mask_ratio=mask_ratio,
@@ -180,6 +321,7 @@ def forward_losses(
     hardneg = bool(get(cfg, "data.hardneg", False)) and training  # encoder pilot hn (off by default)
     if hardneg != (training and "hardneg_images" in batch):
         raise ValueError("data.hardneg requires hard-negative training batches (and only it provides them)")
+    synth = synthetic_settings(aug, future=future, hardneg=bool(get(cfg, "data.hardneg", False)))
     if source is None:
         source = torch.randint(V, (B,), device=device)
     bf16 = bool(get(cfg, "train.bf16", True))
@@ -187,8 +329,8 @@ def forward_losses(
         slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio, **action_kw)
     encoder = getattr(model, "module", model).encoder
     n_syn = int(aug.get("synth_views", 0)) if training else 0
-    syn = None
-    if n_syn:
+    syn = syn_slots = None
+    if n_syn and synth["source"] == "pointcloud":
         syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
         syn = synthesize_views(batch, syn_cams, near, far)  # render targets: the target window
         # invariance positives: the same synthetic cameras rendered from the encoder's (history) window
@@ -223,6 +365,18 @@ def forward_losses(
     ramp = 0.0 if single_frame else temporal_ramp(step, int(loss_cfg.get("ramp_steps", 20000)))
     w2c, K = batch["w2c"], batch["K"]
     xyz_seq = gs.xyz_sequence()
+    sr_weight, sr_stats = 0.0, {}
+    if n_syn and synth["source"] == "gaussian_self_render":
+        sr_weight = selfrender_weight(step, synth["ramp"])
+        sr_stats["selfrender_weight"] = torch.tensor(sr_weight, device=device)
+        if sr_weight > 0.0:  # at weight 0 nothing is sampled, rendered or encoded
+            if synth["domain"] is not None:
+                syn_cams = domain_cameras(B, n_syn, batch["K"][:, 0], H, W, load_viewpoint_domain(synth["domain"]))
+            else:
+                syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
+            syn_slots, stats = self_render_positives(encoder, gs, xyz_seq, syn_cams, enc_in.shape[1], mask_ratio, bf16,
+                                                     near, far)
+            sr_stats.update(stats)
 
     # ---- RGB + depth + coverage -------------------------------------------------------------
     r = render_rgbd(gs, xyz_seq, w2c, K, H, W, near, far)
@@ -363,9 +517,14 @@ def forward_losses(
             neg_slots = encoder(neg_in, None, mask_ratio=mask_ratio)["slots"]
         neg_states = neg_slots.float().view(B, V, *neg_slots.shape[1:]).mean(2)  # (B,V,D), as the anchors' states
         neg_valid = batch["hardneg_valid"].bool()
-    inv_slots = slots if syn is None else torch.cat((slots, syn_slots), 1)  # synthetic views are extra positives
+    inv_slots = slots if syn_slots is None else torch.cat((slots, syn_slots), 1)  # synthetic views are extra positives
     slots_mean = slots.mean(2)
-    if neg_states is None:
+    sr_losses = {}
+    if synth["source"] == "gaussian_self_render":  # neg_states is None here (synthetic_settings rejects data.hardneg)
+        nce, cons, nce_metrics, sr_losses = selfrender_representation(
+            slots, syn_slots, sr_weight, float(loss_cfg.get("temperature", 0.1)), model.training
+        )
+    elif neg_states is None:
         nce, nce_metrics = multi_positive_info_nce(
             inv_slots.mean(2), float(loss_cfg.get("temperature", 0.1)), distributed=model.training
         )
@@ -376,7 +535,8 @@ def forward_losses(
             negatives_weight=float(loss_cfg.get("hardneg_weight", 1.0)),
         )
         nce_metrics.update(hardneg_metrics(slots_mean, neg_states, neg_valid, batch["hardneg_hand_disp"]))
-    cons = slot_consistency(inv_slots)
+    if synth["source"] != "gaussian_self_render":
+        cons = slot_consistency(inv_slots)
     self_w = float(loss_cfg.get("self_render", 0.0)) if training else 0.0
     if self_w > 0 and future:  # would force the encoding of rendered FUTURE frames to equal the history encoding
         raise ValueError("loss.self_render is incompatible with the future objective")
@@ -452,6 +612,7 @@ def forward_losses(
             metrics[f"psnr_moving_t{t}"] = _nanmean(psnr_mov[:, t])
         metrics.update(m_metrics)
         metrics.update(nce_metrics)
+        metrics.update({k: v.detach() for k, v in sr_stats.items()})
         used = None
         if log_step:
             metrics.update({k: v.detach() for k, v in cham_stats.items()})
@@ -478,6 +639,7 @@ def forward_losses(
         **({f"chamfer_target_to_pred_t{t}": v.detach() for t, v in enumerate(cham["target_to_pred"])}
            if cham is not None else {}),
         **{k: v.detach() for k, v in extra_losses.items()},
+        **sr_losses,
     }
     out = {"total": total, "losses": losses, "metrics": metrics, "slots": slots, "source": source, "gs": gs, "used": used}
     if return_renders:
