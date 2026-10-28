@@ -1,0 +1,56 @@
+{
+ "doc": "Intentional admission pauses. A listed row (id or id prefix) is never admitted, retried, relaunched or moved between hosts by any driver while its pause is active; its registration, checkpoints, replay and results are kept. Read by runs/setup/tools/admission_pause.py (remote_campaign_driver.py, stage2_local_driver.py, baseline_local_driver.py). Lifting a pause = setting active false with a reason.",
+ "pauses": [
+  {
+   "name": "paper-ablations-csw4-door-open",
+   "active": true,
+   "since": "2026-10-28T13:53:17+0900",
+   "reason": "user directive 2026-10-28 (downstream-algorithm / six-environment campaign has priority): pause the five paper-ablation arms and descendants at the nearest complete checkpoint; resumable; no automatic relaunch until the campaign priorities change",
+   "prefixes": [
+    "enc-abl-"
+   ],
+   "ids": [
+    "enc-abl-nochamfer-csw4-drm-door-open-s2000",
+    "enc-abl-nochamfer-csw4-drm-door-open-s2000-eval",
+    "enc-abl-nochamfer-csw4-drm-door-open-s2001",
+    "enc-abl-nochamfer-csw4-drm-door-open-s2001-eval",
+    "enc-abl-nochamfer-csw4-drm-door-open-s2002",
+    "enc-abl-nochamfer-csw4-drm-door-open-s2002-eval",
+    "enc-abl-nochamfer-csw4-export-seed0-door-open-200k",
+    "enc-abl-nochamfer-csw4-seed0-door-open-200k",
+    "enc-abl-nodepth-csw4-drm-door-open-s2000",
+    "enc-abl-nodepth-csw4-drm-door-open-s2000-eval",
+    "enc-abl-nodepth-csw4-drm-door-open-s2001",
+    "enc-abl-nodepth-csw4-drm-door-open-s2001-eval",
+    "enc-abl-nodepth-csw4-drm-door-open-s2002",
+    "enc-abl-nodepth-csw4-drm-door-open-s2002-eval",
+    "enc-abl-nodepth-csw4-export-seed0-door-open-200k",
+    "enc-abl-nodepth-csw4-seed0-door-open-200k",
+    "enc-abl-noinfonce-csw4-drm-door-open-s2000",
+    "enc-abl-noinfonce-csw4-drm-door-open-s2000-eval",
+    "enc-abl-noinfonce-csw4-drm-door-open-s2001",
+    "enc-abl-noinfonce-csw4-drm-door-open-s2001-eval",
+    "enc-abl-noinfonce-csw4-drm-door-open-s2002",
+    "enc-abl-noinfonce-csw4-drm-door-open-s2002-eval",
+    "enc-abl-noinfonce-csw4-export-seed0-door-open-200k",
+    "enc-abl-noinfonce-csw4-seed0-door-open-200k",
+    "enc-abl-nomotion-csw4-drm-door-open-s2000",
+    "enc-abl-nomotion-csw4-drm-door-open-s2000-eval",
+    "enc-abl-nomotion-csw4-drm-door-open-s2001",
+    "enc-abl-nomotion-csw4-drm-door-open-s2001-eval",
+    "enc-abl-nomotion-csw4-drm-door-open-s2002",
+    "enc-abl-nomotion-csw4-drm-door-open-s2002-eval",
+    "enc-abl-nomotion-csw4-export-seed0-door-open-200k",
+    "enc-abl-nomotion-csw4-seed0-door-open-200k",
+    "enc-abl-t1spatial-csw4-drm-door-open-s2000",
+    "enc-abl-t1spatial-csw4-drm-door-open-s2000-eval",
+    "enc-abl-t1spatial-csw4-drm-door-open-s2001",
+    "enc-abl-t1spatial-csw4-drm-door-open-s2001-eval",
+    "enc-abl-t1spatial-csw4-drm-door-open-s2002",
+    "enc-abl-t1spatial-csw4-drm-door-open-s2002-eval",
+    "enc-abl-t1spatial-csw4-export-seed0-door-open-200k",
+    "enc-abl-t1spatial-csw4-seed0-door-open-200k"
+   ]
+  }
+ ]
+}

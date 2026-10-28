@@ -433,6 +433,10 @@ def dispatch_key(job):
 retry_view = {i: ({**s, 'status': jobs.PENDING} if s.get('status') == 'crashed' and i in by_id
                   and s.get('failures', 0) <= int(by_id[i].get('max_restarts', 1)) else s) for i, s in state.items()}
 candidates = [j for j in jobs.eligible(remote, retry_view) if ready(j)]
+# intentional admission pauses (user 2026-10-28; runs/setup/admission-pauses.json): never admitted, retried or moved
+sys.path.insert(0, str(REPO / 'runs/setup/tools'))
+from admission_pause import paused  # noqa: E402
+candidates = [j for j in candidates if not paused(j['id'])]
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
     candidates = []
@@ -495,6 +499,8 @@ if POOL_READY and not DRY and not held:
     as_remote = [{**j, 'host': 'remote'} if j.get('host', 'local') == 'local' else j for j in queue['jobs']]
     for job in jobs.eligible(as_remote, retry_view):
         job = by_id[job['id']]
+        if paused(job['id']):
+            continue
         if job.get('host', 'local') != 'local' or job['script'] not in ('scripts/train.py', 'scripts/train_rl.py',
                                                                          'scripts/export_encoder.py'):
             continue

@@ -5347,3 +5347,51 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
   data loss. Pretraining appends to metrics.jsonl (about 10 MB) every 10 s, faster than a download at the 200 KiB/s budget,
   so the after-transfer manifest never matches while the job runs. The files are still copied (the local logs advance);
   verification is required only for the final sync after the job exits. No change.
+
+## 2026-10-28 13:50 — User directive: downstream algorithm and six-environment campaign (supersedes paper selection and ablation priorities)
+
+Amendment (user, 2026-10-28 ~13:50 KST), recorded verbatim in substance:
+- **Method.** The method is fixed as csw4 = chlrm (`chamfer_lean_randmask`) + cs (patch-local CNN stem) + w4
+  (width-256 / depth-4 / four-head transformer). The historical frozen-method tag stays untouched, and there is no new
+  architecture search. The completed csw4 encoders (8 tasks, pretraining seed 0, 200k) are reused; a change of
+  downstream algorithm never triggers new pretraining.
+- **Objective.** Find exactly six environments where csw4 is best, or practically competitive with the best of ALL
+  compared methods, under ONE common downstream algorithm. A large margin over CNN is only a secondary preference, and
+  beating CNN alone is not enough. The selection stays provisional until six qualify. This supersedes
+  paper/selection.json (csw4 on hammer, bin-picking, door-open and peg-insert-side), which is kept as history.
+- **Ablations paused.** The five paper ablations are paused at the nearest complete checkpoint: resumable, not charged
+  as failures, not relaunched automatically. A future InfoNCE arm must disable BOTH InfoNCE and consistency.
+- **Downstream algorithms.** Use SNeRL's official downstream code (pinned source) through thin adapters, preserving
+  upstream crop, CURL and SAC behaviour; DrM without random shift is not called SAC. Run SNeRL-code SAC on the eight
+  existing tasks first (ours, CNN, strong pretrained baselines), plus bounded PPO and Dreamer pilots on hammer,
+  bin-picking and door-open. Screen with seed 2000, then run seeds 2000–2002. The budget is 1M agent steps unless a
+  different budget is registered for every method beforehand. Complete groups only: CNN, SinCro, ReViWo, DynaMo, SNeRL
+  and the 3D-MVP conditions.
+- **New tasks.** About four new Meta-World tasks per batch (drawer-open, window-open, soccer, assembly, lever-pull,
+  plate-slide, sweep-into, ...) with the established collection protocol, csw4 200k seed 0, screened with ours and CNN.
+  Baselines only for promising tasks.
+- **Selection rule.** The rule is recorded before results: training-camera last-5 return on a fixed normalized scale
+  against the STRONGEST comparator, with a small practical tolerance and uncertainty, and AUC, early learning, final
+  return and success reported alongside.
+- **Artifact.** Updated in place, with curves for every environment × algorithm tested.
+- **Scheduling.** One pool, with this campaign ahead of the paused ablations; unchanged resource limits and download
+  budget.
+- **Cleanup.** Automatic, idempotent cleanup of completed-RL replay and of our own stopped remote containers.
+
+Immediate actions (13:55–14:10):
+- **Admission pause.** `runs/setup/admission-pauses.json` (pause `paper-ablations-csw4-door-open`: prefix `enc-abl-`,
+  40 ids) is read by the new `runs/setup/tools/admission_pause.py`, which fails closed. Filters were added to
+  `remote_campaign_driver.py` (admissions, retries and pool moves), `stage2_local_driver.py` and
+  `baseline_local_driver.py`; backups are `*.before-abl-pause-20261028.py`. The default queue stays held by
+  `experiments/HOLD`. No enc-abl row can be admitted, retried or moved while the pause is active.
+- **Checkpoint pause.** The five pretrainings were at 164–173k of 200k (remote, attempt 1). The new tool
+  `runs/setup/tools/pause_remote_pretrain_at_checkpoint.py`, the remote counterpart of the local pause tool, runs a
+  watcher on the remote host per container. It sends SIGTERM (docker kill → tini → entry.py → trainer) only after three
+  conditions hold: `step_<N>.pt` is published at the next save boundary N, the validation at N is logged, and no step
+  after N is logged. After the exit it verifies that latest.pt holds step N (zip test plus pickled step), then records
+  `checkpoint_paused` (intentional_stop) with the checkpoint sha256. Log: `runs/setup/paper-ablation-pause-20261028.log`.
+- **Recorded configuration of the started noinfonce run.** `enc-abl-noinfonce-csw4-seed0-door-open-200k` has
+  `loss.invariance=0.0` and `loss.consistency=0.5`, so it is an InfoNCE-ONLY ablation with consistency kept. It must
+  never be relabelled as the combined InfoNCE + consistency ablation. When the ablations resume, the combined arm
+  (`loss.invariance=0`, `loss.consistency=0`) is registered as its own arm. The InfoNCE-only run stays as recorded
+  history. The other four arms are unaffected by the amendment.

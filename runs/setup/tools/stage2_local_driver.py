@@ -342,6 +342,8 @@ eligible_view = {i: {**s, 'status': status(i)} for i, s in state.items()}
 plain_extra = [{k: v for k, v in j.items() if k != '_registration'} for j in extra]
 candidates = sorted((j for j in jobs.eligible(stage2 + plain_extra, eligible_view)
                      if j.get('host', 'local') == 'local' and admissible(j)), key=key)
+from admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
+candidates = [j for j in candidates if not paused(j['id'])]
 # Planned local shutdown (user, 2026-10-15): while this file exists, admit only the listed jobs and nothing after
 # its cutoff, so no local job is started that cannot finish before the stop; closeouts continue unchanged.
 HOLD = SETUP / 'stage2-admission-hold.json'

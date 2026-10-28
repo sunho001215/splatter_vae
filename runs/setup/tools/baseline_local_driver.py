@@ -50,7 +50,10 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'chlrm-registration-eight-task-20261024.json',
                  # encoder pilots on chlrm, hammer / pick-place / bin-picking (user directive 2026-10-25): lowest
                  # priority (4); capacity-based admission after every other ready row (user 2026-10-25 16:xx)
-                 'encp-registration-20261025.json']
+                 'encp-registration-20261025.json',
+                 # encoder 2x2 on all eight tasks (user directive 2026-10-26): cs / w4 on five tasks, cs+w4 on eight;
+                 # priority 4, the same enc- handling (after every other ready candidate)
+                 'encx-registration-20261026.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
@@ -154,6 +157,8 @@ FROZEN = set(json.loads((SETUP / 'cnn-freeze-20261024.json').read_text())['froze
     if (SETUP / 'cnn-freeze-20261024.json').is_file() else set()
 candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local') == 'local'
               and j['id'].removesuffix('-eval') not in FROZEN]
+from admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
+candidates = [j for j in candidates if not paused(j['id'])]
 if stage2_waiting:
     messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
     candidates = []
