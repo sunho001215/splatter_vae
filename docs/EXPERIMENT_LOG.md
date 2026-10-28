@@ -6059,3 +6059,12 @@ Every new-task row depends explicitly on its own task's export (`ds-csw4-export-
 - The local driver admits the re-evaluation and FlashSAC registrations. An evaluator's training run is read from its
   `reevaluates` field.
 - The remote driver treats a re-evaluation row as ready: its snapshot and export are already on that host.
+
+**04:35 — Local admission: head-of-line reservation for trainers.**
+- **Problem:** The 24 local PPO pilot rows (12 GB each) had waited 11 h. Every freed slot was taken by smaller SAC rows
+  (3.5 GB), and the new FlashSAC (6–8 GB) and re-evaluation rows would have starved PPO indefinitely.
+- **Change** (`baseline_local_driver.py`, backup `*.before-hol-20261029.py`): when the first waiting trainer in
+  admission order (priority, then registration) does not fit the memory budget, later trainers wait. Evaluators, which
+  are short, may still fill the gap.
+- **Resulting order:** the remaining SAC rows, then the PPO pilot, then FlashSAC. The camera v2 re-evaluations (priority
+  1, evaluators) proceed meanwhile.

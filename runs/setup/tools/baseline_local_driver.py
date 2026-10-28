@@ -237,13 +237,22 @@ growth = {i: max(0, active_footprint(i, s) - pss.get(int(s.get('pid', -1)), 0))
           and i not in FROZEN}
 total = charge + sum(growth.values()) + cache_reserve
 admitted, taken = [], set()
+# Head-of-line reservation for trainers (2026-10-29): when the first waiting trainer in admission order does not fit,
+# later trainers wait instead of taking the freed memory (smaller rows had starved the 12 GB PPO pilot for 11 h);
+# evaluators (short) still fill the remaining capacity.
+trainer_blocked = None
 for job in candidates:
-    if job['script'] == 'scripts/eval_rl.py':
+    evaluator = job['script'] == 'scripts/eval_rl.py'
+    if evaluator:
         trainer = trained_by(job)
         if status(trainer) not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
             continue
+    elif trainer_blocked is not None:
+        continue
     extra = sum(nonresident[f] for f in set(task_files(job)) - counted if f in nonresident)
     if total + footprint(job) + extra >= CAP:
+        if not evaluator:
+            trainer_blocked = job['id']
         continue
     admitted.append(job)
     taken.add(job['id'])
@@ -269,6 +278,8 @@ if admitted and not DRY:
     messages.extend(jobs.tick(queue_path=qpath))
 elif admitted:
     messages.append(f"DRY_RUN would admit {[j['id'] for j in admitted]} total {total} charge {charge}")
+if trainer_blocked is not None:
+    messages.append(f'RESERVED for waiting trainer {trainer_blocked} (later trainers wait; evaluators may fill)')
 counts = {}
 for job in registered:
     counts.setdefault(job['script'].split('/')[-1], {}).setdefault(status(job['id']), 0)
