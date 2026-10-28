@@ -5848,3 +5848,34 @@ on about 180 per-task criteria.
 
 The original rule, A1, A2 and all three outcomes are recorded in the suite's definition file. The suite is frozen before
 any policy is evaluated on it.
+
+### 2026-10-29 02:30 — stronger moving paths: amendment A3 (before any policy evaluation)
+
+The camera agent validated the requested evaluation-only levels with method-independent renders over the expert and
+random trajectories:
+
+- **2×:** lateral ±0.24 m; circular azimuth ±20°, elevation ±12°.
+- **3×:** lateral ±0.36 m; circular azimuth ±30°, elevation ±18°.
+
+The levels meet the directive's reduction criteria:
+
+- **No collision:** camera clearance ≥ 0.165 m.
+- **No clipping:** one 5 cm depth reading was a single-pixel spike in MuJoCo's own depth buffer. It is now removed by a
+  3×3 median that is used only in the clipping diagnostic, never in policy observations.
+- **No loss of the workspace:** at least 96 % of the workspace grid stays in view in every frame.
+- **Hidden-frame shares:** within 0.10 of train1.
+
+The only failures came from the agent's own registered limit on how long a single target may stay hidden. For example,
+the door-open gripper was hidden for 19–25 consecutive renders, about 0.5–0.6 s. That limit is not a directive
+criterion, and it is inconsistent:
+
+- It also fails the unchanged 1× circular path, where the goal is hidden for 30 renders.
+- It is non-monotonic: circular 27/16.2, 24/14.4, 21/12.6, 16/9.6, 14/8.4 and 12/7.2 fail, while 18/10.8 passes. Its
+  10 % reduction rule would therefore have made circular 3× identical to circular 2×.
+
+**Amendment A3** (approved; registered before any policy is evaluated on these paths):
+
+- The hidden-run limit is dropped as a gate. Its values are still reported for each task, target and level.
+- The requested 2× and 3× levels are frozen unchanged.
+- The literal alternative (lateral 0.216 / 0.288 m; circular 18° / 10.8° for both levels) is recorded in the definition
+  file as not adopted. It is not evaluated.
