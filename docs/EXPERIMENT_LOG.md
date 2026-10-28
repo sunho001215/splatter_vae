@@ -5334,3 +5334,16 @@ The frozen method, the chlrm definition and the RL protocol are unchanged.
     - Checked on the reference alone: return AUC 1282, last-5 1637, success last-5 0.86.
     - The reconstruction and geometry part follows once the arm checkpoints exist; T=1 temporal metrics will be
       marked not applicable.
+
+## 2026-10-28 10:06 — Ablation pretraining status; brief remote outage
+
+- Remote SSH outage 10:04:37–10:05:55 (78 s, one 0 s flap). The daemon held all five enc-abl pretrainings as unknown
+  without relaunching; after reconnecting, all five report running on the same containers (attempt 1).
+- Progress at about 09:30 (synced logs): nomotion 94.4k, nodepth 94.3k, nochamfer 94.1k, t1spatial 92.2k, noinfonce ≥ 77k
+  (its local copy of the log lags; the rate is the same, about 19.5k steps/h). t1spatial runs at the same rate as the others.
+  Expected end of pretraining is about 15:00–15:30 today, then export and DrM 1M (three seeds per arm), so results are
+  expected around 21:00–22:00.
+- During training, every essential sync of these runs ends in "Result checksum mismatch". This is expected and causes no
+  data loss. Pretraining appends to metrics.jsonl (about 10 MB) every 10 s, faster than a download at the 200 KiB/s budget,
+  so the after-transfer manifest never matches while the job runs. The files are still copied (the local logs advance);
+  verification is required only for the final sync after the job exits. No change.
