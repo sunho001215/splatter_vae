@@ -35,6 +35,8 @@ DEFINITION_FILE = "runs/setup/camera-suite-v2-definition-20261029.json"
 # Amendment A1 (registered after the candidate measurement showed 0/138 cameras eligible under step 4 and a step-7
 # fallback needing exceptions on 6 of 12 tasks; registered before its own outcome was computed). See the file.
 RULE_AMENDMENT_FILE = "runs/setup/camera-suite-v2-rule-amendment-A1-20261029.json"
+# Amendment A2 (registered after A1 also admitted no camera; before computing its own outcome): maximin selection.
+RULE_AMENDMENT_A2_FILE = "runs/setup/camera-suite-v2-rule-amendment-A2-20261029.json"
 
 # Frozen 2026-10-29 by scripts/camera_visibility.py (DEFINITION_FILE): (tilt deg, azimuth deg) on the training orbit.
 HELDOUT_V2_CAMERAS: tuple[tuple[float, float], ...] = ()

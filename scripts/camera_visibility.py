@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import itertools
 import json
 import math
 import multiprocessing as mp
@@ -192,6 +193,12 @@ def load_rule() -> dict:
             raise SystemExit("the amendment does not amend the registered rule")
         rule = {**rule, "eligibility": {**rule["eligibility"], **a["eligibility"]},
                 "amendment": {k: v for k, v in a.items() if k != "eligibility"}}
+        a2_path = REPO / CS.RULE_AMENDMENT_A2_FILE
+        if a2_path.is_file():
+            a2 = _checked(a2_path, "amendment_sha256")
+            if a2["amends_amendment_sha256"] != a["amendment_sha256"]:
+                raise SystemExit("amendment A2 does not follow amendment A1")
+            rule = {**rule, "selection": {**rule["selection"], **a2["selection"]}, "amendment_a2": a2}
     return rule
 
 
@@ -213,6 +220,112 @@ Step 4 is replaced by (every one of the 12 tasks must pass):
 The per-criterion partial-occlusion and unoccluded-workspace envelopes are dropped as separate constraints (they are
 reported, and partial arm occlusion is already inside the score). Steps 1-3 and 5-8 are unchanged.
 """
+
+
+AMENDMENT_A2 = """\
+Amendment A2 to the camera suite v2 selection rule (2026-10-29), registered after amendment A1 also admitted no
+camera (0 of 138: the registered per-task score floors, each task's minimum over the six training cameras, 0.62-0.92,
+are not met on all 12 tasks by any viewpoint at least 25 deg from the training rig), and before computing its own
+outcome. Threshold eligibility anchored per task to the training rig is replaced by a maximin choice that returns the
+most observable admissible rig. Inputs remain visibility only.
+
+  1. Admissible: the registered candidates (>= 25 deg from every training camera); measurement and per-task score
+     unchanged (steps 1-3).
+  2. S(c) = minimum over the 12 tasks of score(c, task).
+  3. The common rig is the set of 4 admissible candidates, pairwise >= 30 deg apart, that maximises the smallest
+     S(c) of its members; ties: larger sum of S, then larger minimum pairwise separation, then smaller
+     (tilt, azimuth) tuples. vis0..vis3 are numbered by increasing azimuth.
+  4. Task-specific exceptions use the training rig's global worst case (largest value over all training cameras and
+     all tasks, + 0.02 slack for hidden shares; smallest score): a chosen camera whose object, gripper or goal
+     hidden-frame share on a task exceeds that envelope, or whose score on a task is below it, is replaced for that
+     task only by the admissible candidate closest in viewing direction that meets the envelope on that task.
+  5. Confirmation on every frame (step 6, checked against step 4 of this amendment) and the moving-path validation
+     (step 8) are unchanged.
+"""
+
+
+def register_amendment_a2(args) -> None:
+    path = REPO / CS.RULE_AMENDMENT_A2_FILE
+    if path.exists():
+        raise SystemExit(f"{CS.RULE_AMENDMENT_A2_FILE} is already registered")
+    a1 = _checked(REPO / CS.RULE_AMENDMENT_FILE, "amendment_sha256")
+    ref = json.loads((WORK / "measurements/reference/summary.json").read_text())
+    train = [f"train{i}" for i in range(len(TRAIN_CAMERAS))]
+    per = [ref["views"][v][t] for v in train for t in ref["tasks"]]
+    envelope = {f"{k}_hidden_fraction_max": round(max(x[k]["hidden_fraction"] for x in per) + 0.02, 4)
+                for k in ("obj", "ee", "goal")}
+    envelope["score_min"] = round(min(x["score"] for x in per), 4)
+    a1_outcome = WORK / "selection.json"
+    amendment = {
+        "name": "camera suite v2 selection rule, amendment A2",
+        "date": "2026-10-29",
+        "amends_amendment_sha256": a1["amendment_sha256"],
+        "statement": AMENDMENT_A2,
+        "evidence_under_amendment_a1": {"eligible_candidates": 0, "candidates": 138,
+                                        "selection_json_sha256": sha256_file(a1_outcome)},
+        "selection": {"mode": "maximin", "count": 4, "min_pairwise_separation_deg": 30.0,
+                      "exception_envelope": envelope,
+                      "envelope_from": "training cameras train0..5 over all 12 tasks, reference measurement"},
+    }
+    amendment["amendment_sha256"] = hashlib.sha256(json.dumps(amendment, sort_keys=True).encode()).hexdigest()
+    json_dump(path, amendment)
+    a1_outcome.rename(WORK / "selection-amendment-A1.json")
+    print(f"[camera_visibility] registered {path} ({amendment['amendment_sha256'][:12]}) envelope {envelope}")
+
+
+def maximin_select(cams: dict, per_view: dict, rule: dict) -> dict:
+    """Amendment A2 steps 2-4: the 4-camera set maximising the smallest worst-task score, and task exceptions."""
+    sel = rule["selection"]
+    tasks = rule["tasks"]
+    S = {n: min(per_view[n][t]["score"] for t in tasks) for n in cams}
+    order = sorted(cams, key=lambda n: (-S[n], cams[n]))
+    sep = {(a, b): CS.angular_separation_deg(cams[a], cams[b]) for a in cams for b in cams if a < b}
+
+    def separation(a, b):
+        return sep[(a, b)] if a < b else sep[(b, a)]
+
+    best = None
+    for k in range(sel["count"], len(order) + 1):
+        top = order[:k]
+        feasible = [c for c in itertools.combinations(top, sel["count"])
+                    if all(separation(a, b) >= sel["min_pairwise_separation_deg"]
+                           for a, b in itertools.combinations(c, 2))]
+        if feasible:
+            def key(c):
+                return (min(S[n] for n in c), sum(S[n] for n in c),
+                        min(separation(a, b) for a, b in itertools.combinations(c, 2)),
+                        tuple(-x for n in sorted(c, key=lambda n: cams[n]) for x in cams[n]))
+            best = max(feasible, key=key)
+            break
+    if best is None:
+        raise SystemExit("no admissible set of four cameras")
+    chosen = sorted(best, key=lambda n: (cams[n][1], cams[n][0]))  # vis0..vis3 by azimuth
+    env = sel["exception_envelope"]
+
+    def meets(n, t):
+        x = per_view[n][t]
+        return (all(x[k]["hidden_fraction"] <= env[f"{k}_hidden_fraction_max"] for k in ("obj", "ee", "goal"))
+                and x["score"] >= env["score_min"])
+
+    exceptions = {}
+    for i, n in enumerate(chosen):
+        for t in tasks:
+            if meets(n, t):
+                continue
+            others = [m for m in chosen if m != n]
+            options = [m for m in cams if meets(m, t)
+                       and all(separation(m, o) >= sel["min_pairwise_separation_deg"] for o in others)]
+            replacement = min(options, key=lambda m: (separation(n, m), cams[m])) if options else None
+            exceptions.setdefault(f"vis{i}", {})[t] = {
+                "camera": n, "reason": {k: per_view[n][t][k]["hidden_fraction"] for k in ("obj", "ee", "goal")}
+                | {"score": per_view[n][t]["score"]},
+                "replacement": replacement,
+                "replacement_tilt_azimuth": cams[replacement] if replacement else None,
+                "replacement_separation_deg": separation(n, replacement) if replacement else None,
+            }
+    return {"chosen": chosen, "S": {n: S[n] for n in chosen}, "set_min_S": min(S[n] for n in chosen),
+            "pairwise_separation_deg": {f"{a}-{b}": separation(a, b) for a, b in itertools.combinations(chosen, 2)},
+            "top_k_needed": k, "exceptions": exceptions}
 
 
 def register_amendment(args) -> None:
@@ -449,6 +562,24 @@ def select(args) -> None:
             eligible.append(name)
     scores = {n: table[n]["score_min"] for n in cams}
     means = {n: table[n]["score_mean"] for n in cams}
+    if rule["selection"].get("mode") == "maximin":  # amendment A2
+        result = maximin_select(cams, summary["views"], rule)
+        steps = [{"pick": n, "reason": "maximin set (amendment A2)", "score_min": result["S"][n]}
+                 for n in result["chosen"]]
+        out = {"rule_sha256": rule["rule_sha256"], "amendment_sha256": rule["amendment"]["amendment_sha256"],
+               "amendment_a2_sha256": rule["amendment_a2"]["amendment_sha256"], "candidates": len(cams),
+               "eligible": len(eligible), "selection": steps, "maximin": result,
+               "exceptions": result["exceptions"], "table": table,
+               "candidate_summary_sha256": sha256_file(WORK / "measurements/candidates/summary.json")}
+        json_dump(WORK / "selection.json", out)
+        for st in steps:
+            n = st["pick"]
+            print(json.dumps({"pick": n, "tilt_azimuth": cams[n], "S": round(result["S"][n], 4),
+                              "min_sep_training": round(table[n]["min_separation_from_training_deg"], 1),
+                              "worst_task": table[n]["worst_task"]}), flush=True)
+        print(json.dumps({"pairwise": {k: round(v, 1) for k, v in result["pairwise_separation_deg"].items()},
+                          "top_k_needed": result["top_k_needed"], "exceptions": result["exceptions"]}), flush=True)
+        return
     steps = greedy_select(scores, means, cams, eligible, rule)
     exceptions = {}
     if len(steps) < rule["selection"]["count"]:
@@ -1078,7 +1209,7 @@ def main() -> None:
     m.add_argument("--size", type=int, default=128, help="analysis resolution (the policies' 128x128)")
     m.add_argument("--workers", type=int, default=2, help="render processes (~0.2-0.45 GB GPU memory each)")
     m.add_argument("--views-per-job", type=int, default=1000)
-    for name in ("register-rule", "register-amendment", "select", "paths"):
+    for name in ("register-rule", "register-amendment", "register-amendment-a2", "select", "paths"):
         sub.add_parser(name)
     fz = sub.add_parser("freeze")
     fz.add_argument("--refresh", action="store_true", help="rewrite after a documented correction (never the cameras)")
@@ -1091,7 +1222,8 @@ def main() -> None:
 
     guard_mujoco()
     {"measure": measure, "media": media, "register-rule": register_rule, "select": select, "paths": paths,
-     "freeze": freeze, "register-amendment": register_amendment}[args.command](args)
+     "freeze": freeze, "register-amendment": register_amendment,
+     "register-amendment-a2": register_amendment_a2}[args.command](args)
 
 
 if __name__ == "__main__":  # spawned workers re-import this file
