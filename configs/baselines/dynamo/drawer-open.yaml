@@ -1,0 +1,54 @@
+# DynaMo pretraining on drawer-open (new task, user directive 2026-10-28; door-open file with the task's data paths): the official SimSiam configuration (jeffacce/dynamo_ssl @ 6287403, configs/train_*.yaml,
+# encoder/resnet18_random.yaml, projector/inverse_dynamics_*.yaml, ssl/dynamo_{sim_kitchen,pusht,libero}.yaml) on our data.
+# Hydra interpolations (window_size, feature/input/projection dims, SSL lr/weight_decay/betas) are resolved by
+# s4d/baselines/dynamo/model.py exactly as upstream. Settings that upstream leaves to the dataset are marked
+# "chosen"; see docs/baselines_dynamo.md for every source and deviation.
+dataset:
+  hdf5_path: /home/ws/data/metaworld/splatter4d_v1/drawer-open.hdf5
+  batch_size: 64        # train_*.yaml:12
+  num_workers: 15       # train_*.yaml:13 (per process)
+  pin_memory: true      # train.py:149
+  window_size: 5        # train_pusht.yaml:14, train_libero_goal.yaml:14 (sim kitchen: 2)
+  max_episodes: null    # ours: optional cap on the training episodes (smoke runs only)
+encoder:                # encoder/resnet18_random.yaml
+  pretrained: false
+  output_dim: 512
+  unit_norm: false
+projector:              # projector/inverse_dynamics_{sim_kitchen,pusht,libero}.yaml
+  n_layer: 6
+  n_head: 6
+  n_embd: 120
+  output_dim: 39        # chosen: Meta-World observation size (README: "approximately the underlying state dimension")
+  dropout: 0.0
+ssl:                    # ssl/dynamo_{sim_kitchen,pusht,libero}.yaml
+  n_layer: 6
+  n_head: 6
+  n_embd: 120
+  dropout: 0.0
+  covariance_reg_coef: 0.04
+  dynamics_loss_coef: 1.0
+  ema_beta: null        # SimSiam target (the online encoder, stop-gradient)
+  beta_scheduling: true
+  projector_use_ema: true
+  separate_single_views: true
+train:                  # train_*.yaml "Training details"
+  ssl_lr: 1.0e-4
+  ssl_weight_decay: 0.0 # train_sim_kitchen.yaml / train_libero_goal.yaml (push-t: 1e-6)
+  betas: [0.9, 0.999]
+  clip_grad_norm: 0.1
+  seed: 42
+  sync_bn: true
+  use_lr_scheduling: true  # train_sim_kitchen.yaml / train_pusht.yaml (libero: false)
+  warmup_epochs: 5
+  num_epochs: 40
+  save_every_epochs: 10
+  # ours (not upstream): device, an optional step cap, checkpoint and logging cadence
+  device: cuda
+  max_global_steps: null
+  save_every: 2000
+  log_every: 50
+wandb:
+  project: splatter4d-baselines
+data_interface:
+  split_manifest: /home/ws/data/metaworld/splatter4d_v1/splits/drawer-open_seed0.json
+  frame_spacing: 2      # chosen: the RL observation spacing (action_repeat 2); upstream TrajectorySlicerDataset frame_step
