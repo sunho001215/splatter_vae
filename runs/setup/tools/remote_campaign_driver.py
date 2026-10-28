@@ -51,7 +51,7 @@ ENC_READY = (REPO / RELEASES[(ENC_COMMIT, POOL_IMAGE)]).is_file()
 # run on DS_COMMIT (scripts/train_sac.py, s4d/rl/snerl_sac.py, new task configs) on the derived image; offered only once
 # its acceptance manifest exists. Retries keep the release of their first launch.
 DS_COMMIT = '27640d0c1fae78fab0342125946d3b30aa2207dc'  # SAC + cleanup + PPO + Dreamer (main 2026-10-28; release_chain.py)
-DS_PREFIXES = ('ds-',)
+DS_PREFIXES = ('ds-', 'sr-')  # sr-: self-render replacement pretraining (user 2026-10-29)
 if DS_COMMIT:
     RELEASES[(DS_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{DS_COMMIT[:7]}-cc/manifest.json'
 DS_READY = bool(DS_COMMIT) and (REPO / RELEASES[(DS_COMMIT, POOL_IMAGE)]).is_file()
@@ -361,6 +361,8 @@ def ready(job):
         return True
     if k == 'pool_export':  # inputs are the remote pretraining's files, released by the dependency on that run
         return True
+    if job.get('reevaluates'):  # camera suite v2 re-evaluation (2026-10-29): registered on the host that holds the
+        return True  # completed run's final snapshot and encoder export; no trainer row, nothing to upload
     if k == 'pool_rl':  # the export (a local file) is uploaded once, checksum-verified, before the pair starts
         trainer = by_id[jid.removesuffix('-eval')]
         export = next((a.split('=', 1)[1] for a in trainer['args'] if a.startswith('vision.export_path=')), None)

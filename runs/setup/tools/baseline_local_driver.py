@@ -58,7 +58,13 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  # frozen-encoder families; the CNN and SNeRL rows are remote)
                  'downstream-sac-registration-s2000-20261028.json',
                  # PPO pilot (user authorisation 2026-10-28; Dreamer pilot rows are remote)
-                 'downstream-ppo-registration-s2000-hammer-bin-picking-door-open-20261028.json']
+                 'downstream-ppo-registration-s2000-hammer-bin-picking-door-open-20261028.json',
+                 # camera suite v2 re-evaluation of completed DrM policies (user directive 2026-10-29): rows on the
+                 # host holding the final snapshot; csw4 and CNN first (priority 1)
+                 'cameras-v2-reeval-registration-drm-20261029.json',
+                 # FlashSAC (no image augmentation) comparison groups (user directive 2026-10-29): frozen-encoder
+                 # families local pool rows, the CNN remote
+                 'flashsac-registration-20261029.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
@@ -104,8 +110,8 @@ def status(job_id):
 
 
 def task_files(job):
-    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py'):
-        return []  # DrM / SAC simulate Meta-World live; they read no dataset file
+    if job['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py', 'scripts/train_sac.py', 'scripts/train_flashsac.py'):
+        return []  # DrM / SAC / FlashSAC simulate Meta-World live; they read no dataset file
     trainer = by_id.get(job['id'].removesuffix('-eval'), job)
     args = trainer['args']
     task_cfg = [a for a in args if a.startswith('configs/metaworld/tasks/')]  # our pretraining (scripts/train.py)
@@ -116,6 +122,12 @@ def task_files(job):
     else:
         task = 'hammer' if 'hammer' in job['id'] else job['id'].split('-')[2]
     return [DATA / f'{task}.hdf5', DATA / f'heldout_sets/{task}.hdf5']
+
+
+def trained_by(job):
+    """The training run an evaluator reads: its companion trainer, or the completed run a camera suite v2
+    re-evaluation row names (2026-10-29: 'reevaluates')."""
+    return job.get('reevaluates') or job['id'].removesuffix('-eval')
 
 
 def session_pss():
@@ -177,7 +189,7 @@ ENC = 'enc-'
 # evaluators of already finished trainers first (short, and they release the run's cached snapshots), then by
 # priority with trainers before their companions
 candidates.sort(key=lambda j: (not (j['script'] == 'scripts/eval_rl.py'
-                                    and status(j['id'].removesuffix('-eval')) == jobs.DONE),
+                                    and status(trained_by(j)) == jobs.DONE),
                                j['priority'], j['script'] == 'scripts/eval_rl.py', registered.index(j)))
 candidates.sort(key=lambda j: j['id'].startswith(ENC))  # stable: encoder-pilot rows after every other candidate
 memory = mb.snapshot()
@@ -227,7 +239,7 @@ total = charge + sum(growth.values()) + cache_reserve
 admitted, taken = [], set()
 for job in candidates:
     if job['script'] == 'scripts/eval_rl.py':
-        trainer = job['id'].removesuffix('-eval')
+        trainer = trained_by(job)
         if status(trainer) not in jobs.ACTIVE | {jobs.DONE} and trainer not in taken:
             continue
     extra = sum(nonresident[f] for f in set(task_files(job)) - counted if f in nonresident)

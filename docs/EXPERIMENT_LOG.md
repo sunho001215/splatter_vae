@@ -5950,3 +5950,77 @@ in the definition file.
 
 The domain was frozen before the suite existed and used none of it. The 1× relation (eval2 and eval3 inside; lateral
 72/72, circular 61/72) is unchanged.
+
+### 2026-10-29 03:40 — Integration release 8ad7734: Codex review and fixes
+
+**Release content.** Branch `integ-20261029`, pushed as origin/splatter4d 8ad7734:
+- new-task baseline configs;
+- the self-render replacement variant;
+- the FlashSAC port;
+- camera suite v2.
+
+**Brief Codex review** of camera handling, self-render gradient paths, FlashSAC updates and comparison fairness. Codex
+found no high-severity issue.
+
+Verified correct:
+- v1 groups, seeds and outputs are unchanged.
+- v2 seeds are paired across groups and methods.
+- Task exceptions, the multi-view replacement rule and the per-frame calibration of moving paths are applied
+  correctly.
+- `--snapshots final|last5` selects the right snapshots and writes only `eval_cameras_v2.jsonl`.
+- **Self-render:**
+  - the producer is under `no_grad` and its outputs are detached;
+  - the re-encoding keeps gradients, and the decoder gets none through generated images;
+  - at zero weight nothing is sampled, rendered or encoded;
+  - the ramp and the domain sampling match the registered recipe.
+- **FlashSAC:**
+  - the encoder is trained by the critic loss only, and the actor reads detached features;
+  - EMA targets, 3-step returns bootstrapped through truncation, UTD 0.5 and batch 256 match the configuration;
+  - there is no image augmentation anywhere.
+- Every family has identical tasks, seeds, budget, evaluator and configuration, and every task uses its own exports.
+
+Fixed (commit c250383):
+- **n-step windows at episode ends.** Our replay followed the DrM reference: a window always spans 3 transitions, so
+  the last 2 transitions of an episode were never a sample's first. Upstream FlashSAC's n-step buffer instead stops
+  the window at the episode end, and still bootstraps with gamma^n. The replay option `end_windows` now does the same
+  for FlashSAC only. The DrM and SAC sampling rule, and their random-number consumption, are unchanged; a test checks
+  this.
+- **Resume.** An episode-end checkpoint was written after the next episode's camera draw and reset, so a resume
+  skipped one draw. The next episode is now prepared at the start of the following agent step, which makes the resume
+  exact. A test checks the reset count.
+- **Evaluator.** `eval_rl.py` now checks the snapshot selection and hashes the v2 definition before W&B and the
+  rollouts start.
+
+Kept and documented:
+- **Self-render coverage exception.** A render with too few covered tokens is padded with ineligible ones, which is
+  the point-cloud views' existing rule. Measured on the smoke run: alpha mean 0.94, 0 exception rows. It is monitored
+  at the 20k and 40k diagnostics.
+- **sr-csw4 has three tasks only** (hammer, pick-place, bin-picking), by design. It is compared with csw4 on those
+  three tasks only.
+
+Targeted tests pass: FlashSAC replay and resume (3/3) and the camera suite plus RL replay tests (18/18). The full suite
+runs remotely through `release_chain.py`, because local memory has no room for the ~50 GB suite.
+
+**Re-evaluation plan** (prepared, not yet registered): `register_cameras_v2_reeval_20261029.py` registers one row per
+completed DrM run, 216 in total (110 local, 106 remote). Each row runs on the host that holds the run's final
+snapshot.
+- Only the final 1M policy is evaluated, because 193 of the 216 runs kept only their final snapshot (a last-5
+  re-evaluation is possible for 23 only). Every method is treated identically.
+- Each run gets 20 episodes per v2 group, with the matched references re-run in the same pass on the same seeds.
+- csw4 and CNN run first (priority 1).
+
+**04:05 — Remote native suite of 8ad7734 failed; fixed in b9196a8.** Two causes:
+
+1. **Camera-suite records hidden.** Two camera-suite tests could not find the frozen records under `runs/setup/`,
+   because every container mounts the remote `runs/` over the code checkout's own `runs/`. The six records were
+   uploaded unchanged to the remote `runs/setup/` (sha256 verified), and their paths stay the same.
+2. **No C++ compiler for FlashSAC.** Thirteen FlashSAC tests failed while constructing the agent. Upstream compiles its
+   truncated-zeta CDF helper with `@torch.compile` on the CPU, and the pool image has gcc for Triton but no C++
+   compiler for inductor's CPU backend.
+   - The agent is now constructed under `torch.compiler.set_stance("force_eager")`. The table is identical and is moved
+     to the GPU as before.
+   - Every helper used while acting and updating runs on CUDA and stays compiled.
+   - A test checks construction without a C++ compiler. FlashSAC tests: 19/19.
+
+**Cleanup.** The automatic retry (attempt 2) of the failing verification was stopped. It was our own verification
+container. It is recorded as failed, with retries exhausted. The release chain was then rerun on b9196a8.
