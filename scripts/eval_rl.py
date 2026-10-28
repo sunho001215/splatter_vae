@@ -108,6 +108,14 @@ def main() -> None:
         agent = evaluation_policy(cfg, META_WORLD_ACTION_DIM, len(cfg["env"]["proprio_indices"]), device)
     agent.train(False)
     out = output_dir / SUITE_OUTPUTS[args.suites]
+    every = int(cfg["eval"]["every_steps"])
+    # Validated before W&B starts and before any rollout: the snapshot selection of a re-evaluation, and the frozen
+    # v2 suite definition whose checksum every v2 record carries.
+    selected = None
+    if args.snapshots != "all":
+        available = [int(p.stem[5:]) for p in (run_dir / "snapshots").glob("step_*.pt")]
+        selected = set(reevaluation_steps(available, int(cfg["train"]["num_train_steps"]), every, args.snapshots))
+    definition_sha256 = hashlib.sha256((REPO / DEFINITION_FILE).read_bytes()).hexdigest() if args.suites == "v2" else None
     wandb_run = init_wandb(
         {**cfg, "eval_gpus": GPU_MAPPING, **({"eval_suite": SUITE_V2} if args.suites == "v2" else {})},
         f"{run_dir.name}{SUITE_WANDB_SUFFIX[args.suites]}",
@@ -115,12 +123,6 @@ def main() -> None:
         bool(cfg["wandb"]["enabled"]),
         output_dir,
     )
-    every = int(cfg["eval"]["every_steps"])
-    selected = None
-    if args.snapshots != "all":
-        available = [int(p.stem[5:]) for p in (run_dir / "snapshots").glob("step_*.pt")]
-        selected = set(reevaluation_steps(available, int(cfg["train"]["num_train_steps"]), every, args.snapshots))
-    definition = REPO / DEFINITION_FILE
     try:
         while True:
             # Read the completion marker first: every snapshot is written before final.json.
@@ -156,7 +158,7 @@ def main() -> None:
                     record = {"step": step, "suite": SUITE_V2, "eval_index": step // every,
                               "v2_reference": args.v2_reference,
                               "heldout_v2_cameras": {k: list(v) for k, v in heldout_v2_cameras(cfg["task"]).items()},
-                              "suite_definition_sha256": hashlib.sha256(definition.read_bytes()).hexdigest(),
+                              "suite_definition_sha256": definition_sha256,
                               **metrics, "eval_seconds": time.time() - t0, "time": time.time()}
                 with open(out, "a") as f:
                     f.write(json.dumps(record, allow_nan=False) + "\n")

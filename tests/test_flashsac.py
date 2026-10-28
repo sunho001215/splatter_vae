@@ -477,6 +477,40 @@ def run(script: str, *args: str) -> subprocess.CompletedProcess:
     return result
 
 
+def _two_episode_replay(end_windows: bool):
+    """Episode 0: 5 transitions (rewards 1..5), finished; episode 1: 2 transitions, in progress. n = 3."""
+    from s4d.rl.replay import Replay
+
+    replay = Replay(None, (2,), np.float32, 1, 1, 100, 1, 3, end_windows=end_windows)
+    replay.add_initial(np.zeros(2, np.float32), np.zeros(1, np.float32))
+    for t in range(5):
+        replay.add(np.zeros(1, np.float32), float(t + 1), 1.0, np.full(2, t + 1, np.float32), np.zeros(1, np.float32),
+                   t == 4)
+    replay.add_initial(np.full(2, 10, np.float32), np.zeros(1, np.float32))
+    for t in range(2):
+        replay.add(np.zeros(1, np.float32), 9.0, 1.0, np.full(2, 11 + t, np.float32), np.zeros(1, np.float32), False)
+    return replay
+
+
+def test_replay_end_windows_follow_upstream_and_leave_the_default_rule_unchanged():
+    default = _two_episode_replay(False)
+    a = default.sample_indices(64, np.random.default_rng(0), 0.5)
+    b = default.sample_windows(64, np.random.default_rng(0), 0.5)
+    assert all(np.array_equal(x, y) for x, y in zip(a, b[:3])) and np.array_equal(b[3], a[0] + 3)
+    assert set(a[0].tolist()) == {0, 1, 2}  # DrM reference: full 3-transition windows only
+    replay = _two_episode_replay(True)
+    # starts 3 and 4 stop at episode 0's final state 5; starts 6 and 7 would end at episode 1's newest state: invalid
+    assert replay._window_lengths(np.arange(9), 9).tolist() == [3, 3, 3, 2, 1, 0, 0, 0, 0]
+    sid, reward, discount, nid = replay.sample_windows(256, np.random.default_rng(1), 0.5)
+    assert set(sid.tolist()) == {0, 1, 2, 3, 4}
+    expect = {0: (1 + 0.5 * 2 + 0.25 * 3, 0.125, 3), 1: (2 + 0.5 * 3 + 0.25 * 4, 0.125, 4),
+              2: (3 + 0.5 * 4 + 0.25 * 5, 0.125, 5), 3: (4 + 0.5 * 5, 0.25, 5), 4: (5.0, 0.5, 5)}
+    for i, r, d, n in zip(sid.tolist(), reward[:, 0].tolist(), discount[:, 0].tolist(), nid.tolist()):
+        assert (pytest.approx(r), pytest.approx(d), n) == expect[i]
+    obs, _, _, rew, disc, next_obs, _ = replay.sample(32, np.random.default_rng(2), 0.5)
+    assert np.array_equal(next_obs[:, 0], np.minimum(obs[:, 0] + 3, 5))  # the bootstrap state is the window's end
+
+
 def test_cnn_training_evaluation_and_resume(tmp_path):
     run_dir = tmp_path / "flashsac_cli"
     common = ["--task", "hammer", "--encoder", "cnn", "--seed", "3", "--run-dir", str(run_dir)]
@@ -492,8 +526,11 @@ def test_cnn_training_evaluation_and_resume(tmp_path):
         "--envs-per-worker", "3", "--poll-seconds", "1")
     evals = [json.loads(line) for line in (run_dir / "eval.jsonl").read_text().splitlines()]
     assert [e["step"] for e in evals] == [125, 250] and all(e["episodes"] == 12 for e in evals)
+    # episode-end checkpoints precede the next episode's camera draw and reset: 2 episodes prepared by step 250
+    assert torch.load(run_dir / "checkpoints/latest.pt", weights_only=False)["train_reset_count"] == 2
     (run_dir / "final.json").unlink()
     run("scripts/train_flashsac.py", *common, "--set", "train.num_train_steps=375", *TINY)
+    assert torch.load(run_dir / "checkpoints/latest.pt", weights_only=False)["train_reset_count"] == 3
     events = [json.loads(line) for line in (run_dir / "events.jsonl").read_text().splitlines()]
     assert {"event": "resumed", "step": 250} == {k: events[0][k] for k in ("event", "step")}
     assert json.loads((run_dir / "final.json").read_text())["updates"] == 75 + 63  # 0.5 per step, counter resumed

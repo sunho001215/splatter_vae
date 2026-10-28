@@ -14,10 +14,13 @@ Loop correspondence with upstream ``train.py:113-192`` (one environment; agent s
   update per whole unit (train.py:152-159; UTD 0.5: one update every second agent step);
 - evaluation by the companion job on the deterministic tanh(mean) with the protocol's episodes and cameras (upstream
   evaluates in-process on its own env every 10 % of training).
-Replay: our ``Replay`` with 3-step transitions (uniform over stored transitions; an n-step window never crosses an
-episode boundary, so the last 2 transitions of an episode are never a sample's first; upstream's buffer shortens the
-window there instead), frames stored once per state (pixels on disk, frozen-backbone features in RAM), stacks rebuilt
-by index with the first frame repeated at an episode start, as the environment's own history.
+Replay: our ``Replay`` with 3-step transitions and ``end_windows`` (uniform over stored transitions; an n-step window
+never crosses an episode boundary and, as upstream's n-step buffer, a window starting within the last 2 transitions of
+a finished episode stops at its final state; the update bootstraps with gamma^n as upstream), frames stored once per
+state (pixels on disk, frozen-backbone features in RAM), stacks rebuilt by index with the first frame repeated at an
+episode start, as the environment's own history.
+Resume: checkpoints fall on episode ends and are written before the next episode is prepared (its camera draw and
+reset happen at the start of the next agent step), so a resumed run continues the camera, reset and RNG sequences.
 Logged returns (train.jsonl, W&B) are raw environment returns; FlashSAC's reward normalisation is internal.
 """
 
@@ -143,6 +146,7 @@ def main() -> None:
         int(acfg["n_step"]),
         mode="r+" if resume and disk else "w+",
         snapshot_dir=None if disk else run_dir / "replay",
+        end_windows=True,
     )
     sampler = TrainCameraSampler(seed, views)
     window = int(tcfg["rolling_window"])
@@ -182,7 +186,9 @@ def main() -> None:
         replay.add_initial(atom, proprio)
         return inputs, proprio
 
-    inputs, proprio = begin_episode()  # a resume starts a new episode (the replay's in-progress one is dropped)
+    # The next episode is prepared at the start of an agent step, so an episode-end checkpoint precedes its camera
+    # draw and reset; a run (fresh or resumed at an episode end) starts by preparing one.
+    inputs = proprio = None
     episode_return = episode_success = 0.0
     timers = {"act_env": 0.0, "update": 0.0, "checkpoint": 0.0}
     interval_start, interval_steps, interval_updates = time.time(), 0, 0
@@ -190,6 +196,8 @@ def main() -> None:
     min_length, utd = int(acfg["buffer_min_length"]), float(tcfg["updates_per_interaction_step"])
     for step in range(start_step, total + 1):
         t0 = time.time()
+        if inputs is None:
+            inputs, proprio = begin_episode()
         if len(replay) >= min_length:  # train.py:124-127 (agent.can_start_training)
             action = agent.act(inputs, proprio[None], step=step, eval_mode=False)[0].astype(np.float32)
         else:
@@ -206,7 +214,7 @@ def main() -> None:
             episode += 1
             if wandb_run is not None:
                 wandb_run.log({"train/episode_success": episode_success, "train/episode_return": episode_return}, step=step)
-            inputs, proprio = begin_episode()
+            inputs = proprio = None  # prepared at the start of the next agent step
             episode_return = episode_success = 0.0
         timers["act_env"] += time.time() - t0
         if len(replay) >= min_length:  # train.py:152-159
