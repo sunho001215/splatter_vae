@@ -1,5 +1,6 @@
-"""Evaluate every policy snapshot of one RL run with the full protocol (companion job of ``train_rl.py`` and
-``train_sac.py``; the run's ``config.yaml`` names its algorithm).
+"""Evaluate every policy snapshot of one RL run with the full protocol (companion job of ``train_rl.py`` and the
+downstream trainers ``train_sac.py``, ``train_ppo.py``, ``train_dreamer.py``, ``train_flashsac.py``; the run's
+``config.yaml`` names its algorithm).
 
 Processes ``<run>/snapshots/step_*.pt`` in order, appending one record per snapshot to ``<output>/eval.jsonl``
 (``--output-dir``, default the run directory). Exits when the training run has written ``final.json`` and every

@@ -1,0 +1,66 @@
+# FlashSAC (user directive 2026-10-29): the official FlashSAC agent (github.com/Holiday-Robot/FlashSAC @ 87edc90,
+# third_party/flashsac, MIT; arXiv:2604.04539) with our visual adapter and NO RL image augmentation, on the shared
+# reference protocol of configs/rl/base.yaml (Meta-World v3 MetaWorldCameraEnv, one training camera per episode,
+# 128-px renders, 3-frame history one agent step apart, action repeat 2 with summed rewards, 125 agent steps with
+# time-limit truncation bootstrapped through, 4-d proprioception, evaluation). See s4d/rl/flashsac.py.
+# Provenance of each value: (a) upstream code default, configs/agent/flashSAC.yaml / configs/flashSAC_base.yaml;
+# (b) upstream's CPU-simulator launch scripts (scripts/run_dmc.sh, run_mujoco.sh, ...), the "CPU-based" setting whose
+# hyperparameters the paper's vision experiments reuse (Sec. 5.3); (c) the paper's vision setting, Table 11 (values
+# that differ from Table 9) and Sec. 5.3; (t9) the paper's Table 9 common values. The paper's vision values (c) are
+# the starting point; where (a)/(b) and (c) differ, (c) is used and the difference noted. Fixed before any result.
+algorithm: flashsac
+agent:
+  # ---- visual adapter (ours; Table 11 "Encoder") -----------------------------------------------------------------
+  feature_dim: 50                 # (c) encoder output feature dim 50 (linear bottleneck, DrQ-v2's 50); CNN backbone:
+                                  #     s4d.rl.encoders.ConvNet = DrQ-v2 encoder, 4 conv layers x 32 channels (c);
+                                  #     Sec. 5.3's "3 convolutional layers followed by a linear bottleneck" conflicts
+                                  #     with Table 11's 4 layers; Table 11 and DrQ-v2's standard (which Sec. 5.3 says
+                                  #     it matches) are followed. No augmentation (user requirement).
+  # ---- replay / batch ------------------------------------------------------------------------------------------
+  buffer_max_length: 1000000      # (c) replay capacity 1M (a: 1M; t9: 10M); our Replay, transitions
+  buffer_min_length: 10000        # (a)(b) uniform random actions and no updates before 10k stored transitions
+  sample_batch_size: 256          # (c) (a: 2048, b: 512)
+  n_step: 3                       # (c) TD steps 3 (a)(b): 1
+  gamma: 0.99                     # (a) flashSAC_base.yaml; DMC default used for the paper's vision tasks
+  # ---- reward normalisation / distributional critic --------------------------------------------------------------
+  normalize_reward: true          # (a)
+  normalized_G_max: 5.0           # (a)(t9) categorical support [-G_max, G_max] = [-5, 5]
+  critic_num_bins: 101            # (a)(t9)
+  # ---- networks ----------------------------------------------------------------------------------------------------
+  actor_num_blocks: 2             # (a)(t9)
+  actor_hidden_dim: 128           # (a)(t9)
+  actor_bc_alpha: 0.0             # (a) off
+  actor_update_period: 2          # (a)(t9) update delay 2
+  critic_num_blocks: 2            # (a)(t9)
+  critic_hidden_dim: 256          # (a)(t9)
+  critic_target_update_tau: 0.01  # (a)(t9)
+  # ---- exploration / entropy -------------------------------------------------------------------------------------
+  actor_noise_zeta_mu: 2.0        # (a)(t9) noise repetition, zeta exponent s = 2
+  actor_noise_zeta_max: 16        # (a)(t9) maximum repeat 16
+  temp_initial_value: 0.01        # (a)(t9)
+  temp_target_sigma: 0.15         # (a)(t9) target entropy 0.5 |A| log(2 pi e sigma^2)
+  # ---- optimisation ------------------------------------------------------------------------------------------------
+  learning_rate_init: 3.0e-4      # (a)(t9) Adam (0.9, 0.999), upstream's warmup-cosine schedule
+  learning_rate_peak: 3.0e-4      # (a)
+  learning_rate_end: 1.5e-4       # (a)(t9)
+  learning_rate_warmup_rate: 1.0e-6  # (a) x total updates (num_train_steps x UTD) -> 0 warmup updates
+  learning_rate_decay_rate: 1.0   # (a) cosine over num_train_steps x UTD updates (upstream steps the actor and
+                                  #     temperature schedules only on actor updates, i.e. half as often; unchanged)
+  # ---- execution ----------------------------------------------------------------------------------------------------
+  use_amp: false                  # (b) AMP off for single-env / small-batch settings (README); (a): true; the paper
+                                  #     says mixed precision "throughout". fp32 as every other method of the campaign
+                                  #     (1g MIG probe 2026-10-29: AMP would cut the CNN update 115 -> 84 ms)
+  use_compile: false              # (a): true (networks). Upstream's module-level compiled helpers stay compiled
+                                  #     either way. Network compilation is a speed switch, off (1g MIG probe
+                                  #     2026-10-29, max-autotune: frozen-feature update 15 -> 7 ms, but ~140 s of
+                                  #     compilation at the first update, and CUDA-graph replay around the visual
+                                  #     adapter is not validated)
+  compile_mode: auto              # (a)
+train:
+  num_train_steps: 1000000        # agent steps (2M simulator steps): the common budget of the campaign
+                                  #     ((c): 1M environment steps at action repeat 2 = 500k agent steps)
+  updates_per_interaction_step: 0.5  # (c) UTD 0.5 (a)(b): 1
+  cpu_threads: 8
+  log_every_steps: 1000
+  checkpoint_every_steps: 50000   # as DrM (a resume replays at most 50k agent steps)
+  rolling_window: 10

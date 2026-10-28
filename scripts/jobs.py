@@ -459,7 +459,8 @@ def _check_exit_records(run_id: str, state: dict, purpose: str | None, payloads:
                 raise RemoteJobError("Final remote data/config argument identity mismatch")
             normalized = report.get("numeric_config")
             if Path(state.get("script", "")).name in {
-                "train.py", "train_rl.py", "train_sac.py", "train_ppo.py", "train_dreamer.py", "train_sincro.py", "train_reviwo.py",
+                "train.py", "train_rl.py", "train_sac.py", "train_ppo.py", "train_dreamer.py", "train_flashsac.py",
+                "train_sincro.py", "train_reviwo.py",
                 "train_snerl.py", "train_dynamo.py", "train_mvp3d.py",
             }:
                 if not isinstance(normalized, dict) or not normalized:
@@ -482,7 +483,7 @@ STORAGE_NAMES = {"float32": "FloatStorage", "float64": "DoubleStorage", "float16
 
 
 # RL trainers that write runs/<id>/final.json {"completed", "steps"} at their train.num_train_steps budget
-RL_TRAINERS = ("train_rl.py", "train_sac.py", "train_ppo.py", "train_dreamer.py")
+RL_TRAINERS = ("train_rl.py", "train_sac.py", "train_ppo.py", "train_dreamer.py", "train_flashsac.py")
 
 
 def remote_check_names(state: dict) -> list[str]:

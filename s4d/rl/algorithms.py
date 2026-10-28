@@ -25,4 +25,8 @@ def evaluation_policy(cfg: dict, action_dim: int, proprio_dim: int, device: torc
         from s4d.rl.dreamer_v1 import DreamerPolicy
 
         return DreamerPolicy(cfg, action_dim, proprio_dim, device)
+    if algorithm == "flashsac":
+        from s4d.rl.flashsac import FlashSAC
+
+        return FlashSAC(cfg, action_dim, proprio_dim, device)
     raise ValueError(f"no evaluation policy for algorithm {algorithm!r}")

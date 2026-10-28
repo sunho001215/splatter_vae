@@ -16,3 +16,6 @@
 [submodule "third_party/dreamer-pytorch"]
 	path = third_party/dreamer-pytorch
 	url = https://github.com/yusukeurakami/dreamer-pytorch
+[submodule "third_party/flashsac"]
+	path = third_party/flashsac
+	url = https://github.com/Holiday-Robot/FlashSAC
