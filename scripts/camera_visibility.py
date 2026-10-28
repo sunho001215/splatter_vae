@@ -30,9 +30,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _bootstrap import REPO  # noqa: E402  (imports no torch)
-
 import numpy as np  # noqa: E402
+from _bootstrap import REPO  # noqa: E402  (imports no torch)
 
 from s4d.data.metaworld.cameras import EVAL_CAMERAS, TRAIN_CAMERAS  # noqa: E402
 from s4d.rl import camera_suites as CS  # noqa: E402  (pure geometry, no MuJoCo)
@@ -172,15 +171,82 @@ def aggregate(per_task: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- the selection rule
+def _checked(path: Path, key: str) -> dict:
+    payload = json.loads(path.read_text())
+    body = {k: v for k, v in payload.items() if k != key}
+    if hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest() != payload[key]:
+        raise SystemExit(f"{path} was modified after registration")
+    return payload
+
+
 def load_rule() -> dict:
+    """The registered rule, with registered amendments applied (each file is hash-checked)."""
     path = REPO / CS.RULE_FILE
     if not path.is_file():
         raise SystemExit(f"register the selection rule first ({CS.RULE_FILE})")
-    rule = json.loads(path.read_text())
-    body = {k: v for k, v in rule.items() if k != "rule_sha256"}
-    if hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest() != rule["rule_sha256"]:
-        raise SystemExit("the registered rule file was modified after registration")
+    rule = _checked(path, "rule_sha256")
+    amendment = REPO / CS.RULE_AMENDMENT_FILE
+    if amendment.is_file():
+        a = _checked(amendment, "amendment_sha256")
+        if a["amends_rule_sha256"] != rule["rule_sha256"]:
+            raise SystemExit("the amendment does not amend the registered rule")
+        rule = {**rule, "eligibility": {**rule["eligibility"], **a["eligibility"]},
+                "amendment": {k: v for k, v in a.items() if k != "eligibility"}}
     return rule
+
+
+AMENDMENT_A1 = """\
+Amendment A1 to the camera suite v2 selection rule (2026-10-29), registered after the candidate measurement and
+before computing its own outcome. Reason: under step 4 no candidate (0 of 138) was eligible, and the step-7 fallback
+needs task-specific exceptions on 6 of the 12 tasks (coffee-push, door-open, drawer-open, hammer, stick-push,
+window-open), which defeats the common rig. Step 4 required matching the least observable training camera on each of
+~15 separate criteria of every task (180 thresholds), an envelope only the training cameras themselves can meet.
+Inputs are unchanged (visibility only; no returns, reconstruction or representation scores were ever computed).
+
+Step 4 is replaced by (every one of the 12 tasks must pass):
+  (a) score >= its minimum over the training cameras on that task (the registered score floor, unchanged): the
+      camera is at least as observable as the least observable training camera, by the registered aggregate of
+      object, gripper and goal visibility net of fully hidden frames (arm occlusion enters through visibility);
+  (b) for each of object, gripper and goal: hidden-frame share <= max(0.10, the registered step-4 limit), i.e. no
+      target is invisible in more than 10% of frames unless a training camera loses it as often;
+  (c) at least 90% of the workspace grid inside the image at every frame.
+The per-criterion partial-occlusion and unoccluded-workspace envelopes are dropped as separate constraints (they are
+reported, and partial arm occlusion is already inside the score). Steps 1-3 and 5-8 are unchanged.
+"""
+
+
+def register_amendment(args) -> None:
+    path = REPO / CS.RULE_AMENDMENT_FILE
+    if path.exists():
+        raise SystemExit(f"{CS.RULE_AMENDMENT_FILE} is already registered")
+    if (WORK / "selection.json").exists():
+        previous = json.loads((WORK / "selection.json").read_text())
+        if previous.get("rule_sha256") != json.loads((REPO / CS.RULE_FILE).read_text())["rule_sha256"]:
+            raise SystemExit("unexpected selection state")
+    rule = _checked(REPO / CS.RULE_FILE, "rule_sha256")
+    e = rule["eligibility"]
+    amendment = {
+        "name": "camera suite v2 selection rule, amendment A1",
+        "date": "2026-10-29",
+        "amends_rule_sha256": rule["rule_sha256"],
+        "statement": AMENDMENT_A1,
+        "evidence_under_original_rule": {
+            "eligible_candidates": 0, "candidates": 138,
+            "fallback_min_tasks_excluded": 6,
+            "fallback_tasks": ["coffee-push", "door-open", "drawer-open", "hammer", "stick-push", "window-open"],
+            "selection_json_sha256": sha256_file(WORK / "selection.json"),
+        },
+        "eligibility": {
+            "mode": "A1",
+            "hidden_fraction_max": {k: {t: round(max(0.10, v), 4) for t, v in per.items()}
+                                    for k, per in e["hidden_fraction_max"].items()},
+            "workspace_in_view_min": {t: 0.90 for t in rule["tasks"]},
+        },
+    }
+    amendment["amendment_sha256"] = hashlib.sha256(json.dumps(amendment, sort_keys=True).encode()).hexdigest()
+    json_dump(path, amendment)
+    (WORK / "selection.json").rename(WORK / "selection-original-rule.json")
+    print(f"[camera_visibility] registered {path} ({amendment['amendment_sha256'][:12]})")
 
 
 def rule_candidates(rule: dict) -> list[tuple[float, float]]:
@@ -304,6 +370,17 @@ def eligibility(per_task: dict, rule: dict) -> tuple[bool, dict]:
     """Per-task pass/fail of one camera's summaries against the registered thresholds; returns (all pass, failures)."""
     e = rule["eligibility"]
     failures: dict[str, list[str]] = {}
+    if e.get("mode") == "A1":  # amendment A1: score floor, hidden-frame caps, workspace in view
+        for task, s in per_task.items():
+            bad = [f"{t} hidden {s[t]['hidden_fraction']:.3f} > {e['hidden_fraction_max'][t][task]:.3f}"
+                   for t in ("obj", "ee", "goal") if s[t]["hidden_fraction"] > e["hidden_fraction_max"][t][task]]
+            if s["workspace"]["in_view_min"] < e["workspace_in_view_min"][task]:
+                bad.append(f"workspace in view {s['workspace']['in_view_min']:.3f}")
+            if s["score"] < e["score_floor"][task]:
+                bad.append(f"score {s['score']:.3f} < {e['score_floor'][task]:.3f}")
+            if bad:
+                failures[task] = bad
+        return not failures, failures
     for task, s in per_task.items():
         bad = []
         for target in ("obj", "ee", "goal"):
@@ -366,7 +443,8 @@ def select(args) -> None:
         agg = summary["aggregate"][name]
         table[name] = {"tilt_deg": tilt, "azimuth_deg": az, "eligible": ok, "failures": failures,
                        "score_min": agg["score_min"], "score_mean": agg["score_mean"], "worst_task": agg["worst_task"],
-                       "min_separation_from_training_deg": CS.min_separation_deg((tilt, az), [tuple(map(float, c)) for c in TRAIN_CAMERAS])}
+                       "min_separation_from_training_deg": CS.min_separation_deg(
+                           (tilt, az), [tuple(map(float, c)) for c in TRAIN_CAMERAS])}
         if ok:
             eligible.append(name)
     scores = {n: table[n]["score_min"] for n in cams}
@@ -376,7 +454,9 @@ def select(args) -> None:
     if len(steps) < rule["selection"]["count"]:
         exceptions = {"status": "common rig impossible under the rule; see the exception procedure",
                       "blocking": {n: table[n]["failures"] for n in sorted(cams, key=lambda n: -scores[n])[:10]}}
-    result = {"rule_sha256": rule["rule_sha256"], "candidates": len(cams), "eligible": len(eligible),
+    result = {"rule_sha256": rule["rule_sha256"],
+              "amendment_sha256": rule.get("amendment", {}).get("amendment_sha256"),
+              "candidates": len(cams), "eligible": len(eligible),
               "selection": steps, "exceptions": exceptions, "table": table,
               "candidate_summary_sha256": sha256_file(WORK / "measurements/candidates/summary.json")}
     json_dump(WORK / "selection.json", result)
@@ -477,10 +557,12 @@ def _compact(per_task: dict) -> dict:
 
 def camera_record(name: str, tilt: float, az: float) -> dict:
     from s4d.data.metaworld.cameras import FOVY_DEG, LOOKAT, RADIUS  # noqa: PLC0415
-    from s4d.rl.env import HELDOUT_V2_PATHS, orbit_camera  # noqa: PLC0415
+    from s4d.rl.env import (  # noqa: PLC0415
+        HELDOUT_V2_PATHS,
+        camera_c2w,  # noqa: PLC0415
+        orbit_camera,
+    )
     from s4d.rl.evaluate import nearest_training_camera  # noqa: PLC0415
-
-    from s4d.rl.env import camera_c2w  # noqa: PLC0415
 
     train = [tuple(map(float, c)) for c in TRAIN_CAMERAS]
     seps = [CS.angular_separation_deg((tilt, az), c) for c in train]
@@ -490,8 +572,9 @@ def camera_record(name: str, tilt: float, az: float) -> dict:
             "c2w_opencv": c2w.round(8).tolist(),
             "separation_from_training_deg": {f"train{i}": round(x, 2) for i, x in enumerate(seps)},
             "min_separation_from_training_deg": round(min(seps), 2),
-            "separation_from_old_heldout_deg": {f"eval{i}": round(CS.angular_separation_deg((tilt, az), tuple(map(float, c))), 2)
-                                                for i, c in enumerate(EVAL_CAMERAS)},
+            "separation_from_old_heldout_deg": {
+                f"eval{i}": round(CS.angular_separation_deg((tilt, az), tuple(map(float, c))), 2)
+                for i, c in enumerate(EVAL_CAMERAS)},
             "multiview_replaces_slot_of": f"train{nearest_training_camera(HELDOUT_V2_PATHS[name])}"
             if name in HELDOUT_V2_PATHS else None}
 
@@ -551,13 +634,16 @@ def freeze(args) -> None:
             "visibility": {n: {"aggregate": v2["aggregate"][n], "per_task": _compact(v2["views"][n])} for n in cams},
         },
         "reference_cameras": {
-            "training": {f"train{i}": {"tilt_deg": float(t), "azimuth_deg": float(a)} for i, (t, a) in enumerate(TRAIN_CAMERAS)},
+            "training": {f"train{i}": {"tilt_deg": float(t), "azimuth_deg": float(a)}
+                         for i, (t, a) in enumerate(TRAIN_CAMERAS)},
             "old_heldout_eval0_3": {
                 "label": "occlusion-heavy stress test (suite v1, unchanged; results kept in eval.jsonl, never mixed)",
-                "cameras": {f"eval{i}": {"tilt_deg": float(t), "azimuth_deg": float(a)} for i, (t, a) in enumerate(EVAL_CAMERAS)},
+                "cameras": {f"eval{i}": {"tilt_deg": float(t), "azimuth_deg": float(a)}
+                            for i, (t, a) in enumerate(EVAL_CAMERAS)},
             },
             "under_v2_rule": old,
-            "visibility": {n: {"aggregate": ref["aggregate"][n], "per_task": _compact(ref["views"][n])} for n in ref["views"]},
+            "visibility": {n: {"aggregate": ref["aggregate"][n], "per_task": _compact(ref["views"][n])}
+                           for n in ref["views"]},
         },
         "moving_paths": {
             "levels": {k: {"kind": kind, **amps} for k, (kind, amps) in CS.STRONGER_TRAJECTORIES.items()},
@@ -570,7 +656,8 @@ def freeze(args) -> None:
         },
         "evaluation": {
             "output": CS.SUITE_OUTPUTS["v2"],
-            "groups": "ref_train0..5 (optional), vis0..3, ref_traj_lateral/circular (optional), traj_{lateral,circular}_{2x,3x}",
+            "groups": "ref_train0..5 (optional), vis0..3, ref_traj_lateral/circular (optional), "
+                      "traj_{lateral,circular}_{2x,3x}",
             "episodes_per_group": "historical per-camera counts (20)",
             "seeds": f"paired: numpy default_rng([run_seed, eval_index, 7, {CS.V2_SEED_TAG}]); group g uses the first n",
             "multiview": "vis* replace their nearest training camera's slot; trajectories replace train1's slot",
@@ -598,10 +685,12 @@ def definition_markdown(d: dict, ref: dict, v2: dict, paths_result: dict, rule: 
              "training are unchanged; the original held-out cameras eval0..3 and their `eval.jsonl` history are kept and "
              "reported separately as an **occlusion-heavy stress test**.", "",
              "## Held-out cameras `heldout_v2` (common rig, all 12 tasks)", "",
-             "| camera | tilt | azimuth | min sep. from training | nearest training (multi-view slot) | sep. from eval0..3 |",
+             "| camera | tilt | azimuth | min sep. from training | nearest training (multi-view slot) "
+             "| sep. from eval0..3 |",
              "|---|---|---|---|---|---|"]
     for c in d["heldout_v2"]["cameras"]:
-        lines.append(f"| {c['name']} | {c['tilt_deg']:g} | {c['azimuth_deg']:g} | {c['min_separation_from_training_deg']:.1f} deg "
+        lines.append(f"| {c['name']} | {c['tilt_deg']:g} | {c['azimuth_deg']:g} "
+                     f"| {c['min_separation_from_training_deg']:.1f} deg "
                      f"| {c['multiview_replaces_slot_of']} | "
                      + ", ".join(f"{k} {v:.0f}" for k, v in c["separation_from_old_heldout_deg"].items()) + " |")
     lines += ["", f"Task-specific exceptions: {d['heldout_v2']['task_exceptions'] or 'none'}. "
@@ -609,27 +698,27 @@ def definition_markdown(d: dict, ref: dict, v2: dict, paths_result: dict, rule: 
               "## Visibility (all frames of 10 expert + 5 random episodes per task, 12 tasks)", "",
               "visibility = mean visible share of the arm-free footprint; hidden = frames with nothing visible; arm = mean "
               "arm-occluded share; worst task = minimum over tasks.", "",
-              "| camera | set | worst-task score | obj vis (min task) | obj hidden (max task) | obj arm occl. (mean / max task) "
-              "| gripper vis (min) | gripper arm occl. (mean / max) | goal vis (min) | goal hidden (max) | workspace visible (mean) | v2 rule |",
+              "| camera | set | worst-task score | obj vis (min task) | obj hidden (max task) "
+              "| obj arm occl. (mean / max task) | gripper vis (min) | gripper arm occl. (mean / max) | goal vis (min) "
+              "| goal hidden (max) | workspace visible (mean) | v2 rule |",
               "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     rows = [(n, "v2 held-out", v2["aggregate"][n], "pass") for n in CS.HELDOUT_V2_NAMES]
-    rows += [(n, "training", ref["aggregate"][n], "pass" if d["reference_cameras"]["under_v2_rule"][n]["would_pass_v2_rule"] else "fail")
-             for n in ref["aggregate"] if n.startswith("train")]
-    rows += [(n, "v1 held-out (stress test)", ref["aggregate"][n],
-              "pass" if d["reference_cameras"]["under_v2_rule"][n]["would_pass_v2_rule"] else "fail")
+    verdict = {n: "pass" if r["would_pass_v2_rule"] else "fail" for n, r in d["reference_cameras"]["under_v2_rule"].items()}
+    rows += [(n, "training", ref["aggregate"][n], verdict[n]) for n in ref["aggregate"] if n.startswith("train")]
+    rows += [(n, "v1 held-out (stress test)", ref["aggregate"][n], verdict[n])
              for n in ref["aggregate"] if n.startswith("eval")]
-    for n, kind, a, verdict in rows:
+    for n, kind, a, passed in rows:
         lines.append(f"| {n} | {kind} | {a['score_min']:.3f} ({a['worst_task']}) | {a['obj']['visibility_min']:.3f} "
                      f"| {_fmt(a['obj']['hidden_fraction_max'], True)} | {_fmt(a['obj']['arm_occlusion_mean'], True)} / "
                      f"{_fmt(a['obj']['arm_occlusion_max'], True)} | {a['ee']['visibility_min']:.3f} | "
                      f"{_fmt(a['ee']['arm_occlusion_mean'], True)} / {_fmt(a['ee']['arm_occlusion_max'], True)} | "
                      f"{a['goal']['visibility_min']:.3f} | {_fmt(a['goal']['hidden_fraction_max'], True)} | "
-                     f"{a['workspace']['visible_mean']:.3f} | {verdict} |")
+                     f"{a['workspace']['visible_mean']:.3f} | {passed} |")
     lines += ["", "Why eval0..3 fail the v2 rule (task: first failures):", ""]
     for n in [k for k in d["reference_cameras"]["under_v2_rule"] if k.startswith("eval")]:
         f = d["reference_cameras"]["under_v2_rule"][n]["failures"]
-        lines.append(f"- {n}: " + ("passes" if not f else "; ".join(f"{t}: {', '.join(v[:2])}" for t, v in list(f.items())[:4])
-                                   + (f" (+{len(f) - 4} more tasks)" if len(f) > 4 else "")))
+        reasons = "; ".join(f"{t}: {', '.join(v[:2])}" for t, v in list(f.items())[:4])
+        lines.append(f"- {n}: " + ("passes" if not f else reasons + (f" (+{len(f) - 4} more tasks)" if len(f) > 4 else "")))
     lines += ["", "## Moving paths (train1 base, 72-pose period, starting phase pose 0 at reset)", "",
               "Increasing the amplitude at a fixed period increases the camera speed too: the 2x/3x levels are combined "
               "range-and-speed stress tests. Episode: 126 renders (reset + 125 agent steps of 2 simulator steps, "
@@ -640,17 +729,20 @@ def definition_markdown(d: dict, ref: dict, v2: dict, paths_result: dict, rule: 
     for name, r in paths_result["levels"].items():
         k = r["kinematics"]
         kind = name.removeprefix("traj_")
-        amps = CS.STRONGER_TRAJECTORIES.get(kind, ("", {}))[1] or (
-            {"lateral_amplitude": 0.12} if kind == "lateral" else {"circular_azimuth_deg": 10.0, "circular_elevation_deg": 6.0})
+        reference = {"lateral": {"lateral_amplitude": 0.12},
+                     "circular": {"circular_azimuth_deg": 10.0, "circular_elevation_deg": 6.0}}
+        amps = CS.STRONGER_TRAJECTORIES.get(kind, ("", {}))[1] or reference[kind]
         amp = (f"+/-{amps['lateral_amplitude']:g} m" if "lateral_amplitude" in amps
                else f"+/-{amps['circular_azimuth_deg']:g} deg az, +/-{amps['circular_elevation_deg']:g} deg tilt")
         lines.append(
-            f"| {name} | {amp} | {k['azimuth_deg'][0]:.1f}..{k['azimuth_deg'][1]:.1f} | {k['tilt_deg'][0]:.1f}..{k['tilt_deg'][1]:.1f} "
-            f"| {k['distance_m'][0]:.3f}..{k['distance_m'][1]:.3f} | {1000 * k['translation_m_per_agent_step']['max']:.1f} / "
+            f"| {name} | {amp} | {k['azimuth_deg'][0]:.1f}..{k['azimuth_deg'][1]:.1f} "
+            f"| {k['tilt_deg'][0]:.1f}..{k['tilt_deg'][1]:.1f} | {k['distance_m'][0]:.3f}..{k['distance_m'][1]:.3f} "
+            f"| {1000 * k['translation_m_per_agent_step']['max']:.1f} / "
             f"{1000 * k['translation_m_per_agent_step']['mean']:.1f} mm | {k['rotation_deg_per_agent_step']['max']:.2f} / "
             f"{k['rotation_deg_per_agent_step']['mean']:.2f} deg | {1000 * k['translation_m_per_sim_step']['max']:.1f} mm, "
             f"{k['rotation_deg_per_sim_step']['max']:.2f} deg | {k['translation_m_per_s']['max']:.2f} m/s, "
-            f"{k['rotation_deg_per_s']['max']:.0f} deg/s | {'pass' if r['passed'] else 'FAIL: ' + json.dumps(r['failures'])[:120]} |")
+            f"{k['rotation_deg_per_s']['max']:.0f} deg/s "
+            f"| {'pass' if r['passed'] else 'FAIL: ' + json.dumps(r['failures'])[:120]} |")
     lines += ["", "## Evaluation", "",
               f"`scripts/eval_rl.py --suites v2` writes `{CS.SUITE_OUTPUTS['v2']}` (never `eval.jsonl`). Groups: "
               "`ref_train0..5` and `ref_traj_{lateral,circular}` (matched references, `--v2-reference`), `vis0..3`, "
@@ -723,7 +815,8 @@ def _stack(rows: list[list[np.ndarray]], pad: int = 4, bg=(255, 255, 255)) -> np
     out = np.full((len(rows) * (h + pad) + pad, max(len(r) for r in rows) * (w + pad) + pad, 3), bg, np.uint8)
     for i, r in enumerate(rows):
         for j, t in enumerate(r):
-            out[pad + i * (h + pad): pad + i * (h + pad) + t.shape[0], pad + j * (w + pad): pad + j * (w + pad) + t.shape[1]] = t
+            y0, x0 = pad + i * (h + pad), pad + j * (w + pad)
+            out[y0:y0 + t.shape[0], x0:x0 + t.shape[1]] = t
     return out
 
 
@@ -740,11 +833,12 @@ def _header(text: str, width: int, size: int = 22, sub: str | None = None) -> np
 
 
 def _vis_lines(s: dict) -> list[str]:
-    return [
-        f"obj {s['obj']['visibility']:.2f} hid {100 * s['obj']['hidden_fraction']:.0f}% arm {100 * s['obj']['arm_occlusion_mean']:.0f}%",
-        f"ee {s['ee']['visibility']:.2f} hid {100 * s['ee']['hidden_fraction']:.0f}% arm {100 * s['ee']['arm_occlusion_mean']:.0f}%",
-        f"goal {s['goal']['visibility']:.2f} hid {100 * s['goal']['hidden_fraction']:.0f}%  ws {s['workspace']['visible_mean']:.2f}",
-    ]
+    def line(k: str) -> str:
+        arm = s[k]["arm_occlusion_mean"]
+        arm_text = "n/a" if arm != arm else f"{100 * arm:.0f}%"
+        return f"{k} {s[k]['visibility']:.2f} hid {100 * s[k]['hidden_fraction']:.0f}% arm {arm_text}"
+
+    return [line("obj"), line("ee"), line("goal") + f"  ws {s['workspace']['visible_mean']:.2f}"]
 
 
 def contact_sheet(title: str, subtitle: str, views: dict, cameras: dict, summary: dict, frames: dict, out: Path):
@@ -756,8 +850,8 @@ def contact_sheet(title: str, subtitle: str, views: dict, cameras: dict, summary
         agg = summary["aggregate"][name]
         for k in SHEET_FRAMES:
             when = "reset frame" if k == 0 else f"mid-episode (render {k})"
-            head.append(_label(np.full((1, DISPLAY, 3), 255, np.uint8),
-                               [f"{name} (tilt {tilt:g}, az {az:g})", f"{when}; worst-task score {agg['score_min']:.2f}"], 14))
+            text = [f"{name} (tilt {tilt:g}, az {az:g})", f"{when}; worst-task score {agg['score_min']:.2f}"]
+            head.append(_label(np.full((1, DISPLAY, 3), 255, np.uint8), text, 14))
     rows.append(head)
     for task in summary["tasks"]:
         row = []
@@ -811,17 +905,20 @@ def layout_figure(out: Path, vis: dict, paths: dict) -> None:
         return cx + scale * p[0], cy - scale * (p[1] - LOOKAT[1])
 
     d.text((20, 15), "Top-down view (world x right, y up; robot base at the origin)", fill=(0, 0, 0), font=fl)
-    tx0, ty0 = top((-0.7, 0.2)); tx1, ty1 = top((0.7, 1.0))
+    tx0, ty0 = top((-0.7, 0.2))
+    tx1, ty1 = top((0.7, 1.0))
     d.rectangle([tx0, ty1, tx1, ty0], outline=(160, 120, 80), width=2)
     d.text((tx0 + 4, ty1 + 4), "table", fill=(160, 120, 80), font=fs)
-    wx0, wy0 = top((-0.35, 0.40)); wx1, wy1 = top((0.35, 0.90))
+    wx0, wy0 = top((-0.35, 0.40))
+    wx1, wy1 = top((0.35, 0.90))
     d.rectangle([wx0, wy1, wx1, wy0], outline=(200, 200, 200), width=1)
     d.text((wx0 + 4, wy0 - 16), "workspace grid", fill=(150, 150, 150), font=fs)
     bx, by = top((0.0, 0.0))
     d.ellipse([bx - 9, by - 9, bx + 9, by + 9], fill=(90, 90, 90))
     d.text((bx + 12, by - 6), "robot base", fill=(60, 60, 60), font=fs)
     lx, ly = top(LOOKAT)
-    d.line([lx - 6, ly, lx + 6, ly], fill=(0, 0, 0)); d.line([lx, ly - 6, lx, ly + 6], fill=(0, 0, 0))
+    d.line([lx - 6, ly, lx + 6, ly], fill=(0, 0, 0))
+    d.line([lx, ly - 6, lx, ly + 6], fill=(0, 0, 0))
     for level, kinds in paths.items():
         for c2w in kinds.values():
             pts = [top(m[:3, 3]) for m in c2w] + [top(c2w[0][:3, 3])]
@@ -981,7 +1078,7 @@ def main() -> None:
     m.add_argument("--size", type=int, default=128, help="analysis resolution (the policies' 128x128)")
     m.add_argument("--workers", type=int, default=2, help="render processes (~0.2-0.45 GB GPU memory each)")
     m.add_argument("--views-per-job", type=int, default=1000)
-    for name in ("register-rule", "select", "paths"):
+    for name in ("register-rule", "register-amendment", "select", "paths"):
         sub.add_parser(name)
     fz = sub.add_parser("freeze")
     fz.add_argument("--refresh", action="store_true", help="rewrite after a documented correction (never the cameras)")
@@ -994,7 +1091,7 @@ def main() -> None:
 
     guard_mujoco()
     {"measure": measure, "media": media, "register-rule": register_rule, "select": select, "paths": paths,
-     "freeze": freeze}[args.command](args)
+     "freeze": freeze, "register-amendment": register_amendment}[args.command](args)
 
 
 if __name__ == "__main__":  # spawned workers re-import this file

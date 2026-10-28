@@ -32,6 +32,9 @@ SUITE_V2 = "cameras_v2"
 HELDOUT_V2 = "heldout_v2"
 RULE_FILE = "runs/setup/camera-suite-v2-rule-20261029.json"
 DEFINITION_FILE = "runs/setup/camera-suite-v2-definition-20261029.json"
+# Amendment A1 (registered after the candidate measurement showed 0/138 cameras eligible under step 4 and a step-7
+# fallback needing exceptions on 6 of 12 tasks; registered before its own outcome was computed). See the file.
+RULE_AMENDMENT_FILE = "runs/setup/camera-suite-v2-rule-amendment-A1-20261029.json"
 
 # Frozen 2026-10-29 by scripts/camera_visibility.py (DEFINITION_FILE): (tilt deg, azimuth deg) on the training orbit.
 HELDOUT_V2_CAMERAS: tuple[tuple[float, float], ...] = ()
@@ -104,8 +107,9 @@ def path_kinematics(c2w: np.ndarray, lookat, *, action_repeat: int, sim_dt: floa
     positions, rotations = c2w[:, :3, 3], c2w[:, :3, :3]
     rel = positions - np.asarray(lookat, dtype=np.float64)
     distance = np.linalg.norm(rel, axis=1)
-    elevation = np.degrees(np.arcsin(rel[:, 2] / distance))  # camera height angle above the look-at point (= tilt)
-    azimuth = np.degrees(np.arctan2(-rel[:, 1], -rel[:, 0]))  # MuJoCo free-camera azimuth (forward = -rel)
+    tilt = np.degrees(np.arcsin(rel[:, 2] / distance))  # camera height angle above the look-at point
+    azimuth = np.degrees(np.unwrap(np.arctan2(-rel[:, 1], -rel[:, 0])))  # MuJoCo free-camera azimuth (forward = -rel)
+    azimuth -= 360.0 * np.floor(azimuth.mean() / 360.0)  # continuous along the path, mean in [0, 360)
     nxt = np.roll(np.arange(P), -1)
     translation = np.linalg.norm(positions[nxt] - positions, axis=1)
     dirs = rel / distance[:, None]
@@ -126,7 +130,7 @@ def path_kinematics(c2w: np.ndarray, lookat, *, action_repeat: int, sim_dt: floa
         "episode_periods": renders / P,
         "phase_at_agent_step": "pose index = agent step mod period (the reset frame is pose 0)",
         "azimuth_deg": [float(azimuth.min()), float(azimuth.max())],
-        "tilt_deg": [float(elevation.min()), float(elevation.max())],
+        "tilt_deg": [float(tilt.min()), float(tilt.max())],
         "distance_m": [float(distance.min()), float(distance.max())],
         "position_min_m": positions.min(0).tolist(),
         "position_max_m": positions.max(0).tolist(),

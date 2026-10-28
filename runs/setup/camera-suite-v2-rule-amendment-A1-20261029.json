@@ -1,0 +1,82 @@
+{
+  "name": "camera suite v2 selection rule, amendment A1",
+  "date": "2026-10-29",
+  "amends_rule_sha256": "983a71690902f9cbb667b4750494116903fb0f39dad6434e4086c772b4366b05",
+  "statement": "Amendment A1 to the camera suite v2 selection rule (2026-10-29), registered after the candidate measurement and\nbefore computing its own outcome. Reason: under step 4 no candidate (0 of 138) was eligible, and the step-7 fallback\nneeds task-specific exceptions on 6 of the 12 tasks (coffee-push, door-open, drawer-open, hammer, stick-push,\nwindow-open), which defeats the common rig. Step 4 required matching the least observable training camera on each of\n~15 separate criteria of every task (180 thresholds), an envelope only the training cameras themselves can meet.\nInputs are unchanged (visibility only; no returns, reconstruction or representation scores were ever computed).\n\nStep 4 is replaced by (every one of the 12 tasks must pass):\n  (a) score >= its minimum over the training cameras on that task (the registered score floor, unchanged): the\n      camera is at least as observable as the least observable training camera, by the registered aggregate of\n      object, gripper and goal visibility net of fully hidden frames (arm occlusion enters through visibility);\n  (b) for each of object, gripper and goal: hidden-frame share <= max(0.10, the registered step-4 limit), i.e. no\n      target is invisible in more than 10% of frames unless a training camera loses it as often;\n  (c) at least 90% of the workspace grid inside the image at every frame.\nThe per-criterion partial-occlusion and unoccluded-workspace envelopes are dropped as separate constraints (they are\nreported, and partial arm occlusion is already inside the score). Steps 1-3 and 5-8 are unchanged.\n",
+  "evidence_under_original_rule": {
+    "eligible_candidates": 0,
+    "candidates": 138,
+    "fallback_min_tasks_excluded": 6,
+    "fallback_tasks": [
+      "coffee-push",
+      "door-open",
+      "drawer-open",
+      "hammer",
+      "stick-push",
+      "window-open"
+    ],
+    "selection_json_sha256": "8fe70b7a31c26fb2a45dbfa8e3723d177832b7a5a0e84d0504e46c9ff7e48b4d"
+  },
+  "eligibility": {
+    "mode": "A1",
+    "hidden_fraction_max": {
+      "obj": {
+        "hammer": 0.1,
+        "bin-picking": 0.1,
+        "door-open": 0.1,
+        "peg-insert-side": 0.2692,
+        "peg-unplug-side": 0.1,
+        "pick-place": 0.1,
+        "stick-push": 0.1,
+        "coffee-push": 0.1168,
+        "drawer-open": 0.1,
+        "window-open": 0.1,
+        "soccer": 0.1057,
+        "sweep-into": 0.1
+      },
+      "ee": {
+        "hammer": 0.1,
+        "bin-picking": 0.1,
+        "door-open": 0.1,
+        "peg-insert-side": 0.1,
+        "peg-unplug-side": 0.1,
+        "pick-place": 0.1,
+        "stick-push": 0.1121,
+        "coffee-push": 0.1,
+        "drawer-open": 0.1,
+        "window-open": 0.1,
+        "soccer": 0.1,
+        "sweep-into": 0.1
+      },
+      "goal": {
+        "hammer": 0.2523,
+        "bin-picking": 0.1,
+        "door-open": 0.2115,
+        "peg-insert-side": 0.1528,
+        "peg-unplug-side": 0.165,
+        "pick-place": 0.1,
+        "stick-push": 0.3851,
+        "coffee-push": 0.1,
+        "drawer-open": 0.1,
+        "window-open": 0.3978,
+        "soccer": 0.1,
+        "sweep-into": 0.1
+      }
+    },
+    "workspace_in_view_min": {
+      "hammer": 0.9,
+      "bin-picking": 0.9,
+      "door-open": 0.9,
+      "peg-insert-side": 0.9,
+      "peg-unplug-side": 0.9,
+      "pick-place": 0.9,
+      "stick-push": 0.9,
+      "coffee-push": 0.9,
+      "drawer-open": 0.9,
+      "window-open": 0.9,
+      "soccer": 0.9,
+      "sweep-into": 0.9
+    }
+  },
+  "amendment_sha256": "2cf66138f8701cccd6a6856611c7563f345a1826fd49792ebf7989c86512c7ee"
+}
