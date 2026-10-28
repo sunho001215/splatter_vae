@@ -1,5 +1,5 @@
 {
-  "started_utc": "2026-10-28T06:16:07.077817+00:00",
+  "started_utc": "2026-10-28T06:43:02.935132+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
@@ -9,7 +9,7 @@
   "gpu_mapping": [
     {
       "index": 0,
-      "uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd",
+      "uuid": "MIG-b50e85c3-8498-5ef0-906e-5eda9db34b90",
       "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
     }
   ],
@@ -22,7 +22,7 @@
     "cache_dir=/home/ws/ws/splatter4d/.worktrees/downstream/docs/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 541.0585271921009,
+  "duration_seconds": 629.0915328010451,
   "counts": {
     "passed": 1140,
     "error": 0,
@@ -100,7 +100,7 @@
     "s4d/diag/wandb_log.py": "fde09e94eeba14a404f1d4bc7ea220549741767637a19c971e4e0d37b74736eb",
     "s4d/geometry.py": "ed72b3e82278a437ff673a063c75536cac05a000e337353c4870b5f69e025660",
     "s4d/gpu_guard.py": "720b7f7594dbea9fbeb6116863d8e1c3259090548c1c8db4d1a6e20557888026",
-    "s4d/lifecycle_cleanup.py": "eb00319938775c45dc639003ef714f7cdd3af5e7062500bca0833656a732bed1",
+    "s4d/lifecycle_cleanup.py": "603d0c442bb6d17e94d295a5570cb6ba486d6dda800f14076d0df72200c9e781",
     "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/losses/chamfer.py": "5c2da86c69bc382e40521aff38d035d56abe2be1c4421fad7becf09b4061c985",
     "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
@@ -429,7 +429,7 @@
     "s4d/diag/wandb_log.py": "fde09e94eeba14a404f1d4bc7ea220549741767637a19c971e4e0d37b74736eb",
     "s4d/geometry.py": "ed72b3e82278a437ff673a063c75536cac05a000e337353c4870b5f69e025660",
     "s4d/gpu_guard.py": "720b7f7594dbea9fbeb6116863d8e1c3259090548c1c8db4d1a6e20557888026",
-    "s4d/lifecycle_cleanup.py": "eb00319938775c45dc639003ef714f7cdd3af5e7062500bca0833656a732bed1",
+    "s4d/lifecycle_cleanup.py": "603d0c442bb6d17e94d295a5570cb6ba486d6dda800f14076d0df72200c9e781",
     "s4d/losses/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "s4d/losses/chamfer.py": "5c2da86c69bc382e40521aff38d035d56abe2be1c4421fad7becf09b4061c985",
     "s4d/losses/depth.py": "44fdd4425120f3f00e42c427cbdeb4257c79890ecd344911c4000c35bc5fa7a0",
