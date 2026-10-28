@@ -328,8 +328,17 @@ stop for the final all-local-processes shutdown; the prior denied action did not
    IQM/probability improvement,10k stratified within-task resamples RNG0. No raw-return cross-task IQM.
 8. Source edits in isolated worktrees, integrate after full native suite. Do not drain healthy GPUs for non-GPU
    releases; re-run GPU isolation only when selection/guard changes. Runtime identity/checksum/security checks remain.
-9. Health entries only on change. Completed replays retained; no automatic runtime-computed deletion. Never touch
-   `/home/ws/data/droid` (read-only), foreign work, or credentials. No foreground sleep-poll loops.
+9. Health entries only on change. Lifecycle cleanup (user 2026-10-28, supersedes "completed replays retained; no
+   automatic runtime-computed deletion"): on both hosts a completed RL run's replay files are deleted once its full
+   budget finished, its final policy is saved and verified loadable, no writer remains and no continuation depends on
+   it; pending evaluation of saved policies does not delay it (`scripts/cleanup_replay.py --host local|remote`,
+   `s4d/lifecycle_cleanup.py`, ledger `runs/setup/replay-cleanup-ledger.jsonl`). Running, paused, failed or resumable
+   work keeps its replay; policies, evaluation snapshots, exports, configs, provenance, metrics and logs are kept. Our
+   stopped remote containers are removed by the scheduler once their outputs are verified in place on the remote (the
+   local bulk backup does not delay it) or, for intentionally paused attempts, once their checkpoint is recorded; only
+   containers identified by registry id, labels and name, never another person's, never a global prune or shared
+   images/volumes/networks. Never touch `/home/ws/data/droid` (read-only), foreign work, or credentials. No foreground
+   sleep-poll loops.
 10. Local shutdown order remains in force until verified complete; remote containers must not be stopped.
 
 ## 7. Preserved work, open requests and next actions

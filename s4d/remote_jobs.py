@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
 import json
 import math
@@ -638,13 +639,24 @@ class RemoteBackend:
 
     def remove_container(self, run_id: str, attempt: int, container: str, container_id: str, expected_code: int,
                          required: list[str]) -> dict:
-        """``removal_command`` over SSH; returns {"removed": True, "log_sha256", "inspect_sha256"} or {"absent": True}."""
+        """``removal_command`` over SSH; returns {"removed": True, "log_sha256", "inspect_sha256"} or {"absent": True}.
+
+        The command writes containers/<name>.docker.log and .inspect.json into the run directory, files the essential
+        result sync copies (*.log, *.json) and whose appearance during a sync fails its manifest checks. Since removal may
+        precede the final backup (2026-10-28), it runs under that sync's per-run lock (state_dir/results-<run>.lock,
+        ``RemoteClient.sync_results``), taken without blocking: while a sync of the run is in progress the removal is
+        deferred to a later tick (RemoteJobError) instead of stalling the scheduler behind a bulk download."""
         command = removal_command(self.client.root, run_id, attempt, container, container_id, expected_code, required)
-        try:
-            response = self.client.ssh(command, wait=False, idempotent=True, timeout=120)
-        except RemoteUnreachable:
-            self._save_snapshot(reachable=False, query_ok=False)
-            raise
+        with (self.client.state_dir / f"results-{run_id}.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RemoteJobError("A result sync of this run is in progress; removal deferred") from None
+            try:
+                response = self.client.ssh(command, wait=False, idempotent=True, timeout=120)
+            except RemoteUnreachable:
+                self._save_snapshot(reachable=False, query_ok=False)
+                raise
         if response.returncode == 3:
             raise ContainerRemovalRefused("identity or state differs from the record")
         if response.returncode == 4:

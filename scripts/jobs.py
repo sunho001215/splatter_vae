@@ -174,8 +174,11 @@ def read_registry(path: Path = REGISTRY) -> dict[str, dict]:
                         job["failures"] += 1
             elif kind in {"checkpoint_paused", "intentional_stopped"} and event.get("intentional_stop") is True:
                 # recorded by runs/setup/tools/pause_*_at_checkpoint.py after the checkpoint was published and
-                # verified; the following non-zero exit of the same attempt is then not charged as a failure
-                stop = {key: event[key] for key in ("attempt", "checkpoint_step", "checkpoint_sha256", "reason")
+                # verified; the following non-zero exit of the same attempt is then not charged as a failure. The
+                # checkpoint path, container id and exit code (remote pauses) identify a paused attempt's container
+                # for cleanup (2026-10-28).
+                stop = {key: event[key] for key in ("attempt", "checkpoint_step", "checkpoint_sha256", "reason",
+                                                    "checkpoint", "container_id", "container_exit_code")
                         if key in event}
                 if stop not in job.setdefault("intentional_stops", []):
                     job["intentional_stops"].append(stop)
@@ -629,6 +632,11 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
         if current.get("host", "local") != "remote" or current["status"] not in ACTIVE:
             continue
         item = snapshot.containers.get(current["container"])
+        if item is None and _retired_after_verification(current):
+            # 2026-10-28: removed by the cleanup once verified in place, before the local backup: not unknown; the job
+            # completes from the bulk worker's backup as before
+            _complete_from_backup(backend, job_id, current, registry, runs, messages)
+            continue
         if item is None:
             _unknown(job_id, registry, "container missing from confirmed snapshot", messages)
             continue
@@ -718,55 +726,120 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
                                                           "checks": checks}}
                 messages.append(f"{job_id} exited with 0 on remote; artifacts verified on the remote "
                                 "(same-host dependents released; local backup pending)")
-        try:
-            backup = backend.backup_record(job_id)
-            if backup is None:
-                continue
-            _verify_backup(job_id, current, backup, runs)
-        except (RemoteJobError, OSError, ValueError, KeyError, TypeError):
-            continue  # no verified final backup yet: the job stays compute-complete (sync_pending), reserving nothing
-        record({"event": "results_synced", "id": job_id, "host": "remote", "final": True, "sync": backup}, registry)
-        record({"event": "exited", "id": job_id, "host": "remote", "attempt": current["attempts"], "code": 0}, registry)
-        messages.append(f"{job_id}: local backup checksum verified; done")
+        _complete_from_backup(backend, job_id, current, registry, runs, messages)
     return owned, reachable
+
+
+def _retired_after_verification(current: dict) -> bool:
+    """A compute-complete campaign job (sync_pending after exit 0) whose final attempt was verified in place and whose
+    recorded container was then removed (or confirmed absent) by the cleanup (2026-10-28)."""
+    return (current.get("status") == "sync_pending" and current.get("code") == 0
+            and current.get("verification_purpose") is None and current.get("campaign_eligible") is not False
+            and (current.get("remote_verified") or {}).get("attempt") == current["attempts"]
+            and bool(current.get("container_id"))
+            and current["container_id"] in {*current.get("containers_removed", []), *current.get("containers_absent", [])})
+
+
+def _complete_from_backup(backend, job_id: str, current: dict, registry: Path, runs: Path, messages: list[str]) -> None:
+    """Done once scripts/sync_media.py's verified final local backup matches the in-place verification."""
+    try:
+        backup = backend.backup_record(job_id)
+        if backup is None:
+            return
+        _verify_backup(job_id, current, backup, runs)
+    except (RemoteJobError, OSError, ValueError, KeyError, TypeError):
+        return  # no verified final backup yet: the job stays compute-complete (sync_pending), reserving nothing
+    record({"event": "results_synced", "id": job_id, "host": "remote", "final": True, "sync": backup}, registry)
+    record({"event": "exited", "id": job_id, "host": "remote", "attempt": current["attempts"], "code": 0}, registry)
+    messages.append(f"{job_id}: local backup checksum verified; done")
 
 
 CONTAINER_CLEANUP_PER_TICK = 10
 FINAL_REMOTE_FILES = ("exit.json", "provenance.json", "console.log")
+# A paused attempt's container (exit e.g. 143 after the pause signal) keeps its outputs in the bind-mounted run
+# directory: its removal requires the recorded checkpoint, provenance.json and console.log. scripts/remote/entry.py also
+# writes exit.json on SIGTERM, but a resumed attempt rewrites it (and a SIGKILL leaves none), so it is not required.
+PAUSED_REMOTE_FILES = ("provenance.json", "console.log")
 
 
-def _cleanup_targets(job_id: str, current: dict) -> list[tuple[int, str, str, int]]:
-    """Containers of a completed remote campaign job that automatic cleanup may remove, as (attempt, name, id, expected
-    exit code): once the job is done with its final results synced and checksum-verified, the final attempt's container
-    (exit 0) and the containers of its earlier, failed or interrupted attempts (their recovery is complete), each only
-    if its id was recorded at launch and, for earlier attempts, its exit code was recorded. Verification jobs and
-    containers already removed, kept or found absent are excluded (verification containers whose registry rows predate
-    the purpose field are recognised by their labels in ``_cleanup_completed_containers`` and in the removal command)."""
-    if (current.get("host") != "remote" or current.get("status") != DONE or current.get("verification_purpose") is not None
-            or current.get("campaign_eligible") is False
-            or (current.get("sync") or {}).get("final") is not True or not current.get("container_id")):
-        return []
+def _run_relative(job_id: str, path) -> str | None:
+    """A recorded run file path (``runs/<id>/...`` or under the remote root) relative to its run directory, or None."""
+    for prefix in (f"runs/{job_id}/", f"{REMOTE_ROOT}/runs/{job_id}/"):
+        if isinstance(path, str) and path.startswith(prefix):
+            relative = path[len(prefix):]
+            if re.fullmatch(r"[A-Za-z0-9._/-]{1,255}", relative) and ".." not in relative:
+                return relative
+    return None
+
+
+def _remote_completed(current: dict) -> bool:
+    """The final attempt is complete for container cleanup: it exited 0 and was verified in place on the remote
+    (status sync_pending or done; user directive 2026-10-28: the local bulk backup no longer delays removal, the
+    required files are in persistent remote storage), or the job is done with a verified final sync (records that
+    predate the in-place verification)."""
     final = int(current.get("attempt", current["attempts"]))
-    targets = [(final, current["container"], current["container_id"], 0)]
+    verified = current.get("remote_verified") or {}
+    return ((current.get("status") == DONE and (current.get("sync") or {}).get("final") is True)
+            or (current.get("status") in {"sync_pending", DONE} and current.get("code") == 0
+                and verified.get("attempt") == current["attempts"] == final))
+
+
+def _cleanup_targets(job_id: str, current: dict) -> list[tuple[int, str, str, int, tuple[str, ...]]]:
+    """Containers of a remote campaign job that automatic cleanup may remove, as (attempt, name, id, expected exit code,
+    required run files):
+    - once the final attempt is complete (``_remote_completed``), its container (exit 0) and the containers of its
+      earlier, failed or interrupted attempts (their recovery is complete), each only if its id was recorded at launch
+      and, for earlier attempts, its exit code was recorded; required: exit / provenance / console and the job's
+      required results;
+    - (2026-10-28) the container of an intentionally paused attempt (a ``checkpoint_paused`` / ``intentional_stopped``
+      record with ``intentional_stop`` true and the checkpoint path), whatever the job's state, once its non-zero exit
+      code was recorded (and equals the pause record's, when it carries one): its outputs are in the bind-mounted run
+      directory and a resume always starts a new attempt and container; required: ``PAUSED_REMOTE_FILES`` and the
+      recorded checkpoint.
+    Verification jobs and containers already removed, kept or found absent are excluded (verification containers whose
+    registry rows predate the purpose field are recognised by their labels in ``_cleanup_completed_containers`` and in
+    the removal command)."""
+    if (current.get("host") != "remote" or current.get("verification_purpose") is not None
+            or current.get("campaign_eligible") is False):
+        return []
+    targets: dict[str, tuple[int, str, str, int, tuple[str, ...]]] = {}
     codes = current.get("attempt_codes", {})
-    for key, launched in current.get("attempt_containers", {}).items():
-        if int(key) != final and key in codes and launched.get("container") == f"s4d-{job_id}-a{int(key)}":
-            targets.append((int(key), launched["container"], launched["container_id"], int(codes[key])))
+    launched_containers = current.get("attempt_containers", {})
+    if _remote_completed(current) and current.get("container_id"):
+        final = int(current.get("attempt", current["attempts"]))
+        required = tuple(sorted(set(FINAL_REMOTE_FILES) | {str(value) for value in current.get("required_results", [])}))
+        targets[current["container_id"]] = (final, current["container"], current["container_id"], 0, required)
+        for key, launched in launched_containers.items():
+            if int(key) != final and key in codes and launched.get("container") == f"s4d-{job_id}-a{int(key)}":
+                targets.setdefault(launched["container_id"], (int(key), launched["container"], launched["container_id"],
+                                                              int(codes[key]), required))
+    for stop in current.get("intentional_stops", []):
+        key, launched = str(stop.get("attempt")), launched_containers.get(str(stop.get("attempt"))) or {}
+        checkpoint = _run_relative(job_id, stop.get("checkpoint"))
+        if (key in codes and codes[key] != 0 and checkpoint is not None and launched.get("container_id")
+                and launched.get("container") == f"s4d-{job_id}-a{key}"
+                and stop.get("container_id", launched["container_id"]) == launched["container_id"]
+                and stop.get("container_exit_code", codes[key]) == codes[key]
+                and not (int(key) == current["attempts"] and current["status"] in ACTIVE)):
+            required = tuple(sorted({*PAUSED_REMOTE_FILES, checkpoint}))
+            targets.setdefault(launched["container_id"], (int(key), launched["container"], launched["container_id"],
+                                                          int(codes[key]), required))
     settled = {value for key in ("containers_removed", "containers_kept", "containers_absent")
                for value in current.get(key, [])}
-    return sorted(target for target in targets if target[2] not in settled)
+    return sorted(target for target in targets.values() if target[2] not in settled)
 
 
 def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path, messages: list[str]) -> bool:
-    """Remove the containers of successfully completed remote jobs (``_cleanup_targets``; user instruction 2026-10-21),
-    each by its recorded id, stopped with the expected exit code and labelled ours, after preserving its Docker log
-    and inspect record in the remote run directory (``RemoteBackend.remove_container``). Containers whose identity or
-    state differs from the record, or whose run lacks required files, are kept and recorded once (``container_kept``);
+    """Remove the containers of completed remote jobs and of intentionally paused attempts (``_cleanup_targets``; user
+    instructions 2026-10-21 and 2026-10-28), each by its recorded id, stopped with the expected exit code and labelled
+    ours, after preserving its Docker log and inspect record in the remote run directory
+    (``RemoteBackend.remove_container``, which holds the run's result-sync lock). Containers whose identity or state
+    differs from the record, or whose run lacks required files, are kept and recorded once (``container_kept``);
     failed or interrupted containers of unfinished jobs are never targets. At most CONTAINER_CLEANUP_PER_TICK removal
     calls per tick; returns False if the host became unreachable (retried on a later tick)."""
     calls = 0
     for job_id, current in state.items():
-        for attempt, name, container_id, code in _cleanup_targets(job_id, current):
+        for attempt, name, container_id, code, required in _cleanup_targets(job_id, current):
             if calls >= CONTAINER_CLEANUP_PER_TICK:
                 return True
             base = {"event": "container_removed", "id": job_id, "host": "remote", "attempt": attempt,
@@ -781,10 +854,9 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
                        registry)
                 messages.append(f"{job_id}: container {name} kept (identity or state differs from the record)")
                 continue
-            required = sorted(set(FINAL_REMOTE_FILES) | {str(value) for value in current.get("required_results", [])})
             calls += 1
             try:  # a container missing from the snapshot is checked by the command itself (absent, or refused)
-                result = backend.remove_container(job_id, attempt, name, container_id, code, required)
+                result = backend.remove_container(job_id, attempt, name, container_id, code, list(required))
             except RemoteUnreachable:
                 _host_reachability(registry, False, "RemoteUnreachable")
                 return False

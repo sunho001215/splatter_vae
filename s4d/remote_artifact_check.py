@@ -11,9 +11,9 @@ same-host dependents without first downloading its results:
 - ``archives``: for every ``.pt`` file among the names, the zip archive integrity (``testzip`` CRC of every member)
   and the pickle structure read with inert stand-ins (no global is ever resolved, so no code runs): the top-level
   keys, ``step``, ``format``, ``run_name``, ``source_checkpoint``, ``policy_frames``, ``encoder_config``, and the
-  name / dtype / shape of every tensor of ``state_dict`` (exports) or ``encoder`` (training checkpoints), each checked
-  against its storage record's size, and the pickled globals referenced (a weights-only load accepts only tensor and
-  container globals).
+  name / dtype / shape of every tensor of ``state_dict`` (exports), ``encoder`` (training checkpoints) or of each module
+  of ``policy`` (RL policy snapshots), each checked against its storage record's size, and the pickled globals
+  referenced (a weights-only load accepts only tensor and container globals).
 
     python3 remote_artifact_check.py <run directory> <name> [<name> ...]     (prints one JSON object)
 """
@@ -165,6 +165,12 @@ def inspect_archive(path):
             found, problems = tensors(obj[key], entries, prefix)
             report[key] = found
             report[key + "_storage_problems"] = problems
+    if isinstance(obj.get("policy"), dict):  # RL policy snapshots {"step", "policy": {module: state dict}} (2026-10-28)
+        report["policy"], report["policy_storage_problems"] = {}, []
+        for module, mapping in obj["policy"].items():
+            found, problems = tensors(mapping, entries, prefix)
+            report["policy"][str(module)] = found if isinstance(mapping, dict) else None
+            report["policy_storage_problems"] += [str(module) + "." + name for name in problems]
     return report
 
 

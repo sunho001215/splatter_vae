@@ -1308,6 +1308,7 @@ def test_earlier_attempts_are_removed_only_after_the_job_succeeded(tmp_path):
 def test_backend_removal_maps_refusals_and_transport_failures(tmp_path):
     class Client:
         root = remote.ROOT
+        state_dir = tmp_path
 
         def __init__(self, code, out=""):
             self.code, self.out, self.commands = code, out, []
@@ -1371,6 +1372,130 @@ def test_cleared_keep_records_reenable_cleanup(tmp_path):
     state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
     assert len(backend.removals) == 2 and state["containers_removed"] == [CONTAINER_ID]
     assert state["containers_kept"] == []
+
+
+# ---- lifecycle cleanup (user directive 2026-10-28) ------------------------------------------------------------------
+def test_container_is_removed_once_verified_in_place_and_the_job_completes_from_the_later_backup(tmp_path):
+    """The local bulk backup no longer delays removal; the removed container of a compute-complete job is then not
+    'missing' (unknown) and the job completes from the backup as before."""
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.backup_ready = False
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "sync_pending" and state["remote_verified"]["attempt"] == 1
+    assert backend.removals == [("r", 1, "s4d-r-a1", CONTAINER_ID, 0,
+                                 ("console.log", "exit.json", "metrics.jsonl", "provenance.json"))]
+    assert state["containers_removed"] == [CONTAINER_ID] and "s4d-r-a1" not in backend.value.containers
+    messages = tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "sync_pending" and not state["unknown"] and not any("unknown" in m for m in messages)
+    backend.backup_ready = True
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "done" and len(backend.removals) == 1 and backend.inspections == ["r"]
+
+
+def test_an_unverified_job_whose_container_vanished_stays_unknown(tmp_path):
+    queued = write_queue(tmp_path, [job()])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited")
+    launch_event(tmp_path)
+    backend.sync_error = remote.RemoteJobError("not verifiable yet")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "sync_pending" and "remote_verified" not in state and not backend.removals
+    backend.value.containers.pop("s4d-r-a1")
+    backend.sync_error = None
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["unknown"] and state["reason"] == "container missing from confirmed snapshot" and not backend.removals
+
+
+def test_completion_targets_need_the_final_attempt_exited_zero_and_verified_in_place(tmp_path):
+    registry = tmp_path / "registry.jsonl"
+    launch_event(tmp_path)
+    assert jobs._cleanup_targets("r", jobs.read_registry(registry)["r"]) == []  # running
+    jobs.record({"event": "remote_exited", "id": "r", "host": "remote", "code": 0, "container_id": CONTAINER_ID}, registry)
+    assert jobs._cleanup_targets("r", jobs.read_registry(registry)["r"]) == []  # compute complete, not yet verified
+    jobs.record({"event": "remote_verified", "id": "r", "host": "remote", "attempt": 1, "files": {}, "checks": {}},
+                registry)
+    state = jobs.read_registry(registry)["r"]
+    assert [target[:4] for target in jobs._cleanup_targets("r", state)] == [(1, "s4d-r-a1", CONTAINER_ID, 0)]
+    for changed in ({"remote_verified": {"attempt": 0}}, {"code": 1}, {"status": "crashed"},
+                    {"verification_purpose": "native_suite"}, {"campaign_eligible": False}, {"host": "local"}):
+        assert jobs._cleanup_targets("r", {**state, **changed}) == [], changed
+
+
+PAUSE = {"event": "checkpoint_paused", "id": "r", "host": "remote", "attempt": 1, "intentional_stop": True,
+         "container": "s4d-r-a1", "container_id": CONTAINER_ID, "checkpoint_step": 10,
+         "checkpoint": "runs/r/checkpoints/step_0000010.pt", "checkpoint_sha256": "0" * 64,
+         "container_exit_code": 143, "reason": "paper_ablation_pause"}
+
+
+@pytest.mark.parametrize("change,targeted", [
+    ({}, True), ({"checkpoint": f"{remote.ROOT}/runs/r/checkpoints/step_0000010.pt"}, True),
+    ({"container_exit_code": None, "container_id": None}, True),  # pause records without them: the launch record
+    ({"container_exit_code": 137}, False), ({"container_id": "e" * 64}, False), ({"checkpoint": None}, False),
+    ({"checkpoint": "runs/other/checkpoints/step_0000010.pt"}, False), ({"intentional_stop": False}, False)])
+def test_paused_attempt_targets_require_a_recorded_intentional_stop_exit_and_checkpoint(tmp_path, change, targeted):
+    registry = tmp_path / "registry.jsonl"
+    launch_event(tmp_path)
+    jobs.record({key: value for key, value in {**PAUSE, **change}.items() if value is not None}, registry)
+    assert jobs._cleanup_targets("r", jobs.read_registry(registry)["r"]) == []  # its exit is not observed yet
+    jobs.record({"event": "exited", "id": "r", "host": "remote", "attempt": 1, "code": 143,
+                 "container_id": CONTAINER_ID}, registry)
+    expected = [(1, "s4d-r-a1", CONTAINER_ID, 143, ("checkpoints/step_0000010.pt", "console.log", "provenance.json"))]
+    assert jobs._cleanup_targets("r", jobs.read_registry(registry)["r"]) == (expected if targeted else [])
+    # the resumed attempt runs in a new container; the paused one stays a target, the running one never is
+    launch_event(tmp_path, attempt=2, container=remote.container_name("r", 2), container_id="f" * 64)
+    assert jobs._cleanup_targets("r", jobs.read_registry(registry)["r"]) == (expected if targeted else [])
+
+
+def test_paused_attempt_container_is_removed_once_by_the_scheduler(tmp_path):
+    queued = write_queue(tmp_path, [job()], hold=True)  # admission held: no resume inside this test
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path)
+    backend.value.containers["s4d-r-a1"] = inspected(status="exited", code=143)
+    jobs.record(PAUSE, tmp_path / "registry.jsonl")
+    tick(tmp_path, queued, backend)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert state["status"] == "crashed" and state["failures"] == 0 and not backend.launches
+    assert backend.removals == [("r", 1, "s4d-r-a1", CONTAINER_ID, 143,
+                                 ("checkpoints/step_0000010.pt", "console.log", "provenance.json"))]
+    assert state["containers_removed"] == [CONTAINER_ID]
+    tick(tmp_path, queued, backend)
+    assert len(backend.removals) == 1
+
+
+def test_backend_removal_is_deferred_while_a_result_sync_of_the_run_holds_its_lock(tmp_path):
+    """The archive files (containers/*.docker.log, *.inspect.json) match the essential sync's *.log / *.json: removal
+    takes that sync's per-run lock without blocking, so it never changes a manifest mid-sync nor stalls the tick."""
+    import fcntl
+
+    class Client:
+        root, state_dir = remote.ROOT, tmp_path
+
+        def __init__(self):
+            self.commands = []
+
+        def ssh(self, command, **kwargs):
+            self.commands.append(command)
+            payload = {"removed": True, "log_sha256": "0" * 64, "inspect_sha256": "1" * 64}
+            return subprocess.CompletedProcess([], 0, json.dumps(payload) + "\n", "")
+
+    client = Client()
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", client)
+    with (tmp_path / "results-r.lock").open("a") as held:  # e.g. scripts/sync_media.py's final essential copy of r
+        fcntl.flock(held, fcntl.LOCK_EX)
+        with pytest.raises(remote.RemoteJobError, match="in progress"):
+            backend.remove_container("r", 1, "s4d-r-a1", CONTAINER_ID, 0, ["exit.json"])
+        assert not client.commands
+        assert backend.remove_container("s", 1, "s4d-s-a1", CONTAINER_ID, 0, ["exit.json"])["removed"] is True
+    assert backend.remove_container("r", 1, "s4d-r-a1", CONTAINER_ID, 0, ["exit.json"])["removed"] is True
+    assert len(client.commands) == 2
 
 
 def test_scheduler_downloads_nothing_and_cross_host_dependents_wait_for_the_backup(tmp_path, monkeypatch):

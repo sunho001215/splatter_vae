@@ -236,7 +236,8 @@ for job in remote:
         out = client.checked_ssh(
             f'df -B1 --output=avail {shlex.quote(ROOT)} | tail -1',
             wait=False, timeout=600, idempotent=True).stdout.strip()
-        record.update(remote_replay='retained', remote_free_bytes=int(out))
+        # replay: lifecycle cleanup (user 2026-10-28; scripts/cleanup_replay.py), never deleted by this driver
+        record.update(remote_replay='lifecycle-cleanup', remote_free_bytes=int(out))
     else:
         # NUL runs left by an unclean remote shutdown (maintenance reboot) precede the record written after resume
         rows = [json.loads(line.strip('\x00')) for line in (run / 'metrics.jsonl').read_text().splitlines()
@@ -275,7 +276,7 @@ for job in remote:
     (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
     if 'remote_free_bytes' in record and kind(jid) != 'pool_rl':  # pool RL closeouts: no per-run PROGRESS rows
         row = (f"| {stamp.strftime('%Y-%m-%d %H:%M')} | remote {record['remote_free_bytes'] / 1e12:.2f} TB ({jid} "
-               f"completed with final eval at {record['final_steps'] // 1000}k; remote replay retained) |\n")
+               f"completed with final eval at {record['final_steps'] // 1000}k; remote replay: lifecycle cleanup) |\n")
         progress = REPO / 'docs/PROGRESS.md'
         text = progress.read_text()
         anchor = text.index('\n## Next actions')

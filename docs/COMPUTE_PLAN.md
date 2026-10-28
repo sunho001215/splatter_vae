@@ -252,7 +252,8 @@ Other baseline RL ordering remains unchanged; item 2 and its RL proxies still wa
 ## Disk
 
 CNN replay: one 128x128 frame per state, 1M states -> 46 GB per run (sparse until written); deleted once the run is
-complete and its final evaluation written. Frozen-encoder replay: <1 GB RAM snapshot per run. Snapshots: ~20 MB (CNN)
+complete and its final policy verified loadable (lifecycle cleanup, user 2026-10-28; pending evaluation does not delay
+it). Frozen-encoder replay: <1 GB RAM snapshot per run. Snapshots: ~20 MB (CNN)
 / ~4 MB (frozen) every 10k steps. New local runs are not launched below 300 GB free.
 
 ## Second host (authorized 2026-10-10; admission remains held until verification)
@@ -282,7 +283,7 @@ shared-tenant headroom and the launch ramp.
 No remote throughput has been measured yet; local timings must not be relabeled as remote evidence. Keep the two
 1M-step CNN runs/GPU ceiling until measured remote contention justifies a scheduling change. Reserve 46 GB replay
 per admitted CNN run, plus snapshots and data/image transfer storage; 8 concurrent CNN runs reserve at least 368 GB
-before other growth. Completed literal replay directories alone are eligible for cleanup after final evaluation.
+before other growth. Only completed runs' allowlisted replay files are eligible for cleanup (scripts/cleanup_replay.py).
 
 Remote image native payloads come from audited installed production binaries, not cached wheels with different
 hashes. Driver versions differ (main 580.178.04, remote 580.95.05); CUDA/EGL equivalence is a required gate. See

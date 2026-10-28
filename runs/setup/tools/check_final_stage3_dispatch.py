@@ -110,7 +110,8 @@ checked('active evaluators first and seeds interleaved across methods',
         [evaluator['id'], trainer['id'], other['id']])
 checked('GPU load ceiling never relaxed for final jobs',
         admit([trainer], [2.4, 2.4, 2.4, 2.4]) == [])
-checked('automatic replay deletion removed', 'rm -rf' not in source and "remote_replay='retained'" in source)
+checked('no replay deletion inside the driver (lifecycle cleanup is scripts/cleanup_replay.py, user 2026-10-28)',
+        'rm -rf' not in source and "remote_replay='lifecycle-cleanup'" in source)
 checked('parent script compiles without executing it', bool(compile(source, str(path), 'exec')))
 print(json.dumps({'passed': len(checks), 'checks': checks, 'script_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                   'scope': 'scheduler/configuration fixtures only; no native component substitution or new upstream execution',
