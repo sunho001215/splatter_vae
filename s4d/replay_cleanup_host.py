@@ -180,8 +180,10 @@ def _public(item):
 
 def _receipts(replay):
     path = os.path.join(replay, RECEIPTS)
-    if os.path.islink(path) or not os.path.isfile(path) or os.path.getsize(path) > SMALL_LIMIT:
+    if os.path.islink(path) or not os.path.isfile(path):
         return []
+    if os.path.getsize(path) > SMALL_LIMIT:  # never silently drop receipts (an interrupted deletion must be closed)
+        raise Refused(f"receipt journal exceeds {SMALL_LIMIT} bytes; resolve by hand")
     records = []
     with open(path) as stream:
         for line in stream:

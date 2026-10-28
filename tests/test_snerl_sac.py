@@ -62,6 +62,7 @@ def test_frozen_feature_head_shapes_logits_and_proprio(mode):
     assert a.shape == c.shape == (5, 193) and actor_enc.feature_dim == 193
     assert torch.equal(a[:, -4:], proprio) and a[:, :-4].abs().max() <= 1.0  # tanh for the actor
     assert actor_enc.fc.out_features == (63 if mode == "frame" else 189)
+    assert actor_enc.mlp1.in_features == actor_enc.mlp2.out_features == actor_enc.ln.normalized_shape[0] == 63
 
 
 def test_pixel_encoder_accepts_128_pixels_and_curl_sees_pixels_only():

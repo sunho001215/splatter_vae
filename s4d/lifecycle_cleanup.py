@@ -127,8 +127,10 @@ def _strings(value) -> Iterator[str]:
 
 def _blocking(suffix: str, consumer: bool) -> bool:
     parts = [part for part in suffix.split("/") if part]
+    if ".." in parts or "." in parts:  # unresolved traversal or aliases (snapshots/../replay) are never harmless
+        return True
     top = parts[0] if parts else ""
-    return top in TRAINING_STATE or top in {"..", "."} or (top == "" and not consumer)
+    return top in TRAINING_STATE or (top == "" and not consumer)
 
 
 def continuations(run_id: str, rows: list[dict]) -> list[str]:
@@ -281,8 +283,11 @@ def local_writers(run_dir: Path, run_id: str, session: int | None = None, proc: 
                     continue
             targets += [line.split(None, 5)[5] for line in (base / "maps").read_text().splitlines()
                         if len(line.split(None, 5)) == 6]
-        except OSError:
-            pass
+        except FileNotFoundError:
+            continue  # exited meanwhile
+        except OSError as exc:  # fail closed: a process that cannot be inspected may be a writer
+            found.append(f"{label} cannot be inspected ({type(exc).__name__})")
+            continue
         if any(target == replay or target.startswith(replay + "/") for target in targets):
             found.append(f"{label} holds a replay file open or mapped")
             continue

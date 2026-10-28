@@ -478,3 +478,15 @@ def test_cli_local_pass_dry_run_writes_nothing_then_deletes_ledgers_once_and_is_
     assert entry["evidence"]["host"]["snapshot"]["torch_weights_only_load"] is True
     out = run()
     assert out[0]["status"] == "noop" and out[-1].get("ledger_entries", 0) == 0 and len(ledger.read_text().splitlines()) == 1
+
+
+def test_traversal_and_noncanonical_references_are_never_harmless():
+    from s4d import lifecycle_cleanup as lifecycle
+    from scripts import jobs
+
+    assert lifecycle._blocking("/snapshots/../replay/atom.memmap", consumer=True)
+    assert lifecycle._blocking("/./replay", consumer=True)
+    assert not lifecycle._blocking("/snapshots/step_0001000.pt", consumer=True)
+    assert jobs._run_relative("r1", "runs/r1/checkpoints/step_0170000.pt") == "checkpoints/step_0170000.pt"
+    for bad in ("runs/r1//etc/passwd", "runs/r1/./checkpoints/x.pt", "runs/r1/checkpoints/../../r2/x.pt"):
+        assert jobs._run_relative("r1", bad) is None

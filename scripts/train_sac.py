@@ -111,13 +111,17 @@ def main() -> None:
         atom_dtype, frame_stack = np.uint8, int(cfg["env"]["frame_stack"])
         stored_proprio = env.proprio_dim + (views * 16 if sac.family == "nerf" else 0)
     disk = sac.family != "frozen"
+    # Our replay counts states, the terminal state of every episode included; upstream counts transitions. Size the
+    # state window so that replay_size transitions stay sampleable (125-step episodes: 126 states per 125 transitions).
+    horizon = int(cfg["env"]["max_episode_steps"]) // int(cfg["env"]["action_repeat"])
+    states = -(-int(tcfg["replay_size"]) * (horizon + 1) // horizon)
     replay = Replay(
         run_dir / "replay" if disk else None,
         atom_shape,
         atom_dtype,
         stored_proprio,
         env.action_dim,
-        tcfg["replay_size"],
+        states,
         frame_stack,
         1,
         mode="r+" if resume and disk else "w+",

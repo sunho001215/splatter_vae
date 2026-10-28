@@ -95,8 +95,20 @@ def run(args) -> int:
     recorded = lifecycle.recorded_receipts(args.ledger)
     totals = Counter()
     reports = []
+    def still_eligible(batch):
+        """Re-plan from the current queue, registry and pauses right before deleting: a run whose state changed since
+        the plan (reset, resume, new continuation, pause) is left alone."""
+        fresh = {decision.run_id: decision for decision in lifecycle.plan(
+            jobs.load_queue(args.queue).get("jobs", []), jobs.read_registry(args.registry),
+            lifecycle.load_pauses(args.pauses), args.host, args.runs.resolve())}
+        return [decision for decision in batch if fresh.get(decision.run_id) is not None
+                and fresh[decision.run_id].eligible and fresh[decision.run_id].spec == decision.spec]
+
     if args.host == "local":
         for decision in eligible:
+            if not args.dry_run and not still_eligible([decision]):
+                print(json.dumps({"run": decision.run_id, "status": "skipped", "reason": "state changed"}), flush=True)
+                continue
             report = host_check.clean_run(
                 str(args.runs), decision.spec, dry_run=args.dry_run,
                 writers=lambda run_id, run_dir, session=decision.session: lifecycle.local_writers(
@@ -107,6 +119,10 @@ def run(args) -> int:
         client = RemoteClient(repo=REPO)
         for start in range(0, len(eligible), args.batch):
             batch = eligible[start:start + args.batch]
+            if not args.dry_run:
+                batch = still_eligible(batch)
+                if not batch:
+                    continue
             specs = [decision.spec for decision in batch]
             command = lifecycle.remote_command(client.root, specs, args.dry_run)
             try:

@@ -731,13 +731,13 @@ def _reconcile_remote(backend, snapshot, state: dict, registry: Path, runs: Path
 
 
 def _retired_after_verification(current: dict) -> bool:
-    """A compute-complete campaign job (sync_pending after exit 0) whose final attempt was verified in place and whose
-    recorded container was then removed (or confirmed absent) by the cleanup (2026-10-28)."""
+    """A compute-complete campaign job (sync_pending after exit 0) whose final attempt was verified in place: its
+    outputs are in persistent remote storage, so a container missing from a confirmed snapshot (removed by the cleanup,
+    also when the removal's reply was lost, or confirmed absent) does not make it unknown (2026-10-28)."""
     return (current.get("status") == "sync_pending" and current.get("code") == 0
             and current.get("verification_purpose") is None and current.get("campaign_eligible") is not False
             and (current.get("remote_verified") or {}).get("attempt") == current["attempts"]
-            and bool(current.get("container_id"))
-            and current["container_id"] in {*current.get("containers_removed", []), *current.get("containers_absent", [])})
+            and bool(current.get("container_id")))
 
 
 def _complete_from_backup(backend, job_id: str, current: dict, registry: Path, runs: Path, messages: list[str]) -> None:
@@ -767,7 +767,9 @@ def _run_relative(job_id: str, path) -> str | None:
     for prefix in (f"runs/{job_id}/", f"{REMOTE_ROOT}/runs/{job_id}/"):
         if isinstance(path, str) and path.startswith(prefix):
             relative = path[len(prefix):]
-            if re.fullmatch(r"[A-Za-z0-9._/-]{1,255}", relative) and ".." not in relative:
+            parts = relative.split("/")
+            if (re.fullmatch(r"[A-Za-z0-9._/-]{1,255}", relative)
+                    and all(part not in {"", ".", ".."} for part in parts)):  # canonical, relative, no traversal
                 return relative
     return None
 

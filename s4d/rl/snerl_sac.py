@@ -20,8 +20,9 @@ Thin encoder adapters, registered for this process before the agent is built (up
 - ``frozen`` (csw4 and the other frozen exports): the frozen backbone runs once per environment step (its feature is
   cached in replay, exactly as upstream would recompute it: frozen, deterministic, no augmentation for non-pixel
   encoders); a trainable head with MeanEncoder's layer sequence (fc -> mlp1 -> mlp2 -> LayerNorm, no nonlinearity in
-  between; tanh for the actor, logits for the critic) maps it to the same 63 per frame (per-frame features) or 63 x 3
-  (one feature for the 3-frame history), like the 63-per-frame SNeRL and pixel encoders.
+  between; tanh for the actor, logits for the critic) with MeanEncoder's 63-wide shared layers: per-frame features are
+  projected per frame, a feature of the whole 3-frame history is projected to three 63-d blocks; mlp1 / mlp2 / LayerNorm
+  are shared over the 3 blocks, as over the frames of the SNeRL and pixel encoders (Codex review 2026-10-28).
 All adapters append the shared proprioception after the upstream representation (upstream has none; our protocol gives
 every method the same 4-d hand state). CURL (pixel) encodes pixels only, so its bilinear W keeps upstream's size.
 """
@@ -175,11 +176,12 @@ def _register(up: dict[str, types.ModuleType]) -> None:
             super().__init__()
             mode, dim = _CONTEXT["feature"]
             self.per_frame, self.frame_stack, self.output_logits = mode == "frame", int(frame_stack), output_logits
-            width = int(feature_dim / frame_stack) if self.per_frame else int(feature_dim)
-            self.fc = nn.Linear(int(dim), width)
+            width = int(feature_dim / frame_stack)  # 63, as MeanEncoder / PixelEncoder
+            self.fc = nn.Linear(int(dim), width if self.per_frame else width * self.frame_stack)
             self.mlp1 = nn.Linear(width, width)
             self.mlp2 = nn.Linear(width, width)
             self.ln = nn.LayerNorm(width)
+            self.width = width
             self.representation_dim = int(feature_dim)
             self.feature_dim = self.representation_dim + int(_CONTEXT["proprio_dim"])
 
@@ -187,7 +189,8 @@ def _register(up: dict[str, types.ModuleType]) -> None:
             x = obs.x.float()  # cached fp16 features; the backbone is frozen, so `detach` has nothing to cut
             if self.per_frame:
                 x = x.reshape(len(obs) * self.frame_stack, -1)
-            h = self.ln(self.mlp2(self.mlp1(self.fc(x)))).reshape(len(obs), -1)
+            h = self.fc(x).reshape(len(obs) * self.frame_stack, self.width)  # one 63-d block per frame (or history third)
+            h = self.ln(self.mlp2(self.mlp1(h))).reshape(len(obs), -1)
             return torch.cat([h if self.output_logits else torch.tanh(h), obs.proprio], dim=-1)
 
         def copy_conv_weights_from(self, source):
