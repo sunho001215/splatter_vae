@@ -412,3 +412,16 @@ def test_invalid_combinations_are_rejected():
     with pytest.raises(ValueError, match="per-frame"):
         forward_losses(None, {}, cfg, 0)
     assert synthetic_settings({}, future=True, hardneg=True) == {"source": "pointcloud"}  # the reference reads nothing
+
+
+def test_legacy_self_render_loss_resolves_alongside_the_replacement_source_and_is_guarded_in_training():
+    import pytest
+    from s4d.config import load_config
+    from s4d.train import loop
+
+    files = ["configs/metaworld/base.yaml", "configs/metaworld/tasks/hammer.yaml",
+             "configs/metaworld/variants/chamfer_lean.yaml", "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+             "configs/metaworld/variants/enc_cs.yaml", "configs/metaworld/variants/enc_w4.yaml",
+             "configs/metaworld/variants/selfrender_replace_v2.yaml"]
+    cfg = load_config([loop.REPO / f if hasattr(loop, "REPO") else f for f in files], ["loss.self_render=0.5"])
+    assert cfg["loss"]["self_render"] == 0.5 and cfg["aug"]["synth_source"] == "gaussian_self_render"

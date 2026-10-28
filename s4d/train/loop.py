@@ -322,6 +322,9 @@ def forward_losses(
     if hardneg != (training and "hardneg_images" in batch):
         raise ValueError("data.hardneg requires hard-negative training batches (and only it provides them)")
     synth = synthetic_settings(aug, future=future, hardneg=bool(get(cfg, "data.hardneg", False)))
+    if synth["source"] == "gaussian_self_render" and float(get(cfg, "loss.self_render", 0.0) or 0.0) > 0:
+        # the legacy cosine term would add self-render gradients outside the registered warm-up / ramp (Codex review)
+        raise ValueError("loss.self_render is not combined with aug.synth_source gaussian_self_render")
     if source is None:
         source = torch.randint(V, (B,), device=device)
     bf16 = bool(get(cfg, "train.bf16", True))
