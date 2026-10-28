@@ -5701,3 +5701,61 @@ capacity then goes to their evaluators, the remaining frozen SAC tasks and the P
 
 The paper section is marked superseded and kept as history; the contents list has a new entry. Only the changed files
 were published (26, 46 MB).
+
+## 2026-10-29 00:00 — User directive: visible held-out cameras, stronger moving cameras, Gaussian self-render replacement, FlashSAC (no image augmentation)
+
+**Directive (user, ~00:00 KST), additive to 2026-10-28.** Running work is not disrupted; the ablations stay paused;
+fetching and executing pinned FlashSAC code is authorised. The new work:
+1. **Visible held-out suite.** A new versioned suite of about four unseen static views that keep the manipulation
+   observable. Selection uses only method-independent visibility criteria (simulator geometry, segmentation,
+   expert/random trajectories, arm-occlusion diagnostics) and is frozen before any policy evaluation. Contact sheets
+   and preview videos are published. The original eval0..3 are kept as a separately labelled occlusion-heavy stress
+   test.
+2. **Stronger moving paths.** 2× (lateral ±0.24 m; circular azimuth ±20°, elevation ±12°) and 3× (±0.36 m; ±30°,
+   ±18°) at the 72-pose period. These test range and speed together, and the evaluation reports them as such.
+3. **Re-evaluation.** Completed policies are re-evaluated on the new suites without retraining: csw4 and CNN first.
+4. **Self-render variant.** A Gaussian self-render REPLACEMENT augmentation variant of csw4. Decoded-Gaussian renders
+   from 2 near cameras at the 3 reconstruction times are re-encoded as same-scene positives, with the producer
+   detached. The point-cloud synthetic-view branch and its reconstruction targets are disabled; Chamfer stays. It is
+   labelled an augmentation-bundle replacement.
+5. **Self-render comparison.** Pretrain it on hammer, pick-place and bin-picking (200k, pretraining seed 0) and compare
+   with csw4 under FlashSAC, seeds 2000–2002.
+6. **FlashSAC port.** Official FlashSAC (github.com/Holiday-Robot/FlashSAC), pinned, with the smallest adapters and NO
+   stochastic RL image augmentation. Our env and protocol are used, and raw returns are reported.
+7. **FlashSAC registration.** 12 tasks (8 existing + drawer-open, window-open, soccer, sweep-into) × {csw4, CNN, SinCro,
+   ReViWo, DynaMo, SNeRL, 3D-MVP A, 3D-MVP B} × seeds 2000–2002 at 1M steps. Missing new-task baseline exports are
+   registered explicitly.
+8. **Scheduling.** Cost is measured before concurrency is set, without oversubscribing the GPUs; same limits; brief
+   Codex review.
+9. **Artifact.** Updated in place, with camera definitions recorded before any policy result.
+
+**Plan (00:05).** Three isolated worktrees, run in parallel by delegated agents and reviewed before release:
+- camera suite and evaluator groups (`cameras-v2`);
+- FlashSAC port (`flashsac`);
+- self-render replacement variant (`selfrender`).
+
+I integrate, register and schedule. The camera selection is frozen and logged here before any re-evaluation is
+launched.
+
+**00:00–00:30 setup for the 2026-10-29 directive.**
+- **Delegated agents** (each in its own worktree, reviewed before release):
+  - camera suite v2 and the stronger moving paths, plus evaluator groups (`cameras-v2-20261029`);
+  - FlashSAC port (`flashsac-20261029`);
+  - Gaussian self-render replacement (`selfrender-20261029`).
+- **New-task baseline configs** (`integ-20261029`, commit 5967b28): SinCro, ReViWo, DynaMo, SNeRL and 3D-MVP for
+  drawer-open, window-open, soccer and sweep-into. Each is the door-open file with the task's data paths; nothing else
+  changes.
+- **Registration tool** `runs/setup/tools/register_newtask_baselines_20261029.py`: 20 rows `ds-pre-<baseline>-<task>`,
+  each equal to the door-open row apart from task and name, priority 3. It publishes with the next release.
+- **Measured baseline pretraining cost** on the original tasks: 3D-MVP ~3 h, DynaMo ~5 h, ReViWo ~6 h, SinCro ~21 h,
+  SNeRL ~103 h. For four new tasks that is about 530 GPU-h, dominated by SNeRL.
+- **Scheduling by measured cost** (`remote_campaign_driver.py`, backup `*.before-measured-load-20261029.py`). These
+  rows now count 1.0 GPU load unit instead of 0.5:
+  - pixel SAC trainers (CNN, SNeRL);
+  - PPO CNN;
+  - every Dreamer arm;
+  - FlashSAC CNN;
+  - new-task baseline pretraining.
+
+  Measured on 2026-10-28: 7 pixel trainers per GPU ran at 4–5 agent steps/s each, at 99 % utilisation and the power
+  cap. Running jobs keep running, and the 4.0 limit then prevents further oversubscription.
