@@ -19,7 +19,8 @@ Imported UNCHANGED (sha256-pinned in tests/test_flashsac.py) from the pinned che
 ``flash_rl/types.py`` imports ``jax.numpy`` for a type alias only and ``flash_rl/agents/__init__.py`` imports omegaconf
 for ``create_agent`` (not used); a missing package is replaced by an inert stub module during that import only. The
 module-level ``@torch.compile`` helpers of upstream (zeta sampling, min-Q selection, categorical target, reward
-statistics) stay compiled as upstream (inductor, one compile thread); ``agent.use_compile`` (upstream: also compile the
+statistics) stay compiled as upstream (inductor, one compile thread), except the one-off CPU construction of the
+truncated-zeta CDF table at agent construction, which runs eagerly (no C++ compiler in the pool image); ``agent.use_compile`` (upstream: also compile the
 networks) is a speed switch. Upstream ``train.py`` (hydra, its state-vector environment wrappers incl. the
 ``SawyerXYZEnv`` Meta-World v2 wrapper, tensorboard/wandb logger, in-agent ``TorchUniformBuffer``) is NOT used: the
 loop is ``scripts/train_flashsac.py`` on our ``MetaWorldCameraEnv`` observation protocol, replay and evaluation.
@@ -315,7 +316,12 @@ class FlashSAC:
         self.fcfg = flashsac_config(up, cfg, device)
         observation_space = gymnasium.spaces.Box(-np.inf, np.inf, (obs_dim,), np.float32)
         action_space = gymnasium.spaces.Box(-1.0, 1.0, (int(action_dim),), np.float32)
-        self.agent = up["agent"].FlashSACAgent(observation_space, action_space, {}, self.fcfg)
+        # Construction runs eagerly: its one compiled helper, the truncated-zeta CDF table, is built on the CPU, and
+        # inductor's CPU backend needs a C++ compiler, which the campaign's pool image lacks (it has gcc for Triton).
+        # Eager gives the same table, which is moved to the device. Every helper upstream calls during acting and
+        # updates runs on CUDA tensors and stays compiled (Triton).
+        with torch.compiler.set_stance("force_eager"):
+            self.agent = up["agent"].FlashSACAgent(observation_space, action_space, {}, self.fcfg)
         self.feature_encoder = FeatureEncoder(backbone, in_dim, self.feature_dim).to(device)
         critic = self.agent._critic
         critic.network = EncodedCritic(self.feature_encoder, critic.network, self.feature_dim)

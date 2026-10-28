@@ -477,6 +477,22 @@ def run(script: str, *args: str) -> subprocess.CompletedProcess:
     return result
 
 
+def test_agent_construction_needs_no_cpp_compiler(tmp_path, monkeypatch):
+    """The pool image has gcc (Triton) but no C++ compiler for inductor's CPU backend: constructing the agent must not
+    compile on the CPU (upstream's truncated-zeta CDF table is built eagerly, with the same values)."""
+    import torch._dynamo
+    import torch._inductor.config as inductor_config
+
+    monkeypatch.setattr(inductor_config.cpp, "cxx", ("definitely-not-a-cxx-compiler",))
+    torch._dynamo.reset()
+    _, agent = make_agent("frame", tmp_path, monkeypatch)
+    cfg = agent.fcfg
+    ns = torch.arange(1, cfg.actor_noise_zeta_max + 1, dtype=torch.float32)
+    pmf = ns ** (-cfg.actor_noise_zeta_mu)
+    assert torch.equal(agent.agent._zeta_cdf.cpu(), torch.cumsum(pmf / pmf.sum(), 0))
+    torch._dynamo.reset()
+
+
 def _two_episode_replay(end_windows: bool):
     """Episode 0: 5 transitions (rewards 1..5), finished; episode 1: 2 transitions, in progress. n = 3."""
     from s4d.rl.replay import Replay
