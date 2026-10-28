@@ -5831,3 +5831,20 @@ augmentation-bundle replacement, not an isolated test of the image generator.
 - **Open risks:**
   - the csw4 Gaussians drop the small pick-place object, so rendered positives may teach invariance to it;
   - the real–rendered cosine is ≈ 0.57 at 20k, so a loss jump is possible when the ramp starts.
+
+## 2026-10-29 02:05 — Camera suite v2: selection rule amended twice before outcomes (visibility-only)
+
+The camera-suite selection is method-independent: visibility only, with no policy, reconstruction or representation
+numbers. Its pre-registered rule (cameras-v2 commit 74372da) required each candidate to match the worst training camera
+on about 180 per-task criteria.
+- **Original rule:** 0 of 138 admissible candidates qualified (admissible: ≥ 25° from every training camera). Its
+  fallback would have needed task-specific exceptions on 6 of 12 tasks.
+- **Amendment A1** (commit 92a670d, registered before its outcome was computed): per-task score floors of 0.62–0.92.
+  Again 0 of 138: the floors are unattainable ≥ 25° away from the training rig.
+- **Amendment A2** (registered before its outcome was computed): choose the 4 admissible cameras (≥ 25° from every
+  training camera, ≥ 30° apart pairwise) that maximise the minimum worst-task visibility score. A task-specific
+  exception is allowed only where a chosen camera falls below the training rig's own global worst case (object /
+  gripper / goal hidden-frame share and score).
+
+The original rule, A1, A2 and all three outcomes are recorded in the suite's definition file. The suite is frozen before
+any policy is evaluated on it.
