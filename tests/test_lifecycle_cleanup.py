@@ -456,6 +456,12 @@ def test_cli_local_pass_dry_run_writes_nothing_then_deletes_ledgers_once_and_is_
     module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli", REPO / "scripts/cleanup_replay.py")
     cli = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(cli)
+    # the host's process table is not part of this test (other jobs, or an unprivileged container, would vary it): the
+    # writer scan reads an empty process directory; its /proc semantics are covered by the local_writers tests
+    (tmp_path / "proc").mkdir()
+    scan = cli.lifecycle.local_writers
+    monkeypatch.setattr(cli.lifecycle, "local_writers",
+                        lambda run_dir, run_id, session=None: scan(run_dir, run_id, session, proc=tmp_path / "proc"))
     argv = ["cleanup_replay.py", "--host", "local", "--queue", str(queue), "--registry", str(registry), "--runs", str(runs),
             "--pauses", str(tmp_path / "absent.json"), "--ledger", str(ledger)]
 
