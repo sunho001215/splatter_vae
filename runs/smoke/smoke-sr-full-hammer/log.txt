@@ -1,0 +1,11 @@
+[2026-10-29 00:28:16] GPU mapping: [{"index": 0, "uuid": "MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd", "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"}]; world size 1
+[2026-10-29 00:28:16] torch 2.10.0+cu129; config ['configs/metaworld/base.yaml', 'configs/metaworld/tasks/hammer.yaml', 'configs/metaworld/variants/chamfer_lean.yaml', 'configs/metaworld/variants/chamfer_lean_randmask.yaml', 'configs/metaworld/variants/enc_cs.yaml', 'configs/metaworld/variants/enc_w4.yaml', 'configs/metaworld/variants/selfrender_replace_v2.yaml'] overrides ['train.steps=300', 'train.log_every=50', 'train.seed=0', 'train.eval_at_start=false', 'wandb.enabled=false', 'aug.synth_ramp_steps=[0,150]']
+[2026-10-29 00:28:28] step 1 loss 3.8005 psnr 14.67 motion 0.0727 nce 2.976 10.799s/it
+[2026-10-29 00:28:54] step 50 loss 3.7634 psnr 14.68 motion 0.0556 nce 2.960 0.524s/it
+[2026-10-29 00:29:20] step 100 loss 3.6838 psnr 14.81 motion 0.0664 nce 2.916 0.527s/it
+[2026-10-29 00:29:46] step 150 loss 3.6381 psnr 15.25 motion 0.0529 nce 2.900 0.517s/it
+[2026-10-29 00:30:12] step 200 loss 3.5966 psnr 16.09 motion 0.0623 nce 2.899 0.513s/it
+[2026-10-29 00:30:37] step 250 loss 3.5498 psnr 16.30 motion 0.0642 nce 2.898 0.514s/it
+[2026-10-29 00:31:03] step 300 loss 3.4969 psnr 16.50 motion 0.0517 nce 2.898 0.516s/it
+[2026-10-29 00:31:27] eval step 300 stride 2: psnr 16.40 heldout 14.58 rel_epe02 0.976 retrieval nan
+[2026-10-29 00:31:27] eval step 300 stride 6: psnr 16.40 heldout 14.58 rel_epe02 0.990 retrieval nan

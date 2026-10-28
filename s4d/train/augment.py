@@ -5,6 +5,9 @@
 * ``jitter_cameras`` + ``synthesize_views`` (2b): the training cameras' GT depth and colours are fused and splatted into
   cameras jittered within the RL trajectory ranges; holes become masked tokens through ``coverage_visible``.
 * the same jittered cameras serve the self-rendered view consistency term (2c, in ``loop.forward_losses``).
+* ``load_viewpoint_domain`` + ``domain_cameras`` (variant selfrender_replace_v2, 2026-10-29): cameras drawn uniformly over
+  the frozen training-supported viewpoint domain (configs/metaworld/selfrender_domain_v1.yaml, scripts/selfrender_domain.py)
+  for the decoded-Gaussian self-rendered synthetic views.
 
 Nothing here runs at evaluation or RL time.
 """
@@ -12,15 +15,19 @@ Nothing here runs at evaluation or RL time.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+import yaml
 
-from s4d.data.metaworld.cameras import TRAIN_CAMERAS, offsets_to_orbit, orbit_rig, sample_offsets
+from s4d.data.metaworld.cameras import LOOKAT, TRAIN_CAMERAS, offsets_to_orbit, orbit_rig, sample_offsets
 from s4d.diag.heldout import fused_training_clouds, splat_batched
 
 PATCH_COVERAGE = 0.9  # a synthetic-view patch is a token only if this fraction of its pixels is covered in every frame
+REPO = Path(__file__).resolve().parents[2]
+_DOMAINS: dict[str, dict] = {}
 
 
 def random_resized_crop(
@@ -96,6 +103,55 @@ def jitter_cameras(
         "K": K[:, None].expand(batch_size, views, 3, 3).contiguous(),
         "w2c": torch.as_tensor(rig["w2c"], **like).view(batch_size, views, 4, 4),
         "c2w": torch.as_tensor(rig["c2w"], **like).view(batch_size, views, 4, 4),
+    }
+
+
+def load_viewpoint_domain(path: str | Path) -> dict:
+    """The frozen training-supported viewpoint domain (a YAML written by scripts/selfrender_domain.py; a relative path
+    is resolved against the repository root). Returns the cell centres (n,2) (azimuth, MuJoCo elevation) in degrees,
+    the half cell size, the orbit distance and the per-cell sampling probabilities (proportional to solid angle)."""
+    p = Path(path)
+    p = (p if p.is_absolute() else REPO / p).resolve()
+    key = str(p)
+    if key not in _DOMAINS:
+        doc = yaml.safe_load(p.read_text())
+        if not str(doc.get("version", "")).startswith("selfrender_domain_"):
+            raise ValueError(f"{p} is not a self-render viewpoint domain")
+        if not np.allclose(doc["rig"]["lookat"], LOOKAT):
+            raise ValueError("the viewpoint domain must use the rig look-at point")
+        cells = np.asarray([c[:2] for c in doc["cells"]], dtype=np.float64)
+        half = float(doc["cell_deg"]) / 2.0
+        if not len(cells) or np.any(cells[:, 1] - half < -90.0) or np.any(cells[:, 1] + half > 90.0):
+            raise ValueError("domain cells must lie within elevation [-90, 90]")
+        area = np.sin(np.radians(cells[:, 1] + half)) - np.sin(np.radians(cells[:, 1] - half))
+        _DOMAINS[key] = {"version": doc["version"], "cells": cells, "half": half,
+                         "distance": float(doc["rig"]["distance"]), "probs": area / area.sum()}
+    return _DOMAINS[key]
+
+
+def domain_cameras(
+    batch_size: int, views: int, K: torch.Tensor, height: int, width: int, domain: dict
+) -> dict[str, torch.Tensor]:
+    """Cameras uniform on the sphere over the viewpoint ``domain`` (``load_viewpoint_domain``): a cell with probability
+    proportional to its solid angle, then azimuth uniform and sin(elevation) uniform within the cell, at the domain's
+    orbit distance, looking at LOOKAT (torch's default generator). One camera per (sample, view): the caller renders
+    every timestep from it. K (B,3,3) is reused for every camera; returns K, w2c, c2w (B,views,...) and poses
+    (B,views,3) = (azimuth, elevation, distance)."""
+    n = batch_size * views
+    cell = torch.multinomial(torch.as_tensor(domain["probs"]), n, replacement=True).numpy()
+    u = torch.rand(n, 2, dtype=torch.float64).numpy()
+    centre, half = domain["cells"][cell], domain["half"]
+    azimuth = centre[:, 0] + (2.0 * u[:, 0] - 1.0) * half
+    s_lo, s_hi = np.sin(np.radians(centre[:, 1] - half)), np.sin(np.radians(centre[:, 1] + half))
+    elevation = np.degrees(np.arcsin(np.clip(s_lo + u[:, 1] * (s_hi - s_lo), -1.0, 1.0)))
+    poses = np.stack((azimuth, elevation, np.full(n, domain["distance"])), 1)
+    rig = orbit_rig([tuple(p) for p in poses], height, width)
+    like = {"device": K.device, "dtype": torch.float32}
+    return {
+        "K": K[:, None].expand(batch_size, views, 3, 3).contiguous(),
+        "w2c": torch.as_tensor(rig["w2c"], **like).view(batch_size, views, 4, 4),
+        "c2w": torch.as_tensor(rig["c2w"], **like).view(batch_size, views, 4, 4),
+        "poses": torch.as_tensor(poses, dtype=torch.float64).view(batch_size, views, 3),
     }
 
 

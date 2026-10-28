@@ -1,0 +1,171 @@
+# PREPARED, NOT REGISTERED (2026-10-29): sr-csw4 pretraining + export rows for variant selfrender_replace_v2 (self-render
+# replacement, warm-up 20k + ramp to 40k, training-supported viewpoints). Each row equals its enc-csw4 row apart from the id,
+# the appended variant file, the run/export paths and the variant name; placement / variant_definition are left to registration.
+- id: sr-csw4-seed0-hammer-200k
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/hammer.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/chamfer_lean_randmask.yaml
+  - configs/metaworld/variants/enc_cs.yaml
+  - configs/metaworld/variants/enc_w4.yaml
+  - configs/metaworld/variants/selfrender_replace_v2.yaml
+  - --name
+  - sr-csw4-seed0-hammer-200k
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 4
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: selfrender_replace_v2
+- id: sr-csw4-export-seed0-hammer-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/sr-csw4-seed0-hammer-200k
+  - --checkpoint
+  - runs/sr-csw4-seed0-hammer-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/sr-csw4-export-seed0-hammer-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 4
+  deps:
+  - sr-csw4-seed0-hammer-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: selfrender_replace_v2
+- id: sr-csw4-seed0-pick-place-200k
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/pick-place.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/chamfer_lean_randmask.yaml
+  - configs/metaworld/variants/enc_cs.yaml
+  - configs/metaworld/variants/enc_w4.yaml
+  - configs/metaworld/variants/selfrender_replace_v2.yaml
+  - --name
+  - sr-csw4-seed0-pick-place-200k
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 4
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: selfrender_replace_v2
+- id: sr-csw4-export-seed0-pick-place-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/sr-csw4-seed0-pick-place-200k
+  - --checkpoint
+  - runs/sr-csw4-seed0-pick-place-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/sr-csw4-export-seed0-pick-place-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 4
+  deps:
+  - sr-csw4-seed0-pick-place-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: selfrender_replace_v2
+- id: sr-csw4-seed0-bin-picking-200k
+  host: remote
+  script: scripts/train.py
+  args:
+  - --config
+  - configs/metaworld/base.yaml
+  - configs/metaworld/tasks/bin-picking.yaml
+  - configs/metaworld/variants/chamfer_lean.yaml
+  - configs/metaworld/variants/chamfer_lean_randmask.yaml
+  - configs/metaworld/variants/enc_cs.yaml
+  - configs/metaworld/variants/enc_w4.yaml
+  - configs/metaworld/variants/selfrender_replace_v2.yaml
+  - --name
+  - sr-csw4-seed0-bin-picking-200k
+  - --output-root
+  - runs
+  - --resume
+  - auto
+  - --set
+  - train.steps=200000
+  - train.seed=0
+  gpu: any
+  mem_gb: 10
+  ram_gb: 13
+  disk_gb: 30
+  priority: 4
+  deps: []
+  max_restarts: 3
+  stage: 5
+  required_results:
+  - completion.json
+  - metrics.jsonl
+  - checkpoints/step_0200000.pt
+  variant: selfrender_replace_v2
+- id: sr-csw4-export-seed0-bin-picking-200k
+  host: local
+  script: scripts/export_encoder.py
+  args:
+  - --run
+  - runs/sr-csw4-seed0-bin-picking-200k
+  - --checkpoint
+  - runs/sr-csw4-seed0-bin-picking-200k/checkpoints/step_0200000.pt
+  - --out
+  - runs/sr-csw4-export-seed0-bin-picking-200k/encoder.pt
+  gpu: any
+  mem_gb: 2
+  ram_gb: 4
+  disk_gb: 1
+  priority: 4
+  deps:
+  - sr-csw4-seed0-bin-picking-200k
+  max_restarts: 1
+  stage: 5
+  required_results:
+  - encoder.pt
+  variant: selfrender_replace_v2

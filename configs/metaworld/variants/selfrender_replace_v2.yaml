@@ -1,0 +1,65 @@
+# Variant selfrender_replace_v2 = "self-render replacement, warm-up 20k + ramp to 40k, training-supported viewpoints"
+# (user requirement 4 of 2026-10-29 with the user amendment of 2026-10-29; a pretraining variant on csw4, not the frozen
+# method). Job config list: base, task, chamfer_lean.yaml, chamfer_lean_randmask.yaml, enc_cs.yaml, enc_w4.yaml, this file.
+# Recorded before any result of this variant.
+#
+# What it is: an AUGMENTATION-BUNDLE REPLACEMENT. csw4's point-cloud synthetic-view bundle (the training cameras' GT
+# depth + RGB fused and splatted into 2 near-jittered cameras, s4d/train/augment.py synthesize_views, used both as
+# InfoNCE/consistency positives AND as RGB/depth render targets on covered pixels, loss "synth_render") is removed as a
+# whole and replaced by decoded-Gaussian self-rendered positives. Because the old synthetic render targets go too, the
+# supervision also changes; the comparison with csw4 does not isolate the image generator.
+#
+# Per training sample (s4d/train/loop.py self_render_positives / selfrender_representation):
+#   1. the real RGB history of the V = 6 training cameras is encoded (75 % random temporal-token masking, unchanged) and
+#      the Gaussian scene is decoded from one random source camera's encoding (the existing forward pass, unchanged);
+#   2. that scene is rendered at the 3 reconstruction times from aug.synth_views = 2 cameras (unchanged count), each
+#      camera fixed over the 3 timestamps, drawn uniformly (equal solid angle) over the frozen training-supported
+#      viewpoint domain configs/metaworld/selfrender_domain_v1.yaml (see below), under torch.no_grad: the rendered RGB
+#      and alpha are constants, so the decoder/Gaussians receive no gradient through the generated images;
+#   3. the rendered RGB history is re-encoded by the same encoder WITH gradient (RGB history only, no action input);
+#      tokens: the point-cloud views' rule with the detached alpha as coverage: a temporal token is eligible when the
+#      mean alpha of its own frame's 16 px patch is >= 0.9 (PATCH_COVERAGE); exactly 48 of 192 tokens are kept (the
+#      75 % scheme), uniformly among eligible tokens.
+#      Insufficient coverage: a view with fewer than 48 eligible tokens is filled up with ineligible (holes / low-alpha)
+#      tokens -- the existing coverage exception of the point-cloud views -- so every view still yields one positive;
+#      logged per step as metric/synth_coverage_exception_rows and metric/synth_kept_ineligible_fraction (with
+#      synth_alpha_mean, synth_token_eligible_fraction). High alpha is not taken as evidence of correct geometry: the
+#      viewpoint support comes from the training observations (domain file), not from the Gaussians.
+#   4. the 2 encodings are same-scene positives in the existing multi-positive InfoNCE and slot consistency (same
+#      weights: invariance 1.0, consistency 0.5, temperature 0.1), alongside the 6 real encodings.
+# Self-render contribution schedule (aug.synth_ramp_steps [20000, 40000]; amendment item 1): weight w = 0 for steps
+#   0-20000, w = (step - 20000) / 20000 for 20000-40000, w = 1 from 40000 to 200000. With L_real = the objective over the
+#   6 real encodings per sample (exactly csw4's form without synthetic views) and L_joint = the same objective over the
+#   6 real + 2 self-rendered encodings (csw4's form with the point-cloud encodings replaced; positives, negatives, anchors
+#   and the mean over all 8 views), InfoNCE and consistency are each
+#       L = L_real + w * (L_joint - L_real),
+#   i.e. the real-view term keeps weight 1 at every step and only the self-render contribution (the change the
+#   generated encodings make) is scaled. At w = 0 nothing is sampled, rendered or encoded: the generated features enter
+#   no logit, positive, negative, denominator or normalisation, and the step equals csw4 without any synthetic view
+#   (tested bit for bit). No point-cloud positives are used at any step. Real-view RGB/SSIM, depth L1, coverage,
+#   Chamfer (point-cloud geometric supervision, kept), M3D, the temporal ramp, real-view InfoNCE/consistency, the
+#   learning-rate schedule and every other setting keep their csw4 schedules.
+# Viewpoint domain (amendment item 2; configs/metaworld/selfrender_domain_v1.yaml, scripts/selfrender_domain.py, full
+#   grid and inspection renders in runs/setup/selfrender-domain-v1/): orbit cameras around the rig look-at
+#   (0, 0.6, 0) at the rig radius 1.0, fovy 45; 5-degree cells (azimuth x MuJoCo elevation) supported by the TRAINING
+#   observations only (training-split episodes of hammer, pick-place, bin-picking, 16 frames each, training cameras
+#   0-5): fused training-depth coverage, fraction of visible surface observed by >= 2 training cameras, robot/object
+#   point visibility and its >= 2-camera support, each >= its minimum over the six training poses; the 4-connected
+#   supported components containing the training poses: 314 cells, elevation -70..-30, 1.414 sr. No evaluation image,
+#   depth, pose set or policy result was used to define it.
+#   Relation to the EXISTING evaluation cameras, computed after freezing (runs/setup/selfrender-domain-v1/
+#   eval_relationship.json): eval2 (az -60, el -55) and eval3 (az 240, el -55) lie INSIDE the domain (unseen poses inside
+#   the training support); eval0 (60, -40) and eval1 (120, -40) lie OUTSIDE (6.2 / 5.0 deg from the nearest cell
+#   centre); the lateral trajectory around train1 is inside in angle for all 72 poses (distance 1.000-1.007 vs the
+#   domain's 1.0), the circular one for 61 of 72 poses (85 %).
+# Exact resolved-config differences vs csw4 (tests/test_selfrender_replace.py):
+#   aug.synth_render: true -> false            aug.synth_source: (pointcloud) -> gaussian_self_render
+#   aug.synth_ramp_steps: (none) -> [20000, 40000]
+#   aug.synth_camera_domain: (near jitter) -> configs/metaworld/selfrender_domain_v1.yaml
+# Unchanged: aug.synth_views 2, encoder (cs + w4), masking (random 0.75), decoder, Gaussian budget, every loss weight,
+# optimiser, 200k steps, data, RL adapter / export (the exported encoder has csw4's architecture).
+aug:
+  synth_source: gaussian_self_render
+  synth_render: false
+  synth_ramp_steps: [20000, 40000]
+  synth_camera_domain: configs/metaworld/selfrender_domain_v1.yaml

@@ -1,0 +1,127 @@
+data:
+  regime: metaworld
+  root: /home/ws/data/metaworld/splatter4d_v1
+  task: hammer
+  train_ratio: 0.96
+  strides:
+  - 2
+  - 4
+  - 6
+  val_strides:
+  - 2
+  - 6
+  episodes: null
+model:
+  encoder:
+    backbone: scratch
+    image_height: 128
+    image_width: 128
+    patch_size: 16
+    width: 256
+    depth: 4
+    heads: 4
+    num_slots: 1
+    slot_dim: 256
+    num_frames: 3
+    mask_ratio: 0.75
+    motion_patch_threshold: 0.05
+    drop_path: 0.1
+    mask_mode: random
+    stem: patch_cnn
+  decoder:
+    dim: 128
+    depth: 2
+    heads: 4
+    motion_max: 0.25
+    scene:
+      parents: 768
+      children: 8
+      offset_scale: 0.15
+      child_radius: 0.06
+      scale_min: 0.001
+      scale_max: 0.08
+    dynamic:
+      parents: 256
+      children: 8
+      offset_scale: 0.4
+      child_radius: 0.04
+      scale_min: 0.0005
+      scale_max: 0.03
+    single_group: false
+  anchor_stats: /home/ws/data/metaworld/splatter4d_v1/workspace_stats/hammer.json
+  single_frame: false
+render:
+  near: 0.05
+  far: 3.0
+loss:
+  rgb: 1.0
+  ssim_weight: 0.2
+  lambda_dyn: 1.0
+  coverage: 0.1
+  depth_l1: 1.0
+  depth_grad: 0.0
+  depth_hard: 0.0
+  depth_align: none
+  depth_align_warmup_steps: 0
+  motion: 5.0
+  motion_huber: 0.01
+  invariance: 1.0
+  consistency: 0.5
+  temperature: 0.1
+  visibility: 0.0
+  ramp_steps: 20000
+  teacher_scale_jitter: null
+  depth_valid_far: true
+  motion_space: gaussian
+  occlusion: 0.0
+  chamfer: 5.0
+  chamfer_points: 4096
+  chamfer_voxel_m: 0.01
+  motion_feature_render: log_steps
+train:
+  steps: 300
+  batch_size: 16
+  lr: 0.0005
+  min_lr: 1.0e-05
+  weight_decay: 0.01
+  warmup_steps: 10000
+  grad_clip: 1.0
+  bf16: true
+  seed: 0
+  num_workers: 6
+  prefetch_factor: 2
+  log_every: 50
+  eval_every: 5000
+  save_every: 10000
+  eval_at_start: false
+eval:
+  max_batches: 8
+  probe_every: 10000
+  probe_batches: 24
+  orbit_center:
+  - 0.0
+  - 0.6
+  - 0.0
+  orbit_distance: 1.0
+  orbit_elevation: -45.0
+wandb:
+  enabled: false
+  project: splatter4d-metaworld
+aug:
+  synth_views: 2
+  synth_render: false
+  synth_source: gaussian_self_render
+  synth_ramp_steps:
+  - 0
+  - 150
+  synth_camera_domain: configs/metaworld/selfrender_domain_v1.yaml
+run:
+  name: smoke-sr-full-hammer
+  gpus:
+  - index: 0
+    uuid: MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd
+    name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb
+  host: local
+  git_commit: 795bec34a9c0212085455288f66fd5860b450f63
+  source_dirty: true
+  config_sha256: fbde5a1fc2e8ea8384a7a0d2724d2fd33d17b273f0e1e8105ebae7f9c81da842
