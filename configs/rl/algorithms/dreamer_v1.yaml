@@ -1,0 +1,43 @@
+# Dreamer v1 pilot (user directive 2026-10-28): dreamer-pytorch (github.com/yusukeurakami/dreamer-pytorch @ b51af83,
+# third_party/dreamer-pytorch, MIT) on the shared reference protocol of configs/rl/base.yaml (environment, cameras,
+# 128-px renders, 3-frame history, action repeat 2, 125 agent steps, proprioception, evaluation). One recipe for every
+# arm (frozen encoders through upstream's symbolic Encoder, the end-to-end CNN through its visual Encoder; see
+# s4d/rl/dreamer_v1.py for the representation interface). Provenance of each value: (a) the executable argparse default
+# of upstream main.py (line given), (c) SNeRL (ICML 2023) Table 3, its Dreamer v1 hyperparameters (it replaced Dreamer's
+# convolutional encoder by SNeRL's feature extractor). Where they differ, (c) is used. Fixed before any result.
+algorithm: dreamer_v1
+agent:
+  embedding_size: 1024            # (a) main.py:53, the visual encoder's output; every arm (Table 3's 63 is SNeRL's
+                                  #     feature size, from which the frozen arms' symbolic Encoder projects)
+  hidden_size: 200                # (a) main.py:55
+  belief_size: 128                # (c) (a: 200, main.py:56)
+  state_size: 30                  # (a) main.py:57 (c)
+  dense_activation_function: elu  # (a) main.py:48
+  cnn_activation_function: relu   # (a) main.py:41 (also the symbolic Encoder's: main.py:203 passes it)
+  action_noise: 0.3               # (a) main.py:59 (c)
+  free_nats: 3                    # (a) main.py:92
+  global_kl_beta: 0               # (a) main.py:91 (disabled)
+  bit_depth: 5                    # (a) main.py:93, decoder target quantisation (env.py:48-54)
+  model_learning_rate: 1.0e-3     # (a) main.py:94 (c)
+  actor_learning_rate: 5.0e-5     # (c) (a: 8e-5, main.py:95)
+  value_learning_rate: 5.0e-5     # (c) (a: 8e-5, main.py:96)
+  adam_epsilon: 1.0e-7            # (a) main.py:104 (c)
+  grad_clip_norm: 100.0           # (a) main.py:106
+  planning_horizon: 15            # (a) main.py:107 (c) imagination horizon
+  discount: 0.99                  # (a) main.py:108 (c)
+  disclam: 0.95                   # (a) main.py:109, lambda of the lambda-return
+  observation_size: 64            # upstream's 64x64 observations (env.py:66; models.py:147-169, 289-311): the decoder
+                                  #     target and the CNN input, area-downsampled from the protocol's 128-px renders
+train:
+  num_train_steps: 500000         # agent steps = 1M simulator steps, Dreamer's standard budget; every arm (registered
+                                  #     before results)
+  seed_episodes: 5                # (a) main.py:61, uniform random actions (main.py:170-179); count toward the budget
+  collect_interval: 25            # (a) main.py:62: 100 updates per 1000-simulator-step episode (main.py:34) at action
+                                  #     repeat 2 (main.py:58) = 0.2 updates per agent step; 125-step episodes -> 25
+  batch_size: 32                  # (c) (a: 50, main.py:63)
+  chunk_size: 50                  # (a) main.py:64
+  replay_size: 100000             # (c) transitions (a: 1M, main.py:36)
+  cpu_threads: 8
+  log_every_steps: 1000
+  checkpoint_every_steps: 10000   # a multiple of the 125-step episode: checkpoints fall on episode boundaries
+  rolling_window: 10
