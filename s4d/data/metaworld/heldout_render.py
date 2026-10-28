@@ -35,6 +35,12 @@ SET_NAMES = tuple(HELDOUT_SETS)
 # Replay must reproduce the stored training-camera frames up to renderer noise.
 MAX_RGB_MISMATCH_FRACTION = 1e-3  # pixels differing by more than 8 intensity levels
 MAX_DEPTH_MISMATCH_FRACTION = 1e-3  # pixels differing by more than 1 mm
+# A task whose reset renders its first frame before the robot's kinematics are recomputed (Meta-World window-open,
+# 2026-10-28: frame 0 shows the arm 0.5 mm away from the forward kinematics of its stored qpos; every later frame is
+# reproduced exactly) may differ at frame 0 on arm-edge pixels. Only then, with that deviation of the stored body
+# positions measured and bounded, frame 0 is held to the looser fractions below; frame 1 is always checked strictly.
+RESET_FRAME_KINEMATICS_M = (1e-5, 1e-3)  # stored-vs-recomputed body position deviation that explains a frame-0 mismatch
+RESET_FRAME_MISMATCH_FRACTION = 5e-3
 
 
 def all_heldout_cameras() -> list[dict]:
@@ -89,13 +95,30 @@ def _set_goal(scene: MetaworldScene, episode: h5py.Group) -> None:
             model.site_pos[site] = goal[0]
 
 
+def _kinematic_deviation(scene: MetaworldScene, episode: h5py.Group, t: int) -> float:
+    """Largest distance (m) between the stored body positions of step ``t`` and those ``mj_forward`` computed from the
+    stored state (mocap bodies excluded: they are targets, not rendered geometry)."""
+    bodies = [b for b in range(1, scene.model.nbody) if scene.model.body_mocapid[b] < 0]
+    return float(np.abs(np.asarray(scene.data.xpos)[bodies] - np.asarray(episode["xpos"][t])[bodies]).max())
+
+
+def _row_passed(row: dict) -> bool:
+    low, high = RESET_FRAME_KINEMATICS_M
+    limit = (RESET_FRAME_MISMATCH_FRACTION if row["t"] == 0 and low < row["kinematics_m"] <= high
+             else MAX_RGB_MISMATCH_FRACTION)
+    depth_limit = RESET_FRAME_MISMATCH_FRACTION if limit == RESET_FRAME_MISMATCH_FRACTION else MAX_DEPTH_MISMATCH_FRACTION
+    return row["rgb_fraction_over_8"] <= limit and row["depth_fraction_over_1mm"] <= depth_limit
+
+
 def replay_check(scene: MetaworldScene, episode: h5py.Group, train_cams: np.ndarray) -> dict:
-    """Re-render the training cameras at four times of the episode and compare with the stored frames."""
+    """Re-render the training cameras at five times of the episode (0, 1, a third, two thirds, last) and compare with
+    the stored frames (``_row_passed``)."""
     length = int(episode.attrs["length"])
     _set_goal(scene, episode)
     rows = []
-    for t in sorted({0, length // 3, (2 * length) // 3, length - 1}):
+    for t in sorted({0, min(1, length - 1), length // 3, (2 * length) // 3, length - 1}):
         _set_state(scene, episode, t)
+        kinematics = _kinematic_deviation(scene, episode, t)
         rgb, depth = _render(scene, [scene.cams[i] for i in train_cams])
         drgb = np.abs(rgb.astype(np.int32) - episode["rgb"][t, train_cams].astype(np.int32)).max(-1)
         ddepth = np.abs(depth.astype(np.int64) - episode["depth"][t, train_cams].astype(np.int64))
@@ -106,15 +129,10 @@ def replay_check(scene: MetaworldScene, episode: h5py.Group, train_cams: np.ndar
                 "rgb_fraction_over_8": float((drgb > 8).mean()),
                 "depth_max_m": float(ddepth.max() * DEPTH_UNIT_M),
                 "depth_fraction_over_1mm": float((ddepth * DEPTH_UNIT_M > 1e-3).mean()),
+                "kinematics_m": kinematics,
             }
         )
-    return {
-        "rows": rows,
-        "passed": all(
-            r["rgb_fraction_over_8"] <= MAX_RGB_MISMATCH_FRACTION and r["depth_fraction_over_1mm"] <= MAX_DEPTH_MISMATCH_FRACTION
-            for r in rows
-        ),
-    }
+    return {"rows": rows, "passed": all(_row_passed(r) for r in rows)}
 
 
 def render_heldout_sets(
