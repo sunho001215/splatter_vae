@@ -5879,3 +5879,74 @@ criterion, and it is inconsistent:
 - The requested 2× and 3× levels are frozen unchanged.
 - The literal alternative (lateral 0.216 / 0.288 m; circular 18° / 10.8° for both levels) is recorded in the definition
   file as not adopted. It is not evaluated.
+
+### 2026-10-29 02:50 — Camera suite v2 frozen (definitions recorded before any policy evaluation)
+
+The suite was built on branch `cameras-v2-20261029` (5 commits, 74372da..8d9e314) and merged into `integ-20261029`
+(1fbf035). No policy has been evaluated on it. The only selection inputs were MuJoCo segmentation and depth along fixed
+representative trajectories: 10 scripted-expert episodes per task (2 at each collection noise level) and 5
+uniform-random episodes, with fixed seeds and the RL timing of 126 renders.
+
+The selection rule was pre-registered. Every amendment (A1–A3) was registered before its own outcome was computed. All
+files are hash-chained in `runs/setup/camera-suite-v2-{rule,rule-amendment-A1..A3,definition}-20261029.*`.
+
+**Held-out v2: four static cameras.** All sit on the training orbit: look-at (0, 0.6, 0), radius 1 m, fovy 45°. The
+cameras are 36.5–116.8° apart pairwise.
+
+| camera | tilt, azimuth | separation from train0..5 | separation from eval0..3 | worst-task score | multi-view slot replaced |
+|---|---|---|---|---|---|
+| vis0 | 55°, 140° | 74, 27, 65, 36, 76, 26° | 53, 20, 69, 52° | 0.82 | train5 |
+| vis1 | 25°, 200° | 108, 26, 86, 36, 124, 44° | 105, 67, 75, 42° | 0.91 | train1 |
+| vis2 | 40°, 300° | 44, 79, 27, 56, 71, 105° | 83, 100, 15, 42° | 0.66 | train2 |
+| vis3 | 25°, 340° | 26, 108, 36, 86, 44, 124° | 67, 105, 42, 75° | 0.70 | train0 |
+
+The score of a task is the mean, over object, gripper and goal, of the visible share minus the hidden-frame share. For
+comparison, the training cameras' worst-task scores are 0.62–0.92. The old held-out cameras score −0.38 (eval0), 0.53
+(eval1), 0.26 (eval2) and 0.26 (eval3).
+
+**Task-specific exceptions** (rule A2) apply identically to every method:
+- **door-open vis1 → (25°, 120°):** the common camera hides the gripper in 28 % of frames.
+- **door-open vis2 → (50°, 80°):** the common camera hides the object in 23 % and the gripper in 23 % of frames.
+- **window-open vis3 → (40°, 260°):** the common camera hides the goal in 49 % of frames.
+
+All 48 evaluated (camera, task) pairs lie within the training cameras' worst case (object hidden ≤ 0.27, gripper
+≤ 0.11, goal ≤ 0.40, score ≥ 0.616). None of eval0..3 does. The old cameras stay unchanged in `eval.jsonl` as the
+**occlusion-heavy stress test**.
+
+**Stronger moving cameras.** All are evaluation only. Each keeps train1 as its base, the 72-pose period and the original
+starting phase, with one render per 25 ms agent step. Amplitude and speed rise together, so each level is a combined
+range-and-speed stress test.
+
+| path | azimuth | tilt | max step per agent step | max speed |
+|---|---|---|---|---|
+| lateral 1× (±0.12 m) | 170.5–189.5° | 44.6–45° | 6.8 mm, 0.55° | 0.27 m/s |
+| circular 1× (±10°/±6°) | 170–190° | 39–51° | 11.8 mm, 0.87° | 0.47 m/s |
+| lateral 2× (±0.24 m) | 161.5–198.5° | 43.5–45° | 13.5 mm, 1.10° | 0.54 m/s, 44°/s |
+| circular 2× (±20°/±12°) | 160–200° | 33–57° | 25.5 mm, 1.74° | 1.02 m/s, 70°/s |
+| lateral 3× (±0.36 m) | 153.3–206.7° | 41.8–45° | 20.3 mm, 1.64° | 0.81 m/s, 66°/s |
+| circular 3× (±30°/±18°) | 150–210° | 27–63° | 40.7 mm, 2.62° | 1.63 m/s, 105°/s |
+
+The path checks are those of A3: no collisions (camera clearance ≥ 0.165 m), no clipping, at least 96 % of the
+workspace in view in every frame, and hidden-frame shares within 0.04 of train1. The longest hidden runs are reported
+in the definition file.
+
+**Evaluator** (`scripts/eval_rl.py --suites v2`):
+- Groups: `vis0..3` and `traj_{lateral,circular}_{2x,3x}`, plus matched references on the same seeds: `ref_train0..5`
+  and `ref_traj_{lateral,circular}`. Each group has 20 episodes.
+- Seeds: one paired seed list per (run seed, evaluation index), from `default_rng([seed, eval_index, 7, 20261029])`,
+  shared by every v2 group and every method.
+- The existing multi-view replacement rule is kept, with per-frame calibration for moving paths.
+- Results go to a separate `eval_cameras_v2.jsonl`, with their own provenance and W&B run `<run>-eval-cameras-v2`.
+  `eval.jsonl` is never read or written.
+- `--snapshots last5` re-evaluates 960k–1M of a finished run without retraining.
+
+**Relation to the self-render training domain** (`runs/setup/selfrender-domain-v1/eval_relationship_cameras_v2.json`):
+- **Inside the domain** (generalisation to unseen poses within the training-supported region): vis0 and door-open
+  vis2 (50°, 80°).
+- **Outside the domain:** vis1 (15.6° from the nearest domain cell), vis2 (10.0°), vis3 (10.9°), door-open vis1
+  (19.6°) and window-open vis3 (15.0°).
+- **Moving paths inside the domain:** lateral 2× 72/72 poses, lateral 3× 67/72, circular 2× 57/72 and circular 3×
+  46/72. The furthest poses are 2.2°, 3.4°, 8.3° and 13.2° from the domain.
+
+The domain was frozen before the suite existed and used none of it. The 1× relation (eval2 and eval3 inside; lateral
+72/72, circular 61/72) is unchanged.
