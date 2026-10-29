@@ -6076,3 +6076,55 @@ Every new-task row depends explicitly on its own task's export (`ds-csw4-export-
   names the run it reads. The dry run is clean.
 - **Remote capacity:** GPU loads are 5.2–5.9 against the 4.0 limit, because pixel-SAC CNN/SNeRL rows were admitted
   before their cost was re-measured. No remote admission is possible for about two days.
+
+## 2026-10-29 14:30–15:30 — Results artifact split into a hub and four linked pages (user directive)
+
+**Directive (2026-10-29 ~14:30, supersedes "everything in one artifact").** Keep the existing URL as a light hub; move
+the detail into linked artifacts (RL results; viewpoint robustness and representations; rendering and geometry; design
+choices and ablations); lightweight loading in practice; shared manifest; update in place and publish only what
+changed; migrate without losing the current report; no new experiments or unnecessary regeneration.
+
+**Snapshot first.** `reports/results-artifact/backups/v23-before-split-20261029/`: the v23 page, its parts, data JSON,
+the published-file map with sha256 of all 458 files (221 MB; every source unchanged since the 21:05 publish) and its
+measured load. The full v23 also stays in the hub's version history (1793189117-714b).
+
+**Pages (all private, owner only; sharing is the user's).**
+
+| page | URL | content | files / stored |
+|---|---|---|---|
+| hub | https://claude.ai/artifact/ER1JqgQE3dSTwTg4Ln8T73 | current method (csw4), campaign status from the scheduler, key findings, method and baselines, what is established, definitions, figure sources, manifest, report scripts | 9 / 0.8 MB |
+| RL results | https://claude.ai/artifact/CK19qFUzCu1kxoj77a9KoL | downstream SAC/PPO/Dreamer, paper learning curves, Q1 DrM comparison + explorer, v11 figures, cost | 134 / 32 MB |
+| Viewpoint | https://claude.ai/artifact/Xf6Ddo22bQgtZs6ARvxzfw | camera definitions (v2, eval0–3 stress test, moving 1×/2×/3×, previews), Q2, paper moving/retrieval/t-SNE, rollouts | 325 / 152 MB |
+| Rendering | https://claude.ai/artifact/ALYpGCopocHirAjEJrX5ez | Q4, Q4b Chamfer_lean, paper rendering/geometry, self-render (pending) | 262 / 95 MB |
+| Design | https://claude.ai/artifact/E7qN44Q2VRiMTDeUn8Q13i | Q3, Q5, Q6, paused ablations and pending work, history | 144 / 58 MB |
+
+**Loading** (measured: each page's published layout served locally, headless Chromium 1280×900, bytes counted by the
+server; fonts counted separately):
+
+| | first load | after scrolling the whole page | videos fetched without a click |
+|---|---|---|---|
+| v23 single page | 12.5 MB (9.3 MB JSON) | 27.7 MB | 2.3 MB (4 players with src) |
+| hub | 0.31 MB | 0.31 MB | none |
+| RL results | 0.62 MB | 1.9 MB | none |
+| viewpoint | 1.1 MB | 2.9 MB | none |
+| rendering | 0.50 MB | 1.3 MB | none |
+| design | 0.56 MB | 1.1 MB | none |
+
+How: figures display as WebP (≤ 1800 px, q82; 3–7× smaller than the PNGs), lazy; the lightbox reuses that image and
+loads the original PNG only on request; videos show a poster and load only when their play button is pressed; data JSON
+is split per comparison / per task and fetched when its widget nears the viewport or its table is opened. PNG, PDF,
+SVG (DOCTYPE line stripped: the platform refuses DTDs; originals untouched), CSV, full data JSON and original-quality
+camera media are explicit downloads, each published once, on the page that shows it.
+
+**Content preserved.** `verify_split.py`: every v23 published file has exactly one home with identical bytes (the SVG
+zip bundles became per-figure SVGs; bundles.json/manifest.json became data/site-manifest.json); every v23 text block and
+number appears on some page except deliberately updated status lines (listed in the script); every link resolves. The 12
+figures v23 published without displaying (v11 versions, E3 forest, matched-state t-SNE, Stage 2 RL forest, E1 curves)
+are now displayed in labelled history sections. Added from existing frozen sources: camera-suite-v2 definitions,
+contact sheets and preview videos (directive B item 9), self-render status, paused-ablation table.
+
+**Workflow** (`reports/results-artifact/src/split/README.md`): generators unchanged; `downstream_section.py` now writes
+the RL page part; `build_split.py` → `verify_split.py` → `publish_plan.py` (per-file hashes against
+`site_split/published.json`; timestamps masked, so a rebuild alone republishes nothing). First routine use: the
+downstream section refreshed at 15:23 (CPU, existing evaluation logs) and only the RL page's 23 changed files were
+republished.
