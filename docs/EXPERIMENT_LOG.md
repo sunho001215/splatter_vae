@@ -6068,3 +6068,11 @@ Every new-task row depends explicitly on its own task's export (`ds-csw4-export-
   are short, may still fill the gap.
 - **Resulting order:** the remaining SAC rows, then the PPO pilot, then FlashSAC. The camera v2 re-evaluations (priority
   1, evaluators) proceed meanwhile.
+
+**04:45 — Remote driver: re-evaluation rows crashed dispatch ordering.**
+- **Problem:** at the 04:19:40 pass the remote driver raised `KeyError: 'ds-cv2-enc-csw4-drm-hammer-s2000'` in
+  `dispatch_key`, which looked up a training row named after the evaluator. One pass admitted nothing.
+- **Change** (`remote_campaign_driver.py`, backup `*.before-cv2-reeval-20261029.py`): the row's `reevaluates` field
+  names the run it reads. The dry run is clean.
+- **Remote capacity:** GPU loads are 5.2–5.9 against the 4.0 limit, because pixel-SAC CNN/SNeRL rows were admitted
+  before their cost was re-measured. No remote admission is possible for about two days.

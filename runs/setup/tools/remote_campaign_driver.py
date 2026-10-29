@@ -435,7 +435,8 @@ RANK = {'proxy': 0, 'final_export': 0, 'pool_export': 0, 's2_eval': 0, 's2_rl': 
 
 
 def dispatch_key(job):
-    trainer = by_id[job['id'].removesuffix('-eval')]
+    # a camera suite v2 re-evaluation row (2026-10-29) names the completed run it reads ('reevaluates')
+    trainer = by_id[job.get('reevaluates') or job['id'].removesuffix('-eval')]
     is_evaluator = job['id'].endswith('-eval')
     trainer_status = state.get(trainer['id'], {}).get('status', jobs.PENDING)
     companion = is_evaluator and trainer_status in jobs.ACTIVE | {jobs.DONE}
