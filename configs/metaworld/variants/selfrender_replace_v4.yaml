@@ -1,0 +1,26 @@
+# Variant selfrender_replace_v4 = selfrender_replace_v2 + (A) the +-5 % radial distance jitter of
+# selfrender_replace_v3 + (B) the 5 %-relaxed training-supported viewpoint domain (user instruction 2026-10-31).
+# Recorded before any result of this variant. Job config list: base, task, chamfer_lean.yaml, chamfer_lean_randmask.yaml,
+# enc_cs.yaml, enc_w4.yaml, selfrender_replace_v2.yaml, this file. Trained from scratch (step 0) under new run names;
+# the v2 runs (sr-csw4-*) were stopped and are not resumed.
+#
+# (A) aug.synth_radius_jitter 0.05 (s4d/train/augment.py domain_cameras, implemented and tested for v3): every self-render
+#     camera's distance is 1.0 x (1 + eps), eps ~ U(-0.05, 0.05), drawn independently per (sample, view) after the
+#     direction; the camera is fixed over the 3 rendered timesteps and looks at the rig look-at; the angular sampling is
+#     v2's (domain cell with probability proportional to its solid angle, azimuth and sin(elevation) uniform in the cell).
+#     Logged from 20k on as metric/synth_camera_distance_dev (mean |distance - 1|, expected 0.025).
+# (B) aug.synth_camera_domain configs/metaworld/selfrender_domain_v1_relaxed5.yaml (scripts/selfrender_domain.py
+#     --relax coverage=0.95 --relax ws_support2=0.95): the v1 rule with the coverage and ws_support2 minimums (the
+#     training-pose minimums over the analysis tasks) multiplied by exactly 0.95; support2 and ws_visible unchanged;
+#     same training-only support measurements (recomputed and checked equal to the v1 grid), 5-degree grid, 4-connected
+#     components containing a training pose, solid-angle sampling. No evaluation observation, camera or result was used
+#     to define it; its relation to the evaluation cameras is recorded after freezing
+#     (runs/setup/selfrender-domain-v1-relaxed5/eval_relationship*.json).
+# Exact resolved-config differences vs v2 (tests/test_selfrender_v4.py):
+#   aug.synth_radius_jitter: (none) -> 0.05
+#   aug.synth_camera_domain: configs/metaworld/selfrender_domain_v1.yaml -> configs/metaworld/selfrender_domain_v1_relaxed5.yaml
+# Unchanged: encoder, decoder, losses and weights, 75 % random masking, aug.synth_views 2, warm-up/ramp [20000, 40000],
+# optimiser, 200k steps, data, seed, export, evaluation protocols.
+aug:
+  synth_radius_jitter: 0.05
+  synth_camera_domain: configs/metaworld/selfrender_domain_v1_relaxed5.yaml

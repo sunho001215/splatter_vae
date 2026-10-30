@@ -31,6 +31,17 @@ not evidence of accurate geometry).
 
     CUDA_VISIBLE_DEVICES=<MIG uuid> python -E -s scripts/selfrender_domain.py --out runs/setup/selfrender-domain-v1 \
         [--write-domain configs/metaworld/selfrender_domain_v1.yaml]
+
+Relaxed domain (user request 2026-10-31, variant selfrender_replace_v4): ``--relax coverage=0.95 --relax
+ws_support2=0.95`` multiplies those two training-relative minimums by 0.95 (exact values, not rounded); support2 and
+ws_visible keep theirs; the grid, the support measures, the 4-connected components containing a training pose and the
+solid-angle sampling are unchanged. ``--check-grid`` asserts that the recomputed support maps equal a stored
+support_grid.json (the v1 measurements):
+
+    CUDA_VISIBLE_DEVICES=<MIG uuid> python -E -s scripts/selfrender_domain.py --out runs/setup/selfrender-domain-v1-relaxed5 \
+        --relax coverage=0.95 --relax ws_support2=0.95 --check-grid runs/setup/selfrender-domain-v1/support_grid.json \
+        --domain-version selfrender_domain_v1_relaxed5 --frozen 2026-10-31 --variant-label selfrender_replace_v4 \
+        --write-domain configs/metaworld/selfrender_domain_v1_relaxed5.yaml
 """
 
 from __future__ import annotations
@@ -209,14 +220,21 @@ def components(supported: np.ndarray, seeds: list[tuple[int, int]]) -> np.ndarra
     return keep
 
 
-def decide(maps: dict) -> dict:
+CRITERIA = ("coverage", "support2", "ws_visible", "ws_support2")
+
+
+def decide(maps: dict, relax: dict[str, float] | None = None) -> dict:
+    """``relax``: criterion -> factor applied to its training-pose minimum (absent: 1, the v1 rule)."""
     E, A = len(ELEVATIONS), len(AZIMUTHS)
     idx = {g: i for i, g in enumerate(maps["grid"])}
     tp = [idx[(int(a), int(e))] for a, e in train_poses()]
     per_task = maps["tasks"]
-    thresholds = {}
-    for m in ("coverage", "support2", "ws_visible", "ws_support2"):
-        thresholds[m] = float(min(per_task[t][m][tp].min() for t in TASKS))
+    relax = dict(relax or {})
+    assert set(relax) <= set(CRITERIA) and all(0.0 < f <= 1.0 for f in relax.values()), relax
+    base, thresholds = {}, {}
+    for m in CRITERIA:
+        base[m] = float(min(per_task[t][m][tp].min() for t in TASKS))
+        thresholds[m] = base[m] * relax.get(m, 1.0)
     ok = np.ones(len(maps["grid"]), dtype=bool)
     for t in TASKS:
         for m, thr in thresholds.items():
@@ -225,7 +243,8 @@ def decide(maps: dict) -> dict:
     seeds = [(ELEVATIONS.index(int(e)), AZIMUTHS.index(int(a))) for a, e in train_poses()]
     domain = components(supported, seeds)
     worst = {m: np.min([per_task[t][m] for t in TASKS], axis=0) for m in METRICS}
-    return {"thresholds": thresholds, "supported": supported, "domain": domain, "worst": worst, "train_index": tp}
+    return {"thresholds": thresholds, "base_thresholds": base, "relax": relax, "supported": supported, "domain": domain,
+            "worst": worst, "train_index": tp}
 
 
 def solid_angle(el: float) -> float:
@@ -386,7 +405,17 @@ def main() -> None:
     ap.add_argument("--relate-eval", default=None, help="after freezing: relate the evaluation cameras to this domain YAML")
     ap.add_argument("--suite", choices=("v1", "v2"), default="v1",
                     help="--relate-eval: v1 = eval0..3 and the 1x paths; v2 = camera suite v2 (own output file)")
+    ap.add_argument("--relax", action="append", default=[], metavar="CRITERION=FACTOR",
+                    help="multiply a criterion's training-pose minimum by FACTOR (e.g. coverage=0.95)")
+    ap.add_argument("--check-grid", default=None, help="assert the recomputed support maps equal this support_grid.json")
+    ap.add_argument("--domain-version", default="selfrender_domain_v1")
+    ap.add_argument("--frozen", default="2026-10-29")
+    ap.add_argument("--variant-label", default="selfrender_replace_v2")
     args = ap.parse_args()
+    relax = {}
+    for item in args.relax:
+        name, factor = item.split("=", 1)
+        relax[name] = float(factor)
     out = Path(args.out)
     out = out if out.is_absolute() else REPO / out
     out.mkdir(parents=True, exist_ok=True)
@@ -400,12 +429,28 @@ def main() -> None:
         return
     device = torch.device("cuda")
     maps = support_maps(device)
-    decision = decide(maps)
+    if args.check_grid:
+        check = Path(args.check_grid)
+        stored = json.loads((check if check.is_absolute() else REPO / check).read_text())
+        assert [list(g) for g in maps["grid"]] == stored["grid"]
+        for t in TASKS:
+            assert maps["tasks"][t]["frames"] == [tuple(fr) for fr in stored["tasks"][t]["frames"]], t
+            for m in METRICS:
+                diff = float(np.abs(np.asarray(maps["tasks"][t][m], dtype=np.float64) - np.asarray(stored["tasks"][t][m])).max())
+                assert diff <= 6e-6, (t, m, diff)  # stored values are rounded to 5 decimals
+        ref = decide(maps)
+        assert ref["thresholds"] == stored["thresholds"], (ref["thresholds"], stored["thresholds"])
+        assert ref["domain"].reshape(-1).tolist() == stored["domain"]
+        print(json.dumps({"check_grid": "recomputed support maps equal the stored grid", "stored_domain_cells":
+                          int(sum(stored["domain"]))}), flush=True)
+    decision = decide(maps, relax)
     support_png(decision, out)
     grid = maps["grid"]
     full = {
         "grid": [list(g) for g in grid],
         "thresholds": decision["thresholds"],
+        "base_thresholds": decision["base_thresholds"],
+        "relax": decision["relax"],
         "tasks": {t: {"frames": d["frames"], "dynamic_bodies": d["dynamic_bodies"],
                       **{m: [round(float(x), 5) for x in d[m]] for m in METRICS}} for t, d in maps["tasks"].items()},
         "supported": decision["supported"].reshape(-1).tolist(),
@@ -419,13 +464,14 @@ def main() -> None:
     (out / "support_grid.json").write_text(json.dumps(full, indent=1))
     cells = [i for i, d in enumerate(decision["domain"].reshape(-1)) if d]
     area = sum(solid_angle(grid[i][1]) for i in cells)
-    print(json.dumps({"thresholds": decision["thresholds"], "supported_cells": int(decision["supported"].sum()),
+    print(json.dumps({"thresholds": decision["thresholds"], "base_thresholds": decision["base_thresholds"],
+                      "relax": decision["relax"], "supported_cells": int(decision["supported"].sum()),
                       "domain_cells": len(cells), "domain_solid_angle_sr": area,
                       "renders": full.get("renders")}, indent=1))
     if args.write_domain:
         doc = {
-            "version": "selfrender_domain_v1",
-            "frozen": "2026-10-29",
+            "version": args.domain_version,
+            "frozen": args.frozen,
             "definition": "scripts/selfrender_domain.py (module docstring); full grid: "
                           + str(out.relative_to(REPO) / "support_grid.json"),
             "rig": {"lookat": list(LOOKAT), "distance": RADIUS, "fovy_deg": FOVY_DEG, "image": [H, W],
@@ -438,7 +484,13 @@ def main() -> None:
                          "support2_min": round(decision["thresholds"]["support2"], 5),
                          "ws_visible_min": round(decision["thresholds"]["ws_visible"], 5),
                          "ws_support2_min": round(decision["thresholds"]["ws_support2"], 5),
-                         "rule": "every task's mean >= each minimum; 4-connected components containing a training pose"},
+                         "rule": "every task's mean >= each minimum; 4-connected components containing a training pose"
+                                 + ("" if not relax else "; minimums = the training-pose minimum x relax_factors"),
+                         **({} if not relax else {
+                             "relax_factors": relax,
+                             "training_pose_minimums": {f"{m}_min": round(decision["base_thresholds"][m], 5)
+                                                        for m in CRITERIA},
+                             "exact_minimums": {f"{m}_min": decision["thresholds"][m] for m in CRITERIA}})},
             "cell_deg": CELL_DEG,
             "sampling": "cell with probability proportional to its solid angle, then azimuth uniform and sin(elevation) "
                         "uniform within the cell (uniform on the sphere over the domain); distance = rig radius; "
@@ -454,7 +506,7 @@ def main() -> None:
         }
         path = Path(args.write_domain)
         path = path if path.is_absolute() else REPO / path
-        path.write_text("# Frozen training-supported viewpoint domain of variant selfrender_replace_v2 (generated by "
+        path.write_text(f"# Frozen training-supported viewpoint domain of variant {args.variant_label} (generated by "
                         "scripts/selfrender_domain.py; do not edit by hand).\n"
                         "# Per-cell values: the minimum over the analysis tasks of the per-task means.\n"
                         + yaml.safe_dump(doc, sort_keys=False, width=120, default_flow_style=None))
