@@ -1,0 +1,840 @@
+{
+  "prepared_at": "2026-10-31T03:30:57.256435+09:00",
+  "purpose": "Self-render variant selfrender_replace_v4 (user instruction 2026-10-31): selfrender_replace_v2 + the +-5 % radial\ncamera jitter (r = 1.0 x (1 + eps), eps ~ U(-0.05, 0.05) per synthetic camera) + the viewpoint domain with the coverage\nand ws_support2 minimums relaxed by 0.95 (configs/metaworld/selfrender_domain_v1_relaxed5.yaml), trained from scratch\nunder new names; the v2 runs were stopped (stop_selfrender_v2_20261031.py). Everything else unchanged.",
+  "variant_file": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+  "base_variant_file": "configs/metaworld/variants/selfrender_replace_v2.yaml",
+  "viewpoint_domain": "configs/metaworld/selfrender_domain_v1_relaxed5.yaml",
+  "label": "combined warm-up + expanded-viewpoint self-render recipe, +-5 % radial camera jitter, 5 %-relaxed domain",
+  "tasks": [
+    "hammer",
+    "pick-place",
+    "bin-picking"
+  ],
+  "jobs": [
+    {
+      "id": "srv4-csw4-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/hammer.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/selfrender_replace_v2.yaml",
+        "configs/metaworld/variants/selfrender_replace_v4.yaml",
+        "--name",
+        "srv4-csw4-seed0-hammer-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 7,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "selfrender_replace_v4",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local like the v2 rows after their 2026-10-30 move; the remote driver pulls pool rows if remote capacity frees first)"
+    },
+    {
+      "id": "srv4-csw4-export-seed0-hammer-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/srv4-csw4-seed0-hammer-200k",
+        "--checkpoint",
+        "runs/srv4-csw4-seed0-hammer-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/srv4-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "srv4-csw4-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 7,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "selfrender_replace_v4",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local like the v2 rows after their 2026-10-30 move; the remote driver pulls pool rows if remote capacity frees first)"
+    },
+    {
+      "id": "srv4-csw4-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/pick-place.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/selfrender_replace_v2.yaml",
+        "configs/metaworld/variants/selfrender_replace_v4.yaml",
+        "--name",
+        "srv4-csw4-seed0-pick-place-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 7,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "selfrender_replace_v4",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local like the v2 rows after their 2026-10-30 move; the remote driver pulls pool rows if remote capacity frees first)"
+    },
+    {
+      "id": "srv4-csw4-export-seed0-pick-place-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/srv4-csw4-seed0-pick-place-200k",
+        "--checkpoint",
+        "runs/srv4-csw4-seed0-pick-place-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/srv4-csw4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "srv4-csw4-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 7,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "selfrender_replace_v4",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local like the v2 rows after their 2026-10-30 move; the remote driver pulls pool rows if remote capacity frees first)"
+    },
+    {
+      "id": "srv4-csw4-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/train.py",
+      "args": [
+        "--config",
+        "configs/metaworld/base.yaml",
+        "configs/metaworld/tasks/bin-picking.yaml",
+        "configs/metaworld/variants/chamfer_lean.yaml",
+        "configs/metaworld/variants/chamfer_lean_randmask.yaml",
+        "configs/metaworld/variants/enc_cs.yaml",
+        "configs/metaworld/variants/enc_w4.yaml",
+        "configs/metaworld/variants/selfrender_replace_v2.yaml",
+        "configs/metaworld/variants/selfrender_replace_v4.yaml",
+        "--name",
+        "srv4-csw4-seed0-bin-picking-200k",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto",
+        "--set",
+        "train.steps=200000",
+        "train.seed=0"
+      ],
+      "gpu": "any",
+      "mem_gb": 10,
+      "ram_gb": 13,
+      "disk_gb": 30,
+      "priority": 0,
+      "deps": [],
+      "max_restarts": 3,
+      "stage": 7,
+      "required_results": [
+        "completion.json",
+        "metrics.jsonl",
+        "checkpoints/step_0200000.pt"
+      ],
+      "variant": "selfrender_replace_v4",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local like the v2 rows after their 2026-10-30 move; the remote driver pulls pool rows if remote capacity frees first)"
+    },
+    {
+      "id": "srv4-csw4-export-seed0-bin-picking-200k",
+      "host": "local",
+      "script": "scripts/export_encoder.py",
+      "args": [
+        "--run",
+        "runs/srv4-csw4-seed0-bin-picking-200k",
+        "--checkpoint",
+        "runs/srv4-csw4-seed0-bin-picking-200k/checkpoints/step_0200000.pt",
+        "--out",
+        "runs/srv4-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "gpu": "any",
+      "mem_gb": 2,
+      "ram_gb": 4,
+      "disk_gb": 1,
+      "priority": 0,
+      "deps": [
+        "srv4-csw4-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "stage": 7,
+      "required_results": [
+        "encoder.pt"
+      ],
+      "variant": "selfrender_replace_v4",
+      "variant_definition": "configs/metaworld/variants/selfrender_replace_v4.yaml",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local like the v2 rows after their 2026-10-30 move; the remote driver pulls pool rows if remote capacity frees first)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-hammer-s2000",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-hammer-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2000",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-hammer-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2000-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-hammer-s2001",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-hammer-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2001",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-hammer-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2001-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-hammer-s2002",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "hammer",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-hammer-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-hammer-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-hammer-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2002",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-hammer-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-hammer-s2002-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-pick-place-s2000",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-pick-place-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2000",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-pick-place-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2000-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-pick-place-s2001",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-pick-place-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2001",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-pick-place-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2001-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-pick-place-s2002",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "pick-place",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-pick-place-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-pick-place-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-pick-place-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2002",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-pick-place-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-pick-place-s2002-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-bin-picking-s2000",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-bin-picking-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2000",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-bin-picking-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2000-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-bin-picking-s2001",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-bin-picking-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2001",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-bin-picking-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2001-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-bin-picking-s2002",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "bin-picking",
+        "--encoder",
+        "splatter4d",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/srv4-csw4-export-seed0-bin-picking-200k/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "srv4-csw4-export-seed0-bin-picking-200k"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-srv4-csw4-bin-picking-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2002",
+        "--train-job",
+        "ds-flashsac-srv4-csw4-bin-picking-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-srv4-csw4-bin-picking-s2002-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_srv4-csw4",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T03:30:53+09:00 (registered local as the v2 rows: frozen-encoder FlashSAC, local MIG; not a pool-movable script)",
+      "priority": 1
+    }
+  ],
+  "registered_at": "2026-10-31T03:36:51.317947+09:00",
+  "queue_sha256_before": "7733f2b5f2d0b9da6ca6ef8c32a4de194cd1d33ee9a3487b0ff141a7a123e5ff",
+  "queue_sha256_after": "7ce2aee5e651148ed8de7c6d357d2a1d83a7921b8e6528c8651c6de5652e0e68"
+}

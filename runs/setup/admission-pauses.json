@@ -51,6 +51,42 @@
     "enc-abl-t1spatial-csw4-export-seed0-door-open-200k",
     "enc-abl-t1spatial-csw4-seed0-door-open-200k"
    ]
+  },
+  {
+   "name": "selfrender-v2-stopped-20261031",
+   "active": true,
+   "since": "2026-10-31T02:35:39+09:00",
+   "reason": "cancelled: user instruction 2026-10-31 -- stop all running Gaussian self-rendering experiments (selfrender_replace_v2); replaced by a new variant (+-5 % radial camera jitter and the 5 %-relaxed viewpoint domain) trained from scratch under new names",
+   "prefixes": [
+    "sr-csw4-",
+    "ds-flashsac-sr-csw4-"
+   ],
+   "ids": [
+    "sr-csw4-seed0-hammer-200k",
+    "sr-csw4-seed0-pick-place-200k",
+    "sr-csw4-seed0-bin-picking-200k",
+    "sr-csw4-export-seed0-hammer-200k",
+    "sr-csw4-export-seed0-pick-place-200k",
+    "sr-csw4-export-seed0-bin-picking-200k",
+    "ds-flashsac-sr-csw4-hammer-s2000",
+    "ds-flashsac-sr-csw4-hammer-s2000-eval",
+    "ds-flashsac-sr-csw4-hammer-s2001",
+    "ds-flashsac-sr-csw4-hammer-s2001-eval",
+    "ds-flashsac-sr-csw4-hammer-s2002",
+    "ds-flashsac-sr-csw4-hammer-s2002-eval",
+    "ds-flashsac-sr-csw4-pick-place-s2000",
+    "ds-flashsac-sr-csw4-pick-place-s2000-eval",
+    "ds-flashsac-sr-csw4-pick-place-s2001",
+    "ds-flashsac-sr-csw4-pick-place-s2001-eval",
+    "ds-flashsac-sr-csw4-pick-place-s2002",
+    "ds-flashsac-sr-csw4-pick-place-s2002-eval",
+    "ds-flashsac-sr-csw4-bin-picking-s2000",
+    "ds-flashsac-sr-csw4-bin-picking-s2000-eval",
+    "ds-flashsac-sr-csw4-bin-picking-s2001",
+    "ds-flashsac-sr-csw4-bin-picking-s2001-eval",
+    "ds-flashsac-sr-csw4-bin-picking-s2002",
+    "ds-flashsac-sr-csw4-bin-picking-s2002-eval"
+   ]
   }
  ]
 }

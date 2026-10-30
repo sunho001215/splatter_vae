@@ -57,6 +57,15 @@ DS_PREFIXES = ('ds-', 'sr-')  # sr-: self-render replacement pretraining (user 2
 if DS_COMMIT:
     RELEASES[(DS_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{DS_COMMIT[:7]}-cc/manifest.json'
 DS_READY = bool(DS_COMMIT) and (REPO / RELEASES[(DS_COMMIT, POOL_IMAGE)]).is_file()
+# Self-render v4 release (user instruction 2026-10-31: +-5 % radial camera jitter + the 5 %-relaxed viewpoint domain,
+# replacing the stopped v2 pilot): e8ad5ac = main a5d68e3 + aug.synth_radius_jitter (e883734; off by default, v2 bit for
+# bit: tests/test_selfrender_radial.py) + configs/metaworld/selfrender_domain_v1_relaxed5.yaml +
+# configs/metaworld/variants/selfrender_replace_v4.yaml. ONLY srv4-* rows (pretraining, export) run on it; every other
+# row keeps its release. Offered only once its acceptance manifest exists; retries keep the release of their first launch.
+SRV4_COMMIT = 'e8ad5ac17de1434d85256527d5a42e7e10128b70'
+SRV4_PREFIXES = ('srv4-',)
+RELEASES[(SRV4_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{SRV4_COMMIT[:7]}-cc/manifest.json'
+SRV4_READY = (REPO / RELEASES[(SRV4_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -470,6 +479,8 @@ if not ENC_ALLOWED:
     candidates = [j for j in candidates if not j['id'].startswith(ENC_PREFIXES)]
 if not DS_READY:
     candidates = [j for j in candidates if not j['id'].startswith(DS_PREFIXES)]
+if not SRV4_READY:
+    candidates = [j for j in candidates if not j['id'].startswith(SRV4_PREFIXES)]
 candidates.sort(key=dispatch_key)
 # 2026-10-27: capacity is reserved only by executing jobs; a compute-complete container awaiting backup holds none
 active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
@@ -540,6 +551,8 @@ if POOL_READY and not DRY and not held:
         units = [m for m in units if not m[0]['id'].startswith(ENC_PREFIXES)]
     if not DS_READY:
         units = [m for m in units if not m[0]['id'].startswith(DS_PREFIXES)]
+    if not SRV4_READY:
+        units = [m for m in units if not m[0]['id'].startswith(SRV4_PREFIXES)]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
     units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
@@ -595,6 +608,8 @@ def job_release(job):
         return previous['commit'], previous.get('image_digest', IMAGE)
     if job['id'].startswith(ENC_PREFIXES):
         return ENC_COMMIT, POOL_IMAGE
+    if job['id'].startswith(SRV4_PREFIXES):
+        return SRV4_COMMIT, POOL_IMAGE
     if job['id'].startswith(DS_PREFIXES):
         return DS_COMMIT, POOL_IMAGE
     return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)

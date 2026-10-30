@@ -1,0 +1,234 @@
+[gpu_guard] cuda:0 -> MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a (NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb)
+hammer done
+pick-place done
+bin-picking done
+{"check_grid": "recomputed support maps equal the stored grid", "stored_domain_cells": 314}
+{
+ "thresholds": {
+  "coverage": 0.7932237625122069,
+  "support2": 0.8881813883781433,
+  "ws_visible": 0.27532997727394104,
+  "ws_support2": 0.633611661195755
+ },
+ "base_thresholds": {
+  "coverage": 0.8349723815917969,
+  "support2": 0.8881813883781433,
+  "ws_visible": 0.27532997727394104,
+  "ws_support2": 0.6669596433639526
+ },
+ "relax": {
+  "coverage": 0.95,
+  "ws_support2": 0.95
+ },
+ "supported_cells": 466,
+ "domain_cells": 466,
+ "domain_solid_angle_sr": 2.0265583753653416,
+ "renders": {
+  "hammer": {
+   "train": {
+    "psnr_vs_cloud": 27.6612544854482,
+    "alpha_mean": 0.9937381918231646,
+    "alpha_token_eligible": 0.9967447916666666
+   },
+   "domain": {
+    "psnr_vs_cloud": 26.29739511013031,
+    "alpha_mean": 0.9562563498814901,
+    "alpha_token_eligible": 0.9108072916666666
+   },
+   "rejected": {
+    "psnr_vs_cloud": 24.50958279768626,
+    "alpha_mean": 0.9660283513367176,
+    "alpha_token_eligible": 0.9251302083333334
+   }
+  },
+  "pick-place": {
+   "train": {
+    "psnr_vs_cloud": 27.258136590321858,
+    "alpha_mean": 0.9931586012244225,
+    "alpha_token_eligible": 0.9928385416666666
+   },
+   "domain": {
+    "psnr_vs_cloud": 24.828659852345783,
+    "alpha_mean": 0.961585576335589,
+    "alpha_token_eligible": 0.9270833333333334
+   },
+   "rejected": {
+    "psnr_vs_cloud": 22.921463390191395,
+    "alpha_mean": 0.9701680354773998,
+    "alpha_token_eligible": 0.9342447916666666
+   }
+  },
+  "bin-picking": {
+   "train": {
+    "psnr_vs_cloud": 25.45949125289917,
+    "alpha_mean": 0.9923152029514313,
+    "alpha_token_eligible": 0.98828125
+   },
+   "domain": {
+    "psnr_vs_cloud": 23.21057124932607,
+    "alpha_mean": 0.9593560881912708,
+    "alpha_token_eligible": 0.9254557291666666
+   },
+   "rejected": {
+    "psnr_vs_cloud": 20.804505427678425,
+    "alpha_mean": 0.9710109333197275,
+    "alpha_token_eligible": 0.9345703125
+   }
+  },
+  "columns": [
+   {
+    "kind": "train",
+    "azimuth": 0,
+    "elevation": -45
+   },
+   {
+    "kind": "train",
+    "azimuth": -180,
+    "elevation": -45
+   },
+   {
+    "kind": "train",
+    "azimuth": -30,
+    "elevation": -60
+   },
+   {
+    "kind": "train",
+    "azimuth": -150,
+    "elevation": -60
+   },
+   {
+    "kind": "train",
+    "azimuth": 30,
+    "elevation": -30
+   },
+   {
+    "kind": "train",
+    "azimuth": 150,
+    "elevation": -30
+   },
+   {
+    "kind": "domain",
+    "azimuth": 20,
+    "elevation": -50
+   },
+   {
+    "kind": "domain",
+    "azimuth": -55,
+    "elevation": -65
+   },
+   {
+    "kind": "domain",
+    "azimuth": 55,
+    "elevation": -65
+   },
+   {
+    "kind": "domain",
+    "azimuth": -60,
+    "elevation": -70
+   },
+   {
+    "kind": "domain",
+    "azimuth": -40,
+    "elevation": -55
+   },
+   {
+    "kind": "domain",
+    "azimuth": -155,
+    "elevation": -70
+   },
+   {
+    "kind": "domain",
+    "azimuth": -75,
+    "elevation": -55
+   },
+   {
+    "kind": "domain",
+    "azimuth": 150,
+    "elevation": -65
+   },
+   {
+    "kind": "domain",
+    "azimuth": -80,
+    "elevation": -65
+   },
+   {
+    "kind": "domain",
+    "azimuth": -75,
+    "elevation": -50
+   },
+   {
+    "kind": "domain",
+    "azimuth": -10,
+    "elevation": -30
+   },
+   {
+    "kind": "domain",
+    "azimuth": -40,
+    "elevation": -45
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 100,
+    "elevation": -75
+   },
+   {
+    "kind": "rejected",
+    "azimuth": -15,
+    "elevation": -15
+   },
+   {
+    "kind": "rejected",
+    "azimuth": -155,
+    "elevation": -35
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 30,
+    "elevation": -20
+   },
+   {
+    "kind": "rejected",
+    "azimuth": -10,
+    "elevation": -15
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 160,
+    "elevation": -80
+   },
+   {
+    "kind": "rejected",
+    "azimuth": -10,
+    "elevation": -75
+   },
+   {
+    "kind": "rejected",
+    "azimuth": -100,
+    "elevation": -85
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 130,
+    "elevation": -70
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 175,
+    "elevation": -85
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 130,
+    "elevation": -20
+   },
+   {
+    "kind": "rejected",
+    "azimuth": 90,
+    "elevation": -65
+   }
+  ],
+  "layout": "per task JPEG: for each of the first 2 of the 4 training windows, a row of decoded-Gaussian renders (t0) then a row of the fused training-cloud splat, columns as listed (6 training poses, 12 domain cells, 12 rejected)"
+ }
+}
+wrote /home/ws/ws/splatter4d/.worktrees/sr-radial/configs/metaworld/selfrender_domain_v1_relaxed5.yaml
+exit 0

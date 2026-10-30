@@ -6128,3 +6128,232 @@ the RL page part; `build_split.py` → `verify_split.py` → `publish_plan.py` (
 `site_split/published.json`; timestamps masked, so a rebuild alone republishes nothing). First routine use: the
 downstream section refreshed at 15:23 (CPU, existing evaluation logs) and only the RL page's 23 changed files were
 republished.
+
+## 2026-10-30 16:45 — Self-render pilot raised ahead of routine FlashSAC and new-task expansion (user)
+
+**Chain before the change.** Every stage was pending; nothing had launched.
+- Pretraining `sr-csw4-seed0-{hammer,pick-place,bin-picking}-200k` (remote, priority 2): pending.
+- Exports `sr-csw4-export-*`: pending.
+- FlashSAC trainers `ds-flashsac-sr-csw4-*-s200{0,1,2}` (9, local, priority 2, after every other family in
+  registration order): pending; each depends on its task's export.
+- Evaluators: 9, pending.
+- Matched csw4 FlashSAC reference on the same three tasks:
+  - s2000: done.
+  - hammer s2001, bin-picking s2001: done (bin-picking evaluation running).
+  - pick-place s2001: running.
+  - s2002 on all three tasks: pending.
+
+**Placement.** The remote pool sits above its 4.0 load limit, with SAC trainers until about +10 h, and the remote
+dispatcher orders pretraining by kind, not by row priority. The contended remote pretrains at about 1.0 s/it, about
+56 h for 200k. The self-render smoke on a shared local MIG 1g slice measured 0.51 s/it (csw4: 0.58 s/it; peak 3.5 GB),
+about 28–33 h.
+- The three pretraining rows and their exports moved to `local` (`pool_placement.move`, recorded). The remote driver
+  still pulls them if remote capacity frees first.
+- `baseline_local_driver.py` now also reads `selfrender-registration-20261029.json` (backup `.before-srprio-20261030.py`).
+
+**Queue order** (`pool_placement.set_priority`, queue order only, recorded):
+- priority 0: the 3 self-render pretrainings and their 3 exports;
+- priority 1: the 18 self-render FlashSAC rows and the 7 matched csw4 reference rows not yet launched (s2002 on all
+  three tasks, and the pick-place s2001 evaluator);
+- routine FlashSAC rows stay at priority 2.
+
+The dry-run reserves the next local headroom for `sr-csw4-seed0-hammer-200k`. Blocked rows reserve nothing, and
+evaluators still fill spare memory.
+
+**Unchanged.** Recipe `selfrender_replace_v2`, seeds, 200k pretraining, 1M FlashSAC, csw4 reference definition. No
+duplicate or superseded variant was created.
+
+**Diagnostics.** The 20k/40k diagnostics (`scripts/selfrender_diagnostics.py`) run on the 10k-cadence checkpoints.
+
+## 2026-10-30 18:10 — Codex retired (user directive)
+Codex is unavailable from now on. It is no longer invoked, retried or awaited. This supersedes every earlier Codex
+requirement (gpt-6-astra/ultra settings, delegated roles, review cycles, and the "brief Codex review" steps in the
+2026-10-23, 10-28 and 10-29 directives). Claude now does analysis, writing, figure work, code review and critical
+revision directly, to the same standards. Existing Codex outputs stay valid and may be reused.
+No experiment, job, checkpoint or scheduling setting was changed. Long-lived Codex app-server daemons were left running
+(no active Codex calls).
+
+## 2026-10-30 21:15 — Self-render pilot: hammer 20k/40k diagnostics (descriptive, not a search)
+`scripts/selfrender_diagnostics.py` (32 validation windows) on `sr-csw4-seed0-hammer-200k` steps 20k (ramp start) and
+40k (full strength). It ran on MIG-8da55219, the least-loaded slice (no slice was idle), at nice 10, while host budget
+use was 85 of 150 GB. Output: `runs/setup/selfrender-diagnostics-20261030/` (JSON and panels), plus a log beside it.
+
+| metric | 20k | 40k |
+|---|---|---|
+| state cosine, real–real (same window) | 0.969 | 0.976 |
+| state cosine, real–self-render (same window) | 0.069 | 0.833 |
+| state cosine, real across windows | 0.043 | 0.080 |
+| effective rank / min per-dimension std | 18.8 / 0.021 | 20.2 / 0.004 |
+| PSNR robot+object / rest (dB) | 18.7 / 28.3 | 20.3 / 29.8 |
+| depth AbsRel robot+object | 0.053 | 0.038 |
+| temporal-change correlation, robot+object | 0.36 | 0.55 |
+| self-render alpha / eligible-token fraction / coverage exceptions | 0.987 / 0.977 / 0 | 0.987 / 0.976 / 0 |
+
+- At 20k, rendered views encode almost unrelated to the real views (0.07, near the across-window level).
+- By 40k the ramp has aligned them (0.83), and windows remain distinguishable (0.08), so there is no collapse.
+- Reconstruction and temporal agreement keep improving.
+- **Loss across the ramp (5k-step means):** total loss 0.38–0.42 throughout, so the feared jump at ramp start did not
+  occur. Real-only InfoNCE stays at 0.10. The joint InfoNCE falls 0.53 → 0.18, and joint consistency 0.29 → 0.13.
+- One watch item: the smallest per-dimension std fell from 0.021 to 0.004. Mean std (0.056) and effective rank (↑) are
+  unchanged or better.
+- Pick-place and bin-picking diagnostics follow when their 40k checkpoints exist (≈ 23:00 KST). Pick-place carries
+  the registered risk of a dropped small object.
+
+## 2026-10-30 23:10 — Self-render pilot: pick-place and bin-picking 20k/40k diagnostics, plus a csw4 reference
+These ran the same way as the hammer diagnostics (32 validation windows, nice 10, least-loaded slice MIG-2ebd9e11,
+host budget about 80 of 150 GB). Outputs:
+- `runs/setup/selfrender-diagnostics-20261030-pp-bp/`
+- reference: `runs/setup/selfrender-diagnostics-20261030-csw4ref/`, i.e. `enc-csw4-seed0-hammer-200k` at 20k/40k
+
+| metric (20k → 40k) | sr hammer | sr pick-place | sr bin-picking | csw4 hammer (ref) |
+|---|---|---|---|---|
+| cos real–real | 0.969 → 0.976 | 0.970 → 0.981 | 0.964 → 0.987 | 0.978 → 0.982 |
+| cos real–self-render | 0.07 → 0.83 | 0.14 → 0.88 | 0.00 → 0.85 | 0.56 → 0.64 |
+| cos across windows | 0.043 → 0.080 | 0.020 → 0.036 | 0.037 → 0.042 | 0.085 → 0.090 |
+| effective rank | 18.8 → 20.2 | 17.7 → 19.8 | 19.3 → 19.5 | 17.9 → 19.1 |
+| min per-dimension std | 0.021 → 0.004 | 0.020 → 0.004 | 0.022 → 0.005 | 0.011 → 0.0025 |
+| PSNR robot+object (dB) | 18.7 → 20.3 | 17.8 → 19.1 | 16.7 → 18.7 | 19.5 → 20.6 |
+| temporal-change corr. | 0.36 → 0.55 | 0.28 → 0.45 | 0.29 → 0.47 | 0.47 → 0.51 |
+
+- **Same pattern on all three tasks.**
+  - The ramp aligns real and self-rendered states (≥ 0.83 at 40k).
+  - Windows stay distinguishable, so there is no collapse.
+  - Rank, reconstruction and temporal agreement improve.
+  - Self-render alpha is ≈ 0.985, eligible tokens ≈ 97 %, with no coverage exceptions.
+- **Earlier watch item resolved.** The smallest per-dimension std shrinks just as much in plain csw4
+  (0.011 → 0.0025), so it is ordinary training dynamics, not an effect of self-rendering.
+- **20k is not a csw4 replica.** The variant equals csw4 *without* synthetic views until 20k, while csw4 uses point-cloud
+  views from step 0. Differences at 20k are therefore expected.
+- **Pick-place panel at 40k** (the registered risk):
+  - The red puck is present but faint in reconstructions and self-renders.
+  - The blue goal markers seen in the observed views are absent from both.
+  - Now that self-renders are full-strength positives, this may push the state toward ignoring the goal marker.
+  - This is noted as context for reading the pick-place RL comparison. No change to the accepted definition.
+
+## 2026-10-31 02:30 — Self-render v3: ±5 % radial camera jitter (user request), registered before any result
+**Request (user, 2026-10-31):** train the self-rendering variant with a radial distance jitter of up to ±5 %, like the
+existing point-cloud synthetic-view augmentation; check whether the current runs have it; if not, update the viewpoint
+sampling and rerun the affected experiments; keep every other training setting; leave unrelated experiments alone.
+
+**Check: the current self-render runs do not have it.** `selfrender_replace_v2` (`sr-csw4-*`) draws its self-render
+cameras with `augment.domain_cameras`, which places every camera at the frozen domain's fixed orbit distance 1.0. Only
+the direction (domain cell, azimuth, sin elevation) is random. csw4's point-cloud views (`augment.jitter_cameras`)
+scale the rig radius by 1 + `radius_frac`, with `radius_frac` uniform in [−0.05, 0.05] (`HELDOUT_RANGES`), and then add
+a lateral shift. Their distances span 0.95–1.057.
+
+**Change (commit e883734, worktree `.worktrees/sr-radial`, branch `selfrender-radial-20261031`):**
+- `augment.domain_cameras(..., radius_jitter)`: distance = 1.0 × (1 + d), with d uniform in [−j, j], drawn per
+  (sample, view) after the direction draws. The direction, look-at, the three time steps sharing one camera, and the
+  view count are unchanged. j = 0 draws nothing extra.
+- `aug.synth_radius_jitter`: valid only with `gaussian_self_render` and a camera domain, in [0, 1). When on, it logs
+  `metric/synth_camera_distance_dev` = mean |distance − 1|, which should be about 0.025.
+- `configs/metaworld/variants/selfrender_replace_v3.yaml` = v2 + `synth_radius_jitter: 0.05`. This is the only
+  difference in the resolved config (tested).
+- Angular sampling stays v2's domain sampling. The point-cloud views' angular offsets and lateral shift are not
+  added, because the request is radial only.
+- Tests: `tests/test_selfrender_radial.py`. With the option off (key absent or 0), three v2 steps at 50k (self-render
+  weight 1) match `tests/data/selfrender_v2_golden.json` bit for bit. That golden was written by the unchanged a5d68e3
+  sources. With the option on, only the distance changes, and the directions are identical to v2's draw.
+  - Local results: the self-render tests (25) and the related loop, encoder, masking, Chamfer, held-out and export
+    tests (93) pass. The full suite runs remotely through `release_chain.py`.
+
+**Rows** (`register_selfrender_v3_20261031.py`, 24 rows). Each is a copy of its v2 row; only the variant file, names,
+paths and dependencies differ.
+- Pretraining: `srv3-csw4-seed0-{hammer,pick-place,bin-picking}-200k`, 200k, seed 0, priority 0.
+- Export: `srv3-csw4-export-seed0-<task>-200k`.
+- FlashSAC: `ds-flashsac-srv3-csw4-<task>-s200{0,1,2}` plus evaluators, 1M, priority 1.
+- Hosts are as for v2: local pool rows, which the remote driver may pull.
+- On the remote, only `srv3-*` rows use release e883734 (`SRV3_COMMIT`); every other row keeps its release.
+
+**Existing v2 runs:** not touched. The three `sr-csw4` pretrainings (at 02:25: hammer 108.6k, pick-place 75.9k, bin-picking 77.2k of 200k) and their pending exports and
+FlashSAC rows keep their definition and queue position. They become the no-jitter reference for v3. Holding the
+v2 FlashSAC rows to save capacity would be a user decision.
+
+## 2026-10-31 02:35 — Self-render v2 pilot stopped; replaced by v4 (jitter + 5 %-relaxed domain), trained from scratch
+**User instruction (2026-10-31, after the v3 entry above):**
+1. Stop every running Gaussian self-rendering experiment, and only those.
+2. Train a new variant: the ±5 % radial jitter (r = 1.0 × (1 + ε), ε ~ U(−0.05, 0.05) per synthetic camera, fixed over
+   the three timesteps, existing angular sampling), plus the viewpoint domain recomputed with `coverage_min` and
+   `ws_support2_min` × 0.95 (exact values). Training data only, the same 5° grid, components and solid-angle sampling.
+3. Restart from step 0 under distinct names, everything else unchanged.
+
+**v3 is superseded before registration.** No `srv3-*` row was ever registered or launched. Its registration tool was
+removed. Its code (`aug.synth_radius_jitter`, e883734) is reused by v4: the remote full suite of e883734 passed
+1218/1218.
+
+**Stop (`runs/setup/tools/stop_selfrender_v2_20261031.py`; record `runs/setup/selfrender-v2-cancellation-20261031.json`).**
+- First, an admission pause `selfrender-v2-stopped-20261031` covering the 24 v2 rows (prefixes `sr-csw4-`,
+  `ds-flashsac-sr-csw4-`). Checked: no other queue row matches.
+- Each running pretraining was verified before any signal:
+  - registry state, its launched event and its commit;
+  - session and process-group leader, start time;
+  - command line `scripts/train.py --name <id>` with `selfrender_replace_v2.yaml`;
+  - every process of the group belongs to this job;
+  - the trainer's `CUDA_VISIBLE_DEVICES` equals the registry MIG;
+  - the resolved config is the v2 recipe (domain v1, ramp 20k/40k, seed 0, 200k).
+- Then `intentional_stopped` was recorded and SIGTERM sent to that job's own process group only, with no escalation.
+  After the scheduler recorded the exit, a terminal cancelled `failed` event was written. Never-started rows (3
+  exports, 18 FlashSAC) received terminal cancelled events.
+- Stopped:
+  - `sr-csw4-seed0-hammer-200k`: last checkpoint 110k.
+  - `sr-csw4-seed0-pick-place-200k`: last checkpoint 70k (logged to 79,250).
+  - `sr-csw4-seed0-bin-picking-200k`: last checkpoint 80k (logged to 82,250). The step-80k checkpoint was
+    published after the 02:35 verification; the signal waited for the registry lock until ~02:59.
+  - Hammer was logged to 112,250.
+- Run directories, checkpoints, metrics and W&B files are kept. Nothing else was signalled. Other jobs on the same MIG
+  slices (FlashSAC SinCro evaluators) were not touched.
+
+**Relaxed domain (`configs/metaworld/selfrender_domain_v1_relaxed5.yaml`; outputs in
+`runs/setup/selfrender-domain-v1-relaxed5/`).**
+- `scripts/selfrender_domain.py --relax coverage=0.95 --relax ws_support2=0.95 --check-grid
+  runs/setup/selfrender-domain-v1/support_grid.json` recomputed the support maps from the training observations only:
+  training cameras 0–5, training-split frames, the same seed.
+- `--check-grid` asserted that the maps equal the stored v1 grid and reproduce v1's thresholds and 314 cells exactly.
+  Applying the relaxed thresholds to the 5-decimal stored grid instead would give 312 / 465 cells through rounding, so
+  the maps were recomputed.
+
+| criterion | training-pose minimum | v4 threshold |
+|---|---|---|
+| coverage_min | 0.834972 | 0.793224 (× 0.95) |
+| ws_support2_min | 0.666960 | 0.633612 (× 0.95) |
+| support2_min | 0.888181 | unchanged |
+| ws_visible_min | 0.275330 | unchanged |
+
+- **Result: 466 cells** (expected ~466), all connected to the training poses; 2.027 sr (v1: 314 cells, 1.414 sr).
+  Elevation range −75…−30 (v1: −70…−30). The 152 added cells have worst-task support of at least 0.794 coverage,
+  0.893 support2, 0.276 ws_visible and 0.634 ws_support2. v1 had no cell at azimuth 60–75°, a gap in its
+  azimuth strip; v4 covers every azimuth.
+- Representative renders (inspection only; csw4 200k decoded Gaussians against the fused training cloud, PSNR on
+  covered pixels): training poses 27.7 / 27.3 / 25.5 dB; random domain cells 26.3 / 24.8 / 23.2 dB (v1: 27.8 / 26.3 /
+  24.7) for hammer / pick-place / bin-picking. Rejected cells: 24.5 / 22.9 / 20.8 dB.
+- Evaluation cameras, related to the frozen domain only afterwards (never an input):
+  - The old held-out `eval0` (60, −40) and `eval1` (120, −40) now lie **inside** the domain; v1 had them outside.
+    Results on them must be read as unseen poses inside the training support.
+  - `eval2` and `eval3` stay inside. Camera suite v2: `vis0` stays inside, `vis1`–`vis3` stay outside, and 1 of 3
+    task exceptions is inside.
+  - Moving paths, inside fraction: 1× lateral 1.0, 1× circular 0.85, 2× lateral 1.0, 2× circular 0.83 (was 0.79),
+    3× lateral 1.0 (was 0.93), 3× circular 0.64.
+
+**Variant `selfrender_replace_v4`** (`configs/metaworld/variants/selfrender_replace_v4.yaml`, appended to v2; commit
+e8ad5ac). The only resolved-config differences from v2 are `aug.synth_radius_jitter: 0.05` and
+`aug.synth_camera_domain: …_relaxed5.yaml`. Tested in `tests/test_selfrender_v4.py`; the v2 bit-for-bit tests pass.
+
+**Rows** (`register_selfrender_v4_20261031.py`, 24 rows, copies of the v2 rows): `srv4-csw4-seed0-<task>-200k`
+(from step 0; new names, so `--resume auto` finds nothing), `srv4-csw4-export-…`, and
+`ds-flashsac-srv4-csw4-<task>-s200{0,1,2}` plus evaluators. Priorities are the pilot's (0 and 1). On the remote, only
+`srv4-*` rows run on `SRV4_COMMIT` = e8ad5ac.
+
+**Functional check of the v4 sampling** (`runs/setup/selfrender-v4-sampling-check-20261031.log`; diagnostics only).
+The stopped v2 checkpoints (hammer 110k, pick-place 70k) rendered 32 training windows with the same camera seed. For each
+setting, 64 cameras were drawn per checkpoint, (a) with v2 sampling and (b) with v4 sampling:
+
+| | v2 sampling | v4 sampling |
+|---|---|---|
+| distance range / mean \|d − 1\| | 1.000 / 0 | 0.953–1.049 / 0.0252 |
+| inside the sampled domain / outside v1 | 100 % / 0 % | 100 % / 39 % |
+| alpha mean (hammer, pick-place) | 0.987, 0.984 | 0.981, 0.980 |
+| eligible 16 px tokens | 97.7 %, 97.0 % | 96.3 %, 96.4 % |
+| coverage-exception views | 0, 0 | 0, 0 |
+
+The cosine between real and self-rendered states of the same window is lower under v4 sampling for these v2-trained
+encoders (hammer 0.93 → 0.90, pick-place 0.91 → 0.82), as expected for views the encoder was not trained on.

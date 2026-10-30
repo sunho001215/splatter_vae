@@ -1,0 +1,117 @@
+{
+ "sr-csw4-seed0-hammer-200k": {
+  "pid": 787689,
+  "gpu": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+  "attempt": 1,
+  "commit": "a5d68e356a15910e310a6c6fc0b1e957bcc0e2b5",
+  "start_ticks": 122905478,
+  "group_pids": [
+   787689,
+   787690,
+   803426,
+   803432,
+   803436,
+   803437,
+   803438,
+   803439
+  ],
+  "trainer_pids": [
+   787690,
+   803426,
+   803432,
+   803436,
+   803437,
+   803438,
+   803439
+  ],
+  "aug": {
+   "synth_views": 2,
+   "synth_render": false,
+   "synth_source": "gaussian_self_render",
+   "synth_ramp_steps": [
+    20000,
+    40000
+   ],
+   "synth_camera_domain": "configs/metaworld/selfrender_domain_v1.yaml"
+  },
+  "last_checkpoint": "runs/sr-csw4-seed0-hammer-200k/checkpoints/step_0110000.pt"
+ },
+ "sr-csw4-seed0-pick-place-200k": {
+  "pid": 1201439,
+  "gpu": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+  "attempt": 1,
+  "commit": "a5d68e356a15910e310a6c6fc0b1e957bcc0e2b5",
+  "start_ticks": 123438122,
+  "group_pids": [
+   1201439,
+   1201440,
+   1207330,
+   1207331,
+   1207332,
+   1207333,
+   1207334,
+   1207335
+  ],
+  "trainer_pids": [
+   1201440,
+   1207330,
+   1207331,
+   1207332,
+   1207333,
+   1207334,
+   1207335
+  ],
+  "aug": {
+   "synth_views": 2,
+   "synth_render": false,
+   "synth_source": "gaussian_self_render",
+   "synth_ramp_steps": [
+    20000,
+    40000
+   ],
+   "synth_camera_domain": "configs/metaworld/selfrender_domain_v1.yaml"
+  },
+  "last_checkpoint": "runs/sr-csw4-seed0-pick-place-200k/checkpoints/step_0070000.pt"
+ },
+ "sr-csw4-seed0-bin-picking-200k": {
+  "pid": 1311694,
+  "gpu": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+  "attempt": 1,
+  "commit": "a5d68e356a15910e310a6c6fc0b1e957bcc0e2b5",
+  "start_ticks": 123569326,
+  "group_pids": [
+   1311694,
+   1311695,
+   1326038,
+   1326039,
+   1326040,
+   1326041,
+   1326042,
+   1326044
+  ],
+  "trainer_pids": [
+   1311695,
+   1326038,
+   1326039,
+   1326040,
+   1326041,
+   1326042,
+   1326044
+  ],
+  "aug": {
+   "synth_views": 2,
+   "synth_render": false,
+   "synth_source": "gaussian_self_render",
+   "synth_ramp_steps": [
+    20000,
+    40000
+   ],
+   "synth_camera_domain": "configs/metaworld/selfrender_domain_v1.yaml"
+  },
+  "last_checkpoint": "runs/sr-csw4-seed0-bin-picking-200k/checkpoints/step_0070000.pt"
+ }
+}
+{"stopped": "sr-csw4-seed0-hammer-200k", "exit_seconds": 2.1, "last_logged_step": 112250, "last_checkpoint_step": 110000}
+{"stopped": "sr-csw4-seed0-pick-place-200k", "exit_seconds": 2.1, "last_logged_step": 79250, "last_checkpoint_step": 70000}
+{"stopped": "sr-csw4-seed0-bin-picking-200k", "exit_seconds": 2.1, "last_logged_step": 82250, "last_checkpoint_step": 70000}
+exit 0

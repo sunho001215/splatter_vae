@@ -1,0 +1,38 @@
+=== 2026-10-31 02:44:30 release chain e8ad5ac (selfrender_replace_v4)
+02:45:08 /home/ws/ws/splatter4d/.worktrees/sr-radial/s4d/remote_access.py sync-code e8ad5ac17de1434d85256527d5a42e7e10128b70 -> 0 /home/compu/kaist/sunho/releases/e8ad5ac17de1434d85256527d5a42e7e10128b70/code 
+02:45:08 /home/compu/kaist/sunho/releases/e8ad5ac17de1434d85256527d5a42e7e10128b70/code
+02:45:13 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-e8ad5ac-cc-queue.yaml 
+02:55:43 ds-csw4-seed0-soccer-200k: local backup checksum verified; done
+02:55:43 ds-sac-cnn-hammer-s2000: local backup checksum verified; done
+02:55:43 ds-sac-cnn-hammer-s2000-eval: local backup checksum verified; done
+02:55:43 ds-sac-cnn-bin-picking-s2000: local backup checksum verified; done
+02:55:43 ds-sac-cnn-bin-picking-s2000-eval: local backup checksum verified; done
+02:55:43 ds-sac-cnn-stick-push-s2000: local backup checksum verified; done
+02:55:43 ds-sac-cnn-stick-push-s2000-eval: local backup checksum verified; done
+02:55:43 ds-csw4-export-seed0-soccer-200k: local backup checksum verified; done
+02:55:43 verify-isolation-3-e883734-cc exited with 0 on remote; results checksum verified
+02:55:43 launched verify-native-e8ad5ac-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-native-e8ad5ac-cc-a1, attempt 1)
+02:55:43 wait {'verify-native-e8ad5ac-cc': 'running'}
+03:04:41 verify-native-e8ad5ac-cc: live result sync unavailable; job remains running
+03:04:41 GPU process query failed (QueryUnavailable); no jobs launched on local
+03:04:41 wait {'verify-native-e8ad5ac-cc': 'running'}
+03:06:41 GPU process query failed (QueryUnavailable); no jobs launched on local
+03:06:41 wait {'verify-native-e8ad5ac-cc': 'running'}
+03:08:48 verify-native-e8ad5ac-cc: live result sync unavailable; job remains running
+03:08:49 wait {'verify-native-e8ad5ac-cc': 'running'}
+03:30:16 ds-flashsac-sincro-hammer-s2001 exited with 0
+03:30:16 ds-flashsac-sincro-hammer-s2001-eval exited with 0
+03:30:16 GPU process query failed (QueryUnavailable); no jobs launched on local
+03:30:17 done {'verify-native-e8ad5ac-cc': 'done'}
+03:30:17 {"exit_code": 0, "counts": {"passed": 1222, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+03:30:21 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-e8ad5ac-cc-queue.yaml 
+03:33:11 launched verify-isolation-0-e8ad5ac-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-e8ad5ac-cc-a1, attempt 1)
+03:33:11 launched verify-isolation-1-e8ad5ac-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-e8ad5ac-cc-a1, attempt 1)
+03:33:11 launched verify-isolation-2-e8ad5ac-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-e8ad5ac-cc-a1, attempt 1)
+03:33:11 launched verify-isolation-3-e8ad5ac-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-e8ad5ac-cc-a1, attempt 1)
+03:33:11 wait {'verify-isolation-0-e8ad5ac-cc': 'running', 'verify-isolation-1-e8ad5ac-cc': 'running', 'verify-isolation-2-e8ad5ac-cc': 'running', 'verify-isolation-3-e8ad5ac-cc': 'running'}
+03:36:37 GPU process query failed (QueryUnavailable); no jobs launched on local
+03:36:37 done {'verify-isolation-0-e8ad5ac-cc': 'done', 'verify-isolation-1-e8ad5ac-cc': 'done', 'verify-isolation-2-e8ad5ac-cc': 'done', 'verify-isolation-3-e8ad5ac-cc': 'done'}
+03:36:38 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/e8ad5ac-cc/manifest.json 23d65db278027f48df48f72a1c316940eb1927fa16677784a7d7a22162fdcc33 56bd8ce9c59e 
+03:36:38 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/e8ad5ac-cc/manifest.json 23d65db278027f48df48f72a1c316940eb1927fa16677784a7d7a22162fdcc33 56bd8ce9c59e
+exit 0

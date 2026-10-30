@@ -1,0 +1,246 @@
+{
+  "reason": "cancelled: user instruction 2026-10-31 -- stop all running Gaussian self-rendering experiments (selfrender_replace_v2); replaced by a new variant (+-5 % radial camera jitter and the 5 %-relaxed viewpoint domain) trained from scratch under new names",
+  "jobs": {
+    "sr-csw4-seed0-hammer-200k": {
+      "state_before": "running",
+      "verified": {
+        "pid": 787689,
+        "gpu": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+        "attempt": 1,
+        "commit": "a5d68e356a15910e310a6c6fc0b1e957bcc0e2b5",
+        "start_ticks": 122905478,
+        "group_pids": [
+          787689,
+          787690,
+          803426,
+          803432,
+          803436,
+          803437,
+          803438,
+          803439
+        ],
+        "trainer_pids": [
+          787690,
+          803426,
+          803432,
+          803436,
+          803437,
+          803438,
+          803439
+        ],
+        "aug": {
+          "synth_views": 2,
+          "synth_render": false,
+          "synth_source": "gaussian_self_render",
+          "synth_ramp_steps": [
+            20000,
+            40000
+          ],
+          "synth_camera_domain": "configs/metaworld/selfrender_domain_v1.yaml"
+        },
+        "last_checkpoint": "runs/sr-csw4-seed0-hammer-200k/checkpoints/step_0110000.pt"
+      },
+      "signal": "SIGTERM (own process group)",
+      "exit_seconds": 2.1,
+      "scheduler_status_after_exit": "crashed",
+      "last_logged_step": 112250,
+      "last_checkpoint_step": 110000,
+      "last_checkpoint_sha256": "95016db125ba597cc301c4af9548bb11b9ec8bdb36d50c2818654cb6af57c084",
+      "cancelled_at": "2026-10-31T02:44:19+09:00",
+      "latest_checkpoint_on_disk_after_stop": {
+        "path": "runs/sr-csw4-seed0-hammer-200k/checkpoints/step_0110000.pt",
+        "step": 110000,
+        "sha256": "95016db125ba597cc301c4af9548bb11b9ec8bdb36d50c2818654cb6af57c084"
+      }
+    },
+    "sr-csw4-seed0-pick-place-200k": {
+      "state_before": "running",
+      "verified": {
+        "pid": 1201439,
+        "gpu": "MIG-423203d9-5801-5892-a489-30f16a5a2d4a",
+        "attempt": 1,
+        "commit": "a5d68e356a15910e310a6c6fc0b1e957bcc0e2b5",
+        "start_ticks": 123438122,
+        "group_pids": [
+          1201439,
+          1201440,
+          1207330,
+          1207331,
+          1207332,
+          1207333,
+          1207334,
+          1207335
+        ],
+        "trainer_pids": [
+          1201440,
+          1207330,
+          1207331,
+          1207332,
+          1207333,
+          1207334,
+          1207335
+        ],
+        "aug": {
+          "synth_views": 2,
+          "synth_render": false,
+          "synth_source": "gaussian_self_render",
+          "synth_ramp_steps": [
+            20000,
+            40000
+          ],
+          "synth_camera_domain": "configs/metaworld/selfrender_domain_v1.yaml"
+        },
+        "last_checkpoint": "runs/sr-csw4-seed0-pick-place-200k/checkpoints/step_0070000.pt"
+      },
+      "signal": "SIGTERM (own process group)",
+      "exit_seconds": 2.1,
+      "scheduler_status_after_exit": "crashed",
+      "last_logged_step": 79250,
+      "last_checkpoint_step": 70000,
+      "last_checkpoint_sha256": "4c05b91c9c1d29221dc6e07b15deaf267a10275902c7429c3da1a251ede03653",
+      "cancelled_at": "2026-10-31T02:46:56+09:00",
+      "latest_checkpoint_on_disk_after_stop": {
+        "path": "runs/sr-csw4-seed0-pick-place-200k/checkpoints/step_0070000.pt",
+        "step": 70000,
+        "sha256": "4c05b91c9c1d29221dc6e07b15deaf267a10275902c7429c3da1a251ede03653"
+      }
+    },
+    "sr-csw4-seed0-bin-picking-200k": {
+      "state_before": "running",
+      "verified": {
+        "pid": 1311694,
+        "gpu": "MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c",
+        "attempt": 1,
+        "commit": "a5d68e356a15910e310a6c6fc0b1e957bcc0e2b5",
+        "start_ticks": 123569326,
+        "group_pids": [
+          1311694,
+          1311695,
+          1326038,
+          1326039,
+          1326040,
+          1326041,
+          1326042,
+          1326044
+        ],
+        "trainer_pids": [
+          1311695,
+          1326038,
+          1326039,
+          1326040,
+          1326041,
+          1326042,
+          1326044
+        ],
+        "aug": {
+          "synth_views": 2,
+          "synth_render": false,
+          "synth_source": "gaussian_self_render",
+          "synth_ramp_steps": [
+            20000,
+            40000
+          ],
+          "synth_camera_domain": "configs/metaworld/selfrender_domain_v1.yaml"
+        },
+        "last_checkpoint": "runs/sr-csw4-seed0-bin-picking-200k/checkpoints/step_0070000.pt"
+      },
+      "signal": "SIGTERM (own process group)",
+      "exit_seconds": 2.1,
+      "scheduler_status_after_exit": "crashed",
+      "last_logged_step": 82250,
+      "last_checkpoint_step": 70000,
+      "last_checkpoint_sha256": "8cf535019286e2dc2b89a99689a05faa2ea58ec6705d3501d2e71246c63a56ce",
+      "cancelled_at": "2026-10-31T03:04:27+09:00",
+      "latest_checkpoint_on_disk_after_stop": {
+        "path": "runs/sr-csw4-seed0-bin-picking-200k/checkpoints/step_0080000.pt",
+        "step": 80000,
+        "sha256": "29a69a54e183681bce823e2c38ee816ce4cea9d55b2105c87bbfa01e3dfc9cf0"
+      }
+    },
+    "sr-csw4-export-seed0-hammer-200k": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:05:17+09:00"
+    },
+    "sr-csw4-export-seed0-pick-place-200k": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:33+09:00"
+    },
+    "sr-csw4-export-seed0-bin-picking-200k": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-hammer-s2000": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-hammer-s2000-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-hammer-s2001": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-hammer-s2001-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-hammer-s2002": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-hammer-s2002-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-pick-place-s2000": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-pick-place-s2000-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-pick-place-s2001": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-pick-place-s2001-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-pick-place-s2002": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-pick-place-s2002-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-bin-picking-s2000": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-bin-picking-s2000-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-bin-picking-s2001": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-bin-picking-s2001-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-bin-picking-s2002": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    },
+    "ds-flashsac-sr-csw4-bin-picking-s2002-eval": {
+      "state_before": "pending (never started)",
+      "cancelled_at": "2026-10-31T03:06:41+09:00"
+    }
+  },
+  "note": "last_checkpoint_step was read at verification (02:35), before the registry lock delayed the signal to ~02:59; bin-picking published step 80000 in between. latest_checkpoint_on_disk_after_stop is authoritative."
+}

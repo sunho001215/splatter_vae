@@ -1,0 +1,32 @@
+=== 2026-10-31 02:20:54 release chain e883734 (selfrender_replace_v3)
+02:21:15 /home/ws/ws/splatter4d/.worktrees/sr-radial/s4d/remote_access.py sync-code e883734dffd5ef824dfb1ea3f7e5c98b4e49dae7 -> 1  Submodule third_party/dino is not checked out locally
+exit 1
+=== 2026-10-31 02:22:12 release chain e883734 retry (submodules checked out in the sr-radial worktree)
+02:22:29 /home/ws/ws/splatter4d/.worktrees/sr-radial/s4d/remote_access.py sync-code e883734dffd5ef824dfb1ea3f7e5c98b4e49dae7 -> 0 /home/compu/kaist/sunho/releases/e883734dffd5ef824dfb1ea3f7e5c98b4e49dae7/code 
+02:22:29 /home/compu/kaist/sunho/releases/e883734dffd5ef824dfb1ea3f7e5c98b4e49dae7/code
+02:22:34 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-e883734-cc-queue.yaml 
+02:25:06 launched verify-native-e883734-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-native-e883734-cc-a1, attempt 1)
+02:25:06 wait {'verify-native-e883734-cc': 'running'}
+02:37:34 ds-csw4-seed0-soccer-200k exited with 0 on remote; artifacts verified on the remote (same-host dependents released; local backup pending)
+02:37:34 ds-sac-cnn-stick-push-s2000 exited with 0 on remote; artifacts verified on the remote (same-host dependents released; local backup pending)
+02:37:34 ds-sac-cnn-stick-push-s2000-eval exited with 0 on remote; artifacts verified on the remote (same-host dependents released; local backup pending)
+02:37:34 verify-native-e883734-cc: live result sync unavailable; job remains running
+02:37:34 ds-csw4-seed0-soccer-200k: container s4d-ds-csw4-seed0-soccer-200k-a1 removed (Docker log and inspect record kept)
+02:37:34 ds-sac-cnn-stick-push-s2000: container s4d-ds-sac-cnn-stick-push-s2000-a1 removed (Docker log and inspect record kept)
+02:37:34 ds-sac-cnn-stick-push-s2000-eval: container s4d-ds-sac-cnn-stick-push-s2000-eval-a1 removed (Docker log and inspect record kept)
+02:37:34 wait {'verify-native-e883734-cc': 'running'}
+02:44:19 sr-csw4-seed0-hammer-200k exited with -1
+02:44:19 sr-csw4-seed0-hammer-200k: terminated leftover processes of its session
+02:44:19 done {'verify-native-e883734-cc': 'done'}
+02:44:19 {"exit_code": 0, "counts": {"passed": 1218, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+02:44:24 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-e883734-cc-queue.yaml 
+02:46:56 sr-csw4-seed0-pick-place-200k exited with -1
+02:46:56 launched verify-isolation-0-e883734-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-e883734-cc-a1, attempt 1)
+02:46:56 launched verify-isolation-1-e883734-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-e883734-cc-a1, attempt 1)
+02:46:56 launched verify-isolation-2-e883734-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-e883734-cc-a1, attempt 1)
+02:46:56 launched verify-isolation-3-e883734-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-e883734-cc-a1, attempt 1)
+02:46:56 wait {'verify-isolation-0-e883734-cc': 'running', 'verify-isolation-1-e883734-cc': 'running', 'verify-isolation-2-e883734-cc': 'running', 'verify-isolation-3-e883734-cc': 'running'}
+02:57:12 done {'verify-isolation-0-e883734-cc': 'done', 'verify-isolation-1-e883734-cc': 'done', 'verify-isolation-2-e883734-cc': 'done', 'verify-isolation-3-e883734-cc': 'done'}
+02:57:13 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/e883734-cc/manifest.json 6df14c03388f5963e14c762fe99920d74cee9920014b7a019106ff03851899ae 56bd8ce9c59e 
+02:57:13 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/e883734-cc/manifest.json 6df14c03388f5963e14c762fe99920d74cee9920014b7a019106ff03851899ae 56bd8ce9c59e
+exit 0

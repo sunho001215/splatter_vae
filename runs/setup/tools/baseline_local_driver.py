@@ -64,7 +64,14 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'cameras-v2-reeval-registration-drm-20261029.json',
                  # FlashSAC (no image augmentation) comparison groups (user directive 2026-10-29): frozen-encoder
                  # families local pool rows, the CNN remote
-                 'flashsac-registration-20261029.json']
+                 'flashsac-registration-20261029.json',
+                 # self-render pilot pretrainings and exports (user 2026-10-30: raise the pilot's priority, next suitable
+                 # capacity on either host): pool rows, admitted here only while placed local
+                 'selfrender-registration-20261029.json',
+                 # self-render v4 = v2 + +-5 % radial camera jitter + 5 %-relaxed viewpoint domain (user 2026-10-31;
+                 # replaces the stopped v2 pilot): pretrainings, exports (pool rows, admitted here only while placed
+                 # local) and their FlashSAC trainers/evaluators
+                 'selfrender-v4-registration-20261031.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
