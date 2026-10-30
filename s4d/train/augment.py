@@ -7,7 +7,8 @@
 * the same jittered cameras serve the self-rendered view consistency term (2c, in ``loop.forward_losses``).
 * ``load_viewpoint_domain`` + ``domain_cameras`` (variant selfrender_replace_v2, 2026-10-29): cameras drawn uniformly over
   the frozen training-supported viewpoint domain (configs/metaworld/selfrender_domain_v1.yaml, scripts/selfrender_domain.py)
-  for the decoded-Gaussian self-rendered synthetic views.
+  for the decoded-Gaussian self-rendered synthetic views; variant selfrender_replace_v3 (2026-10-31) adds a radial
+  distance jitter (``radius_jitter``, +-5 %) to those cameras.
 
 Nothing here runs at evaluation or RL time.
 """
@@ -130,13 +131,17 @@ def load_viewpoint_domain(path: str | Path) -> dict:
 
 
 def domain_cameras(
-    batch_size: int, views: int, K: torch.Tensor, height: int, width: int, domain: dict
+    batch_size: int, views: int, K: torch.Tensor, height: int, width: int, domain: dict, radius_jitter: float = 0.0
 ) -> dict[str, torch.Tensor]:
     """Cameras uniform on the sphere over the viewpoint ``domain`` (``load_viewpoint_domain``): a cell with probability
     proportional to its solid angle, then azimuth uniform and sin(elevation) uniform within the cell, at the domain's
     orbit distance, looking at LOOKAT (torch's default generator). One camera per (sample, view): the caller renders
     every timestep from it. K (B,3,3) is reused for every camera; returns K, w2c, c2w (B,views,...) and poses
-    (B,views,3) = (azimuth, elevation, distance)."""
+    (B,views,3) = (azimuth, elevation, distance).
+
+    ``radius_jitter`` j > 0 (variant selfrender_replace_v3, user 2026-10-31): the distance is the domain's times
+    (1 + d), d uniform in [-j, j] per camera, as the point-cloud views' radius_frac offset (HELDOUT_RANGES, +-5 %);
+    the direction is unchanged and the camera still looks at LOOKAT. j = 0 draws nothing more (v2 bit for bit)."""
     n = batch_size * views
     cell = torch.multinomial(torch.as_tensor(domain["probs"]), n, replacement=True).numpy()
     u = torch.rand(n, 2, dtype=torch.float64).numpy()
@@ -144,7 +149,10 @@ def domain_cameras(
     azimuth = centre[:, 0] + (2.0 * u[:, 0] - 1.0) * half
     s_lo, s_hi = np.sin(np.radians(centre[:, 1] - half)), np.sin(np.radians(centre[:, 1] + half))
     elevation = np.degrees(np.arcsin(np.clip(s_lo + u[:, 1] * (s_hi - s_lo), -1.0, 1.0)))
-    poses = np.stack((azimuth, elevation, np.full(n, domain["distance"])), 1)
+    distance = np.full(n, domain["distance"])
+    if radius_jitter > 0.0:
+        distance = distance * (1.0 + (2.0 * torch.rand(n, dtype=torch.float64).numpy() - 1.0) * radius_jitter)
+    poses = np.stack((azimuth, elevation, distance), 1)
     rig = orbit_rig([tuple(p) for p in poses], height, width)
     like = {"device": K.device, "dtype": torch.float32}
     return {

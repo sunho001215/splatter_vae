@@ -1,0 +1,27 @@
+# Variant selfrender_replace_v3 = selfrender_replace_v2 + a radial distance jitter of up to +-5 % on the self-render
+# cameras (user request 2026-10-31: "a radial distance jitter of up to +-5 %, similar to the existing point-cloud
+# synthetic-view augmentation"; all other training settings unchanged). Recorded before any result of this variant.
+# Job config list: base, task, chamfer_lean.yaml, chamfer_lean_randmask.yaml, enc_cs.yaml, enc_w4.yaml,
+# selfrender_replace_v2.yaml, this file.
+#
+# Why a new variant: v2's self-render cameras sit at the frozen domain's fixed orbit distance (1.0; augment.domain_cameras),
+# whereas csw4's point-cloud synthetic views (augment.jitter_cameras) scale the rig radius by 1 + radius_frac,
+# radius_frac uniform in [-0.05, 0.05] (s4d/data/metaworld/cameras.py HELDOUT_RANGES). The v2 runs (sr-csw4-*) started
+# before this request and keep their identity.
+#
+# What changes (s4d/train/augment.py domain_cameras, s4d/train/loop.py synthetic_settings): every self-render camera
+# keeps v2's direction (domain cell by solid angle, azimuth and sin(elevation) uniform within the cell; fixed over the 3
+# reconstruction times; looking at the rig look-at) and its distance becomes 1.0 * (1 + d), d uniform in [-0.05, 0.05],
+# drawn independently per (sample, view) -- the point-cloud views' radial offset. The point-cloud views' other
+# perturbations (azimuth/elevation offsets around a training camera, lateral shift) are not added: the angular sampling
+# stays v2's domain sampling. Logged per step from 20k on: metric/synth_camera_distance_dev = mean |distance - 1|
+# (expected 0.025).
+# Relation to the viewpoint domain: the domain (configs/metaworld/selfrender_domain_v1.yaml) was frozen in angle at
+# distance 1.0; distances 0.95-1.05 lie within the range csw4's point-cloud views already train on (0.95-1.057:
+# sqrt((1 + d)^2 + l^2) with the lateral shift |l| <= 0.12 m). The +-5 % is the user's value, not derived from any
+# evaluation camera or result.
+# Exact resolved-config difference vs v2 (tests/test_selfrender_replace.py): aug.synth_radius_jitter: (none) -> 0.05.
+# Unchanged: everything else (warm-up/ramp 20k/40k, domain, view count 2, masking, loss weights, optimiser, 200k steps,
+# data, seed, export).
+aug:
+  synth_radius_jitter: 0.05

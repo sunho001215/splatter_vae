@@ -132,6 +132,8 @@ def _nanmean(x: torch.Tensor) -> torch.Tensor:
 #   the reference near-jitter), re-encoded WITH gradient; no point-cloud view is built and nothing rendered is ever a
 #   reconstruction target. Its contribution to InfoNCE / consistency is weighted by w(step) (aug.synth_ramp_steps
 #   [s0, s1]: 0 up to s0, linear to 1 at s1); see selfrender_representation.
+#   aug.synth_radius_jitter j (variant selfrender_replace_v3, user 2026-10-31; with aug.synth_camera_domain only): each
+#   domain camera's distance is scaled by 1 + d, d uniform in [-j, j] (augment.domain_cameras); absent or 0 is v2.
 SYNTH_SOURCES = ("pointcloud", "gaussian_self_render")
 
 
@@ -141,10 +143,18 @@ def synthetic_settings(aug: dict, *, future: bool, hardneg: bool) -> dict:
     if source not in SYNTH_SOURCES:
         raise ValueError(f"aug.synth_source must be one of {SYNTH_SOURCES}, not {source!r}")
     ramp, domain = aug.get("synth_ramp_steps"), aug.get("synth_camera_domain")
+    radius_jitter = aug.get("synth_radius_jitter")
     if source == "pointcloud":
-        if ramp is not None or domain is not None:
-            raise ValueError("aug.synth_ramp_steps / aug.synth_camera_domain are defined for gaussian_self_render only")
+        if ramp is not None or domain is not None or radius_jitter is not None:
+            raise ValueError("aug.synth_ramp_steps / aug.synth_camera_domain / aug.synth_radius_jitter are defined for "
+                             "gaussian_self_render only")
         return {"source": source}
+    radius_jitter = float(radius_jitter or 0.0)
+    if not 0.0 <= radius_jitter < 1.0:
+        raise ValueError("aug.synth_radius_jitter must be a fraction in [0, 1)")
+    if radius_jitter > 0.0 and domain is None:
+        raise ValueError("aug.synth_radius_jitter needs aug.synth_camera_domain (the near-jitter cameras already vary "
+                         "the radius)")
     if aug.get("synth_render", False):
         raise ValueError("self-rendered views are never reconstruction targets: aug.synth_render must be false with "
                          "aug.synth_source gaussian_self_render")
@@ -156,7 +166,7 @@ def synthetic_settings(aug: dict, *, future: bool, hardneg: bool) -> dict:
         if len(ramp) != 2 or not 0 <= int(ramp[0]) <= int(ramp[1]):
             raise ValueError("aug.synth_ramp_steps must be [start, full] with 0 <= start <= full")
         ramp = (int(ramp[0]), int(ramp[1]))
-    return {"source": source, "ramp": ramp, "domain": domain}
+    return {"source": source, "ramp": ramp, "domain": domain, "radius_jitter": radius_jitter}
 
 
 def selfrender_weight(step: int, ramp: tuple[int, int] | None) -> float:
@@ -374,7 +384,11 @@ def forward_losses(
         sr_stats["selfrender_weight"] = torch.tensor(sr_weight, device=device)
         if sr_weight > 0.0:  # at weight 0 nothing is sampled, rendered or encoded
             if synth["domain"] is not None:
-                syn_cams = domain_cameras(B, n_syn, batch["K"][:, 0], H, W, load_viewpoint_domain(synth["domain"]))
+                domain = load_viewpoint_domain(synth["domain"])
+                syn_cams = domain_cameras(B, n_syn, batch["K"][:, 0], H, W, domain, synth["radius_jitter"])
+                if synth["radius_jitter"] > 0.0:  # mean |distance / domain distance - 1| (expected j / 2)
+                    sr_stats["synth_camera_distance_dev"] = (syn_cams["poses"][..., 2] / domain["distance"] - 1.0).abs(
+                    ).mean().to(device=device, dtype=torch.float32)
             else:
                 syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
             syn_slots, stats = self_render_positives(encoder, gs, xyz_seq, syn_cams, enc_in.shape[1], mask_ratio, bf16,

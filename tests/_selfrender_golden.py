@@ -55,8 +55,10 @@ def fixture_batch(tmp: Path) -> dict:
     return out
 
 
-def fingerprints(tmp: Path, overrides: dict | None = None) -> dict:
-    """``overrides``: dotted config keys applied to the small csw4 config (the option-off settings of new keys)."""
+def fingerprints(tmp: Path, overrides: dict | None = None, variants: tuple[str, ...] = (),
+                 steps_at: tuple[int, ...] = (0, 1, 2)) -> dict:
+    """``overrides``: dotted config keys applied to the small csw4 config (the option-off settings of new keys);
+    ``variants``: extra variant files; ``steps_at``: the training step numbers of the three steps."""
     from s4d.train.loop import build_model, build_optimizer, forward_losses
     from tests import _enc_golden as golden
 
@@ -67,7 +69,7 @@ def fingerprints(tmp: Path, overrides: dict | None = None) -> dict:
         out: dict = {"environment": golden.environment()}
         batch = fixture_batch(tmp)
         out["batch"] = {k: golden._sha(v) for k, v in sorted(batch.items()) if torch.is_tensor(v)}
-        cfg = small_csw4_cfg()
+        cfg = small_csw4_cfg(*variants)
         for key, value in (overrides or {}).items():
             golden.set_dotted(cfg, key, value)
         torch.manual_seed(0)
@@ -77,7 +79,7 @@ def fingerprints(tmp: Path, overrides: dict | None = None) -> dict:
                                    for g in optimizer.param_groups]
         out["init"] = golden._sha(torch.cat([p.detach().flatten() for p in model.parameters()]))
         steps = []
-        for step in range(3):
+        for step in steps_at:
             res = forward_losses(model, batch, cfg, step, source=torch.tensor([0, 1]))
             optimizer.zero_grad(set_to_none=True)
             res["total"].backward()
@@ -96,14 +98,23 @@ def fingerprints(tmp: Path, overrides: dict | None = None) -> dict:
         torch.set_num_threads(threads)
 
 
+# Variant selfrender_replace_v2 itself, before aug.synth_radius_jitter existed (2026-10-31, written by the unchanged s4d/
+# sources of a5d68e3): three training steps at 50000-50002 (self-render weight 1: domain cameras drawn, rendered,
+# re-encoded), so the option-off form of the radial jitter (key absent or 0) must reproduce v2 bit for bit.
+GOLDEN_V2 = REPO / "tests/data/selfrender_v2_golden.json"
+V2_ARGS = {"variants": ("selfrender_replace_v2.yaml",), "steps_at": (50000, 50001, 50002)}
+
+
 if __name__ == "__main__":
     import tempfile
 
     sys.path.insert(0, str(REPO))
-    if "--write" not in sys.argv:
-        raise SystemExit("usage: python -I tests/_selfrender_golden.py --write (pre-change commit only)")
+    if "--write" not in sys.argv and "--write-v2" not in sys.argv:
+        raise SystemExit("usage: python -I tests/_selfrender_golden.py --write | --write-v2 (pre-change commit only)")
+    v2 = "--write-v2" in sys.argv
     with tempfile.TemporaryDirectory(dir=REPO / ".pytest_tmp" if (REPO / ".pytest_tmp").is_dir() else None) as tmp:
-        result = fingerprints(Path(tmp))
-    GOLDEN.parent.mkdir(parents=True, exist_ok=True)
-    GOLDEN.write_text(json.dumps(result, indent=1) + "\n")
-    print("wrote", GOLDEN)
+        result = fingerprints(Path(tmp), **(V2_ARGS if v2 else {}))
+    target = GOLDEN_V2 if v2 else GOLDEN
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(result, indent=1) + "\n")
+    print("wrote", target)
