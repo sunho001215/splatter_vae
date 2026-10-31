@@ -50,9 +50,14 @@ See `paused_local_jobs` in the state file for the exact checkpoints, sha256 valu
 | 4 Robot-grounded calibration | same | implemented per camera and episode (DepthWorld adaptation, simplifications documented) | 10 calibration tests: pose within 0.3° / 5 mm; rejection gates | exact Robotiq URDF/meshes, measured mount; landmark detection on real images; gate tuning |
 | 5 FoundationStereo + AllTracker | same | numerical parts implemented and tested; upstream workers written, never executed | stereo 10 tests (flip-and-swap right reference, alignment); lifting tests | build pinned envs (`configs/realworld/upstream_pins.yaml`), run once on real frames |
 | 6 DINO / SAM 3 (optional) | same | stages and workers written; consumer contract taken from SNeRL (`dino_vits8`, layer 11 key, stride 4) | 3 baseline-stage tests (mock); workers not executed | run workers in isolated envs |
-| 7 Behaviour-preserving refactor (now: `ops` package) | `.worktrees/ops-refactor` / `ops-refactor-20261031` | in progress (started 20:46) | see the branch's report | full regression suite before merge |
+| 7 Behaviour-preserving refactor (now: `ops` package) | `ops-refactor-20261031`, **merged into main as b185ee0** (21:27) | done: operational code moved to `ops/{remote,jobs,resources,containers}`; old `s4d.*`/`scripts/*` paths are aliases of the same module objects | full native suite 1246 passed / 0 failed / 0 errors / 0 skipped on the exact merged sources (`docs/tests.json`); reconcile-tool and local-driver dry runs on the merged code | phase 2: move the active drivers out of `runs/setup/tools` and consider `scripts/remote/*`; remote releases still use their accepted commits, so the next release chain includes `ops/` |
 | 8 DROID + PointWorld + DROID-3D, wrist cameras | `.worktrees/droid-largescale` / `droid-largescale-20261031` (5 commits) | implemented on schema-faithful fixtures; blocked on data | 40 new tests passed (re-run 20:20); 91 existing DROID/contract tests passed per the agent | needs user go-ahead to read the protected DROID directory, a valid HF token (gated DROID-3D), PointWorld extraction (about 3.9 TB), full suite, throughput run |
 
-## 6. Open decisions for the user
+## 6. Code layout after the merge
+See `docs/DEVELOPER.md`. Every restart command in section 2 keeps its old path: the files at old locations are
+aliases or wrappers for the implementations in `ops/`. The remote runner and the accepted remote releases do not
+use the main checkout.
+
+## 7. Open decisions for the user
 - DROID large-scale: reading the protected DROID directory, the PointWorld extraction (about 3.9 TB) and a valid
   Hugging Face token for the gated DROID-3D extrinsics are needed before real-data validation.

@@ -1,0 +1,204 @@
+{
+ "written": "2026-10-31T21:28:23+09:00",
+ "main_checkout": {
+  "branch": "splatter4d",
+  "commit": "b185ee0a53a4da788718decdd7d609fd32ac7c43",
+  "origin_splatter4d": "b185ee0a53a4da788718decdd7d609fd32ac7c43"
+ },
+ "paused_local_jobs": [],
+ "local_jobs_still_active_at_write": [],
+ "remote_jobs_active_at_write": [
+  {
+   "id": "ds-sac-snerl-peg-unplug-side-s2000",
+   "container": "s4d-ds-sac-snerl-peg-unplug-side-s2000-a1",
+   "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-peg-unplug-side-s2000-eval",
+   "container": "s4d-ds-sac-snerl-peg-unplug-side-s2000-eval-a1",
+   "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-peg-insert-side-s2000",
+   "container": "s4d-ds-sac-snerl-peg-insert-side-s2000-a1",
+   "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-peg-insert-side-s2000-eval",
+   "container": "s4d-ds-sac-snerl-peg-insert-side-s2000-eval-a1",
+   "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-bin-picking-s2000",
+   "container": "s4d-ds-sac-snerl-bin-picking-s2000-a1",
+   "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-bin-picking-s2000-eval",
+   "container": "s4d-ds-sac-snerl-bin-picking-s2000-eval-a1",
+   "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-pick-place-s2000",
+   "container": "s4d-ds-sac-snerl-pick-place-s2000-a1",
+   "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-pick-place-s2000-eval",
+   "container": "s4d-ds-sac-snerl-pick-place-s2000-eval-a1",
+   "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-stick-push-s2000",
+   "container": "s4d-ds-sac-snerl-stick-push-s2000-a1",
+   "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-sac-snerl-stick-push-s2000-eval",
+   "container": "s4d-ds-sac-snerl-stick-push-s2000-eval-a1",
+   "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+   "commit": "27640d0c1fae78fab0342125946d3b30aa2207dc"
+  },
+  {
+   "id": "ds-pre-sincro-drawer-open",
+   "container": "s4d-ds-pre-sincro-drawer-open-a1",
+   "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+   "commit": "b9196a8f292c5a6b1782a20ef2af0ba653cdd078"
+  },
+  {
+   "id": "ds-pre-sincro-window-open",
+   "container": "s4d-ds-pre-sincro-window-open-a1",
+   "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+   "commit": "b9196a8f292c5a6b1782a20ef2af0ba653cdd078"
+  },
+  {
+   "id": "ds-pre-snerl-window-open",
+   "container": "s4d-ds-pre-snerl-window-open-a1",
+   "gpu": "GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea",
+   "commit": "dd86d78321963d10d84645cbeb6ed3938983df06"
+  },
+  {
+   "id": "ds-pre-sincro-soccer",
+   "container": "s4d-ds-pre-sincro-soccer-a1",
+   "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+   "commit": "b9196a8f292c5a6b1782a20ef2af0ba653cdd078"
+  },
+  {
+   "id": "ds-pre-reviwo-soccer",
+   "container": "s4d-ds-pre-reviwo-soccer-a1",
+   "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+   "commit": "b9196a8f292c5a6b1782a20ef2af0ba653cdd078"
+  },
+  {
+   "id": "ds-pre-dynamo-soccer",
+   "container": "s4d-ds-pre-dynamo-soccer-a1",
+   "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+   "commit": "b9196a8f292c5a6b1782a20ef2af0ba653cdd078"
+  },
+  {
+   "id": "ds-pre-snerl-soccer",
+   "container": "s4d-ds-pre-snerl-soccer-a1",
+   "gpu": "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
+   "commit": "dd86d78321963d10d84645cbeb6ed3938983df06"
+  }
+ ],
+ "remote_runner": {
+  "dir": "/home/compu/kaist/sunho/remote_runner",
+  "plan_items": 273,
+  "first_items": [
+   "srv4-csw4-seed0-hammer-200k",
+   "srv4-csw4-export-seed0-hammer-200k",
+   "ds-flashsac-srv4-csw4-hammer-s2000",
+   "ds-flashsac-srv4-csw4-hammer-s2000-eval",
+   "ds-flashsac-srv4-csw4-hammer-s2001",
+   "ds-flashsac-srv4-csw4-hammer-s2001-eval",
+   "ds-flashsac-srv4-csw4-hammer-s2002",
+   "ds-flashsac-srv4-csw4-hammer-s2002-eval",
+   "srv4-csw4-seed0-pick-place-200k",
+   "srv4-csw4-export-seed0-pick-place-200k",
+   "ds-flashsac-srv4-csw4-pick-place-s2000",
+   "ds-flashsac-srv4-csw4-pick-place-s2000-eval"
+  ],
+  "gpu_load_limit_default": 5.0,
+  "stop_file": "remote_runner/STOP",
+  "start_command": "cd ~/kaist/sunho/remote_runner && setsid nohup python3 remote_runner.py >> runner.out 2>&1 < /dev/null &",
+  "events": "remote_runner/events.jsonl",
+  "heartbeat": "remote_runner/heartbeat.json",
+  "reconcile": "runs/setup/tools/reconcile_remote_runner_20261031.py --stop; then --apply"
+ },
+ "admission_pauses_active": [
+  "paper-ablations-csw4-door-open",
+  "selfrender-v2-stopped-20261031"
+ ],
+ "local_holds": [
+  "experiments/HOLD (since 2026-10-16)",
+  "local driver loops stopped 2026-10-31 19:48"
+ ],
+ "worktrees": [
+  "/home/ws/ws/splatter4d                                            b185ee0 [splatter4d]",
+  "/home/ws/ws/splatter4d/.claude/worktrees/agent-ac74b8cb20bdf8c7f  e690779 [worktree-agent-ac74b8cb20bdf8c7f]",
+  "/home/ws/ws/splatter4d/.worktrees/actfut                          31812fa [actfut-20261020]",
+  "/home/ws/ws/splatter4d/.worktrees/afk2                            ff82749 [future-stride-20261020]",
+  "/home/ws/ws/splatter4d/.worktrees/afk2-replay                     bfb4ccb (detached HEAD)",
+  "/home/ws/ws/splatter4d/.worktrees/aug-shift                       21a0e12 [aug-shift]",
+  "/home/ws/ws/splatter4d/.worktrees/bx-dynamo                       119ffb6 [bx-dynamo]",
+  "/home/ws/ws/splatter4d/.worktrees/bx-int                          0e9f353 [bx-integration]",
+  "/home/ws/ws/splatter4d/.worktrees/bx-mvp3d                        ff30ad7 [wip/bx-mvp3d-input-conditions-20261016]",
+  "/home/ws/ws/splatter4d/.worktrees/bx-repr                         36db4b1 [bx-repr-eval]",
+  "/home/ws/ws/splatter4d/.worktrees/bx-snerl                        5ad913f [wip/bx-snerl-20261016]",
+  "/home/ws/ws/splatter4d/.worktrees/cameras-v2                      8d9e314 [cameras-v2-20261029]",
+  "/home/ws/ws/splatter4d/.worktrees/chamfer                         c5918fb [chamfer-lean-20261021]",
+  "/home/ws/ws/splatter4d/.worktrees/codex-followup                  4c6135e (detached HEAD)",
+  "/home/ws/ws/splatter4d/.worktrees/dlbudget                        965b72a [dlbudget]",
+  "/home/ws/ws/splatter4d/.worktrees/downstream                      43b77a0 [downstream-20261028]",
+  "/home/ws/ws/splatter4d/.worktrees/dreamer                         7aa8c67 [pilots-dreamer-20261028]",
+  "/home/ws/ws/splatter4d/.worktrees/droid-largescale                f91623f [droid-largescale-20261031]",
+  "/home/ws/ws/splatter4d/.worktrees/encp                            d281258 [encoder-pilots-20261025]",
+  "/home/ws/ws/splatter4d/.worktrees/flashsac                        f5545e3 [flashsac-20261029]",
+  "/home/ws/ws/splatter4d/.worktrees/gpu-allowlist                   a1815c4 [gpu-allowlist-20261019]",
+  "/home/ws/ws/splatter4d/.worktrees/idfix                           0b8d6db [identity-mount-exclusion]",
+  "/home/ws/ws/splatter4d/.worktrees/integ                           b9196a8 [integ-20261029]",
+  "/home/ws/ws/splatter4d/.worktrees/intentional-stop                c5a7571 [wip/intentional-stop-reducer-20261016]",
+  "/home/ws/ws/splatter4d/.worktrees/lifecycle                       14767ec [lifecycle-cleanup-20261028]",
+  "/home/ws/ws/splatter4d/.worktrees/mig                             d95e863 [mig-local-gpus]",
+  "/home/ws/ws/splatter4d/.worktrees/mig-timeout                     bdf382b [mig-query-timeout]",
+  "/home/ws/ws/splatter4d/.worktrees/migrate                         6d8e8bd [cnn-migration-20261024]",
+  "/home/ws/ws/splatter4d/.worktrees/mpf                             fed4c17 [masking-perframe-20261023]",
+  "/home/ws/ws/splatter4d/.worktrees/ops-refactor                    b8103fe [ops-refactor-20261031]",
+  "/home/ws/ws/splatter4d/.worktrees/pilots                          27640d0 [pilots-ppo-dreamer-20261028]",
+  "/home/ws/ws/splatter4d/.worktrees/realworld-preproc               3b8b858 [realworld-preproc-20261031]",
+  "/home/ws/ws/splatter4d/.worktrees/relfix                          c90cd7b [release-submodule-init]",
+  "/home/ws/ws/splatter4d/.worktrees/remotefirst                     b79663f [remote-first-20261027]",
+  "/home/ws/ws/splatter4d/.worktrees/repr-identity                   7c0d0d2 [repr-identity]",
+  "/home/ws/ws/splatter4d/.worktrees/review                          bd719fd [wip/review-items-20261016]",
+  "/home/ws/ws/splatter4d/.worktrees/selfrender                      087506f [selfrender-20261029]",
+  "/home/ws/ws/splatter4d/.worktrees/snerl-newtasks                  dd86d78 [snerl-newtasks-20261031]",
+  "/home/ws/ws/splatter4d/.worktrees/sr-radial                       e8ad5ac [selfrender-radial-20261031]",
+  "/home/ws/ws/splatter4d/.worktrees/syncinit                        75d5f73 [sync-encoder-init]",
+  "/home/ws/ws/splatter4d/.worktrees/syncsplit                       e5282e1 [syncsplit]",
+  "/home/ws/ws/splatter4d/.worktrees/verify                          bb76e78 [remote-verification]",
+  "/home/ws/ws/splatter4d/.worktrees/vfix                            528601a [verify-mount-exclusion]",
+  "/home/ws/ws/splatter4d/.worktrees/vfix2                           08fc558 [verify-remote-fixes]",
+  "/home/ws/ws/splatter4d/.worktrees/visfix                          0ba42c5 [visfix-20261021]",
+  "/home/ws/ws/splatter4d/.worktrees/vo                              f3538b1 [vision-only-20261023]",
+  "/home/ws/ws/splatter4d/runs/nv/d                                  6e976f8 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/nv/e                                  8417843 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/nv/i                                  c5a7571 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/nv/w                                  a002e30 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/rel/15cf6e3                           15cf6e3 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/rel/cffa071                           cffa071 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/rel/e267ba8                           e267ba8 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/rel/e4206f1                           e4206f1 (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/rel/efa152a                           efa152a (detached HEAD)",
+  "/home/ws/ws/splatter4d/runs/rel/f5447bd                           f5447bd (detached HEAD)"
+ ]
+}
