@@ -288,6 +288,31 @@ class RobotGeometry:
 # ---------------------------------------------------------------- stage 3: calibration
 
 
+def calibration_image(root, episode_id, rig, cam, index):
+    """The image on the grid calibration works in: the rectified left image when the depth stage rectified."""
+    path = rio.stage_dir(root, episode_id, "stereo_depth") / f"{rig}.h5"
+    if path.is_file():
+        with h5py.File(path, "r") as f:
+            if "rectified_image" in f["left"]:
+                return f["left"]["rectified_image"][index]
+    return read_frames(root, episode_id, cam, [index])[0]
+
+
+def fk_vs_recorded_ee(meta: EpisodeMeta, geom) -> dict | None:
+    """Cross-check URDF FK against the recorded EE pose (only when its frame exists in the URDF). A large mismatch
+    means wrong joint order/units, a wrong URDF or a wrong EE-frame declaration; it is reported, not used."""
+    tr = meta.trajectory
+    if tr.ee_pose_base is None or tr.ee_frame not in geom.model.links:
+        return None
+    errs_t, errs_r = [], []
+    for k in np.linspace(0, len(tr.timestamps_ns) - 1, min(50, len(tr.timestamps_ns))).astype(int):
+        T = geom.model.fk(geom.q(tr.joint_positions[k], tr.gripper_state[k]))[tr.ee_frame]
+        errs_t.append(float(np.linalg.norm(T[:3, 3] - tr.ee_pose_base[k][:3, 3])))
+        cos = (np.trace(T[:3, :3].T @ tr.ee_pose_base[k][:3, :3]) - 1) / 2
+        errs_r.append(float(np.degrees(np.arccos(np.clip(cos, -1, 1)))))
+    return {"ee_frame": tr.ee_frame, "max_trans_m": max(errs_t), "max_rot_deg": max(errs_r)}
+
+
 def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: list[str], every: int = 1,
               cfg: CalibrationConfig | None = None, overlays: int = 3, force: bool = False) -> dict:
     """landmark_source(camera_id, frame_index, landmark_links) -> (uv (M,2) continuous on the rectified left grid
@@ -299,7 +324,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
     def build(tmp: Path) -> dict:
         from PIL import Image
 
-        summary = {}
+        summary = {"fk_vs_recorded_ee": fk_vs_recorded_ee(meta, geom)}
         for g in meta.stereo:
             cam = g.left_stream
             stamps = meta.stream_timestamps_ns[cam]
@@ -333,7 +358,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", res.to_json())
             if res.T_cam_base is not None:
                 for k in np.linspace(0, len(frames) - 1, min(overlays, len(frames))).astype(int):
-                    image = read_frames(root, episode_id, cam, [frames[k].t_index])[0]
+                    image = calibration_image(root, episode_id, g.rig_id, cam, frames[k].t_index)
                     ov = overlay_image(image, res.T_cam_base, frames[k], K, local_cfg.image_hw)
                     (tmp / "overlays").mkdir(exist_ok=True)
                     Image.fromarray(ov).save(tmp / "overlays" / f"{rio.safe_name(cam)}_{frames[k].t_index:05d}.png")

@@ -123,6 +123,7 @@ def test_stereo_depth_left_and_right_match_ground_truth(run):
 
 def test_calibration_accepts_metric_rigs(run):
     summ = run["recs"]["calibrate"]["summary"]
+    assert summ["fk_vs_recorded_ee"]["max_trans_m"] < 1e-9  # URDF FK agrees with the recorded flange pose
     for cam in ("rig0/left", "rig1/left"):
         assert summ[cam]["status"] == "accepted", summ[cam]
     doc = json.loads((rio.stage_dir(run["root"], run["ep"], "calibrate") / "rig0__left.json").read_text())
@@ -183,3 +184,29 @@ def test_stages_are_idempotent(run):
     # a changed config rebuilds (and the old complete stage stays until the swap)
     assert not lift3d(r["root"], r["ep"], vis_threshold=0.6)["skipped"]
     assert rio.read_record(rio.stage_dir(r["root"], r["ep"], "lift3d"))["config"]["vis_threshold"] == 0.6
+
+
+def test_unrectified_rig_is_rectified_before_matching(tmp_path):
+    """Right camera rotated by ~1 deg: the stage rectifies (Bouguet), matches on the rectified pair and returns depth on
+    the rectified-left grid, which equals a direct render of the rectified-left virtual camera."""
+    from s4d.realworld.geometry import make_T
+    from s4d.realworld.pipeline import load_meta, rig_rectification
+    from s4d.realworld.synthetic import render_box_scene
+
+    a = get_adapter("synthetic", {"asset_dir": str(tmp_path / "a"), "frames": 2,
+                                  "right_rotation_rpy_deg": (0.4, -0.8, 0.6)})
+    root = tmp_path / "out"
+    ingest(a, "synthetic_ep000", root)
+    rec = stereo_depth(root, "synthetic_ep000", MockStereo())
+    assert rec["summary"]["rig0"]["rectified_here"] is True
+    rect, K_rect, _, hw = rig_rectification(load_meta(root, "synthetic_ep000"), "rig0")
+    depth, K, rectified = load_depth(root, "synthetic_ep000", "rig0", [1])
+    assert rectified and np.allclose(K, K_rect)
+    T_rect_base = make_T(rect.R1, np.zeros(3)) @ a.T_cam_base("rig0", "left")
+    _, gt, _, _ = render_box_scene(T_rect_base, K_rect, hw, a.time(1))
+    m = (depth[0] > 0) & (gt > 0)
+    border = np.zeros_like(m)
+    border[6:-6, 30:-6] = True
+    m &= border
+    assert m.mean() > 0.4
+    assert np.median(np.abs(depth[0][m] - gt[m]) / gt[m]) < 0.03

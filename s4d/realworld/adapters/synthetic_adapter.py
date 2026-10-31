@@ -36,6 +36,15 @@ class SyntheticAdapter(EpisodeAdapter):
         self.baseline = float(config.get("baseline_m", 0.095))
         self.frames = int(config.get("frames", 10))
         self.asset_dir = Path(config["asset_dir"])
+        # optional small right-camera rotation: streams are then NOT rectified and the pipeline must rectify
+        self.right_rpy_deg = tuple(config.get("right_rotation_rpy_deg", (0.0, 0.0, 0.0)))
+        self.rectified = not any(self.right_rpy_deg)
+
+    def T_right_left(self) -> np.ndarray:
+        from scipy.spatial.transform import Rotation
+
+        R = Rotation.from_euler("xyz", self.right_rpy_deg, degrees=True).as_matrix()
+        return make_T(R, -R @ np.array([self.baseline, 0.0, 0.0]))  # right centre at +x of the left
 
     def K(self) -> np.ndarray:
         H, W = self.hw
@@ -44,7 +53,7 @@ class SyntheticAdapter(EpisodeAdapter):
     def T_cam_base(self, rig: str, eye: str) -> np.ndarray:
         T = look_at_T_cam_base(RIG_EYES[rig], TARGET)
         if eye == "right":
-            T = make_T(np.eye(3), [-self.baseline, 0, 0]) @ T  # right camera centre at +x of the left
+            T = self.T_right_left() @ T
         return T
 
     def list_episodes(self) -> list[str]:
@@ -61,7 +70,7 @@ class SyntheticAdapter(EpisodeAdapter):
         for r, rig in enumerate(RIG_EYES):
             for eye in ("left", "right"):
                 sid = f"{rig}/{eye}"
-                streams.append(CameraStream(sid, rig, eye, "infrared", 1, "GRAY", "uint8", intr, True,
+                streams.append(CameraStream(sid, rig, eye, "infrared", 1, "GRAY", "uint8", intr, self.rectified,
                                             device_serial=f"SYN{r:04d}", sensor_name="synthetic IR",
                                             timestamp_source="synthetic", ir_emitter="off"))
                 stamps[sid] = (np.arange(self.frames) * 66_666_667 + 1_000_000 * r).astype(np.int64)
@@ -69,7 +78,7 @@ class SyntheticAdapter(EpisodeAdapter):
                 stereo.append(StereoGeometry(rig, f"{rig}/left", f"{rig}/right", "missing",
                                              notes="synthetic: deliberately missing to exercise explicit reporting"))
             else:
-                T = make_T(np.eye(3), [-self.baseline, 0, 0])
+                T = self.T_right_left()
                 stereo.append(StereoGeometry(rig, f"{rig}/left", f"{rig}/right", "metric",
                                              tuple(map(tuple, T)), self.baseline, "synthetic"))
         self.asset_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +94,12 @@ class SyntheticAdapter(EpisodeAdapter):
         tt = ts / 1e9 / 0.0666 * 0.5
         q0 = np.array([0.0, -0.3, 0.0, -2.2, 0.0, 2.0, 0.8])
         q = q0 + 0.4 * np.sin(tt[:, None] * 0.6 + np.arange(7))
-        traj = RobotTrajectory(ts, q, 0.5 + 0.5 * np.sin(tt), extra={"joint_velocities": np.gradient(q, axis=0)},
+        from s4d.realworld.robot import URDFModel, joint_dict
+
+        model = URDFModel.from_file(urdf)
+        ee = np.stack([model.fk(joint_dict(robot.joint_names, qi))["panda_link8"] for qi in q])
+        traj = RobotTrajectory(ts, q, 0.5 + 0.5 * np.sin(tt), ee_pose_base=ee, ee_frame="panda_link8",
+                               extra={"joint_velocities": np.gradient(q, axis=0)},
                                extra_units={"joint_velocities": "rad/sample"})
         return EpisodeMeta(episode_id, tuple(streams), tuple(stereo), robot, traj, stamps,
                            Provenance(self.name, self.version, "synthetic://", (), "", "synthetic fixture"),
