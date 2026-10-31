@@ -100,8 +100,12 @@ def main(argv=None) -> int:
                        references=tuple(sc.get("references", ["left"])), force=args.force)
     if "calibrate" in wanted:
         cc = st["calibrate"]
-        P.calibrate(root, args.episode, AnnotationLandmarkSource(cc["landmark_source"]),
-                    landmark_links=cc["landmark_links"], every=cc.get("every", 1), force=args.force)
+        if cc.get("source") == "adapter_provided":  # documented external calibration (e.g. DROID-3D extrinsics)
+            print(json.dumps(P.calibrate_provided(root, args.episode, adapter.provided_extrinsics(args.episode),
+                                                  force=args.force)["summary"], indent=1))
+        else:
+            P.calibrate(root, args.episode, AnnotationLandmarkSource(cc["landmark_source"]),
+                        landmark_links=cc["landmark_links"], every=cc.get("every", 1), force=args.force)
     if "track2d" in wanted:
         tc = st.get("track2d", {})
         backend = P.WorkerTrackerBackend(_spec(cfg, "alltracker"), work / "track",

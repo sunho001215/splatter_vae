@@ -442,6 +442,44 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                          inputs=inputs, build=build, force=force)
 
 
+def calibrate_provided(root: Path, episode_id: str, provided: dict, *, force: bool = False) -> dict:
+    """Camera poses supplied by an external, documented calibration (e.g. DROID-3D extrinsics) instead of the
+    robot-grounded optimisation. ``provided`` maps camera id -> {"T_cam_base": 4x4, "source": {...}}. The poses are
+    stored in the calibrate stage's format (status ``accepted``, ``init_method`` ``provided``) only after a rigidity
+    check; cameras without a provided pose get status ``rejected`` (lift3d/export then skip them)."""
+    meta = load_meta(root, episode_id)
+
+    def build(tmp: Path) -> dict:
+        summary = {}
+        for g in meta.stereo:
+            cam = g.left_stream
+            entry = provided.get(cam)
+            doc = {"camera_id": cam, "status": "rejected", "reasons": [], "init_method": "provided",
+                   "T_cam_base": None, "T_cam_base_init": None, "diagnostics": {}}
+            if entry is None:
+                doc["reasons"].append("no provided pose for this camera")
+            else:
+                T = np.asarray(entry["T_cam_base"], float)
+                R = T[:3, :3]
+                if T.shape != (4, 4) or not np.allclose(R @ R.T, np.eye(3), atol=1e-6) or \
+                        abs(np.linalg.det(R) - 1) > 1e-6 or not np.allclose(T[3], [0, 0, 0, 1]):
+                    doc["reasons"].append("provided pose is not a rigid transform")
+                else:
+                    doc.update(status="accepted", T_cam_base=T.tolist(), T_cam_base_init=T.tolist())
+                    doc["diagnostics"] = {"source": entry.get("source", {}),
+                                          "camera_position_base_m": (-R.T @ T[:3, 3]).tolist()}
+            rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", doc)
+            summary[cam] = {"status": doc["status"], "reasons": doc["reasons"], "init": "provided",
+                            "source": (entry or {}).get("source", {}).get("kind")}
+        return summary
+
+    return rio.run_stage(rio.stage_dir(root, episode_id, "calibrate"), stage="calibrate",
+                         version=STAGE_VERSIONS["calibrate"] + "-provided",
+                         config={"provided": {k: {"T_cam_base": np.asarray(v["T_cam_base"], float).tolist(),
+                                                  "source": v.get("source", {})} for k, v in provided.items()}},
+                         inputs={"ingest": _record_fp(root, episode_id, "ingest")}, build=build, force=force)
+
+
 def accepted_calibration(root, episode_id, camera_id) -> np.ndarray | None:
     path = rio.stage_dir(root, episode_id, "calibrate") / f"{rio.safe_name(camera_id)}.json"
     if not path.is_file():
