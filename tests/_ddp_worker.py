@@ -12,7 +12,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import enforce_allowed_gpus  # noqa: E402
+from ops.resources.gpu_guard import enforce_allowed_gpus  # noqa: E402
 
 enforce_allowed_gpus()
 

@@ -33,7 +33,7 @@ import yaml  # noqa: E402
 from jobs import read_registry  # noqa: E402  (scripts/ is on sys.path)
 
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.rl.agent import DrMAgent  # noqa: E402
 from s4d.rl.camera_suites import (  # noqa: E402
     DEFINITION_FILE,
@@ -49,7 +49,7 @@ from s4d.rl.camera_suites import (  # noqa: E402
 from s4d.rl.env import env_kwargs  # noqa: E402
 from s4d.rl.evaluate import evaluation_suite, evaluation_suite_v2  # noqa: E402
 from s4d.rl.vecenv import EnvPool  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 META_WORLD_ACTION_DIM = 4  # xyz end-effector delta + gripper
 

@@ -21,7 +21,7 @@ HELD_COMMAND = [
 
 
 def load_query():
-    spec = importlib.util.spec_from_file_location("query_under_test", REPO / "scripts/_nvidia_query.py")
+    spec = importlib.util.spec_from_file_location("query_under_test", REPO / "ops/resources/nvidia_query.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

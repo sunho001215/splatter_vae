@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_NAME
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_NAME
 
 REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("isolation_checks", REPO / "scripts/check_gpu_isolation.py")

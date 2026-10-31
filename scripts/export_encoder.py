@@ -21,7 +21,7 @@ guard_gpus()
 import torch  # noqa: E402
 
 from s4d.config import load_config  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.model.encoder import DEFAULT_ONLY_FIELDS, Encoder, EncoderConfig  # noqa: E402
 
 EXPORT_FORMAT = "splatter4d-encoder-v1"

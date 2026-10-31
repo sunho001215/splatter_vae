@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _bootstrap import REPO, guard_gpus, require_passed_tests, source_fingerprints
 
-import s4d.cross_host_equivalence as equivalence
-from s4d.cross_host_equivalence import (
+import ops.resources.host_equivalence as equivalence
+from ops.resources.host_equivalence import (
     CRITERION,
     DATA_IDENTITY,
     DATA_ROOT,
@@ -37,8 +37,8 @@ from s4d.cross_host_equivalence import (
     verify_data_files,
     verify_data_unchanged,
 )
-from s4d.gpu_guard import HOST_NAME, RUNTIME_ROOT, validate_runtime_path, visible_device_uuids
-from s4d.run_identity import numeric_config, verify_clean_release
+from ops.resources.gpu_guard import HOST_NAME, RUNTIME_ROOT, validate_runtime_path, visible_device_uuids
+from ops.jobs.run_identity import numeric_config, verify_clean_release
 
 
 def tree_sha256(value) -> str:

@@ -19,12 +19,12 @@ import pytest
 import torch
 import yaml
 
-from s4d import lifecycle_cleanup as lifecycle
-from s4d import replay_cleanup_host as host_check
-from s4d.gpu_guard import APPROVED_HOST_GPUS
+from ops.jobs import lifecycle
+from ops.jobs import replay_host as host_check
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS
 
 REPO = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("lifecycle_jobs", REPO / "scripts/jobs.py")
+spec = importlib.util.spec_from_file_location("lifecycle_jobs", REPO / "ops/jobs/scheduler.py")
 jobs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(jobs)
 STEPS = 10
@@ -453,7 +453,7 @@ def test_cli_local_pass_dry_run_writes_nothing_then_deletes_ledgers_once_and_is_
     jobs.record({"event": "checkpoint_paused", "id": "paused", "attempt": 1, "intentional_stop": True,
                  "checkpoint_step": 5, "checkpoint_sha256": "0" * 64, "reason": "pause"}, registry)
     jobs.record({"event": "exited", "id": "paused", "attempt": 1, "code": -15}, registry)
-    module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli", REPO / "scripts/cleanup_replay.py")
+    module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli", REPO / "ops/jobs/cleanup_replay.py")
     cli = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(cli)
     # the host's process table is not part of this test (other jobs, or an unprivileged container, would vary it): the
@@ -487,7 +487,7 @@ def test_cli_local_pass_dry_run_writes_nothing_then_deletes_ledgers_once_and_is_
 
 
 def test_traversal_and_noncanonical_references_are_never_harmless():
-    from s4d import lifecycle_cleanup as lifecycle
+    from ops.jobs import lifecycle
     from scripts import jobs
 
     assert lifecycle._blocking("/snapshots/../replay/atom.memmap", consumer=True)

@@ -17,7 +17,7 @@ def writable_path(path: str | Path, data_root: Path) -> Path:
     resolved = Path(path).resolve()
     if any(resolved == root or root in resolved.parents for root in (REPO.resolve(), data_root)):
         return resolved
-    from s4d.gpu_guard import GPUIsolationError, validate_runtime_path
+    from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path
 
     try:
         return validate_runtime_path(resolved, repository=REPO)

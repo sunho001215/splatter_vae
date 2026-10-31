@@ -38,8 +38,8 @@ from s4d.baselines.representation import (  # noqa: E402
     load_adapter,
 )
 from s4d.config import get, load_config  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 ARMS = ("pretrained", "random_init")
 

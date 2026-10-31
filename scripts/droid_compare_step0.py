@@ -28,7 +28,7 @@ from torch.nn.parallel import DistributedDataParallel  # noqa: E402
 from s4d.config import get, load_config  # noqa: E402
 from s4d.data.contract import collate  # noqa: E402
 from s4d.data.droid.dataset import DroidCacheDataset  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
 from s4d.model.render import require_prebuilt_renderer  # noqa: E402
 from s4d.train import ddp  # noqa: E402
 from s4d.train.loop import build_model, forward_losses, move_batch, seed_everything  # noqa: E402

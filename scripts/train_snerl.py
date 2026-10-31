@@ -47,8 +47,8 @@ from s4d.baselines.snerl.model import (  # noqa: E402
 from s4d.baselines.snerl.upstream import dino_extractor, official  # noqa: E402
 from s4d.config import dump_config, load_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 10_000  # smoke runs (< 0.5% of the official 2.4M iterations) may run without suite evidence
 RAY_STREAM = 1  # per-step generator of the ray choice: default_rng([seed, step, RAY_STREAM])

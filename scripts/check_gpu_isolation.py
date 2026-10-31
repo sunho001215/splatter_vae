@@ -15,14 +15,14 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import ALLOWED_GPU_UUIDS, APPROVED_HOST_GPUS, HOST_NAME, MIG_DEVICES, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import ALLOWED_GPU_UUIDS, APPROVED_HOST_GPUS, HOST_NAME, MIG_DEVICES, validate_runtime_path  # noqa: E402
 
 CHILD = r"""
 import os, sys, json
 sys.path.insert(0, %(repo)r)
 sys.path.insert(0, %(scripts)r)
 import _bootstrap
-from s4d.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device
+from ops.resources.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device
 mapping = enforce_allowed_gpus()
 import mujoco_mig_setup
 egl_dev = enforce_mujoco_egl_device()

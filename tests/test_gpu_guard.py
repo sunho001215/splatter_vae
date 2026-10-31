@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from s4d import gpu_guard as guard
+from ops.resources import gpu_guard as guard
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -46,7 +46,7 @@ def test_default_host_config_is_explicit_local_not_machine_detection():
     code = f"""
 import sys
 sys.path.insert(0, {str(REPO)!r})
-from s4d import gpu_guard as guard
+from ops.resources import gpu_guard as guard
 assert guard.HOST_NAME == 'local'
 assert guard.HOST_CONFIG_PATH == guard.REPO / 'configs/hosts/local.yaml'
 assert guard.ALLOWED_GPU_UUIDS == guard.APPROVED_HOST_GPUS['local']
@@ -101,7 +101,7 @@ def test_import_selects_explicit_host_and_rejects_cross_host_before_torch(tmp_pa
     code = f"""
 import sys
 sys.path.insert(0, {str(REPO)!r})
-from s4d import gpu_guard as guard
+from ops.resources import gpu_guard as guard
 assert guard.HOST_NAME == {name!r}
 assert guard.ALLOWED_GPU_UUIDS == guard.APPROVED_HOST_GPUS[{name!r}]
 try:
@@ -126,7 +126,7 @@ def test_invalid_selected_config_import_fails_before_gpu_aware_packages(tmp_path
 import sys
 sys.path.insert(0, {str(REPO)!r})
 try:
-    import s4d.gpu_guard
+    import ops.resources.gpu_guard
 except RuntimeError:
     assert not any(name in sys.modules for name in ('torch', 'gsplat', 'mujoco', 'metaworld'))
 else:

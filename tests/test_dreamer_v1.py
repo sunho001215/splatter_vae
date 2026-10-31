@@ -289,7 +289,7 @@ def test_world_model_actor_and_value_update_on_gpu(tmp_path, request, encoder):
 
 
 def test_state_round_trip_and_policy_snapshot(tmp_path, request):
-    from s4d.lifecycle_cleanup import TRAINERS, torch_policy_check
+    from ops.jobs.lifecycle import TRAINERS, torch_policy_check
 
     cfg, agent = make_agent("cnn", tmp_path, request)
     replay = agent.make_replay(tmp_path / "replay")
@@ -390,8 +390,8 @@ def test_evaluation_suite_drives_the_recurrent_policy(tmp_path, request):
 
 
 def test_trainer_registration_matches_the_replay_and_snapshot_layout(tmp_path):
-    from s4d.lifecycle_cleanup import DEFAULT_REPLAY_PATTERNS, TRAINERS
-    from s4d.remote_launch import validate_output_arguments
+    from ops.jobs.lifecycle import DEFAULT_REPLAY_PATTERNS, TRAINERS
+    from ops.containers.launch import validate_output_arguments
     from scripts import jobs
 
     trainer = TRAINERS["train_dreamer.py"]

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from s4d.cross_host_equivalence import (
+from ops.resources.host_equivalence import (
     CRITERION,
     DATA_IDENTITY,
     DATA_ROOT,
