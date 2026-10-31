@@ -19,7 +19,14 @@ import numpy as np
 from s4d.realworld import io as rio
 from s4d.realworld.calibration import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
 from s4d.realworld.contract import EpisodeMeta, meta_from_json, meta_to_json, validate_episode
-from s4d.realworld.geometry import rectify_map, remap, stereo_rectify, undistort_pixels
+from s4d.realworld.geometry import (
+    rectify_map,
+    remap,
+    resize_affine,
+    stereo_rectify,
+    undistort_pixels,
+    warp_affine,
+)
 from s4d.realworld.robot import RobotSurface, URDFModel, gripper_joint_value, joint_dict, landmarks
 from s4d.realworld.stereo import depth_from_pair
 from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, lift_tracks, query_grid, status_counts
@@ -401,7 +408,10 @@ def chunk_queries(n: int, window: int, step: int) -> list[tuple[int, list[int]]]
 
 
 def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int = 16, step: int = 8,
-            grid_stride: int = 8, force: bool = False) -> dict:
+            grid_stride: int = 8, tracker_hw: tuple | None = None, force: bool = False) -> dict:
+    """``tracker_hw`` runs the tracker on resized frames (H, W multiples of 8 for AllTracker); the query grid lives on
+    the tracker grid and the returned positions are mapped back to the full rectified grid with the inverse pixel
+    affine, so depth lookup and lifting stay on the depth grid."""
     meta = load_meta(root, episode_id)
 
     def build(tmp: Path) -> dict:
@@ -419,11 +429,23 @@ def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int
                             frames = np.stack([f["left"]["rectified_image"][i] for i in idx])
                 if frames is None:
                     frames = read_frames(root, episode_id, cam, idx)
-                flows, visconf = backend.track(cam, frames, idx, 0)
                 hw = frames.shape[1:3]
-                tr = alltracker_to_tracks2d(flows, visconf, query_grid(hw, grid_stride, grid_stride // 2),
+                aff = None
+                if tracker_hw is not None and tuple(tracker_hw) != tuple(hw):
+                    aff = resize_affine(hw, tuple(tracker_hw))
+                    top = np.iinfo(frames.dtype).max
+                    frames = np.stack([np.clip(np.rint(warp_affine(x.astype(np.float32), aff, tuple(tracker_hw), order=1)),
+                                               0, top) for x in frames]).astype(frames.dtype)
+                flows, visconf = backend.track(cam, frames, idx, 0)
+                thw = frames.shape[1:3]
+                source = dict(backend.identity)
+                tr = alltracker_to_tracks2d(flows, visconf, query_grid(thw, grid_stride, grid_stride // 2),
                                             camera_id=cam, query_frame=q, frame_indices=idx,
-                                            timestamps_ns=meta.stream_timestamps_ns[cam][idx], source=backend.identity)
+                                            timestamps_ns=meta.stream_timestamps_ns[cam][idx], source=source)
+                if aff is not None:
+                    tr.uv = aff.inverse().apply_uv(tr.uv).astype(np.float32)
+                    tr.image_hw = tuple(hw)
+                    tr.source["tracker_affine_full_to_tracker"] = aff.to_json()
                 name = f"{rio.safe_name(cam)}_q{q:05d}.npz"
                 rio.atomic_write_npz(tmp / name, frame_indices=tr.frame_indices, timestamps_ns=tr.timestamps_ns,
                                      point_ids=tr.point_ids, uv=tr.uv, visibility=tr.visibility,
@@ -435,6 +457,7 @@ def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int
 
     return rio.run_stage(rio.stage_dir(root, episode_id, "track2d"), stage="track2d", version=STAGE_VERSIONS["track2d"],
                          config={"window": window, "step": step, "grid_stride": grid_stride,
+                                 "tracker_hw": list(tracker_hw) if tracker_hw else None,
                                  "backend": type(backend).__name__},
                          inputs={"ingest": _record_fp(root, episode_id, "ingest")}, build=build, force=force)
 

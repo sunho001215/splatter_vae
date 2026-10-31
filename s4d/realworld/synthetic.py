@@ -172,12 +172,15 @@ def _ray_box(o, d, lo, hi):
     return np.where(hit, np.where(tmin > 1e-6, tmin, tmax), np.inf)
 
 
-def render_box_scene(T_cam_base, K, hw, t: float):
-    """(image float [0,255] (H,W), depth camera-z (H,W), hit points in base (H,W,3), on_object (H,W) bool)."""
+def render_box_scene(T_cam_base, K, hw, t: float, uv: np.ndarray | None = None):
+    """(image float [0,255] (H,W), depth camera-z (H,W), hit points in base (H,W,3), on_object (H,W) bool).
+
+    ``uv`` (...,2) casts rays through arbitrary continuous pixel positions instead of the pixel centres."""
     from s4d.realworld.geometry import invert_T
 
     T_base_cam = invert_T(T_cam_base)
-    rays_cam = unproject(pixel_centers(*hw), np.ones(hw), K)
+    uv = pixel_centers(*hw) if uv is None else np.asarray(uv, float)
+    rays_cam = unproject(uv, np.ones(uv.shape[:-1]), K)
     d = rays_cam @ T_base_cam[:3, :3].T
     o = np.broadcast_to(T_base_cam[:3, 3], d.shape)
     c = object_center(t)

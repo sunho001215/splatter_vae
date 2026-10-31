@@ -116,6 +116,21 @@ class SyntheticAdapter(EpisodeAdapter):
             yield i, int(stamps[i]), np.clip(image, 0, 255).astype(np.uint8)
 
     # ---- synthetic-only ground truth helpers (tests / mock backends) ----
+    def gt_uv(self, stream_id: str, query: int, uv_query: np.ndarray, frames: list[int]) -> np.ndarray:
+        """Ground-truth continuous pixel positions (T,N,2) in frames ``frames`` of the surface points seen at the
+        continuous positions ``uv_query`` of frame ``query`` (no visibility test)."""
+        from s4d.realworld.geometry import project
+        from s4d.realworld.synthetic import object_center
+
+        rig, eye = stream_id.split("/")
+        T = self.T_cam_base(rig, eye)
+        _, _, P0, obj = render_box_scene(T, self.K(), self.hw, self.time(query), uv=uv_query)
+        out = []
+        for f in frames:
+            Pt = np.where(obj[:, None], P0 + object_center(self.time(f)) - object_center(self.time(query)), P0)
+            out.append(project(transform_points(T, Pt), self.K())[0])
+        return np.stack(out)
+
     def gt_points(self, stream_id: str, query: int, pixels_rc: np.ndarray, frames: list[int]) -> tuple:
         """Ground-truth base-frame positions (T,N,3) of the query pixels' surface points and their visibility."""
         rig, eye = stream_id.split("/")

@@ -209,3 +209,44 @@ def test_unrectified_rig_is_rectified_before_matching(tmp_path):
     m &= border
     assert m.mean() > 0.4
     assert np.median(np.abs(depth[0][m] - gt[m]) / gt[m]) < 0.03
+
+
+class ResizedOracleTracker(TrackerBackend):
+    """Oracle on whatever grid it is given: maps its query pixel centres to the full grid, then back (MOCK)."""
+
+    identity = {"name": "synthetic oracle tracker (any resolution)", "is_mock": True}
+
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    def track(self, camera_id, frames, frame_indices, query):
+        from s4d.realworld.geometry import resize_affine
+
+        H, W = frames.shape[1:3]
+        aff = resize_affine(self.adapter.hw, (H, W))
+        rc = np.stack(np.meshgrid(np.arange(H), np.arange(W), indexing="ij"), -1).reshape(-1, 2)
+        uv_full = aff.inverse().apply_uv(rc[:, ::-1] + 0.5)
+        uv = self.adapter.gt_uv(camera_id, frame_indices[query], uv_full, frame_indices[query:])
+        flows = np.stack([(aff.apply_uv(u) - 0.5 - rc[:, ::-1]).T.reshape(2, H, W) for u in uv])
+        return flows.astype(np.float32), np.ones((len(uv), 2, H, W), np.float32)
+
+
+def test_tracking_at_reduced_resolution_maps_back_to_the_depth_grid(tmp_path):
+    from s4d.realworld.pipeline import load_tracks2d
+
+    a = get_adapter("synthetic", {"asset_dir": str(tmp_path / "a"), "frames": 4})
+    root = tmp_path / "out"
+    ingest(a, "synthetic_ep000", root)
+    rec = track2d(root, "synthetic_ep000", ResizedOracleTracker(a), window=4, step=4, grid_stride=4, tracker_hw=(48, 72))
+    name = rec["summary"]["rig0/left"]["chunks"][0]
+    tr = load_tracks2d(rio.stage_dir(root, "synthetic_ep000", "track2d") / name, "rig0/left")
+    assert tuple(tr.image_hw) == a.hw and "tracker_affine_full_to_tracker" in tr.source
+    # queries are tracker pixel centres (2x coarser): on the full grid they sit at 2 * (rc + .5)
+    from s4d.realworld.tracking import query_grid
+
+    q = query_grid((48, 72), 4, 2)
+    expected = 2 * (q[:, ::-1] + 0.5)
+    hit = np.isfinite(tr.uv[0]).all(-1)  # rays that miss the scene have no surface point
+    assert hit.mean() > 0.8 and np.allclose(tr.uv[0][hit], expected[hit], atol=1e-4)
+    gt = a.gt_uv("rig0/left", 0, expected[hit], list(tr.frame_indices))
+    assert np.abs(tr.uv[:, hit] - gt).max() < 1e-3

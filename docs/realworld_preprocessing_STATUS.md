@@ -33,6 +33,8 @@ merged or pushed, and no existing module imports `s4d.realworld`. Design and usa
   - Held-out residuals, overlays, and a check of FK against the recorded EE pose.
 - **Tracking.**
   - AllTracker integer-centre to continuous conversion.
+  - Optional reduced-resolution tracking (`tracker_hw`), with positions mapped back to the depth grid by the
+    inverse pixel affine (tested).
   - Same-frame depth lifting with per-point status codes (occluded, low confidence, out of image, no depth,
     depth edge, not tracked).
   - NaN for invalid points, camera-local ids, and no cross-camera identity.
@@ -49,10 +51,10 @@ merged or pushed, and no existing module imports `s4d.realworld`. Design and usa
     against `dino_target`.
   - SAM 3 masks with prompts mapped to SNeRL classes, instances, scores and explicit absent detections.
 
-**Tests:** 40 passed across the five files below. Run with `nice -n 10` and the MIG UUID:
+**Tests:** 41 passed across the five files below. Run with `nice -n 10` and the MIG UUID:
 - `tests/test_realworld_stereo.py`: 10
 - `tests/test_realworld_calibration.py`: 9
-- `tests/test_realworld_pipeline.py`: 8
+- `tests/test_realworld_pipeline.py`: 9
 - `tests/test_realworld_contract_workers.py`: 10
 - `tests/test_realworld_baselines.py`: 3
 
@@ -82,8 +84,5 @@ merged or pushed, and no existing module imports `s4d.realworld`. Design and usa
    analogue). Then tune the gates on real residuals.
 5. If RGB appearance from the colour sensor is wanted, wire `geometry.reproject_depth` into a stage. That needs
    the depth-to-colour extrinsic from the recording.
-6. Run AllTracker at reduced resolution. Today `track2d` tracks at the native rectified size, so H and W must
-   be multiples of 8 (848x480 and 1280x720 are). For speed and memory, resize with a `PixelAffine` and map `uv`
-   back with `affine.inverse()` before lifting. Not implemented.
-7. Optional: a multi-episode joint refinement per physical setup, which is closer to DepthWorld. Also define
+6. Optional: a multi-episode joint refinement per physical setup, which is closer to DepthWorld. Also define
    3D-MVP scene bounds in the base frame for the real workspace.

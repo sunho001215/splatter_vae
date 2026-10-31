@@ -222,6 +222,9 @@ optimisation.
   - `alltracker_to_tracks2d` adds 0.5 to reach the continuous convention.
   - Queries are a regular grid at the first frame of each `window`-frame chunk, with chunks starting every `step`
     frames.
+  - `tracker_hw` optionally runs the tracker on bilinearly resized frames. The query grid then lives on the
+    tracker grid, and positions are mapped back to the full rectified grid with the inverse `PixelAffine` before
+    lifting (tested).
 - **Lifting.**
   - Depth is sampled from the same frame on the tracked rectified-left grid, by nearest pixel, never interpolated
     across edges.
