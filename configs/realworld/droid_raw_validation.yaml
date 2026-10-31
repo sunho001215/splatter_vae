@@ -24,6 +24,7 @@ workers:
     timeout_s: 7200
     env:
       CUDA_VISIBLE_DEVICES: MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c
+      LD_LIBRARY_PATH: /home/ws/ws/validation-20261031/envs/foundation_stereo/extra_libs  # libusb for open3d (upstream Utils.py)
       TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
       HF_HOME: /home/ws/ws/validation-20261031/cache/hf
       XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg

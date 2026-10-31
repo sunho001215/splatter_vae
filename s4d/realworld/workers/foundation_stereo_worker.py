@@ -37,7 +37,9 @@ def handle(request, inputs):
     cfg["hiera"] = int(params.get("hiera", 0))
     args = OmegaConf.create(cfg)
     model = FoundationStereo(args)
-    model.load_state_dict(torch.load(ckpt, map_location="cpu")["model"])
+    # torch >= 2.6 defaults to weights_only=True; the official checkpoint also pickles numpy scalars (global_step,
+    # epoch), which upstream's torch 2.4 loaded with the old default. Its sha256 is recorded in the identity below.
+    model.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=False)["model"])
     model.cuda().eval()
     out = []
     for left, right in zip(inputs["left"], inputs["right"]):
