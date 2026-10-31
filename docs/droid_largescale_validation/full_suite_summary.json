@@ -1,0 +1,37 @@
+{
+ "run2_final": {
+  "started_utc": "2026-10-31T13:50:23.428260+00:00",
+  "host": "local",
+  "counts": {
+   "passed": 1283,
+   "error": 0,
+   "failed": 0,
+   "skipped": 0
+  },
+  "total": 1283,
+  "exit_code": 0,
+  "full_suite_passed": true,
+  "duration_seconds": 486.31091903103516,
+  "gpu_mapping": [
+   {
+    "index": 0,
+    "uuid": "MIG-2ebd9e11-f2e0-5e22-870a-7779d44ec10a",
+    "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+   }
+  ],
+  "source_changed_during_suite": false
+ },
+ "run2_sources_commit": "87b7846",
+ "run1_superseded": {
+  "counts": {
+   "passed": 1277,
+   "error": 0,
+   "failed": 1,
+   "skipped": 0
+  },
+  "failure": [
+   "tests/test_baselines_snerl.py::test_dino_teacher_is_the_official_extractor_with_the_official_weights"
+  ],
+  "cause": "DINO ViT-S/8 weights missing from the worktree cache (environment); copied from the main checkout cache, sha256 55c8b267...; sources then changed by commit 87b7846, so run 1 is superseded"
+ }
+}

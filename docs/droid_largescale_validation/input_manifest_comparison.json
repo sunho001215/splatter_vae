@@ -1,0 +1,8 @@
+{
+ "before": "input_manifest_before.json",
+ "after": "input_manifest_after.json",
+ "files": 25,
+ "dirs": 9,
+ "identical": true,
+ "differences": []
+}

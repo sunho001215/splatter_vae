@@ -1,0 +1,230 @@
+{
+ "boundaries": {
+  "windows": 3129,
+  "episodes": 62,
+  "episode_boundaries": 61,
+  "boundary_windows_checked": 42,
+  "image_mismatches_vs_direct_rlds_read": [],
+  "shuffled_batch_distinct_episodes": 15,
+  "windows_cross_clip_or_episode": 0
+ },
+ "memory_handles": {
+  "items": 1500,
+  "max_open_files": 8,
+  "trace": [
+   {
+    "item": 0,
+    "rss_mb": 581.5,
+    "open_fds": 8,
+    "flow_open": 1,
+    "depth_open": 1,
+    "rlds_open": 1
+   },
+   {
+    "item": 100,
+    "rss_mb": 620.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 200,
+    "rss_mb": 620.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 300,
+    "rss_mb": 619.4,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 400,
+    "rss_mb": 618.8,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 500,
+    "rss_mb": 612.9,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 600,
+    "rss_mb": 612.9,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 700,
+    "rss_mb": 603.6,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 800,
+    "rss_mb": 599.0,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 900,
+    "rss_mb": 589.6,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1000,
+    "rss_mb": 583.2,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1100,
+    "rss_mb": 586.2,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1200,
+    "rss_mb": 584.9,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1300,
+    "rss_mb": 584.9,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1400,
+    "rss_mb": 584.9,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1499,
+    "rss_mb": 584.0,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   }
+  ],
+  "peak": {
+   "fds": 29,
+   "flow": 8,
+   "depth": 8,
+   "rlds": 8
+  },
+  "rss_growth_mb_after_first_100": -36.5,
+  "fds_baseline_before": 5,
+  "fds_after_close": 5,
+  "seconds": 138.8,
+  "maxrss_mb": 624.65234375
+ },
+ "workers": {
+  "windows": 96,
+  "batches": 12,
+  "identical_to_workers0": {
+   "4": true,
+   "8": true
+  },
+  "process_stats": {
+   "0": {
+    "pids": 1,
+    "max_worker_fds": 29,
+    "max_pool": 8,
+    "max_worker_rss_mb": 614.9765625,
+    "parent_fds_before_after": [
+     5,
+     29
+    ]
+   },
+   "4": {
+    "pids": 4,
+    "max_worker_fds": 98,
+    "max_pool": 8,
+    "max_worker_rss_mb": 509.8203125,
+    "parent_fds_before_after": [
+     29,
+     29
+    ]
+   },
+   "8": {
+    "pids": 8,
+    "max_worker_fds": 69,
+    "max_pool": 8,
+    "max_worker_rss_mb": 485.35546875,
+    "parent_fds_before_after": [
+     29,
+     29
+    ]
+   }
+  },
+  "parent_fds_start_end": [
+   5,
+   29
+  ],
+  "note": "fds 0->29 in the parent are its own pooled handles (workers=0 ran in the parent); holding received batches keeps one shared-memory fd per tensor (torch file_descriptor strategy)",
+  "parent_fds_after_close": 5
+ },
+ "throughput": {
+  "split": "train",
+  "windows": 3029,
+  "image_hw": [
+   144,
+   256
+  ],
+  "with_wrist": true,
+  "omp_num_threads": null,
+  "cpu_count": 384,
+  "results": {
+   "0": {
+    "windows_per_s": 11.9,
+    "batches": 25,
+    "batch_size": 8
+   },
+   "4": {
+    "windows_per_s": 48.5,
+    "batches": 60,
+    "batch_size": 8
+   },
+   "8": {
+    "windows_per_s": 98.7,
+    "batches": 100,
+    "batch_size": 8
+   }
+  }
+ }
+}

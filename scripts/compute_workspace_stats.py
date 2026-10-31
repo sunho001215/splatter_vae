@@ -18,7 +18,22 @@ import torch  # noqa: E402
 from s4d.geometry import lift_depth  # noqa: E402
 
 
-def dataset_for(regime: str, path: Path):
+def dataset_for(regime: str, path: Path, args=None):
+    if regime == "droid_largescale":  # path = scripts/droid_ls_build_manifest.py output; training split only
+        from s4d.data.droid.largescale.dataset import DroidLargeScaleDataset
+
+        missing = [k for k in ("pointworld_root", "rlds_index", "rlds_root") if args is None or not getattr(args, k)]
+        if missing:
+            raise ValueError(f"droid_largescale needs --{', --'.join(m.replace('_', '-') for m in missing)}")
+        return DroidLargeScaleDataset(
+            path,
+            pointworld_root=args.pointworld_root,
+            rlds_index_dir=args.rlds_index,
+            rlds_data_root=args.rlds_root,
+            split="train",
+            validation_percent=args.validation_percent,
+            with_wrist=False,
+        )
     if regime == "metaworld":
         from s4d.data.metaworld.dataset import TRAIN_STRIDES, MetaworldWindowDataset, list_episodes
 
@@ -88,8 +103,12 @@ def compute_statistics(dataset, samples: int, seed: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--regime", choices=["metaworld", "droid"], required=True)
-    ap.add_argument("--path", type=Path, required=True)
+    ap.add_argument("--regime", choices=["metaworld", "droid", "droid_largescale"], required=True)
+    ap.add_argument("--path", type=Path, required=True, help="dataset file/root; the manifest for droid_largescale")
+    ap.add_argument("--pointworld-root", default=None, help="droid_largescale: extracted PointWorld tree")
+    ap.add_argument("--rlds-index", default=None, help="droid_largescale: RLDS step index")
+    ap.add_argument("--rlds-root", default=None, help="droid_largescale: released RLDS shards (read in place)")
+    ap.add_argument("--validation-percent", type=float, default=2.0, help="droid_largescale: data.validation_percent")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--samples", type=int, default=400)
     ap.add_argument("--seed", type=int, default=0)
@@ -99,7 +118,7 @@ def main() -> None:
     if not any(root in output.parents for root in allowed):
         raise ValueError("workspace statistics must remain within an authorized output root")
     torch.set_num_threads(1)
-    stats = compute_statistics(dataset_for(args.regime, args.path), args.samples, args.seed)
+    stats = compute_statistics(dataset_for(args.regime, args.path, args), args.samples, args.seed)
     stats.update(source=str(args.path), regime=args.regime, gpu_mapping=GPU_MAPPING)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(stats, indent=2))

@@ -1,0 +1,282 @@
+{
+ "manifest": "manifests/manifest_droid3d.jsonl",
+ "image_hw": [
+  144,
+  256
+ ],
+ "windows": 3129,
+ "episodes": 62,
+ "windows_per_episode_min_med_max": [
+  30,
+  50.0,
+  115
+ ],
+ "windows_inside_clip": true,
+ "collated_batch_validates": {
+  "B": 4,
+  "T": 3,
+  "V": 2,
+  "H": 144,
+  "W": 256
+ },
+ "fields": {
+  "images": [
+   [
+    3,
+    2,
+    3,
+    144,
+    256
+   ],
+   "torch.uint8"
+  ],
+  "K": [
+   [
+    2,
+    3,
+    3
+   ],
+   "torch.float32"
+  ],
+  "w2c": [
+   [
+    2,
+    4,
+    4
+   ],
+   "torch.float32"
+  ],
+  "c2w": [
+   [
+    2,
+    4,
+    4
+   ],
+   "torch.float32"
+  ],
+  "depth": [
+   [
+    3,
+    2,
+    1,
+    144,
+    256
+   ],
+   "torch.float32"
+  ],
+  "motion_score": [
+   [
+    3,
+    2,
+    1,
+    144,
+    256
+   ],
+   "torch.float32"
+  ],
+  "track_src": [
+   [
+    3,
+    2,
+    4096,
+    3
+   ],
+   "torch.float32"
+  ],
+  "track_disp": [
+   [
+    3,
+    2,
+    4096,
+    3
+   ],
+   "torch.float32"
+  ],
+  "track_weight": [
+   [
+    3,
+    2,
+    4096
+   ],
+   "torch.float32"
+  ],
+  "track_count": [
+   [
+    2
+   ],
+   "torch.int64"
+  ],
+  "gripper_points": [
+   [
+    3,
+    32,
+    3
+   ],
+   "torch.float32"
+  ],
+  "gripper_weight": [
+   [
+    3,
+    2,
+    32
+   ],
+   "torch.float32"
+  ],
+  "probe_state": [
+   [
+    3,
+    7
+   ],
+   "torch.float32"
+  ],
+  "robot_joint_position": [
+   [
+    3,
+    7
+   ],
+   "torch.float32"
+  ],
+  "wrist_images": [
+   [
+    3,
+    3,
+    144,
+    256
+   ],
+   "torch.uint8"
+  ],
+  "wrist_depth": [
+   [
+    3,
+    1,
+    144,
+    256
+   ],
+   "torch.float32"
+  ],
+  "wrist_K": [
+   [
+    3,
+    3
+   ],
+   "torch.float32"
+  ],
+  "wrist_w2c": [
+   [
+    3,
+    4,
+    4
+   ],
+   "torch.float32"
+  ],
+  "wrist_c2w": [
+   [
+    3,
+    4,
+    4
+   ],
+   "torch.float32"
+  ],
+  "wrist_valid": [
+   [
+    3
+   ],
+   "torch.bool"
+  ],
+  "wrist_track_weight": [
+   [
+    3,
+    2,
+    4096
+   ],
+   "torch.float32"
+  ]
+ },
+ "checked_windows": 85,
+ "all_float_fields_finite": true,
+ "ranges": {
+  "K": [
+   0.0,
+   128.35638427734375
+  ],
+  "w2c": [
+   -0.9323853850364685,
+   1.0
+  ],
+  "c2w": [
+   -0.9323853850364685,
+   1.0
+  ],
+  "depth": [
+   0.0,
+   44.90599822998047
+  ],
+  "motion_score": [
+   0.0,
+   1.0
+  ],
+  "track_src": [
+   -0.845502495765686,
+   1.0641320943832397
+  ],
+  "track_disp": [
+   -1.1721339225769043,
+   1.2864465713500977
+  ],
+  "track_weight": [
+   0.0,
+   1.0
+  ],
+  "gripper_points": [
+   -0.20513224601745605,
+   0.7174748182296753
+  ],
+  "gripper_weight": [
+   0.0,
+   1.0
+  ],
+  "probe_state": [
+   -3.138523817062378,
+   3.1382734775543213
+  ],
+  "robot_joint_position": [
+   -2.811845541000366,
+   3.0074756145477295
+  ],
+  "wrist_depth": [
+   0.0,
+   0.0
+  ],
+  "wrist_K": [
+   0.0,
+   128.0
+  ],
+  "wrist_w2c": [
+   0.0,
+   1.0
+  ],
+  "wrist_c2w": [
+   -0.0,
+   1.0
+  ],
+  "wrist_track_weight": [
+   0.0,
+   0.0
+  ]
+ },
+ "track_count_min_med_max": [
+  4096,
+  4096.0,
+  4096
+ ],
+ "track_weight_frac_median": 0.8493245244026184,
+ "depth_valid_frac_median": 0.9252206087112427,
+ "motion_score_pos_frac_median": 0.0840657576918602,
+ "gripper_weight_frac_median": 0.21875,
+ "wrist_valid_frac_median": 0.0,
+ "disp_norm_p99_median": 0.448188253045082,
+ "getitem_seconds_median_p90": [
+  0.0810216988902539,
+  0.08579611936584115
+ ]
+}

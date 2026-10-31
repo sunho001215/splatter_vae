@@ -1,0 +1,121 @@
+data:
+  regime: droid_largescale
+  root: null
+  manifest: /home/ws/ws/validation-20261031/item8/manifests/manifest_droid3d.jsonl
+  pointworld_root: /home/ws/ws/validation-20261031/item8/pointworld_root
+  rlds_index_dir: /home/ws/ws/validation-20261031/item8/rlds_index
+  rlds_data_root: /home/ws/data/droid/1.0.1
+  validation_percent: 2.0
+  stride: 3
+  max_tracks: 4096
+  with_wrist: true
+  gripper_offset_m: -0.019
+  max_open_files: 8
+model:
+  encoder:
+    backbone: scratch
+    image_height: 144
+    image_width: 256
+    patch_size: 16
+    width: 256
+    depth: 4
+    heads: 4
+    num_slots: 16
+    slot_dim: 384
+    num_frames: 3
+    mask_ratio: 0.75
+    motion_patch_threshold: 0.05
+    drop_path: 0.1
+    mask_mode: random
+    stem: patch_cnn
+  decoder:
+    dim: 256
+    depth: 2
+    heads: 8
+    motion_max: 0.25
+    scene:
+      parents: 1536
+      children: 8
+      offset_scale: 0.25
+      child_radius: 0.06
+      scale_min: 0.001
+      scale_max: 0.08
+    dynamic:
+      parents: 512
+      children: 8
+      offset_scale: 0.4
+      child_radius: 0.04
+      scale_min: 0.0005
+      scale_max: 0.03
+    single_group: false
+  anchor_stats: /home/ws/ws/splatter4d/.worktrees/droid-largescale/outputs/item8/workspace_stats_smoke_62ep.json
+  single_frame: false
+render:
+  near: 0.05
+  far: 4.0
+loss:
+  rgb: 1.0
+  ssim_weight: 0.2
+  lambda_dyn: 1.0
+  coverage: 0.1
+  depth_l1: 1.0
+  depth_grad: 0.0
+  depth_hard: 0.0
+  depth_align: scale
+  depth_align_warmup_steps: 5000
+  motion: 5.0
+  motion_huber: 0.01
+  invariance: 1.0
+  consistency: 0.1
+  temperature: 0.1
+  visibility: 0.0
+  ramp_steps: 20000
+  teacher_scale_jitter: null
+  depth_valid_far: true
+  motion_space: gaussian
+  occlusion: 0.0
+  chamfer: 5.0
+  chamfer_points: 4096
+  chamfer_voxel_m: 0.01
+  motion_feature_render: log_steps
+train:
+  steps: 200
+  batch_size: 2
+  lr: 0.0005
+  min_lr: 1.0e-05
+  weight_decay: 0.01
+  warmup_steps: 100
+  grad_clip: 1.0
+  bf16: true
+  seed: 0
+  num_workers: 4
+  log_every: 10
+  eval_every: 100
+  save_every: 100
+  eval_at_start: true
+  prefetch_factor: 2
+eval:
+  max_batches: 4
+  probe_every: 10000
+  orbit_center:
+  - 0.4
+  - 0.0
+  - 0.15
+  orbit_distance: 1.0
+  orbit_elevation: -45.0
+wandb:
+  enabled: true
+  project: splatter4d-droid
+aug:
+  synth_views: 2
+  synth_render: true
+run:
+  name: droid_largescale-item8-csw4ref-0
+  gpus:
+  - index: 0
+    uuid: MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd
+    name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb
+  host: local
+  git_commit: 87b7846615f43b02074defdaa244d37df970f1c8
+  source_dirty: true
+  config_sha256: 1edb4eca5628ef6508118566b1563f95e6df52efc0bf1a9ef97ffac17a086beb

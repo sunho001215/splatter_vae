@@ -1,0 +1,22 @@
+# Overlay for configs/droid/pretrain.yaml: lazy RLDS x PointWorld-DROID x DROID-3D windows (docs/droid_largescale.md).
+#   python scripts/train.py --config configs/droid/pretrain.yaml configs/droid/largescale.yaml \
+#       --set data.manifest=... data.pointworld_root=... data.rlds_index_dir=... data.rlds_data_root=... --name ...
+# Paths are deliberately unset: the run fails fast until every source is given explicitly.
+data:
+  regime: droid_largescale
+  root: null
+  manifest: null            # scripts/droid_ls_build_manifest.py output (JSONL)
+  pointworld_root: null     # extracted PointWorld-DROID droid/ tree (flows-fs-optimized/, depth_320x180/, cameras/)
+  rlds_index_dir: null      # scripts/droid_ls_build_rlds_index.py output
+  rlds_data_root: null      # released DROID RLDS shards, read in place (never copied)
+  validation_percent: 2.0   # episode-disjoint hash split
+  stride: 3                 # canonical PointWorld steps between window frames (6 raw steps at 15 Hz)
+  max_tracks: 4096          # per camera; deterministic subsample above, zero padding below
+  with_wrist: true          # emit supervision-only wrist_* fields (per-frame pose, depth, track visibility)
+  gripper_offset_m: -0.019  # approach-axis offset fitted on the inspected sample episode (docs/POINTWORLD_SCHEMA.md)
+  max_open_files: 8         # per worker and file kind (RLDS shards, PointWorld flows, PointWorld depth)
+model:
+  anchor_stats: null        # TODO: workspace statistics over the joined corpus (sample stats do not transfer)
+train:
+  num_workers: 8
+  prefetch_factor: 2

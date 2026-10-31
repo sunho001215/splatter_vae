@@ -169,6 +169,12 @@ def build_data(cfg: dict):
         if indices is not None:
             train_ds = val_ds = fixed_windows(train_ds, indices)
         val_loaders, probe_loaders = {3: loader(val_ds, False)}, {}  # canonical DROID windows use stride 3
+    elif regime == "droid_largescale":  # lazy RLDS x PointWorld x DROID-3D windows (docs/droid_largescale.md)
+        from s4d.data.droid.largescale.config import build_datasets  # noqa: PLC0415
+
+        train_ds, val_ds = build_datasets(cfg)
+        n_train_cams = 2
+        val_loaders, probe_loaders = {train_ds.stride: loader(val_ds, False)}, {}
     else:
         raise ValueError(f"unsupported data regime {regime!r}")
     return train_ds, val_loaders, probe_loaders, n_train_cams

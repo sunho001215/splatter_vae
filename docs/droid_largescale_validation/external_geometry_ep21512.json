@@ -1,0 +1,266 @@
+{
+ "episode": "AUTOLab+0d4edc83+2023-10-21-19h-07m-04s",
+ "calibration_sources": {
+  "ext1": {
+   "pointworld_vs_droid3d": {
+    "centre_dist_m": 0.0206184068955708,
+    "rot_deg": 3.836456944987795,
+    "offset_in_a_camera_frame_m": [
+     -0.0085,
+     -0.0188,
+     -0.0009
+    ]
+   },
+   "pointworld_vs_droid_metadata": {
+    "centre_dist_m": 0.00541512869057213,
+    "rot_deg": 0.8563720984651508,
+    "offset_in_a_camera_frame_m": [
+     0.0027,
+     -0.0039,
+     0.0027
+    ]
+   },
+   "droid3d_vs_droid_metadata": {
+    "centre_dist_m": 0.018947967889846012,
+    "rot_deg": 3.0477347385127103,
+    "offset_in_a_camera_frame_m": [
+     0.0109,
+     0.0147,
+     0.0049
+    ]
+   },
+   "trajectory_left_static_over_steps_m": 0.0,
+   "trajectory_left_equals_metadata": true,
+   "trajectory_right_vs_left": {
+    "centre_dist_m": 0.12498146121891808,
+    "rot_deg": 0.5353008986754582,
+    "offset_in_a_camera_frame_m": [
+     0.1249,
+     -0.0005,
+     0.003
+    ]
+   },
+   "droid3d_baseline_m": 0.12005812674760818
+  },
+  "ext2": {
+   "pointworld_vs_droid3d": {
+    "centre_dist_m": 0.02072350044379318,
+    "rot_deg": 2.909301310086285,
+    "offset_in_a_camera_frame_m": [
+     -0.0177,
+     0.0085,
+     -0.0065
+    ]
+   },
+   "pointworld_vs_droid_metadata": {
+    "centre_dist_m": 0.0067930785265887346,
+    "rot_deg": 1.0181156809285508,
+    "offset_in_a_camera_frame_m": [
+     -0.0054,
+     -0.003,
+     0.0028
+    ]
+   },
+   "droid3d_vs_droid_metadata": {
+    "centre_dist_m": 0.019287039301721525,
+    "rot_deg": 3.0513214982298025,
+    "offset_in_a_camera_frame_m": [
+     0.0116,
+     -0.0122,
+     0.0094
+    ]
+   },
+   "trajectory_left_static_over_steps_m": 0.0,
+   "trajectory_left_equals_metadata": true,
+   "trajectory_right_vs_left": {
+    "centre_dist_m": 0.13470881393788817,
+    "rot_deg": 16.94793694451858,
+    "offset_in_a_camera_frame_m": [
+     0.0881,
+     -0.0402,
+     0.0936
+    ]
+   },
+   "droid3d_baseline_m": 0.12015504390001297
+  }
+ },
+ "gripper_depth_test": {
+  "ext1": {
+   "pointworld w2c, EE=cartesian": {
+    "in_image_with_depth": 2048,
+    "unoccluded": 997,
+    "one_sided_median_m": 0.009425070802233204,
+    "frac_abs_lt_2cm": 0.41748046875,
+    "signed_p10_p50_p90_m": [
+     -0.014069138243038746,
+     0.021395253205471504,
+     0.1473852002139023
+    ]
+   },
+   "droid3d w2c, EE=FK(q+dq)inv(FK(q))T(cart)": {
+    "in_image_with_depth": 2048,
+    "unoccluded": 779,
+    "one_sided_median_m": 0.014952532057582402,
+    "frac_abs_lt_2cm": 0.2568359375,
+    "signed_p10_p50_p90_m": [
+     -0.1160811968013998,
+     0.02987773232048771,
+     0.1803206083263044
+    ]
+   },
+   "droid3d w2c, EE=cartesian": {
+    "in_image_with_depth": 2048,
+    "unoccluded": 734,
+    "one_sided_median_m": 0.014435152112987876,
+    "frac_abs_lt_2cm": 0.2314453125,
+    "signed_p10_p50_p90_m": [
+     -0.12211999948909537,
+     0.03227026499139399,
+     0.18403248863985766
+    ]
+   },
+   "droid3d read as c2w": {
+    "in_image_with_depth": 835,
+    "unoccluded": 449,
+    "one_sided_median_m": 0.9487741243434527,
+    "frac_abs_lt_2cm": 0.03592814371257485,
+    "signed_p10_p50_p90_m": [
+     -1.1116138923100494,
+     -0.02647213829364392,
+     0.11973554835015982
+    ]
+   },
+   "droid3d as RIGHT camera (left = +b shift)": {
+    "in_image_with_depth": 2048,
+    "unoccluded": 1804,
+    "one_sided_median_m": 0.30753528954123716,
+    "frac_abs_lt_2cm": 0.0244140625,
+    "signed_p10_p50_p90_m": [
+     -0.6805157149235407,
+     -0.26856449451919007,
+     0.039967600626022406
+    ]
+   },
+   "droid3d shifted -b": {
+    "in_image_with_depth": 2048,
+    "unoccluded": 1958,
+    "one_sided_median_m": 0.2387576737860194,
+    "frac_abs_lt_2cm": 0.0498046875,
+    "signed_p10_p50_p90_m": [
+     -0.7875011334326746,
+     -0.22270558573607918,
+     -0.023157424760205082
+    ]
+   },
+   "droid metadata (original DROID)": {
+    "in_image_with_depth": 2048,
+    "unoccluded": 955,
+    "one_sided_median_m": 0.011291253780624622,
+    "frac_abs_lt_2cm": 0.3671875,
+    "signed_p10_p50_p90_m": [
+     -0.01975542687387874,
+     0.023989794487549898,
+     0.15106914740213723
+    ]
+   }
+  },
+  "ext2": {
+   "pointworld w2c, EE=cartesian": {
+    "in_image_with_depth": 2025,
+    "unoccluded": 834,
+    "one_sided_median_m": 0.009620400011359831,
+    "frac_abs_lt_2cm": 0.36246913580246914,
+    "signed_p10_p50_p90_m": [
+     -0.003434620162695534,
+     0.025616280654478518,
+     0.09796056069197781
+    ]
+   },
+   "droid3d w2c, EE=FK(q+dq)inv(FK(q))T(cart)": {
+    "in_image_with_depth": 2022,
+    "unoccluded": 671,
+    "one_sided_median_m": 0.012787491076096336,
+    "frac_abs_lt_2cm": 0.25667655786350146,
+    "signed_p10_p50_p90_m": [
+     -0.004705141152564765,
+     0.03163675577252523,
+     0.11307904128224351
+    ]
+   },
+   "droid3d w2c, EE=cartesian": {
+    "in_image_with_depth": 2021,
+    "unoccluded": 612,
+    "one_sided_median_m": 0.01448501493812615,
+    "frac_abs_lt_2cm": 0.21721919841662543,
+    "signed_p10_p50_p90_m": [
+     -0.006189695009618967,
+     0.03341109833006983,
+     0.11373001055166015
+    ]
+   },
+   "droid3d read as c2w": {
+    "in_image_with_depth": 0,
+    "unoccluded": 0,
+    "one_sided_median_m": null,
+    "frac_abs_lt_2cm": null,
+    "signed_p10_p50_p90_m": null
+   },
+   "droid3d as RIGHT camera (left = +b shift)": {
+    "in_image_with_depth": 2022,
+    "unoccluded": 1913,
+    "one_sided_median_m": 0.19421054016004846,
+    "frac_abs_lt_2cm": 0.02967359050445104,
+    "signed_p10_p50_p90_m": [
+     -0.9488099273051943,
+     -0.18534756353837667,
+     -0.033556195750757065
+    ]
+   },
+   "droid3d shifted -b": {
+    "in_image_with_depth": 2007,
+    "unoccluded": 1659,
+    "one_sided_median_m": 0.2958959884051727,
+    "frac_abs_lt_2cm": 0.01046337817638266,
+    "signed_p10_p50_p90_m": [
+     -0.6880495765655106,
+     -0.22167734256145066,
+     0.08850240841777644
+    ]
+   },
+   "droid metadata (original DROID)": {
+    "in_image_with_depth": 2021,
+    "unoccluded": 1027,
+    "one_sided_median_m": 0.008127403552992962,
+    "frac_abs_lt_2cm": 0.4675903018307768,
+    "signed_p10_p50_p90_m": [
+     -0.007117231465043283,
+     0.019203550989681517,
+     0.09548491509480483
+    ]
+   }
+  }
+ },
+ "rebase": {
+  "max_pixel_change_px": 7.312175669937915e-05,
+  "max_depth_change_m": 2.0882107243380688e-07,
+  "rebased_depth_residual_median_m": 0.0007233939035941606,
+  "naive_matrix_swap_depth_residual_median_m": 0.012663157175246187
+ },
+ "positions_vs_displacements": {
+  "scene_flows_norm_m_p5_p50_p95": [
+   0.47719126324422395,
+   0.7991517770697452,
+   1.1309032477789551
+  ],
+  "clip_end_minus_start_m_p50_p90_p99": [
+   0.001953125,
+   0.0072259026303460655,
+   0.08518019359466948
+  ],
+  "frac_points_moving_gt_1cm": 0.0672468093978733
+ },
+ "cartesian_vs_flange_fk": {
+  "max_trans_m": 3.062714132306965e-08,
+  "max_rot_deg": 6.613302226726415e-06
+ }
+}
