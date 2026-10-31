@@ -126,6 +126,7 @@ def build_episode_entry(
     max_dt_ms: float = 34.0,
     max_xyz_m: float = 2e-3,
     max_rot_rad: float = 5e-3,
+    wrist_max_residual_m: float = 0.03,
 ) -> dict:
     """One manifest row, or ``JoinError`` with the reason. ``calibration`` selects the extrinsics used for training
     geometry: ``"pointworld"`` (released optimized w2c) or ``"droid3d"`` (DROID-3D w2c; PointWorld tracks rebased).
@@ -291,6 +292,12 @@ def build_episode_entry(
     entry["frames"] = validate_frames(
         root, layout, episode, summary, entry, rlds_reader, max_dt_ms=max_dt_ms, max_xyz_m=max_xyz_m, max_rot_rad=max_rot_rad
     )
+    if entry["cameras"]["wrist"] is not None:
+        qa = wrist_qa(root, layout, episode, summary, entry, rlds_reader, max_residual_m=wrist_max_residual_m)
+        entry["wrist_qa"] = qa
+        if qa["decision"] != "ok":
+            entry["wrist_unavailable"].append(f"wrist QA: {qa['decision']}")
+            entry["cameras"]["wrist"] = None
     if parsed is not None:
         entry["droid3d"] = {
             "robot_serial": parsed["robot_serial"],
@@ -369,6 +376,81 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
             out["depth_index"][role] = idx.tolist()
             out["valid"][role] = ok.tolist()
             out["max_dt_ms"][role] = float(dt[ok].max()) if ok.any() else None
+    return out
+
+
+def wrist_pose_w2c(wrist: dict, state: dict) -> np.ndarray:
+    """Per-frame w2c of the stored wrist images under the manifest's pose model (DROID-3D or PointWorld recipe)."""
+    from s4d.data.droid.largescale.geometry import wrist_camera_c2w
+
+    T_gw = np.asarray(wrist["T_gw_static"], np.float64)
+    if wrist["pose_model"] == "droid3d":
+        return C.droid3d_wrist_w2c(
+            state["joint_position"], wrist["dq"], T_gw, wrist["dT_gw"], image_rotation_deg=int(wrist["image_rotation_deg"])
+        )
+    return invert(wrist_camera_c2w(state["cartesian_position"], invert(T_gw)))  # mean_mat = camera <- controller EE
+
+
+def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, max_residual_m: float, max_frames: int = 6) -> dict:
+    """Data check of the wrist pose model *and* the wrist depth orientation, per episode.
+
+    External-camera tracks (already in the training world frame) that their own camera sees are projected into the
+    wrist camera at the same canonical times and compared with the released wrist depth, read as stored and rotated
+    by 180 degrees. The orientation with the clearly lower median residual is recorded; a high residual for both
+    rejects the wrist calibration for this episode (pose model, hand-eye asset or orientation wrong).
+    """
+    import h5py
+
+    from s4d.data.droid.largescale.geometry import project, rebase_static_camera_points
+
+    wrist = entry["cameras"]["wrist"]
+    valid = np.asarray(entry["frames"]["valid"].get("wrist", []), bool)
+    clip = summary.clips[0]
+    start, end = map(int, clip.split(":"))
+    frames = [i for i in range(start, end) if i < len(valid) and valid[i]][:max_frames]
+    if not frames:
+        return {"decision": "no valid wrist frames", "depth_rotation_deg": None}
+    raw = CANONICAL_STRIDE * np.asarray(frames)
+    rl = entry["rlds"]
+    state = rlds_reader.read(rl["shard"], rl["row"], raw, cameras=(), numeric=("cartesian_position", "joint_position"))
+    w2c = wrist_pose_w2c(wrist, state)
+    K = np.asarray(wrist["K"], np.float64)
+    residual = {"as_stored": [], "rotated180": []}
+    with h5py.File(Path(root) / layout["flows"].format(episode=episode), "r") as flow, h5py.File(
+        Path(root) / layout["depth"].format(episode=episode), "r"
+    ) as depth_file:
+        group = depth_file[entry["depth_groups"]["wrist"]]["depth"]
+        for k, i in enumerate(frames):
+            depth = group[entry["frames"]["depth_index"]["wrist"][i]].astype(np.float64) / 1000.0
+            for role in ("ext1", "ext2"):
+                cam = entry["cameras"][role]
+                g = flow[clip][f"camera_{cam['serial']}_ext"]
+                pts = g["scene_flows"][i - start].astype(np.float64)
+                seen = g["scene_visibility"][i - start] & g["scene_depth_valid_mask"][i - start]
+                pts = pts[seen]
+                if entry["calibration"] == "droid3d":
+                    pts = rebase_static_camera_points(pts, np.asarray(cam["w2c_pointworld"]), np.asarray(cam["w2c"]))
+                uv, z = project(pts, K, w2c[k])
+                h, w = depth.shape
+                px = np.floor(uv).astype(np.int64)
+                ok = (z > 0) & (px[:, 0] >= 0) & (px[:, 0] < w) & (px[:, 1] >= 0) & (px[:, 1] < h)
+                for name, d in (("as_stored", depth), ("rotated180", depth[::-1, ::-1])):
+                    m = d[px[ok, 1], px[ok, 0]]
+                    residual[name].append(np.abs(z[ok] - m)[m > 0])
+    med = {k: (float(np.median(np.concatenate(v))) if sum(map(len, v)) else None) for k, v in residual.items()}
+    count = int(sum(map(len, residual["as_stored"])))
+    out = {"median_residual_m": med, "count": count, "frames": frames, "max_residual_m": max_residual_m}
+    a, b = med["as_stored"], med["rotated180"]
+    if count < 50 or a is None or b is None:
+        out.update(decision="too few wrist observations of external tracks", depth_rotation_deg=None)
+    elif min(a, b) > max_residual_m:
+        out.update(decision=f"wrist pose/depth inconsistent (median {min(a, b):.3f} m)", depth_rotation_deg=None)
+    elif a <= 0.5 * b:
+        out.update(decision="ok", depth_rotation_deg=0)
+    elif b <= 0.5 * a:
+        out.update(decision="ok", depth_rotation_deg=180)
+    else:
+        out.update(decision="wrist depth orientation ambiguous", depth_rotation_deg=None)
     return out
 
 

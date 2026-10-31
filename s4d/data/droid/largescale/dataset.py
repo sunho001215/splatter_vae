@@ -32,9 +32,8 @@ from s4d.data.droid.largescale.geometry import (
     rebase_static_camera_points,
     scale_intrinsics,
     transform_points,
-    wrist_camera_c2w,
 )
-from s4d.data.droid.largescale.join import load_manifest
+from s4d.data.droid.largescale.join import load_manifest, wrist_pose_w2c
 from s4d.data.droid.largescale.pointworld_source import DEFAULT_LAYOUT, PointWorldReader, clip_bounds
 from s4d.data.droid.largescale.rlds_index import RldsStepReader
 from s4d.data.droid.pointworld import depth_test, splat_score, track_targets
@@ -135,19 +134,7 @@ class DroidLargeScaleDataset(Dataset):
 
     def _wrist_w2c(self, row: dict, state: dict) -> np.ndarray | None:
         wrist = row["cameras"].get("wrist")
-        if wrist is None:
-            return None
-        T_gw = np.asarray(wrist["T_gw_static"], np.float64)
-        if wrist["pose_model"] == "droid3d":
-            return C.droid3d_wrist_w2c(
-                state["joint_position"],
-                wrist["dq"],
-                T_gw,
-                wrist["dT_gw"],
-                image_rotation_deg=int(wrist["image_rotation_deg"]),
-            )
-        # PointWorld recipe: mean_mat is camera <- cartesian EE frame for the unrotated (stored) image
-        return invert(wrist_camera_c2w(state["cartesian_position"], invert(T_gw)))
+        return None if wrist is None else wrist_pose_w2c(wrist, state)
 
     # ------------------------------------------------------------------------------------------------ item
     def __getitem__(self, index: int) -> dict:
@@ -265,6 +252,8 @@ class DroidLargeScaleDataset(Dataset):
             K_r = scale_intrinsics(K_nat, NATIVE_WH, (W, H))
             w2c = self._wrist_w2c(row, state)
             depth_nat, _ = self.pw.depth_frames(episode, group, np.asarray(row["frames"]["depth_index"]["wrist"])[canon])
+            if row.get("wrist_qa", {}).get("depth_rotation_deg") == 180:  # released wrist depth stored rotated (decided from data)
+                depth_nat = np.ascontiguousarray(depth_nat[:, ::-1, ::-1])
             depth_nat[~valid] = 0
             depth_r = np.stack([resize(d, H, W, nearest=True) for d in depth_nat])
             for p, (a, _, _) in enumerate(PAIRS):

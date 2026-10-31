@@ -174,7 +174,13 @@ def write_rlds_shards(root: Path, gt: dict, *, decoy_duplicate: bool = False) ->
 
 
 def write_pointworld(
-    root: Path, gt: dict, *, n_tracks=(40, 52), episode: str = EPISODE, wrist_attr: str | None = None
+    root: Path,
+    gt: dict,
+    *,
+    n_tracks=(40, 52),
+    episode: str = EPISODE,
+    wrist_attr: str | None = None,
+    wrist_depth_rotated: bool = False,
 ) -> None:
     flows = root / "flows-fs-optimized"
     depth_dir = root / "depth_320x180"
@@ -235,6 +241,7 @@ def write_pointworld(
             for s in range(RAW_STEPS - 1):
                 if role == "wrist":
                     d = plane_depth(gt["K_wrist"], gt["c2w_wrist"][s])
+                    d = d[::-1, ::-1] if wrist_depth_rotated else d
                 else:
                     d = plane_depth(gt["K_ext"], gt["c2w_true"][role])
                 frames.append(np.round(d * 1000).astype(np.uint16))
@@ -253,7 +260,7 @@ def write_pointworld(
 
 
 def write_droid3d(
-    root: Path, gt: dict, *, episode: str = EPISODE, wrist_serial: str | None = None
+    root: Path, gt: dict, *, episode: str = EPISODE, wrist_serial: str | None = None, hand_eye_error_m: float = 0.0
 ) -> tuple[Path, Path, Path]:
     root.mkdir(parents=True, exist_ok=True)
     rec = {
@@ -312,7 +319,8 @@ def write_droid3d(
     intr_path = root / "camera_intrinsics.jsonl"
     intr_path.write_text(json.dumps(intr) + "\n")
     hand_eye_path = root / "gripper2wrist_transforms.json"
-    hand_eye_path.write_text(json.dumps({ROBOT.upper(): {"mean_mat": gt["T_gw_static"].tolist()}}))
+    mean_mat = small_rigid(0, 0, 0, 0, 0, hand_eye_error_m) @ gt["T_gw_static"]  # optional error along the optical axis
+    hand_eye_path.write_text(json.dumps({ROBOT.upper(): {"mean_mat": mean_mat.tolist()}}))
     return ext_path, intr_path, hand_eye_path
 
 
@@ -323,8 +331,10 @@ def build_all(tmp: Path, *, calibration: str = "droid3d", **kw) -> dict:
     gt = truth()
     shards = write_rlds_shards(tmp / "rlds", gt, decoy_duplicate=kw.pop("decoy_duplicate", False))
     build_index(shards, tmp / "rlds_index")
-    write_pointworld(tmp / "pw", gt, **{k: v for k, v in kw.items() if k in ("n_tracks", "wrist_attr")})
-    ext_path, intr_path, he_path = write_droid3d(tmp / "d3", gt, wrist_serial=kw.get("d3_wrist_serial"))
+    write_pointworld(tmp / "pw", gt, **{k: v for k, v in kw.items() if k in ("n_tracks", "wrist_attr", "wrist_depth_rotated")})
+    ext_path, intr_path, he_path = write_droid3d(
+        tmp / "d3", gt, wrist_serial=kw.get("d3_wrist_serial"), hand_eye_error_m=kw.get("hand_eye_error_m", 0.0)
+    )
     reader = RldsStepReader(tmp / "rlds_index", tmp / "rlds")
     report = join.build_manifest(
         tmp / "pw",

@@ -452,13 +452,16 @@ def test_wrist_pose_depth_and_track_visibility_are_aligned_per_frame(env, env_pw
     torch.testing.assert_close(item["wrist_c2w"] @ item["wrist_w2c"], torch.eye(4).expand(3, 4, 4), atol=1e-5, rtol=0)
     assert item["wrist_track_weight"].sum() > 0
     # PointWorld recipe: mean_mat composes with the *controller* EE pose (cartesian_position), no joint offsets
-    pw = make_ds(env_pw)
-    other = pw[pw.windows.index((0, "0:11", 2))]
+    state = {"cartesian_position": gt["cart"][raw], "joint_position": gt["q"][raw]}
+    pw_model = {"T_gw_static": gt["T_gw_static"].tolist(), "pose_model": "pointworld"}
     expected_pw = G.pose6_to_matrix(gt["cart"][raw]) @ G.invert(gt["T_gw_static"])
-    np.testing.assert_allclose(other["wrist_c2w"].numpy(), expected_pw, atol=1e-5)
-    # the fixture's hand-eye is flange-relative (DepthWorld) while cartesian_position includes a tool offset, so the
-    # two recipes disagree by that offset: the manifest records it so a real asset's convention can be checked
+    np.testing.assert_allclose(G.invert(join.wrist_pose_w2c(pw_model, state)), expected_pw, atol=1e-9)
+    # the fixture's hand-eye is flange-relative (DepthWorld) while cartesian_position includes a 10.34 cm tool offset:
+    # used with the PointWorld recipe it misplaces the camera, and the per-episode wrist QA catches it from the data
     rows = join.load_manifest(env_pw["manifest"])
+    assert rows[0]["cameras"]["wrist"] is None and "inconsistent" in rows[0]["wrist_qa"]["decision"]
+    other = make_ds(env_pw)[0]
+    assert not other["wrist_valid"].any()
     assert abs(rows[0]["frames"]["flange_to_cartesian_m"] - 0.1034) < 1e-4
 
 
@@ -473,12 +476,17 @@ def test_items_are_deterministic_and_survive_pickling(env):
 
 
 def test_bounded_open_files_and_caches(env):
+    import resource
+
     ds = make_ds(env, max_open_files=1)
-    ds[0]
-    before = worker_open_files()
-    for i in range(0, len(ds), 2):
+    for i in range(len(ds)):  # warm-up: every code path and allocator arena once
         ds[i]
+    before, peak = worker_open_files(), resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    for _ in range(3):
+        for i in range(len(ds)):
+            ds[i]
     assert worker_open_files() <= before + 1
+    assert resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - peak < 20 * 1024  # KiB: no growth with items read
     assert len(ds.pw.flow_files) <= 1 and len(ds.pw.depth_files) <= 1 and len(ds.rlds.files) <= 1
     assert ds.pw.flow_files.peak == ds.pw.depth_files.peak == ds.rlds.files.peak == 1
     pool = HandlePool(lambda k: k, lambda h: None, max_open=2)
@@ -655,3 +663,29 @@ def test_index_and_manifest_clis_are_resumable_and_refuse_writing_into_the_relea
         ]
     )
     assert (tmp_path / "m.jsonl").read_text() == env["manifest"].read_text()
+
+
+# ------------------------------------------------------------------------------------------------ wrist QA
+def test_wrist_qa_accepts_the_true_model_and_records_orientation(env):
+    qa = join.load_manifest(env["manifest"])[0]["wrist_qa"]
+    assert qa["decision"] == "ok" and qa["depth_rotation_deg"] == 0 and qa["count"] >= 50
+    assert qa["median_residual_m"]["as_stored"] < 3e-3 < qa["median_residual_m"]["rotated180"]
+
+
+def test_wrist_depth_stored_rotated_is_detected_and_undone(env, tmp_path):
+    rotated = F.build_all(tmp_path, wrist_depth_rotated=True)
+    qa = join.load_manifest(rotated["manifest"])[0]["wrist_qa"]
+    assert qa["decision"] == "ok" and qa["depth_rotation_deg"] == 180
+    a, b = make_ds(env), make_ds(rotated)
+    i = a.windows.index((0, "0:11", 1))
+    torch.testing.assert_close(b[i]["wrist_depth"], a[i]["wrist_depth"], atol=0, rtol=0)
+
+
+def test_wrong_hand_eye_disables_the_wrist_but_keeps_external_windows(tmp_path):
+    bad = F.build_all(tmp_path, hand_eye_error_m=0.08)
+    row = join.load_manifest(bad["manifest"])[0]
+    assert row["cameras"]["wrist"] is None and any("wrist QA" in r for r in row["wrist_unavailable"])
+    ds = make_ds(bad)
+    item = ds[0]
+    assert not item["wrist_valid"].any() and item["wrist_depth"].abs().sum() == 0 and item["wrist_track_weight"].sum() == 0
+    assert item["track_weight"].sum() > 0
