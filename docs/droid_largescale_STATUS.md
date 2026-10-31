@@ -1,87 +1,67 @@
-# DROID large-scale data path: status (2026-10-31)
+# DROID large-scale data path: status (2026-10-31, after the real-data validation)
 
 Branch `droid-largescale-20261031` (worktree `.worktrees/droid-largescale`), based on `2605ba2`. Not merged or pushed.
-Design, schemas and conventions are in `docs/droid_largescale.md`.
 
-## Done (code and tests)
+- Design, schemas and conventions: `docs/droid_largescale.md`.
+- Real-data validation (item 8), with numbers, fixes and open decisions: `docs/droid_largescale_validation_20261031.md`.
+- Evidence files: `docs/droid_largescale_validation/`.
+- Full commands and logs: `/home/ws/ws/validation-20261031/item8/REPORT.md`.
 
-| Piece | Files |
+## Done
+
+| Piece | Files | Real data |
+|---|---|---|
+| TF-free TFRecord/Example walker, in-place RLDS step index (resumable, `--range`, `--partial` with global shard ids, `shardLengths` check) | `s4d/data/droid/largescale/{tfrecord,rlds_index}.py`, `scripts/droid_ls_build_rlds_index.py` | VERIFIED-REAL: 63 shards, 3,034 episodes |
+| PointWorld schema checks (depth `metadata` group, 65535 saturation), lazy bounded HDF5 access, strict tar-stream extractor (non-hex users, truncated streams) | `pointworld_source.py`, `extract.py`, `scripts/droid_ls_extract_pointworld.py` | VERIFIED-REAL: 62 episodes |
+| DROID-3D parsing, Franka FK, wrist poses, exact static-camera track rebase | `calibration.py`, `geometry.py` | Parsing, external extrinsics and rebase VERIFIED-REAL; wrist chain PARTIAL |
+| Join: identity by uuid and path suffix (DROID-3D duplicates resolved), serial-, frame- and timestamp-validated; per-robot calibration only for an identified robot; wrist QA; provenance manifest | `join.py`, `scripts/droid_ls_build_manifest.py` | 62/62 accepted; wrist QA rejects 62/62 |
+| Map-style lazy dataset and `data.regime: droid_largescale` | `dataset.py`, `config.py`, `configs/droid/largescale.yaml`, one `elif` in `scripts/train.py` | VERIFIED-REAL: contract, workers, memory, handles, throughput |
+| Workspace statistics for the regime | `scripts/compute_workspace_stats.py --regime droid_largescale` | Smoke-only statistics computed |
+
+Existing regimes, configurations, model and loss code are unchanged.
+
+## Tests
+
+| Run | Result |
 |---|---|
-| TF-free TFRecord/Example walker and in-place RLDS step index (resumable, `--range` parallel) | `s4d/data/droid/largescale/{tfrecord,rlds_index}.py`, `scripts/droid_ls_build_rlds_index.py` |
-| PointWorld schema checks, lazy bounded HDF5 access, strict tar-stream extractor | `pointworld_source.py`, `extract.py`, `scripts/droid_ls_extract_pointworld.py` |
-| DROID-3D parsing, Franka FK, wrist poses (DROID-3D model, PointWorld recipe, original DROID hand-eye), exact static-camera track rebase | `calibration.py`, `geometry.py` |
-| Identity, serial and frame-validated join; per-episode wrist QA (pose model and depth orientation); provenance manifest | `join.py`, `scripts/droid_ls_build_manifest.py` |
-| Map-style lazy dataset (shared contract plus supervision-only `wrist_*`/`robot_*` fields) and `data.regime: droid_largescale` | `dataset.py`, `config.py`, `configs/droid/largescale.yaml`, one new `elif` in `scripts/train.py` |
+| `tests/test_droid_largescale.py` | 61 passed (40 before; 21 real-data regression tests added) |
+| Full native suite, `scripts/run_tests.py` on `87b7846`, local, MIG `2ebd9e11` | **1,283 passed, 0 failed, 0 errors, 0 skipped** (`docs/tests.json`) |
+| Training smoke, `scripts/train.py`, csw4 overlays on the DROID configuration, real data, 200 steps + stop-at-100/resume | Passed: finite losses and gradients, checkpoints, resume continuity within run-to-run noise |
 
-`scripts/train.py` is the only existing file that changed: one new `elif` branch. Every existing regime and config is
-untouched.
+## Real-data status (item 8)
 
-## Test results (CPU, `CUDA_VISIBLE_DEVICES=MIG-2ebd9e11-…`)
-
-| Test files | Result |
+| Component | State |
 |---|---|
-| `tests/test_droid_largescale.py` | 40 passed |
-| `tests/test_droid.py tests/test_droid_protocols.py tests/test_contract.py` (existing behaviour) | 91 passed |
+| RLDS index, wire layout, ordinal 21512, decode | VERIFIED-REAL |
+| DROID-3D files against the parser | VERIFIED-REAL (rectified K, `T_right_from_left` semantics, duplicates and placeholder robots documented and handled) |
+| Join, frames, timestamps, external extrinsics, rebase, intrinsics convention | VERIFIED-REAL (62 episodes, one session) |
+| Wrist orientation | VERIFIED-REAL |
+| Wrist pose chain and QA | PARTIAL: no wrist fields emitted (QA rejects all 62); see open decision 1 |
+| Batch contract, multi-episode loading, workers, memory, file handles | VERIFIED-REAL |
+| Training smoke and resume | VERIFIED-REAL (200 steps) |
+| Anchor statistics | PARTIAL: smoke-only (60 episodes, one session); corpus statistics not computed |
+| Corpus join rate, multi-robot and multi-lab behaviour, 672x376 wrist intrinsics | NOT-RUN |
 
-The full suite was not run, by instruction. `scripts/train.py` refuses to train until `require_passed_tests()` sees a
-recorded full-suite pass.
+A single session shows functional integration only. DROID cannot establish the RealSense stream configuration or the
+Panda–Robotiq mounting geometry of our own rig.
 
-## Verified, assumed, blocked
+## Open decisions
 
-See the table in `docs/droid_largescale.md` §6. In short:
-
-- **Verified from released bytes:** the RLDS schema.
-- **Verified on the real sample and in the publisher's code:** the PointWorld schema and conventions.
-- **Verified from the card and the authors' code only:** DROID-3D. The data files are gated and no bytes were read.
-- **Unknown, decided per episode from data:** the PointWorld wrist depth (orientation, intrinsics, source). The
-  wrist QA decides orientation, and a failing episode only loses its wrist fields.
-
-## Explicit limitations
-
-1. **DROID-3D not checked against real bytes.** No real `extrinsics.jsonl` or `camera_intrinsics.jsonl` line was
-   read; access needs a valid HF token for the gated repo. Field names come from the card and DepthWorld.
-2. **Hand-eye `mean_mat` frame conflict.**
-   - DepthWorld composes it with flange FK `FK(q+dq)`.
-   - PointWorld's generator defines it against `cartesian_position`.
-   - The two differ by the controller's flange→tool offset, which DROID does not document.
-   - Mitigations: the manifest records `frames.flange_to_cartesian_m`, and wrist QA rejects a misplaced camera
-     (tested). The asset is not vendored; its path is passed explicitly.
-3. **Gripper points under `droid3d`.** They assume `cartesian_position` = controller FK of `q` with the same DH
-   (`FK(q+dq) · inv(FK(q)) · T_base_ee`). `dT_gw` (a hand-eye correction) is not applied to the gripper.
-4. **External K stays PointWorld's in both modes.** Its tracks and depth were produced on that grid. That K was
-   written as ZED K × 0.25 without a half-pixel shift (≤0.375 px from the continuous optical centre).
-   `K_droid3d_minus_pw_max_px` is recorded per episode.
-5. **Wrist track supervision is visibility only.** PointWorld releases no wrist tracks. `wrist_track_weight` marks
-   which external tracks the wrist camera sees at each pair source time, by depth test. No wrist-native 2D tracks
-   exist to re-lift.
-6. **Wrist poses vary per frame.** The contract's training views have one pose per window, so the wrist is not a
-   training view. Its aligned per-frame fields are supervision-only extras that the current trainer ignores
-   (bit-identical loss, tested). The encoder input contract is unchanged.
-7. **Index-less depth package.** It must be extracted once (about 1.23 TB). The flows can be extracted per shard
-   using `_shards_manifest.json`.
-8. **Unmeasured on real data:** throughput, corpus join rate, wrist QA pass rate, PointWorld depth HDF5 chunking.
-9. **Placeholders:**
-   - `model.anchor_stats` is `null` in the overlay; workspace statistics for the joined corpus are a TODO.
-   - `gripper_offset_m = -0.019` was fitted on one sample episode.
+1. **Wrist pose chain and an occlusion-robust QA statistic.** On robot `FR3-295341-1326595` the published DROID-3D
+   chain with `dT_gw` fits worse than `dq`-only and than DROID's raw wrist pose. Decide after checking several robots.
+2. **csw4 base keys on DROID.** The DROID base keeps `slot_dim` 384, `num_slots` 16, decoder 256/8, its Gaussian
+   budget, `consistency` 0.1, `depth_align` scale and `far` 4.0. The Meta-World csw4 base differs in all of these.
+3. **Calibration default** (`droid3d` kept).
+4. **Track targets that are invisible at the target time** (2.6 % of tracks move more than 0.3 m per window).
+5. **Whole-episode rejection for a single off-by-one proprio frame.**
 
 ## Remaining steps (in order)
 
-1. Index the RLDS release in place.
-   - Command: `scripts/droid_ls_build_rlds_index.py --rlds-root <droid/1.0.1> --out <new dir outside the release>`.
-   - Run it in `--range` slices, then finalize.
-   - This needs explicit authorization to *read* the protected DROID root.
-   - The first shard confirms the assumed Example wire layout (float32 packed state).
-2. Download the DROID-3D `extrinsics.jsonl` (100 MB) and `camera_intrinsics.jsonl` (203 MB) with a valid token, and
-   the DepthWorld `gripper2wrist_transforms.json`.
-   - Spot-check five records against §2.3.
-   - Reconcile the hand-eye frame using `flange_to_cartesian_m` and wrist QA on a few episodes.
-3. Fetch and extract PointWorld: cameras (19.5 MB), flows shards, and the depth stream.
-   - Command: `zstd -dc … | scripts/droid_ls_extract_pointworld.py --dest <root>`.
-   - Check disk first: about 3.9 TB total.
-4. Build the manifest: `scripts/droid_ls_build_manifest.py … --calibration droid3d`.
-   - Review the report's rejection reasons, the `uuid_matches_folder` rate, the wrist QA residuals and orientation
-     decisions, and `K_droid3d_minus_pw_max_px`.
-5. Compute corpus workspace statistics for `model.anchor_stats`. Refit or validate `gripper_offset_m` on several
-   episodes.
-6. Run the full test suite to satisfy the training gate.
-7. Run a short single-GPU overfit on a few manifest episodes, then measure throughput with `num_workers` 8.
+1. Index the RLDS release in place. Either all shards, or the shards that hold joinable episodes: a metadata-only
+   scan of all 2048 shards takes 20 s, see the validation note.
+2. Extract the PointWorld flows (771 shards) and the depth stream (252 parts, sequential), with about 3.9 TB of disk.
+3. Build the manifest with `--calibration droid3d`, then review the rejection reasons and the wrist QA across robots.
+4. Resolve open decisions 1-2. Compute corpus `model.anchor_stats` and refit or validate `gripper_offset_m` on
+   several robots.
+5. Rerun the full suite on the merged sources, then a short single-GPU overfit and the throughput check with 8
+   workers.
