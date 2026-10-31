@@ -51,17 +51,25 @@ def scene_suffix(value: str | bytes) -> str:
 
 
 _UUID = re.compile(
-    r"^(?P<lab>[^+]+)\+(?P<user>[0-9a-f]+)\+(?P<date>\d{4}-\d{2}-\d{2})-(?P<h>\d{2})h-(?P<m>\d{2})m-(?P<s>\d{2})s$"
+    r"^(?P<lab>[^+]+)\+(?P<user>[0-9A-Za-z]+)\+(?P<date>\d{4}-\d{2}-\d{2})-(?P<h>\d{2})h-(?P<m>\d{2})m-(?P<s>\d{2})s$"
 )
-_FOLDER = re.compile(r"^\w{3}_(?P<mon>\w{3})_(?P<day>\d{1,2})_(?P<h>\d{2}):(?P<m>\d{2}):(?P<s>\d{2})_(?P<year>\d{4})$")
+# DROID names the episode folder ``time.asctime().replace(" ", "_")``: days 1-9 are space padded, so the folder reads
+# ``Fri_Oct__6_20:35:03_2023`` (two underscores; 21,880 of 73,217 DROID-3D raw_dir values on real data), and some early
+# IRIS folders also replace the colons (``Thu_Mar__2_14_57_27_2023``).
+_FOLDER = re.compile(
+    r"^\w{3}_(?P<mon>\w{3})_{1,2}(?P<day>\d{1,2})_(?P<h>\d{2})[:_](?P<m>\d{2})[:_](?P<s>\d{2})_(?P<year>\d{4})$"
+)
 _MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
 
 
 def uuid_matches_suffix(uuid: str, suffix: str) -> bool:
-    """DROID builds ``uuid = f"{lab}+{user_id}+{%Y-%m-%d-%Hh-%Mm-%Ss}"`` and the folder ``%a_%b_%d_%H:%M:%S_%Y``."""
+    """DROID builds ``uuid = f"{lab}+{user_id}+{%Y-%m-%d-%Hh-%Mm-%Ss}"`` and the folder from ``time.asctime()`` at the
+    same instant, so lab and date-time must agree. The ``<date>`` directory is *not* compared: on real data it is the
+    collection day and differs from the folder/uuid date for sessions past midnight (2,772 DROID-3D records, e.g.
+    ``2023-11-29/Thu_Nov_30_00:02:20_2023`` for uuid ``...+2023-11-30-00h-02m-20s``)."""
     u, parts = _UUID.match(uuid), suffix.split("/")
     f = _FOLDER.match(parts[-1]) if len(parts) == 4 else None
-    if not u or not f or u["lab"] != parts[0] or u["date"] != parts[2]:
+    if not u or not f or u["lab"].lower() != parts[0].lower():  # TRI writes "tri+..." uuids under "TRI/" (30 records)
         return False
     year, month, day = map(int, u["date"].split("-"))
     return (year, month, day, u["h"], u["m"], u["s"]) == (

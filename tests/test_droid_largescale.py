@@ -781,3 +781,22 @@ def test_partial_rlds_index_keeps_global_shard_ids_and_checks_dataset_info_shard
     (rlds / "dataset_info.json").write_text(json.dumps(info))
     with pytest.raises(TFRecordError, match="shardLengths"):
         cli.main(["--rlds-root", str(rlds), "--out", str(tmp_path / "idx2"), "--range", "1:2", "--partial"])
+
+
+@pytest.mark.parametrize(
+    "uuid, suffix, expected",
+    [
+        ("AUTOLab+0d4edc83+2023-10-21-19h-07m-04s", "AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023", True),
+        # asctime pads days 1-9 with a space -> two underscores (21,880 DROID-3D records)
+        ("AUTOLab+0d4edc83+2023-11-03-15h-40m-10s", "AUTOLab/success/2023-11-03/Fri_Nov__3_15:40:10_2023", True),
+        # the date directory is the collection day, not the folder time (sessions past midnight)
+        ("AUTOLab+44bb9c36+2023-11-30-00h-02m-20s", "AUTOLab/failure/2023-11-29/Thu_Nov_30_00:02:20_2023", True),
+        ("AUTOLab+t3d58310+2023-08-12-12h-05m-37s", "AUTOLab/success/2023-08-12/Sat_Aug_12_12:05:37_2023", True),
+        ("IRIS+ef107c48+2023-03-02-14h-57m-27s", "IRIS/success/2023-03-02/Thu_Mar__2_14_57_27_2023", True),
+        ("tri+7dfa2da3+2023-10-12-12h-18m-17s", "TRI/success/2023-10-12/Thu_Oct_12_12:18:17_2023", True),
+        ("AUTOLab+0d4edc83+2023-10-21-19h-07m-05s", "AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023", False),
+        ("IPRL+0d4edc83+2023-10-21-19h-07m-04s", "AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023", False),
+    ],
+)
+def test_uuid_folder_diagnostic_accepts_the_real_droid_folder_formats(uuid, suffix, expected):
+    assert join.uuid_matches_suffix(uuid, suffix) is expected
