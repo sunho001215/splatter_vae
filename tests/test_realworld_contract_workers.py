@@ -99,7 +99,8 @@ def test_run_stage_is_atomic_and_restartable(tmp_path):
 def test_existing_code_does_not_import_realworld():
     out = subprocess.run(["git", "-C", str(REPO), "grep", "-l", "s4d.realworld", "--", "s4d", "scripts"],
                          capture_output=True, text=True).stdout.split()
-    assert all(p.startswith("s4d/realworld/") for p in out), out
+    # the package's own entry points (scripts/realworld_*.py) may import it; nothing else may
+    assert all(p.startswith(("s4d/realworld/", "scripts/realworld_")) for p in out), out
 
 
 def test_upstream_worker_scripts_compile_and_never_import_upstream_at_module_level():
