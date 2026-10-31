@@ -9,13 +9,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from s4d import remote_artifact_check
-from s4d import remote_jobs as remote
-from s4d.gpu_guard import APPROVED_HOST_GPUS
-from scripts._nvidia_query import QueryUnavailable
+from ops.remote import artifact_check as remote_artifact_check
+from ops.jobs import remote_backend as remote
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS
+from ops.resources.nvidia_query import QueryUnavailable
 
 REPO = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("remote_scheduler", REPO / "scripts/jobs.py")
+spec = importlib.util.spec_from_file_location("remote_scheduler", REPO / "ops/jobs/scheduler.py")
 jobs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(jobs)
 LOCAL = APPROVED_HOST_GPUS["local"][0]
@@ -850,9 +850,9 @@ def _rv_setup(tmp_path, monkeypatch):
     import json
     from types import SimpleNamespace
 
-    from s4d import remote_jobs
-    from s4d.gpu_guard import APPROVED_HOST_GPUS
-    from s4d.remote_verification import POLICIES, ROOT
+    from ops.jobs import remote_backend as remote_jobs
+    from ops.resources.gpu_guard import APPROVED_HOST_GPUS
+    from ops.containers.verification import POLICIES, ROOT
 
     gpu, commit, image = next(iter(APPROVED_HOST_GPUS["remote"])), "a" * 40, "sha256:" + "b" * 64
     source = {"s4d/example.py": "c" * 64, "third_party/example": "d" * 64}
@@ -890,7 +890,7 @@ def _rv_setup(tmp_path, monkeypatch):
 
 
 def _rv_inspect(spec, identity):
-    from s4d.remote_verification import ROOT
+    from ops.containers.verification import ROOT
 
     runtime = ROOT + "/runtime"
     acceptance = f"{runtime}/acceptance/{spec['commit']}-{spec['image_digest'][7:]}"
@@ -928,7 +928,7 @@ def _rv_inspect(spec, identity):
 def test_verification_ready_without_campaign_acceptance(tmp_path, monkeypatch):
     import subprocess
 
-    from s4d import remote_jobs
+    from ops.jobs import remote_backend as remote_jobs
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
     calls = []
@@ -951,8 +951,8 @@ def test_scheduler_bootstrap_does_not_share_campaign_readiness(tmp_path, monkeyp
 
     import yaml
 
-    from s4d import remote_jobs
-    from s4d.gpu_guard import APPROVED_HOST_GPUS
+    from ops.jobs import remote_backend as remote_jobs
+    from ops.resources.gpu_guard import APPROVED_HOST_GPUS
     from scripts import jobs as scheduler
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
@@ -1002,7 +1002,7 @@ def test_reconcile_refuses_mixed_job_kinds(tmp_path, monkeypatch, direction):
 
 @pytest.mark.parametrize("fault", [None, "arguments", "memory", "timeout"])
 def test_verification_container_bounds_are_reconciled(tmp_path, monkeypatch, fault):
-    from s4d import remote_jobs
+    from ops.jobs import remote_backend as remote_jobs
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
     _, spec = backend.prepare(job, job["gpu"], 1, host, evidence)
@@ -1027,7 +1027,7 @@ def test_synced_verification_requires_typed_wrappers_and_passing_report(tmp_path
     import hashlib
     import json
 
-    from s4d import remote_jobs
+    from ops.jobs import remote_backend as remote_jobs
     from scripts import jobs as scheduler
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
@@ -1069,7 +1069,7 @@ def test_campaign_prepare_and_fingerprint_remain_unchanged(tmp_path, monkeypatch
     import hashlib
     import json
 
-    from s4d import remote_jobs
+    from ops.jobs import remote_backend as remote_jobs
     from scripts import jobs as scheduler
 
     backend, host, _, evidence = _rv_setup(tmp_path, monkeypatch)
@@ -1093,8 +1093,8 @@ def test_verification_sync_uses_attempt_output_and_rejects_campaign_state(tmp_pa
     import hashlib
     from types import SimpleNamespace
 
-    from s4d.remote_jobs import RemoteJobError
-    from s4d.remote_verification import verification_output
+    from ops.jobs.remote_backend import RemoteJobError
+    from ops.containers.verification import verification_output
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
     _, spec = backend.prepare(job, job["gpu"], 2, host, evidence)
@@ -1122,7 +1122,7 @@ def test_isolation_bootstrap_requires_passing_suite_for_same_release(tmp_path, m
     import hashlib
     import json
 
-    from s4d.remote_verification import POLICIES, verification_artifacts
+    from ops.containers.verification import POLICIES, verification_artifacts
 
     backend, host, job, evidence = _rv_setup(tmp_path, monkeypatch)
     suite = {"host": "remote", "full_suite_passed": True, "exit_code": 0,

@@ -79,7 +79,7 @@ select = ["E", "F", "B", "I", "UP"]
 ignore = ["E731", "B905", "B008"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["s4d"]
+known-first-party = ["s4d", "ops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

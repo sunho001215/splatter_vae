@@ -23,9 +23,9 @@ import torch  # noqa: E402
 from s4d.config import dump_config, get, load_config  # noqa: E402
 from s4d.diag.local_log import RunLogger  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.gpu_guard import validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.model.render import require_prebuilt_renderer  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 from s4d.train import ddp  # noqa: E402
 from s4d.train.evaluate import Evaluator  # noqa: E402
 from s4d.train.loop import train  # noqa: E402

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS
-from s4d.remote_access import REMOTE_ROOT, RemoteCommandError, RemoteUnreachable, sha256
-from s4d.remote_launch import (
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS
+from ops.remote.access import REMOTE_ROOT, RemoteCommandError, RemoteUnreachable, sha256
+from ops.containers.launch import (
     RAM_RESERVE_BYTES,
     SHM_SIZE_BYTES,
     build_remote_command,
@@ -456,9 +456,9 @@ def test_cpu_thread_limit_defaults_to_eight_and_follows_the_job():
     assert validate_spec(spec)["cpu_threads"] == 16
 
 def _rv_launch_spec(purpose="native_suite"):
-    from s4d.gpu_guard import APPROVED_HOST_GPUS
-    from s4d.remote_jobs import container_labels
-    from s4d.remote_verification import POLICIES, ROOT, canonical_arguments
+    from ops.resources.gpu_guard import APPROVED_HOST_GPUS
+    from ops.jobs.remote_backend import container_labels
+    from ops.containers.verification import POLICIES, ROOT, canonical_arguments
 
     script, timeout, ram, memory, reports = POLICIES[purpose]
     gpu, job_id = next(iter(APPROVED_HOST_GPUS["remote"])), "verify-" + purpose
@@ -487,7 +487,7 @@ def _rv_launch_spec(purpose="native_suite"):
     {"ram_gb": 1024}, {"mem_gb": 90}, {"disk_gb": 17}, {"cpu_threads": 9},
 ])
 def test_verification_launch_spec_is_a_fixed_bounded_allowlist(purpose, mutation):
-    from s4d.remote_launch import validate_spec
+    from ops.containers.launch import validate_spec
 
     spec = _rv_launch_spec(purpose)
     validate_spec(spec)
@@ -498,8 +498,8 @@ def test_verification_launch_spec_is_a_fixed_bounded_allowlist(purpose, mutation
 
 @pytest.mark.parametrize("purpose", ["native_suite", "gpu_isolation"])
 def test_verification_requires_explicit_non_campaign_flag_and_reports(purpose):
-    from s4d.remote_launch import validate_spec
-    from s4d.remote_verification import validate_verification
+    from ops.containers.launch import validate_spec
+    from ops.containers.verification import validate_verification
 
     spec = _rv_launch_spec(purpose)
     for missing in ("campaign_eligible", "verification_timeout_seconds", "required_results"):
@@ -518,7 +518,7 @@ def test_verification_requires_explicit_non_campaign_flag_and_reports(purpose):
 
 @pytest.mark.parametrize("direction", ["bootstrap_as_campaign", "campaign_as_bootstrap"])
 def test_launch_evidence_cannot_change_job_kind(tmp_path, monkeypatch, direction):
-    import s4d.remote_launch as launcher
+    import ops.containers.launch as launcher
 
     spec = _rv_launch_spec()
     monkeypatch.setattr(launcher, "commit_source_sha256", lambda *_: {"s4d/example.py": "c" * 64})
@@ -536,8 +536,8 @@ def test_launch_evidence_cannot_change_job_kind(tmp_path, monkeypatch, direction
 def test_verification_command_binds_output_limits_and_child_environment(purpose):
     import shlex
 
-    from s4d.remote_launch import build_remote_command
-    from s4d.remote_verification import ROOT, entry_verification
+    from ops.containers.launch import build_remote_command
+    from ops.containers.verification import ROOT, entry_verification
 
     spec = _rv_launch_spec(purpose)
     command = build_remote_command(spec, "1" * 64, "2" * 40, "3" * 64, {"binding-data.json": "d" * 64},
@@ -557,7 +557,7 @@ def test_verification_command_binds_output_limits_and_child_environment(purpose)
 
 
 def test_campaign_specs_cannot_use_the_verification_namespace():
-    from s4d.remote_launch import build_remote_command
+    from ops.containers.launch import build_remote_command
 
     spec = _rv_launch_spec()
     for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):
@@ -571,8 +571,8 @@ def test_existing_container_of_other_kind_is_refused_before_reuse(campaign_launc
     import shlex
     import subprocess
 
-    from s4d.remote_launch import build_remote_command
-    from s4d.remote_verification import ROOT
+    from ops.containers.launch import build_remote_command
+    from ops.containers.verification import ROOT
 
     spec = _rv_launch_spec()
     actual_labels = dict(spec["labels"])
@@ -603,8 +603,8 @@ def test_existing_container_of_other_kind_is_refused_before_reuse(campaign_launc
 def test_ordinary_campaign_docker_flags_environment_and_arguments_are_preserved():
     import shlex
 
-    from s4d.remote_launch import build_remote_command
-    from s4d.remote_verification import ROOT
+    from ops.containers.launch import build_remote_command
+    from ops.containers.verification import ROOT
 
     spec = _rv_launch_spec()
     for key in ("verification_purpose", "campaign_eligible", "verification_timeout_seconds"):

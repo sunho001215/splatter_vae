@@ -58,7 +58,7 @@ def test_parser_partition_and_repository_boundary(protocol, tmp_path):
 
 
 def test_comparison_artifacts_allow_only_approved_external_runtime_root(protocol, monkeypatch):
-    from s4d import gpu_guard
+    from ops.resources import gpu_guard
 
     root = gpu_guard.APPROVED_RUNTIME_ROOTS["remote"]
     monkeypatch.setattr(gpu_guard, "RUNTIME_ROOT", root)

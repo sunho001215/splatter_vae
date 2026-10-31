@@ -33,7 +33,7 @@ from s4d.baselines.snerl.model import create, dino_target, encode_views, render_
 from s4d.baselines.snerl.upstream import dino_extractor  # noqa: E402
 from s4d.config import load_config  # noqa: E402
 from s4d.data import METAWORLD_ROOT  # noqa: E402
-from s4d.gpu_guard import validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 
 TASKS = ("hammer", "pick-place", "bin-picking", "coffee-push", "door-open", "peg-insert-side", "peg-unplug-side",
          "stick-push")

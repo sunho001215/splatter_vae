@@ -33,7 +33,7 @@ from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 from s4d.baselines.data import split_episodes  # noqa: E402
 from s4d.baselines.dynamo.model import load_export  # noqa: E402
 from s4d.config import load_config  # noqa: E402
-from s4d.gpu_guard import validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 
 # Validated categorical slots 1-2 (blue, orange), ink and chrome of the reference light palette.
 SURFACE, INK, INK2, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"

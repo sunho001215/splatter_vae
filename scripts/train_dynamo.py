@@ -49,8 +49,8 @@ from s4d.baselines.dynamo.training import (  # noqa: E402
 )
 from s4d.config import dump_config, load_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 1000
 

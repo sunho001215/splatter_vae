@@ -47,13 +47,13 @@ import torch  # noqa: E402
 
 from s4d.config import dump_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.gpu_guard import validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.rl.env import MetaWorldCameraEnv, TrainCameraSampler, env_kwargs, stack_observations  # noqa: E402
 from s4d.rl.evaluate import policy_inputs  # noqa: E402
 from s4d.rl.flashsac import FlashSAC  # noqa: E402
 from s4d.rl.protocol import resolve_config  # noqa: E402
 from s4d.rl.replay import Replay, replay_iterator  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 1000
 ALGORITHM = "flashsac"

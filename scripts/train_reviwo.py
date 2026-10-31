@@ -33,8 +33,8 @@ from s4d.baselines.reviwo.model import build_model, disable_kmeans_init, save_ex
 from s4d.baselines.reviwo.training import ReViWoTrainConfig, compute_reviwo_loss  # noqa: E402
 from s4d.config import dump_config, load_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
-from s4d.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
-from s4d.run_identity import record_run_identity  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # noqa: E402
+from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 1000
 

@@ -367,7 +367,7 @@ def test_reward_normaliser_sees_raw_agent_step_rewards_and_resets_at_the_time_li
 
 
 def test_state_round_trip_resumes_exactly_and_evaluation_is_deterministic(tmp_path, monkeypatch):
-    from s4d.lifecycle_cleanup import TRAINERS, torch_policy_check
+    from ops.jobs.lifecycle import TRAINERS, torch_policy_check
     from s4d.rl.algorithms import evaluation_policy
 
     cfg, agent = make_agent("frame", tmp_path, monkeypatch)
@@ -438,8 +438,8 @@ def test_training_actions_use_upstream_noise_repetition(tmp_path, monkeypatch):
 
 
 def test_trainer_registration():
-    from s4d.lifecycle_cleanup import DEFAULT_REPLAY_PATTERNS, TRAINERS
-    from s4d.remote_launch import validate_output_arguments
+    from ops.jobs.lifecycle import DEFAULT_REPLAY_PATTERNS, TRAINERS
+    from ops.containers.launch import validate_output_arguments
     from scripts import jobs
 
     assert "train_flashsac.py" in jobs.RL_TRAINERS

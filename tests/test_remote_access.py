@@ -13,8 +13,8 @@ from unittest.mock import patch
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from s4d import remote_access as access  # noqa: E402
-from s4d.gpu_guard import validate_runtime_path  # noqa: E402
+from ops.remote import access  # noqa: E402
+from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 
 
 class RemoteAccessTests(unittest.TestCase):

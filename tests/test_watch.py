@@ -16,8 +16,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 
 
-def load(name: str):
-    spec = importlib.util.spec_from_file_location(name, REPO / f"scripts/{name}.py")
+def load(name: str, path: str | None = None):
+    spec = importlib.util.spec_from_file_location(name, REPO / (path or f"scripts/{name}.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -130,7 +130,7 @@ def test_hung_query_survives_watcher_rearm_without_blocking_other_events(tmp_pat
     command = [sys.executable, "-I", "-c", "import os,signal;os.closerange(3,65536);print('held',flush=True);signal.pause()"]
 
     def cpu_query(command_ignored, state_dir, timeout):
-        return load("_nvidia_query").query_output(command, state_dir, timeout=0.5)
+        return load("_nvidia_query", "ops/resources/nvidia_query.py").query_output(command, state_dir, timeout=0.5)
 
     monkeypatch.setattr(watch, "query_output", cpu_query)
     try:
@@ -239,8 +239,8 @@ def test_watcher_internal_error_prints_marker(tmp_path):
     (tmp_path / "scripts").mkdir()
     script = tmp_path / "scripts" / "watch_events.py"
     script.write_text((REPO / "scripts/watch_events.py").read_text())
-    (tmp_path / "scripts/_nvidia_query.py").write_text((REPO / "scripts/_nvidia_query.py").read_text())
-    for name in ("s4d/__init__.py", "s4d/gpu_guard.py", "configs/hosts/local.yaml"):  # the allowlist source
+    for name in ("ops/__init__.py", "ops/resources/__init__.py", "ops/resources/nvidia_query.py",
+                 "ops/resources/gpu_guard.py", "configs/hosts/local.yaml"):  # the query helper and allowlist source
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text((REPO / name).read_text())
     (tmp_path / "experiments").mkdir()

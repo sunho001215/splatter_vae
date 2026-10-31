@@ -6,7 +6,7 @@ import ctypes
 import os
 from ctypes import byref, c_char_p, c_int, c_uint32, c_void_p
 
-from s4d.gpu_guard import MIG_DEVICES, GPUIsolationError, visible_device_uuids
+from ops.resources.gpu_guard import MIG_DEVICES, GPUIsolationError, visible_device_uuids
 
 EGL_NO_DISPLAY = c_void_p(0)
 EGL_TRUE = 1

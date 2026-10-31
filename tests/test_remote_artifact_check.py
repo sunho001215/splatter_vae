@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from s4d import remote_artifact_check as check
+from ops.remote import artifact_check as check
 
 SOURCE = Path(check.__file__)
 

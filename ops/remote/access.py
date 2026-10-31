@@ -105,7 +105,7 @@ def main_repository(repo: Path) -> Path:
 
 class RemoteClient:
     def __init__(self, credentials_path: Path | None = None, repo: Path | None = None, state_dir: Path | None = None):
-        self.repo = Path(repo or Path(__file__).resolve().parents[1]).resolve()
+        self.repo = Path(repo or Path(__file__).resolve().parents[2]).resolve()
         credential_path = credentials_path or Path(
             os.environ.get("S4D_REMOTE_CREDENTIALS", str(Path.home() / ".config/s4d_remote/credentials"))
         )

@@ -37,7 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import jobs  # noqa: E402
 
-from s4d.remote_access import RemoteClient, RemoteCommandError, RemoteUnreachable  # noqa: E402
+from ops.remote.access import RemoteClient, RemoteCommandError, RemoteUnreachable  # noqa: E402
 
 
 def scope_done(client: RemoteClient, run_id: str, scope: str = "media") -> bool:

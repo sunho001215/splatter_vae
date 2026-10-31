@@ -16,8 +16,8 @@ sys.path.insert(0, str(REPO))
 sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
-from s4d.remote_verification import entry_verification, run_verification  # noqa: E402
-from s4d.run_identity import (  # noqa: E402
+from ops.containers.verification import entry_verification, run_verification  # noqa: E402
+from ops.jobs.run_identity import (  # noqa: E402
     RunIdentityError,
     record_remote_exit,
     start_remote_run,
@@ -91,7 +91,7 @@ def main() -> int:
     with (run_dir / "console.log").open("a", buffering=1) as console:
         with contextlib.redirect_stdout(console), contextlib.redirect_stderr(console):
             try:
-                from s4d.gpu_guard import enforce_allowed_gpus
+                from ops.resources.gpu_guard import enforce_allowed_gpus
 
                 enforce_allowed_gpus()
                 sys.path.insert(0, str(REPO / "scripts"))

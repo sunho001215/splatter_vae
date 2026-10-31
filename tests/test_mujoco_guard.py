@@ -11,7 +11,7 @@ from types import ModuleType
 
 import pytest
 
-from s4d.gpu_guard import ALLOWED_GPU_UUIDS, MIG_DEVICES, GPUIsolationError
+from ops.resources.gpu_guard import ALLOWED_GPU_UUIDS, MIG_DEVICES, GPUIsolationError
 
 REPO = Path(__file__).resolve().parents[1]
 

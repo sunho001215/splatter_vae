@@ -14,9 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from s4d import third_party
-from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
-from s4d.remote_access import RemoteClient, RemoteUnreachable
-from s4d.remote_verification import (
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
+from ops.remote.access import RemoteClient, RemoteUnreachable
+from ops.containers.verification import (
     POLICIES,
     canonical_arguments,
     entry_verification,
@@ -383,7 +383,7 @@ def _artifact(reference: dict, repo: Path, commit: str, image_digest: str) -> di
 
 def commit_source_sha256(repo: Path, commit: str) -> dict[str, str]:
     tree = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", "-z", commit,
-                           "mujoco_mig_setup.py", "s4d", "scripts", "tests", "configs"],
+                           "mujoco_mig_setup.py", "s4d", "ops", "scripts", "tests", "configs"],
                           capture_output=True, check=True).stdout
     entries = []
     for entry in tree.split(b"\0"):
@@ -689,13 +689,13 @@ class RemoteBackend:
         return result
 
     def verify_remote_artifacts(self, run_id: str, names: list[str]) -> dict:
-        """Inspect a finished run in place on the remote host, read-only: s4d/remote_artifact_check.py (standard library
+        """Inspect a finished run in place on the remote host, read-only: ops/remote/artifact_check.py (standard library
         only) runs under the host's python3 and returns one small JSON report (checksums and sizes, the small records'
         text, archive integrity and tensor structure of .pt files). No result file is transferred."""
         if not RUN_ID.fullmatch(run_id) or not names or any(
                 not isinstance(name, str) or not RESULT_NAME.fullmatch(name) or ".." in Path(name).parts for name in names):
             raise ValueError("Unsafe run id or artifact name")
-        source = (Path(__file__).with_name("remote_artifact_check.py")).read_bytes()
+        source = (Path(__file__).parent.parent / "remote" / "artifact_check.py").read_bytes()
         loader = ("import base64,sys;exec(compile(base64.b64decode('" + base64.b64encode(source).decode()
                   + "'),'remote_artifact_check','exec'))")
         run_dir = f"{ROOT}/runs/{run_id}"

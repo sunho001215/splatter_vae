@@ -34,8 +34,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS, MIG_DEVICES  # noqa: E402
-from scripts._nvidia_query import parse_mig_query, query_output  # noqa: E402
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, MIG_DEVICES  # noqa: E402
+from ops.resources.nvidia_query import parse_mig_query, query_output  # noqa: E402
 
 ALLOWED = APPROVED_HOST_GPUS["local"]
 REGISTRY = REPO / "experiments/registry.jsonl"

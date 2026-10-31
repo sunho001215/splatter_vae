@@ -9,7 +9,7 @@ metrics and logs are kept: only allowlisted regular files directly inside <run>/
 running, paused, failed or resumable work is never eligible.
 
 This module holds the controller's pure decisions (queue + registry + admission pauses) and the main server's writer
-and loadability checks; s4d/replay_cleanup_host.py re-checks every on-host condition right before deleting, on both
+and loadability checks; ops/jobs/replay_host.py re-checks every on-host condition right before deleting, on both
 hosts; scripts/cleanup_replay.py is the entry point (not scheduled here: the user schedules it).
 
 Eligibility of a queue row (any trainer: a row whose ``--run-dir`` is ``runs/<row id>``, other than the read-only
@@ -39,7 +39,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from s4d import replay_cleanup_host as host_check
+from ops.jobs import replay_host as host_check
 
 REMOTE_ROOT = "/home/compu/kaist/sunho"
 DONE = "done"
@@ -77,7 +77,7 @@ class Decision:
     host: str
     eligible: bool
     reason: str = ""
-    spec: dict | None = None  # host-side request (s4d.replay_cleanup_host.validate_spec)
+    spec: dict | None = None  # host-side request (ops.jobs.replay_host.validate_spec)
     evidence: dict = field(default_factory=dict)
     session: int | None = None  # local: the recorded process-session leader of the job
 
@@ -334,18 +334,19 @@ def torch_policy_check(path: str, steps: int, policy_keys: list[str]) -> dict:
 
 # ---- remote ------------------------------------------------------------------------------------------------------------
 def remote_command(root: str, specs: list[dict], dry_run: bool) -> str:
-    """One SSH command for a batch: python3 on the remote host runs s4d/remote_artifact_check.py and
-    s4d/replay_cleanup_host.py (standard library only) in one namespace and prints one JSON report."""
+    """One SSH command for a batch: python3 on the remote host runs ops/remote/artifact_check.py and
+    ops/jobs/replay_host.py (standard library only) in one namespace and prints one JSON report."""
     if root != REMOTE_ROOT:
         raise ValueError("Remote cleanup root is not authorized")
     if not specs or len({spec["run_id"] for spec in specs}) != len(specs):
         raise ValueError("A batch names each run once")
     for spec in specs:
         host_check.validate_spec(spec)
-    here = Path(__file__).resolve().parent
+    ops_root = Path(__file__).resolve().parents[1]  # code labels keep the historical module names
     loader = "import base64,sys;g={'__name__':'s4d_replay_cleanup'};"
-    for name in ("remote_artifact_check", "replay_cleanup_host"):
-        source = base64.b64encode((here / f"{name}.py").read_bytes()).decode()
+    for name, path in (("remote_artifact_check", ops_root / "remote" / "artifact_check.py"),
+                       ("replay_cleanup_host", ops_root / "jobs" / "replay_host.py")):
+        source = base64.b64encode(path.read_bytes()).decode()
         loader += f"exec(compile(base64.b64decode('{source}'),'{name}','exec'),g);"
     loader += "sys.exit(g['cleanup_main'](sys.argv))"
     payload = base64.b64encode(json.dumps({"dry_run": dry_run is not False, "runs": specs}, sort_keys=True).encode())

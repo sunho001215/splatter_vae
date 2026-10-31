@@ -15,7 +15,7 @@ if str(REPO) not in sys.path:
 sys.dont_write_bytecode = True
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
-from s4d.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import enforce_allowed_gpus, enforce_mujoco_egl_device, validate_runtime_path  # noqa: E402
 from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 
 CACHE_ROOT = validate_runtime_path(Path(os.environ.get("S4D_CACHE_ROOT", str(REPO / ".cache"))), cache=True)
@@ -39,7 +39,7 @@ def guard_gpus() -> list[dict]:
 
 def guard_mujoco() -> int:
     """Import mujoco_mig_setup (selects the EGL device) and verify it. Call before importing mujoco/metaworld."""
-    from s4d.gpu_guard import GPUIsolationError, visible_device_uuids
+    from ops.resources.gpu_guard import GPUIsolationError, visible_device_uuids
 
     if len(visible_device_uuids()) != 1:
         raise GPUIsolationError("MuJoCo rendering requires exactly one allowed GPU UUID.")
@@ -52,7 +52,7 @@ def source_fingerprints() -> dict[str, str]:
     """Fingerprint exactly the code, scripts, tests and configs exercised by the suite."""
     paths = [REPO / "mujoco_mig_setup.py"] + [
         path
-        for folder in ("s4d", "scripts", "tests", "configs")
+        for folder in ("s4d", "ops", "scripts", "tests", "configs")
         for path in sorted((REPO / folder).rglob("*"))
         if path.is_file() and path.suffix in (".py", ".yaml", ".sh")
     ]

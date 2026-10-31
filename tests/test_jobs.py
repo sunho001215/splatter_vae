@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts._nvidia_query import QueryUnavailable
+from ops.resources.nvidia_query import QueryUnavailable
 
 REPO = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("jobs", REPO / "scripts/jobs.py")
+spec = importlib.util.spec_from_file_location("jobs", REPO / "ops/jobs/scheduler.py")
 jobs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(jobs)
 GPU4, GPU5 = jobs.APPROVED_HOST_GPUS["local"][:2]

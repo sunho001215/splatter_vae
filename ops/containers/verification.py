@@ -11,7 +11,7 @@ import traceback
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 
 ROOT = "/home/compu/kaist/sunho"
 GIB = 2**30
@@ -266,9 +266,9 @@ def _write_json(path: Path, payload: dict) -> None:
 def run_verification(repository: Path, spec: dict, run_child) -> int:
     # Keep bootstrap independent of campaign identity/acceptance helpers.
     from s4d import third_party
-    from s4d.gpu_guard import enforce_allowed_gpus
-    from s4d.remote_jobs import commit_source_sha256
-    from s4d.remote_launch import validate_release_proof
+    from ops.resources.gpu_guard import enforce_allowed_gpus
+    from ops.jobs.remote_backend import commit_source_sha256
+    from ops.containers.launch import validate_release_proof
 
     purpose = validate_verification(spec)
     if purpose is None:

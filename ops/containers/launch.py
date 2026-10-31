@@ -9,10 +9,10 @@ import shlex
 import sys
 from pathlib import Path, PurePosixPath
 
-from s4d.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
-from s4d.remote_access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
-from s4d.remote_jobs import OWNERSHIP_LABELS, commit_source_sha256
-from s4d.remote_verification import validate_verification, verification_artifacts, verification_output
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
+from ops.remote.access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
+from ops.jobs.remote_backend import OWNERSHIP_LABELS, commit_source_sha256
+from ops.containers.verification import validate_verification, verification_artifacts, verification_output
 
 CONTAINER_REPO = "/workspace/splatter4d"
 RAM_RESERVE_BYTES = 120 * 1024**3

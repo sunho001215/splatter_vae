@@ -85,7 +85,7 @@ def verify_clean_release(repo: Path, commit: str) -> None:
 
 
 def verify_remote_identity(repo: Path, env: Mapping[str, str] | None = None) -> dict:
-    from s4d.gpu_guard import load_host_config, validate_runtime_path
+    from ops.resources.gpu_guard import load_host_config, validate_runtime_path
 
     repo = Path(repo).resolve()
     env = os.environ if env is None else env
@@ -179,7 +179,7 @@ def _check_previous(previous: dict, identity: dict) -> None:
 
 
 def _native_diagnostic_identity(repo: Path, run_dir: Path, steps: int | None) -> dict | None:
-    from s4d.gpu_guard import validate_runtime_path
+    from ops.resources.gpu_guard import validate_runtime_path
 
     if type(steps) is not int or not 0 < steps <= 1000 or os.environ.get("S4D_JOB_ID"):
         return None
@@ -198,7 +198,7 @@ def _native_diagnostic_identity(repo: Path, run_dir: Path, steps: int | None) ->
         return None
     fingerprints = {
         str(path.relative_to(repo)): _sha256_file(path)
-        for folder in ("s4d", "scripts", "tests", "configs")
+        for folder in ("s4d", "ops", "scripts", "tests", "configs")
         for path in sorted((Path(repo) / folder).rglob("*"))
         if path.is_file() and path.suffix in (".py", ".yaml", ".sh")
     }
@@ -218,7 +218,7 @@ def _native_diagnostic_identity(repo: Path, run_dir: Path, steps: int | None) ->
 def record_run_identity(
     cfg: dict, repo: Path, run_dir: Path, *, native_diagnostic_steps: int | None = None
 ) -> dict:
-    from s4d.gpu_guard import HOST_NAME, validate_runtime_path
+    from ops.resources.gpu_guard import HOST_NAME, validate_runtime_path
 
     run_dir = validate_runtime_path(run_dir, repository=repo)
     if HOST_NAME == "remote":
@@ -250,7 +250,7 @@ def record_run_identity(
 
 
 def start_remote_run(repo: Path, identity: dict, script: str, arguments: list[str]) -> Path:
-    from s4d.gpu_guard import validate_runtime_path
+    from ops.resources.gpu_guard import validate_runtime_path
 
     path = validate_runtime_path(Path(repo) / "runs" / identity["job_id"], repository=repo) / "provenance.json"
     previous = json.loads(path.read_text()) if path.is_file() else {}

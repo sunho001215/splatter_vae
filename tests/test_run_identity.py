@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from s4d import gpu_guard
-from s4d.run_identity import (
+from ops.resources import gpu_guard
+from ops.jobs.run_identity import (
     RunIdentityError,
     _native_diagnostic_identity,
     numeric_config,

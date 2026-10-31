@@ -2,7 +2,7 @@
 
 The same code runs on both hosts: in-process on the main server (``scripts/cleanup_replay.py --host local``) and on the
 remote host (python3 there has no PyTorch outside the job containers), where it is sent in one SSH command per batch
-together with s4d/remote_artifact_check.py, whose inert unpickler it uses. The controller (s4d/lifecycle_cleanup.py)
+together with ops/remote/artifact_check.py, whose inert unpickler it uses. The controller (ops/jobs/lifecycle.py)
 decides eligibility from the queue, the registry and the admission pauses; this module re-checks every on-host
 condition of one run immediately before deleting:
 
@@ -44,7 +44,7 @@ import uuid
 import zipfile
 
 if "inspect_archive" not in globals():  # on the remote host the loader runs remote_artifact_check.py in this namespace
-    from s4d.remote_artifact_check import inspect_archive
+    from ops.remote.artifact_check import inspect_archive
 
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}\Z")
 PATTERN = re.compile(r"[A-Za-z0-9_.*?-]{1,64}\Z")  # a file-name glob: no path separator, no character class
@@ -52,7 +52,7 @@ MODULE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 RECEIPTS = ".replay-cleanup.jsonl"
 SMALL_LIMIT = 1 << 20
-# the globals a weights-only load accepts (scripts/jobs.py WEIGHTS_ONLY_GLOBALS)
+# the globals a weights-only load accepts (ops/jobs/scheduler.py WEIGHTS_ONLY_GLOBALS)
 WEIGHTS_ONLY = re.compile(r"(?:collections\.OrderedDict|torch\._utils\._rebuild_tensor_v2|torch\.[A-Za-z0-9]+Storage)\Z")
 # Docker states in which a container may still write the bind-mounted run directory
 LIVE_STATES = ("created", "restarting", "running", "paused", "removing")

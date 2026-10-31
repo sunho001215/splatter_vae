@@ -18,21 +18,21 @@ from pathlib import Path
 
 import yaml
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-from s4d.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
-from s4d.remote_access import sha256 as file_sha256  # noqa: E402
-from s4d.remote_jobs import ROOT as REMOTE_ROOT  # noqa: E402
-from s4d.remote_jobs import (  # noqa: E402
+from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DEVICES  # noqa: E402
+from ops.remote.access import sha256 as file_sha256  # noqa: E402
+from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
+from ops.jobs.remote_backend import (  # noqa: E402
     ContainerRemovalRefused,
     RemoteBackend,
     RemoteJobError,
     RemoteUnreachable,
     validate_container,
 )
-from s4d.remote_verification import validate_report, validate_verification, verification_resources  # noqa: E402
+from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
 from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
-from scripts._nvidia_query import mig_query  # noqa: E402
+from ops.resources.nvidia_query import mig_query  # noqa: E402
 
 QUEUE = REPO / "experiments/queue.yaml"
 REGISTRY = REPO / "experiments/registry.jsonl"
@@ -345,7 +345,7 @@ def source_identity() -> dict:
     commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"],
                             capture_output=True, text=True, check=True).stdout.strip()
     paths = [REPO / "mujoco_mig_setup.py"] + [
-        path for folder in ("s4d", "scripts", "tests", "configs")
+        path for folder in ("s4d", "ops", "scripts", "tests", "configs")
         for path in sorted((REPO / folder).rglob("*"))
         if path.is_file() and path.suffix in (".py", ".yaml", ".sh")
     ]

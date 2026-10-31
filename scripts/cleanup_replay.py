@@ -31,9 +31,9 @@ sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO))
 import jobs  # noqa: E402  (scripts/jobs.py: queue validation and registry replay)
 
-from s4d import lifecycle_cleanup as lifecycle  # noqa: E402
-from s4d import replay_cleanup_host as host_check  # noqa: E402
-from s4d.remote_access import RemoteClient, RemoteCommandError, RemoteUnreachable, main_repository  # noqa: E402
+from ops.jobs import lifecycle  # noqa: E402
+from ops.jobs import replay_host as host_check  # noqa: E402
+from ops.remote.access import RemoteClient, RemoteCommandError, RemoteUnreachable, main_repository  # noqa: E402
 
 
 def summarize(report: dict) -> dict:

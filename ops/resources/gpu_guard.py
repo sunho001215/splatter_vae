@@ -48,7 +48,7 @@ MIG_DEVICES = MappingProxyType(
     }
 )
 APPROVED_RUNTIME_ROOTS = MappingProxyType({"local": None, "remote": Path("/home/compu/kaist/sunho")})
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 
 
 class GPUIsolationError(RuntimeError):

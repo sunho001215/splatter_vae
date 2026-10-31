@@ -66,7 +66,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--output-dir", default=os.environ.get("S4D_TEST_EVIDENCE_DIR", str(REPO / "docs")))
     options = ap.parse_args()
-    from s4d.gpu_guard import HOST_NAME, validate_runtime_path
+    from ops.resources.gpu_guard import HOST_NAME, validate_runtime_path
 
     output_dir = validate_runtime_path(Path(options.output_dir))
     os.environ["S4D_TEST_EVIDENCE_DIR"] = str(output_dir)

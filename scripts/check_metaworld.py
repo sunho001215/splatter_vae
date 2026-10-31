@@ -17,7 +17,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from s4d.gpu_guard import GPUIsolationError, enforce_allowed_gpus, validate_runtime_path  # noqa: E402
+from ops.resources.gpu_guard import GPUIsolationError, enforce_allowed_gpus, validate_runtime_path  # noqa: E402
 
 GPU_MAPPING = enforce_allowed_gpus()
 

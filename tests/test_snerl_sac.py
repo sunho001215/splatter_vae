@@ -108,8 +108,8 @@ def test_agent_updates_and_state_round_trip(tmp_path, encoder):
 
 
 def test_scheduler_verifies_sac_trainers_like_drm_trainers():
-    from s4d.lifecycle_cleanup import TRAINERS
-    from s4d.remote_launch import validate_output_arguments
+    from ops.jobs.lifecycle import TRAINERS
+    from ops.containers.launch import validate_output_arguments
     from scripts import jobs
 
     state = {"script": "scripts/train_sac.py", "required_results": ["final.json", "train.jsonl"]}
