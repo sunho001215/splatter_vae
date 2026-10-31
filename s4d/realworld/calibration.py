@@ -55,6 +55,7 @@ class CalibrationConfig:
     self_occlusion_block_px: int = 4
     self_occlusion_tol_m: float = 0.01
     outer_iters: int = 3
+    max_nfev: int | None = None  # optimiser budget per outer iteration (None = scipy default)
     holdout_every: int = 5
     seed: int = 0
     # acceptance gates
@@ -382,7 +383,8 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     for _ in range(max(1, cfg.outer_iters)):
         gates = _depth_gates(T, fit, K, cfg, rng) if use_depth else [None] * len(fit)
         res = least_squares(_residuals, vec_from_pose(T), args=(fit, K, cfg, gates, use_depth), loss="cauchy",
-                            f_scale=1.0, method="trf", x_scale=np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01]))
+                            f_scale=1.0, method="trf", x_scale=np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01]),
+                            max_nfev=cfg.max_nfev)
         T = pose_from_vec(res.x)
     diag["optimizer"] = {"status": int(res.status), "message": str(res.message), "nfev": int(res.nfev),
                          "cost": float(res.cost), "success": bool(res.success)}

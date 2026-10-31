@@ -153,3 +153,23 @@ def test_robot_mask_from_calibration_respects_occlusion():
     loose = point_mask(cam, K, HW)
     tight = point_mask(cam, K, HW, depth=f.depth, tol_m=0.02)
     assert tight.sum() > 50 and (tight <= loose).all() and tight.sum() < loose.sum()  # hidden samples dropped
+
+
+def test_rejects_failed_optimisation():
+    """A prior 5 deg / 8 cm off and an optimiser budget of 2 evaluations: the solver stops early and the result is
+    rejected (never silently accepted)."""
+    from s4d.realworld import calibration as cal
+
+    frames = make_episode(T_TRUE, n=10, outlier_rate=0.0)
+    prior = T_TRUE.copy()
+    prior[:3, :3] = Rotation.from_euler("xyz", [0.05, -0.06, 0.04]).as_matrix() @ prior[:3, :3]
+    prior[:3, 3] += [0.05, -0.04, 0.05]
+    orig = cal._visual_init
+    try:
+        cal._visual_init = lambda frames, K, cfg: (None, None, None, None)
+        res = calibrate_camera("rig0/left", frames, K, CalibrationConfig(image_hw=HW, max_nfev=2, outer_iters=1,
+                                                                         min_visible_frames=3), T_init=prior)
+    finally:
+        cal._visual_init = orig
+    assert res.status == "rejected"
+    assert any("optimisation failed" in r for r in res.reasons), res.reasons

@@ -361,7 +361,7 @@ python -m s4d.realworld.cli status --root <output_root> --episode <id>
 | Bouguet rectification (rows aligned, depth exact, remap inverse); in-pipeline rectification of a rotated rig (~0.9 % vs ~20 % without) | validated (synthetic) |
 | K through resize/crop/flip; depth/image alignment after resize+crop | validated (synthetic) |
 | URDF FK equals Franka DH; mimic joints; mount composition; safe URDF numbers | validated (stand-in URDF) |
-| Calibration recovery (0.5 px noise, 5 % outliers, 3 mm depth noise): < 0.3°, < 5 mm; rejection for low visibility, static robot, no visual evidence | validated (synthetic robot, stand-in geometry) |
+| Calibration recovery (0.5 px noise, 5 % outliers, 3 mm depth noise): < 0.3°, < 5 mm; rejection for low visibility, static robot, no visual evidence, failed optimisation | validated (synthetic robot, stand-in geometry) |
 | 2D-to-3D lifting versus ground truth; occlusion flagged; camera-local ids; NaN for invalid | validated (oracle tracker) |
 | Export passes `validate_batch`; refuses mock and infrared without opt-in; idempotent stages | validated (synthetic, MOCK models) |
 | FoundationStereo, AllTracker and SAM 3 worker scripts | **UNVERIFIED**: written against upstream READMEs/demos at the pinned commits, never executed (no envs or checkpoints here) |
