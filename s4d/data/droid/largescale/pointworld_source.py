@@ -67,6 +67,19 @@ def check_depth_metadata(depth, uuid: str, lengths: dict, episode: str) -> None:
         raise ValueError(f"{episode}: depth metadata frame_count {meta['frame_count']} != group lengths {lengths}")
 
 
+# uint16 millimetres saturate at 65535 (65.535 m): not a measurement. Real external depth holds it in 2 of 62 inspected
+# episodes (stereo failures); it is invalid like 0 instead of a 65.5 m target.
+DEPTH_SATURATED_MM = 65535
+
+
+def depth_mm_to_m(raw: np.ndarray, dtype=np.float32) -> np.ndarray:
+    """Released uint16 millimetres -> metres with 0 marking invalid (0 and the saturation code 65535)."""
+    raw = np.asarray(raw)
+    out = raw.astype(dtype) / dtype(1000.0)
+    out[raw == DEPTH_SATURATED_MM] = 0
+    return out
+
+
 def parse_depth_group(name: str) -> tuple[str, str]:
     serial, sep, role = name.partition("+")
     if not sep or role not in ("ext", "wrist") or not serial.isdigit():
@@ -210,7 +223,7 @@ class PointWorldReader:
         unique, inverse = np.unique(frames[order], return_inverse=True)
         data = g["depth"][unique]  # h5py fancy indexing needs increasing unique indices
         out = np.empty((len(frames),) + data.shape[1:], np.float32)
-        out[order] = data[inverse].astype(np.float32) / 1000.0
+        out[order] = depth_mm_to_m(data[inverse])
         return out, g["timestamps"][:][frames]
 
     def depth_timestamps(self, episode: str, group: str) -> np.ndarray:

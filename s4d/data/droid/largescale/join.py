@@ -28,7 +28,7 @@ import numpy as np
 
 from s4d.data.droid.largescale import calibration as C
 from s4d.data.droid.largescale.geometry import check_rigid, invert, to_continuous_centres
-from s4d.data.droid.largescale.pointworld_source import DEFAULT_LAYOUT, summarize_episode
+from s4d.data.droid.largescale.pointworld_source import DEFAULT_LAYOUT, depth_mm_to_m, summarize_episode
 
 MANIFEST_FORMAT = "s4d_droid_pointworld_droid3d_manifest_v1"
 CANONICAL_STRIDE = 2  # raw steps per canonical PointWorld step
@@ -454,7 +454,7 @@ def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, max_residual
     ):
         group = depth_file[entry["depth_groups"]["wrist"]]["depth"]
         for k, i in enumerate(frames):
-            depth = group[entry["frames"]["depth_index"]["wrist"][i]].astype(np.float64) / 1000.0
+            depth = depth_mm_to_m(group[entry["frames"]["depth_index"]["wrist"][i]], np.float64)
             for role in ("ext1", "ext2"):
                 cam = entry["cameras"][role]
                 g = flow[clip][f"camera_{cam['serial']}_ext"]

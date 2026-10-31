@@ -898,3 +898,17 @@ def test_extractor_reports_a_truncated_stream_and_keeps_completed_members(tmp_pa
         cli.main(["--dest", str(tmp_path / "cli")], stdin=io.BytesIO(cut))
     assert code.value.code == 3
     assert cli.main(["--dest", str(tmp_path / "cli"), "--allow-truncated"], stdin=io.BytesIO(cut))["stream_truncated"]
+
+
+def test_saturated_depth_code_is_invalid_not_a_far_target(env, tmp_path):
+    """Real data: external depth of 2 of 62 inspected episodes holds the uint16 saturation code 65535 (65.535 m)."""
+    from s4d.data.droid.largescale.pointworld_source import PointWorldReader, depth_mm_to_m
+
+    np.testing.assert_allclose(depth_mm_to_m(np.array([0, 1, 1500, 65534, 65535], np.uint16)), [0, 0.001, 1.5, 65.534, 0], rtol=1e-6)
+    shutil.copytree(env["tmp"] / "pw", tmp_path / "pw")
+    group = f"{F.SERIALS['ext1']}+ext"
+    with h5py.File(tmp_path / "pw/depth_320x180" / f"{F.EPISODE}_depth.h5", "r+") as f:
+        f[group]["depth"][4, -3:, 150:155] = 65535  # bottom centre: the table plane (valid in every frame)
+    depth, _ = PointWorldReader(tmp_path / "pw").depth_frames(F.EPISODE, group, [4, 2, 4])
+    assert depth.shape == (3, F.H, F.W) and not depth[[0, 2], -3:, 150:155].any() and (depth[1, -3:, 150:155] > 0).all()
+    assert depth.max() < 10
