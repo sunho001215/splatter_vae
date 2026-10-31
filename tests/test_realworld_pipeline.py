@@ -1,0 +1,185 @@
+"""End-to-end synthetic episode: ingest -> stereo depth -> calibration -> 2D tracks -> 3D lifting -> export.
+
+All model outputs here are MOCK (CPU block matching, oracle tracker, oracle landmarks) and are flagged as such;
+this validates conventions, bookkeeping, idempotency and the export contract, not model integration."""
+
+import json
+
+import numpy as np
+import pytest
+
+from s4d.data.contract import validate_batch
+from s4d.realworld import io as rio
+from s4d.realworld.adapters import get_adapter
+from s4d.realworld.calibration import CalibrationConfig
+from s4d.realworld.contract import EpisodeContractError, validate_episode
+from s4d.realworld.dataset import RealworldCacheDataset
+from s4d.realworld.export import export
+from s4d.realworld.geometry import project, transform_points
+from s4d.realworld.pipeline import (
+    StereoBackend,
+    TrackerBackend,
+    calibrate,
+    ingest,
+    lift3d,
+    load_depth,
+    load_meta,
+    stereo_depth,
+    track2d,
+)
+from s4d.realworld.robot import URDFModel, landmarks
+from s4d.realworld.stereo import block_match
+from s4d.realworld.tracking import OCCLUDED, VALID
+
+LANDMARKS = ["panda_link2", "panda_link3", "panda_link4", "panda_link5", "panda_link7", "panda_link8",
+             "gripper_base", "left_finger", "right_finger"]
+
+
+class MockStereo(StereoBackend):
+    identity = {"name": "block_match", "is_mock": True}
+
+    def disparity(self, left, right):
+        return np.stack([block_match(a, b, 28) for a, b in zip(left, right)])
+
+
+class OracleTracker(TrackerBackend):
+    identity = {"name": "synthetic oracle tracker", "is_mock": True}
+
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    def track(self, camera_id, frames, frame_indices, query):
+        H, W = frames.shape[1:3]
+        rc = np.stack(np.meshgrid(np.arange(H), np.arange(W), indexing="ij"), -1).reshape(-1, 2)
+        P, vis = self.adapter.gt_points(camera_id, frame_indices[query], rc, frame_indices[query:])
+        rig = camera_id.split("/")[0]
+        flows, visconf = [], []
+        for Pt, v in zip(P, vis):
+            uv, _ = project(transform_points(self.adapter.T_cam_base(rig, "left"), Pt), self.adapter.K())
+            uv = uv - 0.5 - rc[:, ::-1]  # AllTracker: offsets from the integer-centre grid
+            flows.append(uv.T.reshape(2, H, W))
+            visconf.append(np.stack([v.astype(float), np.ones(len(v))]).reshape(2, H, W))
+        return np.stack(flows).astype(np.float32), np.stack(visconf).astype(np.float32)
+
+
+@pytest.fixture(scope="module")
+def run(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("rw")
+    adapter = get_adapter("synthetic", {"asset_dir": str(tmp / "assets"), "frames": 10})
+    root = tmp / "out"
+    ep = adapter.list_episodes()[0]
+    rng = np.random.default_rng(0)
+    model = URDFModel.from_file(tmp / "assets" / "synthetic_robot.urdf") if (tmp / "assets").exists() else None
+    recs = {"ingest": ingest(adapter, ep, root)}
+    meta = load_meta(root, ep)
+    model = URDFModel.from_file(meta.robot.urdf_path)
+
+    from s4d.realworld.pipeline import RobotGeometry, robot_state_at
+
+    geom = RobotGeometry(meta)
+
+    def landmark_source(cam, i, links):
+        q, g, _, _ = robot_state_at(meta, meta.stream_timestamps_ns[cam][[i]])
+        L = landmarks(model, geom.q(q[0], g[0]), links)
+        uv, _ = project(transform_points(adapter.T_cam_base(cam.split("/")[0], "left"), L), adapter.K())
+        return uv + rng.normal(0, 0.5, uv.shape), np.ones(len(L))
+
+    landmark_source.identity = "synthetic oracle landmarks (MOCK)"
+    # tiny 64x96 synthetic images: the uncertainty gates are relaxed here (defaults are tested in calibration tests)
+    cfg = CalibrationConfig(depth_term=False, min_visible_fraction=0.05, min_motion_extent_m=0.03, max_rot_std_deg=2.0,
+                            max_trans_std_m=0.03)
+    recs["stereo_depth"] = stereo_depth(root, ep, MockStereo(), references=("left", "right"))
+    recs["calibrate"] = calibrate(root, ep, landmark_source, landmark_links=LANDMARKS, cfg=cfg)
+    recs["track2d"] = track2d(root, ep, OracleTracker(adapter), window=10, step=8, grid_stride=4)
+    recs["lift3d"] = lift3d(root, ep)
+    recs["export"] = export(root, ep, tmp / "cache", resolutions={"scratch": (144, 256)}, allow_infrared_input=True,
+                            allow_mock=True, validation_tail_windows=2)
+    return {"adapter": adapter, "root": root, "ep": ep, "recs": recs, "tmp": tmp, "landmark_source": landmark_source,
+            "cfg": cfg}
+
+
+def test_ingest_preserves_modality_and_reports_missing_stereo(run):
+    meta = load_meta(run["root"], run["ep"])
+    assert all(s.modality == "infrared" and s.channels == 1 for s in meta.streams)
+    assert any("rig2" in w and "missing" in w for w in run["recs"]["ingest"]["summary"]["warnings"])
+    assert run["recs"]["stereo_depth"]["summary"]["rig2"]["skipped"].startswith("stereo geometry missing")
+    # a stream claiming 3-channel infrared is rejected by the contract
+    import dataclasses
+
+    bad = dataclasses.replace(meta, streams=(dataclasses.replace(meta.streams[0], channels=3),) + meta.streams[1:])
+    with pytest.raises(EpisodeContractError):
+        validate_episode(bad).raise_if_errors()
+
+
+def test_stereo_depth_left_and_right_match_ground_truth(run):
+    a = run["adapter"]
+    for ref in ("left", "right"):
+        depth, K, _ = load_depth(run["root"], run["ep"], "rig0", [3], reference=ref)
+        _, gt, _, _ = a.render("rig0", ref, 3)
+        m = (depth[0] > 0) & (gt > 0)
+        rel = np.abs(depth[0][m] - gt[m]) / gt[m]
+        assert m.mean() > 0.6 and np.median(rel) < 0.03, (ref, m.mean(), np.median(rel))
+
+
+def test_calibration_accepts_metric_rigs(run):
+    summ = run["recs"]["calibrate"]["summary"]
+    for cam in ("rig0/left", "rig1/left"):
+        assert summ[cam]["status"] == "accepted", summ[cam]
+    doc = json.loads((rio.stage_dir(run["root"], run["ep"], "calibrate") / "rig0__left.json").read_text())
+    T = np.asarray(doc["T_cam_base"])
+    assert np.abs(T - run["adapter"].T_cam_base("rig0", "left")).max() < 0.03
+    assert list((rio.stage_dir(run["root"], run["ep"], "calibrate") / "overlays").glob("rig0__left_*.png"))
+
+
+def test_lifted_tracks_match_ground_truth_and_flag_occlusion(run):
+    d = rio.stage_dir(run["root"], run["ep"], "lift3d")
+    rec = run["recs"]["lift3d"]["summary"]
+    assert "rig2/left" in rec and "skipped" in rec["rig2/left"]
+    with np.load(d / rec["rig0/left"]["chunks"][0]) as z:
+        xyz, status, frames = z["xyz_base"], z["status"], z["frame_indices"]
+        assert str(z["camera_id"]) == "rig0/left"
+    H, W = run["adapter"].hw
+    from s4d.realworld.tracking import query_grid
+
+    rc = query_grid((H, W), 4, 2)
+    P, vis = run["adapter"].gt_points("rig0/left", int(frames[0]), rc, list(frames))
+    ok = status == VALID
+    assert ok.mean() > 0.4
+    err = np.linalg.norm(xyz[ok] - P[ok], axis=-1)
+    assert np.median(err) < 0.02, np.median(err)
+    assert (status[~vis] != VALID).all() and (status[~vis] == OCCLUDED).any()
+    assert np.isnan(xyz[~ok]).all()
+
+
+def test_export_matches_training_contract(run):
+    cache = run["tmp"] / "cache"
+    manifest = json.loads((cache / "manifest.json").read_text())
+    assert manifest["MOCK_MODEL_OUTPUTS"] is True
+    assert manifest["cameras"] == ["rig0/left", "rig1/left"] and "rig2/left" in manifest["excluded_cameras"]
+    assert "NOT rgb" in manifest["image_modality"]["rig0/left"]
+    with pytest.warns(UserWarning):
+        ds = RealworldCacheDataset(cache)
+    item = ds[0]
+    assert item["images"].shape == (3, 2, 3, 144, 256) and item["track_src"].shape[:2] == (3, 2)
+    batch = {k: v if k == "meta" else v.unsqueeze(0) for k, v in item.items()}
+    validate_batch(batch)
+    with pytest.warns(UserWarning):
+        assert len(RealworldCacheDataset(cache, split="validation")) == 2
+
+
+def test_export_refuses_mock_and_infrared_without_opt_in(run):
+    with pytest.raises(RuntimeError, match="MOCK"):
+        export(run["root"], run["ep"], run["tmp"] / "cache2")
+    with pytest.raises(RuntimeError, match="infrared"):
+        export(run["root"], run["ep"], run["tmp"] / "cache3", allow_mock=True)
+
+
+def test_stages_are_idempotent(run):
+    r = run
+    assert ingest(r["adapter"], r["ep"], r["root"])["skipped"]
+    assert stereo_depth(r["root"], r["ep"], MockStereo(), references=("left", "right"))["skipped"]
+    assert calibrate(r["root"], r["ep"], r["landmark_source"], landmark_links=LANDMARKS, cfg=r["cfg"])["skipped"]
+    assert lift3d(r["root"], r["ep"])["skipped"]
+    # a changed config rebuilds (and the old complete stage stays until the swap)
+    assert not lift3d(r["root"], r["ep"], vis_threshold=0.6)["skipped"]
+    assert rio.read_record(rio.stage_dir(r["root"], r["ep"], "lift3d"))["config"]["vis_threshold"] == 0.6

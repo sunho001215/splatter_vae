@@ -145,3 +145,50 @@ def splat_depth(points_cam: np.ndarray, K: np.ndarray, hw, background: float | N
         depth = np.minimum(depth, background)
     depth[~np.isfinite(depth)] = 0
     return depth.astype(np.float32)
+
+
+# ---------------------------------------------------------------- ray-cast box scene (static boxes + one moving box)
+
+STATIC_BOXES = (  # (min corner, max corner) in the base frame
+    ((-0.6, -1.5, -0.12), (1.6, 1.5, -0.06)),  # floor
+    ((0.15, -0.6, -0.06), (1.0, 0.6, 0.0)),  # table top
+    ((-0.5, -1.2, -0.06), (-0.43, 1.2, 1.2)),  # back wall (behind the robot base, facing the cameras)
+)
+OBJECT_HALF = 0.06
+
+
+def object_center(t: float) -> np.ndarray:
+    return np.array([0.55 + 0.08 * np.sin(t), -0.1 + 0.15 * t / 10, OBJECT_HALF])
+
+
+def _ray_box(o, d, lo, hi):
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = (np.asarray(lo) - o) / d
+        t2 = (np.asarray(hi) - o) / d
+    tmin = np.nanmax(np.minimum(t1, t2), -1)
+    tmax = np.nanmin(np.maximum(t1, t2), -1)
+    hit = (tmax >= tmin) & (tmax > 1e-6)
+    return np.where(hit, np.where(tmin > 1e-6, tmin, tmax), np.inf)
+
+
+def render_box_scene(T_cam_base, K, hw, t: float):
+    """(image float [0,255] (H,W), depth camera-z (H,W), hit points in base (H,W,3), on_object (H,W) bool)."""
+    from s4d.realworld.geometry import invert_T
+
+    T_base_cam = invert_T(T_cam_base)
+    rays_cam = unproject(pixel_centers(*hw), np.ones(hw), K)
+    d = rays_cam @ T_base_cam[:3, :3].T
+    o = np.broadcast_to(T_base_cam[:3, 3], d.shape)
+    c = object_center(t)
+    boxes = list(STATIC_BOXES) + [(c - OBJECT_HALF, c + OBJECT_HALF)]
+    ts = np.stack([_ray_box(o, d, lo, hi) for lo, hi in boxes], -1)
+    which = np.argmin(ts, -1)
+    tt = np.min(ts, -1)
+    P = o + d * np.where(np.isfinite(tt), tt, 0)[..., None]
+    on_obj = which == len(boxes) - 1
+    local = np.where(on_obj[..., None], P - c, P)  # texture moves with the object
+    tex = (texture_lookup(local[..., 0], local[..., 1], seed=3) + texture_lookup(local[..., 1], local[..., 2], seed=4)
+           + texture_lookup(local[..., 2], local[..., 0], seed=5)) / 3
+    tex = np.where(on_obj, 255 - tex, tex)
+    depth = np.where(np.isfinite(tt), tt * rays_cam[..., 2], 0.0)  # rays have z = 1 in the camera frame
+    return tex.astype(np.float32), depth.astype(np.float32), P, on_obj & np.isfinite(tt)
