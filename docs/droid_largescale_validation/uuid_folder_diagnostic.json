@@ -1,0 +1,21 @@
+{
+ "camera_intrinsics.jsonl": {
+  "counts": {
+   "True": 73217
+  },
+  "examples": []
+ },
+ "extrinsics.jsonl": {
+  "counts": {
+   "True": 71006
+  },
+  "examples": []
+ },
+ "before_fix": {
+  "camera_intrinsics.jsonl": {
+   "True": 48565,
+   "False_double_underscore_day": 21880,
+   "False_other": 2772
+  }
+ }
+}

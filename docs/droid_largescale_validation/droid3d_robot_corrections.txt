@@ -1,0 +1,10 @@
+26 robots
+unknown {'n': 1388, 'lab': 'IRIS', 'dT_deg': 39.07, 'dT_cm': 2.04, 'dq_norm_deg': 10.06}
+panda-290102-1324143 {'n': 211, 'lab': 'RAIL', 'dT_deg': 2.98, 'dT_cm': 0.88, 'dq_norm_deg': 1.06}
+295341-1326783 {'n': 1467, 'lab': 'REAL', 'dT_deg': 2.71, 'dT_cm': 1.16, 'dq_norm_deg': 1.85}
+FR3-295341-1326783 {'n': 3301, 'lab': 'REAL', 'dT_deg': 2.69, 'dT_cm': 1.47, 'dq_norm_deg': 1.77}
+290102-1324143 {'n': 585, 'lab': 'RAIL', 'dT_deg': 2.68, 'dT_cm': 0.83, 'dq_norm_deg': 1.36}
+295341-1325237 {'n': 1187, 'lab': 'GuptaLab', 'dT_deg': 2.48, 'dT_cm': 1.09, 'dq_norm_deg': 1.61}
+dT deg median 1.905 robots >5deg 1 episodes on robots >5deg 1388
+robots without hand-eye asset entry 0 episodes 0
+robots with distinct case-variant asset entries ['FR3-295341-1326595', 'fr3-295341-1326595']

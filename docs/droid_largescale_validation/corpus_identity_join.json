@@ -1,0 +1,14 @@
+{
+ "pointworld_flow_episodes": 42935,
+ "rlds_episodes": 95658,
+ "rlds_unique_suffixes": 95658,
+ "rlds_file_path_vs_recording_folderpath_mismatch": 0,
+ "droid3d_extrinsics_episodes": 71006,
+ "droid3d_intrinsics_unique_uuids": 73117,
+ "pw_in_droid3d_extrinsics": 41862,
+ "pw_in_droid3d_and_rlds_by_suffix": 41599,
+ "pw_in_droid3d_rlds_and_intrinsics_same_suffix": 41599,
+ "pw_uuids_with_duplicate_intrinsics": 53,
+ "droid3d_extrinsics_in_rlds_by_suffix": 70182,
+ "note": "identity-only upper bound; per-episode frame/timestamp/serial checks (62/62 accepted on the extracted subset) are not included"
+}

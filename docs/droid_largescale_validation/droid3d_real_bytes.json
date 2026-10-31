@@ -1,0 +1,4466 @@
+{
+ "extrinsics_records": 71006,
+ "extrinsics_duplicate_uuids": 0,
+ "intrinsics_records": 73117,
+ "intrinsics_duplicate_uuids": 100,
+ "intrinsics_duplicate_examples": [
+  "AUTOLab+44bb9c36+2023-11-25-10h-11m-14s",
+  "AUTOLab+44bb9c36+2023-11-28-11h-17m-25s",
+  "ILIAD+50aee79f+2023-08-15-23h-13m-19s",
+  "IPRL+41a1536a+2023-11-14-14h-07m-16s",
+  "IRIS+ef107c48+2023-04-07-12h-51m-02s"
+ ],
+ "ext_not_in_int": 0,
+ "int_not_in_ext": 2111,
+ "extrinsics_fields": {
+  "episode_uuid": [
+   "str"
+  ],
+  "traj_id": [
+   "int"
+  ],
+  "lab": [
+   "str"
+  ],
+  "robot_serial": [
+   "str"
+  ],
+  "scene_path": [
+   "str"
+  ],
+  "T0_ext1_in_world": [
+   "list"
+  ],
+  "T1_ext2_in_world": [
+   "list"
+  ],
+  "dT_gw_gripper_in_world_correction": [
+   "list"
+  ],
+  "dq_joint_correction": [
+   "list"
+  ],
+  "_meta": [
+   "dict"
+  ]
+ },
+ "intrinsics_fields": {
+  "traj_id": [
+   "int"
+  ],
+  "split": [
+   "str"
+  ],
+  "episode_uuid": [
+   "str"
+  ],
+  "lab": [
+   "str"
+  ],
+  "raw_dir": [
+   "str"
+  ],
+  "cameras": [
+   "dict"
+  ]
+ },
+ "intrinsics_camera_fields": {
+  "left": [
+   "dict"
+  ],
+  "right": [
+   "dict"
+  ],
+  "stereo_baseline_m": [
+   "float"
+  ],
+  "stereo_baseline_source": [
+   "str"
+  ],
+  "camera_model": [
+   "str"
+  ],
+  "fps": [
+   "float"
+  ],
+  "zed_sdk_version": [
+   "str"
+  ],
+  "T_right_from_left": [
+   "list"
+  ],
+  "episode_uuid_from_config": [
+   "str"
+  ],
+  "camera_role_from_config": [
+   "str"
+  ],
+  "serial": [
+   "str"
+  ],
+  "role": [
+   "str"
+  ]
+ },
+ "intrinsics_eye_fields": {
+  "fx": [
+   "float"
+  ],
+  "fy": [
+   "float"
+  ],
+  "cx": [
+   "float"
+  ],
+  "cy": [
+   "float"
+  ],
+  "disto": [
+   "list"
+  ],
+  "width": [
+   "int"
+  ],
+  "height": [
+   "int"
+  ],
+  "fov_h": [
+   "float"
+  ],
+  "fov_v": [
+   "float"
+  ]
+ },
+ "records": [
+  {
+   "uuid": "AUTOLab+0d4edc83+2023-10-21-19h-07m-04s",
+   "robot_serial": "FR3-295341-1326595",
+   "lab": "AUTOLab",
+   "meta": {
+    "production_file": "AUTOLab/FR3-295341-1326595_.json",
+    "n_iters": 28,
+    "final_cost": 40242311168.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023",
+   "raw_dir_suffix": "AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023",
+   "dq_norm_rad": 0.023250996497587256,
+   "dT_gw_rot_deg": 1.8374418600977223,
+   "dT_gw_trans_m": 0.0042598455314972325,
+   "ext1_centre_m": [
+    0.1668,
+    0.3479,
+    0.4609
+   ],
+   "ext1_dist_from_base_m": 0.6011445631894959,
+   "ext1_axis_angle_to_workspace_deg": 17.513532146248153,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.3927,
+    0.3915,
+    0.232
+   ],
+   "ext2_centre_m": [
+    0.1598,
+    -0.3682,
+    0.5099
+   ],
+   "ext2_dist_from_base_m": 0.6488749383640384,
+   "ext2_axis_angle_to_workspace_deg": 18.280125230350695,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.4157,
+    0.4118,
+    0.2806
+   ],
+   "ext1_int": {
+    "serial": "22008760",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 524.2153930664062,
+    "fy": 524.2153930664062,
+    "cx": 639.7787475585938,
+    "cy": 370.2781677246094,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12005812674760818,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12005812674760818,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029947616368417584,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -0.22125244140625,
+    "cy_minus_h2": 10.278167724609375
+   },
+   "ext1_K320_parser": [
+    [
+     131.0538,
+     0.0,
+     160.0697
+    ],
+    [
+     0.0,
+     131.0538,
+     92.6945
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24400334",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 531.7576904296875,
+    "fy": 531.7576904296875,
+    "cx": 636.1522827148438,
+    "cy": 344.0087890625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12015504390001297,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12015504390001297,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002969814817788574,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.84771728515625,
+    "cy_minus_h2": -15.9912109375
+   },
+   "ext2_K320_parser": [
+    [
+     132.9394,
+     0.0,
+     159.1631
+    ],
+    [
+     0.0,
+     132.9394,
+     86.1272
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "18026681",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 732.261474609375,
+    "fy": 732.261474609375,
+    "cx": 640.0411987304688,
+    "cy": 365.7914733886719,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06306080520153046,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06306080520153046,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024295297620824385,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.04119873046875,
+    "cy_minus_h2": 5.791473388671875
+   },
+   "wrist_K320_parser": [
+    [
+     183.0654,
+     0.0,
+     160.1353
+    ],
+    [
+     0.0,
+     183.0654,
+     91.5729
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "AUTOLab+84bd5053+2023-07-14-15h-12m-06s",
+   "robot_serial": "fr3-295341-1326595",
+   "lab": "AUTOLab",
+   "meta": {
+    "production_file": "AUTOLab/fr3-295341-1326595_.json",
+    "n_iters": 20,
+    "final_cost": 5568176640.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "AUTOLab/success/2023-07-14/Fri_Jul_14_15:12:06_2023",
+   "raw_dir_suffix": "AUTOLab/success/2023-07-14/Fri_Jul_14_15:12:06_2023",
+   "dq_norm_rad": 0.0212804771784942,
+   "dT_gw_rot_deg": 1.6637756736557197,
+   "dT_gw_trans_m": 0.01762897080345495,
+   "ext1_centre_m": [
+    0.1945,
+    0.6856,
+    0.3994
+   ],
+   "ext1_dist_from_base_m": 0.8169358611971308,
+   "ext1_axis_angle_to_workspace_deg": 24.935298220140368,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.6746,
+    0.1749,
+    0.4263
+   ],
+   "ext2_centre_m": [
+    0.3077,
+    -0.3433,
+    0.3045
+   ],
+   "ext2_dist_from_base_m": 0.5524651871796543,
+   "ext2_axis_angle_to_workspace_deg": 16.562423963813195,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.376,
+    0.2195,
+    0.3401
+   ],
+   "ext1_int": {
+    "serial": "22008760",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 524.4421997070312,
+    "fy": 524.4421997070312,
+    "cx": 639.7763061523438,
+    "cy": 370.2779235839844,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12005812674760818,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12005812674760818,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029872599238984776,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -0.22369384765625,
+    "cy_minus_h2": 10.277923583984375
+   },
+   "ext1_K320_parser": [
+    [
+     131.1105,
+     0.0,
+     160.0691
+    ],
+    [
+     0.0,
+     131.1105,
+     92.6945
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24400334",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 531.8707885742188,
+    "fy": 531.8707885742188,
+    "cx": 636.1511840820312,
+    "cy": 344.0088806152344,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12015504390001297,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12015504390001297,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029628680046442923,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.84881591796875,
+    "cy_minus_h2": -15.991119384765625
+   },
+   "ext2_K320_parser": [
+    [
+     132.9677,
+     0.0,
+     159.1628
+    ],
+    [
+     0.0,
+     132.9677,
+     86.1272
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "18026681",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 732.1224365234375,
+    "fy": 732.1224365234375,
+    "cx": 640.0426025390625,
+    "cy": 365.7881774902344,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06306080520153046,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06306080520153046,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024275826167894365,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.0426025390625,
+    "cy_minus_h2": 5.788177490234375
+   },
+   "wrist_K320_parser": [
+    [
+     183.0306,
+     0.0,
+     160.1357
+    ],
+    [
+     0.0,
+     183.0306,
+     91.572
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "AUTOLab+cf2a60c6+2023-12-18-11h-13m-38s",
+   "robot_serial": "fr3-290102-1324143",
+   "lab": "AUTOLab",
+   "meta": {
+    "production_file": "AUTOLab/fr3-290102-1324143_.json",
+    "n_iters": 12,
+    "final_cost": 4607728640.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "AUTOLab/failure/2023-12-18/Mon_Dec_18_11:13:38_2023",
+   "raw_dir_suffix": "AUTOLab/failure/2023-12-18/Mon_Dec_18_11:13:38_2023",
+   "dq_norm_rad": 0.024437608299539375,
+   "dT_gw_rot_deg": 1.9974809265484708,
+   "dT_gw_trans_m": 0.012412248253700754,
+   "ext1_centre_m": [
+    0.1553,
+    -0.457,
+    0.4823
+   ],
+   "ext1_dist_from_base_m": 0.6823685702076201,
+   "ext1_axis_angle_to_workspace_deg": 23.20924789388088,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.5297,
+    0.3365,
+    0.2679
+   ],
+   "ext2_centre_m": [
+    0.437,
+    0.4704,
+    0.3465
+   ],
+   "ext2_dist_from_base_m": 0.7296639989861092,
+   "ext2_axis_angle_to_workspace_deg": 30.592095466458638,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.5985,
+    0.3678,
+    0.1975
+   ],
+   "ext1_int": {
+    "serial": "20521388",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 526.557373046875,
+    "fy": 526.557373046875,
+    "cx": 631.9151611328125,
+    "cy": 360.2762451171875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12001213431358337,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12001213431358337,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002986273570513731,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -8.0848388671875,
+    "cy_minus_h2": 0.2762451171875
+   },
+   "ext1_K320_parser": [
+    [
+     131.6393,
+     0.0,
+     158.1038
+    ],
+    [
+     0.0,
+     131.6393,
+     90.1941
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24259877",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.480224609375,
+    "fy": 525.480224609375,
+    "cx": 666.159423828125,
+    "cy": 368.5370788574219,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12006518989801407,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12006518989801407,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029852386113304874,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 26.159423828125,
+    "cy_minus_h2": 8.537078857421875
+   },
+   "ext2_K320_parser": [
+    [
+     131.3701,
+     0.0,
+     166.6649
+    ],
+    [
+     0.0,
+     131.3701,
+     92.2593
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "13062452",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.8992309570312,
+    "fy": 731.8992309570312,
+    "cx": 620.6372680664062,
+    "cy": 347.444580078125,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06265467405319214,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06265467405319214,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024320568922888697,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -19.36273193359375,
+    "cy_minus_h2": -12.555419921875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9748,
+     0.0,
+     155.2843
+    ],
+    [
+     0.0,
+     182.9748,
+     86.9861
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "CLVR+13759f6e+2023-06-13-01h-09m-51s",
+   "robot_serial": "295341-1325882",
+   "lab": "CLVR",
+   "meta": {
+    "production_file": "CLVR/295341-1325882_.json",
+    "n_iters": 12,
+    "final_cost": 14805208064.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "CLVR/success/2023-06-13/Tue_Jun_13_01:09:51_2023",
+   "raw_dir_suffix": "CLVR/success/2023-06-13/Tue_Jun_13_01:09:51_2023",
+   "dq_norm_rad": 0.017107996071619717,
+   "dT_gw_rot_deg": 0.5856734451589071,
+   "dT_gw_trans_m": 0.022313675833343677,
+   "ext1_centre_m": [
+    0.114,
+    0.2302,
+    0.1938
+   ],
+   "ext1_dist_from_base_m": 0.3218531537738547,
+   "ext1_axis_angle_to_workspace_deg": 28.361310453683945,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.2171,
+    0.2374,
+    0.0086
+   ],
+   "ext2_centre_m": [
+    0.1129,
+    -0.4045,
+    0.2451
+   ],
+   "ext2_dist_from_base_m": 0.48626729696454374,
+   "ext2_axis_angle_to_workspace_deg": 22.120884407011005,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.4329,
+    0.0113,
+    0.2212
+   ],
+   "ext1_int": {
+    "serial": "20103212",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 530.5181884765625,
+    "fy": 530.5181884765625,
+    "cx": 651.0386962890625,
+    "cy": 351.93939208984375,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12010803073644638,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12010803073644638,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029673720556360195,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 11.0386962890625,
+    "cy_minus_h2": -8.06060791015625
+   },
+   "ext1_K320_parser": [
+    [
+     132.6295,
+     0.0,
+     162.8847
+    ],
+    [
+     0.0,
+     132.6295,
+     88.1098
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "20655732",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.2385864257812,
+    "fy": 525.2385864257812,
+    "cx": 637.693603515625,
+    "cy": 360.5713195800781,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12012230604887009,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12012230604887009,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029856971743100758,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -2.306396484375,
+    "cy_minus_h2": 0.571319580078125
+   },
+   "ext2_K320_parser": [
+    [
+     131.3096,
+     0.0,
+     159.5484
+    ],
+    [
+     0.0,
+     131.3096,
+     90.2678
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "16787047",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.7674560546875,
+    "fy": 731.7674560546875,
+    "cx": 640.97119140625,
+    "cy": 365.2998962402344,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06289763003587723,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06289763003587723,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002430741124243241,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.97119140625,
+    "cy_minus_h2": 5.299896240234375
+   },
+   "wrist_K320_parser": [
+    [
+     182.9419,
+     0.0,
+     160.3678
+    ],
+    [
+     0.0,
+     182.9419,
+     91.45
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "CLVR+13759f6e+2023-06-27-01h-51m-04s",
+   "robot_serial": "panda-295341-1325882",
+   "lab": "CLVR",
+   "meta": {
+    "production_file": "CLVR/panda-295341-1325882_.json",
+    "n_iters": 9,
+    "final_cost": 5776901120.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "CLVR/success/2023-06-27/Tue_Jun_27_01:51:04_2023",
+   "raw_dir_suffix": "CLVR/success/2023-06-27/Tue_Jun_27_01:51:04_2023",
+   "dq_norm_rad": 0.019171445535308,
+   "dT_gw_rot_deg": 1.0302162010847107,
+   "dT_gw_trans_m": 0.02338320338439396,
+   "ext1_centre_m": [
+    0.0309,
+    0.4768,
+    0.2304
+   ],
+   "ext1_dist_from_base_m": 0.5304612888776223,
+   "ext1_axis_angle_to_workspace_deg": 39.49212928913864,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.5171,
+    0.0745,
+    0.0916
+   ],
+   "ext2_centre_m": [
+    -0.0449,
+    -0.5945,
+    0.2389
+   ],
+   "ext2_dist_from_base_m": 0.6422676763009609,
+   "ext2_axis_angle_to_workspace_deg": 10.70930925224089,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.3033,
+    0.1659,
+    0.5413
+   ],
+   "ext1_int": {
+    "serial": "20103212",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 530.5181884765625,
+    "fy": 530.5181884765625,
+    "cx": 651.0386962890625,
+    "cy": 351.93939208984375,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12010803073644638,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12010803073644638,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029673720556360195,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 11.0386962890625,
+    "cy_minus_h2": -8.06060791015625
+   },
+   "ext1_K320_parser": [
+    [
+     132.6295,
+     0.0,
+     162.8847
+    ],
+    [
+     0.0,
+     132.6295,
+     88.1098
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "20655732",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 524.9677734375,
+    "fy": 524.9677734375,
+    "cx": 637.69775390625,
+    "cy": 360.5700988769531,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12012230604887009,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12012230604887009,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029896437628309513,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -2.30224609375,
+    "cy_minus_h2": 0.570098876953125
+   },
+   "ext2_K320_parser": [
+    [
+     131.2419,
+     0.0,
+     159.5494
+    ],
+    [
+     0.0,
+     131.2419,
+     90.2675
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "16787047",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.7816162109375,
+    "fy": 731.7816162109375,
+    "cx": 640.9786376953125,
+    "cy": 365.2956237792969,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06289763003587723,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06289763003587723,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002430926032261027,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.9786376953125,
+    "cy_minus_h2": 5.295623779296875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9454,
+     0.0,
+     160.3697
+    ],
+    [
+     0.0,
+     182.9454,
+     91.4489
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "ILIAD+7ae1bcff+2023-05-31-17h-29m-31s",
+   "robot_serial": "295341-1325494",
+   "lab": "ILIAD",
+   "meta": {
+    "production_file": "ILIAD/295341-1325494_.json",
+    "n_iters": 9,
+    "final_cost": 5605330944.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "ILIAD/success/2023-05-31/Wed_May_31_17:29:31_2023",
+   "raw_dir_suffix": "ILIAD/success/2023-05-31/Wed_May_31_17:29:31_2023",
+   "dq_norm_rad": 0.02517204162772993,
+   "dT_gw_rot_deg": 0.9597096475692132,
+   "dT_gw_trans_m": 0.009572751353926913,
+   "ext1_centre_m": [
+    0.3254,
+    0.5755,
+    0.4737
+   ],
+   "ext1_dist_from_base_m": 0.813295404002043,
+   "ext1_axis_angle_to_workspace_deg": 19.196329390440987,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.6272,
+    0.2669,
+    0.4437
+   ],
+   "ext2_centre_m": [
+    -0.1213,
+    -0.4628,
+    0.4314
+   ],
+   "ext2_dist_from_base_m": 0.6441616555464225,
+   "ext2_axis_angle_to_workspace_deg": 24.119694683792797,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.4547,
+    0.3028,
+    0.3412
+   ],
+   "ext1_int": {
+    "serial": "23897859",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 520.5435180664062,
+    "fy": 520.5435180664062,
+    "cx": 643.3324584960938,
+    "cy": 353.3777770996094,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11998101323843002,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11998101323843002,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.003003293878308,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 3.33245849609375,
+    "cy_minus_h2": -6.622222900390625
+   },
+   "ext1_K320_parser": [
+    [
+     130.1359,
+     0.0,
+     160.9581
+    ],
+    [
+     0.0,
+     130.1359,
+     88.4694
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "27904255",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 531.5767211914062,
+    "fy": 531.5767211914062,
+    "cx": 656.27490234375,
+    "cy": 360.358154296875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11997836828231812,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11997836828231812,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002970729667978844,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 16.27490234375,
+    "cy_minus_h2": 0.358154296875
+   },
+   "ext2_K320_parser": [
+    [
+     132.8942,
+     0.0,
+     164.1937
+    ],
+    [
+     0.0,
+     132.8942,
+     90.2145
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "17368348",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.3171997070312,
+    "fy": 733.3171997070312,
+    "cx": 625.2634887695312,
+    "cy": 361.9227600097656,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06267865002155304,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06267865002155304,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024296636368603686,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -14.73651123046875,
+    "cy_minus_h2": 1.922760009765625
+   },
+   "wrist_K320_parser": [
+    [
+     183.3293,
+     0.0,
+     156.4409
+    ],
+    [
+     0.0,
+     183.3293,
+     90.6057
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "ILIAD+7ae1bcff+2023-05-31-18h-23m-12s",
+   "robot_serial": "295341-1325494",
+   "lab": "ILIAD",
+   "meta": {
+    "production_file": "ILIAD/295341-1325494_.json",
+    "n_iters": 9,
+    "final_cost": 5605330944.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "ILIAD/success/2023-05-31/Wed_May_31_18:23:12_2023",
+   "raw_dir_suffix": "ILIAD/success/2023-05-31/Wed_May_31_18:23:12_2023",
+   "dq_norm_rad": 0.02517204162772993,
+   "dT_gw_rot_deg": 0.9597096475692132,
+   "dT_gw_trans_m": 0.009572751353926913,
+   "ext1_centre_m": [
+    0.3291,
+    0.5765,
+    0.4719
+   ],
+   "ext1_dist_from_base_m": 0.8144801048922651,
+   "ext1_axis_angle_to_workspace_deg": 19.156153024706565,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.6279,
+    0.2666,
+    0.4451
+   ],
+   "ext2_centre_m": [
+    -0.125,
+    -0.4592,
+    0.4339
+   ],
+   "ext2_dist_from_base_m": 0.6440295726975505,
+   "ext2_axis_angle_to_workspace_deg": 24.024135478453065,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.4529,
+    0.3031,
+    0.3433
+   ],
+   "ext1_int": {
+    "serial": "23897859",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 520.5657958984375,
+    "fy": 520.5657958984375,
+    "cx": 643.3330078125,
+    "cy": 353.37860107421875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11998101323843002,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11998101323843002,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0030006808180331745,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 3.3330078125,
+    "cy_minus_h2": -6.62139892578125
+   },
+   "ext1_K320_parser": [
+    [
+     130.1414,
+     0.0,
+     160.9583
+    ],
+    [
+     0.0,
+     130.1414,
+     88.4697
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "27904255",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 531.8138427734375,
+    "fy": 531.8138427734375,
+    "cx": 656.2758178710938,
+    "cy": 360.3572082519531,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11997836828231812,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11997836828231812,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029665435537822304,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 16.27581787109375,
+    "cy_minus_h2": 0.357208251953125
+   },
+   "ext2_K320_parser": [
+    [
+     132.9535,
+     0.0,
+     164.194
+    ],
+    [
+     0.0,
+     132.9535,
+     90.2143
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "17368348",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.3099975585938,
+    "fy": 733.3099975585938,
+    "cx": 625.2623291015625,
+    "cy": 361.9205322265625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06267865002155304,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06267865002155304,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024290582500867686,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -14.7376708984375,
+    "cy_minus_h2": 1.9205322265625
+   },
+   "wrist_K320_parser": [
+    [
+     183.3275,
+     0.0,
+     156.4406
+    ],
+    [
+     0.0,
+     183.3275,
+     90.6051
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "ILIAD+sbd7d2c6+2023-12-24-16h-33m-39s",
+   "robot_serial": "panda-295341-1325494",
+   "lab": "ILIAD",
+   "meta": {
+    "production_file": "ILIAD/panda-295341-1325494_.json",
+    "n_iters": 12,
+    "final_cost": 10054903808.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "ILIAD/success/2023-12-24/Sun_Dec_24_16:33:39_2023",
+   "raw_dir_suffix": "ILIAD/success/2023-12-24/Sun_Dec_24_16:33:39_2023",
+   "dq_norm_rad": 0.025762757056470232,
+   "dT_gw_rot_deg": 1.1729481570065705,
+   "dT_gw_trans_m": 0.010053181005593641,
+   "ext1_centre_m": [
+    0.2886,
+    0.595,
+    0.5864
+   ],
+   "ext1_dist_from_base_m": 0.88381167045304,
+   "ext1_axis_angle_to_workspace_deg": 29.380290141898648,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.6737,
+    0.3808,
+    0.4268
+   ],
+   "ext2_centre_m": [
+    0.2601,
+    -0.7294,
+    0.5417
+   ],
+   "ext2_dist_from_base_m": 0.9450764425557897,
+   "ext2_axis_angle_to_workspace_deg": 16.415228039282923,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.6019,
+    0.1427,
+    0.7145
+   ],
+   "ext1_int": {
+    "serial": "23897859",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 520.1192016601562,
+    "fy": 520.1192016601562,
+    "cx": 643.3270263671875,
+    "cy": 353.3690490722656,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11998101323843002,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11998101323843002,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0030018036878232124,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 3.3270263671875,
+    "cy_minus_h2": -6.630950927734375
+   },
+   "ext1_K320_parser": [
+    [
+     130.0298,
+     0.0,
+     160.9568
+    ],
+    [
+     0.0,
+     130.0298,
+     88.4673
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "27904255",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 531.7482299804688,
+    "fy": 531.7482299804688,
+    "cx": 656.2789306640625,
+    "cy": 360.3495788574219,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11997836828231812,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11997836828231812,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002967164185875504,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 16.2789306640625,
+    "cy_minus_h2": 0.349578857421875
+   },
+   "ext2_K320_parser": [
+    [
+     132.9371,
+     0.0,
+     164.1947
+    ],
+    [
+     0.0,
+     132.9371,
+     90.2124
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "17368348",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.3060302734375,
+    "fy": 733.3060302734375,
+    "cx": 625.2625732421875,
+    "cy": 361.9210510253906,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06267865002155304,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06267865002155304,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002427105721778844,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -14.7374267578125,
+    "cy_minus_h2": 1.921051025390625
+   },
+   "wrist_K320_parser": [
+    [
+     183.3265,
+     0.0,
+     156.4406
+    ],
+    [
+     0.0,
+     183.3265,
+     90.6053
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "IRIS+ef107c48+2023-03-07-17h-59m-02s",
+   "robot_serial": "unknown",
+   "lab": "IRIS",
+   "meta": {
+    "production_file": "IRIS/unknown_.json",
+    "n_iters": 50,
+    "final_cost": 6350289920.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "IRIS/success/2023-03-07/Tue_Mar__7_17_59_02_2023",
+   "raw_dir_suffix": "IRIS/success/2023-03-07/Tue_Mar__7_17_59_02_2023",
+   "dq_norm_rad": 0.17559685439594283,
+   "dT_gw_rot_deg": 39.068645920179655,
+   "dT_gw_trans_m": 0.020420472513719323,
+   "ext1_centre_m": [
+    0.2303,
+    -0.3228,
+    0.7639
+   ],
+   "ext1_dist_from_base_m": 0.860716461084581,
+   "ext1_axis_angle_to_workspace_deg": 12.22341560705686,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.3901,
+    0.3149,
+    0.6997
+   ],
+   "ext2_centre_m": [
+    0.4823,
+    0.5389,
+    0.1635
+   ],
+   "ext2_dist_from_base_m": 0.7414173934097418,
+   "ext2_axis_angle_to_workspace_deg": 13.28969084694723,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.6164,
+    -0.0225,
+    0.4113
+   ],
+   "ext1_int": {
+    "serial": "23404442",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.5722045898438,
+    "fy": 522.5722045898438,
+    "cx": 640.4923095703125,
+    "cy": 353.2301330566406,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.1200421079993248,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.1200421079993248,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029935343547720095,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.4923095703125,
+    "cy_minus_h2": -6.769866943359375
+   },
+   "ext1_K320_parser": [
+    [
+     130.6431,
+     0.0,
+     160.2481
+    ],
+    [
+     0.0,
+     130.6431,
+     88.4325
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "29838012",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.6583862304688,
+    "fy": 522.6583862304688,
+    "cx": 639.2364501953125,
+    "cy": 352.50115966796875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000840902328491,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000840902328491,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002996722067720725,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -0.7635498046875,
+    "cy_minus_h2": -7.49884033203125
+   },
+   "ext2_K320_parser": [
+    [
+     130.6646,
+     0.0,
+     159.9341
+    ],
+    [
+     0.0,
+     130.6646,
+     88.2503
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19824535",
+    "role": "wrist",
+    "wh": [
+     672,
+     376
+    ],
+    "fx": 364.5906677246094,
+    "fy": 364.5906677246094,
+    "cx": 340.53436279296875,
+    "cy": 184.7178192138672,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06280392408370972,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06280392408370972,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002513733257345052,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 4.53436279296875,
+    "cy_minus_h2": -3.2821807861328125
+   },
+   "wrist_K320_parser": [
+    [
+     173.6146,
+     0.0,
+     162.3973
+    ],
+    [
+     0.0,
+     174.5381,
+     88.6681
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "RAD+c6cf6b42+2023-12-17-15h-57m-39s",
+   "robot_serial": "panda-295341-1325422",
+   "lab": "RAD",
+   "meta": {
+    "production_file": "RAD/panda-295341-1325422_.json",
+    "n_iters": 16,
+    "final_cost": 6156368896.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "RAD/failure/2023-12-17/Sun_Dec_17_15:57:39_2023",
+   "raw_dir_suffix": "RAD/failure/2023-12-17/Sun_Dec_17_15:57:39_2023",
+   "dq_norm_rad": 0.023734495564002152,
+   "dT_gw_rot_deg": 1.9695082407556963,
+   "dT_gw_trans_m": 0.019270870964158675,
+   "ext1_centre_m": [
+    -0.1114,
+    0.9571,
+    0.6473
+   ],
+   "ext1_dist_from_base_m": 1.1608001666533545,
+   "ext1_axis_angle_to_workspace_deg": 32.38640892073025,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.7209,
+    0.6401,
+    0.6466
+   ],
+   "ext2_centre_m": [
+    -0.0865,
+    -0.7625,
+    0.668
+   ],
+   "ext2_dist_from_base_m": 1.0174028608762338,
+   "ext2_axis_angle_to_workspace_deg": 27.76101897249927,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.5214,
+    0.6253,
+    0.6101
+   ],
+   "ext1_int": {
+    "serial": "32907025",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 521.6901245117188,
+    "fy": 521.6901245117188,
+    "cx": 649.276611328125,
+    "cy": 357.1112976074219,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12003564089536667,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12003564089536667,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002995865173559764,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 9.276611328125,
+    "cy_minus_h2": -2.888702392578125
+   },
+   "ext1_K320_parser": [
+    [
+     130.4225,
+     0.0,
+     162.4442
+    ],
+    [
+     0.0,
+     130.4225,
+     89.4028
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "35215462",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 527.8287963867188,
+    "fy": 527.8287963867188,
+    "cx": 627.349609375,
+    "cy": 348.72320556640625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12001926451921463,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12001926451921463,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002980347934013139,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -12.650390625,
+    "cy_minus_h2": -11.27679443359375
+   },
+   "ext2_K320_parser": [
+    [
+     131.9572,
+     0.0,
+     156.9624
+    ],
+    [
+     0.0,
+     131.9572,
+     87.3058
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "15102076",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 681.061767578125,
+    "fy": 681.061767578125,
+    "cx": 629.135009765625,
+    "cy": 357.8150634765625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06291723996400833,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06291723996400833,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0025514930002970004,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -10.864990234375,
+    "cy_minus_h2": -2.1849365234375
+   },
+   "wrist_K320_parser": [
+    [
+     170.2654,
+     0.0,
+     157.4088
+    ],
+    [
+     0.0,
+     170.2654,
+     89.5788
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "RAIL+80edfcb1+2023-06-30-13h-39m-54s",
+   "robot_serial": "fr3-290102-1324143",
+   "lab": "RAIL",
+   "meta": {
+    "production_file": "RAIL/fr3-290102-1324143_.json",
+    "n_iters": 24,
+    "final_cost": 29782056960.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "RAIL/success/2023-06-30/Fri_Jun_30_13:39:54_2023",
+   "raw_dir_suffix": "RAIL/success/2023-06-30/Fri_Jun_30_13:39:54_2023",
+   "dq_norm_rad": 0.020874093044563564,
+   "dT_gw_rot_deg": 2.350977997020946,
+   "dT_gw_trans_m": 0.012352067795300023,
+   "ext1_centre_m": [
+    0.2831,
+    -0.3852,
+    0.1837
+   ],
+   "ext1_dist_from_base_m": 0.512148550988392,
+   "ext1_axis_angle_to_workspace_deg": 26.049977304530994,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.4355,
+    0.2166,
+    0.1603
+   ],
+   "ext2_centre_m": [
+    0.1992,
+    0.3323,
+    0.2319
+   ],
+   "ext2_dist_from_base_m": 0.45149841917812805,
+   "ext2_axis_angle_to_workspace_deg": 25.932547673077313,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.3819,
+    0.2283,
+    0.0764
+   ],
+   "ext1_int": {
+    "serial": "20521388",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.4365234375,
+    "fy": 525.4365234375,
+    "cx": 631.913330078125,
+    "cy": 360.27593994140625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12001213431358337,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12001213431358337,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029880713530729963,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -8.086669921875,
+    "cy_minus_h2": 0.27593994140625
+   },
+   "ext1_K320_parser": [
+    [
+     131.3591,
+     0.0,
+     158.1033
+    ],
+    [
+     0.0,
+     131.3591,
+     90.194
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24259877",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.487548828125,
+    "fy": 525.487548828125,
+    "cx": 666.1602172851562,
+    "cy": 368.531005859375,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12006518989801407,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12006518989801407,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029903593665352446,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 26.16021728515625,
+    "cy_minus_h2": 8.531005859375
+   },
+   "ext2_K320_parser": [
+    [
+     131.3719,
+     0.0,
+     166.6651
+    ],
+    [
+     0.0,
+     131.3719,
+     92.2578
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "13062452",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.8983154296875,
+    "fy": 731.8983154296875,
+    "cx": 620.635498046875,
+    "cy": 347.4472961425781,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06265467405319214,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06265467405319214,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024296908606800116,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -19.364501953125,
+    "cy_minus_h2": -12.552703857421875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9746,
+     0.0,
+     155.2839
+    ],
+    [
+     0.0,
+     182.9746,
+     86.9868
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "RAIL+d027f2ae+2023-06-22-16h-31m-40s",
+   "robot_serial": "fr3-290102-1324143",
+   "lab": "RAIL",
+   "meta": {
+    "production_file": "RAIL/fr3-290102-1324143_.json",
+    "n_iters": 24,
+    "final_cost": 29782056960.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "RAIL/failure/2023-06-22/Thu_Jun_22_16:31:40_2023",
+   "raw_dir_suffix": "RAIL/failure/2023-06-22/Thu_Jun_22_16:31:40_2023",
+   "dq_norm_rad": 0.020874093044563564,
+   "dT_gw_rot_deg": 2.350977997020946,
+   "dT_gw_trans_m": 0.012352067795300023,
+   "ext1_centre_m": [
+    0.244,
+    -0.2294,
+    0.2273
+   ],
+   "ext1_dist_from_base_m": 0.4047242547584445,
+   "ext1_axis_angle_to_workspace_deg": 13.295109878810466,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.3289,
+    0.2265,
+    0.0659
+   ],
+   "ext2_centre_m": [
+    0.2122,
+    0.3301,
+    0.2239
+   ],
+   "ext2_dist_from_base_m": 0.4518226817968601,
+   "ext2_axis_angle_to_workspace_deg": 18.727779194510664,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.3614,
+    0.235,
+    0.1354
+   ],
+   "ext1_int": {
+    "serial": "20521388",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.6099853515625,
+    "fy": 525.6099853515625,
+    "cx": 631.9135131835938,
+    "cy": 360.2760925292969,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12001213431358337,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12001213431358337,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002991498913033297,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -8.08648681640625,
+    "cy_minus_h2": 0.276092529296875
+   },
+   "ext1_K320_parser": [
+    [
+     131.4025,
+     0.0,
+     158.1034
+    ],
+    [
+     0.0,
+     131.4025,
+     90.194
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24259877",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.1981201171875,
+    "fy": 525.1981201171875,
+    "cx": 666.1602783203125,
+    "cy": 368.532470703125,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12006518989801407,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12006518989801407,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002989594271838314,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 26.1602783203125,
+    "cy_minus_h2": 8.532470703125
+   },
+   "ext2_K320_parser": [
+    [
+     131.2995,
+     0.0,
+     166.6651
+    ],
+    [
+     0.0,
+     131.2995,
+     92.2581
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "13062452",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.8815307617188,
+    "fy": 731.8815307617188,
+    "cx": 620.6343994140625,
+    "cy": 347.44952392578125,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06265467405319214,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06265467405319214,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024320721345532093,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -19.3656005859375,
+    "cy_minus_h2": -12.55047607421875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9704,
+     0.0,
+     155.2836
+    ],
+    [
+     0.0,
+     182.9704,
+     86.9874
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "RAIL+d027f2ae+2023-11-20-11h-19m-20s",
+   "robot_serial": "fr3-290102-1324143",
+   "lab": "RAIL",
+   "meta": {
+    "production_file": "RAIL/fr3-290102-1324143_.json",
+    "n_iters": 24,
+    "final_cost": 29782056960.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "RAIL/failure/2023-11-20/Mon_Nov_20_11:19:20_2023",
+   "raw_dir_suffix": "RAIL/failure/2023-11-20/Mon_Nov_20_11:19:20_2023",
+   "dq_norm_rad": 0.020874093044563564,
+   "dT_gw_rot_deg": 2.350977997020946,
+   "dT_gw_trans_m": 0.012352067795300023,
+   "ext1_centre_m": [
+    0.3334,
+    -0.2372,
+    0.2315
+   ],
+   "ext1_dist_from_base_m": 0.4701565039338151,
+   "ext1_axis_angle_to_workspace_deg": 17.693414247809155,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.4028,
+    0.2178,
+    0.1067
+   ],
+   "ext2_centre_m": [
+    0.3595,
+    0.357,
+    0.2411
+   ],
+   "ext2_dist_from_base_m": 0.561115344398746,
+   "ext2_axis_angle_to_workspace_deg": 24.822739510384817,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.3994,
+    0.3621,
+    0.1558
+   ],
+   "ext1_int": {
+    "serial": "20521388",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 526.2758178710938,
+    "fy": 526.2758178710938,
+    "cx": 631.9149169921875,
+    "cy": 360.27587890625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12001213431358337,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12001213431358337,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002984650934152455,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -8.0850830078125,
+    "cy_minus_h2": 0.27587890625
+   },
+   "ext1_K320_parser": [
+    [
+     131.569,
+     0.0,
+     158.1037
+    ],
+    [
+     0.0,
+     131.569,
+     90.194
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24259877",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.3275756835938,
+    "fy": 525.3275756835938,
+    "cx": 666.1605224609375,
+    "cy": 368.5295715332031,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12006518989801407,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12006518989801407,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029844680030919335,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 26.1605224609375,
+    "cy_minus_h2": 8.529571533203125
+   },
+   "ext2_K320_parser": [
+    [
+     131.3319,
+     0.0,
+     166.6651
+    ],
+    [
+     0.0,
+     131.3319,
+     92.2574
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "13062452",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.910888671875,
+    "fy": 731.910888671875,
+    "cx": 620.6312866210938,
+    "cy": 347.4531555175781,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06265467405319214,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06265467405319214,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024286062208318526,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -19.36871337890625,
+    "cy_minus_h2": -12.546844482421875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9777,
+     0.0,
+     155.2828
+    ],
+    [
+     0.0,
+     182.9777,
+     86.9883
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "RAIL+t3d58310+2023-05-19-15h-37m-25s",
+   "robot_serial": "290102-1324143",
+   "lab": "RAIL",
+   "meta": {
+    "production_file": "RAIL/290102-1324143_.json",
+    "n_iters": 21,
+    "final_cost": 2658867200.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "RAIL/success/2023-05-19/Fri_May_19_15:37:25_2023",
+   "raw_dir_suffix": "RAIL/success/2023-05-19/Fri_May_19_15:37:25_2023",
+   "dq_norm_rad": 0.02370935874462731,
+   "dT_gw_rot_deg": 2.6837255256621972,
+   "dT_gw_trans_m": 0.008282182518672342,
+   "ext1_centre_m": [
+    0.2033,
+    -0.3321,
+    0.3226
+   ],
+   "ext1_dist_from_base_m": 0.5056568679179173,
+   "ext1_axis_angle_to_workspace_deg": 8.655106524841813,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.3644,
+    0.2653,
+    0.2292
+   ],
+   "ext2_centre_m": [
+    0.2167,
+    0.4449,
+    0.2876
+   ],
+   "ext2_dist_from_base_m": 0.5723260147846102,
+   "ext2_axis_angle_to_workspace_deg": 16.19284431331222,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.4129,
+    0.177,
+    0.3545
+   ],
+   "ext1_int": {
+    "serial": "20521388",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.6138916015625,
+    "fy": 525.6138916015625,
+    "cx": 631.9138793945312,
+    "cy": 360.2757263183594,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12001213431358337,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12001213431358337,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029895703625726355,
+    "sdk": "5.1.2",
+    "fps": 48.0,
+    "cx_minus_w2": -8.08612060546875,
+    "cy_minus_h2": 0.275726318359375
+   },
+   "ext1_K320_parser": [
+    [
+     131.4035,
+     0.0,
+     158.1035
+    ],
+    [
+     0.0,
+     131.4035,
+     90.1939
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "24259877",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.105224609375,
+    "fy": 525.105224609375,
+    "cx": 666.160400390625,
+    "cy": 368.5322265625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12006518989801407,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12006518989801407,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002990539880045162,
+    "sdk": "5.1.2",
+    "fps": 47.0,
+    "cx_minus_w2": 26.160400390625,
+    "cy_minus_h2": 8.5322265625
+   },
+   "ext2_K320_parser": [
+    [
+     131.2763,
+     0.0,
+     166.6651
+    ],
+    [
+     0.0,
+     131.2763,
+     92.2581
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "13062452",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.9259643554688,
+    "fy": 731.9259643554688,
+    "cx": 620.63232421875,
+    "cy": 347.4510803222656,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06265467405319214,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06265467405319214,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024232807905804066,
+    "sdk": "5.1.2",
+    "fps": 48.0,
+    "cx_minus_w2": -19.36767578125,
+    "cy_minus_h2": -12.548919677734375
+   },
+   "wrist_K320_parser": [
+    [
+     182.9815,
+     0.0,
+     155.2831
+    ],
+    [
+     0.0,
+     182.9815,
+     86.9878
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "REAL+4f8ca688+2023-08-15-13h-49m-44s",
+   "robot_serial": "FR3-295341-1326783",
+   "lab": "REAL",
+   "meta": {
+    "production_file": "REAL/FR3-295341-1326783_.json",
+    "n_iters": 16,
+    "final_cost": 16522303488.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "REAL/success/2023-08-15/Tue_Aug_15_13:49:44_2023",
+   "raw_dir_suffix": "REAL/success/2023-08-15/Tue_Aug_15_13:49:44_2023",
+   "dq_norm_rad": 0.030858370262017445,
+   "dT_gw_rot_deg": 2.690463717290927,
+   "dT_gw_trans_m": 0.014713313869107665,
+   "ext1_centre_m": [
+    0.129,
+    -0.3185,
+    0.3378
+   ],
+   "ext1_dist_from_base_m": 0.4818165432144598,
+   "ext1_axis_angle_to_workspace_deg": 13.403072889034295,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.3178,
+    0.2898,
+    0.2172
+   ],
+   "ext2_centre_m": [
+    0.173,
+    0.4048,
+    0.3087
+   ],
+   "ext2_dist_from_base_m": 0.537701706852628,
+   "ext2_axis_angle_to_workspace_deg": 12.100193216215425,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.3471,
+    0.2726,
+    0.3071
+   ],
+   "ext1_int": {
+    "serial": "20540549",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 530.4597778320312,
+    "fy": 530.4597778320312,
+    "cx": 646.0877685546875,
+    "cy": 368.5685119628906,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12004416435956955,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12004416435956955,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029708806610955207,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 6.0877685546875,
+    "cy_minus_h2": 8.568511962890625
+   },
+   "ext1_K320_parser": [
+    [
+     132.6149,
+     0.0,
+     161.6469
+    ],
+    [
+     0.0,
+     132.6149,
+     92.2671
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "23960472",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 520.3637084960938,
+    "fy": 520.3637084960938,
+    "cx": 652.3401489257812,
+    "cy": 363.3465576171875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11994609236717224,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11994609236717224,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0030027861022006164,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 12.34014892578125,
+    "cy_minus_h2": 3.3465576171875
+   },
+   "ext2_K320_parser": [
+    [
+     130.0909,
+     0.0,
+     163.21
+    ],
+    [
+     0.0,
+     130.0909,
+     90.9616
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "11744905",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.4176025390625,
+    "fy": 731.4176025390625,
+    "cx": 621.561767578125,
+    "cy": 347.8883361816406,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06299120932817459,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06299120932817459,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024277271309784965,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -18.438232421875,
+    "cy_minus_h2": -12.111663818359375
+   },
+   "wrist_K320_parser": [
+    [
+     182.8544,
+     0.0,
+     155.5154
+    ],
+    [
+     0.0,
+     182.8544,
+     87.0971
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "RPL+32cba90c+2023-12-07-18h-14m-40s",
+   "robot_serial": "panda-295341-1324688",
+   "lab": "RPL",
+   "meta": {
+    "production_file": "RPL/panda-295341-1324688_.json",
+    "n_iters": 11,
+    "final_cost": 5525490176.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "RPL/failure/2023-12-07/Thu_Dec__7_18:14:40_2023",
+   "raw_dir_suffix": "RPL/failure/2023-12-07/Thu_Dec__7_18:14:40_2023",
+   "dq_norm_rad": 0.018711077340748068,
+   "dT_gw_rot_deg": 2.180994575975202,
+   "dT_gw_trans_m": 0.005519727332153669,
+   "ext1_centre_m": [
+    -0.0113,
+    -0.3379,
+    0.3963
+   ],
+   "ext1_dist_from_base_m": 0.5208672866705426,
+   "ext1_axis_angle_to_workspace_deg": 19.07851149948432,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.2783,
+    0.3902,
+    0.2039
+   ],
+   "ext2_centre_m": [
+    0.1066,
+    0.3937,
+    0.3178
+   ],
+   "ext2_dist_from_base_m": 0.5170917624314927,
+   "ext2_axis_angle_to_workspace_deg": 24.396121084183243,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.4063,
+    0.2934,
+    0.1273
+   ],
+   "ext1_int": {
+    "serial": "24013089",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.6385498046875,
+    "fy": 525.6385498046875,
+    "cx": 648.1171875,
+    "cy": 374.606689453125,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.1201576367020607,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.1201576367020607,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029863985773346258,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 8.1171875,
+    "cy_minus_h2": 14.606689453125
+   },
+   "ext1_K320_parser": [
+    [
+     131.4096,
+     0.0,
+     162.1543
+    ],
+    [
+     0.0,
+     131.4096,
+     93.7767
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "25047636",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.8449096679688,
+    "fy": 522.8449096679688,
+    "cx": 648.82470703125,
+    "cy": 354.74371337890625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12003207951784134,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12003207951784134,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002994122208292538,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 8.82470703125,
+    "cy_minus_h2": -5.25628662109375
+   },
+   "ext2_K320_parser": [
+    [
+     130.7112,
+     0.0,
+     162.3312
+    ],
+    [
+     0.0,
+     130.7112,
+     88.8109
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "17225336",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 730.6336059570312,
+    "fy": 730.6336059570312,
+    "cx": 646.9557495117188,
+    "cy": 348.7774963378906,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06307505816221237,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06307505816221237,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024326464257313773,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 6.95574951171875,
+    "cy_minus_h2": -11.222503662109375
+   },
+   "wrist_K320_parser": [
+    [
+     182.6584,
+     0.0,
+     161.8639
+    ],
+    [
+     0.0,
+     182.6584,
+     87.3194
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+52ca9b6a+2023-10-23-11h-04m-58s",
+   "robot_serial": "fr3-295341-1326895",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/fr3-295341-1326895_.json",
+    "n_iters": 12,
+    "final_cost": 42739212288.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2023-10-23/Mon_Oct_23_11:04:58_2023",
+   "raw_dir_suffix": "TRI/success/2023-10-23/Mon_Oct_23_11:04:58_2023",
+   "dq_norm_rad": 0.023185643349469532,
+   "dT_gw_rot_deg": 0.9850654510111625,
+   "dT_gw_trans_m": 0.003032147732805244,
+   "ext1_centre_m": [
+    0.3293,
+    0.6027,
+    0.595
+   ],
+   "ext1_dist_from_base_m": 0.9086574100732285,
+   "ext1_axis_angle_to_workspace_deg": 19.290843267762906,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.4737,
+    0.4151,
+    0.655
+   ],
+   "ext2_centre_m": [
+    0.3011,
+    -0.4341,
+    0.5065
+   ],
+   "ext2_dist_from_base_m": 0.7319085210431782,
+   "ext2_axis_angle_to_workspace_deg": 38.294387029405335,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.1589,
+    0.2879,
+    0.6539
+   ],
+   "ext1_int": {
+    "serial": "28451778",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 523.1224365234375,
+    "fy": 523.1224365234375,
+    "cx": 634.0249633789062,
+    "cy": 365.7066650390625,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000008672475815,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000008672475815,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029964987843840163,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -5.97503662109375,
+    "cy_minus_h2": 5.7066650390625
+   },
+   "ext1_K320_parser": [
+    [
+     130.7806,
+     0.0,
+     158.6312
+    ],
+    [
+     0.0,
+     130.7806,
+     91.5517
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "28813166",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.7733764648438,
+    "fy": 525.7733764648438,
+    "cx": 636.3092651367188,
+    "cy": 365.46746826171875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12002801895141602,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12002801895141602,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029815329440481264,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.69073486328125,
+    "cy_minus_h2": 5.46746826171875
+   },
+   "ext2_K320_parser": [
+    [
+     131.4433,
+     0.0,
+     159.2023
+    ],
+    [
+     0.0,
+     131.4433,
+     91.4919
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19553404",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.7186279296875,
+    "fy": 731.7186279296875,
+    "cx": 649.4229736328125,
+    "cy": 371.3836975097656,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06300531327724457,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06300531327724457,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024333387830353104,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 9.4229736328125,
+    "cy_minus_h2": 11.383697509765625
+   },
+   "wrist_K320_parser": [
+    [
+     182.9297,
+     0.0,
+     162.4807
+    ],
+    [
+     0.0,
+     182.9297,
+     92.9709
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+52ca9b6a+2023-11-02-11h-14m-21s",
+   "robot_serial": "fr3-",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/fr3-_.json",
+    "n_iters": 25,
+    "final_cost": 50848120832.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2023-11-02/Thu_Nov__2_11:14:21_2023",
+   "raw_dir_suffix": "TRI/success/2023-11-02/Thu_Nov__2_11:14:21_2023",
+   "dq_norm_rad": 0.019066603188782366,
+   "dT_gw_rot_deg": 0.6472518901410571,
+   "dT_gw_trans_m": 0.006586484190402366,
+   "ext1_centre_m": [
+    0.4045,
+    0.3748,
+    0.4844
+   ],
+   "ext1_dist_from_base_m": 0.734010767512987,
+   "ext1_axis_angle_to_workspace_deg": 20.100278588892717,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.4907,
+    0.3746,
+    0.397
+   ],
+   "ext2_centre_m": [
+    0.1052,
+    -0.4879,
+    0.4027
+   ],
+   "ext2_dist_from_base_m": 0.6413073701154507,
+   "ext2_axis_angle_to_workspace_deg": 20.123545486808187,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.316,
+    0.3188,
+    0.458
+   ],
+   "ext1_int": {
+    "serial": "20252535",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.3133544921875,
+    "fy": 522.3133544921875,
+    "cx": 644.8779907226562,
+    "cy": 356.0325927734375,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12010505050420761,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12010505050420761,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002997250180470701,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 4.87799072265625,
+    "cy_minus_h2": -3.9674072265625
+   },
+   "ext1_K320_parser": [
+    [
+     130.5783,
+     0.0,
+     161.3445
+    ],
+    [
+     0.0,
+     130.5783,
+     89.1331
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "25947356",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 528.4466552734375,
+    "fy": 528.4466552734375,
+    "cx": 653.0729370117188,
+    "cy": 348.8338623046875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.1201290562748909,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.1201290562748909,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002972697183494688,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 13.07293701171875,
+    "cy_minus_h2": -11.1661376953125
+   },
+   "ext2_K320_parser": [
+    [
+     132.1117,
+     0.0,
+     163.3932
+    ],
+    [
+     0.0,
+     132.1117,
+     87.3335
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "14549178",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.119140625,
+    "fy": 733.119140625,
+    "cx": 650.171142578125,
+    "cy": 360.2757263183594,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06302615255117416,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06302615255117416,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024298235396713608,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 10.171142578125,
+    "cy_minus_h2": 0.275726318359375
+   },
+   "wrist_K320_parser": [
+    [
+     183.2798,
+     0.0,
+     162.6678
+    ],
+    [
+     0.0,
+     183.2798,
+     90.1939
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+52ca9b6a+2023-11-13-13h-45m-50s",
+   "robot_serial": "fr3-",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/fr3-_.json",
+    "n_iters": 25,
+    "final_cost": 50848120832.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2023-11-13/Mon_Nov_13_13:45:50_2023",
+   "raw_dir_suffix": "TRI/success/2023-11-13/Mon_Nov_13_13:45:50_2023",
+   "dq_norm_rad": 0.019066603188782366,
+   "dT_gw_rot_deg": 0.6472518901410571,
+   "dT_gw_trans_m": 0.006586484190402366,
+   "ext1_centre_m": [
+    0.2651,
+    0.4905,
+    0.3949
+   ],
+   "ext1_dist_from_base_m": 0.6832867175546432,
+   "ext1_axis_angle_to_workspace_deg": 26.28767085444955,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.5395,
+    0.3557,
+    0.2221
+   ],
+   "ext2_centre_m": [
+    0.1919,
+    -0.5471,
+    0.5583
+   ],
+   "ext2_dist_from_base_m": 0.8049309326458638,
+   "ext2_axis_angle_to_workspace_deg": 8.53767815401062,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.3714,
+    0.3082,
+    0.6442
+   ],
+   "ext1_int": {
+    "serial": "20252535",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.2745971679688,
+    "fy": 522.2745971679688,
+    "cx": 644.8778686523438,
+    "cy": 356.03240966796875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12010505050420761,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12010505050420761,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002997534248564193,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 4.87786865234375,
+    "cy_minus_h2": -3.96759033203125
+   },
+   "ext1_K320_parser": [
+    [
+     130.5686,
+     0.0,
+     161.3445
+    ],
+    [
+     0.0,
+     130.5686,
+     89.1331
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "25947356",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 528.2849731445312,
+    "fy": 528.2849731445312,
+    "cx": 653.07373046875,
+    "cy": 348.8353576660156,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.1201290562748909,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.1201290562748909,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029767214138445297,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 13.07373046875,
+    "cy_minus_h2": -11.164642333984375
+   },
+   "ext2_K320_parser": [
+    [
+     132.0712,
+     0.0,
+     163.3934
+    ],
+    [
+     0.0,
+     132.0712,
+     87.3338
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "14549178",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.1638793945312,
+    "fy": 733.1638793945312,
+    "cx": 650.1714477539062,
+    "cy": 360.274658203125,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06302615255117416,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06302615255117416,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002430433655050024,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 10.17144775390625,
+    "cy_minus_h2": 0.274658203125
+   },
+   "wrist_K320_parser": [
+    [
+     183.291,
+     0.0,
+     162.6679
+    ],
+    [
+     0.0,
+     183.291,
+     90.1937
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+52ca9b6a+2024-01-17-17h-15m-39s",
+   "robot_serial": "fr3-295341-1326895",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/fr3-295341-1326895_.json",
+    "n_iters": 12,
+    "final_cost": 42739212288.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2024-01-17/Wed_Jan_17_17:15:39_2024",
+   "raw_dir_suffix": "TRI/success/2024-01-17/Wed_Jan_17_17:15:39_2024",
+   "dq_norm_rad": 0.023185643349469532,
+   "dT_gw_rot_deg": 0.9850654510111625,
+   "dT_gw_trans_m": 0.003032147732805244,
+   "ext1_centre_m": [
+    0.2372,
+    0.5188,
+    0.3766
+   ],
+   "ext1_dist_from_base_m": 0.6835405221543019,
+   "ext1_axis_angle_to_workspace_deg": 37.916232789141844,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.5261,
+    0.4193,
+    0.1212
+   ],
+   "ext2_centre_m": [
+    0.1057,
+    -0.4305,
+    0.4417
+   ],
+   "ext2_dist_from_base_m": 0.6257673580924704,
+   "ext2_axis_angle_to_workspace_deg": 25.79331180857486,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.3949,
+    0.4172,
+    0.248
+   ],
+   "ext1_int": {
+    "serial": "28451778",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 523.1943969726562,
+    "fy": 523.1943969726562,
+    "cx": 634.02490234375,
+    "cy": 365.7067565917969,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000008672475815,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000008672475815,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029991270404252646,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -5.97509765625,
+    "cy_minus_h2": 5.706756591796875
+   },
+   "ext1_K320_parser": [
+    [
+     130.7986,
+     0.0,
+     158.6312
+    ],
+    [
+     0.0,
+     130.7986,
+     91.5517
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "28813166",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.7733764648438,
+    "fy": 525.7733764648438,
+    "cx": 636.3092651367188,
+    "cy": 365.46746826171875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12002801895141602,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12002801895141602,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029815329440481264,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.69073486328125,
+    "cy_minus_h2": 5.46746826171875
+   },
+   "ext2_K320_parser": [
+    [
+     131.4433,
+     0.0,
+     159.2023
+    ],
+    [
+     0.0,
+     131.4433,
+     91.4919
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19553404",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.760986328125,
+    "fy": 731.760986328125,
+    "cx": 649.425048828125,
+    "cy": 371.38446044921875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06300531327724457,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06300531327724457,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024245977218129156,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 9.425048828125,
+    "cy_minus_h2": 11.38446044921875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9402,
+     0.0,
+     162.4813
+    ],
+    [
+     0.0,
+     182.9402,
+     92.9711
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+52ca9b6a+2024-01-22-15h-05m-30s",
+   "robot_serial": "fr3-295341-1326895",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/fr3-295341-1326895_.json",
+    "n_iters": 12,
+    "final_cost": 42739212288.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2024-01-22/Mon_Jan_22_15:05:30_2024",
+   "raw_dir_suffix": "TRI/success/2024-01-22/Mon_Jan_22_15:05:30_2024",
+   "dq_norm_rad": 0.023185643349469532,
+   "dT_gw_rot_deg": 0.9850654510111625,
+   "dT_gw_trans_m": 0.003032147732805244,
+   "ext1_centre_m": [
+    0.3055,
+    0.4653,
+    0.4143
+   ],
+   "ext1_dist_from_base_m": 0.6938690978516736,
+   "ext1_axis_angle_to_workspace_deg": 26.383987991336173,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.58,
+    0.3062,
+    0.2266
+   ],
+   "ext2_centre_m": [
+    0.0187,
+    -0.5517,
+    0.4264
+   ],
+   "ext2_dist_from_base_m": 0.697494923533947,
+   "ext2_axis_angle_to_workspace_deg": 16.647001422006806,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.4623,
+    0.2247,
+    0.4715
+   ],
+   "ext1_int": {
+    "serial": "28451778",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.93359375,
+    "fy": 522.93359375,
+    "cx": 634.0252075195312,
+    "cy": 365.7066955566406,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000008672475815,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000008672475815,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002995098768110438,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -5.97479248046875,
+    "cy_minus_h2": 5.706695556640625
+   },
+   "ext1_K320_parser": [
+    [
+     130.7334,
+     0.0,
+     158.6313
+    ],
+    [
+     0.0,
+     130.7334,
+     91.5517
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "28813166",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.7733764648438,
+    "fy": 525.7733764648438,
+    "cx": 636.3092651367188,
+    "cy": 365.46746826171875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12002801895141602,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12002801895141602,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029815329440481264,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.69073486328125,
+    "cy_minus_h2": 5.46746826171875
+   },
+   "ext2_K320_parser": [
+    [
+     131.4433,
+     0.0,
+     159.2023
+    ],
+    [
+     0.0,
+     131.4433,
+     91.4919
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19553404",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.5677490234375,
+    "fy": 731.5677490234375,
+    "cx": 649.4197998046875,
+    "cy": 371.3812561035156,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06300531327724457,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06300531327724457,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024263559841841698,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 9.4197998046875,
+    "cy_minus_h2": 11.381256103515625
+   },
+   "wrist_K320_parser": [
+    [
+     182.8919,
+     0.0,
+     162.4799
+    ],
+    [
+     0.0,
+     182.8919,
+     92.9703
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+52ca9b6a+2024-01-29-15h-01m-46s",
+   "robot_serial": "fr3-295341-1326895",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/fr3-295341-1326895_.json",
+    "n_iters": 12,
+    "final_cost": 42739212288.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2024-01-29/Mon_Jan_29_15:01:46_2024",
+   "raw_dir_suffix": "TRI/success/2024-01-29/Mon_Jan_29_15:01:46_2024",
+   "dq_norm_rad": 0.023185643349469532,
+   "dT_gw_rot_deg": 0.9850654510111625,
+   "dT_gw_trans_m": 0.003032147732805244,
+   "ext1_centre_m": [
+    0.1825,
+    0.5615,
+    0.5382
+   ],
+   "ext1_dist_from_base_m": 0.7989191748205394,
+   "ext1_axis_angle_to_workspace_deg": 23.205703194651797,
+   "ext1_centre_if_read_as_c2w_m": [
+    0.4905,
+    0.4544,
+    0.4373
+   ],
+   "ext2_centre_m": [
+    -0.1259,
+    -0.6205,
+    0.4201
+   ],
+   "ext2_dist_from_base_m": 0.7598551744292315,
+   "ext2_axis_angle_to_workspace_deg": 8.826598148570115,
+   "ext2_centre_if_read_as_c2w_m": [
+    -0.3402,
+    0.3241,
+    0.5972
+   ],
+   "ext1_int": {
+    "serial": "28451778",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 523.4215087890625,
+    "fy": 523.4215087890625,
+    "cx": 634.0244140625,
+    "cy": 365.70635986328125,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000008672475815,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000008672475815,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029937326076634463,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -5.9755859375,
+    "cy_minus_h2": 5.70635986328125
+   },
+   "ext1_K320_parser": [
+    [
+     130.8554,
+     0.0,
+     158.6311
+    ],
+    [
+     0.0,
+     130.8554,
+     91.5516
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "28813166",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 525.7733764648438,
+    "fy": 525.7733764648438,
+    "cx": 636.3092651367188,
+    "cy": 365.46746826171875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12002801895141602,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12002801895141602,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029815329440481264,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.69073486328125,
+    "cy_minus_h2": 5.46746826171875
+   },
+   "ext2_K320_parser": [
+    [
+     131.4433,
+     0.0,
+     159.2023
+    ],
+    [
+     0.0,
+     131.4433,
+     91.4919
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19553404",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.6492309570312,
+    "fy": 731.6492309570312,
+    "cx": 649.4215087890625,
+    "cy": 371.382568359375,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06300531327724457,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06300531327724457,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024261521805186703,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 9.4215087890625,
+    "cy_minus_h2": 11.382568359375
+   },
+   "wrist_K320_parser": [
+    [
+     182.9123,
+     0.0,
+     162.4804
+    ],
+    [
+     0.0,
+     182.9123,
+     92.9706
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+749baf62+2023-09-05-17h-19m-29s",
+   "robot_serial": "panda-295341-1326372",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/panda-295341-1326372_.json",
+    "n_iters": 11,
+    "final_cost": 5254904832.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2023-09-05/Tue_Sep__5_17:19:29_2023",
+   "raw_dir_suffix": "TRI/success/2023-09-05/Tue_Sep__5_17:19:29_2023",
+   "dq_norm_rad": 0.025186651091791964,
+   "dT_gw_rot_deg": 1.7960224803409177,
+   "dT_gw_trans_m": 0.004056318969461342,
+   "ext1_centre_m": [
+    0.2863,
+    -0.3146,
+    0.4455
+   ],
+   "ext1_dist_from_base_m": 0.6160241700795925,
+   "ext1_axis_angle_to_workspace_deg": 7.420573714056718,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.42,
+    0.2069,
+    0.4003
+   ],
+   "ext2_centre_m": [
+    0.2467,
+    0.3342,
+    0.2731
+   ],
+   "ext2_dist_from_base_m": 0.49713238833094414,
+   "ext2_axis_angle_to_workspace_deg": 19.73506506361504,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.359,
+    0.1465,
+    0.3111
+   ],
+   "ext1_int": {
+    "serial": "23404442",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.6639404296875,
+    "fy": 522.6639404296875,
+    "cx": 640.4920043945312,
+    "cy": 353.2306213378906,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.1200421079993248,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.1200421079993248,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029982202157867732,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.49200439453125,
+    "cy_minus_h2": -6.769378662109375
+   },
+   "ext1_K320_parser": [
+    [
+     130.666,
+     0.0,
+     160.248
+    ],
+    [
+     0.0,
+     130.666,
+     88.4327
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "29838012",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.8348999023438,
+    "fy": 522.8348999023438,
+    "cx": 639.2377319335938,
+    "cy": 352.5007629394531,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000840902328491,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000840902328491,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029949861828129087,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -0.76226806640625,
+    "cy_minus_h2": -7.499237060546875
+   },
+   "ext2_K320_parser": [
+    [
+     130.7087,
+     0.0,
+     159.9344
+    ],
+    [
+     0.0,
+     130.7087,
+     88.2502
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19824535",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.6873779296875,
+    "fy": 733.6873779296875,
+    "cx": 650.0894775390625,
+    "cy": 354.6379699707031,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06280392408370972,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06280392408370972,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024224743272611704,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 10.0894775390625,
+    "cy_minus_h2": -5.362030029296875
+   },
+   "wrist_K320_parser": [
+    [
+     183.4218,
+     0.0,
+     162.6474
+    ],
+    [
+     0.0,
+     183.4218,
+     88.7845
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "TRI+938130c4+2023-08-09-16h-14m-09s",
+   "robot_serial": "panda-295341-1326372",
+   "lab": "TRI",
+   "meta": {
+    "production_file": "TRI/panda-295341-1326372_.json",
+    "n_iters": 11,
+    "final_cost": 5254904832.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "TRI/success/2023-08-09/Wed_Aug__9_16:14:09_2023",
+   "raw_dir_suffix": "TRI/success/2023-08-09/Wed_Aug__9_16:14:09_2023",
+   "dq_norm_rad": 0.025186651091791964,
+   "dT_gw_rot_deg": 1.7960224803409177,
+   "dT_gw_trans_m": 0.004056318969461342,
+   "ext1_centre_m": [
+    -0.0187,
+    -0.4599,
+    0.4633
+   ],
+   "ext1_dist_from_base_m": 0.6531099787732163,
+   "ext1_axis_angle_to_workspace_deg": 3.1040896044992894,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.3071,
+    0.2639,
+    0.5124
+   ],
+   "ext2_centre_m": [
+    -0.093,
+    0.5662,
+    0.4582
+   ],
+   "ext2_dist_from_base_m": 0.7342773919387355,
+   "ext2_axis_angle_to_workspace_deg": 4.185444496133007,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.3315,
+    0.2958,
+    0.5846
+   ],
+   "ext1_int": {
+    "serial": "23404442",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 522.6597290039062,
+    "fy": 522.6597290039062,
+    "cx": 640.4906005859375,
+    "cy": 353.2323913574219,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.1200421079993248,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.1200421079993248,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002995994808827618,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 0.4906005859375,
+    "cy_minus_h2": -6.767608642578125
+   },
+   "ext1_K320_parser": [
+    [
+     130.6649,
+     0.0,
+     160.2477
+    ],
+    [
+     0.0,
+     130.6649,
+     88.4331
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "29838012",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 523.038818359375,
+    "fy": 523.038818359375,
+    "cx": 639.23828125,
+    "cy": 352.50067138671875,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12000840902328491,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12000840902328491,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029927897906389944,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -0.76171875,
+    "cy_minus_h2": -7.49932861328125
+   },
+   "ext2_K320_parser": [
+    [
+     130.7597,
+     0.0,
+     159.9346
+    ],
+    [
+     0.0,
+     130.7597,
+     88.2502
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "19824535",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 733.6873779296875,
+    "fy": 733.6873779296875,
+    "cx": 650.0894775390625,
+    "cy": 354.6379699707031,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06280392408370972,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06280392408370972,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0024224743272611704,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 10.0894775390625,
+    "cy_minus_h2": -5.362030029296875
+   },
+   "wrist_K320_parser": [
+    [
+     183.4218,
+     0.0,
+     162.6474
+    ],
+    [
+     0.0,
+     183.4218,
+     88.7845
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  },
+  {
+   "uuid": "WEIRD+e604eeed+2023-12-08-18h-21m-50s",
+   "robot_serial": "panda-295341-1325132",
+   "lab": "WEIRD",
+   "meta": {
+    "production_file": "WEIRD/panda-295341-1325132_.json",
+    "n_iters": 11,
+    "final_cost": 13373229056.0,
+    "stop_reason": "cost_plateau"
+   },
+   "scene_suffix": "WEIRD/success/2023-12-08/Fri_Dec__8_18:21:50_2023",
+   "raw_dir_suffix": "WEIRD/success/2023-12-08/Fri_Dec__8_18:21:50_2023",
+   "dq_norm_rad": 0.00905242087620717,
+   "dT_gw_rot_deg": 2.31464901329094,
+   "dT_gw_trans_m": 0.009674581570401353,
+   "ext1_centre_m": [
+    0.0033,
+    -0.2599,
+    0.6362
+   ],
+   "ext1_dist_from_base_m": 0.6872177300045832,
+   "ext1_axis_angle_to_workspace_deg": 17.384046916288217,
+   "ext1_centre_if_read_as_c2w_m": [
+    -0.2657,
+    0.5159,
+    0.3682
+   ],
+   "ext2_centre_m": [
+    -0.0674,
+    0.5823,
+    0.3887
+   ],
+   "ext2_dist_from_base_m": 0.7033597522868876,
+   "ext2_axis_angle_to_workspace_deg": 14.985544360921597,
+   "ext2_centre_if_read_as_c2w_m": [
+    0.4955,
+    0.2079,
+    0.4539
+   ],
+   "ext1_int": {
+    "serial": "23804457",
+    "role": "ext1",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 523.8110961914062,
+    "fy": 523.8110961914062,
+    "cx": 636.3058471679688,
+    "cy": 368.0235290527344,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.11998505890369415,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.11998505890369415,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029929719172230307,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -3.69415283203125,
+    "cy_minus_h2": 8.023529052734375
+   },
+   "ext1_K320_parser": [
+    [
+     130.9528,
+     0.0,
+     159.2015
+    ],
+    [
+     0.0,
+     130.9528,
+     92.1309
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "ext2_int": {
+    "serial": "28834630",
+    "role": "ext2",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 521.635498046875,
+    "fy": 521.635498046875,
+    "cx": 657.0242309570312,
+    "cy": 355.4039611816406,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.12013506144285202,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.12013506144285202,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.0029939553752171832,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": 17.02423095703125,
+    "cy_minus_h2": -4.596038818359375
+   },
+   "ext2_K320_parser": [
+    [
+     130.4089,
+     0.0,
+     164.3811
+    ],
+    [
+     0.0,
+     130.4089,
+     88.976
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "wrist_int": {
+    "serial": "13263313",
+    "role": "wrist",
+    "wh": [
+     1280,
+     720
+    ],
+    "fx": 731.89453125,
+    "fy": 731.89453125,
+    "cx": 629.2788696289062,
+    "cy": 348.6899719238281,
+    "disto_all_zero": true,
+    "left_equals_right_K": true,
+    "T_rl_rot_is_I": true,
+    "T_rl_t": [
+     0.06297097355127335,
+     0.0,
+     0.0
+    ],
+    "baseline_m": 0.06297097355127335,
+    "baseline_eq_Tx": true,
+    "fov_h_recomputed_minus_stored_deg": -0.002426013710589814,
+    "sdk": "5.1.2",
+    "fps": 60.0,
+    "cx_minus_w2": -10.72113037109375,
+    "cy_minus_h2": -11.310028076171875
+   },
+   "wrist_K320_parser": [
+    [
+     182.9736,
+     0.0,
+     157.4447
+    ],
+    [
+     0.0,
+     182.9736,
+     87.2975
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ]
+  }
+ ],
+ "aggregate": {
+  "n": 25,
+  "ext_dist_from_base_m_range": [
+   0.3218531537738547,
+   1.1608001666533545
+  ],
+  "ext_axis_to_workspace_deg_max": 39.49212928913864,
+  "all_disto_zero": true,
+  "all_left_equals_right": true,
+  "all_1280x720": false,
+  "T_right_from_left_t_signs": [
+   [
+    1,
+    0,
+    0
+   ]
+  ],
+  "baselines_m": [
+   0.063,
+   0.12
+  ],
+  "sdk_versions": [
+   "5.1.2"
+  ],
+  "dT_gw_rot_deg_max": 39.068645920179655,
+  "dT_gw_trans_m_max": 0.02338320338439396,
+  "dq_norm_max": 0.17559685439594283,
+  "scene_suffix_parse_failures": 0,
+  "scene_suffix_eq_raw_dir_suffix": true
+ }
+}

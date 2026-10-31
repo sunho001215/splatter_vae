@@ -1,0 +1,126 @@
+{
+ "episode": "AUTOLab+0d4edc83+2023-10-21-19h-07m-04s",
+ "robot": "FR3-295341-1326595",
+ "variants": {
+  "pw | card: FLIP.Tgw.dT.inv(FK(q+dq)), rot180": {
+   "color_mae_median": 44.666666666666664,
+   "inlier_2cm": 0.15333821108468995,
+   "signed_median_m": 0.11773076492378154,
+   "one_sided_median_m": 0.016096794139898202
+  },
+  "pw | no corrections: FLIP.Tgw.inv(FK(q)), rot180": {
+   "color_mae_median": 39.333333333333336,
+   "inlier_2cm": 0.18255667194614927,
+   "signed_median_m": 0.07279014629183714,
+   "one_sided_median_m": 0.015066700565008043
+  },
+  "pw | dq only": {
+   "color_mae_median": 40.666666666666664,
+   "inlier_2cm": 0.17789049770973592,
+   "signed_median_m": 0.08374878828794519,
+   "one_sided_median_m": 0.014524764663247175
+  },
+  "pw | dT only": {
+   "color_mae_median": 44.333333333333336,
+   "inlier_2cm": 0.15347049679938313,
+   "signed_median_m": 0.11042224142880776,
+   "one_sided_median_m": 0.016311339061086727
+  },
+  "pw | inv(dT) instead of dT": {
+   "color_mae_median": 34.666666666666664,
+   "inlier_2cm": 0.2924904396510785,
+   "signed_median_m": 0.04422732552277467,
+   "one_sided_median_m": 0.011688224925424429
+  },
+  "pw | dT world side: FLIP.Tgw.inv(FK(q+dq)).dT": {
+   "color_mae_median": 38.333333333333336,
+   "inlier_2cm": 0.19158348657270596,
+   "signed_median_m": 0.07271753939713166,
+   "one_sided_median_m": 0.011900487331394038
+  },
+  "pw | inv(dT) world side": {
+   "color_mae_median": 43.0,
+   "inlier_2cm": 0.11582216368378916,
+   "signed_median_m": 0.09719541732729582,
+   "one_sided_median_m": 0.02526552143569899
+  },
+  "pw | dT before Tgw: FLIP.dT.Tgw.inv(FK(q+dq))": {
+   "color_mae_median": 43.333333333333336,
+   "inlier_2cm": 0.151212999087418,
+   "signed_median_m": 0.103688098162949,
+   "one_sided_median_m": 0.017529630781421196
+  },
+  "pw | q-dq": {
+   "color_mae_median": 42.666666666666664,
+   "inlier_2cm": 0.15858166497524373,
+   "signed_median_m": 0.09995647611604841,
+   "one_sided_median_m": 0.015989361584080763
+  },
+  "pw | cartesian instead of FK: FLIP.Tgw.inv(T(cart)), rot180": {
+   "color_mae_median": 39.333333333333336,
+   "inlier_2cm": 0.1825651178617831,
+   "signed_median_m": 0.07278914436837236,
+   "one_sided_median_m": 0.015065679476760338
+  },
+  "d3 | card: FLIP.Tgw.dT.inv(FK(q+dq)), rot180": {
+   "color_mae_median": 33.0,
+   "inlier_2cm": 0.2563816287185494,
+   "signed_median_m": 0.05432270392251802,
+   "one_sided_median_m": 0.011470377760747663
+  },
+  "d3 | no corrections: FLIP.Tgw.inv(FK(q)), rot180": {
+   "color_mae_median": 30.0,
+   "inlier_2cm": 0.4070387442381961,
+   "signed_median_m": 0.007118458777969516,
+   "one_sided_median_m": 0.011530019252697046
+  },
+  "d3 | dq only": {
+   "color_mae_median": 25.333333333333332,
+   "inlier_2cm": 0.465863478691774,
+   "signed_median_m": 0.01231393762605519,
+   "one_sided_median_m": 0.009178571492744148
+  },
+  "d3 | dT only": {
+   "color_mae_median": 31.0,
+   "inlier_2cm": 0.31490772868240857,
+   "signed_median_m": 0.03937712203156579,
+   "one_sided_median_m": 0.011174147575106083
+  },
+  "d3 | inv(dT) instead of dT": {
+   "color_mae_median": 30.333333333333332,
+   "inlier_2cm": 0.30675505050505053,
+   "signed_median_m": -0.0030815366089903262,
+   "one_sided_median_m": 0.02209868645715718
+  },
+  "d3 | dT world side: FLIP.Tgw.inv(FK(q+dq)).dT": {
+   "color_mae_median": 28.666666666666668,
+   "inlier_2cm": 0.34344622697563876,
+   "signed_median_m": 0.020897257835226613,
+   "one_sided_median_m": 0.013531307730971665
+  },
+  "d3 | inv(dT) world side": {
+   "color_mae_median": 29.0,
+   "inlier_2cm": 0.32789514183915625,
+   "signed_median_m": 0.024745602056451266,
+   "one_sided_median_m": 0.014529761443088818
+  },
+  "d3 | dT before Tgw: FLIP.dT.Tgw.inv(FK(q+dq))": {
+   "color_mae_median": 30.666666666666668,
+   "inlier_2cm": 0.36554219694583895,
+   "signed_median_m": 0.030964908617617443,
+   "one_sided_median_m": 0.01052960800416261
+  },
+  "d3 | q-dq": {
+   "color_mae_median": 32.333333333333336,
+   "inlier_2cm": 0.3297375822953049,
+   "signed_median_m": 0.0281089658090814,
+   "one_sided_median_m": 0.01245382061704875
+  },
+  "d3 | cartesian instead of FK: FLIP.Tgw.inv(T(cart)), rot180": {
+   "color_mae_median": 30.0,
+   "inlier_2cm": 0.4070387442381961,
+   "signed_median_m": 0.007118461962185907,
+   "one_sided_median_m": 0.011530041563901902
+  }
+ }
+}

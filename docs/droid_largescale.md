@@ -5,8 +5,12 @@ Branch `droid-largescale-20261031`, 2026-10-31. Code: `s4d/data/droid/largescale
 `scripts/droid_ls_build_rlds_index.py` and `scripts/droid_ls_build_manifest.py`; config overlay:
 `configs/droid/largescale.yaml`. Status and TODOs: `docs/droid_largescale_STATUS.md`.
 
-Nothing in this work read, listed or wrote `/home/ws/data/droid*`. No real training was run and nothing large was
-downloaded. All checks ran on synthetic fixtures built to match the released schemas. Each claim below carries a tag:
+The design below was first written without data access (synthetic fixtures only). On 2026-10-31 it was validated on
+real bytes (read-only DROID RLDS, 62 PointWorld episodes, the DROID-3D files, one raw DROID episode); the findings,
+fixes and numbers are in `docs/droid_largescale_validation_20261031.md` and are tagged **VERIFIED-REAL** below.
+Each claim below carries a tag:
+
+- **VERIFIED-REAL**: measured on real data on 2026-10-31 (scope stated with the claim).
 
 - **VERIFIED-bytes**: read from released bytes.
 - **VERIFIED-code**: read in the publisher's own reader or writer code at a pinned commit.
@@ -59,11 +63,16 @@ Sources: `features.json` and `dataset_info.json` (47 KB total) fetched from
 - **Not in the RLDS release (VERIFIED):** per-step timestamps, intrinsics, extrinsics.
 - **LeRobot discrepancy:** LeRobot's DROID port mentions extra metadata such as `extrinsics_*`. Those fields are
   **absent** from this `features.json`, so nothing here relies on them.
-- **Wire layout (ASSUMED, guarded):** each record is one episode serialized by TFDS as a flat `tf.train.Example`
-  with keys `steps/<path>` flattened over steps, numbers as packed `float_list`, and float64 stored as float32.
-  - Guard: the indexer refuses any record whose numeric payload is not a packed float list of exactly
+- **Wire layout (VERIFIED-REAL, shards 463/464 = 104 records, then 3,034 records of 63 shards):** each record is one
+  episode serialized by TFDS as a flat `tf.train.Example` with keys `steps/<path>` flattened over steps, numbers as
+  packed `float_list` (float64 stored as float32: exactly `4 * width * T` bytes), one key set (the 23 keys of
+  `features.json`, no more, no less), `is_first`/`is_last` true exactly at the first/last step, JPEG 180x320.
+  - Record counts equal `dataset_info.json` `splits[].shardLengths` (shard 463: 56, 464: 48), which gives global
+    ordinals: shard 463 row 27 = ordinal 21512 = the PointWorld sample episode (127 steps).
+  - RLDS step `k` = raw `trajectory.h5` step `k` for k < 127 (the release drops the last of 128 raw steps); state
+    agrees to 1.2e-7.
+  - Guard (kept): the indexer refuses any record whose numeric payload is not a packed float list of exactly
     `4 * width * T` bytes, or whose per-camera frame counts differ.
-  - Supporting evidence: the earlier sample's zero xyz error against PointWorld float32 poses.
 
 ### 2.2 PointWorld-DROID (`nvidia/PointWorld-DROID` @ `dd9aaeec`)
 
@@ -79,7 +88,7 @@ Sources: `docs/POINTWORLD_SCHEMA.md`, the HF tree API, `_shards_manifest.json`, 
   - `ext1_cam_serial`, `ext2_cam_serial`.
   - Every other DROID metadata key, including `wrist_cam_serial`, `robot_serial` and
     `{ext1,ext2,wrist}_cam_extrinsics` (6-vectors, cam→base). `convert_2d_flows_to_3d.py:492-494` copies them all;
-    their presence in the actual files is **ASSUMED** (optional in the code).
+    present in all 62 inspected files (VERIFIED-REAL).
 - Clip groups `"s:e"`:
   - Half-open on the canonical timeline, 11 frames, a new clip every 5 canonical steps.
   - HDF5 iterates them lexicographically, not chronologically.
@@ -97,8 +106,14 @@ Sources: `docs/POINTWORLD_SCHEMA.md`, the HF tree API, `_shards_manifest.json`, 
 
 **Depth HDF5** `<uuid>_depth.h5`:
 
-- Groups `<serial>+ext` and `<serial>+wrist` (VERIFIED-sample).
-- Each group holds `depth` (F,180,320) uint16 mm, 0 = invalid, and `timestamps` (F,) int64 ms, one per raw frame.
+- Groups `<serial>+ext` and `<serial>+wrist` (VERIFIED-sample), with attrs `camera_serial`, `camera_type`,
+  `is_wrist_camera`, plus an attribute-only group **`metadata`** (`uuid`, `camera_count`, `frame_count`,
+  `write_complete`) in every inspected file (VERIFIED-REAL, 62/62; it was missing from `docs/POINTWORLD_SCHEMA.md`).
+- Each group holds `depth` (F,180,320) uint16 mm, 0 = invalid, chunks (16,180,320) gzip, and `timestamps` (F,) int64
+  ms, one per raw frame. The timestamps are exactly the raw `trajectory.h5` `<serial>_frame_received` values (127/127
+  frames, all three cameras); `canonical_timestamps` = ext1 depth timestamps `[::2]` exactly (VERIFIED-REAL).
+- uint16 saturation **65535 mm** occurs in external depth of 2 of 62 episodes; it is treated as invalid
+  (`depth_mm_to_m`).
 - No intrinsics are stored.
 - The wrist groups come from an **unreleased** legacy pipeline (VERIFIED-code: the released `compute_depth.py`
   writes only `+ext` at 640x360). The source and storage orientation of wrist depth are therefore unknown and are
@@ -125,14 +140,17 @@ Sources: `docs/POINTWORLD_SCHEMA.md`, the HF tree API, `_shards_manifest.json`, 
 
 Sources: the dataset card, plus the authors' reader code in DepthWorld @ `6823c13d`
 (`depth_extras/extrinsics.py`, `franka_fk.py`, `disparity_to_depth.py`, `assets/gripper2wrist_transforms.json`).
-The **data files are gated**: no data bytes could be read (the local HF token had expired), so this section is
-VERIFIED-code and VERIFIED-card only.
+The data files were read on 2026-10-31 (VERIFIED-REAL: 25 records spot-checked field by field, all 73,217 /
+71,006 lines parsed for identity checks); corrections to the card-based description are marked below.
 
 **`extrinsics.jsonl`** (100 MB, 71,006 episodes, CC BY 4.0), one JSON record per line:
 
-- `episode_uuid` is the canonical DROID uuid `<LAB>+<user_id>+YYYY-MM-DD-HHh-MMm-SSs` and is the join key.
+- `episode_uuid` is the canonical DROID uuid `<LAB>+<user_id>+YYYY-MM-DD-HHh-MMm-SSs` and is the join key. User ids
+  are not always hex (`t3d58310`, ...) and TRI writes lower-case `tri+...` uuids under `TRI/` (VERIFIED-REAL).
 - `traj_id` is DepthWorld's own ordinal. The card warns against joining on it.
-- `lab`, `robot_serial`, `scene_path`.
+- `lab`, `robot_serial`, `scene_path` (a local mount path `/mnt/datasets/droid_raw/droid_raw/1.0.1/<lab>/...`; its
+  suffix parses). `robot_serial` includes the pooled placeholders `fr3-` (TRI) and `unknown` (IRIS + RAIL; 39-degree
+  `dT_gw`), which do not identify one arm (VERIFIED-REAL).
 - `T0_ext1_in_world` and `T1_ext2_in_world` are 4x4 **world→camera view matrices of the LEFT camera**, despite
   their names. World = `panda_link0`.
 - `dT_gw_gripper_in_world_correction`: 4x4, per robot.
@@ -141,16 +159,26 @@ VERIFIED-code and VERIFIED-card only.
 
 **`camera_intrinsics.jsonl`** (203 MB):
 
-- `cameras.{ext1,ext2,wrist}.{left,right}.{fx,fy,cx,cy,disto[12],width=1280,height=720,…}`: ZED factory values.
-- Per camera: `serial`, `role`, `stereo_baseline_m`, `T_right_from_left`.
+- `cameras.{ext1,ext2,wrist}.{left,right}.{fx,fy,cx,cy,disto[12],width,height,fov_h,fov_v}`: ZED SDK 5.1.2
+  **rectified** values (VERIFIED-REAL: `disto` all zero and left == right in every spot-checked record; not raw
+  factory values). 1280x720 for every external camera; the wrist is 672x376 in 1,523 records (IRIS, RAIL, REAL,
+  IPRL), where the independent x/y rescale to 320x180 is ASSUMED (no such episode was checked against images).
+- Per camera: `serial`, `role`, `stereo_baseline_m` (0.120 ext, 0.063 wrist), `T_right_from_left` = identity
+  rotation with translation `+baseline` along x, i.e. the pose of the right camera in the left frame despite its name
+  (unused here), `fps`, `zed_sdk_version`, `episode_uuid_from_config`, `camera_role_from_config`.
+- Also `traj_id`, `split`, `raw_dir`. **100 uuids appear twice** (73,217 lines, 73,117 uuids): DROID raw has the same
+  uuid under `success/` and `failure/`; the record is selected by `raw_dir` suffix (VERIFIED-REAL).
 
 **Wrist pose** (card and code):
 
 - `view(t) = FLIP · T_gw_static · dT_gw · inv(FK(q(t)+dq))`.
 - `FLIP = diag(-1,-1,1,1)`.
 - `FK` is modified-DH Franka to `panda_link8`. This module matches the DH table and the matrix form exactly.
-- `T_gw_static` = `mean_mat`, keyed per robot serial (case-insensitive fallback) in the DepthWorld asset (29 robots).
-- Stored DROID wrist images are rotated 180° relative to that frustum, so `c2w = inv(view) · Rz(180)`.
+- `T_gw_static` = `mean_mat`, keyed per robot serial (exact case first, then case-insensitive) in the DepthWorld asset
+  (29 keys). PointWorld's `real/gripper2wrist_transforms.json` has the same matrices (28 keys, max difference 0) plus
+  each entry's `wrist_cam_serial`, used as an identity check (VERIFIED-REAL).
+- Stored DROID wrist images are rotated 180° relative to that frustum, so `c2w = inv(view) · Rz(180)` (VERIFIED-REAL on
+  real wrist images, photometric test: see the validation note §3.4).
 
 **Also released:** `extrinsics_missing.json` (2,111 episodes) and `pseudolabels/` (VGGT-Ω poses, CC BY-NC). They are
 not used.
@@ -181,7 +209,11 @@ Source: `droid-dataset/droid` @ `33ae6a6`.
     consistent the way PointWorld lifted them.
   - The writer actually scaled ZED K by 0.25 without a half-pixel shift. The physically exact continuous centre would
     be `0.25·cx + 0.125`, a ≤0.375 px difference that stays inside PointWorld's own lifting.
-  - Factory ZED K (DROID-3D) is converted as `(c + 0.5)·0.25`.
+  - VERIFIED-REAL: the RLDS 320x180 frames are centre-aligned antialiased downsamples of the 1280x720 SDK-rectified
+    MP4 frames (best sub-pixel shift of a 4x4 box downsample: 0.00 px on 7 frames x 3 cameras; decimation, the
+    integer-centre `K x 0.25` mapping, fits much worse). So `(c + 0.5)·0.25` is exact for the image, and PointWorld's
+    K is 0.375 px off in x and y (`K_droid3d_minus_pw_max_px` = 0.375-0.376 on all 62 episodes).
+  - DROID-3D (SDK-rectified) K is converted as `(c + 0.5)·0.25`.
   - Each manifest row records `K_droid3d_minus_pw_max_px`.
 - **Time:** canonical index `i` ↔ raw/RLDS step `2i` (ext1 timeline `[::2]`). Depth frames are matched by nearest
   timestamp.
@@ -189,6 +221,9 @@ Source: `droid-dataset/droid` @ `33ae6a6`.
   - DROID-3D model: `w2c(t) = inv(inv(view(t)) · Rz180)`. FLIP equals Rz(180), so this reduces exactly to
     `inv(FK(q+dq) · inv(dT_gw) · inv(T_gw_static))` (tested).
   - PointWorld recipe: `w2c(t) = mean_mat · inv(T_base_ee(cartesian_position(t)))`.
+  - VERIFIED-REAL: DROID `cartesian_position` equals the Franka flange FK of `joint_position` (max 3.1e-8 m,
+    6.6e-6 degrees on the sample; median 0 on all 62 episodes), so the flange-vs-controller-EE frame conflict of
+    `mean_mat` does not arise for these robots: both recipes are the same chain.
 
 ## 4. Join design (`join.py`, manifest `s4d_droid_pointworld_droid3d_manifest_v1`)
 
@@ -200,8 +235,11 @@ Numeric ordinals such as `traj_id` and RLDS shard/row are never used as keys (te
 - **PointWorld `scene_path` suffix:** `<lab>/<outcome>/<date>/<folder>` must equal the suffixes of both RLDS
   `file_path` and `recording_folderpath`, and must be **unique** among RLDS episodes. Duplicates are rejected.
 - **`hdf5_path` tail** must equal the scene suffix.
-- **DROID-3D `scene_path` suffix**, when it parses, must agree too.
-- **`uuid_matches_folder`:** records whether the uuid date and time equal the folder time.
+- **DROID-3D records** are selected by uuid *and* path suffix (`scene_path` for extrinsics, `raw_dir` for
+  intrinsics); a record whose suffix differs is an identity mismatch.
+- **`uuid_matches_folder`:** records whether lab (case-insensitive) and uuid date-time equal the folder's asctime
+  stamp (`Fri_Oct__6_...`, `_` or `:` separators). The `<date>` directory is not compared (it is the collection day).
+  True for all 73,217 / 71,006 DROID-3D records and all 62 episodes (VERIFIED-REAL).
 
 ### 4.2 Camera identity, by serial
 
@@ -239,6 +277,15 @@ Results on fixtures:
 This is the data check for the wrist pose model, the hand-eye convention and the image/depth orientation on real
 episodes.
 
+Real data (VERIFIED-REAL, 62 episodes of one robot `FR3-295341-1326595`, one session): the orientation decision is
+clear (wrist depth is stored in the RGB orientation; as-stored residual below rotated in 53/62), but **all 62 episodes
+fail the 3 cm threshold** (as-stored median 0.18 m, range 0.045-0.58 m), so no wrist fields are emitted. Two reasons,
+both measured: (1) the statistic is not robust to the gripper fingers and arm occluding the wrist view (even DROID's
+own per-step wrist pose gives a 3.5 cm median; the signed 75th percentile is +0.24 m); (2) the published chain with
+`dT_gw` fits this robot worse than DROID's raw wrist extrinsics and than a `dq`-only variant (photometric and depth
+tests, §3.4 of the validation note). Neither the statistic nor the chain was changed (one robot is not enough
+evidence); this is an open decision.
+
 ### 4.5 Calibration modes
 
 **`droid3d`:**
@@ -250,7 +297,12 @@ episodes.
 - Swapping only the matrices is shown to break the depth test (tested).
 - K stays PointWorld's.
 - Gripper points use `FK(q+dq) · inv(FK(q)) · T_base_ee(cartesian)`. This is exact if `cartesian_position` is the
-  controller FK of `q`; the manifest records the flange→cartesian offset for checking.
+  controller FK of `q`; the manifest records the flange→cartesian offset for checking (VERIFIED-REAL: 0 within 2e-8 m).
+- VERIFIED-REAL (sample episode): DROID-3D matrices are the LEFT camera's w2c (robot gripper points vs PointWorld
+  depth: one-sided median 1.3-1.5 cm; the right-camera, `-baseline` and inverse readings give 19-95 cm). PointWorld's
+  own calibration scores 0.9-1.0 cm on this test, but that depth is PointWorld's own optimisation target, so the test
+  is not independent. The exact rebase moves pixels by at most 7e-5 px and depth by 2e-7 m; the naive matrix swap
+  raises the track depth residual from 0.7 mm to 12.7 mm.
 - Wrist uses the DROID-3D model.
 
 **`pointworld`:**
@@ -297,14 +349,22 @@ episodes.
 
 ## 6. Verified vs assumed vs blocked
 
+Updated 2026-10-31 with the real-data validation (`docs/droid_largescale_validation_20261031.md`).
+
 | Item | Status |
 |---|---|
-| RLDS keys, JPEG 180x320, 2048 shards, no timestamps or calibration | VERIFIED-bytes |
-| RLDS Example wire layout (flattened `steps/…`, float64 stored as packed float32) | ASSUMED; enforced by the indexer; first real shard will confirm |
-| PointWorld flow/depth/camera schema, w2c direction, positions not displacements, i↔2i mapping | VERIFIED-sample (1 episode) and VERIFIED-code |
-| PointWorld flow attrs `wrist_cam_serial`, `robot_serial` present | ASSUMED (VERIFIED-code: copied when present; optional in our join) |
-| PointWorld wrist depth source, intrinsics, orientation | BLOCKED (unreleased pipeline). Orientation decided per episode by wrist QA; K from DROID-3D factory values |
-| DROID-3D field names and conventions | VERIFIED-code and VERIFIED-card; **data bytes not read (gated)** |
-| Wrist `mean_mat` reference frame | CONFLICT: DepthWorld composes it with flange FK; PointWorld's generator defines it against `cartesian_position`. Detected per episode by wrist QA and the manifest's flange→cartesian offset |
-| Franka FK (Panda/FR3 same DH) | VERIFIED against DepthWorld's table and against published ready-pose flange numbers (tested) |
-| Corpus-wide join rate, real throughput, real wrist residuals | NOT MEASURED (no data access in this task) |
+| RLDS keys, JPEG 180x320, 2048 shards, no timestamps or calibration | VERIFIED-bytes, VERIFIED-REAL |
+| RLDS Example wire layout (flattened `steps/…`, float64 stored as packed float32) | VERIFIED-REAL (63 shards, 3,034 records indexed; record counts = `shardLengths`) |
+| RLDS episode identity (`file_path` = `recording_folderpath` suffix, unique) | VERIFIED-REAL on all 95,658 records (metadata-only scan) |
+| PointWorld flow/depth/camera schema, w2c direction, positions not displacements, i↔2i mapping | VERIFIED-REAL on 62 episodes (plus the depth `metadata` group and the 65535 code, now handled) |
+| PointWorld flow attrs `wrist_cam_serial`, `robot_serial` present | VERIFIED-REAL (62/62) |
+| PointWorld timestamps | VERIFIED-REAL: raw `frame_received`; canonical = ext1 `[::2]`; nearest depth index = 2i in 62/62 (ext2 max 33 ms) |
+| PointWorld wrist depth source and intrinsics | BLOCKED (unreleased pipeline); orientation VERIFIED-REAL (stored like the RGB) |
+| DROID-3D field names and conventions | VERIFIED-REAL (corrections: rectified K, duplicate uuids, `T_right_from_left` semantics, placeholder robots, 672x376 wrists) |
+| External extrinsics: DROID-3D = left-camera w2c | VERIFIED-REAL (robot-depth test on the sample) |
+| RLDS 320x180 vs 1280x720 pixel grid | VERIFIED-REAL: centre-aligned area downsample; PointWorld K 0.375 px off |
+| Wrist `mean_mat` reference frame | RESOLVED for these robots: `cartesian_position` = flange FK (VERIFIED-REAL) |
+| Wrist pose chain and QA | PARTIAL: orientation VERIFIED-REAL; chain/QA open (all 62 rejected), see §4.4 |
+| Franka FK (Panda/FR3 same DH) | VERIFIED against DepthWorld's table, published ready-pose flange numbers and real `cartesian_position` |
+| Corpus-wide join rate | Identity only: 41,599 of 42,935 PointWorld episodes join DROID-3D and RLDS; frame/serial checks measured on 62/62 only |
+| Real throughput | VERIFIED-REAL: 11.9 / 48.5 / 98.7 windows/s with 0 / 4 / 8 workers (CPU, 144x256, 62 episodes) |

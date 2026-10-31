@@ -1,0 +1,8 @@
+{
+ "windows": 34,
+ "wrist_valid_frac": 1.0,
+ "wrist_depth_valid_frac": 0.8441795110702515,
+ "track_weight_frac": 0.0472412109375,
+ "proj_depth_resid_median_m": 0.007849112153053284,
+ "episodes_with_wrist": 18
+}

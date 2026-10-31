@@ -1,0 +1,435 @@
+{
+ "shards": {
+  "droid_101-train.tfrecord-00463-of-02048": {
+   "records": 56,
+   "shardLengths": 56,
+   "kinds": {
+    "steps/observation/exterior_image_1_left": [
+     "bytes"
+    ],
+    "steps/is_last": [
+     "int64/packed"
+    ],
+    "steps/observation/exterior_image_2_left": [
+     "bytes"
+    ],
+    "steps/action_dict/cartesian_position": [
+     "float/packed"
+    ],
+    "steps/observation/cartesian_position": [
+     "float/packed"
+    ],
+    "episode_metadata/file_path": [
+     "bytes"
+    ],
+    "steps/action_dict/gripper_velocity": [
+     "float/packed"
+    ],
+    "steps/action": [
+     "float/packed"
+    ],
+    "steps/is_terminal": [
+     "int64/packed"
+    ],
+    "steps/discount": [
+     "float/packed"
+    ],
+    "steps/action_dict/joint_velocity": [
+     "float/packed"
+    ],
+    "episode_metadata/recording_folderpath": [
+     "bytes"
+    ],
+    "steps/action_dict/cartesian_velocity": [
+     "float/packed"
+    ],
+    "steps/observation/joint_position": [
+     "float/packed"
+    ],
+    "steps/is_first": [
+     "int64/packed"
+    ],
+    "steps/observation/wrist_image_left": [
+     "bytes"
+    ],
+    "steps/language_instruction_2": [
+     "bytes"
+    ],
+    "steps/language_instruction_3": [
+     "bytes"
+    ],
+    "steps/reward": [
+     "float/packed"
+    ],
+    "steps/observation/gripper_position": [
+     "float/packed"
+    ],
+    "steps/action_dict/joint_position": [
+     "float/packed"
+    ],
+    "steps/language_instruction": [
+     "bytes"
+    ],
+    "steps/action_dict/gripper_position": [
+     "float/packed"
+    ]
+   },
+   "payload_crc_ok": 3,
+   "boundary_ok": 56,
+   "float_widths_ok": 0,
+   "lang_nonempty": 43,
+   "steps_total": 18319,
+   "float_widths": {
+    "steps/action_dict/cartesian_position": 6.0,
+    "steps/observation/cartesian_position": 6.0,
+    "steps/action_dict/gripper_velocity": 1.0,
+    "steps/action": 7.0,
+    "steps/discount": 1.0,
+    "steps/action_dict/joint_velocity": 7.0,
+    "steps/action_dict/cartesian_velocity": 6.0,
+    "steps/observation/joint_position": 7.0,
+    "steps/reward": 1.0,
+    "steps/observation/gripper_position": 1.0,
+    "steps/action_dict/joint_position": 7.0,
+    "steps/action_dict/gripper_position": 1.0
+   },
+   "distinct_key_sets": 1,
+   "records_match_shardLengths": true
+  },
+  "droid_101-train.tfrecord-00464-of-02048": {
+   "records": 48,
+   "shardLengths": 48,
+   "kinds": {
+    "steps/discount": [
+     "float/packed"
+    ],
+    "steps/is_last": [
+     "int64/packed"
+    ],
+    "steps/action_dict/cartesian_velocity": [
+     "float/packed"
+    ],
+    "steps/language_instruction_3": [
+     "bytes"
+    ],
+    "steps/action_dict/cartesian_position": [
+     "float/packed"
+    ],
+    "steps/action": [
+     "float/packed"
+    ],
+    "steps/observation/exterior_image_2_left": [
+     "bytes"
+    ],
+    "steps/observation/cartesian_position": [
+     "float/packed"
+    ],
+    "steps/action_dict/gripper_velocity": [
+     "float/packed"
+    ],
+    "steps/action_dict/joint_velocity": [
+     "float/packed"
+    ],
+    "steps/reward": [
+     "float/packed"
+    ],
+    "steps/action_dict/gripper_position": [
+     "float/packed"
+    ],
+    "steps/action_dict/joint_position": [
+     "float/packed"
+    ],
+    "episode_metadata/file_path": [
+     "bytes"
+    ],
+    "steps/observation/exterior_image_1_left": [
+     "bytes"
+    ],
+    "steps/is_first": [
+     "int64/packed"
+    ],
+    "steps/is_terminal": [
+     "int64/packed"
+    ],
+    "steps/language_instruction": [
+     "bytes"
+    ],
+    "steps/observation/gripper_position": [
+     "float/packed"
+    ],
+    "episode_metadata/recording_folderpath": [
+     "bytes"
+    ],
+    "steps/language_instruction_2": [
+     "bytes"
+    ],
+    "steps/observation/wrist_image_left": [
+     "bytes"
+    ],
+    "steps/observation/joint_position": [
+     "float/packed"
+    ]
+   },
+   "payload_crc_ok": 3,
+   "boundary_ok": 48,
+   "float_widths_ok": 0,
+   "lang_nonempty": 37,
+   "steps_total": 15500,
+   "float_widths": {
+    "steps/discount": 1.0,
+    "steps/action_dict/cartesian_velocity": 6.0,
+    "steps/action_dict/cartesian_position": 6.0,
+    "steps/action": 7.0,
+    "steps/observation/cartesian_position": 6.0,
+    "steps/action_dict/gripper_velocity": 1.0,
+    "steps/action_dict/joint_velocity": 7.0,
+    "steps/reward": 1.0,
+    "steps/action_dict/gripper_position": 1.0,
+    "steps/action_dict/joint_position": 7.0,
+    "steps/observation/gripper_position": 1.0,
+    "steps/observation/joint_position": 7.0
+   },
+   "distinct_key_sets": 1,
+   "records_match_shardLengths": true
+  }
+ },
+ "features_json_keys": 23,
+ "episode_21512": {
+  "T": 127,
+  "file_path": "gs://xembodiment_data/r2d2/r2d2-data-full/AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023/trajectory.h5",
+  "terminal_last": 1,
+  "language_instruction_0": "Take the blue LEGO block, put it in the drawer and close the drawer",
+  "is_first_sum": 1,
+  "is_last_sum": 1,
+  "images_vs_tfds": {
+   "ext1": {
+    "shape": [
+     127,
+     180,
+     320,
+     3
+    ],
+    "dtype": "uint8",
+    "max_abs": 20,
+    "mean_abs": 1.543118256051327,
+    "identical_frames": 0,
+    "jpeg_soi": "ffd8",
+    "jpeg_mode_size": [
+     "RGB",
+     [
+      320,
+      180
+     ],
+     "JPEG"
+    ]
+   },
+   "ext2": {
+    "shape": [
+     127,
+     180,
+     320,
+     3
+    ],
+    "dtype": "uint8",
+    "max_abs": 21,
+    "mean_abs": 1.6118973279381743,
+    "identical_frames": 0,
+    "jpeg_soi": "ffd8",
+    "jpeg_mode_size": [
+     "RGB",
+     [
+      320,
+      180
+     ],
+     "JPEG"
+    ]
+   },
+   "wrist": {
+    "shape": [
+     127,
+     180,
+     320,
+     3
+    ],
+    "dtype": "uint8",
+    "max_abs": 20,
+    "mean_abs": 1.3525282516768737,
+    "identical_frames": 0,
+    "jpeg_soi": "ffd8",
+    "jpeg_mode_size": [
+     "RGB",
+     [
+      320,
+      180
+     ],
+     "JPEG"
+    ]
+   }
+  },
+  "numeric": {
+   "cartesian_position": {
+    "max_abs_vs_tfds": 0.0,
+    "ref_is_float32_representable": true
+   },
+   "cartesian_position_first": [
+    0.41626474261283875,
+    -0.07185999304056168,
+    0.5318871140480042,
+    2.942200183868408,
+    -0.028622282668948174,
+    0.14184673130512238
+   ],
+   "gripper_position": {
+    "max_abs_vs_tfds": 0.0,
+    "ref_is_float32_representable": true
+   },
+   "gripper_position_first": [
+    0.0
+   ],
+   "joint_position": {
+    "max_abs_vs_tfds": 0.0,
+    "ref_is_float32_representable": true
+   },
+   "joint_position_first": [
+    -0.06770375370979309,
+    -0.46032440662384033,
+    -0.05927842855453491,
+    -2.297577381134033,
+    -0.22429007291793823,
+    1.910301685333252,
+    -0.19355641305446625
+   ],
+   "action_first": [
+    0.4167468249797821,
+    -0.07199707627296448,
+    0.534380316734314,
+    2.940889596939087,
+    -0.0336335152387619,
+    0.14173205196857452,
+    0.0
+   ]
+  }
+ },
+ "features_json_vs_wire": {
+  "in_json_not_wire": [],
+  "in_wire_not_json": []
+ },
+ "features_json_dtypes": {
+  "steps/action_dict/cartesian_position": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "6"
+     ]
+    }
+   }
+  },
+  "steps/action_dict/cartesian_velocity": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "6"
+     ]
+    }
+   }
+  },
+  "steps/action_dict/gripper_position": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "1"
+     ]
+    }
+   }
+  },
+  "steps/action_dict/joint_position": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "7"
+     ]
+    }
+   }
+  },
+  "steps/observation/cartesian_position": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "6"
+     ]
+    }
+   }
+  },
+  "steps/observation/exterior_image_1_left": {
+   "image": {
+    "dtype": "uint8",
+    "encodingFormat": "jpeg",
+    "shape": {
+     "dimensions": [
+      "180",
+      "320",
+      "3"
+     ]
+    }
+   }
+  },
+  "steps/observation/exterior_image_2_left": {
+   "image": {
+    "dtype": "uint8",
+    "encodingFormat": "jpeg",
+    "shape": {
+     "dimensions": [
+      "180",
+      "320",
+      "3"
+     ]
+    }
+   }
+  },
+  "steps/observation/gripper_position": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "1"
+     ]
+    }
+   }
+  },
+  "steps/observation/joint_position": {
+   "tensor": {
+    "dtype": "float64",
+    "encoding": "none",
+    "shape": {
+     "dimensions": [
+      "7"
+     ]
+    }
+   }
+  },
+  "steps/observation/wrist_image_left": {
+   "image": {
+    "dtype": "uint8",
+    "encodingFormat": "jpeg",
+    "shape": {
+     "dimensions": [
+      "180",
+      "320",
+      "3"
+     ]
+    }
+   }
+  }
+ }
+}
