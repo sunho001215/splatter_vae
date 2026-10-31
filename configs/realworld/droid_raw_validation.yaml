@@ -14,6 +14,14 @@ adapter:
     decoder: {python: /home/ws/ws/validation-20261031/envs/media/bin/python, timeout_s: 1800}
     droid3d_extrinsics: /home/ws/ws/validation-20261031/downloads/droid_3d_extrinsics/extrinsics.jsonl
     droid3d_intrinsics: /home/ws/ws/validation-20261031/downloads/droid_3d_extrinsics/camera_intrinsics.jsonl
+    robot:   # official FR3 (franka_description 7aeeddc) + Robotiq 2F-85 (ros2_robotiq_gripper a74d007), composed by
+             # scripts/realworld_compose_robot_urdf.py; the mount is an ASSUMPTION for DROID (see its manifest)
+      urdf_path: /home/ws/ws/validation-20261031/robot_assets/fr3_robotiq_2f85_droid.urdf
+      gripper_model: robotiq_2f_85
+      gripper_joint: robotiq_85_left_knuckle_joint
+      base_frame: fr3_link0
+      flange_frame: fr3_link8
+      joint_names: [fr3_joint1, fr3_joint2, fr3_joint3, fr3_joint4, fr3_joint5, fr3_joint6, fr3_joint7]
 workers:
   foundation_stereo:
     python: /home/ws/ws/validation-20261031/envs/foundation_stereo/bin/python
@@ -42,9 +50,38 @@ workers:
       HF_HOME: /home/ws/ws/validation-20261031/cache/hf
       XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
       TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
+  sam3:   # optional baseline stage (SNeRL semantics); gated facebook/sam3 checkpoint, HF revision 3c879f39
+    python: /home/ws/ws/validation-20261031/envs/sam3/bin/python
+    repo_dir: /home/ws/ws/validation-20261031/upstream/sam3
+    expected_commit: f1647e8d0c1d280991f4d1b7d974c2704537fe66
+    checkpoint: /home/ws/ws/validation-20261031/downloads/sam3/sam3.pt
+    timeout_s: 7200
+    env:
+      CUDA_VISIBLE_DEVICES: MIG-02b55a66-ed41-53c2-9004-c3f5619d6369
+      HF_HUB_OFFLINE: "1"
+      HF_HOME: /home/ws/ws/validation-20261031/cache/hf
+      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
+      XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
+      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
+  dino_snerl:   # optional baseline stage; runs in the repository venv like the SNeRL consumer
+    python: /home/ws/ws/splatter4d/.venv/bin/python
+    expected_commit: 7c446df5b9f45747937fb0d72314eb9f7b66930a
+    timeout_s: 3600
+    env:
+      CUDA_VISIBLE_DEVICES: MIG-423203d9-5801-5892-a489-30f16a5a2d4a
+      S4D_CACHE_ROOT: /home/ws/ws/splatter4d/.cache   # sha256-checked dino_deitsmall8_pretrain.pth (read only)
+      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
+      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
 stages:
-  stereo_depth: {chunk: 4, references: [left, right]}
+  stereo_depth: {chunk: 16, references: [left, right]}
   calibrate: {source: adapter_provided}
   track2d: {window: 16, step: 8, grid_stride: 16, tracker_hw: [360, 640]}
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
   export: {strides: [1, 2], validation_tail_frames: 0}
+  sam3_masks:
+    cameras: [ext1/left, ext2/left]
+    prompts: {robot arm: robot, gripper: robot, blue brick: object, drawer: fixture}
+    mode: segment_video   # one session per camera over the whole clip: temporal identities within the episode
+    chunk: 127
+    score_threshold: 0.5
+  dino_snerl: {backbone: scratch}
