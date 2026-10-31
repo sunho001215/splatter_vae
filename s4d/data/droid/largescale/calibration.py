@@ -20,6 +20,7 @@ were *not* read here, see docs/droid_largescale.md):
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -107,10 +108,32 @@ def parse_droid3d_intrinsics(record: dict, role: str, *, eye: str = "left", out_
     }
 
 
-def load_hand_eye(path: str | Path) -> dict[str, np.ndarray]:
+class HandEye(dict):
+    """robot serial -> ``mean_mat``; ``wrist_serials`` holds the wrist camera serial of each entry when the asset
+    records it (PointWorld's copy does, DepthWorld's does not)."""
+
+    def __init__(self, matrices: dict, wrist_serials: dict | None = None):
+        super().__init__(matrices)
+        self.wrist_serials = dict(wrist_serials or {})
+
+
+def load_hand_eye(path: str | Path) -> HandEye:
     """``gripper2wrist_transforms.json``: robot serial -> ``mean_mat`` (wrist camera <- flange)."""
     data = json.loads(Path(path).read_text())
-    return {str(serial): _matrix(entry["mean_mat"], f"mean_mat[{serial}]") for serial, entry in data.items()}
+    return HandEye(
+        {str(serial): _matrix(entry["mean_mat"], f"mean_mat[{serial}]") for serial, entry in data.items()},
+        {str(serial): str(entry["wrist_cam_serial"]) for serial, entry in data.items() if entry.get("wrist_cam_serial")},
+    )
+
+
+# A Franka serial names one arm ("295341-1326595", optionally "FR3-"/"panda-" prefixed). Real DROID-3D records also
+# carry the pooled placeholders "fr3-" (TRI, 6,203 PointWorld episodes) and "unknown" (IRIS and RAIL, 475; corrections
+# of ~39 degrees), under which the hand-eye asset holds one entry each.
+ROBOT_SERIAL = re.compile(r"^(?:(?:fr3|panda)-)?\d{6}-\d{7}$", re.IGNORECASE)
+
+
+def identifies_robot(serial: str | None) -> bool:
+    return serial is not None and bool(ROBOT_SERIAL.match(str(serial)))
 
 
 def droid3d_wrist_w2c(q, dq, T_gw_static, dT_gw, *, image_rotation_deg: int = 180) -> np.ndarray:

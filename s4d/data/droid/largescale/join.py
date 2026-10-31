@@ -257,11 +257,16 @@ def build_episode_entry(
         reasons.append("no hand-eye asset given")
     T_gw = None
     if hand_eye is not None and robot_serial is not None:
-        T_gw = hand_eye.get(robot_serial)
-        if T_gw is None:
-            T_gw = next((v for k, v in hand_eye.items() if k.lower() == robot_serial.lower()), None)
+        key = robot_serial if robot_serial in hand_eye else next((k for k in hand_eye if k.lower() == robot_serial.lower()), None)
+        T_gw = None if key is None else hand_eye[key]
+        asset_wrist = getattr(hand_eye, "wrist_serials", {}).get(key) if key is not None else None
         if T_gw is None:
             reasons.append(f"robot {robot_serial} has no hand-eye entry")
+        elif asset_wrist is not None and wrist_serial is not None and asset_wrist != wrist_serial:
+            reasons.append(f"hand-eye entry {key} belongs to wrist camera {asset_wrist}, episode has {wrist_serial}")
+        elif not C.identifies_robot(robot_serial) and asset_wrist is None:
+            # a pooled placeholder serial ("unknown", "fr3-") cannot select a per-robot calibration on its own
+            reasons.append(f"robot_serial {robot_serial!r} does not identify a robot (no wrist-camera check possible)")
     elif robot_serial is None:
         reasons.append("robot_serial unknown")
     if d3i is None or "wrist" not in d3i.get("cameras", {}):

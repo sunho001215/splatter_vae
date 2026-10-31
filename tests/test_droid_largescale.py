@@ -930,3 +930,35 @@ def test_workspace_statistics_for_the_largescale_regime(env):
     assert stats["samples"] == 4 and stats["scene"]["num_points"] > 0 and np.isfinite(stats["scene"]["mean"]).all()
     with pytest.raises(ValueError, match="--rlds-root"):
         cli.dataset_for("droid_largescale", env["manifest"], SimpleNamespace(**{**vars(args), "rlds_root": None}))
+
+
+def _robot(serial, wrist_cam_serial=None):
+    """DROID-3D robot_serial -> ``serial``; the hand-eye asset keyed by it (optionally recording its wrist camera)."""
+
+    def mutate(t, e, i, h):
+        _set_line(e, lambda r: dict(r, robot_serial=serial))
+        entry = next(iter(json.loads(h.read_text()).values()))
+        if wrist_cam_serial is not None:
+            entry["wrist_cam_serial"] = wrist_cam_serial
+        h.write_text(json.dumps({serial: entry}))
+
+    return mutate
+
+
+@pytest.mark.parametrize(
+    "serial, wrist_cam, wrist_kept, reason",
+    [
+        ("unknown", None, False, "does not identify a robot"),  # real: IRIS + RAIL pooled, ~39 degree corrections
+        ("fr3-", None, False, "does not identify a robot"),  # real: TRI, truncated serial
+        ("fr3-", F.SERIALS["wrist"], True, None),  # PointWorld's asset names the wrist camera: identity is checked
+        ("FR3-295341-1326595", "14549178", False, "belongs to wrist camera"),
+        ("FR3-295341-1326595", None, True, None),
+    ],
+)
+def test_per_robot_wrist_calibration_needs_an_identified_robot(tmp_path, serial, wrist_cam, wrist_kept, reason):
+    report = _rebuild(tmp_path, _robot(serial, wrist_cam))
+    assert report["accepted"] == 1  # external cameras never depend on the wrist chain
+    row = join.load_manifest(tmp_path / "m.jsonl")[0]
+    assert (row["cameras"]["wrist"] is not None) is wrist_kept, row["wrist_unavailable"]
+    if reason:
+        assert any(reason in r for r in row["wrist_unavailable"])
