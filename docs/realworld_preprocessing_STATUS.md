@@ -82,5 +82,8 @@ merged or pushed, and no existing module imports `s4d.realworld`. Design and usa
    analogue). Then tune the gates on real residuals.
 5. If RGB appearance from the colour sensor is wanted, wire `geometry.reproject_depth` into a stage. That needs
    the depth-to-colour extrinsic from the recording.
-6. Optional: a multi-episode joint refinement per physical setup, which is closer to DepthWorld. Also define
+6. Run AllTracker at reduced resolution. Today `track2d` tracks at the native rectified size, so H and W must
+   be multiples of 8 (848x480 and 1280x720 are). For speed and memory, resize with a `PixelAffine` and map `uv`
+   back with `affine.inverse()` before lifting. Not implemented.
+7. Optional: a multi-episode joint refinement per physical setup, which is closer to DepthWorld. Also define
    3D-MVP scene bounds in the base frame for the real workspace.
