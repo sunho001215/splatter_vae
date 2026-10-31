@@ -16,7 +16,7 @@ stages:
     every: 2
   track2d: {window: 16, step: 8, grid_stride: 8, tracker_hw: null}   # e.g. [384, 640] for 720x1280 IR (multiples of 8)
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
-  export: {strides: [1, 2], allow_infrared_input: false, validation_tail_windows: 0}
+  export: {strides: [1, 2], allow_infrared_input: false, validation_tail_frames: 0, max_sync_ns: null}
 optional:
   sam3_masks: {prompts: {"robot arm": robot, "robotic gripper": robot, "TODO object": object, "table": fixture}}
   dino_snerl: {resolution: [128, 128]}

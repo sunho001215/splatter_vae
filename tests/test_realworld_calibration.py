@@ -173,3 +173,15 @@ def test_rejects_failed_optimisation():
         cal._visual_init = orig
     assert res.status == "rejected"
     assert any("optimisation failed" in r for r in res.reasons), res.reasons
+
+
+def test_non_finite_residuals_never_pass_the_gates():
+    """Observed landmarks whose model points fall behind the camera give NaN projections; they must count as
+    infinitely wrong (rejection), not vanish from medians."""
+    frames = make_episode(T_TRUE, n=12, outlier_rate=0.0)
+    cam_center = invert_T(T_TRUE)[:3, 3]
+    for f in frames[:7]:
+        # move every landmark of this frame behind the camera while keeping the 2D observations
+        f.landmarks_base = cam_center + (cam_center - f.landmarks_base)
+    res = calibrate_camera("rig0/left", frames, K, CalibrationConfig(image_hw=HW, depth_term=False))
+    assert res.status == "rejected", res.diagnostics.get("reproj_median_px")

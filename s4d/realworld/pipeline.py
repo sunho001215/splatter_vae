@@ -27,7 +27,14 @@ from s4d.realworld.geometry import (
     undistort_pixels,
     warp_affine,
 )
-from s4d.realworld.robot import RobotSurface, URDFModel, gripper_joint_value, joint_dict, landmarks
+from s4d.realworld.robot import (
+    ROBOTIQ_FINGER_JOINT_MAX,
+    RobotSurface,
+    URDFModel,
+    gripper_joint_value,
+    joint_dict,
+    landmarks,
+)
 from s4d.realworld.stereo import depth_from_pair
 from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, lift_tracks, query_grid, status_counts
 
@@ -35,6 +42,26 @@ STAGE_VERSIONS = {"ingest": "1", "stereo_depth": "1", "calibrate": "1", "track2d
 
 
 # ---------------------------------------------------------------- backends
+
+
+def backend_config(backend) -> dict:
+    """Everything that determines a backend's output (worker spec incl. commit/checkpoint, params, mock flag)."""
+    if hasattr(backend, "spec"):
+        from dataclasses import asdict as _asdict
+
+        spec = _asdict(backend.spec)
+        spec.pop("timeout_s", None)
+        return {"class": type(backend).__name__, "spec": spec, "params": backend.params,
+                "allow_mock": backend.allow_mock}
+    return {"class": type(backend).__name__, "identity": getattr(backend, "identity", {})}
+
+
+def to_model_rgb(frames: np.ndarray, stream) -> np.ndarray:
+    """Frames as models expect them: RGB channel order (BGR flipped). Infrared stays 1-channel here; workers'
+    inputs replicate it (``_model_input_rgb``) and the stage records say so."""
+    if frames.ndim == 4 and stream.channel_order == "BGR":
+        return np.ascontiguousarray(frames[..., ::-1])
+    return frames
 
 
 class StereoBackend:
@@ -114,7 +141,7 @@ def _record_fp(root, episode_id, stage) -> str:
         rio.episode_dir(root, episode_id) / "normalized")
     if rec is None:
         raise RuntimeError(f"stage {stage} of {episode_id} is not complete")
-    return rec["fingerprint"]
+    return rio.build_id(rec)
 
 
 # ---------------------------------------------------------------- stage 1: ingest
@@ -220,8 +247,8 @@ def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: 
                                            L.dtype, compression="lzf")
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
-                    left = read_frames(root, episode_id, g.left_stream, idx)
-                    right = read_frames(root, episode_id, g.right_stream, idx)
+                    left = to_model_rgb(read_frames(root, episode_id, g.left_stream, idx), L)
+                    right = to_model_rgb(read_frames(root, episode_id, g.right_stream, idx), R)
                     if maps is not None:
                         left = np.stack([remap(x, maps[0], order=1) for x in left])
                         right = np.stack([remap(x, maps[1], order=1) for x in right])
@@ -246,8 +273,24 @@ def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: 
     return rio.run_stage(rio.stage_dir(root, episode_id, "stereo_depth"), stage="stereo_depth",
                          version=STAGE_VERSIONS["stereo_depth"],
                          config={"references": list(references), "chunk": chunk, "pair_sync_ns": pair_sync_ns,
-                                 "backend": type(backend).__name__},
+                                 "backend": backend_config(backend)},
                          inputs={"ingest": _record_fp(root, episode_id, "ingest")}, build=build, force=force)
+
+
+def grid_frames(root, episode_id, meta: EpisodeMeta, g, indices, eye: str = "left") -> np.ndarray:
+    """Frames on the grid every later stage uses: rectified images when the depth stage rectified this rig. A rig
+    that needs rectification but has no rectified images yet is an error (never mix raw tracks with rectified
+    depth)."""
+    stream = g.left_stream if eye == "left" else g.right_stream
+    path = rio.stage_dir(root, episode_id, "stereo_depth") / f"{g.rig_id}.h5"
+    if path.is_file():
+        with h5py.File(path, "r") as f:
+            if eye in f and "rectified_image" in f[eye]:
+                return np.stack([f[eye]["rectified_image"][i] for i in indices])
+    s = meta.stream(stream)
+    if g.status == "metric" and not s.rectified:
+        raise RuntimeError(f"{stream}: needs rectification; run stereo_depth first")
+    return read_frames(root, episode_id, stream, indices)
 
 
 def load_depth(root, episode_id, rig, indices, reference="left"):
@@ -284,6 +327,13 @@ class RobotGeometry:
         if r.gripper_model not in ("robotiq_2f_85", "robotiq_2f_140") and closed_value is None:
             lim = self.model.joints[r.gripper_joint].limits if r.gripper_joint in self.model.joints else None
             self.closed_value = lim[1] if lim else None
+
+    def closure(self, grip) -> float:
+        """Recorded gripper state -> closure in [0, 1] (0 open) through the URDF joint range."""
+        top = self.closed_value if self.closed_value is not None else ROBOTIQ_FINGER_JOINT_MAX.get(self.desc.gripper_model)
+        value = gripper_joint_value(grip, self.desc.gripper_state_semantics, self.desc.gripper_model,
+                                    closed_value=self.closed_value)
+        return float(np.clip(value / top, 0, 1)) if top else float("nan")
 
     def q(self, q7, grip) -> dict:
         value = gripper_joint_value(grip, self.desc.gripper_state_semantics, self.desc.gripper_model,
@@ -384,7 +434,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
 
     inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
     if depth_rec is not None:
-        inputs["stereo_depth"] = depth_rec["fingerprint"]
+        inputs["stereo_depth"] = rio.build_id(depth_rec)
     return rio.run_stage(rio.stage_dir(root, episode_id, "calibrate"), stage="calibrate",
                          version=STAGE_VERSIONS["calibrate"],
                          config={"landmark_links": landmark_links, "every": every, "cfg": asdict(cfg or CalibrationConfig()),
@@ -413,22 +463,19 @@ def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int
     the tracker grid and the returned positions are mapped back to the full rectified grid with the inverse pixel
     affine, so depth lookup and lifting stay on the depth grid."""
     meta = load_meta(root, episode_id)
+    depth_rec = rio.read_record(rio.stage_dir(root, episode_id, "stereo_depth"))
+    inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
+    if depth_rec is not None:
+        inputs["stereo_depth"] = rio.build_id(depth_rec)  # tracks live on the grid the depth stage produced
 
     def build(tmp: Path) -> dict:
         summary = {}
         for g in meta.stereo:
             cam = g.left_stream
             n = len(meta.stream_timestamps_ns[cam])
-            depth_file = rio.stage_dir(root, episode_id, "stereo_depth") / f"{g.rig_id}.h5"
             files = []
             for q, idx in chunk_queries(n, window, step):
-                frames = None
-                if depth_file.is_file():
-                    with h5py.File(depth_file, "r") as f:
-                        if "rectified_image" in f["left"]:
-                            frames = np.stack([f["left"]["rectified_image"][i] for i in idx])
-                if frames is None:
-                    frames = read_frames(root, episode_id, cam, idx)
+                frames = to_model_rgb(grid_frames(root, episode_id, meta, g, idx), meta.stream(cam))
                 hw = frames.shape[1:3]
                 aff = None
                 if tracker_hw is not None and tuple(tracker_hw) != tuple(hw):
@@ -458,8 +505,8 @@ def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int
     return rio.run_stage(rio.stage_dir(root, episode_id, "track2d"), stage="track2d", version=STAGE_VERSIONS["track2d"],
                          config={"window": window, "step": step, "grid_stride": grid_stride,
                                  "tracker_hw": list(tracker_hw) if tracker_hw else None,
-                                 "backend": type(backend).__name__},
-                         inputs={"ingest": _record_fp(root, episode_id, "ingest")}, build=build, force=force)
+                                 "backend": backend_config(backend)},
+                         inputs=inputs, build=build, force=force)
 
 
 def load_tracks2d(path: Path, camera_id: str) -> Tracks2D:

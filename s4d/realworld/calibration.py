@@ -311,6 +311,7 @@ def _frame_stats(T, frames, K, cfg):
         m = np.isfinite(f.landmarks_uv).all(1) & (f.landmarks_conf > 0)
         pred, _ = project(transform_points(T, f.landmarks_base), K)
         e = np.linalg.norm(pred - f.landmarks_uv, axis=1)[m]
+        e = np.where(np.isfinite(e), e, np.inf)  # observed landmark behind the camera = infinitely wrong
         row = {"t_index": f.t_index, "timestamp_ns": int(f.timestamp_ns), "robot_in_view_fraction": float(inside.mean()),
                "landmarks_observed": int(m.sum()), "reproj_median_px": float(np.median(e)) if len(e) else None}
         if f.depth is not None:
@@ -394,7 +395,12 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     JTJ = J.T @ J
     cond = float(np.linalg.cond(JTJ))
     diag["condition_number"] = cond
-    dof = max(1, len(res.fun) - 6)
+    # only active residuals count (masked landmarks and gated depth samples are zero-filled entries)
+    active = sum(2 * int((np.isfinite(f.landmarks_uv).all(1) & (f.landmarks_conf > 0)).sum()) for f in fit)
+    if use_depth:
+        active += sum(int(g["use"].sum()) for g in gates if g is not None)
+    dof = max(1, active - 6)
+    diag["active_residuals"] = active
     try:
         covm = np.linalg.inv(JTJ) * (2 * res.cost / dof)
         std = np.sqrt(np.clip(np.diag(covm), 0, None))
@@ -402,9 +408,12 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         diag["std_trans_m"] = float(np.linalg.norm(std[3:]))
     except np.linalg.LinAlgError:
         diag["std_rot_deg"] = diag["std_trans_m"] = float("inf")
-    if cond > cfg.max_condition:
+    def bad(x, thr):  # NaN/inf never passes a gate
+        return x is None or not np.isfinite(x) or x > thr
+
+    if bad(cond, cfg.max_condition):
         reasons.append(f"ill-conditioned problem (cond {cond:.3g})")
-    if diag["std_rot_deg"] > cfg.max_rot_std_deg or diag["std_trans_m"] > cfg.max_trans_std_m:
+    if bad(diag["std_rot_deg"], cfg.max_rot_std_deg) or bad(diag["std_trans_m"], cfg.max_trans_std_m):
         reasons.append(f"uncertain extrinsic (std {diag['std_rot_deg']:.3f} deg, {diag['std_trans_m'] * 1000:.1f} mm)")
     fit_rows = _frame_stats(T, fit, K, cfg)
     hold_rows = _frame_stats(T, holdout, K, cfg)
@@ -426,15 +435,16 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         pred, _ = project(transform_points(T, f.landmarks_base[m]), K)
         errs.append(np.linalg.norm(pred - f.landmarks_uv[m], axis=1))
     errs = np.concatenate(errs) if errs else np.zeros(0)
+    errs = np.where(np.isfinite(errs), errs, np.inf)
     diag["landmark_inlier_fraction"] = float((errs < cfg.ransac_px).mean()) if len(errs) else 0.0
     delta = invert_T(T0) @ T
     diag["init_to_final"] = {"rot_deg": float(np.degrees(np.linalg.norm(vec_from_pose(delta)[:3]))),
                              "trans_m": float(np.linalg.norm(delta[:3, 3]))}
-    if diag["reproj_median_px"] is None or diag["reproj_median_px"] > cfg.max_reproj_median_px:
+    if bad(diag["reproj_median_px"], cfg.max_reproj_median_px):
         reasons.append(f"reprojection median {diag['reproj_median_px']} px > {cfg.max_reproj_median_px}")
-    if diag["heldout_reproj_median_px"] is not None and diag["heldout_reproj_median_px"] > cfg.max_heldout_reproj_median_px:
-        reasons.append(f"held-out reprojection median {diag['heldout_reproj_median_px']:.2f} px too high")
-    if use_depth and (diag["depth_abs_median_m"] is None or diag["depth_abs_median_m"] > cfg.max_depth_median_m):
+    if holdout and bad(diag["heldout_reproj_median_px"], cfg.max_heldout_reproj_median_px):
+        reasons.append(f"held-out reprojection median {diag['heldout_reproj_median_px']} px too high")
+    if use_depth and bad(diag["depth_abs_median_m"], cfg.max_depth_median_m):
         reasons.append(f"robot-depth residual median {diag['depth_abs_median_m']} m > {cfg.max_depth_median_m}")
     if diag["landmark_inlier_fraction"] < cfg.min_inlier_fraction:
         reasons.append(f"landmark inlier fraction {diag['landmark_inlier_fraction']:.2f} too low")

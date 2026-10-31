@@ -21,6 +21,7 @@ import os
 import shutil
 import tempfile
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -81,6 +82,11 @@ def fingerprint(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()
 
 
+def build_id(record: dict) -> str:
+    """What downstream stages fingerprint: changes on every rebuild (also a forced one with an identical config)."""
+    return record.get("build_id") or record["fingerprint"]
+
+
 def read_record(directory: Path) -> dict | None:
     path = Path(directory) / RECORD
     if not path.is_file():
@@ -95,7 +101,7 @@ def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs
               build: Callable[[Path], dict], force: bool = False) -> dict:
     """Idempotent, restartable stage execution.
 
-    ``inputs`` maps names to upstream completion-record fingerprints (or file hashes). ``build(tmpdir)`` writes all
+    ``inputs`` maps names to upstream build ids (``build_id(record)``) or file hashes. ``build(tmpdir)`` writes all
     outputs into ``tmpdir`` and returns a summary dict. The directory is swapped in only after ``build`` returns,
     and the record is written last, so an interrupted run leaves either the old complete stage or nothing.
     """
@@ -110,7 +116,8 @@ def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs
     try:
         started = time.time()
         summary = build(tmp)
-        record = {"stage": stage, "version": version, "fingerprint": fp, "config": config, "inputs": inputs,
+        record = {"stage": stage, "version": version, "fingerprint": fp, "build_id": uuid.uuid4().hex,
+                  "config": config, "inputs": inputs,
                   "summary": summary, "started_unix": started, "finished_unix": time.time(),
                   "files": sorted(str(p.relative_to(tmp)) for p in tmp.rglob("*") if p.is_file())}
         atomic_write_json(tmp / RECORD, record)

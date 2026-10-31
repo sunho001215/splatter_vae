@@ -150,11 +150,10 @@ def warp_affine(image: np.ndarray, affine: PixelAffine, out_hw: tuple[int, int],
     coords = [src[..., 1], src[..., 0]]
     image = np.asarray(image)
     if image.ndim == 2:
-        return map_coordinates(image, coords, order=order, mode="constant", cval=0).astype(image.dtype)
-    return np.stack(
-        [map_coordinates(image[..., c], coords, order=order, mode="constant", cval=0) for c in range(image.shape[-1])],
-        axis=-1,
-    ).astype(image.dtype)
+        return _cast(map_coordinates(image.astype(float), coords, order=order, mode="constant", cval=0), image.dtype)
+    return _cast(np.stack(
+        [map_coordinates(image[..., c].astype(float), coords, order=order, mode="constant", cval=0)
+         for c in range(image.shape[-1])], axis=-1), image.dtype)
 
 
 def resize_depth_nearest(depth: np.ndarray, out_hw: tuple[int, int]) -> np.ndarray:
@@ -167,10 +166,13 @@ def resize_depth_nearest(depth: np.ndarray, out_hw: tuple[int, int]) -> np.ndarr
 
 def distort_normalized(xy: np.ndarray, model: str, coeffs) -> np.ndarray:
     xy = np.asarray(xy, float)
-    if model == "none":
+    if model == "none" or not any(coeffs):  # RealSense often reports a model with all-zero coefficients
         return xy.copy()
     c = list(coeffs) + [0.0] * (8 - len(coeffs))
-    if model in ("opencv_plumb_bob", "realsense_brown_conrady", "realsense_modified_brown_conrady"):
+    # librealsense RS2_DISTORTION_BROWN_CONRADY equals OpenCV plumb_bob (k1 k2 p1 p2 k3). The modified and inverse
+    # Brown-Conrady variants differ (tangential terms after radial scaling / inverse mapping) and are refused
+    # until implemented against librealsense's projection code.
+    if model in ("opencv_plumb_bob", "realsense_brown_conrady"):
         k1, k2, p1, p2, k3 = c[:5]
         k4 = k5 = k6 = 0.0
     elif model == "opencv_rational":
@@ -187,7 +189,7 @@ def distort_normalized(xy: np.ndarray, model: str, coeffs) -> np.ndarray:
 
 def undistort_normalized(xy_d: np.ndarray, model: str, coeffs, iterations: int = 20) -> np.ndarray:
     """Fixed-point inverse of ``distort_normalized`` (as OpenCV's undistortPoints)."""
-    if model == "none":
+    if model == "none" or not any(coeffs):
         return np.asarray(xy_d, float).copy()
     xy = np.asarray(xy_d, float).copy()
     for _ in range(iterations):
@@ -266,14 +268,21 @@ def rectify_map(K_raw: np.ndarray, dist_model: str, dist: tuple, R_rect: np.ndar
     return np.stack([K[0, 0] * xy_d[..., 0] + K[0, 1] * xy_d[..., 1] + K[0, 2], K[1, 1] * xy_d[..., 1] + K[1, 2]], -1)
 
 
+def _cast(values: np.ndarray, dtype) -> np.ndarray:
+    if np.issubdtype(dtype, np.integer):  # round, never truncate, interpolated integer images
+        info = np.iinfo(dtype)
+        return np.clip(np.rint(values), info.min, info.max).astype(dtype)
+    return values.astype(dtype)
+
+
 def remap(image: np.ndarray, coords_xy: np.ndarray, *, order: int) -> np.ndarray:
     src = coords_xy - 0.5
     coords = [src[..., 1], src[..., 0]]
     image = np.asarray(image)
     if image.ndim == 2:
-        return map_coordinates(image.astype(float), coords, order=order, mode="constant", cval=0).astype(image.dtype)
-    return np.stack([map_coordinates(image[..., c].astype(float), coords, order=order, mode="constant", cval=0)
-                     for c in range(image.shape[-1])], -1).astype(image.dtype)
+        return _cast(map_coordinates(image.astype(float), coords, order=order, mode="constant", cval=0), image.dtype)
+    return _cast(np.stack([map_coordinates(image[..., c].astype(float), coords, order=order, mode="constant", cval=0)
+                           for c in range(image.shape[-1])], -1), image.dtype)
 
 
 def rectify_points(uv_raw: np.ndarray, K_raw: np.ndarray, dist_model: str, dist: tuple, R_rect: np.ndarray,

@@ -33,12 +33,17 @@ The original recording is never written. Adapters only read it, and the provenan
 its sha256.
 
 `s4d.realworld.io.run_stage` makes every stage idempotent and restartable:
-- The fingerprint is a hash of the stage version, its config and the fingerprints of its inputs.
+- The fingerprint is a hash of the stage version, its config and its inputs. The config includes the full
+  worker spec: commit, checkpoint, params and the mock flag. Inputs are the upstream *build ids*, which change
+  on every rebuild, including a forced rebuild with an identical config, so downstream stages are invalidated.
+  `track2d` depends on `stereo_depth` because tracks live on the rectified grid.
 - If the record exists with the same fingerprint, the stage is skipped.
 - Otherwise the stage is built in a fresh `.<stage>.building.*` directory, which is swapped in atomically. The
   record is written last.
 - An interrupted build leaves the previous complete result untouched (tested).
 - Work runs per episode, and frames are processed in bounded chunks: `chunk`, tracker `window`/`step`.
+- A per-stage lock file holds the builder's pid. A second builder is refused, and a lock left by a dead pid is
+  taken over.
 
 ## 2. Normalized episode contract (`s4d/realworld/contract.py`)
 
@@ -114,8 +119,9 @@ There are three implementations:
 4. Hash source files in `source_files`.
 5. Run `python -m s4d.realworld.cli validate --config <cfg>` until there are no errors.
 
-Nothing downstream should need to change, except possibly adding a distortion model. For example, RealSense
-`inverse_brown_conrady` is declared but not implemented for undistortion, and the stage refuses it explicitly.
+Nothing downstream should need to change, except possibly adding a distortion model. RealSense `brown_conrady` is OpenCV plumb_bob. RealSense `modified_brown_conrady` and
+`inverse_brown_conrady` with non-zero coefficients are refused explicitly (`NotImplementedError`). All-zero
+coefficients mean no distortion, whatever the model name.
 
 ## 4. Stages
 
@@ -151,8 +157,9 @@ Nothing downstream should need to change, except possibly adding a distortion mo
   - Depth is resampled nearest-neighbour (`warp_affine(order=0)`), and images bilinearly.
   - `rescale_disparity` converts disparity measured on a resized copy back to the original grid: x scale only;
     crops shift both eyes equally.
-- **Infrared input.** FoundationStereo expects 3-channel images, so IR pairs are channel-replicated as model input
-  only, and the stage record says so. The stored streams stay 1-channel infrared.
+- **Model input.** FoundationStereo expects 3-channel images, so IR pairs are channel-replicated as model input
+  only, and the stage record says so. The stored streams stay 1-channel infrared. BGR streams are converted to
+  RGB before any model call (stereo, tracker, SAM 3).
 
 ### 4.3 `calibrate`: per-episode, robot-grounded extrinsics (`calibration.py`)
 
@@ -190,7 +197,8 @@ used.
    - An optional robot mask (for example from SAM 3) further gates the depth points and gives a mask hit-rate
      diagnostic.
 4. **Diagnostics and gates.** Nothing is silently accepted: `status` is `accepted` only if every gate passes, and
-   the reasons are listed otherwise. Each item below is reported, and the ones with thresholds act as gates:
+   the reasons are listed otherwise. Non-finite values never pass a gate: an observed landmark predicted behind
+   the camera counts as infinitely wrong. The covariance uses only active residuals. Each item below is reported, and the ones with thresholds act as gates:
    - per-frame robot-in-view fraction and landmark count, giving "insufficient robot visibility";
    - motion coverage: principal extents of the flange path and the number of distinct poses ("poor motion coverage");
    - optimiser status ("optimisation failed");
@@ -247,11 +255,16 @@ optimisation.
   `s4d.data.droid.pointworld`, so the targets, methods and losses are unchanged.
 - **Gripper points.** 32 surface samples of the URDF gripper links via FK at the recorded gripper state; the
   DROID cache uses EE-pose boxes instead.
-- **Probe state.** Flange xyz, flange Euler xyz and the gripper state, in the same 7-vector layout as DROID's
-  cartesian pose plus gripper.
+- **Probe state.** Flange xyz, flange Euler xyz, and the gripper closure in [0,1] (0 = open, from the recorded
+  state through the URDF joint range). It has the same 7-vector layout as DROID's cartesian pose plus gripper;
+  DROID uses its EE pose rather than the flange.
 - **Timeline.** Windows (t, t+s, t+2s) follow the reference camera. Other cameras are matched by nearest
-  timestamp and robot state is interpolated. Frames beyond `max_sync_ns` are dropped, and the maximum errors are
-  recorded.
+  timestamp and robot state is interpolated.
+  - Frames beyond `max_sync_ns` are dropped. The default is a third of the reference frame period.
+  - Windows where two times match the same frame of another camera are dropped.
+  - The maximum sync errors are recorded.
+- **Split.** `validation_tail_frames` puts windows lying entirely in the last N reference frames into the
+  validation split. Windows that straddle the boundary are dropped, so no frame is shared between splits.
 - **Window validity.** A window must fall inside one tracking chunk for every camera.
 - **Infrared.** The training model expects RGB, so infrared cameras are exported only with
   `allow_infrared_input=True`. The images are then channel-replicated, and the manifest says
@@ -285,6 +298,9 @@ Found by reading `s4d/baselines/*`:
   - the prompts, the model identity, and per-frame per-prompt `count`, where 0 means an absent detection, listed
     in `<cam>_absent.json`;
   - a derived semantic map (highest score wins) with per-frame class presence.
+  - Segmentation runs on the same grid as depth, tracks and export: rectified images when the depth stage
+    rectified the rig.
+  - The video API gets a fresh frame directory per call.
 - **3D-MVP** needs RGB-D, K, c2w and scene bounds in the base frame. The bounds must be chosen for the real
   workspace; this is not a model stage.
 - **SinCro, ReViWo and DynaMo** use RGB only.

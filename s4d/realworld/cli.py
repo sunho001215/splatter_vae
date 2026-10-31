@@ -115,7 +115,8 @@ def main(argv=None) -> int:
         ec = st.get("export", {})
         export(root, args.episode, root / "export" / args.episode, strides=tuple(ec.get("strides", (1, 2))),
                allow_infrared_input=ec.get("allow_infrared_input", False),
-               validation_tail_windows=ec.get("validation_tail_windows", 0), force=args.force)
+               validation_tail_frames=ec.get("validation_tail_frames", 0), max_sync_ns=ec.get("max_sync_ns"),
+               force=args.force)
     return 0
 
 

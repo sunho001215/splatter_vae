@@ -103,7 +103,7 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
                allow_mock: bool = False, force: bool = False) -> dict:
     """``prompts`` maps text prompt -> SNeRL class (e.g. {"robot arm": "robot", "gripper": "robot",
     "red mug": "object", "table": "fixture"}). Stores raw instances + the derived semantic map per camera."""
-    from s4d.realworld.pipeline import load_meta, read_frames
+    from s4d.realworld.pipeline import grid_frames, load_meta, read_frames, to_model_rgb
 
     meta = load_meta(root, episode_id)
     texts, classes = list(prompts), [prompts[t] for t in prompts]
@@ -124,7 +124,13 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
                 pres_ds = f.create_dataset("class_present", (n, len(SNERL_CLASSES)), bool)
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
-                    frames = read_frames(root, episode_id, cam, idx)
+                    rig = [g for g in meta.stereo if cam in (g.left_stream, g.right_stream)]
+                    if rig:  # same grid as depth/tracks/export (rectified when the depth stage rectified)
+                        eye = "left" if rig[0].left_stream == cam else "right"
+                        frames = grid_frames(root, episode_id, meta, rig[0], idx, eye=eye)
+                    else:
+                        frames = read_frames(root, episode_id, cam, idx)
+                    frames = to_model_rgb(frames, s)
                     if frames.ndim == 3:
                         frames = np.repeat(frames[..., None], 3, -1)  # infrared: model input only, recorded
                     resp, o = call_worker(spec, mode, {"prompts": texts, "score_threshold": score_threshold},
@@ -148,5 +154,5 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
     return rio.run_stage(rio.stage_dir(root, episode_id, "sam3_masks"), stage="sam3_masks", version="1",
                          config={"cameras": cameras, "prompts": prompts, "mode": mode, "chunk": chunk,
                                  "score_threshold": score_threshold, "worker": spec.name},
-                         inputs={"ingest": rio.read_record(rio.episode_dir(root, episode_id) / "normalized")["fingerprint"]},
+                         inputs={"ingest": rio.build_id(rio.read_record(rio.episode_dir(root, episode_id) / "normalized"))},
                          build=build, force=force)

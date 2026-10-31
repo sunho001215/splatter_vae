@@ -21,7 +21,14 @@ from s4d.data.droid.pointworld import PAIR_TIMES, depth_test, nearest_timestamps
 from s4d.realworld import io as rio
 from s4d.realworld.contract import CONVENTIONS, SCHEMA_VERSION
 from s4d.realworld.geometry import invert_T, resize_affine, warp_affine
-from s4d.realworld.pipeline import RobotGeometry, accepted_calibration, load_depth, load_meta, read_frames, robot_state_at
+from s4d.realworld.pipeline import (
+    RobotGeometry,
+    accepted_calibration,
+    grid_frames,
+    load_depth,
+    load_meta,
+    robot_state_at,
+)
 from s4d.realworld.tracking import VALID
 
 FORMAT = "splatter4d_realworld_v1_tracks"
@@ -44,8 +51,12 @@ def _load_chunk(root, episode_id, name):
 
 def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolutions: dict | None = None,
            cameras: list[str] | None = None, allow_infrared_input: bool = False, allow_mock: bool = False,
-           max_sync_ns: int = 20_000_000, gripper_points: int = 32, validation_tail_windows: int = 0,
+           max_sync_ns: int | None = None, gripper_points: int = 32, validation_tail_frames: int = 0,
            force: bool = False) -> dict:
+    """``max_sync_ns`` defaults to a third of the reference camera's median frame period (so two canonical times can
+    never match the same frame of another camera). ``validation_tail_frames`` puts windows lying entirely in the
+    last frames of the reference timeline into the validation split; windows straddling the boundary are dropped,
+    so no frame is shared between splits (same episode: not generalisation evidence)."""
     meta = load_meta(root, episode_id)
     resolutions = dict(resolutions or RESOLUTIONS)
     records = {k: rio.read_record(rio.stage_dir(root, episode_id, k)) for k in
@@ -77,6 +88,8 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                            "to export channel-replicated infrared (recorded as such in the manifest)")
     ref_cam = chosen[0][0]
     ref_stamps = meta.stream_timestamps_ns[ref_cam]
+    if max_sync_ns is None:
+        max_sync_ns = int(np.median(np.diff(ref_stamps)) // 3) if len(ref_stamps) > 1 else 0
     geom = RobotGeometry(meta)
     rng = np.random.default_rng(0)
     grip_links = geom.gripper_links()
@@ -107,16 +120,26 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             per_cam = {}
             for cam, _ in chosen:
                 frames = [int(matched[cam][t]) for t in canon]
+                if not (frames[0] < frames[1] < frames[2]):
+                    break  # two canonical times matched one frame of this camera: never duplicate frames
                 hits = [ch for ch in chunks[cam] if all(f in ch["frames"] for f in frames)]
                 if not hits:
                     break
                 per_cam[cam] = {"chunk": max(hits, key=lambda ch: ch["query"])["name"], "frames": frames}
             else:
                 windows.append({"canonical_indices": canon, "stride": s, "cameras": per_cam, "split": "train"})
+    if validation_tail_frames:
+        boundary = len(ref_stamps) - int(validation_tail_frames)
+        kept = []
+        for w in windows:
+            if min(w["canonical_indices"]) >= boundary:
+                w["split"] = "validation"
+            elif max(w["canonical_indices"]) >= boundary:
+                continue  # straddles the split: dropped so no frame is shared
+            kept.append(w)
+        windows = kept
     if not windows:
         raise RuntimeError("no window fits inside the tracking chunks of every camera")
-    for w in windows[len(windows) - validation_tail_windows:] if validation_tail_windows else []:
-        w["split"] = "validation"
     capacity = max(len(_load_chunk(root, episode_id, ch["name"])["point_ids"]) for cam, _ in chosen for ch in chunks[cam])
 
     def build(tmp: Path) -> dict:
@@ -130,7 +153,8 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                 grip = np.stack([gripper_at(q_all[t], g_all[t]) for t in canon])
                 flange = [geom.model.fk(geom.q(q_all[t], g_all[t]))[meta.robot.flange_frame] for t in canon]
                 probe = np.stack([np.concatenate([T[:3, 3], Rotation.from_matrix(T[:3, :3]).as_euler("xyz"),
-                                                  [g_all[t]]]) for T, t in zip(flange, canon)]).astype(np.float32)
+                                                  [geom.closure(g_all[t])]]) for T, t in zip(flange, canon)]
+                                 ).astype(np.float32)
                 cams = []
                 for cam, rig in chosen:
                     info = w["cameras"][cam]
@@ -138,12 +162,8 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                     pos = [list(ch["frame_indices"]).index(f) for f in info["frames"]]
                     pts = ch["xyz_base"][pos].astype(np.float32)
                     vis = ch["status"][pos] == VALID
-                    depth, K, rectified = load_depth(root, episode_id, rig, info["frames"])
-                    if rectified:
-                        with h5py.File(rio.stage_dir(root, episode_id, "stereo_depth") / f"{rig}.h5", "r") as f:
-                            imgs = np.stack([f["left"]["rectified_image"][i] for i in info["frames"]])
-                    else:
-                        imgs = read_frames(root, episode_id, cam, info["frames"])
+                    depth, K, _ = load_depth(root, episode_id, rig, info["frames"])
+                    imgs = grid_frames(root, episode_id, meta, meta.rig_stereo(rig), info["frames"])
                     w2c = accepted_calibration(root, episode_id, cam).astype(np.float32)
                     cams.append((cam, pts, vis, depth, K, imgs, w2c))
                 for name, (H, W) in resolutions.items():
@@ -216,15 +236,18 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                              "calibration; weight 1 where the source-time status is valid and both positions finite",
             "gripper_target": f"{len(pick)} surface points of the URDF gripper links ({grip_links}) via FK at the "
                               "recorded gripper state; weight from the 2 cm source-time depth test",
-            "probe_state": "panda flange xyz (m), flange euler xyz (rad), recorded gripper state",
+            "probe_state": "panda flange xyz (m), flange euler xyz (rad, scipy 'xyz'), gripper closure in [0,1] "
+                           "(0 open; from the recorded state via the URDF joint range). DROID uses its EE pose instead "
+                           "of the flange",
             "timeline": {"reference_camera": ref_cam, "max_sync_ns": max_sync_ns,
                          "camera_sync_max_ns": {c: int(e.max()) for c, e in sync_err.items()},
                          "robot_sync_max_ns": int(robot_err.max())},
-            "upstream_records": {k: v["fingerprint"] for k, v in records.items()},
+            "upstream_records": {k: rio.build_id(v) for k, v in records.items()},
             "models": {k: records[k]["summary"] for k in ("stereo_depth", "track2d")},
             "calibration": records["calibrate"]["summary"],
             "MOCK_MODEL_OUTPUTS": bool(mock),
-            "split_policy": f"last {validation_tail_windows} windows validation (same episode; not generalisation)",
+            "split_policy": f"windows inside the last {validation_tail_frames} reference frames are validation, "
+                            "straddling windows dropped (same episode; not generalisation)",
         }
         rio.atomic_write_json(tmp / "manifest.json", manifest)
         return {"windows": len(windows), "cameras": [c for c, _ in chosen], "mock": bool(mock)}
@@ -233,5 +256,5 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                          config={"strides": list(strides), "resolutions": resolutions, "cameras": cameras,
                                  "allow_infrared_input": allow_infrared_input, "allow_mock": allow_mock,
                                  "max_sync_ns": max_sync_ns, "gripper_points": gripper_points,
-                                 "validation_tail_windows": validation_tail_windows},
-                         inputs={k: v["fingerprint"] for k, v in records.items()}, build=build, force=force)
+                                 "validation_tail_frames": validation_tail_frames},
+                         inputs={k: rio.build_id(v) for k, v in records.items()}, build=build, force=force)

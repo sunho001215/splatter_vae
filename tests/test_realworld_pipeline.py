@@ -92,7 +92,7 @@ def run(tmp_path_factory):
     recs["track2d"] = track2d(root, ep, OracleTracker(adapter), window=10, step=8, grid_stride=4)
     recs["lift3d"] = lift3d(root, ep)
     recs["export"] = export(root, ep, tmp / "cache", resolutions={"scratch": (144, 256)}, allow_infrared_input=True,
-                            allow_mock=True, validation_tail_windows=2)
+                            allow_mock=True, validation_tail_frames=4)
     return {"adapter": adapter, "root": root, "ep": ep, "recs": recs, "tmp": tmp, "landmark_source": landmark_source,
             "cfg": cfg}
 
@@ -163,8 +163,16 @@ def test_export_matches_training_contract(run):
     assert item["images"].shape == (3, 2, 3, 144, 256) and item["track_src"].shape[:2] == (3, 2)
     batch = {k: v if k == "meta" else v.unsqueeze(0) for k, v in item.items()}
     validate_batch(batch)
+    val = [w for w in manifest["windows"] if w["split"] == "validation"]
+    train = [w for w in manifest["windows"] if w["split"] == "train"]
+    assert val and train
+    # no frame shared between splits; validation windows lie in the last 4 of 10 frames
+    assert max(max(w["canonical_indices"]) for w in train) < min(min(w["canonical_indices"]) for w in val)
+    assert min(min(w["canonical_indices"]) for w in val) >= 6
     with pytest.warns(UserWarning):
-        assert len(RealworldCacheDataset(cache, split="validation")) == 2
+        assert len(RealworldCacheDataset(cache, split="validation")) == len(val)
+    closure = item["probe_state"][:, 6].numpy()
+    assert np.all((closure >= 0) & (closure <= 1))
 
 
 def test_export_refuses_mock_and_infrared_without_opt_in(run):
@@ -183,6 +191,10 @@ def test_stages_are_idempotent(run):
     # a changed config rebuilds (and the old complete stage stays until the swap)
     assert not lift3d(r["root"], r["ep"], vis_threshold=0.6)["skipped"]
     assert rio.read_record(rio.stage_dir(r["root"], r["ep"], "lift3d"))["config"]["vis_threshold"] == 0.6
+    # a forced upstream rebuild (identical config) still invalidates every downstream stage via its build id
+    assert not stereo_depth(r["root"], r["ep"], MockStereo(), references=("left", "right"), force=True)["skipped"]
+    assert not calibrate(r["root"], r["ep"], r["landmark_source"], landmark_links=LANDMARKS, cfg=r["cfg"])["skipped"]
+    assert not track2d(r["root"], r["ep"], OracleTracker(r["adapter"]), window=10, step=8, grid_stride=4)["skipped"]
 
 
 def test_unrectified_rig_is_rectified_before_matching(tmp_path):

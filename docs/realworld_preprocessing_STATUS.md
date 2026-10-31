@@ -51,12 +51,20 @@ merged or pushed, and no existing module imports `s4d.realworld`. Design and usa
     against `dino_target`.
   - SAM 3 masks with prompts mapped to SNeRL classes, instances, scores and explicit absent detections.
 
-**Tests:** 42 passed across the five files below. Run with `nice -n 10` and the MIG UUID:
+**Tests:** 43 passed across the five files below. Run with `nice -n 10` and the MIG UUID:
 - `tests/test_realworld_stereo.py`: 10
-- `tests/test_realworld_calibration.py`: 9
+- `tests/test_realworld_calibration.py`: 10
 - `tests/test_realworld_pipeline.py`: 9
 - `tests/test_realworld_contract_workers.py`: 11
 - `tests/test_realworld_baselines.py`: 3
+
+**Independent read-only review** (Claude subagent, 2026-10-31). It found no errors in the core geometry,
+stereo, URDF or tracking maths. Its findings are fixed in commit "realworld: review fixes":
+- stale-stage reuse (worker spec in fingerprints, build ids for downstream, `track2d` depends on `stereo_depth`);
+- NaN passing calibration gates; the degrees of freedom of the covariance;
+- duplicate frame matches and the default sync tolerance; validation windows leaking into training;
+- SAM 3 frame directory and grid; refusal of the RealSense modified/inverse Brown-Conrady models;
+- BGR model input; units of the probe gripper; remap rounding.
 
 ## Unverified / assumptions (must not be described as real integration)
 - The FoundationStereo, AllTracker and SAM 3 worker scripts were written against the upstream READMEs and demos

@@ -53,8 +53,9 @@ def handle(request, inputs):
         from sam3.model_builder import build_sam3_video_predictor  # upstream
 
         predictor = build_sam3_video_predictor(**params.get("build_kwargs", {}))
-        frame_dir = Path(request.get("frame_dir") or (Path.cwd() / "frames"))
-        frame_dir.mkdir(exist_ok=True)
+        import tempfile
+
+        frame_dir = Path(tempfile.mkdtemp(prefix="sam3_frames_", dir=Path.cwd()))  # fresh per call: no stale frames
         from PIL import Image
 
         for f, image in enumerate(images):
