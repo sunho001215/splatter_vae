@@ -110,19 +110,51 @@ def build_shard_index(shard_path: str | Path, out_dir: str | Path, *, shard_id: 
     return {"shard": shard_path.name, "size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "episodes": rows}
 
 
-def build_index(shard_paths, out_dir: str | Path, *, verify_payload: bool = False) -> Path:
-    """Index shards in the given (sorted) order; global ordinals follow it. Writes ``index.json`` + ``episodes.jsonl``."""
+def build_index(
+    shard_paths, out_dir: str | Path, *, only: range | None = None, verify_payload: bool = False, finalize: bool = True
+) -> Path:
+    """Index shards (resumable, parallelizable by ``only``); global ordinals follow the given sorted shard order.
+
+    Each shard writes ``<shard>.npz`` and ``<shard>.rows.json``; a shard whose rows file matches the current file
+    size and mtime is skipped. ``finalize`` writes ``index.json`` + ``episodes.jsonl`` once every shard is indexed.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    shard_paths = [Path(p) for p in shard_paths]
+    for shard_id, path in enumerate(shard_paths):
+        if only is not None and shard_id not in only:
+            continue
+        rows_path = out_dir / f"{path.name}.rows.json"
+        stat = path.stat()
+        if rows_path.is_file() and (out_dir / f"{path.name}.npz").is_file():
+            done = json.loads(rows_path.read_text())
+            if (done["size"], done["mtime_ns"], done["shard_id"]) == (stat.st_size, stat.st_mtime_ns, shard_id):
+                continue
+        info = build_shard_index(path, out_dir, shard_id=shard_id, verify_payload=verify_payload)
+        tmp = rows_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({**info, "shard_id": shard_id}))
+        os.replace(tmp, rows_path)
+    if finalize:
+        finalize_index(shard_paths, out_dir)
+    return out_dir
+
+
+def finalize_index(shard_paths, out_dir: str | Path) -> Path:
+    out_dir = Path(out_dir)
     shards, ordinal = [], 0
-    with (out_dir / "episodes.jsonl").open("w") as stream:
-        for shard_id, path in enumerate(shard_paths):
-            info = build_shard_index(path, out_dir, shard_id=shard_id, verify_payload=verify_payload)
+    tmp = out_dir / "episodes.jsonl.tmp"
+    with tmp.open("w") as stream:
+        for shard_id, path in enumerate(Path(p) for p in shard_paths):
+            info = json.loads((out_dir / f"{path.name}.rows.json").read_text())
+            if info["shard_id"] != shard_id:
+                raise ValueError(f"{path.name} was indexed as shard {info['shard_id']}, expected {shard_id}")
             for row in info.pop("episodes"):
                 row["ordinal"] = ordinal
                 ordinal += 1
                 stream.write(json.dumps(row, sort_keys=True) + "\n")
+            info.pop("shard_id")
             shards.append(info)
+    os.replace(tmp, out_dir / "episodes.jsonl")
     index = {"format": INDEX_FORMAT, "shards": shards, "episodes": ordinal, "image_hw": list(IMAGE_HW)}
     (out_dir / "index.json").write_text(json.dumps(index, indent=1))
     return out_dir
@@ -146,7 +178,9 @@ def decode_jpeg(data: bytes) -> np.ndarray:
 class RldsStepReader:
     """pread-based access to selected steps of an indexed episode. Bounded open shards and cached shard indices."""
 
-    def __init__(self, index_dir: str | Path, data_root: str | Path, *, max_open_files: int = 8, max_index_bytes: int = 64 << 20):
+    def __init__(
+        self, index_dir: str | Path, data_root: str | Path, *, max_open_files: int = 8, max_index_bytes: int = 64 << 20
+    ):
         self.index_dir = Path(index_dir)
         self.data_root = Path(data_root)
         self.meta = json.loads((self.index_dir / "index.json").read_text())
@@ -173,7 +207,9 @@ class RldsStepReader:
 
         return self._indices.get(shard, load)
 
-    def read(self, shard: int, row: int, steps, *, cameras=("ext1", "ext2"), numeric=("cartesian_position", "gripper_position")) -> dict:
+    def read(
+        self, shard: int, row: int, steps, *, cameras=("ext1", "ext2"), numeric=("cartesian_position", "gripper_position")
+    ) -> dict:
         index = self._shard_index(shard)
         fd = self.files.get(self._shards[shard])
         start, end = index["step_ptr"][row], index["step_ptr"][row + 1]

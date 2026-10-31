@@ -89,7 +89,10 @@ def _example_class():
 def test_example_encoding_matches_protobuf_and_walker_finds_spans():
     Example = _example_class()
     feats = {
-        "episode_metadata/file_path": ("bytes", [b"gs://x/AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023/trajectory.h5"]),
+        "episode_metadata/file_path": (
+            "bytes",
+            [b"gs://x/AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023/trajectory.h5"],
+        ),
         "steps/observation/cartesian_position": ("float", np.arange(12, dtype=np.float32) / 7),
         "steps/is_first": ("int64", [1, 0, -3]),
         "steps/observation/wrist_image_left": ("bytes", [b"\xff\xd8a", b"\xff\xd8bc"]),
@@ -98,14 +101,18 @@ def test_example_encoding_matches_protobuf_and_walker_finds_spans():
     msg = Example.FromString(payload)
     fm = msg.features.feature
     assert list(fm["steps/observation/wrist_image_left"].bytes_list.value) == [b"\xff\xd8a", b"\xff\xd8bc"]
-    np.testing.assert_array_equal(np.array(fm["steps/observation/cartesian_position"].float_list.value, np.float32),
-                                  feats["steps/observation/cartesian_position"][1])
+    np.testing.assert_array_equal(
+        np.array(fm["steps/observation/cartesian_position"].float_list.value, np.float32),
+        feats["steps/observation/cartesian_position"][1],
+    )
     assert list(fm["steps/is_first"].int64_list.value) == [1, 0, -3]
     assert msg.SerializeToString(deterministic=True) == payload  # byte-identical to protobuf's own serializer
     spans = walk_example(payload)
     assert feature_values(payload, spans["steps/observation/wrist_image_left"]) == [b"\xff\xd8a", b"\xff\xd8bc"]
     np.testing.assert_array_equal(feature_values(payload, spans["steps/is_first"]), [1, 0, -3])
-    np.testing.assert_allclose(feature_values(payload, spans["steps/observation/cartesian_position"]), np.arange(12) / 7, rtol=1e-6)
+    np.testing.assert_allclose(
+        feature_values(payload, spans["steps/observation/cartesian_position"]), np.arange(12) / 7, rtol=1e-6
+    )
 
 
 def test_tfrecord_framing_crc_and_corruption(tmp_path):
@@ -143,8 +150,13 @@ def test_rlds_index_reads_exact_frames_and_state_in_place(env):
     assert [(r["shard"], r["row"], r["ordinal"], r["num_steps"]) for r in rows] == [(0, 0, 0, 12), (1, 0, 1, 48)]
     reader = RldsStepReader(env["tmp"] / "rlds_index", env["tmp"] / "rlds", max_open_files=1)
     steps = [0, 6, 13, 47]
-    out = reader.read(1, 0, steps, cameras=("ext1", "ext2", "wrist"),
-                      numeric=("cartesian_position", "gripper_position", "joint_position", "action"))
+    out = reader.read(
+        1,
+        0,
+        steps,
+        cameras=("ext1", "ext2", "wrist"),
+        numeric=("cartesian_position", "gripper_position", "joint_position", "action"),
+    )
     for cam, role in enumerate(("ext1", "ext2", "wrist")):
         assert out[role].shape == (4, 180, 320, 3) and out[role].dtype == np.uint8
         for k, s in enumerate(steps):  # the frame colour encodes (raw step, camera): the right JPEG was read
@@ -206,7 +218,8 @@ def test_droid3d_flip_and_image_rotation_cancel_and_match_the_stored_wrist_depth
     with h5py.File(env["tmp"] / "pw/depth_320x180" / f"{F.EPISODE}_depth.h5") as f:
         depth = f[f"{F.SERIALS['wrist']}+wrist"]["depth"][10] / 1000.0
     ok, _, res = __import__("s4d.data.droid.pointworld", fromlist=["depth_test"]).depth_test(
-        pts, gt["K_wrist"], w2c[10], depth, continuous=True)
+        pts, gt["K_wrist"], w2c[10], depth, continuous=True
+    )
     assert ok.all() and np.abs(res).max() < 2e-3
     uv_img, _ = G.project(pts, gt["K_wrist"], w2c[10])
     uv, z = G.project(pts, gt["K_wrist"], frustum[10])
@@ -242,8 +255,9 @@ def test_static_camera_rebase_is_exact_and_naive_matrix_swap_is_not(env):
     X_pw = G.transform_points(G.invert(gt["w2c_pw"]["ext1"]) @ gt["w2c_true"]["ext1"], X_true)
     X_new = G.rebase_static_camera_points(X_pw, gt["w2c_pw"]["ext1"], gt["w2c_true"]["ext1"])
     np.testing.assert_allclose(X_new, X_true, atol=1e-12)
-    np.testing.assert_allclose(G.transform_points(gt["w2c_true"]["ext1"], X_new),
-                               G.transform_points(gt["w2c_pw"]["ext1"], X_pw), atol=1e-12)  # same camera-frame points
+    np.testing.assert_allclose(
+        G.transform_points(gt["w2c_true"]["ext1"], X_new), G.transform_points(gt["w2c_pw"]["ext1"], X_pw), atol=1e-12
+    )  # same camera-frame points
     naive = G.transform_points(gt["w2c_true"]["ext1"], X_pw)  # swapped matrix, old world points
     assert np.abs(naive - G.transform_points(gt["w2c_true"]["ext1"], X_true)).max() > 0.005
 
@@ -283,9 +297,17 @@ def _rebuild(tmp, mutate, calibration="droid3d", **kw):
     ext, intr, he = F.write_droid3d(tmp / "d3", gt, **kw.pop("d3", {}))
     mutate(tmp, ext, intr, he)
     reader = RldsStepReader(tmp / "rlds_index", tmp / "rlds")
-    report = join.build_manifest(tmp / "pw", [F.EPISODE], load_episode_rows(tmp / "rlds_index"), tmp / "m.jsonl",
-                                 calibration=calibration, droid3d_extrinsics=C.JsonlIndex(ext),
-                                 droid3d_intrinsics=C.JsonlIndex(intr), hand_eye=C.load_hand_eye(he), rlds_reader=reader)
+    report = join.build_manifest(
+        tmp / "pw",
+        [F.EPISODE],
+        load_episode_rows(tmp / "rlds_index"),
+        tmp / "m.jsonl",
+        calibration=calibration,
+        droid3d_extrinsics=C.JsonlIndex(ext),
+        droid3d_intrinsics=C.JsonlIndex(intr),
+        hand_eye=C.load_hand_eye(he),
+        rlds_reader=reader,
+    )
     reader.close()
     return report
 
@@ -302,13 +324,21 @@ def _set_line(path, fn):
 @pytest.mark.parametrize(
     "case, mutate, kw, reason",
     [
-        ("droid3d uuid missing", lambda t, e, i, h: _set_line(e, lambda r: dict(r, episode_uuid=r["episode_uuid"] + "x")), {},
-         "not in DROID-3D"),
+        (
+            "droid3d uuid missing",
+            lambda t, e, i, h: _set_line(e, lambda r: dict(r, episode_uuid=r["episode_uuid"] + "x")),
+            {},
+            "not in DROID-3D",
+        ),
         ("duplicate RLDS suffix", _noop, {"decoy_duplicate": True}, "no unique RLDS episode"),
         ("wrong wrist serial", _noop, {"d3": {"wrist_serial": "13062452"}}, "wrist serial"),
         ("flow/depth wrist attr", _noop, {"pw": {"wrist_attr": "13062452"}}, "wrist serial"),
-        ("droid3d scene path", lambda t, e, i, h: _set_line(
-            e, lambda r: dict(r, scene_path=r["scene_path"].replace("19:07:04", "19:07:05"))), {}, "scene_path suffix"),
+        (
+            "droid3d scene path",
+            lambda t, e, i, h: _set_line(e, lambda r: dict(r, scene_path=r["scene_path"].replace("19:07:04", "19:07:05"))),
+            {},
+            "scene_path suffix",
+        ),
         ("camera json", lambda t, e, i, h: _patch_cameras(t), {}, "optimized_extrinsics"),
         ("robot state", lambda t, e, i, h: _patch_pose(t), {}, "frame mapping rejected"),
     ],
@@ -383,7 +413,9 @@ def test_tracks_are_positions_rebased_to_droid3d_and_released_under_pointworld(e
             for p, (a, b, _) in enumerate(PAIRS):
                 ok = w[p] > 0
                 np.testing.assert_allclose(item["track_src"][p, v, :n].numpy()[ok], expected[a][ok], atol=2e-3)
-                np.testing.assert_allclose(item["track_disp"][p, v, :n].numpy()[ok], (expected[b] - expected[a])[ok], atol=2e-3)
+                np.testing.assert_allclose(
+                    item["track_disp"][p, v, :n].numpy()[ok], (expected[b] - expected[a])[ok], atol=2e-3
+                )
             assert w[:, -2:].sum() == 0 and w[:, :-2].min() == 1  # released visibility respected, depth test passes
             expected_w2c = gt["w2c_true"][role] if rebased else gt["w2c_pw"][role]
             np.testing.assert_allclose(item["w2c"][v].numpy(), expected_w2c, atol=1e-5)
@@ -397,8 +429,14 @@ def test_naively_swapped_calibration_fails_the_depth_test(env):
     X_true = F.track_world_true("ext1", 0, 1, 40, 0)[0]
     X_pw = G.transform_points(G.invert(gt["w2c_pw"]["ext1"]) @ gt["w2c_true"]["ext1"], X_true)
     depth = F.plane_depth(gt["K_ext"], gt["c2w_true"]["ext1"])
-    good = depth_test(G.rebase_static_camera_points(X_pw, gt["w2c_pw"]["ext1"], gt["w2c_true"]["ext1"]),
-                      gt["K_ext"], gt["w2c_true"]["ext1"], depth, tolerance=0.005, continuous=True)[0]
+    good = depth_test(
+        G.rebase_static_camera_points(X_pw, gt["w2c_pw"]["ext1"], gt["w2c_true"]["ext1"]),
+        gt["K_ext"],
+        gt["w2c_true"]["ext1"],
+        depth,
+        tolerance=0.005,
+        continuous=True,
+    )[0]
     bad = depth_test(X_pw, gt["K_ext"], gt["w2c_true"]["ext1"], depth, tolerance=0.005, continuous=True)[0]
     assert good.mean() > 0.8 and bad.sum() * 2 < good.sum()
 
@@ -449,7 +487,7 @@ def test_bounded_open_files_and_caches(env):
     assert len(pool) == 2 and pool.opens == 5  # a, b, c (evicts a), a (evicts b), b (evicts c)
     lru = ByteLRU(10)
     for k in range(5):
-        lru.get(k, lambda: (k, 4))
+        lru.get(k, lambda k=k: (k, 4))
     assert lru.bytes <= 10 and lru.get(4, lambda: (None, 4)) == 4
 
 
@@ -475,8 +513,9 @@ def test_collate_contract_and_two_worker_loader(env):
     sizes = validate_batch(batch)
     assert sizes == {"B": 2, "T": 3, "V": 2, "H": 36, "W": 64}
     assert batch["wrist_w2c"].shape == (2, 3, 4, 4) and batch["meta"]["episode"] == [F.EPISODE] * 2
-    loader = torch.utils.data.DataLoader(ds, batch_size=2, num_workers=2, collate_fn=collate,
-                                         multiprocessing_context="fork", sampler=list(range(6)))
+    loader = torch.utils.data.DataLoader(
+        ds, batch_size=2, num_workers=2, collate_fn=collate, multiprocessing_context="fork", sampler=list(range(6))
+    )
     batches = list(loader)
     assert len(batches) == 3 and torch.equal(batches[0]["images"][0], ds[0]["images"])
     assert torch.equal(batches[2]["track_src"][1], ds[5]["track_src"])
@@ -501,10 +540,14 @@ def test_trainer_forward_and_backward_on_a_fixture_batch_ignore_privileged_extra
     cfg["train"]["bf16"] = False
     group = GroupConfig(parents=2, children=2, offset_scale=0.2, child_radius=0.05, scale_min=0.001, scale_max=0.08)
     torch.manual_seed(0)
-    enc = Encoder(EncoderConfig(image_height=16, image_width=32, patch_size=4, width=16, depth=1, heads=4, num_slots=2,
-                                slot_dim=8, drop_path=0))
-    model = Model(enc, GaussianDecoder(DecoderConfig(slot_dim=8, dim=16, depth=1, heads=4, scene=group, dynamic=group,
-                                                     num_slots=2))).train()
+    enc = Encoder(
+        EncoderConfig(
+            image_height=16, image_width=32, patch_size=4, width=16, depth=1, heads=4, num_slots=2, slot_dim=8, drop_path=0
+        )
+    )
+    model = Model(
+        enc, GaussianDecoder(DecoderConfig(slot_dim=8, dim=16, depth=1, heads=4, scene=group, dynamic=group, num_slots=2))
+    ).train()
     seed_all(1)
     out = forward_losses(model, batch, cfg, 10, source=torch.tensor([0, 1]), mask_ratio=0.0)
     assert torch.isfinite(out["total"])
@@ -515,3 +558,100 @@ def test_trainer_forward_and_backward_on_a_fixture_batch_ignore_privileged_extra
     seed_all(1)
     again = forward_losses(model, stripped, cfg, 10, source=torch.tensor([0, 1]), mask_ratio=0.0)
     assert torch.equal(again["total"].detach(), out["total"].detach())  # privileged extras never reach the model
+
+
+# ------------------------------------------------------------------------------------------------ trainer wiring / CLIs
+def test_trainer_loader_resume_replays_the_same_batches(env):
+    from s4d.train.ddp import DistContext
+    from s4d.train.loop import infinite, make_train_loader
+
+    ds = make_ds(env, max_tracks=16)
+    cfg = {"train": {"num_workers": 0, "batch_size": 2}}
+    loader = make_train_loader(ds, cfg, DistContext(0, 0, 1, torch.device("cpu")), seed=3)
+    stream = infinite(loader, start_step=0)
+    first = [next(stream)["meta"]["t_indices"] for _ in range(len(loader) + 2)]  # crosses an epoch boundary
+    resumed = infinite(make_train_loader(ds, cfg, DistContext(0, 0, 1, torch.device("cpu")), seed=3), start_step=5)
+    assert [next(resumed)["meta"]["t_indices"] for _ in range(len(first) - 5)] == first[5:]
+
+
+def test_config_regime_builds_episode_disjoint_splits(env, monkeypatch):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from train import build_data
+
+    from s4d.config import load_config
+
+    repo = Path(__file__).resolve().parents[1]
+    cfg = load_config(
+        [repo / "configs/droid/pretrain.yaml", repo / "configs/droid/largescale.yaml"],
+        [
+            f"data.manifest={env['manifest']}",
+            f"data.pointworld_root={env['tmp'] / 'pw'}",
+            f"data.rlds_index_dir={env['tmp'] / 'rlds_index'}",
+            f"data.rlds_data_root={env['tmp'] / 'rlds'}",
+            "data.validation_percent=0",
+            "train.num_workers=0",
+            "train.batch_size=2",
+            "model.encoder.image_height=16",
+            "model.encoder.image_width=32",
+        ],
+    )
+    with pytest.raises(ValueError, match="no valid windows in split 'validation'"):  # the one episode is train
+        build_data(cfg)
+    from s4d.data.droid.largescale import dataset as D
+
+    assert D.episode_split(F.EPISODE, 0) == "train" and D.episode_split(F.EPISODE, 100) == "validation"
+    calls = iter(["train", "validation"])  # one fixture episode: let each split take it once to test the wiring
+    monkeypatch.setattr(D, "episode_split", lambda episode, percent: next(calls))
+    train_ds, val_loaders, probe_loaders, n_cams = build_data(cfg)
+    assert isinstance(train_ds, DroidLargeScaleDataset) and n_cams == 2 and probe_loaders == {}
+    assert train_ds[0]["images"].shape == (3, 2, 3, 16, 32)
+    batch = next(iter(val_loaders[3]))
+    assert validate_batch(batch)["B"] == 2 and batch["wrist_images"].shape == (2, 3, 3, 16, 32)
+    bad = load_config([repo / "configs/droid/pretrain.yaml", repo / "configs/droid/largescale.yaml"])
+    with pytest.raises(ValueError, match="data.manifest"):
+        build_data(bad)
+
+
+def test_index_and_manifest_clis_are_resumable_and_refuse_writing_into_the_release(env, tmp_path):
+    import importlib.util
+
+    repo = Path(__file__).resolve().parents[1]
+
+    def script(name):
+        spec = importlib.util.spec_from_file_location(f"cli_{name}", repo / "scripts" / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    index = script("droid_ls_build_rlds_index")
+    with pytest.raises(SystemExit, match="inside the read-only"):
+        index.main(["--rlds-root", str(env["tmp"] / "rlds"), "--out", str(env["tmp"] / "rlds" / "idx")])
+    index.main(["--rlds-root", str(env["tmp"] / "rlds"), "--out", str(tmp_path / "idx"), "--range", "1:2", "--no-finalize"])
+    assert not (tmp_path / "idx" / "index.json").exists()
+    with pytest.raises(FileNotFoundError):  # shard 0 missing: cannot finalize a partial index
+        index.main(["--rlds-root", str(env["tmp"] / "rlds"), "--out", str(tmp_path / "idx"), "--range", "1:2"])
+    stamp = (tmp_path / "idx" / "droid_101-train.tfrecord-00001-of-00002.npz").stat().st_mtime_ns
+    index.main(["--rlds-root", str(env["tmp"] / "rlds"), "--out", str(tmp_path / "idx")])
+    assert (tmp_path / "idx" / "droid_101-train.tfrecord-00001-of-00002.npz").stat().st_mtime_ns == stamp  # skipped
+    assert load_episode_rows(tmp_path / "idx") == load_episode_rows(env["tmp"] / "rlds_index")
+    manifest = script("droid_ls_build_manifest")
+    d3 = env["tmp"] / "d3"
+    manifest.main(
+        [
+            "--pointworld-root",
+            str(env["tmp"] / "pw"),
+            "--rlds-index",
+            str(tmp_path / "idx"),
+            "--rlds-root",
+            str(env["tmp"] / "rlds"),
+            "--droid3d-extrinsics",
+            str(d3 / "extrinsics.jsonl"),
+            "--droid3d-intrinsics",
+            str(d3 / "camera_intrinsics.jsonl"),
+            "--hand-eye",
+            str(d3 / "gripper2wrist_transforms.json"),
+            "--out",
+            str(tmp_path / "m.jsonl"),
+        ]
+    )
+    assert (tmp_path / "m.jsonl").read_text() == env["manifest"].read_text()

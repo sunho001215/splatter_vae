@@ -50,7 +50,9 @@ def scene_suffix(value: str | bytes) -> str:
     raise ValueError(f"not a DROID episode path: {value!r}")
 
 
-_UUID = re.compile(r"^(?P<lab>[^+]+)\+(?P<user>[0-9a-f]+)\+(?P<date>\d{4}-\d{2}-\d{2})-(?P<h>\d{2})h-(?P<m>\d{2})m-(?P<s>\d{2})s$")
+_UUID = re.compile(
+    r"^(?P<lab>[^+]+)\+(?P<user>[0-9a-f]+)\+(?P<date>\d{4}-\d{2}-\d{2})-(?P<h>\d{2})h-(?P<m>\d{2})m-(?P<s>\d{2})s$"
+)
 _FOLDER = re.compile(r"^\w{3}_(?P<mon>\w{3})_(?P<day>\d{1,2})_(?P<h>\d{2}):(?P<m>\d{2}):(?P<s>\d{2})_(?P<year>\d{4})$")
 _MONTHS = {m: i + 1 for i, m in enumerate("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split())}
 
@@ -63,7 +65,12 @@ def uuid_matches_suffix(uuid: str, suffix: str) -> bool:
         return False
     year, month, day = map(int, u["date"].split("-"))
     return (year, month, day, u["h"], u["m"], u["s"]) == (
-        int(f["year"]), _MONTHS.get(f["mon"], 0), int(f["day"]), f["h"], f["m"], f["s"]
+        int(f["year"]),
+        _MONTHS.get(f["mon"], 0),
+        int(f["day"]),
+        f["h"],
+        f["m"],
+        f["s"],
     )
 
 
@@ -154,8 +161,10 @@ def build_episode_entry(
         for key in summary.clips[1:]:
             for role, cam in ext.items():
                 group = flow[key][f"camera_{cam['serial']}_ext"]
-                if not (np.allclose(group["intrinsic"][:], cam["K_pw_native"], atol=1e-5)
-                        and np.allclose(group["extrinsic"][:], cam["w2c_pw"], atol=1e-5)):
+                if not (
+                    np.allclose(group["intrinsic"][:], cam["K_pw_native"], atol=1e-5)
+                    and np.allclose(group["extrinsic"][:], cam["w2c_pw"], atol=1e-5)
+                ):
                     raise JoinError(f"{episode}: static {role} calibration changes between clips")
         attrs = dict(flow.attrs)
     flow_wrist = str(attrs["wrist_cam_serial"]) if "wrist_cam_serial" in attrs else None
@@ -175,14 +184,20 @@ def build_episode_entry(
         "timeline": {"canonical_timestamps": list(summary.canonical_timestamps), "stride": CANONICAL_STRIDE},
         "clips": list(summary.clips),
         "track_counts": summary.track_counts,
-        "depth_groups": {"ext1": f"{ext['ext1']['serial']}+ext", "ext2": f"{ext['ext2']['serial']}+ext",
-                         "wrist": f"{wrist_serial}+wrist" if depth_wrist else None},
+        "depth_groups": {
+            "ext1": f"{ext['ext1']['serial']}+ext",
+            "ext2": f"{ext['ext2']['serial']}+ext",
+            "wrist": f"{wrist_serial}+wrist" if depth_wrist else None,
+        },
         "calibration": calibration,
         "cameras": {},
         "provenance": {
-            "pointworld": {"dataset": "nvidia/PointWorld-DROID", "flows": layout["flows"].format(episode=episode),
-                           "depth": layout["depth"].format(episode=episode),
-                           "cameras": layout["cameras"].format(episode=episode)},
+            "pointworld": {
+                "dataset": "nvidia/PointWorld-DROID",
+                "flows": layout["flows"].format(episode=episode),
+                "depth": layout["depth"].format(episode=episode),
+                "cameras": layout["cameras"].format(episode=episode),
+            },
             "rlds": {"dataset": "droid 1.0.1 (RLDS)", "shard": rlds["shard"], "row": rlds["row"]},
         },
     }
@@ -219,7 +234,9 @@ def build_episode_entry(
         }
         if calibration == "droid3d":
             row["w2c"] = parsed["w2c"][role].tolist()
-            row["w2c_source"] = f"droid3d extrinsics.jsonl {'T0_ext1_in_world' if role == 'ext1' else 'T1_ext2_in_world'} (w2c)"
+            row["w2c_source"] = (
+                f"droid3d extrinsics.jsonl {'T0_ext1_in_world' if role == 'ext1' else 'T1_ext2_in_world'} (w2c)"
+            )
             row["tracks"] = "rebased exactly: X' = inv(w2c_droid3d) @ w2c_pointworld @ X (static camera, same K)"
             if d3i is not None:
                 factory = C.parse_droid3d_intrinsics(d3i, role)["K"]
@@ -255,22 +272,32 @@ def build_episode_entry(
             "serial": wrist_serial,
             "robot_serial": robot_serial,
             "K": intr["K"].tolist(),
-            "K_source": f"droid3d camera_intrinsics.jsonl cameras.wrist.left ({intr['native_wh'][0]}x{intr['native_wh'][1]} -> 320x180, +0.5 px)",
+            "K_source": "droid3d camera_intrinsics.jsonl cameras.wrist.left "
+            f"({intr['native_wh'][0]}x{intr['native_wh'][1]} -> 320x180, +0.5 px)",
             "T_gw_static": np.asarray(T_gw).tolist(),
             "pose_model": calibration,
         }
         if calibration == "droid3d":
-            wrist.update(dT_gw=parsed["dT_gw"].tolist(), dq=parsed["dq"].tolist(), image_rotation_deg=180,
-                         pose_source="w2c(t) = inv(inv(FLIP @ T_gw_static @ dT_gw @ inv(FK(q(t)+dq))) @ Rz(180))")
+            wrist.update(
+                dT_gw=parsed["dT_gw"].tolist(),
+                dq=parsed["dq"].tolist(),
+                image_rotation_deg=180,
+                pose_source="w2c(t) = inv(inv(FLIP @ T_gw_static @ dT_gw @ inv(FK(q(t)+dq))) @ Rz(180))",
+            )
         else:
             wrist.update(pose_source="w2c(t) = T_gw_static @ inv(T_base_ee(cartesian_position(t))) (PointWorld recipe)")
     entry["cameras"]["wrist"] = wrist
     entry["wrist_unavailable"] = reasons
-    entry["frames"] = validate_frames(root, layout, episode, summary, entry, rlds_reader, max_dt_ms=max_dt_ms,
-                                      max_xyz_m=max_xyz_m, max_rot_rad=max_rot_rad)
+    entry["frames"] = validate_frames(
+        root, layout, episode, summary, entry, rlds_reader, max_dt_ms=max_dt_ms, max_xyz_m=max_xyz_m, max_rot_rad=max_rot_rad
+    )
     if parsed is not None:
-        entry["droid3d"] = {"robot_serial": parsed["robot_serial"], "dq": parsed["dq"].tolist(),
-                            "dT_gw": parsed["dT_gw"].tolist(), "meta": parsed["meta"]}
+        entry["droid3d"] = {
+            "robot_serial": parsed["robot_serial"],
+            "dq": parsed["dq"].tolist(),
+            "dT_gw": parsed["dT_gw"].tolist(),
+            "meta": parsed["meta"],
+        }
         entry["provenance"]["droid3d"] = {"dataset": "jaibrdhn/droid_3d_extrinsics", "key": "episode_uuid"}
     return entry
 
@@ -300,8 +327,9 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
     raw_steps = CANONICAL_STRIDE * np.arange(len(stamps))
     usable = raw_steps < entry["rlds"]["num_steps"]
     rl = entry["rlds"]
-    state = rlds_reader.read(rl["shard"], rl["row"], raw_steps[usable], cameras=(),
-                             numeric=("cartesian_position", "joint_position"))
+    state = rlds_reader.read(
+        rl["shard"], rl["row"], raw_steps[usable], cameras=(), numeric=("cartesian_position", "joint_position")
+    )
     # convention diagnostic: controller EE frame relative to the Franka flange (FK of the same joint reading)
     flange_ee = invert(C.franka_fk(state["joint_position"])) @ pose6_to_matrix(state["cartesian_position"])
     flange_offset = np.linalg.norm(flange_ee[:, :3, 3], axis=-1)
@@ -317,12 +345,19 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
             rot_err.append(rotation_angle(pw[:, :3, :3], rlds[:, :3, :3]))
     xyz_err, rot_err = np.concatenate(xyz_err), np.concatenate(rot_err)
     if xyz_err.max() > max_xyz_m or rot_err.max() > max_rot_rad:
-        raise JoinError(f"{episode}: PointWorld gripper_pose != RLDS cartesian_position[2i] "
-                        f"(max {xyz_err.max():.4g} m, {rot_err.max():.4g} rad); frame mapping rejected")
-    out = {"state_max_xyz_m": float(xyz_err.max()), "state_max_rot_rad": float(rot_err.max()),
-           "flange_to_cartesian_m": float(np.median(flange_offset)),
-           "flange_to_cartesian_spread_m": float(flange_offset.max() - flange_offset.min()),
-           "depth_index": {}, "valid": {}, "max_dt_ms": {}}
+        raise JoinError(
+            f"{episode}: PointWorld gripper_pose != RLDS cartesian_position[2i] "
+            f"(max {xyz_err.max():.4g} m, {rot_err.max():.4g} rad); frame mapping rejected"
+        )
+    out = {
+        "state_max_xyz_m": float(xyz_err.max()),
+        "state_max_rot_rad": float(rot_err.max()),
+        "flange_to_cartesian_m": float(np.median(flange_offset)),
+        "flange_to_cartesian_spread_m": float(flange_offset.max() - flange_offset.min()),
+        "depth_index": {},
+        "valid": {},
+        "max_dt_ms": {},
+    }
     with h5py.File(Path(root) / layout["depth"].format(episode=episode), "r") as depth:
         for role, group in entry["depth_groups"].items():
             if group is None:

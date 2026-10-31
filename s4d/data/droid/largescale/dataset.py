@@ -58,7 +58,9 @@ def resize(array: np.ndarray, height: int, width: int, *, nearest: bool) -> np.n
     if array.shape[:2] == (height, width):
         return array.copy()
     image = Image.fromarray(array)
-    return np.asarray(image.resize((width, height), Image.Resampling.NEAREST if nearest else Image.Resampling.BILINEAR)).copy()
+    return np.asarray(
+        image.resize((width, height), Image.Resampling.NEAREST if nearest else Image.Resampling.BILINEAR)
+    ).copy()
 
 
 def corrected_ee_pose(cartesian6, q, dq) -> np.ndarray:
@@ -137,8 +139,13 @@ class DroidLargeScaleDataset(Dataset):
             return None
         T_gw = np.asarray(wrist["T_gw_static"], np.float64)
         if wrist["pose_model"] == "droid3d":
-            return C.droid3d_wrist_w2c(state["joint_position"], wrist["dq"], T_gw, wrist["dT_gw"],
-                                       image_rotation_deg=int(wrist["image_rotation_deg"]))
+            return C.droid3d_wrist_w2c(
+                state["joint_position"],
+                wrist["dq"],
+                T_gw,
+                wrist["dT_gw"],
+                image_rotation_deg=int(wrist["image_rotation_deg"]),
+            )
         # PointWorld recipe: mean_mat is camera <- cartesian EE frame for the unrotated (stored) image
         return invert(wrist_camera_c2w(state["cartesian_position"], invert(T_gw)))
 
@@ -154,11 +161,12 @@ class DroidLargeScaleDataset(Dataset):
         wrist_cal = row["cameras"].get("wrist") if self.with_wrist else None
         cams = (*EXT_ROLES, "wrist") if self.with_wrist else EXT_ROLES
         rl = row["rlds"]
-        state = self.rlds.read(rl["shard"], rl["row"], raw, cameras=cams,
-                               numeric=("cartesian_position", "gripper_position", "joint_position"))
+        state = self.rlds.read(
+            rl["shard"], rl["row"], raw, cameras=cams, numeric=("cartesian_position", "gripper_position", "joint_position")
+        )
         flow = self.pw.flow(episode)[clip]
         # frame mapping re-check on the three frames (validated for the whole episode when the manifest was built)
-        pw_pose = flow["gripper_pose"][rel.min(): rel.max() + 1][rel - rel.min()]
+        pw_pose = flow["gripper_pose"][rel.min() : rel.max() + 1][rel - rel.min()]
         if np.abs(pw_pose[:, :3] - state["cartesian_position"][:, :3]).max() > 2e-3:
             raise RuntimeError(f"{episode} {clip} {canon.tolist()}: RLDS/PointWorld robot state mismatch")
 
@@ -172,7 +180,7 @@ class DroidLargeScaleDataset(Dataset):
         images, depths_r, Ks, w2cs, scores, srcs, disps, weights, counts, gweights = ([] for _ in range(10))
         ext_points, ext_vis = [], []
         sample_ids = {}
-        for view, role in enumerate(EXT_ROLES):
+        for role in EXT_ROLES:
             K_nat, w2c, w2c_pw = self._ext_geometry(row, role)
             serial = row["cameras"][role]["serial"]
             group = row["depth_groups"][role]
@@ -223,7 +231,8 @@ class DroidLargeScaleDataset(Dataset):
             "gripper_points": torch.from_numpy(grip),
             "gripper_weight": torch.from_numpy(np.stack(gweights, 1)),
             "probe_state": torch.from_numpy(
-                np.concatenate([state["cartesian_position"], state["gripper_position"]], -1).astype(np.float32)),
+                np.concatenate([state["cartesian_position"], state["gripper_position"]], -1).astype(np.float32)
+            ),
             "robot_joint_position": torch.from_numpy(state["joint_position"].astype(np.float32)),
         }
         if self.with_wrist:

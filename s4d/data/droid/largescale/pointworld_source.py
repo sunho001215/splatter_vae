@@ -135,7 +135,9 @@ def _close(handle) -> None:
 class PointWorldReader:
     """Bounded lazy reads of flow/depth HDF5 files: at most ``max_open`` files per process, small chunk caches."""
 
-    def __init__(self, root: str | Path, layout: dict = DEFAULT_LAYOUT, *, max_open: int = 8, chunk_cache_bytes: int = 1 << 20):
+    def __init__(
+        self, root: str | Path, layout: dict = DEFAULT_LAYOUT, *, max_open: int = 8, chunk_cache_bytes: int = 1 << 20
+    ):
         self.root, self.layout = Path(root), dict(layout)
         self.chunk_cache_bytes = int(chunk_cache_bytes)
         # one pool per file kind: a window holds its episode's flow *and* depth file at the same time

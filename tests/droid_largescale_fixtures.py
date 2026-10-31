@@ -91,8 +91,14 @@ def truth(seed: int = 0) -> dict:
     dT_gw = small_rigid(0.003, -0.002, 0.001, 0.002, -0.001, 0.001)
     T_flange_cam = small_rigid(0, 0, np.pi / 2, 0.06, 0.0, 0.02)  # optical axis along the flange approach (+z)
     T_gw_static = invert(T_flange_cam)  # wrist camera <- flange ("mean_mat")
-    c2w_true = {"ext1": lookat_c2w((0.45, -0.75, 0.55), (0.45, 0.0, 0.0)), "ext2": lookat_c2w((0.5, 0.8, 0.6), (0.45, 0.05, 0.0))}
-    delta = {"ext1": small_rigid(0.01, -0.008, 0.006, 0.012, -0.007, 0.009), "ext2": small_rigid(-0.007, 0.01, -0.005, -0.01, 0.008, -0.006)}
+    c2w_true = {
+        "ext1": lookat_c2w((0.45, -0.75, 0.55), (0.45, 0.0, 0.0)),
+        "ext2": lookat_c2w((0.5, 0.8, 0.6), (0.45, 0.05, 0.0)),
+    }
+    delta = {
+        "ext1": small_rigid(0.01, -0.008, 0.006, 0.012, -0.007, 0.009),
+        "ext2": small_rigid(-0.007, 0.01, -0.005, -0.01, 0.008, -0.006),
+    }
     w2c_true = {r: invert(c) for r, c in c2w_true.items()}
     w2c_pw = {r: w2c_true[r] @ delta[r] for r in w2c_true}  # a different (perturbed) calibration
     K_ext = np.array([[131.0, 0, 160.0], [0, 131.0, 90.0], [0, 0, 1]])  # continuous centres at 320x180
@@ -104,9 +110,24 @@ def truth(seed: int = 0) -> dict:
     stamps["wrist"] = stamps["ext1"] + 9
     stamps["wrist"][31:] += 60  # a dropped/late wrist frame: raw step 2i no longer nearest for later canonical frames
     canonical = stamps["ext1"][::2][:CANON]
-    return dict(q=q, ee=ee, cart=cart, grip=grip, dq=dq, dT_gw=dT_gw, T_gw_static=T_gw_static, c2w_true=c2w_true,
-                w2c_true=w2c_true, w2c_pw=w2c_pw, K_ext=K_ext, K_wrist=K_wrist, c2w_wrist=c2w_wrist, stamps=stamps,
-                canonical=canonical, T_flange_tool=T_flange_tool)
+    return dict(
+        q=q,
+        ee=ee,
+        cart=cart,
+        grip=grip,
+        dq=dq,
+        dT_gw=dT_gw,
+        T_gw_static=T_gw_static,
+        c2w_true=c2w_true,
+        w2c_true=w2c_true,
+        w2c_pw=w2c_pw,
+        K_ext=K_ext,
+        K_wrist=K_wrist,
+        c2w_wrist=c2w_wrist,
+        stamps=stamps,
+        canonical=canonical,
+        T_flange_tool=T_flange_tool,
+    )
 
 
 def track_world_true(role: str, start: int, end: int, n: int, seed: int) -> np.ndarray:
@@ -136,7 +157,9 @@ def write_rlds_shards(root: Path, gt: dict, *, decoy_duplicate: bool = False) ->
         }
         for cam, key in enumerate(("exterior_image_1_left", "exterior_image_2_left", "wrist_image_left")):
             feats[f"steps/observation/{key}"] = ("bytes", [jpeg(frame_color(s, cam)) for s in range(steps)])
-        return encode_example({k: (kind, np.asarray(v).reshape(-1) if kind != "bytes" else v) for k, (kind, v) in feats.items()})
+        return encode_example(
+            {k: (kind, np.asarray(v).reshape(-1) if kind != "bytes" else v) for k, (kind, v) in feats.items()}
+        )
 
     lab_path = "gs://gresearch/robotics/droid_raw/1.0.1/AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023"
     other = "gs://gresearch/robotics/droid_raw/1.0.1/AUTOLab/success/2023-10-21/Sat_Oct_21_18:00:00_2023"
@@ -150,7 +173,9 @@ def write_rlds_shards(root: Path, gt: dict, *, decoy_duplicate: bool = False) ->
     return [shard0, shard1]
 
 
-def write_pointworld(root: Path, gt: dict, *, n_tracks=(40, 52), episode: str = EPISODE, wrist_attr: str | None = None) -> None:
+def write_pointworld(
+    root: Path, gt: dict, *, n_tracks=(40, 52), episode: str = EPISODE, wrist_attr: str | None = None
+) -> None:
     flows = root / "flows-fs-optimized"
     depth_dir = root / "depth_320x180"
     cams_dir = root / "cameras"
@@ -159,11 +184,19 @@ def write_pointworld(root: Path, gt: dict, *, n_tracks=(40, 52), episode: str = 
     K_native = gt["K_ext"].copy()
     K_native[:2, 2] -= 0.5  # PointWorld stores integer-centre intrinsics
     with h5py.File(flows / f"{episode}_flows.h5", "w") as f:
-        f.attrs.update(uuid=episode, scene_path=SCENE, trajectory_length=RAW_STEPS, domain="droid", lab="AUTOLab",
-                       canonical_timestamps=json.dumps(gt["canonical"].tolist()), ext1_cam_serial=SERIALS["ext1"],
-                       ext2_cam_serial=SERIALS["ext2"], robot_serial=ROBOT,
-                       wrist_cam_serial=wrist_attr or SERIALS["wrist"],
-                       hdf5_path="success/2023-10-21/Sat_Oct_21_19:07:04_2023/trajectory.h5")
+        f.attrs.update(
+            uuid=episode,
+            scene_path=SCENE,
+            trajectory_length=RAW_STEPS,
+            domain="droid",
+            lab="AUTOLab",
+            canonical_timestamps=json.dumps(gt["canonical"].tolist()),
+            ext1_cam_serial=SERIALS["ext1"],
+            ext2_cam_serial=SERIALS["ext2"],
+            robot_serial=ROBOT,
+            wrist_cam_serial=wrist_attr or SERIALS["wrist"],
+            hdf5_path="success/2023-10-21/Sat_Oct_21_19:07:04_2023/trajectory.h5",
+        )
         quat = Rotation.from_euler("xyz", gt["cart"][::2][:CANON, 3:]).as_quat()  # x, y, z, w
         for ci, key in enumerate(CLIPS):
             start, end = map(int, key.split(":"))
@@ -172,7 +205,7 @@ def write_pointworld(root: Path, gt: dict, *, n_tracks=(40, 52), episode: str = 
             raw = 2 * np.arange(start, end)
             g["gripper_pose"] = np.concatenate([gt["cart"][raw, :3], quat[start:end]], -1).astype(np.float32)
             g["gripper_positions"] = (0.725 * gt["grip"][raw, 0]).astype(np.float32)
-            g["gripper_open"] = (gt["grip"][raw] < 0.5)
+            g["gripper_open"] = gt["grip"][raw] < 0.5
             g["joint_positions"] = gt["q"][raw].astype(np.float32)
             for v, role in enumerate(("ext1", "ext2")):
                 n = n_tracks[v]
@@ -208,20 +241,31 @@ def write_pointworld(root: Path, gt: dict, *, n_tracks=(40, 52), episode: str = 
             group.create_dataset("depth", data=np.stack(frames), chunks=(1, H, W))
             group["depth"].attrs.update(units="millimeters", write_complete=True)
             group["timestamps"] = gt["stamps"][role]
-    cameras = {"uuid": episode, "scene_path": SCENE, "optimization_success": True,
-               "optimization_summary": {"final_loss": 0.05}}
+    cameras = {
+        "uuid": episode,
+        "scene_path": SCENE,
+        "optimization_success": True,
+        "optimization_summary": {"final_loss": 0.05},
+    }
     for role in ("ext1", "ext2"):
         cameras[SERIALS[role]] = {"optimized_extrinsics": gt["w2c_pw"][role].astype(np.float32).tolist()}
     (cams_dir / f"{episode}_cameras.json").write_text(json.dumps(cameras))
 
 
-def write_droid3d(root: Path, gt: dict, *, episode: str = EPISODE, wrist_serial: str | None = None) -> tuple[Path, Path, Path]:
+def write_droid3d(
+    root: Path, gt: dict, *, episode: str = EPISODE, wrist_serial: str | None = None
+) -> tuple[Path, Path, Path]:
     root.mkdir(parents=True, exist_ok=True)
     rec = {
-        "episode_uuid": episode, "traj_id": 7, "lab": "AUTOLab", "robot_serial": ROBOT,
+        "episode_uuid": episode,
+        "traj_id": 7,
+        "lab": "AUTOLab",
+        "robot_serial": ROBOT,
         "scene_path": "/data/droid_raw/1.0.1/AUTOLab/success/2023-10-21/Sat_Oct_21_19:07:04_2023",
-        "T0_ext1_in_world": gt["w2c_true"]["ext1"].tolist(), "T1_ext2_in_world": gt["w2c_true"]["ext2"].tolist(),
-        "dT_gw_gripper_in_world_correction": gt["dT_gw"].tolist(), "dq_joint_correction": gt["dq"].tolist(),
+        "T0_ext1_in_world": gt["w2c_true"]["ext1"].tolist(),
+        "T1_ext2_in_world": gt["w2c_true"]["ext2"].tolist(),
+        "dT_gw_gripper_in_world_correction": gt["dT_gw"].tolist(),
+        "dq_joint_correction": gt["dq"].tolist(),
         "_meta": {"n_iters": 40, "final_cost": 0.3, "stop_reason": "converged"},
     }
     other = dict(rec, episode_uuid="AUTOLab+0d4edc83+2023-10-21-18h-00m-00s", traj_id=0)
@@ -231,14 +275,40 @@ def write_droid3d(root: Path, gt: dict, *, episode: str = EPISODE, wrist_serial:
     def cam(K, serial, role):
         fx, fy = 4 * K[0, 0], 4 * K[1, 1]
         cx, cy = 4 * K[0, 2] - 0.5, 4 * K[1, 2] - 0.5  # continuous 320x180 -> integer-centre 1280x720
-        left = {"fx": fx, "fy": fy, "cx": cx, "cy": cy, "disto": [0.0] * 12, "width": 1280, "height": 720,
-                "fov_h": 100.0, "fov_v": 70.0}
-        return {"left": left, "right": dict(left), "stereo_baseline_m": 0.12, "T_right_from_left": np.eye(4).tolist(),
-                "serial": serial, "role": role, "fps": 15, "zed_sdk_version": "4.0"}
+        left = {
+            "fx": fx,
+            "fy": fy,
+            "cx": cx,
+            "cy": cy,
+            "disto": [0.0] * 12,
+            "width": 1280,
+            "height": 720,
+            "fov_h": 100.0,
+            "fov_v": 70.0,
+        }
+        return {
+            "left": left,
+            "right": dict(left),
+            "stereo_baseline_m": 0.12,
+            "T_right_from_left": np.eye(4).tolist(),
+            "serial": serial,
+            "role": role,
+            "fps": 15,
+            "zed_sdk_version": "4.0",
+        }
 
-    intr = {"traj_id": 7, "split": "train", "episode_uuid": episode, "lab": "AUTOLab", "raw_dir": rec["scene_path"],
-            "cameras": {"ext1": cam(gt["K_ext"], SERIALS["ext1"], "ext1"), "ext2": cam(gt["K_ext"], SERIALS["ext2"], "ext2"),
-                        "wrist": cam(gt["K_wrist"], wrist_serial or SERIALS["wrist"], "wrist")}}
+    intr = {
+        "traj_id": 7,
+        "split": "train",
+        "episode_uuid": episode,
+        "lab": "AUTOLab",
+        "raw_dir": rec["scene_path"],
+        "cameras": {
+            "ext1": cam(gt["K_ext"], SERIALS["ext1"], "ext1"),
+            "ext2": cam(gt["K_ext"], SERIALS["ext2"], "ext2"),
+            "wrist": cam(gt["K_wrist"], wrist_serial or SERIALS["wrist"], "wrist"),
+        },
+    }
     intr_path = root / "camera_intrinsics.jsonl"
     intr_path.write_text(json.dumps(intr) + "\n")
     hand_eye_path = root / "gripper2wrist_transforms.json"
@@ -257,17 +327,30 @@ def build_all(tmp: Path, *, calibration: str = "droid3d", **kw) -> dict:
     ext_path, intr_path, he_path = write_droid3d(tmp / "d3", gt, wrist_serial=kw.get("d3_wrist_serial"))
     reader = RldsStepReader(tmp / "rlds_index", tmp / "rlds")
     report = join.build_manifest(
-        tmp / "pw", [EPISODE], load_episode_rows(tmp / "rlds_index"), tmp / "manifest.jsonl",
-        calibration=calibration, droid3d_extrinsics=C.JsonlIndex(ext_path), droid3d_intrinsics=C.JsonlIndex(intr_path),
-        hand_eye=C.load_hand_eye(he_path), rlds_reader=reader,
+        tmp / "pw",
+        [EPISODE],
+        load_episode_rows(tmp / "rlds_index"),
+        tmp / "manifest.jsonl",
+        calibration=calibration,
+        droid3d_extrinsics=C.JsonlIndex(ext_path),
+        droid3d_intrinsics=C.JsonlIndex(intr_path),
+        hand_eye=C.load_hand_eye(he_path),
+        rlds_reader=reader,
     )
     reader.close()
     return {"gt": gt, "report": report, "tmp": tmp, "manifest": tmp / "manifest.jsonl"}
 
 
 def dataset_kwargs(env: dict, **kw) -> dict:
-    base = dict(pointworld_root=env["tmp"] / "pw", rlds_index_dir=env["tmp"] / "rlds_index",
-                rlds_data_root=env["tmp"] / "rlds", split="all", image_height=36, image_width=64, max_tracks=64)
+    base = dict(
+        pointworld_root=env["tmp"] / "pw",
+        rlds_index_dir=env["tmp"] / "rlds_index",
+        rlds_data_root=env["tmp"] / "rlds",
+        split="all",
+        image_height=36,
+        image_width=64,
+        max_tracks=64,
+    )
     base.update(kw)
     return base
 

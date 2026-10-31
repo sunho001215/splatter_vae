@@ -100,7 +100,11 @@ def parse_droid3d_intrinsics(record: dict, role: str, *, eye: str = "left", out_
     K[0, 2] += 0.5  # OpenCV/ZED integer pixel centres -> continuous
     K[1, 2] += 0.5
     serial = record["cameras"][role].get("serial")
-    return {"K": scale_intrinsics(K, (w, h), tuple(out_wh)), "native_wh": (w, h), "serial": None if serial is None else str(serial)}
+    return {
+        "K": scale_intrinsics(K, (w, h), tuple(out_wh)),
+        "native_wh": (w, h),
+        "serial": None if serial is None else str(serial),
+    }
 
 
 def load_hand_eye(path: str | Path) -> dict[str, np.ndarray]:
