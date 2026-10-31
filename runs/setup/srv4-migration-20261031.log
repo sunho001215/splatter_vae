@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/home/ws/ws/splatter4d/runs/setup/tools/migrate_srv4_to_remote_20261031.py", line 65, in <module>
+    assert sha(run / 'checkpoints/latest.pt') == stop['checkpoint_sha256'], job_id
+AssertionError: srv4-csw4-seed0-hammer-200k
+exit 1
+{"uploaded": "srv4-csw4-seed0-hammer-200k", "step": 170000}
+exit 0
+Traceback (most recent call last):
+  File "/home/ws/ws/splatter4d/runs/setup/tools/migrate_srv4_to_remote_20261031.py", line 74, in <module>
+    assert stops and cur['status'] not in jobs.ACTIVE, (job_id, cur['status'])
+AssertionError: ('srv4-csw4-seed0-pick-place-200k', 'running')
+exit 1

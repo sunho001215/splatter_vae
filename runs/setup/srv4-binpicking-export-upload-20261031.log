@@ -1,0 +1,9 @@
+pretraining done 21:04:02
+foreign processes on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1; not launching there
+foreign processes on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea; not launching there
+foreign processes on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea; not launching there
+foreign processes on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79; not launching there
+launched srv4-csw4-export-seed0-bin-picking-200k on MIG-c3511b41-5f78-52f1-9b93-9c6794cdbbdd (pid 2701608, attempt 1)
+ 
+{"uploaded": "runs/srv4-csw4-export-seed0-bin-picking-200k/encoder.pt", "sha256": "af4d29e3b3aa2b441714da30c3ab00bc8ef2c6f407bcce20093143419d8ac5ed", "time": "21:04:37"}
+exit 0

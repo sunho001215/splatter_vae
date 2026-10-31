@@ -1,0 +1,32 @@
+{
+  "srv4-csw4-seed0-hammer-200k": {
+    "complete": true,
+    "checkpoint_step": 170000,
+    "checkpoint_sha256": "5eb32d72a16b53bd329eb3b89a97c35f3cbbd9224ecab59f982da7cca9f849f5",
+    "files": {
+      "checkpoints/latest.pt": "7bbbed9b12fae3eb4dfee95573ea0975feaa5bb3059ada6f3b3d8a320baecaaa",
+      "config.yaml": "45f07a10aba8876df34f26e74904587cda05dea3fcde1d4f057cef2632081f10",
+      "provenance.json": "bbc6033c5e6d93a70e3fc59fcb8ac9dc3ee06195c9737962dc3f7ec14624a034",
+      "console.log": "c3ca7806022866766489c1d166d7af4638c9cdbdf5b99f18ec1ff261ea32e96f",
+      "log.txt": "148b7d29c6053d3607a15b7efaca99eba8e3b2b9aed98034b8290e9be96fc350",
+      "metrics.jsonl": "472359ea35457b80b74cbc0b701ece27df0f75a5df466f8b8f8ad46118e8decf",
+      "checkpoints/step_0170000.pt": "5eb32d72a16b53bd329eb3b89a97c35f3cbbd9224ecab59f982da7cca9f849f5"
+    },
+    "uploaded": "2026-10-31T20:17:25+09:00"
+  },
+  "srv4-csw4-seed0-pick-place-200k": {
+    "complete": true,
+    "checkpoint_step": 180000,
+    "checkpoint_sha256": "368074b863600ddce39f3769c2e4c15c1313526172a6b2fcda79fe333b9bd081",
+    "files": {
+      "checkpoints/latest.pt": "90710e1a5c7206ee2ddd35d128b8987b8f4bf67a5cf92a53e95b6d33ed3c0fce",
+      "config.yaml": "73af1e9a7a4ba5b094a62105c2eb15bab0615f426a227e5eda3fe6bda03f229f",
+      "console.log": "e2814c50cad8e086739fcecc763952a5ab8d8ed95a619849c91536db1c54943c",
+      "log.txt": "7118502e6791d4f540b963361a5ce91c4b9f9f93277235dce6ce55f09e3692fe",
+      "metrics.jsonl": "e3b3055b0f4a3782944907c468dfe9de80cae3c10c17219a471fa26bd532b376",
+      "checkpoints/step_0180000.pt": "368074b863600ddce39f3769c2e4c15c1313526172a6b2fcda79fe333b9bd081",
+      "provenance.local-20261031.json": "a0154422f9d045f8340ea5a87b21a2c17671aea0c8eb356ba716f5e101863e37"
+    },
+    "uploaded": "2026-10-31T20:49:16+09:00"
+  }
+}

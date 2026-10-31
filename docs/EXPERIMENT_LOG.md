@@ -6418,3 +6418,100 @@ first launch, so it needs either a new row id or a release override.
     `runs/setup/snerl-drawer-open-r2-registration-20261031.json`.
 - **Pause lifted:** the pause on the four SNeRL rows is lifted. Window-open, soccer and sweep-into launch once the
   release manifest is accepted.
+
+## 2026-10-31 19:44 — Local shutdown at 23:00 KST: drain, migration, remote autonomy (user instruction)
+The local server shuts down at 23:00 KST and may stay offline for more than 18 h. Every campaign-owned local process
+must be finished or safely stopped by 22:45, and the remote must keep working alone. Plan as of 19:44:
+
+**Local admissions stopped at 19:48.** The stage-2 and baseline local driver loops were stopped between passes.
+`experiments/HOLD` (present since 10-16) still holds the default queue.
+
+**Lossless checkpoint pauses** (intentional-stop events, so no failure is charged; resume from `latest.pt` with replay
+and RNG state):
+- `pause_flashsac_at_checkpoint_20261031.py` is a copy of the DrM tool for `scripts/train_flashsac.py`. It pauses at
+  the next 50k boundary:
+  - `ds-flashsac-snerl-coffee-push-s2001` at 300k.
+  - `ds-flashsac-mvp3d-multiview-drawer-open-s2000` at 400k (paused 19:5x).
+  - `ds-flashsac-mvp3d-single-drawer-open-s2000` at 500k.
+  - Their running evaluators pause once every snapshot up to the checkpoint is evaluated.
+- The other seven local SNeRL FlashSAC s2001 trainers finish before about 22:00.
+
+**Self-render v4 pilot (raised priority) continues on the remote:**
+- `pause_pretrain_runs_at_checkpoint_20261031.py` pauses `srv4-csw4-seed0-hammer-200k` at 170k and
+  `srv4-csw4-seed0-pick-place-200k` at 180k.
+- `migrate_srv4_to_remote_20261031.py` uploads `latest.pt` (sha256 checked against the pause record) plus the
+  config, provenance, logs and metrics. It records a `migrated` event to release e8ad5ac; the sources are identical to
+  the 02db420 launch, since `git diff e8ad5ac 02db420` touches no source file.
+- It also places each run's export and six FlashSAC rows on the remote.
+- `srv4-csw4-seed0-bin-picking-200k` finishes locally at about 20:58. Its export runs locally
+  (`admit_one_local_20261031.py`), and `encoder.pt` is uploaded for its three FlashSAC seeds on the remote.
+
+**Remote autonomy.** The remote campaign driver, the scheduler daemon and the result sync all run locally, so they
+stop with the local server.
+- `gen_remote_autonomy_plan_20261031.py` builds, for every job the remote should run, the exact launch command the
+  local driver would issue (`s4d.remote_launch.build_remote_command` for the job's accepted release).
+- Each command keeps its own checks: foreign GPU process, RAM reserve, disk floor, per-GPU job and memory caps.
+- Order: the srv4 chain first, then every ready remote row in the remote driver's dispatch order. The driver's gates
+  are mirrored: stage-3 (`s3spec`) rows are held; frozen-encoder rows run only when their export is verified on the
+  remote; admission pauses are respected.
+- `remote_runner.py` runs on the remote with the host's `python3` (standard library only), under
+  `~/kaist/sunho/remote_runner`, detached from any SSH session. It launches pre-generated commands as capacity and
+  dependencies allow (dependency = container exited 0 and its result files present). It logs to `events.jsonl` and
+  `heartbeat.json`. A `STOP` file stops it.
+- No remote job depends on a local path, tunnel, export step or download.
+
+**Temporary scheduling amendment (user authorization 2026-10-31).** The remote runner admits up to 5.0 GPU load units
+per GPU; the local driver's limit was 4.0. Units are the local driver's: heavy trainer or pretraining 1.0, RL trainer
+0.5, evaluator 0.3, export 0.1. The limit can be changed without a restart in `remote_runner/gpu_load_limit.txt`.
+- Measured at 19:50: the four authorized GPUs used 22–36 GB of 98 GB VRAM at 98–100 % utilisation and carried 3.3–4.0
+  load units. The host had 1.35 TB MemAvailable, 2.2 TB free disk, and a load average of 57 on 384 cores.
+- Because the GPUs are already near full utilisation, the increase is kept modest (+25 %). VRAM and RAM caps are
+  unchanged (90 GB per GPU; 120 GB host reserve). The authorized GPU allowlist is unchanged.
+- The local driver's `remote-gpu-load-limit.txt` stays 4.0 for after the restart.
+
+**Ownership.** The local remote-driver loop stops before the runner starts, so exactly one controller launches remote
+work during the outage. On return, `reconcile_remote_runner_20261031.py --stop` then `--apply` imports the runner's
+launches into the registry before any local controller restarts.
+
+**20:20–20:32 — Handoff to the remote runner.**
+- The remote-driver loop was stopped between passes at 20:19. The runner started at 20:21.
+- **First start: 183 launch failures, no launch.** The plan substituted a placeholder GPU UUID into each command. That
+  also renamed the per-GPU isolation-evidence file the command checksums, so every command's own guard failed. Fixed by
+  generating one command per authorized GPU, with no substitution (1116 commands for 265 items), and by capping the
+  runner at 6 command executions per pass.
+- **Second start:**
+  - The first launch, `srv4-csw4-seed0-hammer-200k` attempt 2, succeeded. The runner then crashed on a logging bug
+    (duplicate keyword from the launch output); fixed.
+  - Attempt 2 exited 1 with `RunIdentityError: Existing remote run has a different host`. The uploaded local
+    `provenance.json` named the local host and commit, and `s4d.run_identity.start_remote_run` refuses that. The CNN
+    migration of 10-24 had not uploaded provenance.
+  - On the remote it was renamed `provenance.local-20261031.json` (kept as a record), and the migration tool now
+    uploads it under that name.
+  - Attempt 2's launch was appended to `events.jsonl` by hand, so the reconciliation imports it. It is a real attempt
+    that failed: one failure charged on return, max_restarts 3.
+- **Third start (20:31, runner pid 3572209):** `s4d-srv4-csw4-seed0-hammer-200k-a3` launched on GPU-6122 at 20:32
+  (load 3.3 → 4.3).
+- Both helper agents finished. DROID large-scale: branch `droid-largescale-20261031`, 40 tests, re-run by me. Real-world
+  preprocessing: branch `realworld-preproc-20261031`, 43 tests, re-run by me. Neither is merged or deployed.
+
+**20:44 — Remote concurrency set to 4.5 (from the runner's default 5.0).** The migrated hammer pretraining resumed on the
+remote at step 170,000 and runs at 0.565 s/it, against 0.29 s/it locally, on a GPU at about 4.3 load units and 99 %
+utilisation. The authorized GPUs are compute-saturated (98–100 % utilisation at 3.3–4.3 units). More heavy jobs would
+mainly add contention, not completed work, so the limit leaves room only for light evaluators (0.3) and exports (0.1)
+above the old 4.0. Remote: `remote_runner/gpu_load_limit.txt` = 4.5, re-read every pass.
+
+**20:48–21:08 — Self-render v4 on the remote; runner reservation.**
+- `srv4-csw4-seed0-pick-place-200k`: paused at 180k (20:47), uploaded, provenance kept as `.local` and migrated.
+  Attempt 2 resumed on GPU-ca65 at 20:58 with the log line `resumed from …/latest.pt at step 180000`, at 0.41 s/it.
+- `srv4-csw4-seed0-hammer-200k`: attempt 3 resumed at step 170,000 (log line `resumed …`), at 0.57 s/it.
+- Expected 200k: pick-place about 23:15 KST, hammer about 01:20 KST. Then come their remote exports and FlashSAC seeds
+  2000–2002.
+- `srv4-csw4-seed0-bin-picking-200k` completed locally at 21:01. Its export ran locally through the scheduler
+  (`admit_one_local_20261031.py`). `encoder.pt` (sha256 af4d29e3…) was uploaded and verified, and the driver's
+  upload marker written. Its six FlashSAC rows are placed on the remote (`place_srv4_binpicking_flashsac_remote_20261031.py`).
+- **Runner change:** a head-of-line GPU reservation, like the local driver's. Short re-evaluations (0.3 units) kept
+  filling every gap and could starve the v4 trainers and pretrainings ahead of them. Now the first ready item that
+  does not fit reserves the least-loaded GPU, and later items may use only the other GPUs. Runner restarted 21:07
+  (pid 3912762).
+- **State at 21:05:** 38 runner launches, 0 failed, 0 pass errors; 23 managed containers; GPU loads 4.3–4.5 (limit
+  4.5).
