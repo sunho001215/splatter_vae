@@ -149,10 +149,20 @@ class DroidRawSvoAdapter(EpisodeAdapter):
             rs = "observation/robot_state"
             ts = ((traj["observation/timestamp/robot_state/read_start"][:].astype(np.int64)
                    + traj["observation/timestamp/robot_state/read_end"][:].astype(np.int64)) * 500_000)
+            cart = traj[f"{rs}/cartesian_position"][:].astype(np.float64)
+            rc = self.config.get("robot", {})
+            ee = None
+            if rc.get("flange_frame"):  # DROID cartesian_position = flange pose (checked against URDF FK, see docs)
+                from scipy.spatial.transform import Rotation
+
+                ee = np.tile(np.eye(4), (len(cart), 1, 1))
+                ee[:, :3, :3] = Rotation.from_euler("xyz", cart[:, 3:]).as_matrix()
+                ee[:, :3, 3] = cart[:, :3]
             trajectory = RobotTrajectory(
                 timestamps_ns=ts, joint_positions=traj[f"{rs}/joint_positions"][:].astype(np.float64),
                 gripper_state=traj[f"{rs}/gripper_position"][:].astype(np.float64),
-                extra={"cartesian_position": traj[f"{rs}/cartesian_position"][:]},
+                ee_pose_base=ee, ee_frame=rc.get("flange_frame") if ee is not None else None,
+                extra={"cartesian_position": cart},
                 extra_units={"cartesian_position": "m (xyz) + rad (extrinsic xyz Euler), DROID controller EE frame"})
         assumptions += [
             f"robot {meta.get('robot_serial')} recorded as franka_panda (same 7-DoF kinematic chain); "
@@ -163,8 +173,21 @@ class DroidRawSvoAdapter(EpisodeAdapter):
             "ZED factory calibration reading (rotation, centre sign, DISTO model) validated against the SDK-rectified "
             "DROID MP4 left views; see docs/realworld_droid_validation.md",
         ]
-        robot = RobotDescription(arm_model="franka_panda", gripper_model="robotiq_2f_85", urdf_path=None,
-                                 mesh_root=None, mount_source="DROID standard mount (not measured here)")
+        rc = self.config.get("robot", {})
+        if rc.get("urdf_path"):  # composed arm + gripper URDF (scripts/realworld_compose_robot_urdf.py)
+            manifest = json.loads(Path(rc["urdf_path"]).with_suffix(".manifest.json").read_text())
+            robot = RobotDescription(
+                arm_model="franka_panda", gripper_model=rc.get("gripper_model", "robotiq_2f_85"),
+                urdf_path=str(rc["urdf_path"]), mesh_root=None, base_frame=rc["base_frame"],
+                flange_frame=rc["flange_frame"], gripper_base_frame=manifest["mount"]["gripper_root"],
+                T_flange_gripper=tuple(map(tuple, manifest["mount"]["T_parent_gripper"])),
+                mount_source=manifest["mount"]["source"], joint_names=tuple(rc["joint_names"]),
+                gripper_state_semantics="normalized_closure", gripper_joint=rc["gripper_joint"],
+                asset_sha256={"urdf": manifest["urdf_sha256"]})
+            assumptions.append(f"robot assets: {manifest['provenance']}; mount: {manifest['mount']['source']}")
+        else:
+            robot = RobotDescription(arm_model="franka_panda", gripper_model="robotiq_2f_85", urdf_path=None,
+                                     mesh_root=None, mount_source="DROID standard mount (not measured here)")
         prov = Provenance(adapter=self.name, adapter_version=self.version,
                           source_root=str(self.episodes[episode_id]),
                           source_files=tuple(SourceFile(str(p), "", p.stat().st_size)
