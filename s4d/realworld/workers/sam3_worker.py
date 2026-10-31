@@ -37,6 +37,14 @@ def handle(request, inputs):
         from sam3.model.sam3_image_processor import Sam3Processor  # upstream
         from sam3.model_builder import build_sam3_image_model  # upstream
 
+        import torch
+
+        # as upstream's examples/sam3_image_predictor_example.ipynb: TF32 on, the whole image model under bfloat16
+        # autocast (its fused MLP casts activations to bfloat16; without autocast the next linear layer fails)
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        autocast = torch.autocast("cuda", dtype=torch.bfloat16)
+        autocast.__enter__()
         processor = Sam3Processor(build_sam3_image_model(**{"checkpoint_path": request.get("checkpoint"),
                                                             "load_from_HF": False, **params.get("build_kwargs", {})}))
         for f, image in enumerate(images):
