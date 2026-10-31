@@ -66,6 +66,14 @@ SRV4_COMMIT = 'e8ad5ac17de1434d85256527d5a42e7e10128b70'
 SRV4_PREFIXES = ('srv4-',)
 RELEASES[(SRV4_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{SRV4_COMMIT[:7]}-cc/manifest.json'
 SRV4_READY = (REPO / RELEASES[(SRV4_COMMIT, POOL_IMAGE)]).is_file()
+# SNeRL new-task class table release (user approval 2026-10-31): dd86d78 = main 02db420 + TASK_BODIES for drawer-open,
+# window-open, soccer, sweep-into (s4d/baselines/snerl/data.py). ONLY these four SNeRL pretrainings run on it; drawer-open
+# runs as ds-pre-snerl-drawer-open-r2 (the original crashed at data loading on b9196a8 and a retry may not change code;
+# register_snerl_drawer_open_r2_20261031.py).
+SNERL_NT_COMMIT = 'dd86d78321963d10d84645cbeb6ed3938983df06'
+SNERL_NT_IDS = ('ds-pre-snerl-drawer-open-r2', 'ds-pre-snerl-window-open', 'ds-pre-snerl-soccer', 'ds-pre-snerl-sweep-into')
+RELEASES[(SNERL_NT_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{SNERL_NT_COMMIT[:7]}-cc/manifest.json'
+SNERL_NT_READY = (REPO / RELEASES[(SNERL_NT_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -481,6 +489,8 @@ if not DS_READY:
     candidates = [j for j in candidates if not j['id'].startswith(DS_PREFIXES)]
 if not SRV4_READY:
     candidates = [j for j in candidates if not j['id'].startswith(SRV4_PREFIXES)]
+if not SNERL_NT_READY:
+    candidates = [j for j in candidates if j['id'] not in SNERL_NT_IDS]
 candidates.sort(key=dispatch_key)
 # 2026-10-27: capacity is reserved only by executing jobs; a compute-complete container awaiting backup holds none
 active = {i: s for i, s in state.items() if s.get('host') == 'remote' and s['status'] in jobs.RESERVING}
@@ -553,6 +563,8 @@ if POOL_READY and not DRY and not held:
         units = [m for m in units if not m[0]['id'].startswith(DS_PREFIXES)]
     if not SRV4_READY:
         units = [m for m in units if not m[0]['id'].startswith(SRV4_PREFIXES)]
+    if not SNERL_NT_READY:
+        units = [m for m in units if m[0]['id'] not in SNERL_NT_IDS]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
     units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
@@ -604,6 +616,8 @@ if POOL_READY and not DRY and not held:
 def job_release(job):
     """(commit, image) a job runs on: a retry keeps its first launch's; pool rows the pool release; others COMMIT/IMAGE."""
     previous = state.get(job['id'], {})
+    if job['id'] in SNERL_NT_IDS and not previous.get('commit'):  # new launches only (see SNERL_NT_COMMIT)
+        return SNERL_NT_COMMIT, POOL_IMAGE
     if previous.get('commit'):
         return previous['commit'], previous.get('image_digest', IMAGE)
     if job['id'].startswith(ENC_PREFIXES):

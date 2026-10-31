@@ -6357,3 +6357,64 @@ setting, 64 cameras were drawn per checkpoint, (a) with v2 sampling and (b) with
 
 The cosine between real and self-rendered states of the same window is lower under v4 sampling for these v2-trained
 encoders (hammer 0.93 → 0.90, pick-place 0.91 → 0.82), as expected for views the encoder was not trained on.
+
+**Launch (2026-10-31 04:03).**
+- `srv4-csw4-seed0-{hammer,pick-place,bin-picking}-200k` started locally on MIG-423203d9, MIG-b50e85c3 and
+  MIG-c3511b41, commit 02db420 (sources identical to e8ad5ac). The local admission reserved them as the head-of-line
+  trainer and admitted them as routine FlashSAC runs finished. Nothing was preempted.
+- The resolved `config.yaml` of each run has the relaxed domain, `synth_radius_jitter` 0.05, ramp [20000, 40000],
+  200k steps, seed 0 and the correct task.
+- New run directories, so each run starts at step 0, with step-0 evaluations logged. Initial loss is about 3.8; the
+  self-render weight is 0 during warm-up.
+- At about 500 steps: 0.34–0.45 s/it, with no errors. Expected finish: about 00:00–05:00 KST on Nov 1.
+- The jitter and domain take effect from step 20,001, about 06:00–06:30 today. There,
+  `metric/synth_camera_distance_dev` (about 0.025) and the coverage metrics will be checked.
+
+**06:03 — v4 radial jitter and relaxed domain confirmed active in the live runs** (steps 20,050–23,450, ramp weights
+0.02–0.17).
+- Mean `synth_camera_distance_dev` per logged step: 0.0249 (hammer), 0.0246 (pick-place), 0.0246 (bin-picking),
+  each step between 0.019 and 0.032. The expected value for U(−5 %, 5 %) is 0.025.
+- Self-render coverage: `synth_alpha_mean` ≈ 0.98, eligible tokens ≈ 96 %, 0 coverage-exception rows, 0 ineligible
+  tokens kept.
+- No errors in any console log. The `retrieval nan` at the 5k and 15k evaluations is the known pattern; v2 shows it at
+  the same steps.
+
+## 2026-10-31 — SNeRL new-task pretraining crash (unrelated to self-render); four rows held
+`ds-pre-snerl-drawer-open` (remote, attempt 1, release b9196a8) exited with code 1 at data loading:
+`KeyError: 'drawer-open'` in `s4d/baselines/snerl/data.py class_table`. `TASK_BODIES`, the SNeRL semantic split of
+each task's bodies into object and fixture, lists only the original eight tasks. All four new-task SNeRL pretrainings
+would fail the same way, and so would the 24 FlashSAC rows that depend on them.
+
+**Action:** admission pause `snerl-newtask-class-table-20261031` on `ds-pre-snerl-{drawer-open,window-open,soccer,
+sweep-into}`. This means no retry on the unfixed release, which a retry would stay pinned to, and no launch of the
+three that never started. Nothing running was touched.
+
+**Proposed table**, pending the user's decision. Moving bodies (moved more than 1 cm within some training episode)
+become objects; the remaining task bodies become fixtures:
+
+| task | object | fixture |
+|---|---|---|
+| drawer-open | drawer_link | drawer, drawercase_link, body34 |
+| window-open | windowb_a | window, windowb_b, body34 |
+| soccer | soccer_ball, soccer_ball1 | goal_whole, soccer_goal |
+| sweep-into | obj | — |
+
+This rule reproduces 5 of the 8 existing entries. Coffee-push (cmbutton), door-open (door_link, a hinge body whose
+origin does not move) and stick-push (object) were assigned by hand. The drawer-open row is pinned to b9196a8 by its
+first launch, so it needs either a new row id or a release override.
+
+**12:10 — SNeRL fix (user approval: "Add the entries").**
+- **Release dd86d78:** `TASK_BODIES` gains the four new tasks with the proposed table. Sweep-into gets a per-task
+  `absent: (RetainingWall,)`, because its model has no retaining wall; other tasks still require it (tested).
+- **Checks:** `class_table` builds for all 12 tasks on the real HDF5 body names, and `SNeRLScenes` loads the four new
+  tasks. The remote full suite passed 1222 of 1222.
+- **Main:** fast-forwarded to dd86d78, with the suite adopted as gate evidence.
+- **Remote routing:** only the four SNeRL new-task pretrainings use this release (`SNERL_NT_COMMIT`).
+- **Drawer-open re-run:** `scripts/jobs.py` holds a retry whose code changed, so drawer-open is re-run as
+  `ds-pre-snerl-drawer-open-r2`. Its six FlashSAC trainers and evaluators are copied as
+  `ds-flashsac-snerl-drawer-open-r2-s200{0,1,2}[-eval]`, which read the new export.
+  - The seven original rows got terminal cancelled events; their queue definitions are unchanged.
+  - Registration: `register_snerl_drawer_open_r2_20261031.py`, record
+    `runs/setup/snerl-drawer-open-r2-registration-20261031.json`.
+- **Pause lifted:** the pause on the four SNeRL rows is lifted. Window-open, soccer and sweep-into launch once the
+  release manifest is accepted.

@@ -1,0 +1,22 @@
+=== 2026-10-31 11:54:00 release chain dd86d78 (SNeRL new-task class table)
+11:54:33 /home/ws/ws/splatter4d/.worktrees/snerl-newtasks/s4d/remote_access.py sync-code dd86d78321963d10d84645cbeb6ed3938983df06 -> 0 /home/compu/kaist/sunho/releases/dd86d78321963d10d84645cbeb6ed3938983df06/code 
+11:54:33 /home/compu/kaist/sunho/releases/dd86d78321963d10d84645cbeb6ed3938983df06/code
+11:54:38 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-dd86d78-cc-queue.yaml 
+11:55:42 launched verify-native-dd86d78-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-native-dd86d78-cc-a1, attempt 1)
+11:55:42 wait {'verify-native-dd86d78-cc': 'running'}
+11:57:35 ds-flashsac-dynamo-bin-picking-s2001 exited with 0
+11:57:35 ds-sac-snerl-hammer-s2000: local backup checksum verified; done
+11:57:35 ds-sac-snerl-hammer-s2000-eval: local backup checksum verified; done
+11:57:35 GPU process query failed (QueryUnavailable); no jobs launched on local
+11:57:35 wait {'verify-native-dd86d78-cc': 'running'}
+12:01:25 verify-native-dd86d78-cc: live result sync unavailable; job remains running
+12:01:25 wait {'verify-native-dd86d78-cc': 'running'}
+12:02:58 wait {'verify-native-dd86d78-cc': 'running'}
+12:04:11 verify-native-dd86d78-cc: live result sync unavailable; job remains running
+12:04:11 wait {'verify-native-dd86d78-cc': 'running'}
+12:05:34 wait {'verify-native-dd86d78-cc': 'running'}
+12:06:46 wait {'verify-native-dd86d78-cc': 'running'}
+12:08:15 verify-native-dd86d78-cc exited with 0 on remote; results checksum verified
+12:08:15 done {'verify-native-dd86d78-cc': 'done'}
+12:08:16 {"exit_code": 0, "counts": {"passed": 1222, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+12:08:21 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-dd86d78-cc-queue.yaml 

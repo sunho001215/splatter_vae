@@ -1,10 +1,10 @@
 {
-  "started_utc": "2026-10-30T17:55:48.603245+00:00",
+  "started_utc": "2026-10-31T02:55:47.147596+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
   "host": "remote",
-  "expected_commit": "e8ad5ac17de1434d85256527d5a42e7e10128b70",
+  "expected_commit": "dd86d78321963d10d84645cbeb6ed3938983df06",
   "expected_image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
   "gpu_mapping": [
     {
@@ -17,12 +17,12 @@
     "/workspace/splatter4d/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/compu/kaist/sunho/runtime/verification/verify-native-e8ad5ac-cc/a1/evidence/tests.junit.xml",
+    "--junitxml=/home/compu/kaist/sunho/runtime/verification/verify-native-dd86d78-cc/a1/evidence/tests.junit.xml",
     "-o",
-    "cache_dir=/home/compu/kaist/sunho/runtime/verification/verify-native-e8ad5ac-cc/a1/evidence/pytest-cache"
+    "cache_dir=/home/compu/kaist/sunho/runtime/verification/verify-native-dd86d78-cc/a1/evidence/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 757.1933184200898,
+  "duration_seconds": 723.9956620140001,
   "counts": {
     "passed": 1222,
     "error": 0,
@@ -67,7 +67,7 @@
     "s4d/baselines/sincro/training.py": "76ec5f6dd1b8536d78bd08c88bff288cdb5172544850f354c6be25e654252d92",
     "s4d/baselines/sincro/vit_block.py": "1aca6f70c0c638dc547ec6ae6d0492a5ff9663dd6f34e4228a0d5391cc804788",
     "s4d/baselines/snerl/__init__.py": "26f57cc121bf1773bba34617b3b657a9f1e1e54492748311ef645e01ece1b88a",
-    "s4d/baselines/snerl/data.py": "876bfb399e944ac39b560ba7144a14f92201b316a67f7bc44b85d22d89a85192",
+    "s4d/baselines/snerl/data.py": "eb6f414075b4c6fd46fae0cb418b36b60313e5b53deaa555dad20878e41186a2",
     "s4d/baselines/snerl/encoder.py": "200434f32506539bdc96d3666d0b656d08f2bda336d259af615d1f825d54388e",
     "s4d/baselines/snerl/model.py": "71ef61cc922663a8566549dc14bc17ce846126833fad24de1eadb9b0ec1af620",
     "s4d/baselines/snerl/upstream.py": "99711c2266ecf979eeb7527a8b972dc6def15c4a56ec4aec311b1c55e74d5e6f",
@@ -222,7 +222,7 @@
     "tests/test_baseline_representation.py": "6d8e94cca82eb7104443e040f6f4dcce53bba7f154abe2fb7c88ed30034f2f95",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
-    "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
+    "tests/test_baselines_snerl.py": "75ffd84e3ecacc9d6cd1702389cd5e146309c13668633cc017ee105ceb2771d4",
     "tests/test_camera_suites.py": "aa4f0d2b2756251b255b4e36209c03fe58aae87a54c627cc9f444c10fd2f1fc6",
     "tests/test_chamfer_lean.py": "d3a03361695e49312201ac0a216dbfd6f2cd2fe1b4056ca154496722f7cd6271",
     "tests/test_checkpoint.py": "eb136245edb00ea4e64481c5601fc86eb5d7ee2d5445762962d64f427ef741be",
@@ -448,7 +448,7 @@
     "s4d/baselines/sincro/training.py": "76ec5f6dd1b8536d78bd08c88bff288cdb5172544850f354c6be25e654252d92",
     "s4d/baselines/sincro/vit_block.py": "1aca6f70c0c638dc547ec6ae6d0492a5ff9663dd6f34e4228a0d5391cc804788",
     "s4d/baselines/snerl/__init__.py": "26f57cc121bf1773bba34617b3b657a9f1e1e54492748311ef645e01ece1b88a",
-    "s4d/baselines/snerl/data.py": "876bfb399e944ac39b560ba7144a14f92201b316a67f7bc44b85d22d89a85192",
+    "s4d/baselines/snerl/data.py": "eb6f414075b4c6fd46fae0cb418b36b60313e5b53deaa555dad20878e41186a2",
     "s4d/baselines/snerl/encoder.py": "200434f32506539bdc96d3666d0b656d08f2bda336d259af615d1f825d54388e",
     "s4d/baselines/snerl/model.py": "71ef61cc922663a8566549dc14bc17ce846126833fad24de1eadb9b0ec1af620",
     "s4d/baselines/snerl/upstream.py": "99711c2266ecf979eeb7527a8b972dc6def15c4a56ec4aec311b1c55e74d5e6f",
@@ -603,7 +603,7 @@
     "tests/test_baseline_representation.py": "6d8e94cca82eb7104443e040f6f4dcce53bba7f154abe2fb7c88ed30034f2f95",
     "tests/test_baselines.py": "19c1b2175d2bc1347b7a5338966cb42d2e34982fa74216cd25fc9379705a0dd8",
     "tests/test_baselines_dynamo.py": "f0c42d4d9718963594001f313c3244074ca0a1dec4a0a0d25e036399c290895a",
-    "tests/test_baselines_snerl.py": "7f22d64256c884af99377c182e5c3a6d9964d1aea706e77c2eee3c4181d4fe1b",
+    "tests/test_baselines_snerl.py": "75ffd84e3ecacc9d6cd1702389cd5e146309c13668633cc017ee105ceb2771d4",
     "tests/test_camera_suites.py": "aa4f0d2b2756251b255b4e36209c03fe58aae87a54c627cc9f444c10fd2f1fc6",
     "tests/test_chamfer_lean.py": "d3a03361695e49312201ac0a216dbfd6f2cd2fe1b4056ca154496722f7cd6271",
     "tests/test_checkpoint.py": "eb136245edb00ea4e64481c5601fc86eb5d7ee2d5445762962d64f427ef741be",
@@ -2459,15 +2459,15 @@
   "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
   "adopted_evidence": {
     "host": "remote",
-    "job": "verify-native-e8ad5ac-cc",
-    "commit": "e8ad5ac17de1434d85256527d5a42e7e10128b70",
+    "job": "verify-native-dd86d78-cc",
+    "commit": "dd86d78321963d10d84645cbeb6ed3938983df06",
     "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
-    "report": "runs/verify-native-e8ad5ac-cc/evidence/tests.json",
-    "report_sha256": "b1a14171f3876d9b41c6d9540dd622ec1032a5da78f7144f996b7491907f8267",
+    "report": "runs/verify-native-dd86d78-cc/evidence/tests.json",
+    "report_sha256": "ef63220b43144a561cf42fcbcdba76332f4acf0f99cc9d698f8f5837d87c4517",
     "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
-    "adopted_at": "2026-10-31T03:30:22+0900",
+    "adopted_at": "2026-10-31T12:08:31+0900",
     "local_runs": [
-      "tests/test_selfrender_v4.py + test_selfrender_radial.py + test_selfrender_replace.py: 29 passed (local, worktree sr-radial, 2026-10-31)"
+      "tests/test_baselines_snerl.py -k semantic: 2 passed (local, worktree snerl-newtasks); class_table on real HDF5 body names for all 12 tasks; SNeRLScenes loads the 4 new tasks"
     ],
     "policy": "user instruction 2026-10-23: remote RAM for the remaining validation; the full native suite of the exact sources on the remote host is accepted as the launch-gate evidence when the local host lacks the suite headroom; provenance kept here (not a local run)"
   }

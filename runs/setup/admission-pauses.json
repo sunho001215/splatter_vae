@@ -87,6 +87,21 @@
     "ds-flashsac-sr-csw4-bin-picking-s2002",
     "ds-flashsac-sr-csw4-bin-picking-s2002-eval"
    ]
+  },
+  {
+   "name": "snerl-newtask-class-table-20261031",
+   "active": false,
+   "since": "2026-10-31T11:10:01+09:00",
+   "reason": "ds-pre-snerl-drawer-open crashed deterministically (KeyError: drawer-open in s4d/baselines/snerl/data.py TASK_BODIES: the SNeRL semantic class table has only the 8 original tasks). Hold the four new-task SNeRL pretrainings (no admission, no retry on the unfixed release, which a retry would stay pinned to) until the class table for the new tasks is decided; lift after the fix is released.",
+   "prefixes": [],
+   "ids": [
+    "ds-pre-snerl-drawer-open",
+    "ds-pre-snerl-window-open",
+    "ds-pre-snerl-soccer",
+    "ds-pre-snerl-sweep-into"
+   ],
+   "lifted": "2026-10-31T12:08:39+09:00",
+   "lift_reason": "fix released as dd86d78 (user approval 2026-10-31; remote suite 1222 passed); window-open, soccer and sweep-into run on it as new launches (SNERL_NT_COMMIT); drawer-open is rerun as ds-pre-snerl-drawer-open-r2 and the original row is cancelled"
   }
  ]
 }

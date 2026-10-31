@@ -13,6 +13,7 @@ SNeRL/DynaMo/3D-MVP integrate cleanly; pinned upstream code now executes (863/0/
 Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`; restart state: `HANDOFF.md` (shutdown ledger is historical).
 
 ## Codex jobs (until integrated or discarded)
+**2026-10-30: Codex retired (user).** No new Codex jobs; reviews are done by Claude directly. The table is historical.
 Codex cannot run shell commands in this container (bwrap namespace denied); reviews run as read-only tasks with the
 diff inline.
 | id | purpose | worktree | outcome |
@@ -26,6 +27,10 @@ diff inline.
 | codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: no findings; merged a1815c4 |
 
 ## Current phase
+- **Self-render (2026-10-31):** the v2 pilot (`sr-csw4-*`) was stopped at the user's instruction (checkpoints
+  kept). It is replaced by `selfrender_replace_v4`: ±5 % radial camera jitter plus the viewpoint domain relaxed
+  ×0.95 (466 cells). Rows `srv4-csw4-*` (pretraining from step 0, export, FlashSAC s2000–2002) were registered
+  at 03:40 with pilot priority. Release e8ad5ac; details in EXPERIMENT_LOG 2026-10-31.
 - **Done:** Phase A/B/C, Stage 0, review items 1-5 and Stage 1. Eight tasks: bin-picking, coffee-push,
   door-open, hammer, peg-insert-side, peg-unplug-side, pick-place, stick-push.
 - **Frozen method: C + D0 + M3D, 200k.** C retains synthetic near views as invariance positives/render targets;

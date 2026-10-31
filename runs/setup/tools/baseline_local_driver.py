@@ -71,7 +71,9 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  # self-render v4 = v2 + +-5 % radial camera jitter + 5 %-relaxed viewpoint domain (user 2026-10-31;
                  # replaces the stopped v2 pilot): pretrainings, exports (pool rows, admitted here only while placed
                  # local) and their FlashSAC trainers/evaluators
-                 'selfrender-v4-registration-20261031.json']
+                 'selfrender-v4-registration-20261031.json',
+                 # SNeRL drawer-open rerun on release dd86d78 (user 2026-10-31): its FlashSAC trainers/evaluators
+                 'snerl-drawer-open-r2-registration-20261031.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')

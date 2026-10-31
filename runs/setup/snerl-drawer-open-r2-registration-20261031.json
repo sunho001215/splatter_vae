@@ -1,0 +1,256 @@
+{
+  "registered_at": "2026-10-31T11:57:50.110776+09:00",
+  "purpose": "Rerun of the SNeRL drawer-open pretraining under a new name on the fixed release (user approval 2026-10-31).",
+  "release": "dd86d78",
+  "cancelled": [
+    "ds-pre-snerl-drawer-open",
+    "ds-flashsac-snerl-drawer-open-s2000",
+    "ds-flashsac-snerl-drawer-open-s2000-eval",
+    "ds-flashsac-snerl-drawer-open-s2001",
+    "ds-flashsac-snerl-drawer-open-s2001-eval",
+    "ds-flashsac-snerl-drawer-open-s2002",
+    "ds-flashsac-snerl-drawer-open-s2002-eval"
+  ],
+  "jobs": [
+    {
+      "id": "ds-pre-snerl-drawer-open-r2",
+      "host": "remote",
+      "script": "scripts/train_snerl.py",
+      "args": [
+        "--config",
+        "configs/baselines/snerl/drawer-open.yaml",
+        "--name",
+        "ds-pre-snerl-drawer-open-r2",
+        "--output-root",
+        "runs",
+        "--resume",
+        "auto"
+      ],
+      "gpu": "any",
+      "mem_gb": 16,
+      "ram_gb": 32,
+      "disk_gb": 20,
+      "priority": 3,
+      "deps": [],
+      "max_restarts": 2,
+      "baseline": "snerl",
+      "stage": 6,
+      "baseline_expansion": "snerl-eight-task-20261020",
+      "required_results": [
+        "encoder.pt",
+        "encoder_init.pt",
+        "metrics.jsonl",
+        "completion.json"
+      ],
+      "variant": "baseline_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (rerun of ds-pre-snerl-drawer-open under a new name on release dd86d78; remote)"
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "ds-pre-snerl-drawer-open-r2"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-snerl-drawer-open-r2-s2000",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "drawer-open",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2000",
+        "--run-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2000",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/ds-pre-snerl-drawer-open-r2/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (copy of ds-flashsac-snerl-drawer-open-s2000 reading the ds-pre-snerl-drawer-open-r2 export; local frozen-encoder FlashSAC)",
+      "priority": 2
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "ds-pre-snerl-drawer-open-r2"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-snerl-drawer-open-r2-s2000-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2000",
+        "--train-job",
+        "ds-flashsac-snerl-drawer-open-r2-s2000",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2000-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (copy of ds-flashsac-snerl-drawer-open-s2000-eval reading the ds-pre-snerl-drawer-open-r2 export; local frozen-encoder FlashSAC)",
+      "priority": 2
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "ds-pre-snerl-drawer-open-r2"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-snerl-drawer-open-r2-s2001",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "drawer-open",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2001",
+        "--run-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2001",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/ds-pre-snerl-drawer-open-r2/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (copy of ds-flashsac-snerl-drawer-open-s2001 reading the ds-pre-snerl-drawer-open-r2 export; local frozen-encoder FlashSAC)",
+      "priority": 2
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "ds-pre-snerl-drawer-open-r2"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-snerl-drawer-open-r2-s2001-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2001",
+        "--train-job",
+        "ds-flashsac-snerl-drawer-open-r2-s2001",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2001-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (copy of ds-flashsac-snerl-drawer-open-s2001-eval reading the ds-pre-snerl-drawer-open-r2 export; local frozen-encoder FlashSAC)",
+      "priority": 2
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "ds-pre-snerl-drawer-open-r2"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-snerl-drawer-open-r2-s2002",
+      "script": "scripts/train_flashsac.py",
+      "args": [
+        "--task",
+        "drawer-open",
+        "--encoder",
+        "snerl",
+        "--seed",
+        "2002",
+        "--run-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2002",
+        "--set",
+        "train.num_train_steps=1000000",
+        "vision.export_path=runs/ds-pre-snerl-drawer-open-r2/encoder.pt"
+      ],
+      "mem_gb": 4,
+      "ram_gb": 6,
+      "disk_gb": 10,
+      "required_results": [
+        "final.json",
+        "train.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (copy of ds-flashsac-snerl-drawer-open-s2002 reading the ds-pre-snerl-drawer-open-r2 export; local frozen-encoder FlashSAC)",
+      "priority": 2
+    },
+    {
+      "host": "local",
+      "gpu": "any",
+      "deps": [
+        "ds-pre-snerl-drawer-open-r2"
+      ],
+      "max_restarts": 1,
+      "id": "ds-flashsac-snerl-drawer-open-r2-s2002-eval",
+      "script": "scripts/eval_rl.py",
+      "args": [
+        "--run-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2002",
+        "--train-job",
+        "ds-flashsac-snerl-drawer-open-r2-s2002",
+        "--workers",
+        "6",
+        "--envs-per-worker",
+        "8",
+        "--output-dir",
+        "runs/ds-flashsac-snerl-drawer-open-r2-s2002-eval"
+      ],
+      "mem_gb": 6,
+      "ram_gb": 8,
+      "disk_gb": 1,
+      "required_results": [
+        "eval.jsonl"
+      ],
+      "stage": 7,
+      "variant": "flashsac_snerl",
+      "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
+      "placement": "pool 2026-10-31T11:56:20+09:00 (copy of ds-flashsac-snerl-drawer-open-s2002-eval reading the ds-pre-snerl-drawer-open-r2 export; local frozen-encoder FlashSAC)",
+      "priority": 2
+    }
+  ],
+  "queue_sha256_before": "7ce2aee5e651148ed8de7c6d357d2a1d83a7921b8e6528c8651c6de5652e0e68",
+  "queue_sha256_after": "3025df0dee2ee1e3dcfd47e07721f8da3e7c1a7105d9ae5c4f383c406591c06f"
+}
