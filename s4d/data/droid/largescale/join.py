@@ -210,18 +210,11 @@ def build_episode_entry(
             "rlds": {"dataset": "droid 1.0.1 (RLDS)", "shard": rlds["shard"], "row": rlds["row"]},
         },
     }
-    d3e = droid3d_extrinsics.get(episode) if droid3d_extrinsics is not None else None
-    d3i = droid3d_intrinsics.get(episode) if droid3d_intrinsics is not None else None
+    d3e = droid3d_record(droid3d_extrinsics, episode, suffix, "scene_path")
+    d3i = droid3d_record(droid3d_intrinsics, episode, suffix, "raw_dir")
     if calibration == "droid3d" and d3e is None:
         raise JoinError(f"{episode}: not in DROID-3D extrinsics.jsonl")
     parsed = C.parse_droid3d_extrinsics(d3e) if d3e is not None else None
-    if parsed is not None and parsed["scene_path"]:
-        try:
-            d3_suffix = scene_suffix(parsed["scene_path"])
-        except ValueError:
-            d3_suffix = None  # a local path without the lab/outcome/date/folder tail carries no identity
-        if d3_suffix is not None and d3_suffix != suffix:
-            raise JoinError(f"{episode}: DROID-3D scene_path suffix {d3_suffix!r} != PointWorld {suffix!r}")
     if d3i is not None:
         for role in ("ext1", "ext2"):
             serial = d3i["cameras"][role].get("serial")
@@ -315,6 +308,37 @@ def build_episode_entry(
         }
         entry["provenance"]["droid3d"] = {"dataset": "jaibrdhn/droid_3d_extrinsics", "key": "episode_uuid"}
     return entry
+
+
+def droid3d_record(index: C.JsonlIndex | None, episode: str, suffix: str, path_key: str) -> dict | None:
+    """The DROID-3D record of ``episode`` whose ``path_key`` (``scene_path`` / ``raw_dir``) suffix is ``suffix``.
+
+    The uuid alone is not unique on real data (``camera_intrinsics.jsonl`` repeats 100 uuids under ``success/`` and
+    ``failure/``), so the path suffix decides; a record whose path parses to another suffix is an identity mismatch.
+    """
+    if index is None:
+        return None
+    records = index.get_all(episode)
+    matching, unparsed = [], []
+    for record in records:
+        try:
+            other = scene_suffix(record.get(path_key, ""))
+        except ValueError:  # a path without the lab/outcome/date/folder tail carries no identity
+            unparsed.append(record)
+            continue
+        if other == suffix:
+            matching.append(record)
+        elif len(records) == 1:
+            raise JoinError(f"{episode}: DROID-3D {index.path.name} {path_key} suffix {other!r} != PointWorld {suffix!r}")
+    if len(matching) == 1:
+        return matching[0]
+    if not matching and len(unparsed) == 1 and len(records) == 1:
+        return unparsed[0]
+    if not records:
+        return None
+    raise JoinError(
+        f"{episode}: {len(records)} DROID-3D {index.path.name} records, {len(matching)} with {path_key} suffix {suffix!r}"
+    )
 
 
 def nearest_index(stamps: np.ndarray, targets: np.ndarray) -> np.ndarray:

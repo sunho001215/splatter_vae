@@ -143,28 +143,41 @@ def stored_image_camera(K_frustum, c2w_frustum, width: int, height: int):
 
 
 class JsonlIndex:
-    """Byte-offset index of a large JSONL file keyed by one field; lookups read one line (bounded memory)."""
+    """Byte-offset index of a large JSONL file keyed by one field; lookups read only the matching lines.
+
+    Real DROID-3D ``camera_intrinsics.jsonl`` holds 100 ``episode_uuid`` values twice: DROID raw has the same uuid
+    under ``success/`` and ``failure/`` (different ``raw_dir``). ``get`` refuses such keys; ``get_all`` returns every
+    record so the join can pick the one whose path suffix matches (``join.droid3d_record``).
+    """
 
     def __init__(self, path: str | Path, key: str = "episode_uuid"):
         self.path = Path(path)
-        self.offsets: dict[str, tuple[int, int]] = {}
-        self.duplicates: set[str] = set()
+        self.spans: dict[str, list[tuple[int, int]]] = {}
         with self.path.open("rb") as stream:
             offset = 0
             for line in stream:
                 if line.strip():
                     value = str(json.loads(line)[key])
-                    if value in self.offsets:
-                        self.duplicates.add(value)
-                    self.offsets[value] = (offset, len(line))
+                    self.spans.setdefault(value, []).append((offset, len(line)))
                 offset += len(line)
+        self.duplicates = {value for value, spans in self.spans.items() if len(spans) > 1}
+
+    def __len__(self) -> int:
+        return len(self.spans)
+
+    def __contains__(self, value: str) -> bool:
+        return value in self.spans
+
+    def get_all(self, value: str) -> list[dict]:
+        out = []
+        with self.path.open("rb") as stream:
+            for offset, length in self.spans.get(value, ()):
+                stream.seek(offset)
+                out.append(json.loads(stream.read(length)))
+        return out
 
     def get(self, value: str) -> dict | None:
         if value in self.duplicates:
             raise ValueError(f"{self.path.name}: {value!r} appears more than once; refusing an ambiguous join")
-        span = self.offsets.get(value)
-        if span is None:
-            return None
-        with self.path.open("rb") as stream:
-            stream.seek(span[0])
-            return json.loads(stream.read(span[1]))
+        records = self.get_all(value)
+        return records[0] if records else None

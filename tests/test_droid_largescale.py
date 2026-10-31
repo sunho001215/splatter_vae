@@ -800,3 +800,31 @@ def test_partial_rlds_index_keeps_global_shard_ids_and_checks_dataset_info_shard
 )
 def test_uuid_folder_diagnostic_accepts_the_real_droid_folder_formats(uuid, suffix, expected):
     assert join.uuid_matches_suffix(uuid, suffix) is expected
+
+
+def _duplicate_intrinsics(raw_dir_other, serial_other=None):
+    def mutate(t, e, i, h):
+        lines = [json.loads(x) for x in i.read_text().splitlines()]
+        rec = next(r for r in lines if r["episode_uuid"] == F.EPISODE)
+        twin = json.loads(json.dumps(rec))
+        twin["raw_dir"] = raw_dir_other(rec["raw_dir"])
+        if serial_other:
+            twin["cameras"]["ext1"]["serial"] = serial_other
+        i.write_text("".join(json.dumps(r) + "\n" for r in [twin, *lines]))
+
+    return mutate
+
+
+def test_droid3d_records_are_selected_by_uuid_and_path_suffix(tmp_path):
+    """Real data: camera_intrinsics.jsonl repeats 100 uuids under success/ and failure/ (different raw_dir)."""
+    twin_failure = _duplicate_intrinsics(lambda p: p.replace("/success/", "/failure/"), serial_other="99999999")
+    assert _rebuild(tmp_path / "a", twin_failure)["accepted"] == 1  # the success/ record is the PointWorld episode
+    twin_same = _duplicate_intrinsics(lambda p: p)
+    report = _rebuild(tmp_path / "b", twin_same)
+    assert report["accepted"] == 0 and "2 DROID-3D camera_intrinsics.jsonl records" in report["rejected"][F.EPISODE]
+
+    def wrong_dir(t, e, i, h):
+        _set_line(i, lambda r: dict(r, raw_dir=r["raw_dir"].replace("19:07:04", "19:07:05")))
+
+    report = _rebuild(tmp_path / "c", wrong_dir)
+    assert report["accepted"] == 0 and "raw_dir suffix" in report["rejected"][F.EPISODE]
