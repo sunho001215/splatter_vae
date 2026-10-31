@@ -6584,3 +6584,33 @@ above the old 4.0. Remote: `remote_runner/gpu_load_limit.txt` = 4.5, re-read eve
   - FoundationStereo ViT-L `23-51-11` from the official Google Drive: 3,298,527,334 B, sha256 60e79bde….
   - Isolated uv envs with torch 2.10.0+cu129 (Blackwell). The upstream pin torch 2.4.1 has no sm_120 kernels; this
     is recorded as an environment deviation.
+
+**22:40–23:05 — Refactor pass 2 and item 8 finished (agents); item 5 stereo validated on real data.**
+- Refactor pass 2 (`refactor2-20261031`, f2b6161, from a8628a7):
+  - 18 reusable drivers and libraries moved from `runs/setup/tools` into `ops/{resources,jobs,remote,campaign}`.
+    Each old path is a 17-line entry point: the same module object when imported, run as `__main__` when executed.
+  - The other 157 files are byte-identical, including the remote-runner sources, dated one-offs and backups.
+  - Full suite: 1277 passed / 0 failed. Report: `/home/ws/ws/validation-20261031/refactor2/REPORT.md`.
+  - Bugs found and deliberately not fixed in the refactor:
+    - `pause_rl_at_checkpoint` lacks `intentional_stop`;
+    - `remote_campaign_driver --dry-run` writes closeouts, PROGRESS rows and uploads. A warning was added to the
+      restart briefing and HANDOFF.
+- Item 8 (`droid-largescale-20261031`, 9f0a80a):
+  - 9 real-data integration fixes, each with a test.
+  - Inputs: 62 PointWorld episodes (one AUTOLab session) plus the raw episode. Downloads 8.43 GB, sha-verified.
+  - The DROID input manifest is identical before and after; nothing was written under `/home/ws/data/droid`.
+  - Trainer smoke with the DROID base plus the csw4 variants:
+    - 200 steps, finite losses and gradients;
+    - checkpoints and resume (Δ 0.007 against 0.049 GPU noise);
+    - workers 0/4/8 give bit-identical batches.
+  - Full suite on 87b7846: 1283 passed.
+  - Open for the user:
+    - (1) The wrist pose chain and QA: on this robot the published DROID-3D chain fits worse than simpler variants,
+      and the 3 cm QA rejects 62/62.
+    - (2) csw4 base keys on DROID: the DROID base differs from the Meta-World csw4 base.
+  - Report: `/home/ws/ws/validation-20261031/item8/REPORT.md`.
+- Item 5 stereo (`stereo_depth`, 33.6 min, both rigs and references):
+  - FoundationStereo − SIFT disparity: median −0.02/−0.04 px.
+  - Flip-and-swap left/right consistency: median 0.32/0.22 px.
+  - Cross-rig metric consistency through the DROID-3D poses: median 0.75 %/0.82 %, signed −1.0/+3.6 mm.
+  - PointWorld depth: median 0.61 %/0.50 %.

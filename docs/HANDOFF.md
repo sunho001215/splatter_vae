@@ -407,6 +407,7 @@ is absent. Stop obsolete deadline loops and check paused checkpoint hashes first
 ```bash
 .venv/bin/python -I runs/setup/tools/stage2_local_driver.py --dry-run
 .venv/bin/python -I runs/setup/tools/remote_campaign_driver.py --dry-run
+# WARNING (2026-10-31 review): this --dry-run still writes closeouts, PROGRESS rows and uploads exports/configs.
 # After resource/provenance checks and after updating the expired local admission hold:
 .venv/bin/python -I runs/setup/tools/stage2_local_driver.py
 .venv/bin/python -I runs/setup/tools/remote_campaign_driver.py

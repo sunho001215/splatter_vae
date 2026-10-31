@@ -38,6 +38,15 @@ Machine-readable state: `runs/setup/restart-state-20261031.json`. Both files are
    is a crashed row with an intentional stop and no charged failure; once allowed, the local driver relaunches it, with `--resume auto` for pretraining and `checkpoints/latest.pt` plus the replay
    snapshot for FlashSAC.
 
+**Warning (refactor-pass-2 review, 22:40):** `runs/setup/tools/remote_campaign_driver.py --dry-run` is NOT
+side-effect free. It still:
+- writes `runs/remote/finished/*.json` closeouts;
+- appends rows to `docs/PROGRESS.md`;
+- uploads configs and exports;
+- writes upload markers.
+
+Do not use it as a harmless preview during a hand-back. The reconcile tool's dry run (step 2) is read-only.
+
 ## 3. Paused local jobs (lossless, intentional-stop events)
 See `paused_local_jobs` in the state file for the exact checkpoints, sha256 values and commands. FlashSAC:
 `ds-flashsac-snerl-coffee-push-s2001` (300k), `ds-flashsac-mvp3d-multiview-drawer-open-s2000` (400k) and
