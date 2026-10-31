@@ -912,3 +912,21 @@ def test_saturated_depth_code_is_invalid_not_a_far_target(env, tmp_path):
     depth, _ = PointWorldReader(tmp_path / "pw").depth_frames(F.EPISODE, group, [4, 2, 4])
     assert depth.shape == (3, F.H, F.W) and not depth[[0, 2], -3:, 150:155].any() and (depth[1, -3:, 150:155] > 0).all()
     assert depth.max() < 10
+
+
+def test_workspace_statistics_for_the_largescale_regime(env):
+    """model.anchor_stats is null in the overlay; scripts/compute_workspace_stats.py now reads the manifest regime."""
+    import importlib.util
+    from types import SimpleNamespace
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("cli_stats", repo / "scripts" / "compute_workspace_stats.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    args = SimpleNamespace(
+        pointworld_root=env["tmp"] / "pw", rlds_index=env["tmp"] / "rlds_index", rlds_root=env["tmp"] / "rlds", validation_percent=0.0
+    )
+    stats = cli.compute_statistics(cli.dataset_for("droid_largescale", env["manifest"], args), samples=4, seed=0)
+    assert stats["samples"] == 4 and stats["scene"]["num_points"] > 0 and np.isfinite(stats["scene"]["mean"]).all()
+    with pytest.raises(ValueError, match="--rlds-root"):
+        cli.dataset_for("droid_largescale", env["manifest"], SimpleNamespace(**{**vars(args), "rlds_root": None}))
