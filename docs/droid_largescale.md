@@ -269,8 +269,15 @@ episodes.
   - The encoder is byte-identical to protobuf's serializer (tested with a dynamic protobuf descriptor).
   - CRC32C framing is checked; a size change is refused.
   - A window preads 9 JPEGs plus a few KB of state. Nothing is copied or decoded beyond that.
-- **PointWorld:** extracted per-episode files are opened lazily through per-kind LRU handle pools (`max_open_files`
-  per worker and kind) with 1 MB chunk caches. Only the 3 needed rows and frames are read.
+- **PointWorld:**
+  - The released packages are `tar.zst` streams, and depth has no index, so per-episode members are extracted once
+    with `scripts/droid_ls_extract_pointworld.py` (`zstd -dc … | …`). It accepts only regular files that match the
+    released layout, refuses links and path tricks, writes atomically, and is resumable.
+  - Files are opened lazily through per-kind LRU handle pools (`max_open_files` per worker and kind) with 1 MB chunk
+    caches. Only the 3 needed rows and frames are read.
+- **Manifest:** streamed once at dataset construction.
+  - Kept in memory: byte offsets per episode plus a packed int32 window table (16 bytes per window).
+  - Rows are re-read through a 32-row LRU. Memory does not scale with per-episode payloads (tested).
 - **Memory:** bounded. Tested: zero fd growth and less than 20 MB RSS growth over repeated passes.
 - **Determinism:**
   - Map-style dataset over a deterministic window list, sorted by episode, clip and start.

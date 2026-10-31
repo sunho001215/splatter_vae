@@ -738,3 +738,19 @@ def test_pointworld_stream_extraction_is_strict_and_resumable(tmp_path):
     assert again["written"] == 0 and again["skipped_existing"] == 2
     only = extract_members(io.BytesIO(tar_bytes()), tmp_path / "pw2", kinds=("depth_320x180",), episodes={F.EPISODE})
     assert only["written"] == 1 and (tmp_path / "pw2/depth_320x180" / f"{F.EPISODE}_depth.h5").is_file()
+
+
+def test_gripper_points_follow_the_selected_calibration(env, env_pw):
+    from s4d.data.droid.gripper import gripper_points
+
+    gt = env["gt"]
+    for e, corrected in ((env, True), (env_pw, False)):
+        ds = make_ds(e)
+        item = ds[ds.windows.index((0, "0:11", 0))]
+        raw = np.array(item["meta"]["raw_indices"])
+        local = gripper_points(np.zeros((3, 6)), gt["grip"][raw, 0], -0.019).astype(np.float64)
+        if corrected:  # DROID-3D joint offsets move the tool: FK(q+dq) @ T_flange_tool
+            pose = C.franka_fk(gt["q"][raw] + gt["dq"]) @ gt["T_flange_tool"]
+        else:
+            pose = G.pose6_to_matrix(gt["cart"][raw])
+        np.testing.assert_allclose(item["gripper_points"].numpy(), G.transform_points(pose, local), atol=2e-5)
