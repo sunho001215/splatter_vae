@@ -34,8 +34,8 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import jobs  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the repository root (scripts/jobs.py used to add it)
+from ops.jobs import scheduler as jobs  # noqa: E402
 
 from ops.remote.access import RemoteClient, RemoteCommandError, RemoteUnreachable  # noqa: E402
 

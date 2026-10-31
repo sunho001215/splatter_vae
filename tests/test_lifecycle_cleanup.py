@@ -453,7 +453,7 @@ def test_cli_local_pass_dry_run_writes_nothing_then_deletes_ledgers_once_and_is_
     jobs.record({"event": "checkpoint_paused", "id": "paused", "attempt": 1, "intentional_stop": True,
                  "checkpoint_step": 5, "checkpoint_sha256": "0" * 64, "reason": "pause"}, registry)
     jobs.record({"event": "exited", "id": "paused", "attempt": 1, "code": -15}, registry)
-    module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli", REPO / "scripts/cleanup_replay.py")
+    module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli", REPO / "ops/jobs/cleanup_replay.py")
     cli = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(cli)
     # the host's process table is not part of this test (other jobs, or an unprivileged container, would vary it): the

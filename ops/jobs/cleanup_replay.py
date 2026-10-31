@@ -26,10 +26,9 @@ import time
 from collections import Counter
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "scripts"))
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
-import jobs  # noqa: E402  (scripts/jobs.py: queue validation and registry replay)
+from ops.jobs import scheduler as jobs  # noqa: E402  (queue validation and registry replay)
 
 from ops.jobs import lifecycle  # noqa: E402
 from ops.jobs import replay_host as host_check  # noqa: E402

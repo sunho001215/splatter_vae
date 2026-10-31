@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 ACTIVITY = ("console.log", "metrics.jsonl", "train.jsonl", "eval.jsonl", "log.txt", "checkpoints/latest.pt")
 
 

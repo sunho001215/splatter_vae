@@ -24,6 +24,10 @@ ALIASES = {
     "s4d.remote_verification": "ops.containers.verification",
     "scripts.jobs": "ops.jobs.scheduler",
     "scripts._nvidia_query": "ops.resources.nvidia_query",
+    "scripts.heartbeat": "ops.resources.heartbeat",
+    "scripts.watch_events": "ops.resources.watch_events",
+    "scripts.sync_media": "ops.remote.sync_media",
+    "scripts.cleanup_replay": "ops.jobs.cleanup_replay",
 }
 # The only research-side imports of ops (lazy, inside functions): output-path authorization and the W&B host tag.
 S4D_IMPORTS_OF_OPS = {
@@ -65,7 +69,9 @@ def test_research_package_imports_ops_only_at_documented_points():
     assert found == S4D_IMPORTS_OF_OPS
 
 
-@pytest.mark.parametrize("script", ["scripts/jobs.py", "s4d/remote_access.py", "ops/remote/access.py"])
+@pytest.mark.parametrize("script", ["scripts/jobs.py", "scripts/heartbeat.py", "scripts/watch_events.py",
+                                    "scripts/sync_media.py", "scripts/cleanup_replay.py", "s4d/remote_access.py",
+                                    "ops/remote/access.py"])
 def test_command_line_entry_points_run_isolated(script):
     result = subprocess.run([sys.executable, "-I", str(REPO / script), "--help"], capture_output=True, text=True,
                             timeout=120)

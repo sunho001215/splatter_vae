@@ -17,7 +17,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def load(name: str, path: str | None = None):
-    spec = importlib.util.spec_from_file_location(name, REPO / (path or f"scripts/{name}.py"))
+    spec = importlib.util.spec_from_file_location(name, REPO / (path or f"ops/resources/{name}.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -236,9 +236,9 @@ def test_remote_network_cursor_preserves_outage_duration(tmp_path, monkeypatch):
 
 def test_watcher_internal_error_prints_marker(tmp_path):
     # Run a copy whose REPO is tmp_path, so the live experiments/ state, pid file and beacon are never touched.
-    (tmp_path / "scripts").mkdir()
-    script = tmp_path / "scripts" / "watch_events.py"
-    script.write_text((REPO / "scripts/watch_events.py").read_text())
+    (tmp_path / "ops/resources").mkdir(parents=True)
+    script = tmp_path / "ops/resources/watch_events.py"
+    script.write_text((REPO / "ops/resources/watch_events.py").read_text())
     for name in ("ops/__init__.py", "ops/resources/__init__.py", "ops/resources/nvidia_query.py",
                  "ops/resources/gpu_guard.py", "configs/hosts/local.yaml"):  # the query helper and allowlist source
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
