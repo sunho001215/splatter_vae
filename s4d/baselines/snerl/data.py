@@ -57,6 +57,13 @@ TASK_BODIES = {
     "peg-insert-side": {"object": ("peg",), "fixture": ("box", "body35")},
     "peg-unplug-side": {"object": ("plug1", "plug"), "fixture": ("box", "plug_wall")},
     "stick-push": {"object": ("stick", "body34", "object", "body36"), "fixture": ()},
+    # New tasks (user approval 2026-10-31): bodies that move by > 1 cm within some training episode (training-split
+    # xpos) are objects, the remaining task bodies fixtures. "absent": standard static fixtures that the task model
+    # does not contain (the sweep-into model has no RetainingWall).
+    "drawer-open": {"object": ("drawer_link",), "fixture": ("drawer", "body34", "drawercase_link")},
+    "window-open": {"object": ("windowb_a",), "fixture": ("window", "body34", "windowb_b")},
+    "soccer": {"object": ("soccer_ball", "soccer_ball1"), "fixture": ("goal_whole", "soccer_goal")},
+    "sweep-into": {"object": ("obj",), "fixture": (), "absent": ("RetainingWall",)},
 }
 
 
@@ -66,7 +73,8 @@ def class_table(task: str, body_names: list[str]) -> np.ndarray:
         BACKGROUND: BACKGROUND_BODIES,
         ROBOT: ROBOT_BODIES,
         OBJECT: TASK_BODIES[task]["object"],
-        FIXTURE: STATIC_FIXTURES + TASK_BODIES[task]["fixture"],
+        FIXTURE: tuple(n for n in STATIC_FIXTURES if n not in TASK_BODIES[task].get("absent", ()))
+        + TASK_BODIES[task]["fixture"],
     }
     table = np.full(len(body_names), -1, dtype=np.int64)
     for cls, names in groups.items():

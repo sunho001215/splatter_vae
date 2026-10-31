@@ -43,9 +43,12 @@ TASK_TAILS = {  # body_names attributes of /home/ws/data/metaworld/splatter4d_v1
     "peg-insert-side": ["peg", "box", "body35"],
     "peg-unplug-side": ["plug1", "plug", "box", "plug_wall"],
     "stick-push": ["stick", "body34", "object", "body36"],
+    "drawer-open": ["drawer", "body34", "drawercase_link", "drawer_link"],
+    "window-open": ["window", "body34", "windowb_a", "windowb_b"],
+    "soccer": ["soccer_ball", "soccer_ball1", "goal_whole", "soccer_goal"],
 }
 TASKS = ("hammer", "pick-place", "bin-picking", "coffee-push", "door-open", "peg-insert-side", "peg-unplug-side",
-         "stick-push")
+         "stick-push", "drawer-open", "window-open", "soccer", "sweep-into")
 TINY_NERF = {"netdepth": 2, "netwidth": 32, "netdepth_fine": 2, "netwidth_fine": 32, "N_samples": 8, "N_importance": 8,
              "N_rand": 64, "chunk": 1024, "netchunk": 4096, "precrop_iters": 2}
 
@@ -54,6 +57,8 @@ def body_names(task: str) -> list[str]:
     if task == "coffee-push":  # the mug sits between the scene and the robot in this model
         return COMMON_BODIES[:3] + ["obj", "mug"] + COMMON_BODIES[3:] + ["coffee_machine", "coffeemachine", "cm_link",
                                                                          "cmbutton"]
+    if task == "sweep-into":  # no RetainingWall in this model
+        return [n for n in COMMON_BODIES if n != "RetainingWall"] + ["obj"]
     return COMMON_BODIES + TASK_TAILS[task]
 
 
@@ -191,6 +196,7 @@ def test_semantic_class_table_covers_every_body_of_every_task_exactly_once():
         table = D.class_table(task, names)
         assert table.shape == (len(names),) and set(np.unique(table)) == {0, 1, 2, 3}
         assert table[names.index("world")] == D.BACKGROUND and table[names.index("tablelink")] == D.FIXTURE
+        assert "RetainingWall" not in names or table[names.index("RetainingWall")] == D.FIXTURE
         assert table[names.index("rightpad")] == D.ROBOT and (table == D.ROBOT).sum() == len(D.ROBOT_BODIES)
         assert {names[i] for i in np.where(table == D.OBJECT)[0]} == set(D.TASK_BODIES[task]["object"])
         lut = D.class_lookup(table, 65535)
@@ -200,6 +206,10 @@ def test_semantic_class_table_covers_every_body_of_every_task_exactly_once():
         D.class_table("hammer", body_names("hammer") + ["new_body"])
     with pytest.raises(ValueError, match="not in the model"):
         D.class_table("hammer", body_names("pick-place"))
+    with pytest.raises(ValueError, match="not in the model"):  # "absent" is per task: hammer still needs the wall
+        D.class_table("hammer", [n for n in body_names("hammer") if n != "RetainingWall"])
+    with pytest.raises(ValueError, match="without a semantic class"):  # and sweep-into must not have one
+        D.class_table("sweep-into", body_names("pick-place"))
     with pytest.raises(ValueError, match="collides"):
         D.class_lookup(np.zeros(40, np.uint8), 12)
     assert len(D.SEMANTIC_CLASSES) == 4 < D.NUM_SEMANTIC_OUTPUTS == 5  # the official 5-way head, class 4 unused
