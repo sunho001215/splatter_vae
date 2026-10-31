@@ -4,6 +4,8 @@
 - ``ops.jobs``: the file-based scheduler, its remote-host backend, run provenance and lifecycle (replay) cleanup.
 - ``ops.resources``: GPU isolation/admission guard, bounded NVIDIA queries and cross-host equivalence checks.
 - ``ops.containers``: the remote ``docker run`` launcher and typed release-verification jobs.
+- ``ops.campaign``: campaign command modules (admission drivers, checkpoint pauses, release verification chain),
+  run through their entry points in runs/setup/tools; importing one runs it.
 
 ``ops`` may import ``s4d``; ``s4d`` imports ``ops`` only where docs/DEVELOPER.md lists it.
 """
