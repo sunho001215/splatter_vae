@@ -3,6 +3,7 @@
     python -m s4d.realworld.cli validate --config configs/realworld/pipeline_example.yaml
     python -m s4d.realworld.cli run --config CONFIG --episode ID --stages ingest,stereo_depth,calibrate,track2d,lift3d,export
     python -m s4d.realworld.cli status --root OUTPUT_ROOT --episode ID
+    optional baseline stages (not needed by our method): --stages sam3_masks,dino_snerl (after stereo_depth / export)
 
 Stages are idempotent: re-running skips complete stages whose fingerprint matches (``--force`` rebuilds).
 """
@@ -19,6 +20,7 @@ import yaml
 from s4d.realworld import io as rio
 
 STAGES = ("ingest", "stereo_depth", "calibrate", "track2d", "lift3d", "export")
+BASELINE_STAGES = ("sam3_masks", "dino_snerl")
 
 
 class AnnotationLandmarkSource:
@@ -121,6 +123,21 @@ def main(argv=None) -> int:
                allow_infrared_input=ec.get("allow_infrared_input", False),
                validation_tail_frames=ec.get("validation_tail_frames", 0), max_sync_ns=ec.get("max_sync_ns"),
                force=args.force)
+    if "sam3_masks" in wanted:
+        from s4d.realworld.baseline_stages import sam3_masks
+
+        sc = st["sam3_masks"]
+        rec = sam3_masks(root, args.episode, _spec(cfg, "sam3"), cameras=sc["cameras"], prompts=sc["prompts"],
+                         mode=sc.get("mode", "segment_images"), chunk=sc.get("chunk", 16),
+                         score_threshold=sc.get("score_threshold", 0.5), force=args.force)
+        print(json.dumps(rec["summary"], indent=1, default=str))
+    if "dino_snerl" in wanted:
+        from s4d.realworld.baseline_stages import dino_snerl
+
+        dc = st.get("dino_snerl", {})
+        rec = dino_snerl(root / "export" / args.episode, rio.stage_dir(root, args.episode, "dino_snerl"),
+                         _spec(cfg, "dino_snerl"), backbone=dc.get("backbone", "scratch"), force=args.force)
+        print(json.dumps(rec["summary"], indent=1, default=str))
     return 0
 
 
