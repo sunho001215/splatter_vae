@@ -19,7 +19,7 @@ import numpy as np
 from s4d.realworld import io as rio
 from s4d.realworld.calibration import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
 from s4d.realworld.contract import EpisodeMeta, meta_from_json, meta_to_json, validate_episode
-from s4d.realworld.geometry import remap, rectify_map, stereo_rectify
+from s4d.realworld.geometry import rectify_map, remap, stereo_rectify
 from s4d.realworld.robot import RobotSurface, URDFModel, gripper_joint_value, joint_dict, landmarks
 from s4d.realworld.stereo import depth_from_pair
 from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, lift_tracks, query_grid, status_counts

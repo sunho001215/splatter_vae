@@ -1,0 +1,29 @@
+# Configuration skeleton for the (future) real Franka Panda + Robotiq + 3x RealSense adapter.
+# Every value marked TODO must be confirmed on the first real episode; nothing here is a measured fact.
+adapter: template_realsense
+source_root: TODO            # where the raw recordings live (read-only; never written to)
+episode_glob: TODO
+clock:
+  name: TODO                 # e.g. realsense global time / ROS time / robot controller time
+  robot_to_camera_offset_ns: TODO   # measured, or 0 if both are stamped on one clock
+rigs:                        # one entry per RealSense device
+  - rig_id: TODO_serial_0
+    streams:
+      left:  {modality: infrared, format: TODO_Y8_or_Y16, rectified: TODO}
+      right: {modality: infrared, format: TODO_Y8_or_Y16, rectified: TODO}
+      # color: {modality: rgb, channel_order: TODO_RGB_or_BGR}   # a separate camera with its own pose
+    intrinsics_source: TODO  # rs2_intrinsics per stream as recorded; pixel_convention: integer_centers (librealsense)
+    stereo_extrinsic_source: TODO   # rs2_extrinsics IR1 -> IR2; if absent the rig is status "missing"
+    ir_emitter: TODO         # on / off / alternating
+  - rig_id: TODO_serial_1
+  - rig_id: TODO_serial_2
+robot:
+  arm_model: franka_panda
+  gripper_model: TODO        # robotiq_2f_85 or robotiq_2f_140 (exact model required)
+  urdf_path: TODO            # composed Panda + Robotiq URDF (xacro-expanded), see docs "Robot assets"
+  mesh_root: TODO
+  T_flange_gripper: TODO     # measured panda_link8 -> gripper base (coupling thickness + yaw; Franka example: rpy 0 0 +pi/2)
+  gripper_state_semantics: TODO   # normalized_closure | finger_joint_rad | robotiq_position_register | opening_width_m
+  gripper_joint: finger_joint
+  joint_state_units: rad
+  ee_pose_frame: TODO        # frame of the recorded EE pose (cross-check only)

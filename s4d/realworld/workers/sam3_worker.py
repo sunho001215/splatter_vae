@@ -46,8 +46,9 @@ def handle(request, inputs):
                 b = out["boxes"].float().cpu().numpy()[keep]
                 count[f, p] = int(keep.sum())
                 for k in range(int(keep.sum())):
-                    masks.append(m[k]); scores.append(s[keep][k]); boxes.append(b[k])
-                    frames.append(f); pidx.append(p); iids.append(k)
+                    for lst, val in ((masks, m[k]), (scores, s[keep][k]), (boxes, b[k]), (frames, f), (pidx, p),
+                                     (iids, k)):
+                        lst.append(val)
     elif request["task"] == "segment_video":
         from sam3.model_builder import build_sam3_video_predictor  # upstream
 
@@ -70,9 +71,11 @@ def handle(request, inputs):
                 count[f, p] = int(keep.sum())
                 for k in np.flatnonzero(keep):
                     x, y, w, h = np.asarray(out["out_boxes_xywh"][k], float) * [W, H, W, H]
-                    masks.append(np.asarray(out["out_binary_masks"][k], bool)); scores.append(probs[k])
-                    boxes.append([x, y, x + w, y + h]); frames.append(f); pidx.append(p)
-                    iids.append(int(out["out_obj_ids"][k]))  # SAM 3 object id: identity within this video only
+                    # SAM 3 object id: identity within this video/session only, never across cameras
+                    for lst, val in ((masks, np.asarray(out["out_binary_masks"][k], bool)), (scores, probs[k]),
+                                     (boxes, [x, y, x + w, y + h]), (frames, f), (pidx, p),
+                                     (iids, int(out["out_obj_ids"][k]))):
+                        lst.append(val)
             predictor.handle_request(dict(type="close_session", session_id=sid))
     else:
         raise ValueError(request["task"])

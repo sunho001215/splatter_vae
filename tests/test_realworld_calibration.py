@@ -38,7 +38,8 @@ def test_urdf_fk_matches_franka_dh_and_mount_conventions():
     robot = URDFModel.from_string(synthetic_robot_urdf(mount_yaw=np.pi / 2))
     fk = robot.fk(joint_dict(JOINTS, np.zeros(7), "finger_joint", 0.02))
     T8g = np.linalg.inv(fk["panda_link8"]) @ fk["gripper_base"]
-    assert np.allclose(T8g[:3, 3], [0, 0, 0.011]) and np.allclose(T8g[:3, :3], Rotation.from_euler("z", np.pi / 2).as_matrix())
+    assert np.allclose(T8g[:3, 3], [0, 0, 0.011])
+    assert np.allclose(T8g[:3, :3], Rotation.from_euler("z", np.pi / 2).as_matrix())
     # mimic joint: both fingers close symmetrically by the driven value
     gap = np.linalg.norm(fk["left_finger"][:3, 3] - fk["right_finger"][:3, 3])
     assert np.isclose(gap, 0.085 - 2 * 0.02)
@@ -64,7 +65,7 @@ def make_episode(T_cam_base, *, n=25, static=False, visible_frames=None, px_nois
     surface = RobotSurface.build(model, points_per_link=150, seed=0)
     dense = RobotSurface.build(model, points_per_link=40000, seed=1)
     q0 = np.array([0.0, -0.3, 0.0, -2.2, 0.0, 2.0, 0.8])
-    frames, images = [], []
+    frames = []
     for t in range(n):
         phase = 0.0 if static else t / n * 2 * np.pi
         q = q0 + 0.45 * np.sin(phase + np.arange(7)) * (0 if static else 1)

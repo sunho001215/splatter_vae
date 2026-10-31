@@ -100,9 +100,10 @@ def synthetic_gripper_urdf() -> str:
 
 
 def synthetic_robot_urdf(mount_yaw: float = np.pi / 2) -> str:
+    from scipy.spatial.transform import Rotation
+
     from s4d.realworld.geometry import make_T
     from s4d.realworld.robot import compose_urdf
-    from scipy.spatial.transform import Rotation
 
     T = make_T(Rotation.from_euler("z", mount_yaw).as_matrix(), [0, 0, 0.011])
     return compose_urdf(synthetic_panda_urdf(), synthetic_gripper_urdf(), "panda_link8", "gripper_base", T)

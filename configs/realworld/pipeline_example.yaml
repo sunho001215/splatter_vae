@@ -1,0 +1,22 @@
+# Example run configuration (python -m s4d.realworld.cli --config configs/realworld/pipeline_example.yaml ...).
+# Paths are placeholders; the synthetic adapter runs without any external asset.
+adapter: {name: synthetic, config: {asset_dir: /tmp/s4d_realworld_synthetic_assets, frames: 10}}
+output_root: TODO_output_root
+workers:
+  foundation_stereo: {python: TODO/envs/foundation_stereo/bin/python, repo_dir: TODO/FoundationStereo,
+                      checkpoint: TODO/pretrained_models/23-51-11/model_best_bp2.pth,
+                      expected_commit: 6e8806816b533e4d13ddbb95ffa907b797060a62, params: {valid_iters: 32, hiera: 0}}
+  alltracker: {python: TODO/envs/alltracker/bin/python, repo_dir: TODO/alltracker, checkpoint: TODO/alltracker.pth,
+               expected_commit: e7553135e7b361590dbccd10e2b274b024f41cd6, params: {inference_iters: 4, window_len: 16}}
+stages:
+  stereo_depth: {chunk: 16, references: [left]}
+  calibrate:
+    landmark_source: TODO     # annotation file / marker detector / render-and-match worker (see docs)
+    landmark_links: [panda_link2, panda_link3, panda_link4, panda_link5, panda_link7, panda_link8]
+    every: 2
+  track2d: {window: 16, step: 8, grid_stride: 8}
+  lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
+  export: {strides: [1, 2], allow_infrared_input: false, validation_tail_windows: 0}
+optional:
+  sam3_masks: {prompts: {"robot arm": robot, "robotic gripper": robot, "TODO object": object, "table": fixture}}
+  dino_snerl: {resolution: [128, 128]}

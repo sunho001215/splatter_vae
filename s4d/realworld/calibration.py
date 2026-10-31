@@ -124,7 +124,7 @@ def refine_reprojection(T: np.ndarray, X: np.ndarray, uv: np.ndarray, K: np.ndar
 
 def pnp_ransac(X, uv, K, iters=300, thresh_px=8.0, seed=0):
     rng = np.random.default_rng(seed)
-    best_inl, best_T = None, None
+    best_inl = None
     n = len(X)
     if n < 6:
         return None, np.zeros(n, bool)
@@ -138,7 +138,7 @@ def pnp_ransac(X, uv, K, iters=300, thresh_px=8.0, seed=0):
         err = np.linalg.norm(pred - uv, axis=1)
         inl = np.isfinite(err) & (err < thresh_px) & (z > 0)
         if best_inl is None or inl.sum() > best_inl.sum():
-            best_inl, best_T = inl, T
+            best_inl = inl
     if best_inl is None or best_inl.sum() < 6:
         return None, np.zeros(n, bool)
     T = pnp_dlt(X[best_inl], uv[best_inl], K)
@@ -199,7 +199,7 @@ def bilinear_depth(depth: np.ndarray, uv: np.ndarray, max_spread_m: float = 0.02
 
 
 def _visual_init(frames, K, cfg):
-    X, uv, conf = [], [], []
+    X, uv = [], []
     for f in frames:
         m = np.isfinite(f.landmarks_uv).all(1) & (f.landmarks_conf > 0)
         X.append(f.landmarks_base[m])
