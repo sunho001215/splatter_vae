@@ -841,3 +841,30 @@ def test_depth_metadata_group_is_checked_not_mistaken_for_a_camera(tmp_path, att
 
     report = _rebuild(tmp_path, mutate)
     assert report["accepted"] == 0 and reason in report["rejected"][F.EPISODE]
+
+
+def _depth_tar(members):
+    import io
+    import tarfile
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+ODD_USER = "AUTOLab+t3d58310+2023-08-12-12h-05m-37s"
+
+
+def test_extractor_keeps_non_hex_user_ids(tmp_path):
+    """Real data: 1,771 of 42,935 released members (t3d58310, w026bb9b, ...) have non-hex user ids."""
+    import io
+
+    from s4d.data.droid.largescale.extract import extract_members
+
+    report = extract_members(io.BytesIO(_depth_tar([(f"droid/depth_320x180/{ODD_USER}_depth.h5", b"a" * 3000)])), tmp_path)
+    assert report["written"] == 1 and report["ignored"] == 0
+    assert (tmp_path / "depth_320x180" / f"{ODD_USER}_depth.h5").read_bytes() == b"a" * 3000

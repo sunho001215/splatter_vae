@@ -15,9 +15,11 @@ import re
 import tarfile
 from pathlib import Path
 
+# DROID user ids are not always hex: 1,771 of the 42,935 released flow members (t3d58310, w026bb9b, sbd7d2c6, ...;
+# ILIAD/RAIL/IPRL/AUTOLab/IRIS) would otherwise be silently ignored (flows _shards_manifest.json @ dd9aaeec).
 MEMBER = re.compile(
     r"^(?:\./)?droid/(?P<kind>flows-fs-optimized|depth_320x180|cameras)/"
-    r"(?P<episode>[A-Za-z0-9_\-]+\+[0-9a-f]+\+\d{4}-\d{2}-\d{2}-\d{2}h-\d{2}m-\d{2}s)_(?P<suffix>flows\.h5|depth\.h5|cameras\.json)$"
+    r"(?P<episode>[A-Za-z0-9_\-]+\+[0-9A-Za-z]+\+\d{4}-\d{2}-\d{2}-\d{2}h-\d{2}m-\d{2}s)_(?P<suffix>flows\.h5|depth\.h5|cameras\.json)$"
 )
 SUFFIX = {"flows-fs-optimized": "flows.h5", "depth_320x180": "depth.h5", "cameras": "cameras.json"}
 
