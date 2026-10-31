@@ -114,3 +114,16 @@ def test_upstream_worker_scripts_compile_and_never_import_upstream_at_module_lev
         names = {(n.module or "").split(".")[0] if isinstance(n, ast.ImportFrom) else n.names[0].name.split(".")[0]
                  for n in top}
         assert not names & upstream, (path.name, names)
+
+
+def test_stage_lock_blocks_concurrent_builders_and_recovers_stale(tmp_path):
+    import os
+
+    d = tmp_path / "stage"
+    lock = d.with_name(".stage.lock")
+    lock.write_text(str(os.getpid()))  # a live builder (this process)
+    with pytest.raises(RuntimeError, match="being built"):
+        rio.run_stage(d, stage="s", version="1", config={}, inputs={}, build=lambda t: {})
+    lock.write_text("999999999")  # dead pid -> stale lock is taken over
+    assert not rio.run_stage(d, stage="s", version="1", config={}, inputs={}, build=lambda t: {})["skipped"]
+    assert not lock.exists()

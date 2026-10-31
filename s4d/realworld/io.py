@@ -105,6 +105,7 @@ def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs
     if rec is not None and rec.get("fingerprint") == fp and not force:
         return {**rec, "skipped": True}
     directory.parent.mkdir(parents=True, exist_ok=True)
+    lock = _acquire_lock(directory)
     tmp = Path(tempfile.mkdtemp(dir=directory.parent, prefix=f".{directory.name}.building."))
     try:
         started = time.time()
@@ -124,6 +125,30 @@ def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _acquire_lock(directory: Path) -> Path:
+    """One builder per stage directory; a lock left by a dead process is taken over."""
+    lock = directory.with_name(f".{directory.name}.lock")
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return lock
+        except FileExistsError:
+            try:
+                pid = int(lock.read_text() or 0)
+                os.kill(pid, 0)
+            except (ValueError, ProcessLookupError):
+                lock.unlink(missing_ok=True)  # stale
+                continue
+            except PermissionError:
+                pass
+            raise RuntimeError(f"{directory} is being built by pid {pid}") from None
+    raise RuntimeError(f"could not lock {directory}")
 
 
 def clean_stale_tmp(root: Path) -> list[str]:
