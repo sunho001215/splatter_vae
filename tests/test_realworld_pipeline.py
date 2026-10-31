@@ -69,7 +69,6 @@ def run(tmp_path_factory):
     root = tmp / "out"
     ep = adapter.list_episodes()[0]
     rng = np.random.default_rng(0)
-    model = URDFModel.from_file(tmp / "assets" / "synthetic_robot.urdf") if (tmp / "assets").exists() else None
     recs = {"ingest": ingest(adapter, ep, root)}
     meta = load_meta(root, ep)
     model = URDFModel.from_file(meta.robot.urdf_path)
