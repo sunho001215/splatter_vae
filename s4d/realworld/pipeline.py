@@ -19,7 +19,7 @@ import numpy as np
 from s4d.realworld import io as rio
 from s4d.realworld.calibration import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
 from s4d.realworld.contract import EpisodeMeta, meta_from_json, meta_to_json, validate_episode
-from s4d.realworld.geometry import rectify_map, remap, stereo_rectify
+from s4d.realworld.geometry import rectify_map, remap, stereo_rectify, undistort_pixels
 from s4d.realworld.robot import RobotSurface, URDFModel, gripper_joint_value, joint_dict, landmarks
 from s4d.realworld.stereo import depth_from_pair
 from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, lift_tracks, query_grid, status_counts
@@ -175,7 +175,7 @@ def rig_rectification(meta: EpisodeMeta, rig: str):
 
 
 def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: int = 16,
-                 references: tuple = ("left",), force: bool = False) -> dict:
+                 references: tuple = ("left",), pair_sync_ns: int = 1_000_000, force: bool = False) -> dict:
     meta = load_meta(root, episode_id)
 
     def build(tmp: Path) -> dict:
@@ -189,6 +189,9 @@ def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: 
             n = len(meta.stream_timestamps_ns[g.left_stream])
             if len(meta.stream_timestamps_ns[g.right_stream]) != n:
                 raise ValueError(f"{g.rig_id}: left/right frame counts differ; pair by timestamp in the adapter")
+            pair_err = np.abs(meta.stream_timestamps_ns[g.left_stream] - meta.stream_timestamps_ns[g.right_stream])
+            if pair_err.max() > pair_sync_ns:
+                raise ValueError(f"{g.rig_id}: left/right frames up to {pair_err.max()} ns apart (> {pair_sync_ns})")
             maps = None
             if rect is not None:
                 maps = (rectify_map(L.intrinsics.K(), L.intrinsics.distortion_model, L.intrinsics.distortion, rect.R1,
@@ -235,7 +238,7 @@ def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: 
 
     return rio.run_stage(rio.stage_dir(root, episode_id, "stereo_depth"), stage="stereo_depth",
                          version=STAGE_VERSIONS["stereo_depth"],
-                         config={"references": list(references), "chunk": chunk,
+                         config={"references": list(references), "chunk": chunk, "pair_sync_ns": pair_sync_ns,
                                  "backend": type(backend).__name__},
                          inputs={"ingest": _record_fp(root, episode_id, "ingest")}, build=build, force=force)
 
@@ -345,6 +348,11 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                     continue
                 qd = geom.q(q[k], grip[k])
                 uv, conf = landmark_source(cam, i, landmark_links)
+                uv = np.asarray(uv, float)
+                intr = meta.stream(cam).intrinsics
+                if not has_depth and intr.distortion_model != "none":
+                    # raw (unrectified) grid: map observations to the ideal pinhole image of the same K
+                    uv = undistort_pixels(uv, intr.K(), intr.distortion_model, intr.distortion)
                 surf, _ = geom.surface.points(qd)
                 fk = geom.model.fk(qd)
                 frames.append(CalibrationFrame(i, int(stamps[i]), landmarks(geom.model, qd, landmark_links),

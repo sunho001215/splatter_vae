@@ -52,8 +52,8 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                ("stereo_depth", "calibrate", "track2d", "lift3d")}
     if any(v is None for v in records.values()):
         raise RuntimeError(f"export needs complete upstream stages: {[k for k, v in records.items() if v is None]}")
-    mock = any("is_mock" in json.dumps(r["summary"]) and '"is_mock": true' in json.dumps(r["summary"])
-               for r in records.values())
+    # any model or landmark source flagged as mock anywhere in an upstream record (config or summary)
+    mock = any('"is_mock": true' in json.dumps(r, default=str) for r in records.values())
     if mock and not allow_mock:
         raise RuntimeError("upstream stages used MOCK model outputs; refusing to export (allow_mock=False)")
     excluded, chosen = {}, []

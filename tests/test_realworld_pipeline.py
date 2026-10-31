@@ -84,7 +84,7 @@ def run(tmp_path_factory):
         uv, _ = project(transform_points(adapter.T_cam_base(cam.split("/")[0], "left"), L), adapter.K())
         return uv + rng.normal(0, 0.5, uv.shape), np.ones(len(L))
 
-    landmark_source.identity = "synthetic oracle landmarks (MOCK)"
+    landmark_source.identity = {"name": "synthetic oracle landmarks", "is_mock": True}
     # tiny 64x96 synthetic images: the uncertainty gates are relaxed here (defaults are tested in calibration tests)
     cfg = CalibrationConfig(depth_term=False, min_visible_fraction=0.05, min_motion_extent_m=0.03, max_rot_std_deg=2.0,
                             max_trans_std_m=0.03)

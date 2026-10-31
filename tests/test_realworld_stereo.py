@@ -187,3 +187,15 @@ def test_depth_transfer_to_a_second_camera_matches_direct_render():
     assert m.mean() > 0.8
     rel = np.abs(warped[m] - d_rgb[m]) / d_rgb[m]
     assert np.median(rel) < 0.005 and np.percentile(rel, 95) < 0.03
+
+
+def test_pixel_distortion_round_trip():
+    from s4d.realworld.geometry import distort_pixels, undistort_pixels
+
+    K = np.array([[300.0, 0, 160.0], [0, 300.0, 120.0], [0, 0, 1]])
+    uv = np.random.default_rng(0).uniform([5, 5], [315, 235], (200, 2))
+    for model, coeffs in (("opencv_plumb_bob", (0.08, -0.03, 0.001, -0.001, 0.0)),
+                          ("opencv_rational", (0.05, -0.02, 0.0005, 0.0, 0.0, 0.01, 0.0, 0.0))):
+        assert np.abs(undistort_pixels(distort_pixels(uv, K, model, coeffs), K, model, coeffs) - uv).max() < 1e-6
+    with pytest.raises(NotImplementedError):
+        undistort_pixels(uv, K, "kannala_brandt4", (0.1, 0, 0, 0))

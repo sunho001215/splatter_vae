@@ -49,8 +49,8 @@ merged or pushed, and no existing module imports `s4d.realworld`. Design and usa
     against `dino_target`.
   - SAM 3 masks with prompts mapped to SNeRL classes, instances, scores and explicit absent detections.
 
-**Tests:** 36 passed across the five files below. Run with `nice -n 10` and the MIG UUID:
-- `tests/test_realworld_stereo.py`: 9
+**Tests:** 37 passed across the five files below. Run with `nice -n 10` and the MIG UUID:
+- `tests/test_realworld_stereo.py`: 10
 - `tests/test_realworld_calibration.py`: 8
 - `tests/test_realworld_pipeline.py`: 8
 - `tests/test_realworld_contract_workers.py`: 8

@@ -331,3 +331,18 @@ def point_mask(points_cam: np.ndarray, K: np.ndarray, hw: tuple[int, int], depth
     mask = np.zeros(hw, bool)
     mask[i[ok], j[ok]] = True
     return mask
+
+
+def undistort_pixels(uv: np.ndarray, K: np.ndarray, model: str, coeffs) -> np.ndarray:
+    """Distorted pixels -> pixels of the ideal pinhole camera with the same K (continuous convention)."""
+    K = np.asarray(K, float)
+    xy = np.stack([(uv[..., 0] - K[0, 2]) / K[0, 0], (uv[..., 1] - K[1, 2]) / K[1, 1]], -1)
+    xy = undistort_normalized(xy, model, coeffs)
+    return np.stack([xy[..., 0] * K[0, 0] + K[0, 2], xy[..., 1] * K[1, 1] + K[1, 2]], -1)
+
+
+def distort_pixels(uv: np.ndarray, K: np.ndarray, model: str, coeffs) -> np.ndarray:
+    K = np.asarray(K, float)
+    xy = np.stack([(uv[..., 0] - K[0, 2]) / K[0, 0], (uv[..., 1] - K[1, 2]) / K[1, 1]], -1)
+    xy = distort_normalized(xy, model, coeffs)
+    return np.stack([xy[..., 0] * K[0, 0] + K[0, 2], xy[..., 1] * K[1, 1] + K[1, 2]], -1)
