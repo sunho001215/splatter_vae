@@ -1,11 +1,140 @@
 {
- "written": "2026-10-31T21:28:23+09:00",
+ "written": "2026-10-31T21:29:13+09:00",
  "main_checkout": {
   "branch": "splatter4d",
-  "commit": "b185ee0a53a4da788718decdd7d609fd32ac7c43",
-  "origin_splatter4d": "b185ee0a53a4da788718decdd7d609fd32ac7c43"
+  "commit": "8447c73c3ebaff4c3f86ae4509926c304b05e40f",
+  "origin_splatter4d": "8447c73c3ebaff4c3f86ae4509926c304b05e40f"
  },
- "paused_local_jobs": [],
+ "paused_local_jobs": [
+  {
+   "id": "ds-flashsac-mvp3d-multiview-drawer-open-s2000",
+   "status_in_registry": "crashed",
+   "attempt": 1,
+   "checkpoint": "runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000/checkpoints/latest.pt",
+   "checkpoint_step": 400000,
+   "checkpoint_sha256": "e6ec7a3ddf4b97b7a91fbba9ecdb3bd6131302002ce5c6478079f85e098459c2",
+   "replay": "runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000/replay",
+   "script": "scripts/train_flashsac.py",
+   "args": [
+    "--task",
+    "drawer-open",
+    "--encoder",
+    "mvp3d_multiview",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
+   ],
+   "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
+   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "manual_command": ".venv/bin/python -I scripts/train_flashsac.py --task drawer-open --encoder mvp3d_multiview --seed 2000 --run-dir runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000 --set train.num_train_steps=1000000 vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
+  },
+  {
+   "id": "ds-flashsac-mvp3d-single-drawer-open-s2000",
+   "status_in_registry": "crashed",
+   "attempt": 1,
+   "checkpoint": "runs/ds-flashsac-mvp3d-single-drawer-open-s2000/checkpoints/latest.pt",
+   "checkpoint_step": 500000,
+   "checkpoint_sha256": "3fea1e947904d5967539443644691a120bb3114bdf54a64bbc9fe2536e84baac",
+   "replay": "runs/ds-flashsac-mvp3d-single-drawer-open-s2000/replay",
+   "script": "scripts/train_flashsac.py",
+   "args": [
+    "--task",
+    "drawer-open",
+    "--encoder",
+    "mvp3d_single",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/ds-flashsac-mvp3d-single-drawer-open-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
+   ],
+   "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
+   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "manual_command": ".venv/bin/python -I scripts/train_flashsac.py --task drawer-open --encoder mvp3d_single --seed 2000 --run-dir runs/ds-flashsac-mvp3d-single-drawer-open-s2000 --set train.num_train_steps=1000000 vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
+  },
+  {
+   "id": "ds-flashsac-mvp3d-multiview-drawer-open-s2000-eval",
+   "status_in_registry": "crashed",
+   "attempt": 1,
+   "checkpoint": null,
+   "checkpoint_step": 400000,
+   "checkpoint_sha256": null,
+   "replay": null,
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000",
+    "--train-job",
+    "ds-flashsac-mvp3d-multiview-drawer-open-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000-eval"
+   ],
+   "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
+   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "manual_command": ".venv/bin/python -I scripts/eval_rl.py --run-dir runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000 --train-job ds-flashsac-mvp3d-multiview-drawer-open-s2000 --workers 6 --envs-per-worker 8 --output-dir runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000-eval"
+  },
+  {
+   "id": "ds-flashsac-snerl-coffee-push-s2001",
+   "status_in_registry": "crashed",
+   "attempt": 1,
+   "checkpoint": "runs/ds-flashsac-snerl-coffee-push-s2001/checkpoints/latest.pt",
+   "checkpoint_step": 300000,
+   "checkpoint_sha256": "0f64686c66d322ffa5c106e16259f4a27b39e5affacaf5acc159f87bc839257a",
+   "replay": "runs/ds-flashsac-snerl-coffee-push-s2001/replay",
+   "script": "scripts/train_flashsac.py",
+   "args": [
+    "--task",
+    "coffee-push",
+    "--encoder",
+    "snerl",
+    "--seed",
+    "2001",
+    "--run-dir",
+    "runs/ds-flashsac-snerl-coffee-push-s2001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/s4-snerl-coffee-push-rem-b/encoder.pt"
+   ],
+   "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
+   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "manual_command": ".venv/bin/python -I scripts/train_flashsac.py --task coffee-push --encoder snerl --seed 2001 --run-dir runs/ds-flashsac-snerl-coffee-push-s2001 --set train.num_train_steps=1000000 vision.export_path=runs/s4-snerl-coffee-push-rem-b/encoder.pt"
+  },
+  {
+   "id": "ds-flashsac-mvp3d-single-drawer-open-s2000-eval",
+   "status_in_registry": "crashed",
+   "attempt": 1,
+   "checkpoint": null,
+   "checkpoint_step": 500000,
+   "checkpoint_sha256": null,
+   "replay": null,
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/ds-flashsac-mvp3d-single-drawer-open-s2000",
+    "--train-job",
+    "ds-flashsac-mvp3d-single-drawer-open-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/ds-flashsac-mvp3d-single-drawer-open-s2000-eval"
+   ],
+   "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
+   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "manual_command": ".venv/bin/python -I scripts/eval_rl.py --run-dir runs/ds-flashsac-mvp3d-single-drawer-open-s2000 --train-job ds-flashsac-mvp3d-single-drawer-open-s2000 --workers 6 --envs-per-worker 8 --output-dir runs/ds-flashsac-mvp3d-single-drawer-open-s2000-eval"
+  }
+ ],
  "local_jobs_still_active_at_write": [],
  "remote_jobs_active_at_write": [
   {
@@ -144,7 +273,7 @@
   "local driver loops stopped 2026-10-31 19:48"
  ],
  "worktrees": [
-  "/home/ws/ws/splatter4d                                            b185ee0 [splatter4d]",
+  "/home/ws/ws/splatter4d                                            8447c73 [splatter4d]",
   "/home/ws/ws/splatter4d/.claude/worktrees/agent-ac74b8cb20bdf8c7f  e690779 [worktree-agent-ac74b8cb20bdf8c7f]",
   "/home/ws/ws/splatter4d/.worktrees/actfut                          31812fa [actfut-20261020]",
   "/home/ws/ws/splatter4d/.worktrees/afk2                            ff82749 [future-stride-20261020]",

@@ -90,7 +90,7 @@ def pause(job_id, event, anchor, extra):
         time.sleep(1)
     paused = {'event': 'checkpoint_paused', 'id': job_id, 'host': 'local', 'attempt': event['attempt'],
               'pid': event['pid'], 'start_ticks': anchor['start_ticks'], 'boot_id': BOOT,
-              'reason': 'local_shutdown_20261031_maintenance', 'requested_signal': 'SIGTERM', 'processes_exited': True,
+              'reason': 'local_shutdown_20261031_maintenance', 'intentional_stop': True, 'requested_signal': 'SIGTERM', 'processes_exited': True,
               'memory_current_bytes': int(Path('/sys/fs/cgroup/memory.current').read_text()), **extra}
     record(paused)
     with (ROOT / 'runs' / job_id / 'checkpoint_pause-local_shutdown_20261031.json').open('x') as stream:

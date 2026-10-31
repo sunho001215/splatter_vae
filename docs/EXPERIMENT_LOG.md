@@ -6515,3 +6515,23 @@ above the old 4.0. Remote: `remote_runner/gpu_load_limit.txt` = 4.5, re-read eve
   (pid 3912762).
 - **State at 21:05:** 38 runner launches, 0 failed, 0 pass errors; 23 managed containers; GPU loads 4.3–4.5 (limit
   4.5).
+
+**21:30 — Correction: the FlashSAC pauses are recorded as maintenance pauses, not failures.**
+- The `checkpoint_paused` events of `pause_flashsac_at_checkpoint_20261031.py` lacked `intentional_stop: true`. The
+  DrM tool it was copied from predates that field. As a result, the scheduler charged each SIGTERM exit as a failure.
+- An `intentional_stopped` event was recorded for the same attempt and the same verified checkpoint (from
+  `pause-flashsac-20261031.log`). The registry handler then removes that attempt's failure.
+- Now 0 failures each, with intentional stops at 300k (coffee-push), 400k and 500k (mvp3d multiview/single, plus their
+  evaluators). The tool is fixed.
+
+**21:20–21:28 — All local work finished or paused; controllers stopped; ops merged.**
+- The last local trainer (`ds-flashsac-snerl-peg-insert-side-s2001`) completed at about 21:18.
+- Stopped between passes:
+  - media sync, outage guard, memory monitor and budget alert at 21:26;
+  - the scheduler daemon at 21:26, once it had released the registry lock;
+  - the replay-cleanup loop (local pass running since 20:05, idempotent) at 21:26.
+- `ops-refactor-20261031` merged as b185ee0. The full native suite on the exact merged sources: 1246 passed / 0
+  failed / 0 errors / 0 skipped. A first run failed only the DINO-weights test, because the new worktree's cache was
+  empty; the cache file was linked and the suite re-run.
+- Smoke checks on the merged code: `jobs.py status`, the reconcile dry run (45 runner launches to import, no
+  conflicts) and the local-driver dry run (exit 0).
