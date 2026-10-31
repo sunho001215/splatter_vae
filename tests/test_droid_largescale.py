@@ -689,3 +689,52 @@ def test_wrong_hand_eye_disables_the_wrist_but_keeps_external_windows(tmp_path):
     item = ds[0]
     assert not item["wrist_valid"].any() and item["wrist_depth"].abs().sum() == 0 and item["wrist_track_weight"].sum() == 0
     assert item["track_weight"].sum() > 0
+
+
+# ------------------------------------------------------------------------------------ manifest streaming / extraction
+def test_manifest_is_streamed_into_a_packed_window_table(env, tmp_path):
+    from s4d.data.droid.largescale import dataset as D
+
+    ds = make_ds(env)
+    assert ds.windows.table.dtype == np.int32 and ds.windows.table.nbytes == 16 * len(ds)
+    for i in range(len(ds)):
+        ds._row(ds.windows[i][0])
+    assert len(ds._rows) <= D.ROW_CACHE
+    line = env["manifest"].read_text()
+    bad = tmp_path / "unsorted.jsonl"
+    bad.write_text(line + line)
+    with pytest.raises(ValueError, match="sorted by episode without repeats"):
+        DroidLargeScaleDataset(bad, **F.dataset_kwargs(env))
+
+
+def test_pointworld_stream_extraction_is_strict_and_resumable(tmp_path):
+    import io
+    import tarfile
+
+    from s4d.data.droid.largescale.extract import extract_members
+
+    def tar_bytes():
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+
+            def add(name, data=b"x", kind=tarfile.REGTYPE, link=""):
+                info = tarfile.TarInfo(name)
+                info.type, info.linkname, info.size = kind, link, len(data) if kind == tarfile.REGTYPE else 0
+                tar.addfile(info, io.BytesIO(data) if kind == tarfile.REGTYPE else None)
+
+            add(f"droid/flows-fs-optimized/{F.EPISODE}_flows.h5", b"flow-bytes")
+            add(f"droid/depth_320x180/{F.EPISODE}_depth.h5", b"depth")
+            add(f"droid/cameras/{F.EPISODE}_cameras.json", kind=tarfile.SYMTYPE, link="/etc/passwd")
+            add(f"droid/cameras/{F.EPISODE}_flows.h5", b"wrong dir")
+            add("droid/cameras/../../evil_cameras.json", b"escape")
+            add("droid/flows-fs-optimized/migration_state.json", b"{}")
+        return buf.getvalue()
+
+    report = extract_members(io.BytesIO(tar_bytes()), tmp_path / "pw")
+    assert report["written"] == 2 and report["ignored"] == 2 and len(report["refused"]) == 2
+    assert (tmp_path / "pw/flows-fs-optimized" / f"{F.EPISODE}_flows.h5").read_bytes() == b"flow-bytes"
+    assert not (tmp_path / "evil_cameras.json").exists() and not (tmp_path / "pw/cameras").exists()
+    again = extract_members(io.BytesIO(tar_bytes()), tmp_path / "pw")
+    assert again["written"] == 0 and again["skipped_existing"] == 2
+    only = extract_members(io.BytesIO(tar_bytes()), tmp_path / "pw2", kinds=("depth_320x180",), episodes={F.EPISODE})
+    assert only["written"] == 1 and (tmp_path / "pw2/depth_320x180" / f"{F.EPISODE}_depth.h5").is_file()

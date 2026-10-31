@@ -17,7 +17,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+from collections import OrderedDict
+from collections.abc import Sequence
 
 import numpy as np
 import torch
@@ -33,13 +36,38 @@ from s4d.data.droid.largescale.geometry import (
     scale_intrinsics,
     transform_points,
 )
-from s4d.data.droid.largescale.join import load_manifest, wrist_pose_w2c
+from s4d.data.droid.largescale.join import MANIFEST_FORMAT, wrist_pose_w2c
 from s4d.data.droid.largescale.pointworld_source import DEFAULT_LAYOUT, PointWorldReader, clip_bounds
 from s4d.data.droid.largescale.rlds_index import RldsStepReader
 from s4d.data.droid.pointworld import depth_test, splat_score, track_targets
 
 NATIVE_WH = (320, 180)
 EXT_ROLES = ("ext1", "ext2")
+ROW_CACHE = 32  # parsed manifest rows kept per worker
+
+
+class WindowTable(Sequence):
+    """Packed (episode, clip start, clip end, first frame) rows; items read as ``(episode, "s:e", i)``."""
+
+    def __init__(self, table: np.ndarray):
+        self.table = table
+
+    def __len__(self) -> int:
+        return len(self.table)
+
+    def __getitem__(self, k):
+        if isinstance(k, slice):
+            return [self[j] for j in range(*k.indices(len(self)))]
+        e, start, end, i = (int(x) for x in self.table[k])
+        return e, f"{start}:{end}", i
+
+    def index(self, value, start=0, stop=None):
+        e, clip, i = value
+        s, t = map(int, clip.split(":"))
+        hits = np.flatnonzero((self.table == np.array([e, s, t, i])).all(1))
+        if not len(hits):
+            raise ValueError(f"{value!r} is not a window")
+        return int(hits[0])
 
 
 def stable_hash(*parts) -> int:
@@ -90,7 +118,6 @@ class DroidLargeScaleDataset(Dataset):
         validate: bool = True,
         with_eval: bool = False,
     ):
-        self.rows = sorted(load_manifest(manifest_path), key=lambda r: r["episode"])
         if split not in ("train", "validation", "all"):
             raise ValueError("split must be train, validation or all")
         self.stride, self.H, self.W = int(stride), int(image_height), int(image_width)
@@ -98,20 +125,58 @@ class DroidLargeScaleDataset(Dataset):
         self.gripper_offset_m, self.validate = float(gripper_offset_m), bool(validate)
         self.pw = PointWorldReader(pointworld_root, layout, max_open=max_open_files)
         self.rlds = RldsStepReader(rlds_index_dir, rlds_data_root, max_open_files=max_open_files)
-        self.windows: list[tuple[int, str, int]] = []
-        for e, row in enumerate(self.rows):
-            if split != "all" and episode_split(row["episode"], validation_percent) != split:
-                continue
-            valid = np.ones(len(row["timeline"]["canonical_timestamps"]), bool)
-            for role in EXT_ROLES:
-                valid &= np.asarray(row["frames"]["valid"][role], bool)
-            for clip in sorted(row["clips"], key=clip_bounds):
-                start, end = clip_bounds(clip)
-                for i in range(start, end - 2 * self.stride):
-                    if valid[[i, i + self.stride, i + 2 * self.stride]].all():
-                        self.windows.append((e, clip, i))
-        if not self.windows:
+        # Stream the manifest once: keep only byte offsets per episode and a packed window table (bounded memory
+        # independent of the per-episode payload); rows are re-read on demand through a small LRU.
+        self.manifest_path = str(manifest_path)
+        offsets, names, table = [], [], []
+        with open(self.manifest_path, "rb") as stream:
+            position = 0
+            for line in stream:
+                row = json.loads(line)
+                if row.get("format") != MANIFEST_FORMAT:
+                    raise ValueError(f"not a {MANIFEST_FORMAT} manifest row")
+                if names and row["episode"] <= names[-1]:
+                    raise ValueError("manifest rows must be sorted by episode without repeats")
+                e = len(names)
+                names.append(row["episode"])
+                offsets.append((position, len(line)))
+                position += len(line)
+                if split != "all" and episode_split(row["episode"], validation_percent) != split:
+                    continue
+                valid = np.ones(len(row["timeline"]["canonical_timestamps"]), bool)
+                for role in EXT_ROLES:
+                    valid &= np.asarray(row["frames"]["valid"][role], bool)
+                for clip in sorted(row["clips"], key=clip_bounds):
+                    start, end = clip_bounds(clip)
+                    for i in range(start, end - 2 * self.stride):
+                        if valid[[i, i + self.stride, i + 2 * self.stride]].all():
+                            table.append((e, start, end, i))
+        self.episodes = names
+        self._offsets = np.asarray(offsets, np.int64).reshape(-1, 2)
+        self.windows = WindowTable(np.asarray(table, np.int32).reshape(-1, 4))
+        self._rows: OrderedDict[int, dict] = OrderedDict()
+        if not len(self.windows):
             raise ValueError(f"no valid windows in split {split!r}")
+
+    def _row(self, e: int) -> dict:
+        if e in self._rows:
+            self._rows.move_to_end(e)
+            return self._rows[e]
+        offset, length = self._offsets[e]
+        with open(self.manifest_path, "rb") as stream:
+            stream.seek(int(offset))
+            row = json.loads(stream.read(int(length)))
+        if row["episode"] != self.episodes[e]:
+            raise RuntimeError("manifest changed after the dataset was built")
+        self._rows[e] = row
+        while len(self._rows) > ROW_CACHE:
+            self._rows.popitem(last=False)
+        return row
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_rows"] = OrderedDict()
+        return state
 
     def __len__(self) -> int:
         return len(self.windows)
@@ -139,7 +204,7 @@ class DroidLargeScaleDataset(Dataset):
     # ------------------------------------------------------------------------------------------------ item
     def __getitem__(self, index: int) -> dict:
         e, clip, i0 = self.windows[index]
-        row = self.rows[e]
+        row = self._row(e)
         episode = row["episode"]
         start, _ = clip_bounds(clip)
         canon = np.array([i0, i0 + self.stride, i0 + 2 * self.stride])
@@ -252,7 +317,8 @@ class DroidLargeScaleDataset(Dataset):
             K_r = scale_intrinsics(K_nat, NATIVE_WH, (W, H))
             w2c = self._wrist_w2c(row, state)
             depth_nat, _ = self.pw.depth_frames(episode, group, np.asarray(row["frames"]["depth_index"]["wrist"])[canon])
-            if row.get("wrist_qa", {}).get("depth_rotation_deg") == 180:  # released wrist depth stored rotated (decided from data)
+            # the released wrist depth's storage orientation is decided from data by the manifest's wrist QA
+            if row.get("wrist_qa", {}).get("depth_rotation_deg") == 180:
                 depth_nat = np.ascontiguousarray(depth_nat[:, ::-1, ::-1])
             depth_nat[~valid] = 0
             depth_r = np.stack([resize(d, H, W, nearest=True) for d in depth_nat])

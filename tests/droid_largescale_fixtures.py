@@ -331,7 +331,8 @@ def build_all(tmp: Path, *, calibration: str = "droid3d", **kw) -> dict:
     gt = truth()
     shards = write_rlds_shards(tmp / "rlds", gt, decoy_duplicate=kw.pop("decoy_duplicate", False))
     build_index(shards, tmp / "rlds_index")
-    write_pointworld(tmp / "pw", gt, **{k: v for k, v in kw.items() if k in ("n_tracks", "wrist_attr", "wrist_depth_rotated")})
+    pw_keys = ("n_tracks", "wrist_attr", "wrist_depth_rotated")
+    write_pointworld(tmp / "pw", gt, **{k: v for k, v in kw.items() if k in pw_keys})
     ext_path, intr_path, he_path = write_droid3d(
         tmp / "d3", gt, wrist_serial=kw.get("d3_wrist_serial"), hand_eye_error_m=kw.get("hand_eye_error_m", 0.0)
     )

@@ -416,9 +416,10 @@ def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, max_residual
     w2c = wrist_pose_w2c(wrist, state)
     K = np.asarray(wrist["K"], np.float64)
     residual = {"as_stored": [], "rotated180": []}
-    with h5py.File(Path(root) / layout["flows"].format(episode=episode), "r") as flow, h5py.File(
-        Path(root) / layout["depth"].format(episode=episode), "r"
-    ) as depth_file:
+    with (
+        h5py.File(Path(root) / layout["flows"].format(episode=episode), "r") as flow,
+        h5py.File(Path(root) / layout["depth"].format(episode=episode), "r") as depth_file,
+    ):
         group = depth_file[entry["depth_groups"]["wrist"]]["depth"]
         for k, i in enumerate(frames):
             depth = group[entry["frames"]["depth_index"]["wrist"][i]].astype(np.float64) / 1000.0
