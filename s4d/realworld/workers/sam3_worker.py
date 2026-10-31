@@ -27,6 +27,8 @@ def handle(request, inputs):
     params = request["params"]
     prompts = list(params["prompts"])
     thr = float(params.get("score_threshold", 0.5))
+    if not request.get("checkpoint") or not Path(request["checkpoint"]).is_file():
+        raise FileNotFoundError("SAM 3 needs the local checkpoint named in the request (no silent hub download)")
     images = inputs["images"]
     masks, scores, boxes, frames, pidx, iids = [], [], [], [], [], []
     count = np.zeros((len(images), len(prompts)), np.int32)
@@ -35,7 +37,8 @@ def handle(request, inputs):
         from sam3.model.sam3_image_processor import Sam3Processor  # upstream
         from sam3.model_builder import build_sam3_image_model  # upstream
 
-        processor = Sam3Processor(build_sam3_image_model(**params.get("build_kwargs", {})))
+        processor = Sam3Processor(build_sam3_image_model(**{"checkpoint_path": request.get("checkpoint"),
+                                                            "load_from_HF": False, **params.get("build_kwargs", {})}))
         for f, image in enumerate(images):
             state = processor.set_image(Image.fromarray(image))
             for p, prompt in enumerate(prompts):
@@ -52,7 +55,8 @@ def handle(request, inputs):
     elif request["task"] == "segment_video":
         from sam3.model_builder import build_sam3_video_predictor  # upstream
 
-        predictor = build_sam3_video_predictor(**params.get("build_kwargs", {}))
+        predictor = build_sam3_video_predictor(**{"checkpoint_path": request.get("checkpoint"),
+                                                   **params.get("build_kwargs", {})})
         import tempfile
 
         frame_dir = Path(tempfile.mkdtemp(prefix="sam3_frames_", dir=Path.cwd()))  # fresh per call: no stale frames
