@@ -27,6 +27,11 @@ diff inline.
 | codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: no findings; merged a1815c4 |
 
 ## Current phase
+- **Local server / remote runner (2026-10-31 21:50):** the 23:00 shutdown deadline is withdrawn; the user picks the
+  local shutdown time. `~/kaist/sunho/remote_runner` stays the autonomous remote launcher (no hand-back unless the user
+  asks; `docs/RESTART_BRIEFING_20261031.md`). Local controllers stay stopped; the five FlashSAC maintenance pauses are
+  not resumed without the user. In progress locally: real-data validation of items 5/6/8 (raw DROID episode, real
+  FoundationStereo / AllTracker / SAM 3 / DINO), refactor pass 2, then the merge into `splatter4d`.
 - **Self-render (2026-10-31):** the v2 pilot (`sr-csw4-*`) was stopped at the user's instruction (checkpoints
   kept). It is replaced by `selfrender_replace_v4`: ±5 % radial camera jitter plus the viewpoint domain relaxed
   ×0.95 (466 cells). Rows `srv4-csw4-*` (pretraining from step 0, export, FlashSAC s2000–2002) were registered

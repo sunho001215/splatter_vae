@@ -6535,3 +6535,52 @@ above the old 4.0. Remote: `remote_runner/gpu_load_limit.txt` = 4.5, re-read eve
   empty; the cache file was linked and the suite re-run.
 - Smoke checks on the merged code: `jobs.py status`, the reconcile dry run (45 runner launches to import, no
   conflicts) and the local-driver dry run (exit 0).
+
+**21:45–21:51 — Remote runner briefly stopped, then restored (user clarification).**
+- The user withdrew the shutdown deadline. I began the planned hand-back: `reconcile_remote_runner_20261031.py --stop`
+  created the STOP file. The runner exited at 21:45:20, and no registry events were applied.
+- The user then clarified: keep the remote runner autonomous, do not hand control back, and do not auto-resume paused
+  experiments.
+- The STOP file was removed and the runner restarted at 21:50:43 (pid 4034189): same plan (273 items), same
+  `gpu_load_limit.txt` 4.5. No other controller launched remote work in the gap, and running containers were unaffected.
+- Local controllers remain stopped. The five FlashSAC maintenance pauses remain paused.
+
+**21:55–22:50 — Real-data validation of items 5/6/8 started (user directive; deadline withdrawn).**
+- Notes: the restart briefing, the state file and the memory now say the deadline is withdrawn, the remote runner stays
+  the autonomous remote launcher (no hand-back), and the paused local jobs are not resumed without the user. Copies were
+  uploaded to `~/kaist/sunho/remote_runner/` (sha256 checked). Runner at 21:54: 45 launches, 0 failures, load ≤ 4.5.
+- Item 8 (DROID large-scale) is delegated to an agent in `.worktrees/droid-largescale`:
+  - GPU: MIG-c3511b41 and MIG-2ebd9e11 only.
+  - Outputs: `/home/ws/ws/validation-20261031/item8/`.
+  - DROID access is read-only, with an input hash manifest taken before and after.
+  - Downloads are capped at ≤ 15 GB, PointWorld first parts only.
+- Refactor pass 2 (operational drivers out of `runs/setup/tools`) is delegated to an agent:
+  - worktree `.worktrees/refactor2`, branch `refactor2-20261031`, from a8628a7;
+  - mechanical moves only;
+  - remote-runner files are untouched;
+  - GPU: MIG-05a151e7 and MIG-b50e85c3.
+- Item 5 data:
+  - Stereo source: the raw DROID episode for the historical sample (34.8 MB, official `gresearch/robotics/droid_raw/1.0.1`).
+    The SVO files hold the genuine raw left|right HEVC stereo of each ZED. The MP4s are the SDK-rectified left views.
+  - Calibration: the ZED factory calibration `SN<serial>.conf` from calib.stereolabs.com (the file the SDK downloads).
+    Its baselines equal the DROID-3D SDK baselines exactly: 120.058 / 120.155 / 63.061 mm.
+- Reading convention decided on real data (8 hypotheses; OpenCV and our NumPy rectification agree to 2e-6°):
+  - R = Rodrigues(RX, CV, RZ), mapping left→right; right camera centre = (B, −TY, −TZ).
+  - ZED 2: the `[*_DISTO]` rational model.
+  - Result: the rectified left view reproduces the SDK-rectified MP4 to a median dx/dy of 0.003/−0.055 px (ext1) and
+    0.40/−0.05 px (ext2). Left/right vertical residual: median |dy| 0.40 / 0.38 px.
+  - The transposed rotation gives 2.8 px vertical error; the `CAM_HD` 5-coefficient model is 1.4 px off the SDK.
+  - Wrist (ZED Mini, Kannala–Brandt 4): rows align (0.7 px), but there is a 2.2–2.9 px horizontal offset to the SDK that
+    I could not explain. The wrist is excluded from the fixed-rig pipeline run; item 8 covers it.
+- New code on `realworld-preproc-20261031`:
+  - 9300395: adapter `droid_raw_svo`, SVO index, PyAV decode worker.
+  - a340283: provided-extrinsics calibration source, using the DROID-3D world→camera view matrices.
+  - cb901a1: **integration fix** — the right-reference flip-and-swap now makes one backend call per chunk instead of
+    one worker process and model load per frame.
+  - 36ee65b: tests. Realworld tests: 48 passed.
+- Real ingest of ext1 and ext2: 127 frames per stream, every SVO frame matched to trajectory steps 0–126 by
+  `frame_received` (step 127 has no frame). Output in `/home/ws/ws/validation-20261031/item5/root`.
+- Weights and environments:
+  - FoundationStereo ViT-L `23-51-11` from the official Google Drive: 3,298,527,334 B, sha256 60e79bde….
+  - Isolated uv envs with torch 2.10.0+cu129 (Blackwell). The upstream pin torch 2.4.1 has no sm_120 kernels; this
+    is recorded as an environment deviation.

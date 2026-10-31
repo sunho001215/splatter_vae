@@ -1,4 +1,11 @@
-# Restart briefing — local shutdown 2026-10-31 23:00 KST
+# Restart briefing — local server shutdown (time chosen by the user)
+
+**Update 2026-10-31 ~21:50 KST.** The user withdrew the 23:00 KST shutdown and the 22:45 drain deadline and will
+choose the local shutdown time. The remote runner stays the autonomous remote launcher: it keeps its plan, queue and
+scheduler and keeps running after the local server disconnects. **Do not hand control back** (no STOP file, no
+`reconcile_remote_runner_20261031.py --stop/--apply`) unless the user asks for it. The paused local jobs in section 3
+are **not** resumed automatically; the user decides. Sections 2 and 3 below describe the eventual hand-back procedure
+only.
 
 Machine-readable state: `runs/setup/restart-state-20261031.json`. Both files are also in
 `~/kaist/sunho/remote_runner/` on the remote. The details below are in `docs/EXPERIMENT_LOG.md` (2026-10-31 entries).
@@ -8,13 +15,13 @@ Machine-readable state: `runs/setup/restart-state-20261031.json`. Both files are
   host's `python3`, detached (setsid/nohup), and reads `plan.json`. `commands/` holds the pre-built launch commands,
   identical to the local driver's except for the GPU placeholder.
   - Records: `events.jsonl` (append-only) and `heartbeat.json` (rewritten every pass, about 60 s).
-  - GPU load limit: 5.0 units per GPU (temporary amendment; the local driver uses 4.0), adjustable in
-    `gpu_load_limit.txt`. Each launch command's own guards still apply: foreign GPU processes, RAM reserve, disk floor,
+  - GPU load limit: 4.5 units per GPU (lowered from 5.0 at 21:05 after saturation; the local driver uses 4.0), adjustable
+    in `gpu_load_limit.txt`. Each launch command's own guards still apply: foreign GPU processes, RAM reserve, disk floor,
     per-GPU job and memory caps.
 - **Local:** every campaign controller is stopped: the scheduler daemon, the remote and local drivers, the outage
   guard, media sync, replay cleanup, the memory monitors and the watcher. `experiments/HOLD` remains.
 
-## 2. Restart procedure (in this order; do not just restart every loop)
+## 2. Hand-back procedure (only when the user asks for it; in this order; do not just restart every loop)
 1. Check the remote: `cat ~/kaist/sunho/remote_runner/heartbeat.json` and `tail events.jsonl`, plus
    `docker ps -a --filter label=s4d.managed=true`.
 2. Stop the runner and import its launches before any local controller starts:
@@ -27,8 +34,8 @@ Machine-readable state: `runs/setup/restart-state-20261031.json`. Both files are
    remote jobs that finished during the outage. Then restart the outage guard, the remote campaign driver loop, the
    local driver loops, the media sync, the replay cleanup and the monitors. Use the same commands as before; see
    PROGRESS and the EXPERIMENT_LOG.
-5. The paused local jobs resume automatically. Each is a crashed row with an intentional stop and no charged failure;
-   the local driver relaunches it, with `--resume auto` for pretraining and `checkpoints/latest.pt` plus the replay
+5. The paused local jobs need the user's go-ahead before any local driver loop that would relaunch them restarts. Each
+   is a crashed row with an intentional stop and no charged failure; once allowed, the local driver relaunches it, with `--resume auto` for pretraining and `checkpoints/latest.pt` plus the replay
    snapshot for FlashSAC.
 
 ## 3. Paused local jobs (lossless, intentional-stop events)
@@ -59,5 +66,7 @@ aliases or wrappers for the implementations in `ops/`. The remote runner and the
 use the main checkout.
 
 ## 7. Open decisions for the user
-- DROID large-scale: reading the protected DROID directory, the PointWorld extraction (about 3.9 TB) and a valid
-  Hugging Face token for the gated DROID-3D extrinsics are needed before real-data validation.
+- When to shut down the local server, and whether to resume the paused local jobs (section 3).
+- DROID: read-only access and Hugging Face access were granted at ~21:30 (real-data validation of items 5, 6 and 8 in
+  progress; see EXPERIMENT_LOG). Full PointWorld extraction (about 3.9 TB) and full-scale DROID training stay
+  unauthorized.

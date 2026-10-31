@@ -29,7 +29,7 @@
     "vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
    ],
    "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
-   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "resume": "held for the user's decision (2026-10-31 ~21:50 KST): not resumed automatically. Mechanism once allowed: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
    "manual_command": ".venv/bin/python -I scripts/train_flashsac.py --task drawer-open --encoder mvp3d_multiview --seed 2000 --run-dir runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000 --set train.num_train_steps=1000000 vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
   },
   {
@@ -55,7 +55,7 @@
     "vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
    ],
    "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
-   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "resume": "held for the user's decision (2026-10-31 ~21:50 KST): not resumed automatically. Mechanism once allowed: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
    "manual_command": ".venv/bin/python -I scripts/train_flashsac.py --task drawer-open --encoder mvp3d_single --seed 2000 --run-dir runs/ds-flashsac-mvp3d-single-drawer-open-s2000 --set train.num_train_steps=1000000 vision.export_path=runs/ds-pre-mvp3d-drawer-open/encoder.pt"
   },
   {
@@ -80,7 +80,7 @@
     "runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000-eval"
    ],
    "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
-   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "resume": "held for the user's decision (2026-10-31 ~21:50 KST): not resumed automatically. Mechanism once allowed: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
    "manual_command": ".venv/bin/python -I scripts/eval_rl.py --run-dir runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000 --train-job ds-flashsac-mvp3d-multiview-drawer-open-s2000 --workers 6 --envs-per-worker 8 --output-dir runs/ds-flashsac-mvp3d-multiview-drawer-open-s2000-eval"
   },
   {
@@ -106,7 +106,7 @@
     "vision.export_path=runs/s4-snerl-coffee-push-rem-b/encoder.pt"
    ],
    "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
-   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "resume": "held for the user's decision (2026-10-31 ~21:50 KST): not resumed automatically. Mechanism once allowed: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
    "manual_command": ".venv/bin/python -I scripts/train_flashsac.py --task coffee-push --encoder snerl --seed 2001 --run-dir runs/ds-flashsac-snerl-coffee-push-s2001 --set train.num_train_steps=1000000 vision.export_path=runs/s4-snerl-coffee-push-rem-b/encoder.pt"
   },
   {
@@ -131,7 +131,7 @@
     "runs/ds-flashsac-mvp3d-single-drawer-open-s2000-eval"
    ],
    "commit_at_launch": "2605ba23a28c277cf61dda9d367ad749751b8fbe",
-   "resume": "automatic: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
+   "resume": "held for the user's decision (2026-10-31 ~21:50 KST): not resumed automatically. Mechanism once allowed: a crashed row with an intentional stop and failures <= max_restarts is retried by the local driver, whose command line carries --resume auto (pretraining) / resumes from checkpoints/latest.pt with the replay snapshot (FlashSAC)",
    "manual_command": ".venv/bin/python -I scripts/eval_rl.py --run-dir runs/ds-flashsac-mvp3d-single-drawer-open-s2000 --train-job ds-flashsac-mvp3d-single-drawer-open-s2000 --workers 6 --envs-per-worker 8 --output-dir runs/ds-flashsac-mvp3d-single-drawer-open-s2000-eval"
   }
  ],
@@ -262,7 +262,8 @@
   "start_command": "cd ~/kaist/sunho/remote_runner && setsid nohup python3 remote_runner.py >> runner.out 2>&1 < /dev/null &",
   "events": "remote_runner/events.jsonl",
   "heartbeat": "remote_runner/heartbeat.json",
-  "reconcile": "runs/setup/tools/reconcile_remote_runner_20261031.py --stop; then --apply"
+  "reconcile": "runs/setup/tools/reconcile_remote_runner_20261031.py --stop; then --apply",
+  "gpu_load_limit": 4.5
  },
  "admission_pauses_active": [
   "paper-ablations-csw4-door-open",
@@ -329,5 +330,9 @@
   "/home/ws/ws/splatter4d/runs/rel/e4206f1                           e4206f1 (detached HEAD)",
   "/home/ws/ws/splatter4d/runs/rel/efa152a                           efa152a (detached HEAD)",
   "/home/ws/ws/splatter4d/runs/rel/f5447bd                           f5447bd (detached HEAD)"
- ]
+ ],
+ "amended": {
+  "at": "2026-10-31T21:55:00+09:00",
+  "note": "23:00 KST shutdown and 22:45 drain deadline withdrawn by the user; the user chooses the local shutdown time. The remote runner stays the autonomous remote launcher (no hand-back unless the user asks). Paused local jobs are not resumed automatically."
+ }
 }

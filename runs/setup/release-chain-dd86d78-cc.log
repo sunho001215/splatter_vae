@@ -20,3 +20,12 @@
 12:08:15 done {'verify-native-dd86d78-cc': 'done'}
 12:08:16 {"exit_code": 0, "counts": {"passed": 1222, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
 12:08:21 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-dd86d78-cc-queue.yaml 
+12:10:54 launched verify-isolation-0-dd86d78-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-dd86d78-cc-a1, attempt 1)
+12:10:54 launched verify-isolation-1-dd86d78-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-dd86d78-cc-a1, attempt 1)
+12:10:54 launched verify-isolation-2-dd86d78-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-dd86d78-cc-a1, attempt 1)
+12:10:54 launched verify-isolation-3-dd86d78-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-dd86d78-cc-a1, attempt 1)
+12:10:55 wait {'verify-isolation-0-dd86d78-cc': 'running', 'verify-isolation-1-dd86d78-cc': 'running', 'verify-isolation-2-dd86d78-cc': 'running', 'verify-isolation-3-dd86d78-cc': 'running'}
+12:12:20 done {'verify-isolation-0-dd86d78-cc': 'done', 'verify-isolation-1-dd86d78-cc': 'done', 'verify-isolation-2-dd86d78-cc': 'done', 'verify-isolation-3-dd86d78-cc': 'done'}
+12:12:21 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/dd86d78-cc/manifest.json b65ab689cbf8ba5b50e219662140668876ad6c2ef012f242fa76efc8bc28e2e2 56bd8ce9c59e 
+12:12:21 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/dd86d78-cc/manifest.json b65ab689cbf8ba5b50e219662140668876ad6c2ef012f242fa76efc8bc28e2e2 56bd8ce9c59e
+exit 0
