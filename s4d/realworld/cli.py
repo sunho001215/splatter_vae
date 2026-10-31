@@ -107,7 +107,8 @@ def main(argv=None) -> int:
         backend = P.WorkerTrackerBackend(_spec(cfg, "alltracker"), work / "track",
                                          cfg["workers"]["alltracker"].get("params"))
         P.track2d(root, args.episode, backend, window=tc.get("window", 16), step=tc.get("step", 8),
-                  grid_stride=tc.get("grid_stride", 8), force=args.force)
+                  grid_stride=tc.get("grid_stride", 8),
+                  tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None, force=args.force)
     if "lift3d" in wanted:
         P.lift3d(root, args.episode, **st.get("lift3d", {}), force=args.force)
     if "export" in wanted:

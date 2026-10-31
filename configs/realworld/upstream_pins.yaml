@@ -7,42 +7,49 @@ foundation_stereo:
   repo: https://github.com/NVlabs/FoundationStereo
   branch: master
   commit: 6e8806816b533e4d13ddbb95ffa907b797060a62   # 2025-12-19
-  license: NVIDIA research/non-commercial license (repo license NOASSERTION)
-  environment: upstream environment.yml (conda env "foundation_stereo": python 3.11, torch 2.4.1, torchvision 0.19.1,
+  license: "NVIDIA research/non-commercial license (GitHub license field NOASSERTION)"
+  environment: >-
+    upstream environment.yml (conda env "foundation_stereo" with python 3.11, torch 2.4.1, torchvision 0.19.1,
     xformers 0.0.28.post1; flash-attn installed separately)
-  checkpoint: pretrained_models/23-51-11/model_best_bp2.pth   # ViT-L (best); 11-33-40 = ViT-S (faster); needs cfg.yaml alongside
+  checkpoint: pretrained_models/23-51-11/model_best_bp2.pth   # ViT-L (best); 11-33-40 = ViT-S (faster); cfg.yaml alongside
   checkpoint_sha256: null
-  entrypoint_reference: scripts/run_demo.py (K.txt = 9 floats of K + baseline in metres; depth = K[0,0]*baseline/disp)
-  notes: inputs must be rectified + undistorted and not swapped; InputPadder(divis_by=32); --hiera for >1000 px images
+  entrypoint_reference: >-
+    scripts/run_demo.py (K.txt holds the 9 floats of K and the baseline in metres; depth = K[0,0] * baseline / disp)
+  notes: >-
+    inputs must be rectified and undistorted and must not be swapped; InputPadder(divis_by=32);
+    the hiera option is advised for images over 1000 px
 alltracker:
   repo: https://github.com/aharley/alltracker
   branch: master
   commit: e7553135e7b361590dbccd10e2b274b024f41cd6   # 2026-05-08
   license: MIT
-  environment: conda create -n alltracker python=3.12.8; pip install -r requirements.txt (torch unpinned upstream ->
-    pin the torch/torchvision actually installed in envs/alltracker.lock after setup); pytorch_lightning 2.4.0
-  checkpoint: alltracker.pth (https://huggingface.co/aharley/alltracker/resolve/main/alltracker.pth)
+  environment: >-
+    conda create -n alltracker python=3.12.8; pip install -r requirements.txt (torch is unpinned upstream, so record
+    the torch/torchvision actually installed after setup); pytorch_lightning 2.4.0
+  checkpoint: "alltracker.pth (https://huggingface.co/aharley/alltracker/resolve/main/alltracker.pth)"
   checkpoint_sha256: null
-  entrypoint_reference: demo.py forward_video -> model.forward_sliding(rgbs[:, q:], iters, sw=None, is_training=False)
-  notes: rgbs 1,T,3,H,W float 0..255, H,W multiples of 8; visconf ch0 visibility, ch1 confidence (P(err<=12px));
-    trajectories = flow + integer-centre grid
+  entrypoint_reference: "demo.py forward_video -> model.forward_sliding(rgbs[:, q:], iters, sw=None, is_training=False)"
+  notes: >-
+    rgbs are 1,T,3,H,W floats in 0..255 with H, W multiples of 8; visconf channel 0 is visibility, channel 1 is
+    confidence (P(err <= 12 px)); trajectories = flow + integer-centre grid
 sam3:
   repo: https://github.com/facebookresearch/sam3
   branch: main
   commit: f1647e8d0c1d280991f4d1b7d974c2704537fe66   # 2026-10-23
-  license: SAM License (repo license NOASSERTION)
-  environment: python >= 3.12, torch 2.10.0 (cu128 per README), pip install -e . at the pinned commit
-  checkpoint: facebook/sam3 sam3.pt (gated Hugging Face repo; `hf auth login`)
+  license: "SAM License (GitHub license field NOASSERTION)"
+  environment: "python >= 3.12, torch 2.10.0 (cu128 per README), pip install -e . at the pinned commit"
+  checkpoint: "facebook/sam3 sam3.pt (gated Hugging Face repo; hf auth login)"
   checkpoint_sha256: null
-  entrypoint_reference: README image API (build_sam3_image_model, Sam3Processor.set_image / set_text_prompt) and
-    video API (build_sam3_video_predictor, handle_request start_session/add_prompt/close_session,
+  entrypoint_reference: >-
+    README image API (build_sam3_image_model, Sam3Processor.set_image / set_text_prompt) and video API
+    (build_sam3_video_predictor, handle_request start_session / add_prompt / close_session,
     handle_stream_request propagate_in_video)
 dino_snerl:
   repo: https://github.com/facebookresearch/dino
   branch: main
   commit: 7c446df5b9f45747937fb0d72314eb9f7b66930a   # 2023-04-27; identical to this repository's third_party/dino submodule
   license: Apache-2.0
-  environment: this repository's .venv (the consumer s4d.baselines.snerl runs there)
+  environment: "this repository's .venv (the consumer s4d.baselines.snerl runs there)"
   checkpoint: dino_deitsmall8_pretrain.pth
   checkpoint_sha256: 55c8b267f479b614ec20858947ce361ba804846c193e20be74263a096bb6d75e   # enforced by s4d.baselines.snerl.upstream
 reference_only:   # read for the method, not executed
@@ -55,12 +62,12 @@ reference_only:   # read for the method, not executed
     commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8   # not used by any baseline stage here
   robotiq_description:
     candidates:
-      - https://github.com/PickNikRobotics/ros2_robotiq_gripper @ a74d007d8f2f06dc6a503ad21038ba869d4999a6 (BSD-3;
-        robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro, robotiq_2f_140_macro.urdf.xacro)
-      - https://github.com/ros-industrial-attic/robotiq @ 45196f6558fe8ba9d89bc8a105396c68c3e7e892 (BSD-2)
+      - "https://github.com/PickNikRobotics/ros2_robotiq_gripper @ a74d007d8f2f06dc6a503ad21038ba869d4999a6 (BSD-3; robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro, robotiq_2f_140_macro.urdf.xacro)"
+      - "https://github.com/ros-industrial-attic/robotiq @ 45196f6558fe8ba9d89bc8a105396c68c3e7e892 (BSD-2)"
   franka_description:
     repo: https://github.com/frankarobotics/franka_description
     commit: 7aeeddc449edf8d62b594f9e36a81da53e7796f9
   franka_robotiq_mount_example:
     repo: https://github.com/frankarobotics/external_gripper_example
-    commit: fe4f871efe052f78a55454ba295f1beda93f147c   # robotiq_mounted_on_panda.urdf.xacro: panda_link8 -> robotiq_arg2f_base_link, xyz 0 0 0, rpy 0 0 +pi/2
+    commit: fe4f871efe052f78a55454ba295f1beda93f147c
+    note: "robotiq_mounted_on_panda.urdf.xacro: panda_link8 -> robotiq_arg2f_base_link, xyz 0 0 0, rpy 0 0 +pi/2"

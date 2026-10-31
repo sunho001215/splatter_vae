@@ -127,3 +127,14 @@ def test_stage_lock_blocks_concurrent_builders_and_recovers_stale(tmp_path):
     lock.write_text("999999999")  # dead pid -> stale lock is taken over
     assert not rio.run_stage(d, stage="s", version="1", config={}, inputs={}, build=lambda t: {})["skipped"]
     assert not lock.exists()
+
+
+def test_configs_parse_and_pins_are_full_shas():
+    import yaml
+
+    pins = yaml.safe_load((REPO / "configs/realworld/upstream_pins.yaml").read_text())
+    for name in ("foundation_stereo", "alltracker", "sam3", "dino_snerl"):
+        sha = pins[name]["commit"]
+        assert len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)
+    for name in ("pipeline_example", "template_adapter"):
+        assert isinstance(yaml.safe_load((REPO / f"configs/realworld/{name}.yaml").read_text()), dict)
