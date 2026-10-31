@@ -253,12 +253,17 @@ def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: 
                         left = np.stack([remap(x, maps[0], order=1) for x in left])
                         right = np.stack([remap(x, maps[1], order=1) for x in right])
                     batch_left = backend.disparity(left, right)
+                    # right reference: flip-and-swap inputs for the whole chunk in ONE backend call (a worker call
+                    # loads the model once); depth_from_pair flips the returned disparity back.
+                    batch_flipped = (backend.disparity(np.ascontiguousarray(right[:, :, ::-1]),
+                                                       np.ascontiguousarray(left[:, :, ::-1]))
+                                     if "right" in references else None)
                     for k, i in enumerate(idx):
                         for ref in references:
                             if ref == "left":
                                 matcher = (lambda _a, _b, d=batch_left[k]: d)
                             else:
-                                matcher = (lambda a, b: backend.disparity(a[None], b[None])[0])
+                                matcher = (lambda _a, _b, d=batch_flipped[k]: d)
                             res = depth_from_pair(left[k], right[k], KL, KR, g.baseline_m, matcher, ref)
                             f[ref]["depth"][i], f[ref]["valid"][i], f[ref]["disparity"][i] = (res.depth, res.valid,
                                                                                                res.disparity)
