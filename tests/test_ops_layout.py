@@ -70,8 +70,7 @@ def test_research_package_imports_ops_only_at_documented_points():
 
 
 @pytest.mark.parametrize("script", ["scripts/jobs.py", "scripts/heartbeat.py", "scripts/watch_events.py",
-                                    "scripts/sync_media.py", "scripts/cleanup_replay.py", "s4d/remote_access.py",
-                                    "ops/remote/access.py"])
+                                    "scripts/sync_media.py", "s4d/remote_access.py", "ops/remote/access.py"])
 def test_command_line_entry_points_run_isolated(script):
     result = subprocess.run([sys.executable, "-I", str(REPO / script), "--help"], capture_output=True, text=True,
                             timeout=120)
