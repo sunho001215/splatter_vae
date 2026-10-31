@@ -1,0 +1,49 @@
+# Real-data validation of the real-world pipeline on one raw DROID episode (host-specific paths, 2026-10-31).
+# Inputs are read-only; every output/cache lives under /home/ws/ws/validation-20261031/item5 (docs/realworld_droid_validation.md).
+#   python -m s4d.realworld.cli run --config configs/realworld/droid_raw_validation.yaml \
+#       --episode AUTOLab+0d4edc83+2023-10-21-19h-07m-04s --stages ingest,stereo_depth,calibrate,track2d,lift3d,export
+output_root: /home/ws/ws/validation-20261031/item5/root
+adapter:
+  name: droid_raw_svo
+  config:
+    episodes:
+      AUTOLab+0d4edc83+2023-10-21-19h-07m-04s: /home/ws/ws/validation-20261031/data/droid_raw/AUTOLab+0d4edc83+2023-10-21-19h-07m-04s
+    calibration_dir: /home/ws/ws/validation-20261031/downloads/zed_factory_calib
+    cameras: [ext1, ext2]
+    cache_dir: /home/ws/ws/validation-20261031/item5/cache/svo_frames
+    decoder: {python: /home/ws/ws/validation-20261031/envs/media/bin/python, timeout_s: 1800}
+    droid3d_extrinsics: /home/ws/ws/validation-20261031/downloads/droid_3d_extrinsics/extrinsics.jsonl
+    droid3d_intrinsics: /home/ws/ws/validation-20261031/downloads/droid_3d_extrinsics/camera_intrinsics.jsonl
+workers:
+  foundation_stereo:
+    python: /home/ws/ws/validation-20261031/envs/foundation_stereo/bin/python
+    repo_dir: /home/ws/ws/validation-20261031/upstream/FoundationStereo
+    expected_commit: 6e8806816b533e4d13ddbb95ffa907b797060a62
+    checkpoint: /home/ws/ws/validation-20261031/upstream/FoundationStereo/pretrained_models/23-51-11/model_best_bp2.pth
+    params: {valid_iters: 32, hiera: 0}
+    timeout_s: 7200
+    env:
+      CUDA_VISIBLE_DEVICES: MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c
+      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
+      HF_HOME: /home/ws/ws/validation-20261031/cache/hf
+      XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
+      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
+  alltracker:
+    python: /home/ws/ws/validation-20261031/envs/alltracker/bin/python
+    repo_dir: /home/ws/ws/validation-20261031/upstream/alltracker
+    expected_commit: e7553135e7b361590dbccd10e2b274b024f41cd6
+    checkpoint: /home/ws/ws/validation-20261031/downloads/alltracker/alltracker.pth
+    params: {window_len: 16, inference_iters: 4}
+    timeout_s: 7200
+    env:
+      CUDA_VISIBLE_DEVICES: MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70
+      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
+      HF_HOME: /home/ws/ws/validation-20261031/cache/hf
+      XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
+      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
+stages:
+  stereo_depth: {chunk: 4, references: [left, right]}
+  calibrate: {source: adapter_provided}
+  track2d: {window: 16, step: 8, grid_stride: 16, tracker_hw: [360, 640]}
+  lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
+  export: {strides: [1, 2], validation_tail_frames: 0}

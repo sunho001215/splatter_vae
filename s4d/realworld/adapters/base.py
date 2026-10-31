@@ -20,7 +20,8 @@ def register_adapter(cls):
 
 def get_adapter(name: str, config: dict) -> EpisodeAdapter:
     if name not in _REGISTRY:
-        import s4d.realworld.adapters.synthetic_adapter  # noqa: F401  (registers)
+        import s4d.realworld.adapters.droid_raw  # noqa: F401  (registers)
+        import s4d.realworld.adapters.synthetic_adapter  # noqa: F401
         import s4d.realworld.adapters.template  # noqa: F401
     try:
         return _REGISTRY[name](config)
