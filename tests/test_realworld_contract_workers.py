@@ -100,3 +100,17 @@ def test_existing_code_does_not_import_realworld():
     out = subprocess.run(["git", "-C", str(REPO), "grep", "-l", "s4d.realworld", "--", "s4d", "scripts"],
                          capture_output=True, text=True).stdout.split()
     assert all(p.startswith("s4d/realworld/") for p in out), out
+
+
+def test_upstream_worker_scripts_compile_and_never_import_upstream_at_module_level():
+    """Upstream packages may only be imported inside the request handler (they live in other environments)."""
+    import ast
+
+    upstream = {"core", "omegaconf", "nets", "sam3", "torch"}
+    for path in sorted((REPO / "s4d/realworld/workers").glob("*_worker.py")):
+        tree = ast.parse(path.read_text())
+        compile(tree, str(path), "exec")
+        top = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
+        names = {(n.module or "").split(".")[0] if isinstance(n, ast.ImportFrom) else n.names[0].name.split(".")[0]
+                 for n in top}
+        assert not names & upstream, (path.name, names)
