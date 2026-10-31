@@ -162,7 +162,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                             ri = ri[..., ::-1]
                         gvis = np.ones((3, len(grip[0])), bool)
                         for t in range(3):
-                            gvis[t] = depth_test(grip[t], K.astype(np.float32), w2c, depth[t])[0]
+                            gvis[t] = depth_test(grip[t], K.astype(np.float32), w2c, depth[t], continuous=True)[0]
                         tensors["motion_score"].append(splat_score(np.concatenate([pts, grip], 1),
                                                                    np.concatenate([vis, gvis], 1), Kr, w2c, rd))
                         src, disp, weight = track_targets(pts, vis)

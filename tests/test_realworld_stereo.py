@@ -168,3 +168,22 @@ def test_depth_and_image_alignment_after_resize_and_crop():
     # disparity measured on the resized copy converts back to native pixels by the x scale only
     d_model = np.full((2, 2), 3.0)
     assert np.allclose(rescale_disparity(d_model, PixelAffine(0.5, 0.5, -3, -5)), 6.0)
+
+
+def test_depth_transfer_to_a_second_camera_matches_direct_render():
+    """IR-left depth forward-warped into a colour camera 15 mm to the side equals that camera's own render where
+    both see the surface; nothing is invented in disocclusions."""
+    from s4d.realworld.geometry import invert_T, reproject_depth
+    from s4d.realworld.synthetic import look_at_T_cam_base, render_box_scene
+
+    K = np.array([[150.0, 0, 72.0], [0, 150.0, 48.0], [0, 0, 1]])
+    hw = (96, 144)
+    T_ir = look_at_T_cam_base([1.25, 0.55, 0.65], [0.5, 0.0, 0.1])
+    T_rgb = make_T(Rotation.from_euler("y", 0.5, degrees=True).as_matrix(), [-0.015, 0.0, 0.0]) @ T_ir
+    _, d_ir, _, _ = render_box_scene(T_ir, K, hw, 1.0)
+    _, d_rgb, _, _ = render_box_scene(T_rgb, K, hw, 1.0)
+    warped = reproject_depth(d_ir, K, T_rgb @ invert_T(T_ir), K, hw, splat=2)
+    m = (warped > 0) & (d_rgb > 0)
+    assert m.mean() > 0.8
+    rel = np.abs(warped[m] - d_rgb[m]) / d_rgb[m]
+    assert np.median(rel) < 0.005 and np.percentile(rel, 95) < 0.03

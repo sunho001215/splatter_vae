@@ -284,3 +284,50 @@ def rectify_points(uv_raw: np.ndarray, K_raw: np.ndarray, dist_model: str, dist:
     rays = np.concatenate([xy, np.ones_like(xy[..., :1])], -1) @ np.asarray(R_rect, float).T
     uv, _ = project(rays, K_rect)
     return uv
+
+
+# ---------------------------------------------------------------- depth transfer between cameras
+
+
+def reproject_depth(depth_src: np.ndarray, K_src: np.ndarray, T_dst_src: np.ndarray, K_dst: np.ndarray,
+                    dst_hw: tuple[int, int], splat: int = 1) -> np.ndarray:
+    """Forward-warp metric depth from a source camera (e.g. RealSense IR-left) into another camera (e.g. the colour
+    sensor) with a z-buffer: each valid source pixel is unprojected, transformed, projected and kept if nearest.
+
+    ``splat`` > 1 writes a (splat x splat) footprint to close holes from magnification. Pixels that receive no sample
+    stay 0 (invalid); occluded/disoccluded regions are never filled by interpolation.
+    """
+    pts, valid = depth_to_points(depth_src, K_src)
+    P = transform_points(T_dst_src, pts[valid])
+    uv, z = project(P, K_dst)
+    H, W = dst_hw
+    out = np.full(dst_hw, np.inf)
+    ok = np.isfinite(uv).all(1) & (z > 0)
+    for dy in range(splat):
+        for dx in range(splat):
+            off = (splat - 1) / 2
+            j = np.floor(uv[ok, 0] + dx - off).astype(int)
+            i = np.floor(uv[ok, 1] + dy - off).astype(int)
+            m = (i >= 0) & (i < H) & (j >= 0) & (j < W)
+            np.minimum.at(out, (i[m], j[m]), z[ok][m])
+    out[~np.isfinite(out)] = 0
+    return out.astype(np.float32)
+
+
+def point_mask(points_cam: np.ndarray, K: np.ndarray, hw: tuple[int, int], depth: np.ndarray | None = None,
+               tol_m: float = 0.02) -> np.ndarray:
+    """Pixels hit by projected points (e.g. calibrated URDF surface samples -> robot mask). With ``depth``, only points
+    within ``tol_m`` of the measured surface count (occluded robot parts are not marked)."""
+    uv, z = project(points_cam, K)
+    H, W = hw
+    ok = np.isfinite(uv).all(1) & (z > 0)
+    j = np.floor(np.where(ok, uv[:, 0], -1)).astype(int)
+    i = np.floor(np.where(ok, uv[:, 1], -1)).astype(int)
+    ok &= (i >= 0) & (i < H) & (j >= 0) & (j < W)
+    if depth is not None:
+        meas = np.zeros(len(z))
+        meas[ok] = depth[i[ok], j[ok]]
+        ok &= (meas > 0) & (np.abs(meas - z) <= tol_m)
+    mask = np.zeros(hw, bool)
+    mask[i[ok], j[ok]] = True
+    return mask

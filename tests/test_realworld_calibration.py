@@ -142,3 +142,14 @@ def test_rejects_when_no_visual_evidence():
     res = calibrate_camera("rig0/left", frames, K, CalibrationConfig(image_hw=HW))
     assert res.status == "rejected" and res.T_cam_base is None
     assert "visual initialisation failed" in res.reasons[0]
+
+
+def test_robot_mask_from_calibration_respects_occlusion():
+    from s4d.realworld.geometry import point_mask
+
+    frames = make_episode(T_TRUE, n=3, outlier_rate=0.0)
+    f = frames[1]
+    cam = transform_points(T_TRUE, f.surface_base)
+    loose = point_mask(cam, K, HW)
+    tight = point_mask(cam, K, HW, depth=f.depth, tol_m=0.02)
+    assert tight.sum() > 50 and (tight <= loose).all() and tight.sum() < loose.sum()  # hidden samples dropped
