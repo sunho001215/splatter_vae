@@ -110,17 +110,39 @@ def build_shard_index(shard_path: str | Path, out_dir: str | Path, *, shard_id: 
     return {"shard": shard_path.name, "size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "episodes": rows}
 
 
+def load_shard_lengths(rlds_root: str | Path, split: str = "train") -> list[int] | None:
+    """Per-shard episode counts from the release's ``dataset_info.json`` (``splits[].shardLengths``), if present."""
+    path = Path(rlds_root) / "dataset_info.json"
+    if not path.is_file():
+        return None
+    for entry in json.loads(path.read_text()).get("splits", []):
+        if entry.get("name") == split and entry.get("shardLengths"):
+            return [int(n) for n in entry["shardLengths"]]
+    return None
+
+
 def build_index(
-    shard_paths, out_dir: str | Path, *, only: range | None = None, verify_payload: bool = False, finalize: bool = True
+    shard_paths,
+    out_dir: str | Path,
+    *,
+    only: range | None = None,
+    verify_payload: bool = False,
+    finalize: bool = True,
+    partial: bool = False,
+    shard_lengths: list[int] | None = None,
 ) -> Path:
-    """Index shards (resumable, parallelizable by ``only``); global ordinals follow the given sorted shard order.
+    """Index shards (resumable, parallelizable by ``only``); shard ids are positions in the given sorted shard list.
 
     Each shard writes ``<shard>.npz`` and ``<shard>.rows.json``; a shard whose rows file matches the current file
-    size and mtime is skipped. ``finalize`` writes ``index.json`` + ``episodes.jsonl`` once every shard is indexed.
+    size and mtime is skipped. ``finalize`` writes ``index.json`` + ``episodes.jsonl`` once every shard is indexed;
+    with ``partial`` it finalizes over the shards indexed so far (validation subsets). ``shard_lengths`` (the release's
+    ``dataset_info.json`` ``shardLengths``) checks every shard's episode count and gives global ordinals.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     shard_paths = [Path(p) for p in shard_paths]
+    if shard_lengths is not None and len(shard_lengths) != len(shard_paths):
+        raise ValueError(f"dataset_info lists {len(shard_lengths)} shards, found {len(shard_paths)}")
     for shard_id, path in enumerate(shard_paths):
         if only is not None and shard_id not in only:
             continue
@@ -131,31 +153,57 @@ def build_index(
             if (done["size"], done["mtime_ns"], done["shard_id"]) == (stat.st_size, stat.st_mtime_ns, shard_id):
                 continue
         info = build_shard_index(path, out_dir, shard_id=shard_id, verify_payload=verify_payload)
+        if shard_lengths is not None and len(info["episodes"]) != shard_lengths[shard_id]:
+            raise TFRecordError(
+                f"{path.name} holds {len(info['episodes'])} episodes, dataset_info shardLengths says {shard_lengths[shard_id]}"
+            )
         tmp = rows_path.with_suffix(".tmp")
         tmp.write_text(json.dumps({**info, "shard_id": shard_id}))
         os.replace(tmp, rows_path)
     if finalize:
-        finalize_index(shard_paths, out_dir)
+        finalize_index(shard_paths, out_dir, partial=partial, shard_lengths=shard_lengths)
     return out_dir
 
 
-def finalize_index(shard_paths, out_dir: str | Path) -> Path:
+def finalize_index(shard_paths, out_dir: str | Path, *, partial: bool = False, shard_lengths: list[int] | None = None) -> Path:
+    """Write ``episodes.jsonl`` and ``index.json``. A full index needs every shard; ``partial`` keeps only the shards
+    indexed so far, with their global shard ids, and global ordinals only when ``shard_lengths`` is known."""
     out_dir = Path(out_dir)
-    shards, ordinal = [], 0
+    shard_paths = [Path(p) for p in shard_paths]
+    starts = None if shard_lengths is None else np.concatenate([[0], np.cumsum(shard_lengths)]).astype(int).tolist()
+    shards, ordinal, count = [], 0, 0
     tmp = out_dir / "episodes.jsonl.tmp"
     with tmp.open("w") as stream:
-        for shard_id, path in enumerate(Path(p) for p in shard_paths):
-            info = json.loads((out_dir / f"{path.name}.rows.json").read_text())
+        for shard_id, path in enumerate(shard_paths):
+            rows_path = out_dir / f"{path.name}.rows.json"
+            if partial and not rows_path.is_file():
+                continue
+            info = json.loads(rows_path.read_text())
             if info["shard_id"] != shard_id:
                 raise ValueError(f"{path.name} was indexed as shard {info['shard_id']}, expected {shard_id}")
+            if starts is not None and len(info["episodes"]) != shard_lengths[shard_id]:
+                raise TFRecordError(f"{path.name}: {len(info['episodes'])} episodes != shardLengths {shard_lengths[shard_id]}")
             for row in info.pop("episodes"):
-                row["ordinal"] = ordinal
+                if starts is not None:
+                    row["ordinal"] = starts[shard_id] + row["row"]
+                else:
+                    row["ordinal"] = None if partial else ordinal
                 ordinal += 1
+                count += 1
                 stream.write(json.dumps(row, sort_keys=True) + "\n")
-            info.pop("shard_id")
-            shards.append(info)
+            shards.append(info)  # keeps "shard_id": rows refer to shards by this global id
+    if not shards:
+        raise ValueError(f"no indexed shards in {out_dir}")
     os.replace(tmp, out_dir / "episodes.jsonl")
-    index = {"format": INDEX_FORMAT, "shards": shards, "episodes": ordinal, "image_hw": list(IMAGE_HW)}
+    index = {
+        "format": INDEX_FORMAT,
+        "shards": shards,
+        "episodes": count,
+        "image_hw": list(IMAGE_HW),
+        "partial": bool(partial),
+        "release_shards": len(shard_paths),
+        "ordinals": "dataset_info shardLengths" if starts is not None else ("unknown (partial)" if partial else "counted"),
+    }
     (out_dir / "index.json").write_text(json.dumps(index, indent=1))
     return out_dir
 
@@ -186,7 +234,8 @@ class RldsStepReader:
         self.meta = json.loads((self.index_dir / "index.json").read_text())
         if self.meta.get("format") != INDEX_FORMAT:
             raise ValueError(f"not an RLDS step index: {self.meta.get('format')!r}")
-        self._shards = [row["shard"] for row in self.meta["shards"]]
+        # rows address shards by their global id (position in the release's sorted shard list)
+        self._shards = {int(row.get("shard_id", i)): row["shard"] for i, row in enumerate(self.meta["shards"])}
         self._expected = {row["shard"]: (row["size"], row["mtime_ns"]) for row in self.meta["shards"]}
         self.files = HandlePool(self._open_shard, os.close, max_open=max_open_files)
         self._indices = ByteLRU(max_index_bytes)

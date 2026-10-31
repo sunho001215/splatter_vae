@@ -754,3 +754,30 @@ def test_gripper_points_follow_the_selected_calibration(env, env_pw):
         else:
             pose = G.pose6_to_matrix(gt["cart"][raw])
         np.testing.assert_allclose(item["gripper_points"].numpy(), G.transform_points(pose, local), atol=2e-5)
+
+
+# ------------------------------------------------------------------------------------------------ real-data findings
+def test_partial_rlds_index_keeps_global_shard_ids_and_checks_dataset_info_shard_lengths(env, tmp_path):
+    """Real data: --range 463:465 of 2048 shards must finalize; dataset_info shardLengths gave 56/48 records."""
+    import importlib.util
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("cli_index", repo / "scripts" / "droid_ls_build_rlds_index.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    rlds = tmp_path / "rlds"
+    shutil.copytree(env["tmp"] / "rlds", rlds)
+    info = {"splits": [{"name": "train", "shardLengths": ["1", "1"]}]}
+    (rlds / "dataset_info.json").write_text(json.dumps(info))
+    cli.main(["--rlds-root", str(rlds), "--out", str(tmp_path / "idx"), "--range", "1:2", "--partial"])
+    meta = json.loads((tmp_path / "idx" / "index.json").read_text())
+    assert meta["partial"] and meta["release_shards"] == 2 and [s["shard_id"] for s in meta["shards"]] == [1]
+    rows = load_episode_rows(tmp_path / "idx")
+    assert [(r["shard"], r["row"], r["ordinal"]) for r in rows] == [(1, 0, 1)]  # global ordinal from shardLengths
+    reader = RldsStepReader(tmp_path / "idx", rlds)
+    np.testing.assert_allclose(reader.read(1, 0, [3])["cartesian_position"], env["gt"]["cart"][[3]], atol=1e-6)
+    reader.close()
+    info["splits"][0]["shardLengths"] = ["1", "2"]
+    (rlds / "dataset_info.json").write_text(json.dumps(info))
+    with pytest.raises(TFRecordError, match="shardLengths"):
+        cli.main(["--rlds-root", str(rlds), "--out", str(tmp_path / "idx2"), "--range", "1:2", "--partial"])
