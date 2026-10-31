@@ -331,7 +331,7 @@ Found by reading `s4d/baselines/*`:
 
 ## 6. Isolated workers and environments
 
-`s4d/realworld/workers.py` defines a file-based subprocess protocol, `s4d.realworld.worker/1`:
+`s4d/realworld/workers/__init__.py` (package `s4d.realworld.workers`) defines a file-based subprocess protocol, `s4d.realworld.worker/1`:
 - The caller writes `request.json` and `inputs.npz` and runs `<env python> -I s4d/realworld/workers/<name>_worker.py`.
 - The worker writes `outputs.npz` and `response.json`.
 - The response carries the model identity: repo, `git rev-parse HEAD`, checkpoint and its sha256, and `is_mock`.

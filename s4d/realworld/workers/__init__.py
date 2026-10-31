@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 PROTOCOL = "s4d.realworld.worker/1"
-WORKER_DIR = Path(__file__).resolve().parent / "workers"
+WORKER_DIR = Path(__file__).resolve().parent  # this package directory holds the worker scripts (as before the move)
 
 
 class WorkerError(RuntimeError):

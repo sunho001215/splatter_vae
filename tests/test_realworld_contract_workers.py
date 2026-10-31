@@ -138,3 +138,14 @@ def test_configs_parse_and_pins_are_full_shas():
         assert len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)
     for name in ("pipeline_example", "template_adapter"):
         assert isinstance(yaml.safe_load((REPO / f"configs/realworld/{name}.yaml").read_text()), dict)
+
+
+def test_workers_is_one_package_holding_the_worker_scripts():
+    """Refactor pass 2: the protocol module moved into the scripts' directory (no module/directory name clash)."""
+    import s4d.realworld.workers as workers
+
+    assert Path(workers.__file__).name == "__init__.py"
+    assert workers.WORKER_DIR == Path(workers.__file__).resolve().parent == REPO / "s4d/realworld/workers"
+    assert not (REPO / "s4d/realworld/workers.py").exists()
+    for name in ("foundation_stereo", "alltracker", "sam3", "dino_snerl", "svo_decode", "mock"):
+        assert workers.WorkerSpec(name, "python").script_path().is_file(), name
