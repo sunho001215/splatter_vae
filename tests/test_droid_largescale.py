@@ -828,3 +828,16 @@ def test_droid3d_records_are_selected_by_uuid_and_path_suffix(tmp_path):
 
     report = _rebuild(tmp_path / "c", wrong_dir)
     assert report["accepted"] == 0 and "raw_dir suffix" in report["rejected"][F.EPISODE]
+
+
+@pytest.mark.parametrize(
+    "attrs, reason",
+    [({"uuid": "AUTOLab+0d4edc83+2023-10-21-18h-00m-00s"}, "metadata uuid"), ({"write_complete": False}, "incomplete")],
+)
+def test_depth_metadata_group_is_checked_not_mistaken_for_a_camera(tmp_path, attrs, reason):
+    def mutate(t, e, i, h):
+        with h5py.File(t / "pw/depth_320x180" / f"{F.EPISODE}_depth.h5", "r+") as f:
+            f["metadata"].attrs.update(attrs)
+
+    report = _rebuild(tmp_path, mutate)
+    assert report["accepted"] == 0 and reason in report["rejected"][F.EPISODE]

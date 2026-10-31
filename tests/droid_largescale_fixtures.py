@@ -235,8 +235,13 @@ def write_pointworld(
                 cg.create_dataset("initial_depth", data=np.round(d0 * 1000).astype(np.uint16))
                 cg["initial_depth"].attrs.update(format="uint16_mm", scale="millimeters")
     with h5py.File(depth_dir / f"{episode}_depth.h5", "w") as f:
+        # real files (62 inspected episodes) also carry an attribute-only "metadata" group and per-camera group attrs
+        f.create_group("metadata").attrs.update(uuid=episode, camera_count=3, frame_count=RAW_STEPS - 1, write_complete=True)
         for role in ("ext1", "ext2", "wrist"):
             group = f.create_group(f"{SERIALS[role]}+{'wrist' if role == 'wrist' else 'ext'}")
+            group.attrs.update(
+                camera_serial=SERIALS[role], camera_type="wrist" if role == "wrist" else "ext", is_wrist_camera=role == "wrist"
+            )
             frames = []
             for s in range(RAW_STEPS - 1):
                 if role == "wrist":
@@ -245,7 +250,7 @@ def write_pointworld(
                 else:
                     d = plane_depth(gt["K_ext"], gt["c2w_true"][role])
                 frames.append(np.round(d * 1000).astype(np.uint16))
-            group.create_dataset("depth", data=np.stack(frames), chunks=(1, H, W))
+            group.create_dataset("depth", data=np.stack(frames), chunks=(16, H, W), compression="gzip")  # released layout
             group["depth"].attrs.update(units="millimeters", write_complete=True)
             group["timestamps"] = gt["stamps"][role]
     cameras = {

@@ -47,6 +47,26 @@ def sorted_clips(keys) -> list[str]:
     return sorted((k for k in keys if ":" in k), key=clip_bounds)
 
 
+# Real depth files (all 62 extracted episodes) carry a fourth, attribute-only group next to the camera groups:
+# ``metadata`` with attrs uuid, camera_count, frame_count, write_complete (absent from docs/POINTWORLD_SCHEMA.md).
+DEPTH_METADATA_GROUP = "metadata"
+
+
+def check_depth_metadata(depth, uuid: str, lengths: dict, episode: str) -> None:
+    """Identity and completeness of the depth file's ``metadata`` group, when present."""
+    if DEPTH_METADATA_GROUP not in depth:
+        return
+    meta = depth[DEPTH_METADATA_GROUP].attrs
+    if "uuid" in meta and str(meta["uuid"]) != uuid:
+        raise ValueError(f"{episode}: depth metadata uuid {meta['uuid']!r} != flow uuid {uuid!r}")
+    if "write_complete" in meta and not bool(meta["write_complete"]):
+        raise ValueError(f"{episode}: depth file is marked incomplete (metadata write_complete false)")
+    if "camera_count" in meta and int(meta["camera_count"]) != len(lengths):
+        raise ValueError(f"{episode}: depth metadata camera_count {meta['camera_count']} != {len(lengths)} groups")
+    if "frame_count" in meta and any(n != int(meta["frame_count"]) for n in lengths.values()):
+        raise ValueError(f"{episode}: depth metadata frame_count {meta['frame_count']} != group lengths {lengths}")
+
+
 def parse_depth_group(name: str) -> tuple[str, str]:
     serial, sep, role = name.partition("+")
     if not sep or role not in ("ext", "wrist") or not serial.isdigit():
@@ -101,11 +121,20 @@ def summarize_episode(root: str | Path, episode: str, layout: dict = DEFAULT_LAY
         roles = {}
         lengths = {}
         for name in depth:
+            if name == DEPTH_METADATA_GROUP:
+                continue
             serial, role = parse_depth_group(name)
             roles.setdefault(role, []).append(serial)
             lengths[name] = int(depth[name]["depth"].shape[0])
             if depth[name]["timestamps"].shape != (lengths[name],):
                 raise ValueError(f"{episode}: {name} depth/timestamps length mismatch")
+            g_attrs = depth[name].attrs
+            if "camera_serial" in g_attrs and (str(g_attrs["camera_serial"]), str(g_attrs.get("camera_type", role))) != (
+                serial,
+                role,
+            ):
+                raise ValueError(f"{episode}: depth group {name} attrs name another camera")
+        check_depth_metadata(depth, str(attrs["uuid"]), lengths, episode)
         if sorted(roles.get("ext", [])) != sorted(ext):
             raise ValueError(f"{episode}: depth ext serials {roles.get('ext')} != flow ext serials {ext}")
         missing = [s for s in ext if s not in cameras]
