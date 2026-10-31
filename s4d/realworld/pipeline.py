@@ -346,8 +346,20 @@ class RobotGeometry:
         return joint_dict(self.desc.joint_names, q7, self.desc.gripper_joint, value)
 
     def gripper_links(self) -> list[str]:
-        arm = {f"panda_link{i}" for i in range(9)}
-        return [n for n in sorted(self.surface.link_points) if n not in arm]
+        """Links with geometry in the gripper subtree (below ``gripper_base_frame``). Without that frame, the old rule
+        (everything but ``panda_link0..8``) is kept; it misclassifies arms with other link names (e.g. FR3)."""
+        root = self.desc.gripper_base_frame
+        if root is None:
+            arm = {f"panda_link{i}" for i in range(9)}
+            return [n for n in sorted(self.surface.link_points) if n not in arm]
+        if root not in self.model.links:
+            raise ValueError(f"gripper_base_frame {root!r} is not a link of the URDF")
+        subtree, stack = set(), [root]
+        while stack:
+            link = stack.pop()
+            subtree.add(link)
+            stack += [j.child for j in self.model._children.get(link, [])]
+        return [n for n in sorted(self.surface.link_points) if n in subtree]
 
 
 # ---------------------------------------------------------------- stage 3: calibration
