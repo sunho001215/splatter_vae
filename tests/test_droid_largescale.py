@@ -868,3 +868,33 @@ def test_extractor_keeps_non_hex_user_ids(tmp_path):
     report = extract_members(io.BytesIO(_depth_tar([(f"droid/depth_320x180/{ODD_USER}_depth.h5", b"a" * 3000)])), tmp_path)
     assert report["written"] == 1 and report["ignored"] == 0
     assert (tmp_path / "depth_320x180" / f"{ODD_USER}_depth.h5").read_bytes() == b"a" * 3000
+
+
+def test_extractor_reports_a_truncated_stream_and_keeps_completed_members(tmp_path):
+    """Real data: part-0000 of the 252-part depth package, decompressed alone, ends inside a member."""
+    import importlib.util
+    import io
+
+    from s4d.data.droid.largescale.extract import TruncatedStreamError, extract_members
+
+    first = f"droid/depth_320x180/{ODD_USER}_depth.h5"
+    full = _depth_tar([(first, b"a" * 3000), (f"droid/depth_320x180/{F.EPISODE}_depth.h5", b"b" * 9000)])
+    report = extract_members(io.BytesIO(full), tmp_path / "full")
+    assert report["written"] == 2 and report["stream_truncated"] is None
+    cut = full[: 512 + 3072 + 512 + 4000]  # inside the second member's data
+    with pytest.raises(TruncatedStreamError) as error:
+        extract_members(io.BytesIO(cut), tmp_path / "cut")
+    assert error.value.report["written"] == 1 and error.value.report["stream_truncated"]
+    assert (tmp_path / "cut/depth_320x180" / f"{ODD_USER}_depth.h5").read_bytes() == b"a" * 3000
+    assert not list((tmp_path / "cut").rglob("*.partial"))
+    assert not (tmp_path / "cut/depth_320x180" / f"{F.EPISODE}_depth.h5").exists()
+    report = extract_members(io.BytesIO(cut), tmp_path / "cut", allow_truncated=True)
+    assert report["skipped_existing"] == 1 and report["stream_truncated"]
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("cli_extract", repo / "scripts" / "droid_ls_extract_pointworld.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    with pytest.raises(SystemExit) as code:
+        cli.main(["--dest", str(tmp_path / "cli")], stdin=io.BytesIO(cut))
+    assert code.value.code == 3
+    assert cli.main(["--dest", str(tmp_path / "cli"), "--allow-truncated"], stdin=io.BytesIO(cut))["stream_truncated"]

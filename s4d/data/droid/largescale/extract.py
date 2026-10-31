@@ -24,42 +24,67 @@ MEMBER = re.compile(
 SUFFIX = {"flows-fs-optimized": "flows.h5", "depth_320x180": "depth.h5", "cameras": "cameras.json"}
 
 
-def extract_members(fileobj, dest: str | Path, *, kinds=tuple(SUFFIX), episodes: set[str] | None = None) -> dict:
+class TruncatedMember(OSError):
+    pass
+
+
+def extract_members(
+    fileobj, dest: str | Path, *, kinds=tuple(SUFFIX), episodes: set[str] | None = None, allow_truncated: bool = False
+) -> dict:
+    """Extract matching members; returns a report. A stream that ends inside the tar (for example the first part of a
+    multi-part package decompressed on its own) keeps every member completed before the cut and drops the interrupted
+    one; it raises unless ``allow_truncated`` (the report records ``stream_truncated`` either way)."""
     dest = Path(dest)
-    report = {"written": 0, "skipped_existing": 0, "ignored": 0, "refused": []}
-    with tarfile.open(fileobj=fileobj, mode="r|") as archive:
-        for member in archive:
-            match = MEMBER.match(member.name)
-            if member.isdir() and not match:
-                continue
-            if not match:
-                report["ignored"] += 1
-                continue
-            kind, episode = match["kind"], match["episode"]
-            if SUFFIX[kind] != match["suffix"]:
-                report["refused"].append(f"{member.name}: suffix does not match its directory")
-                continue
-            if not member.isreg():
-                report["refused"].append(f"{member.name}: not a regular file")
-                continue
-            if kind not in kinds or (episodes is not None and episode not in episodes):
-                report["ignored"] += 1
-                continue
-            target = dest / kind / f"{episode}_{match['suffix']}"
-            if target.is_file() and target.stat().st_size == member.size:
-                report["skipped_existing"] += 1
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            source = archive.extractfile(member)
-            tmp = target.with_name(target.name + ".partial")
-            with open(tmp, "wb") as out:
-                remaining = member.size
-                while remaining:
-                    block = source.read(min(remaining, 1 << 20))
-                    if not block:
-                        raise OSError(f"truncated member {member.name}")
-                    out.write(block)
-                    remaining -= len(block)
-            os.replace(tmp, target)
-            report["written"] += 1
+    report = {"written": 0, "skipped_existing": 0, "ignored": 0, "refused": [], "stream_truncated": None, "members_seen": 0}
+    tmp = None
+    try:
+        with tarfile.open(fileobj=fileobj, mode="r|") as archive:
+            for member in archive:
+                report["members_seen"] += 1
+                match = MEMBER.match(member.name)
+                if member.isdir() and not match:
+                    continue
+                if not match:
+                    report["ignored"] += 1
+                    continue
+                kind, episode = match["kind"], match["episode"]
+                if SUFFIX[kind] != match["suffix"]:
+                    report["refused"].append(f"{member.name}: suffix does not match its directory")
+                    continue
+                if not member.isreg():
+                    report["refused"].append(f"{member.name}: not a regular file")
+                    continue
+                if kind not in kinds or (episodes is not None and episode not in episodes):
+                    report["ignored"] += 1
+                    continue
+                target = dest / kind / f"{episode}_{match['suffix']}"
+                if target.is_file() and target.stat().st_size == member.size:
+                    report["skipped_existing"] += 1
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = archive.extractfile(member)
+                tmp = target.with_name(target.name + ".partial")
+                with open(tmp, "wb") as out:
+                    remaining = member.size
+                    while remaining:
+                        block = source.read(min(remaining, 1 << 20))
+                        if not block:
+                            raise TruncatedMember(f"truncated member {member.name}")
+                        out.write(block)
+                        remaining -= len(block)
+                os.replace(tmp, target)
+                tmp = None
+                report["written"] += 1
+    except (tarfile.ReadError, EOFError, TruncatedMember) as error:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+        report["stream_truncated"] = f"{type(error).__name__}: {error}"
+        if not allow_truncated:
+            raise TruncatedStreamError(report) from error
     return report
+
+
+class TruncatedStreamError(OSError):
+    def __init__(self, report: dict):
+        super().__init__(f"tar stream ended early ({report['stream_truncated']}); {report['written']} members written")
+        self.report = report
