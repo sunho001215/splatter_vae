@@ -168,6 +168,11 @@ used.
    - an annotation file (`cli.AnnotationLandmarkSource`), for example manual clicks or a marker detector;
    - in the future, a render-and-match worker, the counterpart of DepthWorld's LoMa-G URDF-render-to-image
      matching. **Not implemented.**
+   The annotation file format is
+   `{camera_id: {frame_index: {"uv": [[u, v] | null, ...], "conf": [...]}}}`. Coordinates are continuous, on
+   the rectified-left grid. Observations on a raw grid with distortion are undistorted to the ideal pinhole
+   image automatically. Landmarks are listed in `landmark_links` order. Any source flagged `"is_mock": true` in
+   its `identity` blocks export unless mock outputs are explicitly allowed.
 2. **Visual initialisation.**
    - RANSAC PnP: normalised DLT, then a Cauchy-robust reprojection refinement.
    - When metric stereo depth exists, also a RANSAC Kabsch fit of depth-lifted landmarks (bootstrap depth, no scale
