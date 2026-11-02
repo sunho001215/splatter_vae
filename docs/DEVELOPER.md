@@ -4,7 +4,7 @@
 
 | Path | Contents |
 | --- | --- |
-| `s4d/` | Research code: `data/` (DROID, Meta-World, held-out sets), `model/` (encoder, decoder, Gaussians, CUDA rendering), `losses/`, `train/` (loop, DDP, checkpoints, augmentation), `rl/` (agents, environments, evaluation), `baselines/`, `diag/` (W&B logging, diagnostics), `config.py`, `geometry.py`, `third_party.py` (pinned upstream source trees for the baselines). |
+| `s4d/` | Research code: `data/` (DROID, Meta-World, held-out sets), `realworld/` (real-robot preprocessing), `model/` (encoder, decoder, Gaussians, CUDA rendering), `losses/`, `train/` (loop, DDP, checkpoints, augmentation), `rl/` (agents, environments, evaluation), `baselines/`, `diag/` (W&B logging, diagnostics), `config.py`, `geometry.py`, `third_party.py` (pinned upstream source trees for the baselines). Module map below. |
 | `ops/` | Operational tooling. It is not imported by the research code except at the two points listed below. |
 | `ops/remote/` | `access.py`: SSH/rsync transport, tunnel check, download budget. `artifact_check.py`: read-only on-host inspection (standard library only; its source is sent over SSH and executed by the remote host's python3). `sync_media.py`: local backup of remote runs. `ledger.py`: local ledger of the remote jobs (checkpoints, containers, host health). `outage_guard.py`: the 5-minute outage guard (admission hold, recovery check). `sync_wandb.py`: pull and upload of offline remote W&B runs. |
 | `ops/jobs/` | `scheduler.py`: file-based scheduler (queue, registry, admission, launches). `remote_backend.py`: the scheduler's remote-host backend (containers over SSH, in-place verification, acceptance evidence). `run_identity.py`: run provenance and clean-release enforcement. `lifecycle.py`, `replay_host.py`, `cleanup_replay.py`: replay cleanup of completed RL runs (`replay_host.py` is also sent to the remote host). `admission_pause.py`: intentional admission pauses (`runs/setup/admission-pauses.json`) honoured by the drivers. `pool_placement.py`: host-neutral placement of never-launched rows. |
@@ -16,6 +16,45 @@
 | `runs/setup/tools/` | Campaign records and fixed entry points: the entry points of the implementations moved to `ops/` (same file names, same command lines), dated one-off tools (`*_YYYYMMDD.py`), `.before-*` backups, stage-specific registrations and reports, research diagnostics, and the remote runner sources. Not fingerprinted and not imported by `s4d`, `ops` or `scripts`. |
 | `analysis/` | `eval_config.py` (evaluation run configs; run by the drivers at this path), `queue_variants.py`, `review_rules.py`. |
 | `configs/`, `tests/`, `experiments/`, `runs/`, `docs/` | Configurations, tests, scheduler queue/registry, run outputs and campaign records, documentation. |
+
+## Research code map (`s4d/`)
+
+Read in this order to follow one pretraining step: data contract -> dataset -> model -> losses -> training loop.
+
+| Area | Modules | Responsibility |
+| --- | --- | --- |
+| Batch contract | `s4d/data/contract.py` | The batch dictionary every loader produces (`validate_batch`, `collate`, `PAIRS`, motion targets). |
+| Meta-World data | `s4d/data/metaworld/{collect,cameras,dataset,heldout,heldout_render}.py`, `s4d/data/hardneg.py` | Simulator collection, the fixed camera rig, the window dataset, the held-out camera sets, hard negatives of pilot `hn`. |
+| DROID sample path (first real data) | `s4d/data/droid/{convert,dataset,rlds,inspect,gripper,pointworld}.py` | The single inspected PointWorld-DROID episode: conversion to a cache, its loader, RLDS verification. These are also shared libraries: the large-scale DROID path uses `pointworld.py` (track targets, depth test, splatted motion score) and `gripper.py` (gripper surface points), and `s4d/realworld/export.py` uses `pointworld.py`. |
+| DROID large-scale path | `s4d/data/droid/largescale/` | `tfrecord.py` + `rlds_index.py` (in-place RLDS access), `pointworld_source.py` + `extract.py` (released PointWorld-DROID files), `calibration.py` (DROID-3D, Franka FK, wrist poses), `geometry.py` (camera/pose conventions), `join.py` (identity join, frame validation, wrist QA, manifest), `crop.py` (square crop of the ViT-S profile), `dataset.py` (window dataset), `config.py` (datasets from a training config), `handles.py` (bounded file handles). See docs/droid_largescale.md. |
+| Real-world preprocessing | `s4d/realworld/` | `adapters/` (recording layouts) -> `pipeline.py` (ingest, stereo_depth, calibrate, track2d, lift3d) -> `export.py` (training windows) -> `dataset.py` (loader). `contract.py` (normalized episode), `io.py` (atomic writes, completion records), `geometry.py`, `stereo.py`, `tracking.py`, `calibration.py`, `robot.py` (URDF kinematics), `mounts.py` (gripper mounts), `workers/` (upstream models in their own environments, file protocol), `cli.py` (`python -m s4d.realworld.cli`). |
+| Model | `s4d/model/{encoder,decoder,gaussians,render}.py` | ViT state encoder with masking, grouped Gaussian decoder, the Gaussian set container, gsplat rendering (FP32). |
+| Losses | `s4d/losses/` | `rgb.py`, `depth.py`, `chamfer.py`, `motion.py`, `motion3d.py`, `invariance.py`, `occlusion.py`, `regularizers.py`. |
+| Training | `s4d/train/` | `loop.py` (model bundle, `forward_losses`, the training loop), `augment.py` (camera jitter, synthetic and self-render views), `perframe.py` + `perframe_eval.py` (per-frame pilots; they reuse `loop.py`'s helpers), `evaluate.py`, `checkpoint.py`, `ddp.py`, `workers.py`. |
+| Downstream RL | `s4d/rl/` | `protocol.py` (run configuration), `env.py` + `vecenv.py` (Meta-World environments), `encoders.py` (frozen/CNN policy encoders), the algorithms (`agent.py` DrM, `snerl_sac.py`, `sb3_ppo.py`, `dreamer_v1.py`, `flashsac.py`; `algorithms.py` maps a run's `algorithm` to its evaluation policy), `replay.py`, `evaluate.py`, `camera_suites.py` + `visibility.py` (evaluation camera suites), `run_io.py` (checkpoint/metrics files of the trainers). |
+| Baselines | `s4d/baselines/{sincro,reviwo,snerl,dynamo,mvp3d}/`, `data.py`, `representation.py` | Ports or adapters around the pinned upstream code (`s4d/third_party.py`); see docs/BASELINES.md. |
+| Diagnostics | `s4d/diag/` | W&B and local logging, panels, probes, point clouds, tracks, held-out diagnostics. |
+| Shared | `s4d/config.py`, `s4d/geometry.py` | Layered YAML configuration; torch pinhole geometry. |
+
+## Command-line entry points (`scripts/`) by purpose
+
+The file names are fixed: queue rows, registrations and docs name them by path.
+
+| Purpose | Scripts |
+| --- | --- |
+| Pretraining | `train.py` (ours: Meta-World, DROID cache, DROID large-scale), `train_sincro.py`, `train_reviwo.py`, `train_snerl.py`, `train_dynamo.py`, `train_mvp3d.py` |
+| Downstream RL | `train_rl.py` (DrM), `train_sac.py`, `train_ppo.py`, `train_dreamer.py`, `train_flashsac.py`; `eval_rl.py` (companion evaluator) |
+| Evaluation and export | `evaluate.py`, `export_encoder.py`, `summarize_run.py`, `eval_baseline_representation.py` |
+| Meta-World data | `collect_metaworld.py`, `split_metaworld.py`, `check_metaworld.py`, `verify_metaworld_tasks.py`, `screen_tasks.py`, `render_heldout_sets.py`, `compute_workspace_stats.py`, `bench_loader.py`, `check_metaworld_equivalence.py`, `camera_visibility.py`, `selfrender_domain.py` |
+| DROID sample (first real data) | `download_droid_sample.py`, `convert_droid_sample.py`, `inspect_droid_sample.py`, `validate_droid_loader.py`, `droid_validate_alignment.py`, `droid_track_smoke.py`, `droid_compare_step0.py` |
+| DROID large-scale | `droid_ls_build_rlds_index.py`, `droid_ls_extract_pointworld.py`, `droid_ls_build_manifest.py` |
+| Real world | `realworld_compose_robot_urdf.py`, `realworld_droid_diagnostics.py` (the pipeline itself: `python -m s4d.realworld.cli`) |
+| Diagnostics and figures | `diag_capacity.py`, `hardneg_report.py`, `selfrender_diagnostics.py`, `mvp3d_figures.py`, `mvp3d_size.py`, `dynamo_panels.py`, `render_snerl.py` |
+| Verification | `run_tests.py`, `check_gpu_isolation.py`, `check_native_render.py` |
+| Preamble and environment | `_bootstrap.py`, `gpu_env.sh`; `delete_stage0_cache.py` is a disabled stub |
+| Compatibility aliases of `ops` | `jobs.py`, `_nvidia_query.py`, `heartbeat.py`, `watch_events.py`, `sync_media.py`, `cleanup_replay.py` |
+
+Each GPU entry point keeps its own preamble (`sys.path` insert of `scripts/`, `from _bootstrap import ...`, an unindented `guard_gpus()` call before torch is imported): the scheduler checks for that literal call in the script file (`GUARD_CALL` in `ops/jobs/scheduler.py`).
 
 ## Dependency boundaries
 
@@ -122,3 +161,19 @@ runs/setup/tools/ (175 tracked files)          runs/setup/tools/ (the same 175 f
   registrations, reports, diagnostics,
   remote runner sources
 ```
+
+## Refactor pass 3
+
+Refactor pass 3 (branch `refactor3-20261102`, from `2230bc6`) changed no file locations and no behaviour. It removed
+duplicated helpers inside the research code and its entry points:
+
+| Before | After |
+| --- | --- |
+| `scripts/train_{rl,sac,ppo,dreamer,flashsac}.py`: five copies of `rss_gb`, `atomic_save`, `append_jsonl` | `s4d/rl/run_io.py` (new), imported by the five trainers |
+| `s4d/train/perframe.py`: copies of `MOVING_SCORE`, `STATIC_SCORE`, `ACTIVE_OPACITY`, `_rows`, `_per_t`, `_nanmean`, `temporal_ramp` (as `_ramp`), `_float_set` | imported from `s4d/train/loop.py`, whose inline float32 cast of the decoded set is now the same `_float_set` |
+| `s4d/data/droid/largescale/calibration.py`: hand-written `+0.5` integer-to-continuous pixel centres | `geometry.to_continuous_centres(K, integer_centres=True)` |
+| `s4d/realworld/contract.py`: unused private `_array` | removed |
+
+It also added the research code map and the entry-point table above. Behaviour evidence (public API signatures, `--help` of
+every entry point, resolved configurations, CPU numerical fingerprints of the Meta-World, DROID, export and real-world
+paths) is in `/home/ws/ws/validation-20261031/refactor3/`.
