@@ -70,7 +70,7 @@ model:
 
 render:
   near: 0.05                # geometry: same near plane; DROID wrist depth starts at 0.068 m (1st pct), ext at 0.19 m
-  far: 3.0                  # geometry: ext valid depth 99th pct 1.79 m, 0.21 % beyond 3.0 m (62 AUTOLab episodes); re-check on corpus statistics
+  far: 3.0                  # geometry: valid ext depth beyond 3.0 m: 1.04 % (294 AUTOLab episodes, 4 sessions; 99th pct 3.05 m); re-check on corpus
 
 loss:
   rgb: 1.0
