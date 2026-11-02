@@ -432,3 +432,39 @@ def test_padding_is_never_supervision_nor_encoder_input(env, monkeypatch):
     with torch.no_grad():  # evaluation (mask_ratio 0): no crop masking, every token visible
         ev = forward_losses(model, batch, cfg, 10, source=torch.tensor([0, 1]), mask_ratio=0.0)
     assert "crop_padded_tokens" not in ev["metrics"] and torch.isfinite(ev["total"])
+
+
+def test_crop_varies_across_visits_and_resume_replays_it(env):
+    """The trainer sampler tags crop-dataset indices with the epoch: a window draws a new crop on every visit, and a
+    resumed stream (persistent workers) reproduces the same (epoch, step) batches exactly. Plain datasets get ints."""
+    from s4d.train.ddp import DistContext
+    from s4d.train.loop import ResumableDistributedSampler, infinite, make_train_loader
+
+    ds = make_ds(env, max_tracks=16)
+    assert ds.epoch_tagged_indices and not make_ds(env, crop_policy="center").epoch_tagged_indices
+    plain = DroidLargeScaleDataset(env["manifest"], **F.dataset_kwargs(env))
+    assert not getattr(plain, "epoch_tagged_indices", False)
+    s = ResumableDistributedSampler(plain, num_replicas=1, rank=0, shuffle=True, seed=3, drop_last=True)
+    assert all(isinstance(i, int) for i in s)
+    boxes = {e: ds[(4, e)]["crop_box"] for e in range(4)}
+    assert torch.equal(boxes[0], ds[4]["crop_box"])  # a plain index is epoch 0
+    assert len({tuple(b.flatten().tolist()) for b in boxes.values()}) > 1  # same window, different epochs
+    assert torch.equal(ds[(4, 2)]["crop_box"], boxes[2])  # deterministic per (window, epoch)
+
+    cfg = {"train": {"num_workers": 2, "batch_size": 2, "prefetch_factor": 2}}
+    ctx = DistContext(0, 0, 1, torch.device("cpu"))
+    key = lambda b: (tuple(b["meta"]["t_indices"]), tuple(b["meta"]["clip"]))  # noqa: E731
+    stream = infinite(make_train_loader(ds, cfg, ctx, seed=3), start_step=0)
+    steps = len(make_train_loader(ds, cfg, ctx, seed=3))
+    first = [next(stream) for _ in range(2 * steps)]  # two epochs: every window visited twice
+    by_window = {}
+    for b in first:
+        for j in range(2):
+            by_window.setdefault((b["meta"]["clip"][j], b["meta"]["t_indices"][j]), []).append(b["crop_box"][j])
+    assert any(not torch.equal(v[0], v[1]) for v in by_window.values() if len(v) == 2)
+    resumed = infinite(make_train_loader(ds, cfg, ctx, seed=3), start_step=steps + 1)
+    for b in first[steps + 1:]:
+        r = next(resumed)
+        assert key(r) == key(b)
+        for name in ("crop_box", "images", "track_weight", "token_padded"):
+            assert torch.equal(r[name], b[name]), name

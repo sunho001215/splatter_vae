@@ -14,7 +14,9 @@
   per frame while the contract's training views have one pose per window.
 * Square crop (``crop``, profile ``configs/droid/vits_largescale.yaml``; ``s4d/data/droid/largescale/crop.py``): instead
   of the aspect-keeping resize, every camera gets ONE crop box per window on the native 180x320 grid (``crop_policy``
-  "motion": the motion-informed stochastic crop, a pure function of ``(seed, episode, clip, first frame, camera)``;
+  "motion": the motion-informed stochastic crop, a pure function of ``(seed, episode, clip, first frame, camera,
+  epoch)``; the epoch arrives with the index, ``(index, epoch)``, from the trainer's sampler (``epoch_tagged_indices``),
+  so a window gets a new crop on every visit while resume replays exactly; a plain integer index is epoch 0;
   "center": the deterministic padding-free central square of evaluation and inference), applied identically to its
   three frames, depth, intrinsics, motion score and track/gripper visibility. Extra fields: ``observed`` (V,1,S,S) bool
   (no padding contributes), ``token_padded`` (V,N) bool (border-patch rule: any non-observed pixel), diagnostics
@@ -145,6 +147,8 @@ class DroidLargeScaleDataset(Dataset):
                                  f"{image_height}x{image_width}")
             # equal unpadded tokens in every frame: at least ceil(kept temporal tokens / 3) per frame
             self.min_eligible_per_frame = -(-int(min_eligible_tokens) // 3)
+        # the trainer's ResumableDistributedSampler then yields (index, epoch): a new stochastic crop on every visit
+        self.epoch_tagged_indices = self.crop is not None and self.crop_policy == "motion"
         self.stride, self.H, self.W = int(stride), int(image_height), int(image_width)
         self.max_tracks, self.with_wrist, self.seed = int(max_tracks), bool(with_wrist), int(seed)
         self.gripper_offset_m, self.validate = float(gripper_offset_m), bool(validate)
@@ -227,7 +231,8 @@ class DroidLargeScaleDataset(Dataset):
         return None if wrist is None else wrist_pose_w2c(wrist, state)
 
     # ------------------------------------------------------------------------------------------------ item
-    def __getitem__(self, index: int) -> dict:
+    def __getitem__(self, index) -> dict:
+        index, epoch = (int(index[0]), int(index[1])) if isinstance(index, tuple) else (index, 0)
         e, clip, i0 = self.windows[index]
         row = self._row(e)
         episode = row["episode"]
@@ -284,7 +289,7 @@ class DroidLargeScaleDataset(Dataset):
             else:
                 uv = np.stack([project(points[t], K_nat, w2c)[0] for t in range(3)])
                 motion, reliable = CR.track_motion(points, vis)
-                cropped = self._crop_camera(episode, clip, i0, role, state[role], depth_nat, K_nat,
+                cropped = self._crop_camera(episode, clip, i0, role, state[role], depth_nat, K_nat, epoch=epoch,
                                             uv=uv, visible=vis, motion=motion, reliable=reliable)
                 K, d_r, image = cropped["K"], cropped["depth"], cropped["images"]
                 cropped["vis_native"] = vis.copy()
@@ -336,7 +341,7 @@ class DroidLargeScaleDataset(Dataset):
             })
         if self.with_wrist:
             sample.update(self._wrist_fields(row, episode, canon, state, wrist_cal, ext_points, ext_vis,
-                                            (clip, i0, [c["vis_native"] for c in crop_fields])))
+                                            (clip, i0, [c["vis_native"] for c in crop_fields], epoch)))
         sample["meta"] = {
             "task": "droid_largescale",
             "episode": episode,
@@ -351,12 +356,13 @@ class DroidLargeScaleDataset(Dataset):
             validate_batch({k: v if k == "meta" else v.unsqueeze(0) for k, v in sample.items()})
         return sample
 
-    def _crop_camera(self, episode, clip, i0, role, images, depth_nat, K_nat, **tracks) -> dict:
-        """One crop box for this camera and window (``crop.sample_crop``), applied to its three frames and depth."""
+    def _crop_camera(self, episode, clip, i0, role, images, depth_nat, K_nat, *, epoch: int = 0, **tracks) -> dict:
+        """One crop box for this camera, window and visit (``crop.sample_crop``), applied to its three frames and
+        depth."""
         H, W = images.shape[1:3]
         if (W, H) != NATIVE_WH or depth_nat.shape[1:] != (H, W):
             raise ValueError(f"the square crop is defined on the native {NATIVE_WH[1]}x{NATIVE_WH[0]} grid")
-        rng = np.random.default_rng(stable_hash(self.seed, "crop", episode, clip, i0, role))
+        rng = np.random.default_rng(stable_hash(self.seed, "crop", episode, clip, i0, role, epoch))
         S = self.crop.out_size
         box, info = CR.sample_crop(rng, self.crop, H, W, policy=self.crop_policy, patch=self.patch_size,
                                    min_eligible_per_frame=self.min_eligible_per_frame, **tracks)
@@ -373,7 +379,8 @@ class DroidLargeScaleDataset(Dataset):
         }
 
     def _wrist_fields(self, row, episode, canon, state, wrist_cal, ext_points, ext_vis, window=None) -> dict:
-        """``window`` (crop only): (clip, first frame, the external tracks' visibility before their cameras' crops)."""
+        """``window`` (crop only): (clip, first frame, the external tracks' visibility before their cameras' crops,
+        epoch)."""
         H, W, P, V = self.H, self.W, len(PAIRS), len(EXT_ROLES)
         valid = np.zeros(3, bool)
         K_r = np.eye(3)
@@ -417,7 +424,8 @@ class DroidLargeScaleDataset(Dataset):
                 tracks = {"uv": uv, "visible": visible, "motion": motion, "reliable": reliable}
             else:
                 depth_nat = np.zeros((3, *NATIVE_WH[::-1]), np.float32)
-            cropped = self._crop_camera(episode, window[0], window[1], "wrist", state["wrist"], depth_nat, K_nat, **tracks)
+            cropped = self._crop_camera(episode, window[0], window[1], "wrist", state["wrist"], depth_nat, K_nat,
+                                        epoch=window[3], **tracks)
             K_r, depth_r, images = cropped["K"], cropped["depth"], cropped["images"].transpose(0, 3, 1, 2)
             if wrist_cal is not None and group is not None:
                 for p, (a, _, _) in enumerate(PAIRS):

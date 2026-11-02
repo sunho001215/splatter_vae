@@ -820,13 +820,21 @@ def grad_norms(model: Model) -> dict[str, float]:
 
 
 class ResumableDistributedSampler(DistributedSampler):
-    """DistributedSampler that can skip the first ``skip`` indices of its next epoch without loading them."""
+    """DistributedSampler that can skip the first ``skip`` indices of its next epoch without loading them.
+
+    A dataset with ``epoch_tagged_indices`` (the DROID square-crop profile) receives ``(index, epoch)`` instead of the
+    index, so per-visit randomness (a new crop every epoch) is a pure function of the index and the epoch: it reaches
+    persistent DataLoader workers and a resume (``infinite`` re-derives the epoch from the step) replays it exactly.
+    Every other dataset receives exactly the previous indices."""
 
     skip = 0
 
     def __iter__(self):
         indices = list(super().__iter__())
         skip, self.skip = self.skip, 0
+        if getattr(self.dataset, "epoch_tagged_indices", False):
+            epoch = self.epoch
+            return iter((i, epoch) for i in indices[skip:])
         return iter(indices[skip:])
 
 
