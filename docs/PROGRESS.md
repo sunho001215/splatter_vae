@@ -35,6 +35,21 @@ diff inline.
   re-runs bitwise equal to the 81b202c baseline; DROID round-2 re-run and csw4 trainer smoke passed; clean clone
   verified. Not deployed into running experiments (remote releases stay pinned). Open user decisions: DROID image
   size, per-robot `dT_gw`, DROID ~1.5 cm coupling.
+- **DROID ViT-S / crop / mount + refactor 3 + reporting (2026-11-02 evening, in progress).** Resume state:
+  - Branches (pushed): `droid-vits-crop-20261102` (ViT-S-sized profile 224/16/384/12/6 + patch_cnn stem, motion-informed
+    square crop, one 75 % full-grid mask), `droid-mount-20261102` (provisional +11.0 mm ISO-50 coupling mount; DROID-3D
+    dq in the real-world adapter). Both merged into `integrate-droid-20261102` (worktree `.worktrees/integrate-droid`,
+    full suite 1462/0 at 3b7866c, evidence 323b4bc, docs 2230bc6). Codex reviews: `validation-20261031/codex/{r1,m1,i1}`.
+  - Running: `validation-20261031/integrate-droid-checks.sh` (ViT-S trainer smoke with stop/resume, item 8 r2 rerun,
+    item 5 real-data rerun; outputs `droid_vits/smoke/`, `item8/reruns/merged-<rev>-r2/`, `item5/runs/merged-<rev>/`).
+    Expected item-5 differences vs baseline-81b202c: export/gripper geometry only (mount +11 mm, q+dq).
+  - Then: ff `splatter4d` to integrate-droid (merge newer splatter4d docs first; fingerprints must stay equal), push,
+    clean clone. Refactor pass 3 runs in `.worktrees/refactor3` (branch `refactor3-20261102`, base 2230bc6) → Codex
+    review → full suite → real-data smoke → merge → clean clone.
+  - Validation reservation: MIG-c4ec2a95 withheld + 40 GB (`runs/setup/local-validation-reservation.json`); restore
+    from `runs/setup/handback-20261102/queue-before-reservation2.yaml` and delete the JSON when validation ends.
+  - Status/ETA reconciliation: `validation-20261031/status_20261102/` (re-run `tools/reconcile_status.py`).
+  - s3spec rows held by admission pause `s3spec-held-20261102` (enforces the documented hold).
 - **Self-render (2026-10-31):** the v2 pilot (`sr-csw4-*`) was stopped at the user's instruction (checkpoints
   kept). It is replaced by `selfrender_replace_v4`: ±5 % radial camera jitter plus the viewpoint domain relaxed
   ×0.95 (466 cells). Rows `srv4-csw4-*` (pretraining from step 0, export, FlashSAC s2000–2002) were registered
