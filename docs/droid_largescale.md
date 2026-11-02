@@ -381,3 +381,150 @@ Updated 2026-10-31 with the real-data validation (`docs/droid_largescale_validat
 | Franka FK (Panda/FR3 same DH) | VERIFIED against DepthWorld's table, published ready-pose flange numbers and real `cartesian_position` |
 | Corpus-wide join rate | Identity only: 41,599 of 42,935 PointWorld episodes join DROID-3D and RLDS; frame/serial checks measured on 62/62 only |
 | Real throughput | VERIFIED-REAL: 11.9 / 48.5 / 98.7 windows/s with 0 / 4 / 8 workers (CPU, 144x256, 62 episodes) |
+
+## 7. Square-crop preprocessing and masking (ViT-S-sized profile, 2026-11-02)
+
+Profile `configs/droid/vits_largescale.yaml`: a ViT-S-sized backbone (384/12/6, MLP ratio 4) with our patch-local
+convolutional stem on 224 × 224 inputs. Effective configuration and the difference table against csw4:
+`docs/droid_largescale_validation/vits_effective_config.md`. Code: `s4d/data/droid/largescale/crop.py` (geometry,
+sampler, inference crop), `dataset.py` (application per camera and window), `s4d/train/loop.py` (`crop_visible_tokens`,
+padding excluded from the losses). Tests: `tests/test_droid_crop.py`, `tests/test_droid_vits_profile.py`. Without
+`data.crop` (csw4, legacy and Meta-World profiles) nothing changes: no new batch field, no new dataset keyword, and the
+loss path takes the previous branch.
+
+### 7.1 Geometry (continuous pixel-centre convention of `s4d/geometry.py`)
+
+- A crop is an integer native-pixel box `(x0, y0, s)`, `s ∈ [180, 320]`. `x0`, `y0` may be negative and the box may
+  extend past the image; that part is padding.
+- Output pixel `(i, j)` covers native `[x0 + i·s/224, x0 + (i+1)·s/224)`; native `(u, v)` maps to
+  `((u − x0)·224/s, (v − y0)·224/s)`.
+- Intrinsics: `K' = A K`, `A = [[a, 0, −a x0], [0, a, −a y0], [0, 0, 1]]`, `a = 224/s`. So `fx, fy` scale by `a`, and
+  `cx' = (cx − x0)·a`, `cy' = (cy − y0)·a` (negative offsets included).
+- Extrinsics, metric depth and world-frame track / gripper coordinates are unchanged.
+- Tested: projecting the same 3D points with K and K' matches the analytic mapping to < 1e-4 px for boxes with
+  negative and out-of-image offsets (numpy and torch projections). The resampled RGB follows the same mapping: a blob's
+  centroid lands within 0.05 px of the mapped point. On 11 real windows (33 camera crops) the transformed-K projection of
+  every supervised track agrees with the mapped native projection to ≤ 1.4e-5 px (float32 K).
+
+### 7.2 Resampling and validity
+
+- **RGB.** The box is cut from the frame padded with the constant **0** (all channels), then resized with PIL bilinear
+  (antialiased when shrinking).
+- **Observed mask** `observed` (V,1,224,224) bool. A pixel is observed iff the padding indicator, resampled through
+  exactly the RGB path, is 0 there, i.e. no padded native pixel contributes to it.
+- **Depth.** Nearest native pixel of each output pixel centre. It is 0 (invalid) on padding and on every non-observed
+  pixel. No depth is interpolated or fabricated (tested: every output value is a native measurement).
+- **Tracks and gripper points.** They stay 3D world positions. A track or gripper point is visible at a time only if it
+  passed the native visibility and depth tests and its projection with K' falls on an observed output pixel. Tracks
+  leaving the crop therefore get zero weight; they are never clamped to the border.
+- **Motion score.** Splatted on the cropped grid with K' and the cropped depth, so it is 0 on padding.
+- **Wrist fields** (supervision only, unused by the loss) get their own crop. `wrist_K`, `wrist_depth`, `wrist_images`
+  and `wrist_track_weight` are transformed the same way, and `wrist_observed` is added.
+- **Losses.** Padding is never supervision:
+  - RGB L1 uses weights `(1 + λ·score)·observed`, normalised per image, i.e. the weighted mean over observed pixels;
+  - SSIM additionally drops pixels whose 11 × 11 window reaches padding (`ssim_support`);
+  - coverage, depth L1 and Chamfer use the depth validity `depth > 0 (< far) ∧ observed`;
+  - synthetic views fuse only valid depth, so padded pixels are never fused or rendered as targets;
+  - PSNR/SSIM metrics are restricted to observed pixels.
+
+  Tested: replacing the RGB of padded pixels changes neither the loss nor any gradient.
+- **Batch contract** (`s4d/data/contract.py`): `observed` and `token_padded` are optional but given together. The
+  contract checks that depth is 0 wherever a pixel is not observed and that `token_padded` follows the border-patch
+  rule.
+
+### 7.3 Motion-informed stochastic crop (training split)
+
+One crop per camera and window, applied identically to the three history frames, that camera's depth, K, motion score
+and track visibility. Different cameras get their own crops. The crop is a pure function of `(train.seed, episode,
+clip, first frame, camera)`, like the existing track subsampling. It is therefore reproducible, and it is the same
+window's crop in every epoch: overlapping windows (start t, t+1, …) draw independent crops.
+
+1. Motion uses only existing tracks. A track's motion `m` is its largest world-frame 3D displacement between two
+   history frames where it is visible. External cameras are static and tracks are in the robot-base frame, so the
+   background never moves. For the wrist camera, the external cameras' world tracks are projected into its per-frame
+   pose and depth-tested against the wrist depth, so camera ego-motion never counts (tested).
+2. Moving: `0.02 m < m ≤ 0.4 m`. Fewer than 32 reliable or moving tracks gives the broad fallback
+   (`few_reliable_tracks` / `weak_motion`).
+3. Extent: motion-weighted (`min(m / 3 cm, 1)`) 5 %–95 % quantiles of the moving tracks' native pixel positions over the
+   history frames, plus a context margin `max(24 px, 0.2 × extent)`. If extent + 2·margin > 320 the motion is dispersed
+   and the broad fallback is used.
+4. Side `s` is uniform in `[s_lo, min(320, s_lo + 80)]`, where `s_lo = max(180, required)` and `required` is the larger
+   side of the extent + margin clipped to the image.
+5. Placement:
+   - Horizontally (`s ≤ 320` always) the crop is clamped inside the image, with `x0` uniform among the positions that
+     contain the clipped extent + margin.
+   - Vertically, `s > 180` always shows the full height, and only the padding split varies: centred on the moving extent
+     ± 0.1·s, clipped so no observed row is lost.
+   - The position is never a deterministic argmax.
+6. Broad fallback: `s` uniform in `[256, 320]`, horizontal position uniform inside the image, vertical padding centred
+   ± 0.1·s.
+7. Eligible-token guarantee: if fewer than ⌈147/3⌉ = 49 tokens per frame are unpadded, `s` shrinks by 8 until they are.
+   This never triggers with these values: the worst case `s = 320` pads 98 of 224 output rows, leaving ≥ 84 of 196
+   tokens per frame (252 ≥ 147 temporal tokens; tested exhaustively over every side and vertical placement).
+
+**Validation / evaluation windows** (`data.crop.eval_policy: center`, used by `build_datasets` for the validation split)
+use the deterministic, padding-free central square: `s = min(H, W) = 180`, `x0 = 70`, `y0 = 0`. This is the inference
+contract, so validation sees what a deployed encoder sees. In evaluation mode (`mask_ratio = 0`) every token is encoded;
+with this policy no token is padded.
+
+### 7.4 One masking budget over the full grid
+
+- 224/16 gives 14 × 14 = 196 tokens per frame, 588 per window. `mask_mode: random` at 0.75 keeps
+  `visible_count(588, 0.75)` = **147 tokens and masks 441**, whatever the crop.
+- **Border-patch rule:** a patch is padded iff **any** of its 16 × 16 output pixels is not observed. A partially
+  padded border patch is therefore padded (tested).
+- `token_padded` (V,196) is carried in the batch. In training, `loop.crop_visible_tokens` builds the (B·V, 588)
+  eligible mask, which is the same patches in each frame. It keeps 147 tokens uniformly among eligible temporal tokens
+  (`encoder.sample_eligible_tokens`) and passes the explicit mask to `Encoder.forward_visible`.
+- There is one masking stage. There is no motion-prioritised selection and no "75 % of the valid tokens".
+- Logged per batch:
+  - `crop_padded_tokens` (padded temporal tokens per camera row);
+  - `crop_masked_fraction_observed` (`1 − 147 / eligible`, the effective masked fraction within observed content);
+  - `crop_padded_token_fraction`;
+  - `crop_fallback_fraction`.
+
+  Per sample, the dataset emits `crop_box` (`[x0, y0, s]`), `crop_fallback` (`crop.FALLBACK_CODES`) and
+  `crop_moving_tracks`.
+- Consequence: with padding the effective masked fraction within observed content falls below 0.75. It is 0.5 at the
+  maximum 294 padded tokens.
+- A side of 181–183 pads 1–3 native rows, and the any-pixel rule then masks a whole token row (42 temporal tokens).
+
+### 7.5 Inference contract (real-world deployment)
+
+`crop.inference_center_crop(image, K)`: take the central square crop (side `min(H, W)`, no padding) of the RealSense
+RGB frame, resize it to 224 × 224 (PIL bilinear), and transform K with the same `A`. For example, 640 × 480 gives the
+box `(80, 0, 480)` and `cx' = (cx − 80)·224/480` (tested). There is no online tracking, no motion-dependent crop and no
+padding. Encoder exports of a `data.crop` profile record this as `input_contract` (`scripts/export_encoder.py`);
+exports of every other profile are unchanged. No deployment study has been done.
+
+### 7.6 Real-sample inspection (294-episode AUTOLab manifest, one lab; not corpus-wide)
+
+Tool and outputs: `/home/ws/ws/validation-20261031/droid_vits/{tools/inspect_samples.py, samples/}`. There are 11
+panels: 10 training windows (the two largest paddings, two external-camera fallbacks, the window with a
+motion-informed wrist crop, three small crops, two others) and 1 validation window. Each panel has rows ext1 / ext2 /
+wrist and shows:
+
+- the native frame with the crop box and moving tracks;
+- the three cropped frames with padding tinted;
+- the observed mask with padded tokens;
+- the kept / masked / padded tokens per frame;
+- tracks before (mapped native projection) and after (K') the transform;
+- cropped depth, depth/coverage validity, and the motion score.
+
+`samples.json` lists per camera the crop side, origin and centre, the fallback reason, moving tracks, extent, padded
+tokens, effective masked fraction and the geometry checks.
+
+- **Scan of 200 random training windows.**
+  - External cameras: 387 / 400 crops were motion-informed and 13 used the `weak_motion` fallback. There was no
+    `dispersed` or `few_reliable_tracks` case.
+  - Side quantiles (0/10/50/90/100 %): 180 / 193 / 235 / 299 / 318.
+  - Padded temporal tokens: median 168, maximum 294.
+  - Wrist: 193 `weak_motion`, 5 `few_reliable_tracks`, 2 motion-informed. Few world-moving external tracks are seen by
+    the wrist camera, so the wrist (supervision-only) almost always gets a broad crop.
+- **Geometry checks.** Supervised tracks that stay in the crop pass the depth test against the cropped depth with K'
+  in 97.8–100 % of cases on external cameras and 94.8–100 % on the wrist (100 % against native depth). The difference
+  comes from nearest-neighbour depth resampling at depth edges (2 cm tolerance).
+- **Visual check.** In the inspected motion-informed external crops, the moving arm and the manipulated object (bowl,
+  cube, can) stay inside the crop with surrounding table context in all three history frames. When the arm descends
+  into view during the window, the crop covers its path, because the extent pools all frames. A broad fallback can cut
+  off part of a slowly moving arm (for example window 3747 ext2): it is not motion-targeted by design.

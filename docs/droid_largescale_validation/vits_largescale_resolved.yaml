@@ -1,0 +1,130 @@
+data:
+  regime: droid_largescale
+  root: null
+  manifest: null
+  pointworld_root: null
+  rlds_index_dir: null
+  rlds_data_root: null
+  validation_percent: 2.0
+  stride: 3
+  max_tracks: 4096
+  with_wrist: true
+  gripper_offset_m: -0.019
+  max_open_files: 8
+  crop:
+    out_size: 224
+    side_min: 180
+    side_max: 320
+    motion_min_m: 0.02
+    motion_max_m: 0.4
+    min_moving_tracks: 32
+    extent_quantiles:
+    - 0.05
+    - 0.95
+    margin_frac: 0.2
+    margin_min_px: 24
+    zoom_span_px: 80
+    broad_side_min: 256
+    jitter_frac: 0.1
+    eval_policy: center
+model:
+  encoder:
+    backbone: scratch
+    image_height: 224
+    image_width: 224
+    patch_size: 16
+    width: 384
+    depth: 12
+    heads: 6
+    mlp_ratio: 4.0
+    num_slots: 1
+    slot_dim: 256
+    num_frames: 3
+    mask_ratio: 0.75
+    motion_patch_threshold: 0.05
+    drop_path: 0.1
+    mask_mode: random
+    stem: patch_cnn
+  decoder:
+    dim: 128
+    depth: 2
+    heads: 4
+    motion_max: 0.25
+    scene:
+      parents: 768
+      children: 8
+      offset_scale: 0.15
+      child_radius: 0.06
+      scale_min: 0.001
+      scale_max: 0.08
+    dynamic:
+      parents: 256
+      children: 8
+      offset_scale: 0.4
+      child_radius: 0.04
+      scale_min: 0.0005
+      scale_max: 0.03
+    single_group: false
+  anchor_stats: null
+  single_frame: false
+render:
+  near: 0.05
+  far: 3.0
+loss:
+  rgb: 1.0
+  ssim_weight: 0.2
+  lambda_dyn: 1.0
+  coverage: 0.1
+  depth_l1: 1.0
+  depth_grad: 0.0
+  depth_hard: 0.0
+  depth_align: none
+  depth_align_warmup_steps: 0
+  motion: 5.0
+  motion_huber: 0.01
+  invariance: 1.0
+  consistency: 0.5
+  temperature: 0.1
+  visibility: 0.0
+  ramp_steps: 20000
+  teacher_scale_jitter: null
+  depth_valid_far: true
+  motion_space: gaussian
+  occlusion: 0.0
+  chamfer: 5.0
+  chamfer_points: 4096
+  chamfer_voxel_m: 0.01
+  motion_feature_render: log_steps
+aug:
+  synth_views: 2
+  synth_render: true
+  synth_camera_rig: training_cameras
+train:
+  steps: 300000
+  batch_size: 16
+  lr: 0.0005
+  min_lr: 1.0e-05
+  weight_decay: 0.01
+  warmup_steps: 10000
+  grad_clip: 1.0
+  bf16: true
+  seed: 0
+  num_workers: 8
+  prefetch_factor: 2
+  log_every: 50
+  eval_every: 5000
+  save_every: 10000
+  eval_at_start: true
+eval:
+  max_batches: 8
+  probe_every: 10000
+  probe_batches: 24
+  orbit_center:
+  - 0.6
+  - 0.0
+  - 0.15
+  orbit_distance: 1.0
+  orbit_elevation: -45.0
+wandb:
+  enabled: true
+  project: splatter4d-droid

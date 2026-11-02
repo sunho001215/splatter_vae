@@ -1,0 +1,292 @@
+{
+ "profile": "configs/droid/vits_largescale.yaml",
+ "overrides": [
+  "data.manifest=/home/ws/ws/validation-20261031/item8/r2/manifests/manifest_droid3d_autolab294_v2.jsonl",
+  "data.pointworld_root=/home/ws/ws/validation-20261031/item8/r2/pointworld_root",
+  "data.rlds_index_dir=/home/ws/ws/validation-20261031/item8/r2/rlds_index",
+  "data.rlds_data_root=/home/ws/data/droid/1.0.1",
+  "model.anchor_stats=/home/ws/ws/validation-20261031/item8/r2/anchor_stats/workspace_stats_autolab294.json"
+ ],
+ "data": "294-episode AUTOLab manifest (one lab, 4 sessions); not corpus-wide",
+ "label": "resource measurement of the new profile on real DROID windows (not the trainer smoke)",
+ "train_windows": 9458,
+ "params": {
+  "encoder": 21760416,
+  "decoder": 868392,
+  "total": 22628808,
+  "encoder_stem": 290720,
+  "encoder_blocks": 21293568
+ },
+ "gpu": {
+  "device": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb",
+  "free_gb_before": 21.57440185546875,
+  "total_gb": 23.625
+ },
+ "fwd_bwd_bf16": {
+  "1": {
+   "peak_allocated_gb": 0.7757887840270996,
+   "peak_reserved_gb": 0.796875,
+   "step_time_s_median_excl_first2": 0.13435721397399902,
+   "step_times_s": [
+    2.06286358833313,
+    0.12872529029846191,
+    0.11420798301696777,
+    0.13660550117492676,
+    0.11938261985778809,
+    0.13593387603759766,
+    0.1327805519104004,
+    0.16141629219055176
+   ],
+   "last_total": 2.2140109539031982,
+   "last_losses": {
+    "total": 2.2140109539031982,
+    "render": 1.3509788513183594,
+    "motion": 0.09678402543067932,
+    "infonce": 0.0,
+    "consistency": 0.08263438940048218,
+    "rgb_t0": 0.3535333275794983,
+    "rgb_t1": 0.35480043292045593,
+    "rgb_t2": 0.35766711831092834,
+    "coverage_t0": 0.3114984333515167,
+    "coverage_t1": 0.31371909379959106,
+    "coverage_t2": 0.31570935249328613,
+    "depth_l1_t0": 0.6534581780433655,
+    "depth_l1_t1": 0.6753966808319092,
+    "depth_l1_t2": 0.7080472111701965,
+    "chamfer_t0": 0.06245553120970726,
+    "chamfer_t1": 0.06214558705687523,
+    "chamfer_t2": 0.06740064918994904,
+    "chamfer_pred_to_target_t0": 0.09000251442193985,
+    "chamfer_pred_to_target_t1": 0.0917634442448616,
+    "chamfer_pred_to_target_t2": 0.09354988485574722,
+    "chamfer_target_to_pred_t0": 0.03490854799747467,
+    "chamfer_target_to_pred_t1": 0.032527729868888855,
+    "chamfer_target_to_pred_t2": 0.04125141352415085,
+    "synth_render": 0.8191259503364563
+   },
+   "crop_metrics": {
+    "crop_padded_tokens": 189.0,
+    "crop_masked_fraction_observed": 0.6221591234207153,
+    "crop_padded_token_fraction": 0.3214285671710968,
+    "crop_fallback_fraction": 0.0
+   },
+   "psnr": 10.013762474060059
+  },
+  "2": {
+   "peak_allocated_gb": 1.1779980659484863,
+   "peak_reserved_gb": 1.603515625,
+   "step_time_s_median_excl_first2": 0.16091883182525635,
+   "step_times_s": [
+    0.25026845932006836,
+    0.1560661792755127,
+    0.16176986694335938,
+    0.15729904174804688,
+    0.1594233512878418,
+    0.16006779670715332,
+    0.16935062408447266,
+    0.18424725532531738
+   ],
+   "last_total": 2.872432231903076,
+   "last_losses": {
+    "total": 2.872432231903076,
+    "render": 1.1421912908554077,
+    "motion": 0.17236113548278809,
+    "infonce": 0.884746789932251,
+    "consistency": 0.07761035859584808,
+    "rgb_t0": 0.37466108798980713,
+    "rgb_t1": 0.37279802560806274,
+    "rgb_t2": 0.3711334764957428,
+    "coverage_t0": 0.24728524684906006,
+    "coverage_t1": 0.24583584070205688,
+    "coverage_t2": 0.24640874564647675,
+    "depth_l1_t0": 0.473076194524765,
+    "depth_l1_t1": 0.4652174711227417,
+    "depth_l1_t2": 0.4482809603214264,
+    "chamfer_t0": 0.05396440997719765,
+    "chamfer_t1": 0.05627903342247009,
+    "chamfer_t2": 0.05565132200717926,
+    "chamfer_pred_to_target_t0": 0.08933188021183014,
+    "chamfer_pred_to_target_t1": 0.09111130237579346,
+    "chamfer_pred_to_target_t2": 0.09183329343795776,
+    "chamfer_target_to_pred_t0": 0.018596939742565155,
+    "chamfer_target_to_pred_t1": 0.02144676074385643,
+    "chamfer_target_to_pred_t2": 0.019469354301691055,
+    "synth_render": 0.8020783066749573
+   },
+   "crop_metrics": {
+    "crop_padded_tokens": 94.5,
+    "crop_masked_fraction_observed": 0.7006847262382507,
+    "crop_padded_token_fraction": 0.1607142835855484,
+    "crop_fallback_fraction": 0.0
+   },
+   "psnr": 9.463278770446777
+  },
+  "4": {
+   "peak_allocated_gb": 1.9465460777282715,
+   "peak_reserved_gb": 2.6953125,
+   "step_time_s_median_excl_first2": 0.22501802444458008,
+   "step_times_s": [
+    0.2660245895385742,
+    0.21496033668518066,
+    0.21429133415222168,
+    0.22950530052185059,
+    0.22278094291687012,
+    0.2263031005859375,
+    0.22373294830322266,
+    0.22638273239135742
+   ],
+   "last_total": 4.205056190490723,
+   "last_losses": {
+    "total": 4.205056190490723,
+    "render": 1.7629157304763794,
+    "motion": 0.11017008125782013,
+    "infonce": 1.4699467420578003,
+    "consistency": 0.0888180285692215,
+    "rgb_t0": 0.3776824474334717,
+    "rgb_t1": 0.3787357807159424,
+    "rgb_t2": 0.37670981884002686,
+    "coverage_t0": 0.2713924050331116,
+    "coverage_t1": 0.27249255776405334,
+    "coverage_t2": 0.27346980571746826,
+    "depth_l1_t0": 0.7012321352958679,
+    "depth_l1_t1": 0.6998132467269897,
+    "depth_l1_t2": 0.697481632232666,
+    "chamfer_t0": 0.13135841488838196,
+    "chamfer_t1": 0.13180378079414368,
+    "chamfer_t2": 0.13450735807418823,
+    "chamfer_pred_to_target_t0": 0.11594070494174957,
+    "chamfer_pred_to_target_t1": 0.11788752675056458,
+    "chamfer_pred_to_target_t2": 0.11945648491382599,
+    "chamfer_target_to_pred_t0": 0.14677612483501434,
+    "chamfer_target_to_pred_t1": 0.14572006464004517,
+    "chamfer_target_to_pred_t2": 0.14955823123455048,
+    "synth_render": 0.9248377084732056
+   },
+   "crop_metrics": {
+    "crop_padded_tokens": 152.25,
+    "crop_masked_fraction_observed": 0.6560763716697693,
+    "crop_padded_token_fraction": 0.2589285671710968,
+    "crop_fallback_fraction": 0.0
+   },
+   "psnr": 9.380561828613281
+  },
+  "8": {
+   "peak_allocated_gb": 3.4582648277282715,
+   "peak_reserved_gb": 4.94140625,
+   "step_time_s_median_excl_first2": 0.35924458503723145,
+   "step_times_s": [
+    0.3740706443786621,
+    0.3638641834259033,
+    0.35245251655578613,
+    0.3698873519897461,
+    0.35407471656799316,
+    0.3551442623138428,
+    0.3633449077606201,
+    0.3785526752471924
+   ],
+   "last_total": 4.430124759674072,
+   "last_losses": {
+    "total": 4.430124759674072,
+    "render": 1.3008310794830322,
+    "motion": 0.12791234254837036,
+    "infonce": 2.3077163696289062,
+    "consistency": 0.09157617390155792,
+    "rgb_t0": 0.3926790654659271,
+    "rgb_t1": 0.3904034495353699,
+    "rgb_t2": 0.38795578479766846,
+    "coverage_t0": 0.32514360547065735,
+    "coverage_t1": 0.3240478038787842,
+    "coverage_t2": 0.3236801028251648,
+    "depth_l1_t0": 0.5282374620437622,
+    "depth_l1_t1": 0.526080846786499,
+    "depth_l1_t2": 0.5262174606323242,
+    "chamfer_t0": 0.0695028156042099,
+    "chamfer_t1": 0.06883089244365692,
+    "chamfer_t2": 0.06815393269062042,
+    "chamfer_pred_to_target_t0": 0.10975348949432373,
+    "chamfer_pred_to_target_t1": 0.10780655592679977,
+    "chamfer_pred_to_target_t2": 0.10718563199043274,
+    "chamfer_target_to_pred_t0": 0.029252147302031517,
+    "chamfer_target_to_pred_t1": 0.029855232685804367,
+    "chamfer_target_to_pred_t2": 0.029122237116098404,
+    "synth_render": 0.7723676562309265
+   },
+   "crop_metrics": {
+    "crop_padded_tokens": 175.875,
+    "crop_masked_fraction_observed": 0.6330996155738831,
+    "crop_padded_token_fraction": 0.2991071343421936,
+    "crop_fallback_fraction": 0.0
+   },
+   "psnr": 9.123515129089355
+  },
+  "16": {
+   "peak_allocated_gb": 6.5054121017456055,
+   "peak_reserved_gb": 9.375,
+   "step_time_s_median_excl_first2": 0.6512210369110107,
+   "step_times_s": [
+    0.7245223522186279,
+    0.6568570137023926,
+    0.675309419631958,
+    0.6369833946228027,
+    0.6453025341033936,
+    0.6567645072937012,
+    0.6489138603210449,
+    0.6535282135009766
+   ],
+   "last_total": 5.098696708679199,
+   "last_losses": {
+    "total": 5.098696708679199,
+    "render": 1.3190886974334717,
+    "motion": 0.13207946717739105,
+    "infonce": 2.9192566871643066,
+    "consistency": 0.10024459660053253,
+    "rgb_t0": 0.3744748830795288,
+    "rgb_t1": 0.3746698200702667,
+    "rgb_t2": 0.3733740448951721,
+    "coverage_t0": 0.2872757911682129,
+    "coverage_t1": 0.28719109296798706,
+    "coverage_t2": 0.28826087713241577,
+    "depth_l1_t0": 0.5732536315917969,
+    "depth_l1_t1": 0.5678122639656067,
+    "depth_l1_t2": 0.5646165609359741,
+    "chamfer_t0": 0.06854140758514404,
+    "chamfer_t1": 0.06849711388349533,
+    "chamfer_t2": 0.06875370442867279,
+    "chamfer_pred_to_target_t0": 0.09644147753715515,
+    "chamfer_pred_to_target_t1": 0.09687556326389313,
+    "chamfer_pred_to_target_t2": 0.09649568796157837,
+    "chamfer_target_to_pred_t0": 0.04064134135842323,
+    "chamfer_target_to_pred_t1": 0.04011864960193634,
+    "chamfer_target_to_pred_t2": 0.041011713445186615,
+    "synth_render": 0.8066960573196411
+   },
+   "crop_metrics": {
+    "crop_padded_tokens": 145.6875,
+    "crop_masked_fraction_observed": 0.6576285362243652,
+    "crop_padded_token_fraction": 0.2477678507566452,
+    "crop_fallback_fraction": 0.0
+   },
+   "psnr": 9.525398254394531
+  }
+ },
+ "fwd_bwd_note": "forward_losses (bf16 autocast as the trainer) + backward + clip + AdamW step, training mode with the crop masking (147 of 588 tokens kept per camera), 2 synthetic views; median of steps 3-8; one MIG 1g.24gb slice possibly shared with other small jobs",
+ "loader": {
+  "0": {
+   "windows_per_s": 7.944194374797241,
+   "batches": 6,
+   "batch_size": 16
+  },
+  "4": {
+   "windows_per_s": 28.490634378564707,
+   "batches": 30,
+   "batch_size": 16
+  },
+  "8": {
+   "windows_per_s": 68.04341076132886,
+   "batches": 30,
+   "batch_size": 16
+  }
+ },
+ "loader_note": "crop enabled (training policy), 2 external cameras + wrist fields, CPU decode, after one warm-up batch",
+ "peak_rss_main_bytes": 3082354688
+}
