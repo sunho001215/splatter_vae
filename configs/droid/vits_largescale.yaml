@@ -36,7 +36,7 @@ data:
     extent_quantiles: [0.05, 0.95]  # robust motion-weighted extent of the moving tracks over the history frames
     margin_frac: 0.2        # context around the moving extent: max(24 px, 0.2 x extent) on every side
     margin_min_px: 24
-    zoom_span_px: 80        # s uniform in [s_lo, s_lo + 80] (clipped to 320); s_lo = max(180, extent + 2 margin)
+    zoom_span_px: 80        # s uniform in [s_lo, s_lo + 80] (clipped to 320); s_lo = max(180, clipped required extent)
     broad_side_min: 256     # broad fallback (weak / unreliable / dispersed motion): s uniform in [256, 320]
     jitter_frac: 0.1        # vertical padding split: centre +- 0.1 s (never loses observed rows)
     eval_policy: center     # validation windows: the padding-free central 180x180 square (= the inference contract)
