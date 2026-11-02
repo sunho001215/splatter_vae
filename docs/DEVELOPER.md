@@ -54,7 +54,7 @@ The file names are fixed: queue rows, registrations and docs name them by path.
 | Preamble and environment | `_bootstrap.py`, `gpu_env.sh`; `delete_stage0_cache.py` is a disabled stub |
 | Compatibility aliases of `ops` | `jobs.py`, `_nvidia_query.py`, `heartbeat.py`, `watch_events.py`, `sync_media.py`, `cleanup_replay.py` |
 
-Each GPU entry point keeps its own preamble (`sys.path` insert of `scripts/`, `from _bootstrap import ...`, an unindented `guard_gpus()` call before torch is imported): the scheduler checks for that literal call in the script file (`GUARD_CALL` in `ops/jobs/scheduler.py`).
+Each scheduled GPU entry point keeps its own preamble (`sys.path` insert of `scripts/`, `from _bootstrap import ...`, an unindented `guard_gpus()` or `enforce_allowed_gpus()` call before torch is imported): the scheduler checks for that call in the script file (`GUARD_CALL` in `ops/jobs/scheduler.py`). Exception: `scripts/run_tests.py` (not a scheduled job) calls `guard_gpus()` inside `main`.
 
 ## Dependency boundaries
 
@@ -175,5 +175,5 @@ duplicated helpers inside the research code and its entry points:
 | `s4d/realworld/contract.py`: unused private `_array` | removed |
 
 It also added the research code map and the entry-point table above. Behaviour evidence (public API signatures, `--help` of
-every entry point, resolved configurations, CPU numerical fingerprints of the Meta-World, DROID, export and real-world
+every entry point except `check_native_render.py` and `_bootstrap.py`, resolved configurations, CPU numerical fingerprints of the Meta-World, DROID, export and real-world
 paths) is in `/home/ws/ws/validation-20261031/refactor3/`.

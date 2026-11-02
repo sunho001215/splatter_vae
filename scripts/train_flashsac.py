@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import json
+import os  # noqa: F401  (kept: a module attribute of this script before refactor 3)
 import random
 import sys
 import time
