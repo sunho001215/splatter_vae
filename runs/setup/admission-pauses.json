@@ -102,6 +102,16 @@
    ],
    "lifted": "2026-10-31T12:08:39+09:00",
    "lift_reason": "fix released as dd86d78 (user approval 2026-10-31; remote suite 1222 passed); window-open, soccer and sweep-into run on it as new launches (SNERL_NT_COMMIT); drawer-open is rerun as ds-pre-snerl-drawer-open-r2 and the original row is cancelled"
+  },
+  {
+   "name": "s3spec-held-20261102",
+   "active": true,
+   "since": "2026-11-02T20:59:23+0900",
+   "reason": "enforce the documented hold (EXPERIMENT_LOG: s3spec rows are a Stage 3 specification gated on a 300k freeze, 'not ready experiments', 'held'); the remote driver gate only blocks them when method-frozen-v1.json exists, which it does not, so they could otherwise launch once remote capacity frees and delay the SNeRL critical path. Registration untouched; lift by setting active false with a reason.",
+   "prefixes": [
+    "s3spec-"
+   ],
+   "ids": []
   }
  ]
 }

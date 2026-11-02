@@ -2,9 +2,6 @@ limits:
   MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c:
     max_jobs: 3
     max_mem_gb: 22
-  MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70:
-    max_jobs: 3
-    max_mem_gb: 22
   MIG-423203d9-5801-5892-a489-30f16a5a2d4a:
     max_jobs: 3
     max_mem_gb: 22

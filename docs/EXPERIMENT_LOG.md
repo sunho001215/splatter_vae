@@ -6788,3 +6788,43 @@ recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first 
   - srv4 exports: one transient `remote_verification_failed` each, because the producer's verification was not yet
     visible. Both verified on the next pass, so the srv4 pilot inputs are sound.
   - Three remote SSH drops of about 2 minutes reconnected by themselves.
+
+**19:40–21:50 — DROID decisions implemented (user directive, evening); campaign status; s3spec hold enforced.**
+
+- **DROID-3D calibration:** kept as published, including the per-robot `dT_gw` and `dq`. The code has no removal path
+  (`calibration.py:146`).
+  - More wrist depth: PointWorld depth has no per-episode access. Raw DROID episodes (~35 MB) do, but wrist stereo
+    first needs the 2.2–2.9 px rectification offset resolved.
+- **Mount:** the DROID build uses the Robotiq ISO-50 coupling screwed directly to the Franka flange.
+  - The arm is Panda or FR3 by the labs' own labels; both have the same flange.
+  - The mount is +11.0 mm along flange z, yaw +π/2. This is **provisional**: it is derived from Robotiq drawings, and
+    the part identity is inferred from the DROID guide photos.
+  - The old composition omitted the coupling.
+  - The image-based "~1.5 cm" was a 1-D fit that absorbed a ~1.2 cm lateral misregistration. With the lateral offset
+    free, the mask optimum is 11 mm and the depth optimum 17 mm.
+  - It stays separate from `gripper_offset_m` and from `dT_gw` (no double counting).
+  - The real-world adapter now uses FK(q + dq) only for the episode's own validated DROID-3D record.
+  - Missing measurement: flange face → Ø71 boss face; coupling part and revision; yaw vs the flange dowel.
+  - Report: `validation-20261031/droid_mount/REPORT.md`.
+- **ViT-S-sized DROID profile** (`configs/droid/vits_largescale.yaml`): 224/16, width 384, depth 12, 6 heads, MLP 4,
+  patch_cnn stem.
+  - slot_dim stays 256 through a 384→256 projection, so the decoder is unchanged.
+  - 22.6 M parameters. At batch 16: 6.5 GB peak allocated, 0.65 s per step.
+- **Crop and mask:**
+  - Square crop side 180–320, from world-frame motion, re-drawn every epoch with exact resume.
+  - One mask covers 75 % of the full 588-token grid, keeping 147 tokens. Padded patches (any-pixel rule) are always
+    masked; the supported worst case is 336 padded tokens, an effective 0.417 masked within observed content.
+  - Geometry is transformed consistently: K, depth, tracks gated at both endpoints, wrist targets, SSIM support.
+  - Inference contract: central square → 224.
+  - Codex (gpt-6.1-sol, xhigh) reviewed this in three rounds; every substantiated finding is fixed, the two remaining
+    risks are recorded in STATUS.
+- **Campaign status** (read-only reconciliation 20:53, `validation-20261031/status_20261102/`):
+  - camera v2 216/216 and self-render v4 24/24 complete;
+  - downstream 211/268, expected ~11-11 00:18;
+  - FlashSAC 231/576, expected ~11-11 07:28;
+  - critical path: remote SNeRL new-task pretraining (2.4 M steps, window-open at 25 %);
+  - no compute failures, no stalls.
+- **`s3spec` hold enforced:** admission pause `s3spec-held-20261102` (`prefixes: [s3spec-]`).
+  - The remote driver's gate only blocks these rows when `method-frozen-v1.json` exists. It does not, so the 8 rows
+    could have launched once remote capacity freed.
+  - This matches the documented hold; the registration is untouched.
