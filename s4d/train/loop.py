@@ -828,6 +828,17 @@ def infinite(loader: DataLoader, start_step: int = 0):
         epoch += 1
 
 
+def anchor_statistics_path(cfg: dict) -> str | None:
+    """``model.anchor_stats``. Without it the decoder keeps its default anchors (GroupConfig: the Meta-World workspace,
+    mean (0, 0.6, 0.1) m), so a regime other than Meta-World must name its own workspace statistics."""
+    path = get(cfg, "model.anchor_stats")
+    regime = get(cfg, "data.regime", "metaworld")
+    if not path and regime != "metaworld":
+        raise ValueError(f"data.regime {regime!r} needs model.anchor_stats (scripts/compute_workspace_stats.py); the "
+                         "default anchors are the Meta-World workspace")
+    return path
+
+
 def train(
     cfg: dict, run_dir: Path, train_dataset, ctx: ddp.DistContext, logger, evaluate_fn, resume: str | None = None
 ) -> None:
@@ -836,7 +847,7 @@ def train(
     seed_everything(seed + ctx.rank)
     device = ctx.device
     model = build_model(cfg).to(device)
-    stats_path = get(cfg, "model.anchor_stats")
+    stats_path = anchor_statistics_path(cfg)
     if stats_path:
         model.decoder.set_anchor_statistics(json.loads(Path(stats_path).read_text()))
     optimizer, scheduler = build_optimizer(model, cfg)

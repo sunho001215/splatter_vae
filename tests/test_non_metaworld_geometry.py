@@ -128,3 +128,12 @@ def test_non_metaworld_regimes_refuse_the_metaworld_rig(regime):
     assert A.synth_camera_rig({"data": {"regime": regime}, "loss": {}}) == "metaworld"
     with pytest.raises(ValueError, match="must be one of"):
         A.synth_camera_rig({"aug": {"synth_camera_rig": "orbit"}})
+
+
+def test_non_metaworld_regimes_need_their_own_anchor_statistics():
+    assert loop.anchor_statistics_path({"model": {"anchor_stats": None}}) is None  # Meta-World: defaults allowed
+    for regime in ("droid_largescale", "droid"):
+        with pytest.raises(ValueError, match="needs model.anchor_stats"):
+            loop.anchor_statistics_path({"data": {"regime": regime}, "model": {"anchor_stats": None}})
+    cfg = {"data": {"regime": "droid_largescale"}, "model": {"anchor_stats": "s.json"}}
+    assert loop.anchor_statistics_path(cfg) == "s.json"
