@@ -109,3 +109,103 @@ This checks units, the baseline, rectified K and the w2c convention end to end.
 - A baseline or fx error of x % would bias every comparison by x %.
 
 The PointWorld depth is probably itself a stereo-network output, so it is a consistency reference, not ground truth.
+
+## Recorded baseline run (revision 81b202c, 2026-11-02, `item5/runs/baseline-81b202c`)
+
+The run is the clean checkout of 81b202c, with 0 dirty files, driven by `item5/run_all.sh`. It did every stage from
+scratch except ingest, which was reused after its fingerprint matched. The workers were remapped to the temporary
+validation reservation, MIG-8da55219 and MIG-c4ec2a95; the effective config is in `config.yaml` of the run.
+
+Stage completion IDs (fingerprint prefixes):
+- normalized c1337020
+- stereo_depth 3c83da37
+- calibrate 107acc2f
+- track2d eb29bd35
+- lift3d e2b08a85
+- export: 148 windows
+- sam3_masks
+- dino_snerl
+
+| Check | ext1 | ext2 |
+|---|---|---|
+| L/R row residual, median \|dy\| (px) | 0.41 | 0.38 |
+| vs SDK-rectified MP4, median dx / dy (px) | 0.002 / −0.055 | 0.392 / −0.050 |
+| FoundationStereo − SIFT disparity, median (px) | −0.024 | −0.036 |
+| right-reference flip-and-swap consistency, median (px) | 0.32 | 0.22 |
+| cross-rig depth via DROID-3D poses, median relative | 0.75 % (ext1→ext2) | 0.82 % (ext2→ext1) |
+| PointWorld depth, median relative | 0.61 % | 0.50 % |
+| lifted static tracks, median max deviation | 7.2 mm | 4.2 mm |
+| lifted points vs the other rig's depth, median relative | 0.62 % | 0.53 % |
+| AllTracker temporal indexing | ok | ok |
+| SAM 3 box vs mask IoU (median) | 0.985 | 0.989 |
+| SAM 3 detections (frames of 127): robot arm / gripper / blue brick / drawer | 113 / 0 / 95 / 127 | 127 / 0 / 0 / 127 |
+
+**Export (`diagnostics/export.json`).** 148 windows load through `RealworldCacheDataset`, which calls
+`s4d.data.contract.validate_batch`, and every one passes.
+- Every float field is finite.
+- images (3,2,3,144,256) uint8; depth max 4.15 m.
+- 858 tracks per camera.
+- gripper_points (3,32,3); probe_state (3,7).
+- The validation split is empty by configuration (`validation_tail_frames: 0`).
+
+**`dino_snerl` pipeline stage (not only the worker).** It ran on the exported windows:
+- token grids (3,2,31,31,384), stored as float16, for all 148 windows;
+- model identity: commit 7c446df, sha256 55c8b267…;
+- `verified_against_consumer: true`, meaning the token path equals `s4d.baselines.snerl.model.dino_target`.
+
+**SAM 3 consumer contract.**
+- The class order equals SNeRL's `SEMANTIC_CLASSES`.
+- Nearest resize to 128×128 gives int64 class ids ≤ 3.
+- SNeRL's `CrossEntropyLoss` over the 5-way head is finite.
+- Absent detections are recorded explicitly, never filled: "gripper" was not detected in either camera, and the brick
+  was not detected in ext2.
+
+## DROID robot/gripper assets and mount (DROID-specific; NOT our Panda–Robotiq rig)
+
+**Assets.** The arm is FR3 from franka_description 7aeeddc; the gripper is the Robotiq 2F-85 from PickNik
+ros2_robotiq_gripper a74d007, using its collision STLs.
+
+**URDF vs robot metadata.** URDF flange FK (`fr3_link8`) equals DROID `cartesian_position` to 3e-8 m / 9e-7° over the
+episode, and equals the Panda DH chain to 7e-16 m.
+
+**Mount, checked against the images.** Gripper surface points (200 per link) are projected into both cameras every 2–4
+frames, and the score is the fraction landing on SAM 3's robot mask (`item5/mount_check/*.json`).
+
+| Mount yaw | Score |
+|---|---|
+| ±90° | 0.80 |
+| 0° | 0.70 |
+| 45° | 0.66–0.72 |
+
+- The assumed yaw of +90° (Franka external_gripper_example) is confirmed; 180°-symmetric alternatives are
+  indistinguishable for the 2F-85.
+- Along the approach axis the score peaks between +1 and +2 cm (0.83 at +2 cm, 0.79 at 0; 76 frames). The data
+  indicate a coupling of about 1.5 cm that the assumed xyz = 0 omits.
+
+**What the asset used means.** The baseline uses the documented assumption, xyz = 0, so the merged-revision comparison
+stays like-for-like. The estimated offset is a DROID finding only.
+- The 84 % median of exported gripper points on the robot mask is consistent with this: the misses lie at mask
+  boundaries, plus a small approach-axis shortfall.
+- None of this establishes the mount of our future Panda–Robotiq rig, which must be measured.
+
+## Status matrix (items 5 and 6, real DROID data)
+
+| Component | Status | Evidence |
+|---|---|---|
+| Raw stereo ingest (SVO decode, frame/step matching) | VERIFIED-REAL | 127/127 frames per stream matched to trajectory steps |
+| Rectification + intrinsics (factory calibration reading) | VERIFIED-REAL | SDK MP4 reproduced to ≤0.06 px dy; OpenCV equality |
+| FoundationStereo left reference, metric depth | VERIFIED-REAL | SIFT, cross-rig and PointWorld agreement above |
+| Right-reference procedure (flip-and-swap) | VERIFIED-REAL | L/R consistency 0.22–0.32 px |
+| AllTracker tracks (identity, visibility, confidence, temporal indexing) | VERIFIED-REAL | tracks.json, overlays |
+| Lifting to 3D with matching depth + poses | VERIFIED-REAL | static drift 4–7 mm; cross-rig 0.5–0.6 % |
+| Calibration from provided poses (DROID-3D) | VERIFIED-REAL | positions within ~2 cm of DROID's own; cross-rig depth |
+| Robot-grounded calibration (landmarks) | NOT-RUN on real data | no landmark annotations or detector for DROID |
+| Export + batch contract | VERIFIED-REAL | 148/148 windows through validate_batch |
+| DROID gripper mount | PARTIAL | yaw confirmed; ~1.5 cm coupling offset estimated, not adopted |
+| DINO (SNeRL contract) worker + `dino_snerl` stage | VERIFIED-REAL | consumer equality, 148 windows |
+| SAM 3 text-prompted temporal masks + `sam3_masks` stage | VERIFIED-REAL (with model misses recorded) | sam3.json |
+| Wrist ZED Mini in the fixed-rig pipeline | NOT SUPPORTED / not run | KB4 model: unexplained 2.2–2.9 px offset; item 8 handles the moving wrist |
+
+DROID ZED validation cannot establish our future RealSense stream configuration: infrared pairs, emitter, modes and
+RealSense intrinsics. It also cannot establish our Panda–Robotiq mounting geometry. One episode shows functional
+integration, not robustness.
