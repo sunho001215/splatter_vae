@@ -6634,3 +6634,74 @@ above the old 4.0. Remote: `remote_runner/gpu_load_limit.txt` = 4.5, re-read eve
 - All four branches were pushed normally. Nothing is merged into `splatter4d` yet.
 - Resume steps: `docs/RESUME_VALIDATION_MERGE_20261031.md`.
 - No local process is running. The remote runner was not touched.
+
+## 2026-11-02 14:40–15:05 — Local restart; scheduling handed back from the remote runner (user-authorized)
+
+**Outage (2026-10-31 23:20 – 2026-11-02 14:45, ~39.5 h).** The remote runner (pid 4034189, same plan and source as
+recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first at 10-31 11:31 UTC, last at 11-01
+23:30 UTC).
+- **Completed (exit 0): 140.**
+  - The self-render v4 pilot finished completely: `srv4-csw4` pretraining for hammer (attempt 3, resumed from 170k) and
+    pick-place (attempt 2), both exports, and all 18 `ds-flashsac-srv4-csw4-*` trainer and evaluator rows.
+  - Also: cv2-s4 DrM families (cnn, cnnnoshift, sincro, reviwo: 95), mvp3d-multiview (10), ppo-cnn (6),
+    dreamer-csw4 (2), pretrainings (mvp3d 2, reviwo, dynamo).
+- **Running at the stop: 21.** sac-cnn (10), sac-snerl, dreamer-cnn/sincro/reviwo, pre-snerl (2), pre-sincro. All are
+  logging within minutes; none is stalled.
+- **Failed: 1, `srv4-csw4-seed0-hammer-200k` attempt 2.** The run-identity refusal was caused by the uploaded local
+  provenance (10-31). It is a synchronisation failure, not a training failure, and was superseded by attempt 3.
+- **Launch refusals: 5** (`launch_failed`, evaluators): "foreign process on selected GPU" (3) and a `/proc` race (2).
+  No container trained, nothing was lost, and the rows stayed pending.
+- **Training failures: 0.**
+
+**Hand-back sequence.** Snapshots are in `runs/setup/handback-20261102/`: plan, heartbeat, journal, limit, containers.
+- **Stop.** STOP created at 14:45:31. The runner (pid 4034189, identity checked via `/proc/<pid>/cmdline` and cwd) exited
+  15 s later. The journal's last line is `runner_stopped (STOP file)`. Only the launcher stopped; every worker
+  continued.
+- **Helper checked before use.**
+  - Its `--stop` uses an ambiguous `pgrep -f`, so I did not use it.
+  - Its preview only downloads the journal and writes idempotent local launch specs (`runs/remote/jobs/*.json`); it
+    makes no remote writes.
+  - The plan sha256 equals the live `plan.json`.
+- **Preview:** 162 launches to record, 0 conflicts.
+- **Identity check:** every container's image digest, run-id, attempt and commit labels equal its spec (162/162).
+- **Apply:** 162 `launched` registry events, under the registry lock. A repeat preview shows all 162 as "already
+  recorded".
+- **Closeout.** The daemon observes exits and verifies results in place. The 140 completed outage jobs are being
+  closed out without relaunch, and verified containers are removed (Docker log and inspect kept).
+
+**Controllers restarted (one each).**
+- `scripts/jobs.py daemon` (pid 9152).
+- Driver loops: remote campaign, Stage 2, baseline.
+- Loops: outage guard, media sync, replay cleanup (2 h), memory monitor, memory alert, partial-cache eviction.
+- Watcher (`--once`, re-armed on completion).
+- The first remote pass admitted only a ready dependent (`ds-dreamer-dynamo-hammer-s2000`); no duplicate launch.
+
+**Remote load budget.** The runner used a temporary 4.5 units per GPU; the local driver's approved limit is 4.0.
+- At hand-back the loads were 4.0 / 4.3 / 4.2 / 3.9, with all four GPUs at 98–100 % utilization and 17–32 / 98 GB
+  memory used.
+- **Decision:** keep 4.0. The excess drains as jobs finish, and no compute is idle. On 10-31 a higher load only
+  time-sliced saturated GPUs (0.57 vs 0.29 s/it).
+
+**Local.**
+- **Paused jobs resumed.** The FlashSAC maintenance pauses were checked against their pause-time sha256 (3/3 match,
+  0 failures). They resume through the normal driver path, e.g. `ds-flashsac-snerl-coffee-push-s2001` attempt 2 from
+  300k.
+- The baseline driver admitted 18 local jobs (6 unreserved slices × 3) within its 140 GB cap.
+- Admission pauses are unchanged (`paper-ablations-csw4-door-open`, `selfrender-v2-stopped-20261031`).
+
+**Temporary validation reservation (user 2026-11-02).**
+- **GPU:** MIG-8da55219 and MIG-c4ec2a95 (GPU-76871c16 devices 0–1) are removed from `experiments/queue.yaml`
+  limits. The backup is `runs/setup/handback-20261102/queue-before-reservation.yaml`.
+- **Evidence for two slices:** every real-world stage runs sequentially and fits one 24 GB slice (FoundationStereo at
+  1280×720, SAM 3 video over 127 frames). The DROID smoke uses 0.76 GB GPU. The suite runs on the second slice.
+- **RAM:** `runs/setup/local-validation-reservation.json` withholds 50 GB from local admission, expiring after 48 h
+  (suite +40 GB measured, plus the DROID checks). Both local drivers subtract it from their cap (backups
+  `*.before-validation-reservation-20261102.py`).
+- **Ordering note:** the drivers had started before the RAM file existed. Their first pass filled the budget (18 jobs),
+  so the integration suite waits for headroom; running jobs are not disturbed.
+- Released stage by stage.
+
+**Observations (no action).**
+- SNeRL pretraining on soccer, window-open and sweep-into: fine PSNR is 21–29 dB, but the coarse network has stayed
+  near 7 dB so far. drawer-open-r2's coarse network left 7 dB only after about 450k steps.
+- `ds-sac-cnn-soccer-s2000`: SAC temperature `alpha` 52 (alpha loss −1966) at hand-back.
