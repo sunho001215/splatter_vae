@@ -461,15 +461,18 @@ def forward_losses(
     rgb_rows, tgt_rows, depth_rows, alpha_rows = _rows(r["rgb"]), _rows(images01), _rows(r["depth"]), _rows(r["alpha"])
     rgb_l = rgb_loss(rgb_rows, tgt_rows, weights, float(loss_cfg.get("ssim_weight", 0.2)),
                      ssim_weights=None if obs_rows is None else weights * ssim_support(obs_rows))
-    cov_l = coverage_loss(alpha_rows, valid, weights)
+    # the terms reduced over valid pixels (coverage, depth) take weights with mean 1 over OBSERVED pixels: ``weights``
+    # (mean 1 over the whole image, right for RGB's full-image mean) would compensate for the padding a second time
+    geo_weights = weights if obs_rows is None else weights * obs_rows.float().mean(dim=(1, 2, 3), keepdim=True)
+    cov_l = coverage_loss(alpha_rows, valid, geo_weights)
     align_mode = loss_cfg.get("depth_align", "none")
     if step < int(loss_cfg.get("depth_align_warmup_steps", 0)):
         align_mode = "none"
-    aligned, align_stats = align_teacher(depth_rows, _rows(depth_t), alpha_rows, align_mode, weights=weights)
-    dl1 = depth_l1(depth_rows, aligned, valid, weights)
+    aligned, align_stats = align_teacher(depth_rows, _rows(depth_t), alpha_rows, align_mode, weights=geo_weights)
+    dl1 = depth_l1(depth_rows, aligned, valid, geo_weights)
     grad_weight = float(loss_cfg.get("depth_grad", 0.5))
     # disabled terms are not computed at all (variant chamfer_lean); the reference weights give the same sums as before
-    dgrad = depth_gradient_loss(depth_rows, aligned, valid, weights=weights) if grad_weight > 0 else None
+    dgrad = depth_gradient_loss(depth_rows, aligned, valid, weights=geo_weights) if grad_weight > 0 else None
     hard_weight = float(loss_cfg.get("depth_hard", 0.5))
     boost = loss_cfg.get("depth_hard_boost")  # review item 4d: {factor, fraction} of train.steps
     if boost and step < float(boost.get("fraction", 0.2)) * int(get(cfg, "train.steps", 200000)):
@@ -484,7 +487,7 @@ def forward_losses(
     dhard = None
     if hard_weight > 0:  # the hard-depth pass is skipped entirely when its weight is 0 (directive item 1d)
         hard = render_hard_depth(gs, xyz_seq, w2c, K, H, W, near, far)
-        dhard = depth_l1(_rows(hard["depth"]), aligned, valid, weights)
+        dhard = depth_l1(_rows(hard["depth"]), aligned, valid, geo_weights)
         render_t = render_t + hard_weight * _per_t(dhard, B, T, V)
     occ_w = float(loss_cfg.get("occlusion", 0.0))
     occ_margin = float(loss_cfg.get("occlusion_margin", 0.02))

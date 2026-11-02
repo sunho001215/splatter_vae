@@ -468,3 +468,32 @@ def test_crop_varies_across_visits_and_resume_replays_it(env):
         assert key(r) == key(b)
         for name in ("crop_box", "images", "track_weight", "token_padded"):
             assert torch.equal(r[name], b[name]), name
+
+
+def test_padding_does_not_change_the_relative_weight_of_depth_and_coverage(monkeypatch):
+    """Uniform errors: RGB, coverage, depth L1 (and the enabled-on-demand gradient / hard-depth terms) give the same loss
+    for the padding-free s = 180 crop and the most padded s = 320 crop."""
+    from s4d.losses import rgb
+    from s4d.losses.depth import depth_gradient_loss, depth_l1
+    from s4d.losses.rgb import coverage_loss, pixel_weights, rgb_loss
+
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    values = {}
+    for box in (CR.CropBox(70, 0, 180), CR.CropBox(0, -70, 320)):
+        obs = torch.from_numpy(CR.observed_mask(box, H, W, S))[None, None]
+        weights = pixel_weights(torch.zeros(1, 1, S, S), 1.0, obs)
+        geo = weights * obs.float().mean(dim=(1, 2, 3), keepdim=True)  # as loop.forward_losses
+        yy, xx = torch.meshgrid(torch.arange(S), torch.arange(S), indexing="ij")
+        target = 1.0 + 0.002 * (xx + yy).float()[None, None]
+        values[box.side] = [
+            float(rgb_loss(torch.full((1, 3, S, S), 0.7), torch.full((1, 3, S, S), 0.2), weights, 0.0)),
+            float(coverage_loss(torch.full((1, 1, S, S), 0.5), obs, geo)),
+            float(depth_l1(target + 0.5, target, obs, geo)),
+            float(depth_gradient_loss(target * torch.exp(0.01 * xx.float()), target, obs, levels=1, weights=geo)),
+        ]
+        # the gradient term's value depends on the region's shape, so check its weights: 1 on every observed pixel
+        torch.testing.assert_close(geo[obs], torch.ones(int(obs.sum())))
+        assert values[box.side][3] == pytest.approx(
+            float(depth_gradient_loss(target * torch.exp(0.01 * xx.float()), target, obs, levels=1)), rel=1e-5)
+    np.testing.assert_allclose(values[180][:3], values[320][:3], rtol=1e-4, atol=1e-7)
+    assert values[180][2] == pytest.approx(0.5) and values[180][1] == pytest.approx(np.log(2), rel=1e-5)
