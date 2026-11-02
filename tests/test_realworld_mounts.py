@@ -30,9 +30,10 @@ def _robotiq_like_urdf(root_to_base_z: float = 0.0) -> str:
     )
 
 
-def test_droid_mount_is_the_documented_robotiq_iso50_stack():
+def test_droid_mount_is_the_provisional_robotiq_iso50_stack():
     m = get_mount("droid_robotiq_2f85_iso50_coupling")
-    assert m.status == "documented" and m.gripper_frame == "robotiq_85_base_link"
+    assert m.status == "provisional" and m.gripper_frame == "robotiq_85_base_link"
+    assert all(w in m.missing_measurement for w in ("flange face", "Ø71 boss face", "revision", "dowel"))
     # 16.9 mm coupling - 3.0 mm robot-side recess - 2.9 mm gripper-side recess (Robotiq drawings)
     assert sum(e.dz_m for e in m.stack) == pytest.approx(0.011, abs=1e-12)
     T = m.T()
@@ -48,7 +49,8 @@ def test_every_mount_stack_matches_its_translation_and_is_rigid():
         T = m.T()
         assert sum(e.dz_m for e in m.stack) == pytest.approx(m.xyz[2], abs=1e-12)
         np.testing.assert_allclose(T[:3, :3] @ T[:3, :3].T, np.eye(3), atol=1e-12)
-        assert m.status in ("documented", "assumption")
+        assert m.status in ("measured", "provisional", "assumption")
+        assert m.status != "measured" or not m.missing_measurement
     assert MOUNTS["franka_external_gripper_example"].status == "assumption"
     with pytest.raises(KeyError):
         get_mount("droid_unknown")
@@ -72,7 +74,8 @@ def test_compose_script_mount_config_records_provenance(tmp_path, root_z):
     args = ["--arm", str(arm), "--gripper", str(grip), "--parent-link", "panda_link8", "--gripper-root", "world"]
     assert C.main(args + ["--mount-config", "droid_robotiq_2f85_iso50_coupling", "--out", str(out)]) == 0
     man = json.loads(out.with_suffix(".manifest.json").read_text())["mount"]
-    assert man["config"] == "droid_robotiq_2f85_iso50_coupling" and man["status"] == "documented"
+    assert man["config"] == "droid_robotiq_2f85_iso50_coupling" and man["status"] == "provisional"
+    assert man["missing_measurement"] and any("inferred" in c for c in man["caveats"])
     assert man["stack_dz_m"] == pytest.approx(0.011) and len(man["stack"]) == 3
     np.testing.assert_allclose(np.asarray(man["T_parent_gripper"])[:3, 3], [0, 0, 0.011 - root_z], atol=1e-12)
     model = URDFModel.from_file(out)

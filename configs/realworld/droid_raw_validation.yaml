@@ -16,7 +16,8 @@ adapter:
     droid3d_intrinsics: /home/ws/ws/validation-20261031/downloads/droid_3d_extrinsics/camera_intrinsics.jsonl
     robot:   # official FR3 (franka_description 7aeeddc) + Robotiq 2F-85 (ros2_robotiq_gripper a74d007), composed by
              # scripts/realworld_compose_robot_urdf.py --mount-config droid_robotiq_2f85_iso50_coupling: Robotiq ISO-50
-             # coupling stack 0.011 m, yaw +pi/2 (documented, not measured; s4d/realworld/mounts.py, see its manifest).
+             # coupling stack 0.011 m, yaw +pi/2: PROVISIONAL (Robotiq drawings, coupling identity inferred from the
+             # DROID guide photos; not measured; s4d/realworld/mounts.py and the manifest name the missing measurement).
              # Runs before 2026-11-02 used robot_assets/fr3_robotiq_2f85_droid.urdf (xyz 0, coupling omitted).
       urdf_path: /home/ws/ws/validation-20261031/droid_mount/robot_assets/fr3_robotiq_2f85_droid_iso50.urdf
       gripper_model: robotiq_2f_85

@@ -1,4 +1,4 @@
-"""Documented flange -> gripper mounting transforms (``T_flange_gripper``), one entry per hardware configuration.
+"""Flange -> gripper mounting transforms (``T_flange_gripper``), one entry per hardware configuration, with provenance.
 
 A mount is the rigid transform from the arm flange frame (Franka ``panda_link8`` / ``fr3_link8``: the flange mounting
 face, DH ``d = 0.107`` m beyond joint 7) to a named frame of the gripper URDF. It is used only to compose the arm and
@@ -12,7 +12,14 @@ real-world pipeline. It is NOT:
   link-7 ring beside the flange, so the gripper coupling is not part of that chain.
 
 Each entry records the stack of parts along the flange z axis with the source of every dimension and the robots it
-applies to. Values derived from drawings are ``documented``; anything else must say ``assumption``.
+applies to. ``status``:
+
+* ``measured``: measured on the actual hardware (none yet);
+* ``provisional``: derived from vendor drawings whose part identity / interfaces are inferred (e.g. from photos), and
+  corroborated but not measured; applied as a default until a measurement or the actual part's drawing exists;
+* ``assumption``: a convention without a hardware basis.
+
+``missing_measurement`` names what would turn a provisional entry into a measured one.
 """
 
 from __future__ import annotations
@@ -45,12 +52,13 @@ class MountConfig:
     gripper_frame: str  # gripper-URDF link whose pose in the flange frame is given by (xyz, rpy)
     xyz: tuple
     rpy: tuple  # URDF fixed-axis roll-pitch-yaw, radians
-    status: str  # "documented" | "assumption"
+    status: str  # "measured" | "provisional" | "assumption"
     stack: tuple  # StackElement, flange face -> gripper frame
     yaw_source: str
     applies_to: str
     cross_checks: tuple = ()
     caveats: tuple = ()
+    missing_measurement: str = ""
 
     def T(self) -> np.ndarray:
         return make_T(Rotation.from_euler("xyz", self.rpy).as_matrix(), np.asarray(self.xyz, float))
@@ -64,15 +72,18 @@ class MountConfig:
             "stack": [{"part": e.part, "dz_m": e.dz_m, "source": e.source} for e in self.stack],
             "stack_dz_m": float(sum(e.dz_m for e in self.stack)), "yaw_source": self.yaw_source,
             "applies_to": self.applies_to, "cross_checks": list(self.cross_checks), "caveats": list(self.caveats),
+            "missing_measurement": self.missing_measurement,
         }
 
 
-# Robotiq ISO 9409-1-50-4-M6 coupling (GRP-CPL-062 drawing; the pigtail variant AGC-CPL-062-002 shown in the DROID
-# guide uses the same bolt pattern). Section A-A: 16.9 mm overall, robot side has a 3 mm deep Ø63 F8 recess that takes
-# the Ø63 ISO 9409-1-A50 flange; the gripper side has the Ø71 recess (2.9 mm deep on the dimensioned blank coupling
-# AGC-CPL-BLANK-002, 13.9 mm overall) that takes the gripper's Ø71 h8 boss. The PickNik/ROS-Industrial 2F-85 base
-# frame (robotiq_85_base_link == robotiq_arg2f_base_link) is the face of that boss: the URDF fingertip tops sit at
-# 149.3 mm (open) and 162.8 mm (closed) above it, Robotiq's documented gripper heights.
+# PROVISIONAL. Robotiq ISO 9409-1-50-4-M6 coupling (GRP-CPL-062 drawing). The DROID guide names only a "gripper mount"
+# from the gripper box; its photos show a Robotiq pigtail coupling (AGC-CPL-062-002 family) directly on the flange,
+# but the exact part/revision and its gripper-side recess are not established. Section A-A: 16.9 mm overall, robot
+# side has a 3 mm deep Ø63 F8 recess that takes the Ø63 ISO 9409-1-A50 flange; the gripper side has the Ø71 recess
+# (2.9 mm deep on the dimensioned blank coupling AGC-CPL-BLANK-002, 13.9 mm overall) that takes the gripper's Ø71 h8
+# boss. The PickNik/ROS-Industrial 2F-85 base frame (robotiq_85_base_link == robotiq_arg2f_base_link) is the face of
+# that boss: the URDF fingertip tops sit at 149.3 mm (open) and 162.8 mm (closed) above it, Robotiq's documented
+# gripper heights.
 _ISO50_STACK = (
     StackElement("Robotiq ISO 9409-1-50-4-M6 coupling, overall thickness (GRP-CPL-062 section A-A)", 0.0169,
                  ROBOTIQ_GEN_MANUAL + " (6.1.1, Coupling_C-062 drawing: 16.9)"),
@@ -88,14 +99,15 @@ MOUNTS = {
         MountConfig(
             name="droid_robotiq_2f85_iso50_coupling",
             gripper_frame="robotiq_85_base_link",
-            xyz=(0.0, 0.0, 0.011), rpy=(0.0, 0.0, np.pi / 2), status="documented", stack=_ISO50_STACK,
+            xyz=(0.0, 0.0, 0.011), rpy=(0.0, 0.0, np.pi / 2), status="provisional", stack=_ISO50_STACK,
             yaw_source="Franka external_gripper_example fe4f871 robotiq_mounted_on_panda.urdf.xacro (rpy 0 0 +pi/2); "
                        "+/-90 deg confirmed on DROID images (item5 mount_check); 180 deg is not identifiable for the 2F-85",
-            applies_to="DROID robots built per the DROID assembly guide (droid-dataset/droid docs/hardware-setup/"
-                       "assembly.md 'Mounting Robotiq Gripper on Robot'): Robotiq 2F-85 on the Robotiq ISO 50 coupling "
-                       "screwed directly to the Franka flange; Franka Emika Panda and Franka Research 3 alike (same "
-                       "ISO 9409-1-A50 flange, same flange frame: DROID's polymetis ee_link is panda_link8 for both); "
-                       "the ZED Mini bracket screws to the link-7 ring and is not in this stack",
+            applies_to=('PROVISIONAL default for DROID robots built per the DROID assembly guide '
+                "(droid-dataset/droid docs/hardware-setup/assembly.md 'Mounting Robotiq Gripper on Robot'):"
+                ' Robotiq 2F-85 on the Robotiq ISO 50 coupling screwed directly to the Franka flange; '
+                'Franka Emika Panda and Franka Research 3 alike (same ISO 9409-1-A50 flange, same flange '
+                "frame: DROID's polymetis ee_link is panda_link8 for both); the ZED Mini bracket screws to "
+                'the link-7 ring and is not in this stack'),
             cross_checks=(
                 "Robotiq TCP table (6.2.3, coupling included): 2F-85 TCP z 174.0 mm from the robot flange; closed "
                 "height 162.8 mm above the gripper frame -> 11.2 mm",
@@ -103,10 +115,19 @@ MOUNTS = {
                 "gripper_side_joint z 0.011; adapter mesh z -3.0 .. +13.9 mm",
             ),
             caveats=(
-                "dimensions are Robotiq's drawings, not a measurement on a DROID robot",
+                "derived from Robotiq drawings, not measured on a DROID robot",
+                "16.9 mm and 3.0 mm come from the GRP-CPL-062 drawing; the 2.9 mm gripper-side recess comes from the "
+                "blank coupling AGC-CPL-BLANK-002 and is inferred to be the same on the DROID coupling",
+                "coupling identity (Robotiq ISO-50 coupling with pigtail, no spacer) is inferred from DROID guide photos; "
+                "part number/revision unknown",
                 "assumes the Franka flange spigot fully seats in the coupling's 3 mm Ø63 recess",
-                "part identity (Robotiq ISO 50 coupling with pigtail, no spacer) is read from the DROID guide photos",
+                "the TCP table and the PickNik UR adapter corroborate the magnitude but do not identify DROID's part",
+                "single-episode image fits (11 mm mask vs 17 mm depth optima) do not discriminate; see docs",
             ),
+            missing_measurement="on a guide-built DROID robot: distance along flange z from the Franka flange face "
+                                "(link8) to the Robotiq 2F-85 Ø71 boss face (robotiq_85_base_link); the coupling's "
+                                "part number/revision (or its dimensioned drawing/CAD); the gripper yaw relative to "
+                                "the flange dowel-pin hole",
         ),
         MountConfig(
             name="franka_external_gripper_example",

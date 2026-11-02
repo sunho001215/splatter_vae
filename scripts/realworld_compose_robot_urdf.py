@@ -1,12 +1,13 @@
 """Compose the arm + gripper URDF used by the real-world pipeline's robot-grounded stages (calibration, export).
 
 Inputs are xacro-EXPANDED URDFs of the official descriptions (expand in an asset environment: the pipeline never runs
-xacro). The gripper is attached with a mounting transform, recorded with its source: either a documented hardware
-configuration from ``s4d.realworld.mounts`` (``--mount-config NAME``; its part stack, sources and scope go into the
-manifest) or explicit ``--mount-xyz/--mount-rpy/--mount-source``. ``package://NAME/``
-mesh URIs are resolved to directories; ``--visual-from-collision`` replaces visual geometry by the collision geometry
-(the pipeline loads STL/OBJ only, and many visual meshes are Collada). Writes the composed URDF and a manifest with
-the sha256 of every input, then loads the result with ``s4d.realworld.robot.URDFModel`` and checks every mesh.
+xacro). The gripper is attached with a mounting transform, recorded with its source: either a hardware configuration
+from ``s4d.realworld.mounts`` (``--mount-config NAME``; its status - measured / provisional / assumption - part stack,
+sources, scope and missing measurement go into the manifest) or explicit ``--mount-xyz/--mount-rpy/--mount-source``.
+``package://NAME/`` mesh URIs are resolved to directories; ``--visual-from-collision`` replaces visual geometry by the
+collision geometry (the pipeline loads STL/OBJ only, and many visual meshes are Collada). Writes the composed URDF and
+a manifest with the sha256 of every input, then loads the result with ``s4d.realworld.robot.URDFModel`` and checks
+every mesh.
 
     python scripts/realworld_compose_robot_urdf.py --arm fr3_arm.urdf --gripper robotiq_2f_85.urdf \
         --parent-link fr3_link8 --gripper-root world --mount-config droid_robotiq_2f85_iso50_coupling \
@@ -64,7 +65,7 @@ def main(argv=None) -> int:
     ap.add_argument("--gripper", type=Path, required=True)
     ap.add_argument("--parent-link", required=True)
     ap.add_argument("--gripper-root", required=True)
-    ap.add_argument("--mount-config", choices=sorted(MOUNTS), help="documented mount (s4d/realworld/mounts.py)")
+    ap.add_argument("--mount-config", choices=sorted(MOUNTS), help="mount configuration (s4d/realworld/mounts.py)")
     ap.add_argument("--mount-xyz", type=float, nargs=3)
     ap.add_argument("--mount-rpy", type=float, nargs=3, help="fixed-axis xyz (URDF rpy), radians")
     ap.add_argument("--mount-source", help="where an explicit mounting transform comes from")
