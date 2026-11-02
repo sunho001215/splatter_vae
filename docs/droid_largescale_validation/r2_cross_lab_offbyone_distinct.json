@@ -1,0 +1,87 @@
+{
+ "ILIAD+sbd7d2c6+2023-12-24-18h-24m-28s": {
+  "distinct_frames": [
+   39,
+   138
+  ],
+  "canonical": 233,
+  "limit": 11,
+  "within_limit": true
+ },
+ "RAIL+t3d58310+2023-05-28-17h-08m-23s": {
+  "distinct_frames": [
+   6,
+   12,
+   62
+  ],
+  "canonical": 67,
+  "limit": 3,
+  "within_limit": true
+ },
+ "RPL+cb4f6842+2023-05-29-17h-17m-13s": {
+  "distinct_frames": [
+   11,
+   48
+  ],
+  "canonical": 108,
+  "limit": 5,
+  "within_limit": true
+ },
+ "RPL+32cba90c+2023-12-08-16h-26m-15s": {
+  "distinct_frames": [
+   138
+  ],
+  "canonical": 382,
+  "limit": 19,
+  "within_limit": true
+ },
+ "TRI+52ca9b6a+2023-10-24-13h-53m-59s": {
+  "distinct_frames": [
+   240
+  ],
+  "canonical": 248,
+  "limit": 12,
+  "within_limit": true
+ },
+ "TRI+52ca9b6a+2023-10-24-14h-12m-50s": {
+  "distinct_frames": [
+   22,
+   78
+  ],
+  "canonical": 228,
+  "limit": 11,
+  "within_limit": true
+ },
+ "TRI+52ca9b6a+2023-10-24-17h-00m-58s": {
+  "distinct_frames": [
+   15
+  ],
+  "canonical": 273,
+  "limit": 13,
+  "within_limit": true
+ },
+ "TRI+52ca9b6a+2023-10-18-16h-50m-23s": {
+  "distinct_frames": [
+   7
+  ],
+  "canonical": 168,
+  "limit": 8,
+  "within_limit": true
+ },
+ "TRI+52ca9b6a+2023-10-18-18h-24m-10s": {
+  "distinct_frames": [
+   12
+  ],
+  "canonical": 86,
+  "limit": 4,
+  "within_limit": true
+ },
+ "TRI+52ca9b6a+2023-10-19-10h-12m-14s": {
+  "distinct_frames": [
+   221
+  ],
+  "canonical": 378,
+  "limit": 18,
+  "within_limit": true
+ }
+}

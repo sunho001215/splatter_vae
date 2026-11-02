@@ -1,0 +1,28 @@
+{
+ "18026681": {
+  "estimated_capture_minus_robot_ts_ms_median": -40.8892822265625,
+  "p10_p90": [
+   -50.9446044921875,
+   -30.58193359375
+  ],
+  "frame_received_minus_robot_ts_ms_median": 0.1107177734375
+ },
+ "22008760": {
+  "estimated_capture_minus_robot_ts_ms_median": -41.8931884765625,
+  "p10_p90": [
+   -51.8911865234375,
+   -31.9236328125
+  ],
+  "frame_received_minus_robot_ts_ms_median": -0.8931884765625
+ },
+ "24400334": {
+  "estimated_capture_minus_robot_ts_ms_median": -42.3929443359375,
+  "p10_p90": [
+   -50.890087890625,
+   -30.9166748046875
+  ],
+  "frame_received_minus_robot_ts_ms_median": -1.3929443359375
+ },
+ "robot_ts_minus_read_start_ms_median": -13.10498046875,
+ "step_period_ms_median": 70.9658203125
+}

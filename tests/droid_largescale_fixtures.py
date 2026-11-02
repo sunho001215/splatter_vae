@@ -181,6 +181,7 @@ def write_pointworld(
     episode: str = EPISODE,
     wrist_attr: str | None = None,
     wrist_depth_rotated: bool = False,
+    wrist_fingers: float = 0.0,
 ) -> None:
     flows = root / "flows-fs-optimized"
     depth_dir = root / "depth_320x180"
@@ -246,6 +247,8 @@ def write_pointworld(
             for s in range(RAW_STEPS - 1):
                 if role == "wrist":
                     d = plane_depth(gt["K_wrist"], gt["c2w_wrist"][s])
+                    if wrist_fingers:  # real DROID: Robotiq fingers fill the lower wrist view 7-15 cm from the lens
+                        d[int(round(H * (1 - wrist_fingers))) :] = 0.08
                     d = d[::-1, ::-1] if wrist_depth_rotated else d
                 else:
                     d = plane_depth(gt["K_ext"], gt["c2w_true"][role])
@@ -336,7 +339,7 @@ def build_all(tmp: Path, *, calibration: str = "droid3d", **kw) -> dict:
     gt = truth()
     shards = write_rlds_shards(tmp / "rlds", gt, decoy_duplicate=kw.pop("decoy_duplicate", False))
     build_index(shards, tmp / "rlds_index")
-    pw_keys = ("n_tracks", "wrist_attr", "wrist_depth_rotated")
+    pw_keys = ("n_tracks", "wrist_attr", "wrist_depth_rotated", "wrist_fingers")
     write_pointworld(tmp / "pw", gt, **{k: v for k, v in kw.items() if k in pw_keys})
     ext_path, intr_path, he_path = write_droid3d(
         tmp / "d3", gt, wrist_serial=kw.get("d3_wrist_serial"), hand_eye_error_m=kw.get("hand_eye_error_m", 0.0)

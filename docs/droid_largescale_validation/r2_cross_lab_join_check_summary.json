@@ -1,0 +1,34 @@
+{
+ "episodes": 73,
+ "labs": [
+  "CLVR",
+  "GuptaLab",
+  "ILIAD",
+  "IPRL",
+  "IRIS",
+  "PennPAL",
+  "RAD",
+  "RAIL",
+  "REAL",
+  "RPL",
+  "TRI"
+ ],
+ "robots": 21,
+ "uuid_matches_folder": 73,
+ "rlds_found": 73,
+ "ext_serials_match_droid3d": 73,
+ "wrist_serial_match_droid3d": 73,
+ "camera_json_has_ext": 73,
+ "optimization_success": 73,
+ "state_exact_episodes": 63,
+ "state_offbyone_only_episodes": 10,
+ "state_unexplained_episodes": [],
+ "flange_eq_cartesian_max_m": 4.071484322757878e-08,
+ "wrist_native_wh": {
+  "1280x720": 68,
+  "672x376": 5
+ },
+ "ext_native_wh": {
+  "1280x720": 73
+ }
+}

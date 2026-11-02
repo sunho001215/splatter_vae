@@ -107,6 +107,101 @@ def jitter_cameras(
     }
 
 
+# Synthetic-camera rig (aug.synth_camera_rig). "metaworld" (default, the reference): ``jitter_cameras`` around the fixed
+# Meta-World rig (LOOKAT, RADIUS, TRAIN_CAMERAS). "training_cameras": ``jitter_training_cameras`` around the sample's own
+# training cameras, for datasets whose cameras are not the Meta-World rig (DROID: robot-base frame, per-episode
+# extrinsics). Both use the same offsets (HELDOUT_RANGES x aug.synth_range_scale); only the geometry they act on differs.
+SYNTH_CAMERA_RIGS = ("metaworld", "training_cameras")
+
+
+def synth_camera_rig(cfg: dict) -> str:
+    """Validated ``aug.synth_camera_rig``. Outside Meta-World (``data.regime``) every synthetic camera (aug.synth_views,
+    loss.self_render) must come from the batch's own cameras: the Meta-World rig and viewpoint domain are poses in the
+    Meta-World world frame and would be applied to another dataset's scene silently."""
+    from s4d.config import get  # noqa: PLC0415
+
+    aug = get(cfg, "aug", None) or {}
+    rig = str(aug.get("synth_camera_rig", "metaworld"))
+    if rig not in SYNTH_CAMERA_RIGS:
+        raise ValueError(f"aug.synth_camera_rig must be one of {SYNTH_CAMERA_RIGS}, not {rig!r}")
+    regime = get(cfg, "data.regime", "metaworld")
+    uses = int(aug.get("synth_views", 0) or 0) > 0 or float(get(cfg, "loss.self_render", 0.0) or 0.0) > 0
+    if regime != "metaworld" and uses:
+        if rig == "metaworld":
+            raise ValueError(f"data.regime {regime!r} with synthetic views needs aug.synth_camera_rig training_cameras "
+                             "(the default rig is the Meta-World camera rig)")
+        if aug.get("synth_camera_domain") is not None:
+            raise ValueError("aug.synth_camera_domain is a Meta-World viewpoint domain; not defined for "
+                             f"data.regime {regime!r}")
+    return rig
+
+
+def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Smallest rotation taking unit vector ``a`` to unit vector ``b`` (Rodrigues)."""
+    v, c = np.cross(a, b), float(np.dot(a, b))
+    s = float(np.linalg.norm(v))
+    if s < 1e-12:
+        if c > 0:
+            return np.eye(3)
+        axis = np.cross(a, [1.0, 0.0, 0.0] if abs(a[0]) < 0.9 else [0.0, 1.0, 0.0])
+        axis /= np.linalg.norm(axis)
+        return 2.0 * np.outer(axis, axis) - np.eye(3)
+    vx = np.array([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
+    return np.eye(3) + vx + vx @ vx * ((1.0 - c) / s**2)
+
+
+def jitter_training_cameras(
+    K: torch.Tensor, c2w: torch.Tensor, depth: torch.Tensor, views: int, scale: float = 1.0, seed: int | None = None,
+    near: float = 0.05, far: float = 3.0, default_distance: float = 1.0,
+) -> dict[str, torch.Tensor]:
+    """Cameras perturbed around random training cameras of each sample (aug.synth_camera_rig "training_cameras").
+
+    K (B,V,3,3), c2w (B,V,4,4) OpenCV, depth (B,T,V,1,H,W) metres; world +z is up (robot base / Meta-World). Per
+    synthetic camera: a random training camera v of the sample; its look-at point L on its optical axis at the median
+    valid depth (near < d < far) of its first frame (``default_distance`` without valid depth); then the Meta-World
+    jitter of ``jitter_cameras`` (``sample_offsets``: azimuth about world z through L, elevation, radius fraction, a
+    lateral shift along the horizontal right vector) and a re-aim at L by the smallest rotation of v's own orientation
+    (roll kept as far as the re-aim allows). K is v's own K. Returns K, w2c, c2w (B,views,...) and ``base`` (B,views)."""
+    if seed is None:
+        seed = int(torch.randint(0, 2**31 - 1, (1,)).item())
+    rng = np.random.default_rng(seed)
+    B, V = c2w.shape[:2]
+    c2w_np = c2w.detach().double().cpu().numpy()
+    first = depth[:, 0, :, 0].detach().float().cpu().numpy()  # (B,V,H,W)
+    out_c2w = np.zeros((B, views, 4, 4))
+    base = np.zeros((B, views), dtype=np.int64)
+    for b in range(B):
+        for j in range(views):
+            v = int(rng.integers(V))
+            offsets = sample_offsets(rng, scale)
+            d = first[b, v]
+            d = d[(d > near) & (d < far)]
+            dist = float(np.median(d)) if d.size else default_distance
+            R, C = c2w_np[b, v, :3, :3], c2w_np[b, v, :3, 3]
+            L = C + dist * R[:, 2]
+            rel = C - L
+            az = math.atan2(rel[1], rel[0]) + math.radians(offsets["azimuth_deg"])
+            el = math.asin(float(np.clip(rel[2] / dist, -1.0, 1.0))) + math.radians(offsets["elevation_deg"])
+            u = np.array([math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)])
+            P = L + dist * (1.0 + offsets["radius_frac"]) * u
+            right = np.cross(-u, [0.0, 0.0, 1.0])
+            if np.linalg.norm(right) > 1e-9:
+                P = P + offsets["lateral_m"] * right / np.linalg.norm(right)
+            forward = (L - P) / np.linalg.norm(L - P)
+            out = np.eye(4)
+            out[:3, :3] = _rotation_between(R[:, 2], forward) @ R
+            out[:3, 3] = P
+            out_c2w[b, j], base[b, j] = out, v
+    like = {"device": K.device, "dtype": torch.float32}
+    idx = torch.as_tensor(base, device=K.device)
+    return {
+        "K": K[torch.arange(B, device=K.device)[:, None], idx].contiguous(),
+        "w2c": torch.as_tensor(np.linalg.inv(out_c2w), **like),
+        "c2w": torch.as_tensor(out_c2w, **like),
+        "base": idx,
+    }
+
+
 def load_viewpoint_domain(path: str | Path) -> dict:
     """The frozen training-supported viewpoint domain (a YAML written by scripts/selfrender_domain.py; a relative path
     is resolved against the repository root). Returns the cell centres (n,2) (azimuth, MuJoCo elevation) in degrees,

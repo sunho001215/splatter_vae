@@ -134,7 +134,6 @@ def build_episode_entry(
     max_dt_ms: float = 34.0,
     max_xyz_m: float = 2e-3,
     max_rot_rad: float = 5e-3,
-    wrist_max_residual_m: float = 0.03,
 ) -> dict:
     """One manifest row, or ``JoinError`` with the reason. ``calibration`` selects the extrinsics used for training
     geometry: ``"pointworld"`` (released optimized w2c) or ``"droid3d"`` (DROID-3D w2c; PointWorld tracks rebased).
@@ -299,7 +298,7 @@ def build_episode_entry(
         root, layout, episode, summary, entry, rlds_reader, max_dt_ms=max_dt_ms, max_xyz_m=max_xyz_m, max_rot_rad=max_rot_rad
     )
     if entry["cameras"]["wrist"] is not None:
-        qa = wrist_qa(root, layout, episode, summary, entry, rlds_reader, max_residual_m=wrist_max_residual_m)
+        qa = wrist_qa(root, layout, episode, summary, entry, rlds_reader)
         entry["wrist_qa"] = qa
         if qa["decision"] != "ok":
             entry["wrist_unavailable"].append(f"wrist QA: {qa['decision']}")
@@ -360,9 +359,13 @@ def rotation_angle(Ra: np.ndarray, Rb: np.ndarray) -> np.ndarray:
     return np.arccos(np.clip(cos, -1, 1))
 
 
-def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_dt_ms, max_xyz_m, max_rot_rad) -> dict:
+def validate_frames(
+    root, layout, episode, summary, entry, rlds_reader, *, max_dt_ms, max_xyz_m, max_rot_rad, max_offbyone_fraction=0.05
+) -> dict:
     """Validated frame mapping: canonical i -> RLDS step 2i (state agreement on every clip frame) and, per camera,
-    the depth frame nearest to the canonical timestamp must *be* raw step 2i within ``max_dt_ms``."""
+    the depth frame nearest to the canonical timestamp must *be* raw step 2i within ``max_dt_ms``. A canonical frame
+    whose PointWorld state is exactly raw step 2i +- 1 (``state_offbyone_frames``, at most ``max_offbyone_fraction``
+    of the timeline, at least one) is invalid for every camera; any other state disagreement rejects the episode."""
     import h5py
 
     from s4d.data.droid.largescale.geometry import pose6_to_matrix, pose7_to_matrix
@@ -377,8 +380,9 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
     # convention diagnostic: controller EE frame relative to the Franka flange (FK of the same joint reading)
     flange_ee = invert(C.franka_fk(state["joint_position"])) @ pose6_to_matrix(state["cartesian_position"])
     flange_offset = np.linalg.norm(flange_ee[:, :3, 3], axis=-1)
-    xyz_err, rot_err = [], []
+    xyz_err, rot_err, frame_of = [], [], []
     with h5py.File(Path(root) / layout["flows"].format(episode=episode), "r") as flow:
+        pw_by_frame = {}
         for key in summary.clips:
             start, end = map(int, key.split(":"))
             if end > usable.sum():
@@ -387,15 +391,41 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
             rlds = pose6_to_matrix(state["cartesian_position"][start:end])
             xyz_err.append(np.linalg.norm(pw[:, :3, 3] - rlds[:, :3, 3], axis=-1))
             rot_err.append(rotation_angle(pw[:, :3, :3], rlds[:, :3, :3]))
-    xyz_err, rot_err = np.concatenate(xyz_err), np.concatenate(rot_err)
-    if xyz_err.max() > max_xyz_m or rot_err.max() > max_rot_rad:
-        raise JoinError(
-            f"{episode}: PointWorld gripper_pose != RLDS cartesian_position[2i] "
-            f"(max {xyz_err.max():.4g} m, {rot_err.max():.4g} rad); frame mapping rejected"
-        )
+            frame_of.append(np.arange(start, end))
+            for j, i in enumerate(range(start, end)):
+                pw_by_frame.setdefault(i, []).append(pw[j])
+    xyz_err, rot_err, frame_of = np.concatenate(xyz_err), np.concatenate(rot_err), np.concatenate(frame_of)
+    bad = (xyz_err > max_xyz_m) | (rot_err > max_rot_rad)
+    # Real data (13 of 294 AUTOLab episodes): PointWorld assigned the robot state of raw step 2i-1 to exactly one
+    # canonical frame (error 0 against 2i-1), while that frame's images, depth and tracks are raw step 2i (timestamps).
+    # Such a frame is invalidated for every camera instead of rejecting the episode; anything else still rejects it.
+    offbyone = sorted({int(i) for i in frame_of[bad]})
+    if offbyone:
+        steps = set(range(entry["rlds"]["num_steps"]))
+        neighbours = sorted({CANONICAL_STRIDE * i + d for i in offbyone for d in (-1, 1)} & steps)
+        cart = rlds_reader.read(rl["shard"], rl["row"], np.asarray(neighbours), cameras=(), numeric=("cartesian_position",))
+        near = dict(zip(neighbours, pose6_to_matrix(cart["cartesian_position"])))
+
+        def explained(i: int) -> bool:
+            for d in (-1, 1):
+                T = near.get(CANONICAL_STRIDE * i + d)
+                if T is not None and all(
+                    np.linalg.norm(P[:3, 3] - T[:3, 3]) <= max_xyz_m and rotation_angle(P[:3, :3], T[:3, :3]) <= max_rot_rad
+                    for P in pw_by_frame[i]
+                ):
+                    return True
+            return False
+
+        if len(offbyone) > max(1, int(max_offbyone_fraction * len(stamps))) or not all(map(explained, offbyone)):
+            raise JoinError(
+                f"{episode}: PointWorld gripper_pose != RLDS cartesian_position[2i] "
+                f"(max {xyz_err.max():.4g} m, {rot_err.max():.4g} rad); frame mapping rejected"
+            )
+    good = ~bad
     out = {
-        "state_max_xyz_m": float(xyz_err.max()),
-        "state_max_rot_rad": float(rot_err.max()),
+        "state_max_xyz_m": float(xyz_err[good].max()),
+        "state_max_rot_rad": float(rot_err[good].max()),
+        "state_offbyone_frames": offbyone,
         "flange_to_cartesian_m": float(np.median(flange_offset)),
         "flange_to_cartesian_spread_m": float(flange_offset.max() - flange_offset.min()),
         "depth_index": {},
@@ -410,6 +440,7 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
             idx = nearest_index(ts, stamps)
             dt = np.abs(ts[idx] - stamps)
             ok = (idx == raw_steps) & (dt <= max_dt_ms) & usable
+            ok[offbyone] = False
             out["depth_index"][role] = idx.tolist()
             out["valid"][role] = ok.tolist()
             out["max_dt_ms"][role] = float(dt[ok].max()) if ok.any() else None
@@ -428,67 +459,204 @@ def wrist_pose_w2c(wrist: dict, state: dict) -> np.ndarray:
     return invert(wrist_camera_c2w(state["cartesian_position"], invert(T_gw)))  # mean_mat = camera <- controller EE
 
 
-def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, max_residual_m: float, max_frames: int = 6) -> dict:
+# Wrist QA settings (docs/droid_largescale.md §4.4). The statistic is occlusion-aware: on 62 real episodes the earlier
+# all-points median |z - d| exceeded 3 cm for every episode even for the pose that best fits the data (median 7 cm),
+# because (a) the Robotiq fingers fill ~25 % of the wrist view 7-15 cm from the lens, (b) sparse external tracks leak
+# through nearer wrist-visible surfaces in a per-pixel z-buffer, and (c) stereo flying points at external depth edges.
+# Thresholds sit in the gap between the published chain (inlier >= 0.32, free-space <= 0.27 on all 62) and gross-error
+# controls (unrotated frustum, controller-EE recipe: inlier <= 0.22, free-space >= 0.33); one robot, see the note.
+WRIST_QA = {
+    "max_frames": 8,  # valid wrist frames spread over the whole episode
+    "mask_frames": 30,  # wrist depth frames sampled for the gripper mask
+    "mask_near_m": 0.20,  # gripper mask: depth below this ...
+    "mask_fraction": 0.5,  # ... in at least this fraction of the sampled frames (the fingers move with the camera)
+    "mask_dilate_px": 2,
+    "soft_window_px": 7,  # soft visibility: keep a projected point only if no point within this window is nearer ...
+    "soft_margin_m": 0.03,  # ... by more than this margin
+    "inlier_m": 0.02,
+    "freespace_m": 0.03,  # wrist depth this much BEHIND an externally observed point: not explainable by occlusion
+    "min_count": 200,
+    "min_inlier": 0.30,
+    "max_freespace": 0.30,
+    "orientation_ratio": 1.5,  # when both orientations pass, the chosen one needs this many times the other's inliers
+}
+
+
+def _dilate(mask: np.ndarray, px: int) -> np.ndarray:
+    out = mask.copy()
+    for _ in range(px):
+        grown = out.copy()
+        grown[1:] |= out[:-1]
+        grown[:-1] |= out[1:]
+        grown[:, 1:] |= out[:, :-1]
+        grown[:, :-1] |= out[:, 1:]
+        out = grown
+    return out
+
+
+def _min_filter(image: np.ndarray, size: int) -> np.ndarray:
+    pad = size // 2
+    padded = np.pad(image, pad, mode="constant", constant_values=np.inf)
+    return np.lib.stride_tricks.sliding_window_view(padded, (size, size)).min(axis=(-1, -2))
+
+
+def gripper_mask(depth_frames: np.ndarray, settings: dict = WRIST_QA) -> np.ndarray:
+    """Pixels the gripper occupies in a wrist camera, from the wrist depth itself: near (< ``mask_near_m``) in at least
+    ``mask_fraction`` of the frames, dilated. The fingers are rigidly attached to the camera; the scene is not."""
+    d = np.asarray(depth_frames)
+    near = ((d > 0) & (d < settings["mask_near_m"])).mean(0) >= settings["mask_fraction"]
+    return _dilate(near, int(settings["mask_dilate_px"]))
+
+
+def wrist_depth_consistency(points, w2c, K, depth_frames, mask, settings: dict = WRIST_QA) -> dict:
+    """Externally observed world points (list per frame) against wrist depth frames under per-frame w2c.
+
+    Per frame: nearest projected point per pixel, then soft visibility (no other projected point within
+    ``soft_window_px`` nearer by more than ``soft_margin_m``), pixels outside ``mask`` with valid wrist depth.
+    ``r = z - d``: occlusion of the external point gives r > 0 and is not penalised beyond the inlier count; r <
+    -``freespace_m`` means the wrist sees through an externally observed surface (a free-space violation)."""
+    from s4d.data.droid.largescale.geometry import project
+
+    residual = []
+    for pts, T, depth in zip(points, w2c, depth_frames):
+        h, w = depth.shape
+        uv, z = project(pts, K, T)
+        px = np.floor(uv).astype(np.int64)
+        ok = (z > 0.03) & (px[:, 0] >= 0) & (px[:, 0] < w) & (px[:, 1] >= 0) & (px[:, 1] < h)
+        px, z = px[ok], z[ok]
+        lin = px[:, 1] * w + px[:, 0]
+        order = np.lexsort((z, lin))
+        first = order[np.r_[True, lin[order][1:] != lin[order][:-1]]] if len(order) else order
+        px, z = px[first], z[first]
+        zmap = np.full((h, w), np.inf)
+        zmap[px[:, 1], px[:, 0]] = z
+        visible = z <= _min_filter(zmap, int(settings["soft_window_px"]))[px[:, 1], px[:, 0]] + settings["soft_margin_m"]
+        d = depth[px[:, 1], px[:, 0]]
+        keep = visible & (d > 0) & ~mask[px[:, 1], px[:, 0]]
+        residual.append(z[keep] - d[keep])
+    r = np.concatenate(residual) if residual else np.zeros(0)
+    if not len(r):
+        return {"count": 0, "inlier": 0.0, "freespace": 1.0, "occluded": 0.0, "median_abs": None}
+    return {
+        "count": int(len(r)),
+        "inlier": float((np.abs(r) < settings["inlier_m"]).mean()),
+        "freespace": float((r < -settings["freespace_m"]).mean()),
+        "occluded": float((r > settings["freespace_m"]).mean()),
+        "median_abs": float(np.median(np.abs(r))),
+    }
+
+
+def _all_points_median(points, w2c, K, depth_frames) -> float | None:
+    """The earlier statistic (median |z - d| over every projected point, no visibility); recorded for comparison."""
+    from s4d.data.droid.largescale.geometry import project
+
+    out = []
+    for pts, T, depth in zip(points, w2c, depth_frames):
+        h, w = depth.shape
+        uv, z = project(pts, K, T)
+        px = np.floor(uv).astype(np.int64)
+        ok = (z > 0) & (px[:, 0] >= 0) & (px[:, 0] < w) & (px[:, 1] >= 0) & (px[:, 1] < h)
+        m = depth[px[ok, 1], px[ok, 0]]
+        out.append(np.abs(z[ok] - m)[m > 0])
+    r = np.concatenate(out) if out else np.zeros(0)
+    return float(np.median(r)) if len(r) else None
+
+
+def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, settings: dict = WRIST_QA) -> dict:
     """Data check of the wrist pose model *and* the wrist depth orientation, per episode.
 
     External-camera tracks (already in the training world frame) that their own camera sees are projected into the
-    wrist camera at the same canonical times and compared with the released wrist depth, read as stored and rotated
-    by 180 degrees. The orientation with the clearly lower median residual is recorded; a high residual for both
-    rejects the wrist calibration for this episode (pose model, hand-eye asset or orientation wrong).
+    wrist camera at up to ``max_frames`` valid canonical times spread over the episode and compared with the released
+    wrist depth, read as stored and rotated by 180 degrees, outside the gripper mask and with soft visibility
+    (``wrist_depth_consistency``). The orientation that passes is recorded; if neither or both pass, the wrist is
+    disabled for this episode (pose model, hand-eye asset or orientation wrong, or not decidable from the data).
     """
     import h5py
 
-    from s4d.data.droid.largescale.geometry import project, rebase_static_camera_points
+    from s4d.data.droid.largescale.geometry import rebase_static_camera_points
 
     wrist = entry["cameras"]["wrist"]
     valid = np.asarray(entry["frames"]["valid"].get("wrist", []), bool)
-    clip = summary.clips[0]
-    start, end = map(int, clip.split(":"))
-    frames = [i for i in range(start, end) if i < len(valid) and valid[i]][:max_frames]
-    if not frames:
+    clip_of = {}
+    for clip in summary.clips:
+        start, end = map(int, clip.split(":"))
+        for i in range(start, end):
+            if i < len(valid) and valid[i]:
+                clip_of.setdefault(i, clip)
+    candidates = sorted(clip_of)
+    if not candidates:
         return {"decision": "no valid wrist frames", "depth_rotation_deg": None}
+    n_pick = min(int(settings["max_frames"]), len(candidates))
+    pick = np.unique(np.linspace(0, len(candidates) - 1, n_pick).round().astype(int))
+    frames = [candidates[j] for j in pick]
     raw = CANONICAL_STRIDE * np.asarray(frames)
     rl = entry["rlds"]
     state = rlds_reader.read(rl["shard"], rl["row"], raw, cameras=(), numeric=("cartesian_position", "joint_position"))
     w2c = wrist_pose_w2c(wrist, state)
     K = np.asarray(wrist["K"], np.float64)
-    residual = {"as_stored": [], "rotated180": []}
+    depth_index = entry["frames"]["depth_index"]["wrist"]
+    points = []
     with (
         h5py.File(Path(root) / layout["flows"].format(episode=episode), "r") as flow,
         h5py.File(Path(root) / layout["depth"].format(episode=episode), "r") as depth_file,
     ):
         group = depth_file[entry["depth_groups"]["wrist"]]["depth"]
-        for k, i in enumerate(frames):
-            depth = depth_mm_to_m(group[entry["frames"]["depth_index"]["wrist"][i]], np.float64)
+        depth = np.stack([depth_mm_to_m(group[depth_index[i]], np.float64) for i in frames])
+        sample = np.unique(np.linspace(0, group.shape[0] - 1, min(int(settings["mask_frames"]), group.shape[0])).astype(int))
+        mask = gripper_mask(np.stack([depth_mm_to_m(group[j], np.float64) for j in sample]), settings)
+        for i in frames:
+            clip = clip_of[i]
+            start = int(clip.split(":")[0])
+            pts = []
             for role in ("ext1", "ext2"):
                 cam = entry["cameras"][role]
                 g = flow[clip][f"camera_{cam['serial']}_ext"]
-                pts = g["scene_flows"][i - start].astype(np.float64)
                 seen = g["scene_visibility"][i - start] & g["scene_depth_valid_mask"][i - start]
-                pts = pts[seen]
+                p = g["scene_flows"][i - start][seen].astype(np.float64)
                 if entry["calibration"] == "droid3d":
-                    pts = rebase_static_camera_points(pts, np.asarray(cam["w2c_pointworld"]), np.asarray(cam["w2c"]))
-                uv, z = project(pts, K, w2c[k])
-                h, w = depth.shape
-                px = np.floor(uv).astype(np.int64)
-                ok = (z > 0) & (px[:, 0] >= 0) & (px[:, 0] < w) & (px[:, 1] >= 0) & (px[:, 1] < h)
-                for name, d in (("as_stored", depth), ("rotated180", depth[::-1, ::-1])):
-                    m = d[px[ok, 1], px[ok, 0]]
-                    residual[name].append(np.abs(z[ok] - m)[m > 0])
-    med = {k: (float(np.median(np.concatenate(v))) if sum(map(len, v)) else None) for k, v in residual.items()}
-    count = int(sum(map(len, residual["as_stored"])))
-    out = {"median_residual_m": med, "count": count, "frames": frames, "max_residual_m": max_residual_m}
-    a, b = med["as_stored"], med["rotated180"]
-    if count < 50 or a is None or b is None:
+                    p = rebase_static_camera_points(p, np.asarray(cam["w2c_pointworld"]), np.asarray(cam["w2c"]))
+                pts.append(p)
+            points.append(np.concatenate(pts))
+    stats = {
+        "as_stored": wrist_depth_consistency(points, w2c, K, depth, mask, settings),
+        "rotated180": wrist_depth_consistency(points, w2c, K, depth[:, ::-1, ::-1], mask[::-1, ::-1], settings),
+    }
+    passes = {
+        k: v["count"] >= settings["min_count"]
+        and v["inlier"] >= settings["min_inlier"]
+        and v["freespace"] <= settings["max_freespace"]
+        for k, v in stats.items()
+    }
+    out = {
+        "statistic": "occlusion-aware v2: soft visibility, gripper mask, inlier and free-space fractions",
+        "stats": stats,
+        "frames": frames,
+        "gripper_mask_fraction": float(mask.mean()),
+        "settings": {k: settings[k] for k in sorted(settings)},
+        "count": max(v["count"] for v in stats.values()),
+        # the earlier all-points statistic, kept for comparison only (not used in the decision)
+        "median_residual_m": {
+            "as_stored": _all_points_median(points, w2c, K, depth),
+            "rotated180": _all_points_median(points, w2c, K, depth[:, ::-1, ::-1]),
+        },
+    }
+    if all(v["count"] < settings["min_count"] for v in stats.values()):
         out.update(decision="too few wrist observations of external tracks", depth_rotation_deg=None)
-    elif min(a, b) > max_residual_m:
-        out.update(decision=f"wrist pose/depth inconsistent (median {min(a, b):.3f} m)", depth_rotation_deg=None)
-    elif a <= 0.5 * b:
-        out.update(decision="ok", depth_rotation_deg=0)
-    elif b <= 0.5 * a:
-        out.update(decision="ok", depth_rotation_deg=180)
+    elif any(passes.values()):
+        a, b = stats["as_stored"]["inlier"], stats["rotated180"]["inlier"]
+        if passes["as_stored"] and (not passes["rotated180"] or a >= settings["orientation_ratio"] * b):
+            out.update(decision="ok", depth_rotation_deg=0)
+        elif passes["rotated180"] and (not passes["as_stored"] or b >= settings["orientation_ratio"] * a):
+            out.update(decision="ok", depth_rotation_deg=180)
+        else:
+            out.update(decision="wrist depth orientation ambiguous", depth_rotation_deg=None)
     else:
-        out.update(decision="wrist depth orientation ambiguous", depth_rotation_deg=None)
+        best = max(stats.values(), key=lambda v: v["inlier"])
+        out.update(
+            decision=f"wrist pose/depth inconsistent (inlier {best['inlier']:.2f}, free-space {best['freespace']:.2f}, "
+            f"{best['count']} observations)",
+            depth_rotation_deg=None,
+        )
     return out
 
 

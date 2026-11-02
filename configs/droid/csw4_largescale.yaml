@@ -1,0 +1,133 @@
+# DROID csw4 profile (2026-11-02, user decision): the accepted csw4 architecture and method objective on the large-scale
+# DROID data path (RLDS x PointWorld-DROID x DROID-3D, docs/droid_largescale.md). Self-contained: use it ALONE,
+#   python scripts/train.py --config configs/droid/csw4_largescale.yaml \
+#       --set data.manifest=... data.pointworld_root=... data.rlds_index_dir=... data.rlds_data_root=... \
+#             model.anchor_stats=... --name droid_largescale-csw4-<tag>-<seed>
+# never on top of configs/droid/pretrain.yaml (that composition is the LEGACY DROID-base smoke profile, see
+# configs/droid/largescale.yaml) and never with the Meta-World variant files stacked again.
+#
+# METHOD keys (every model.* except image size and anchor_stats, every loss.*, every aug.* except synth_camera_rig, and the
+# optimizer keys of train.*) are the resolved Meta-World csw4 values (configs/metaworld/base.yaml + tasks/<task>.yaml +
+# variants/chamfer_lean.yaml + chamfer_lean_randmask.yaml + enc_cs.yaml + enc_w4.yaml; runs/setup/encx-definition-
+# 20261026.json). They must not be edited here: tests/test_droid_csw4_profile.py checks them against that composition and
+# fails on any key that differs and is not listed there as dataset-specific.
+# DATASET-SPECIFIC keys carry a one-line justification each. Effective configuration and the full difference table:
+# docs/droid_largescale_validation/csw4_effective_config.md.
+
+data:
+  regime: droid_largescale  # dataset: lazy RLDS x PointWorld x DROID-3D windows (s4d/data/droid/largescale)
+  root: null                # dataset: unused by this regime (sources are the four paths below)
+  manifest: null            # dataset: scripts/droid_ls_build_manifest.py output; null fails fast until given
+  pointworld_root: null     # dataset: extracted PointWorld-DROID tree; null fails fast until given
+  rlds_index_dir: null      # dataset: scripts/droid_ls_build_rlds_index.py output; null fails fast until given
+  rlds_data_root: null      # dataset: released DROID RLDS shards, read in place (read-only); null fails fast until given
+  validation_percent: 2.0   # dataset: episode-disjoint hash split (no Meta-World train_ratio/episode list exists here)
+  stride: 3                 # timing: 3 canonical PointWorld steps = 6 raw steps at 15 Hz = 0.4 s between window frames
+  max_tracks: 4096          # dataset: per-camera track budget of the batch contract (deterministic subsample / padding)
+  with_wrist: true          # dataset: supervision-only wrist_* fields when the wrist QA accepts an episode (unused by csw4)
+  gripper_offset_m: -0.019  # geometry: approach-axis gripper point offset (m), fitted on the inspected DROID sample
+  max_open_files: 8         # loader: per worker and file kind; bounded handles measured flat at 29 fds (item 8 §3.6)
+
+model:
+  encoder:
+    backbone: scratch
+    image_height: 144       # image: 0.8 x the native 180x320 DROID grid, aspect kept (square pixels, K scaled exactly)
+    image_width: 256        # image: 128x128 (Meta-World's rendered size) would distort 16:9 images anisotropically
+    patch_size: 16
+    width: 256
+    depth: 4
+    heads: 4
+    num_slots: 1
+    slot_dim: 256
+    num_frames: 3
+    mask_ratio: 0.75
+    motion_patch_threshold: 0.05
+    drop_path: 0.1
+    mask_mode: random
+    stem: patch_cnn
+  decoder:
+    dim: 128
+    depth: 2
+    heads: 4
+    motion_max: 0.25
+    scene:
+      parents: 768
+      children: 8
+      offset_scale: 0.15
+      child_radius: 0.06
+      scale_min: 0.001
+      scale_max: 0.08
+    dynamic:
+      parents: 256
+      children: 8
+      offset_scale: 0.4
+      child_radius: 0.04
+      scale_min: 0.0005
+      scale_max: 0.03
+    single_group: false
+  anchor_stats: null        # geometry: DROID workspace statistics (scripts/compute_workspace_stats.py --regime droid_largescale); set before any run
+  single_frame: false
+
+render:
+  near: 0.05                # geometry: same near plane; DROID wrist depth starts at 0.068 m (1st pct), ext at 0.19 m
+  far: 3.0                  # geometry: valid ext depth beyond 3.0 m: 1.04 % (294 AUTOLab episodes, 4 sessions; 99th pct 3.05 m); re-check on corpus
+
+loss:
+  rgb: 1.0
+  ssim_weight: 0.2
+  lambda_dyn: 1.0
+  coverage: 0.1
+  depth_l1: 1.0
+  depth_grad: 0.0
+  depth_hard: 0.0
+  depth_align: none
+  depth_align_warmup_steps: 0
+  motion: 5.0
+  motion_huber: 0.01
+  invariance: 1.0
+  consistency: 0.5
+  temperature: 0.1
+  visibility: 0.0
+  ramp_steps: 20000
+  teacher_scale_jitter: null
+  depth_valid_far: true
+  motion_space: gaussian
+  occlusion: 0.0
+  chamfer: 5.0
+  chamfer_points: 4096
+  chamfer_voxel_m: 0.01
+  motion_feature_render: log_steps
+
+aug:
+  synth_views: 2
+  synth_render: true
+  synth_camera_rig: training_cameras  # geometry: jitter around the episode's own cameras; the default rig is Meta-World's world frame
+
+train:
+  steps: 300000             # run scale: fixed at launch (--set train.steps); csw4 pretraining used 200000
+  batch_size: 16
+  lr: 5.0e-4
+  min_lr: 1.0e-5
+  weight_decay: 0.01
+  warmup_steps: 10000
+  grad_clip: 1.0
+  bf16: true
+  seed: 0
+  num_workers: 8            # loader: 98.7 windows/s with 8 workers vs 48.5 with 4 (item 8 §3.6; depth gzip decode bound)
+  prefetch_factor: 2
+  log_every: 50
+  eval_every: 5000
+  save_every: 10000
+  eval_at_start: true
+
+eval:
+  max_batches: 8
+  probe_every: 10000
+  probe_batches: 24
+  orbit_center: [0.6, 0.0, 0.15]  # geometry: DROID robot-base frame; dynamic anchor mean (0.63, -0.01, 0.15) m on the sample
+  orbit_distance: 1.0
+  orbit_elevation: -45.0
+
+wandb:
+  enabled: true
+  project: splatter4d-droid  # bookkeeping: the DROID project

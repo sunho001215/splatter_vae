@@ -253,38 +253,51 @@ Numeric ordinals such as `traj_id` and RLDS shard/row are never used as keys (te
 ### 4.3 Frames (validated mapping, `validate_frames`)
 
 1. **Robot state:** every clip's PointWorld `gripper_pose` must equal RLDS `cartesian_position[2i]` within 2 mm and
-   5 mrad. Otherwise the episode is rejected.
+   5 mrad. A canonical frame whose PointWorld state is exactly raw step `2i ± 1` (within the same gate; at most
+   max(1, 5 %) of the timeline) is invalidated for every camera and listed in `frames.state_offbyone_frames`. Any other
+   disagreement rejects the episode. Real data (2026-11-02): 13 of 294 AUTOLab and 10 of 73 episodes from 10 other
+   labs carry such frames (1-3 per episode), always raw step `2i - 1` with error 0; before this rule they were rejected
+   whole.
 2. **Depth timing:** per camera, the depth frame nearest the canonical timestamp must *be* raw step `2i` within 34 ms.
    That frame is then `valid`.
    - Windows need valid ext1/ext2 frames.
    - Wrist validity is a per-frame mask (`wrist_valid`).
 
-### 4.4 Wrist QA (`wrist_qa`, per episode)
+### 4.4 Wrist QA (`wrist_qa`, per episode; statistic v2 since 2026-11-02)
 
-1. Take external tracks that their own camera sees, in the training world frame.
-2. Project them into the reconstructed wrist camera.
-3. Compare with the released wrist depth, read as stored and as rotated 180°.
-4. Record the orientation whose median residual is ≤ half the other. Apply it.
-5. If the best median exceeds 3 cm, disable the wrist for that episode.
+1. Take up to 8 valid wrist frames spread over the whole episode, and the external tracks that their own camera sees
+   at those frames, in the training world frame.
+2. Gripper mask from the wrist depth itself: pixels nearer than 0.20 m in at least half of 30 sampled frames, dilated
+   by 2 px (the Robotiq fingers are rigid to the camera, 7-15 cm from the lens; 24 % of the view on real data).
+3. Project into the reconstructed wrist camera, nearest point per pixel, then soft visibility: drop a point if another
+   projected point within 7 px is nearer by more than 3 cm (sparse tracks otherwise leak through nearer surfaces).
+4. Against the released wrist depth, as stored and rotated by 180°, outside the mask: `r = z - d`. Inlier fraction
+   `|r| < 2 cm`; free-space-violation fraction `r < -3 cm` (the wrist sees through an externally observed surface;
+   occlusion cannot explain it).
+5. An orientation passes with ≥ 200 observations, inlier ≥ 0.30 and free-space ≤ 0.30; if both pass, the chosen one
+   needs 1.5× the other's inliers. Otherwise the wrist is disabled for that episode. The earlier statistic (median `|r|`
+   over all projected points) is still recorded as `median_residual_m`, unused.
 
-Results on fixtures:
+Results on fixtures: the true model is accepted, also with fingers covering 60 % of the view (the earlier statistic
+exceeds 3 cm there); rotated storage is detected and undone; an 8 cm hand-eye error and the flange-relative hand-eye used
+with the controller-EE recipe are rejected.
 
-- The true model gives 0 (as stored) against centimetres (rotated).
-- Rotated storage is detected and undone.
-- A hand-eye with an 8 cm error is rejected.
-- A flange-relative hand-eye used with the PointWorld controller-EE recipe is rejected.
+Real data (VERIFIED-REAL for one robot, `FR3-295341-1326595`, 294 episodes in four sessions; evidence
+`docs/droid_largescale_validation_20261102.md`):
 
-This is the data check for the wrist pose model, the hand-eye convention and the image/depth orientation on real
-episodes.
+- Accepted 294/294 under the published chain, depth stored in the RGB orientation in all.
+- Gross-error controls are rejected in 97 %: frustum without Rz(180) passes 9/294, the controller-EE recipe 8/294.
+- Neither statistic detects 2 cm / 3° pose errors per episode (they pass 293/294 and 292/294).
+- The earlier statistic rejected the whole 2023-10-21 session (62/62) even under the data-optimal pose (51/62), and
+  passed 230/232 of the later sessions: it tracked occlusion in the scene, not the calibration.
+- The thresholds come from one robot. Wrist depth of other robots is not within the download budget (the depth package
+  is one sequential zstd stream of 252 parts, sorted by episode name; part 0 holds only this robot).
 
-Real data (VERIFIED-REAL, 62 episodes of one robot `FR3-295341-1326595`, one session): the orientation decision is
-clear (wrist depth is stored in the RGB orientation; as-stored residual below rotated in 53/62), but **all 62 episodes
-fail the 3 cm threshold** (as-stored median 0.18 m, range 0.045-0.58 m), so no wrist fields are emitted. Two reasons,
-both measured: (1) the statistic is not robust to the gripper fingers and arm occluding the wrist view (even DROID's
-own per-step wrist pose gives a 3.5 cm median; the signed 75th percentile is +0.24 m); (2) the published chain with
-`dT_gw` fits this robot worse than DROID's raw wrist extrinsics and than a `dq`-only variant (photometric and depth
-tests, §3.4 of the validation note). Neither the statistic nor the chain was changed (one robot is not enough
-evidence); this is an open decision.
+The pose chain (`FLIP · T_gw_static · dT_gw · inv(FK(q + dq))`, then Rz(180) for the stored image) and the image
+orientation are fixed globally, not by this QA: the photometric test supports Rz(180) on all 21 robots / 11 labs
+checked, and on the 232 later-session AUTOLab episodes the published chain is the hypothesis closest to the per-episode
+depth-refined pose (median 0.4 cm / 0.5°). A missing Rz(180) would be
+absorbed by the QA as a 180° depth rotation, so the orientation is not a per-episode decision.
 
 ### 4.5 Calibration modes
 

@@ -1,0 +1,327 @@
+{
+ "AUTOLab+0d4edc83+2023-10-27-20h-18m-43s": {
+  "canonical_frames": 26,
+  "mismatched_frames": [
+   18
+  ],
+  "best_offset": {
+   "18": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "18": [
+    0.0074,
+    0.0074
+   ]
+  },
+  "best_err_m": {
+   "18": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-10-27-20h-28m-57s": {
+  "canonical_frames": 31,
+  "mismatched_frames": [
+   10
+  ],
+  "best_offset": {
+   "10": [
+    -1,
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "10": [
+    0.017,
+    0.017,
+    0.017
+   ]
+  },
+  "best_err_m": {
+   "10": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-10-27-20h-33m-53s": {
+  "canonical_frames": 36,
+  "mismatched_frames": [
+   12
+  ],
+  "best_offset": {
+   "12": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "12": [
+    0.0227,
+    0.0227
+   ]
+  },
+  "best_err_m": {
+   "12": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-10-27-20h-35m-38s": {
+  "canonical_frames": 36,
+  "mismatched_frames": [
+   10
+  ],
+  "best_offset": {
+   "10": [
+    -1,
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "10": [
+    0.021,
+    0.021,
+    0.021
+   ]
+  },
+  "best_err_m": {
+   "10": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-10-27-20h-41m-57s": {
+  "canonical_frames": 31,
+  "mismatched_frames": [
+   17
+  ],
+  "best_offset": {
+   "17": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "17": [
+    0.0062,
+    0.0062
+   ]
+  },
+  "best_err_m": {
+   "17": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-11-03-16h-16m-27s": {
+  "canonical_frames": 51,
+  "mismatched_frames": [
+   42
+  ],
+  "best_offset": {
+   "42": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "42": [
+    0.0087,
+    0.0087
+   ]
+  },
+  "best_err_m": {
+   "42": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-13h-29m-26s": {
+  "canonical_frames": 47,
+  "mismatched_frames": [
+   7
+  ],
+  "best_offset": {
+   "7": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "7": [
+    0.0201,
+    0.0201
+   ]
+  },
+  "best_err_m": {
+   "7": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-13h-33m-43s": {
+  "canonical_frames": 47,
+  "mismatched_frames": [
+   37
+  ],
+  "best_offset": {
+   "37": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "37": [
+    0.0054,
+    0.0054
+   ]
+  },
+  "best_err_m": {
+   "37": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-14h-42m-40s": {
+  "canonical_frames": 27,
+  "mismatched_frames": [
+   40
+  ],
+  "best_offset": {
+   "40": [
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "40": [
+    0.0043
+   ]
+  },
+  "best_err_m": {
+   "40": [
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-14h-43m-38s": {
+  "canonical_frames": 37,
+  "mismatched_frames": [
+   13
+  ],
+  "best_offset": {
+   "13": [
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "13": [
+    0.0126
+   ]
+  },
+  "best_err_m": {
+   "13": [
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-14h-51m-15s": {
+  "canonical_frames": 57,
+  "mismatched_frames": [
+   11
+  ],
+  "best_offset": {
+   "11": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "11": [
+    0.0235,
+    0.0235
+   ]
+  },
+  "best_err_m": {
+   "11": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-14h-56m-54s": {
+  "canonical_frames": 56,
+  "mismatched_frames": [
+   6
+  ],
+  "best_offset": {
+   "6": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "6": [
+    0.02,
+    0.02
+   ]
+  },
+  "best_err_m": {
+   "6": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ },
+ "AUTOLab+0d4edc83+2023-12-02-15h-21m-02s": {
+  "canonical_frames": 32,
+  "mismatched_frames": [
+   10
+  ],
+  "best_offset": {
+   "10": [
+    -1,
+    -1
+   ]
+  },
+  "err_at_2i_m": {
+   "10": [
+    0.017,
+    0.017
+   ]
+  },
+  "best_err_m": {
+   "10": [
+    0.0,
+    0.0
+   ]
+  },
+  "same_frame_disagrees_between_clips": []
+ }
+}
