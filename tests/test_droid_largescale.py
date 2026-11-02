@@ -307,6 +307,7 @@ def _rebuild(tmp, mutate, calibration="droid3d", **kw):
         droid3d_intrinsics=C.JsonlIndex(intr),
         hand_eye=C.load_hand_eye(he),
         rlds_reader=reader,
+        **kw.pop("manifest", {}),
     )
     reader.close()
     return report
@@ -364,6 +365,39 @@ def _patch_cameras(tmp):
 def _patch_pose(tmp):
     with h5py.File(tmp / "pw/flows-fs-optimized" / f"{F.EPISODE}_flows.h5", "r+") as f:
         f["5:16"]["gripper_pose"][3, 0] += 0.01  # one frame off by 1 cm: the canonical -> raw mapping is not proven
+
+
+def _offbyone_pose(tmp, frame, steps=(-1,)):
+    """PointWorld's state at canonical ``frame`` taken from raw step 2*frame + d (in every clip holding the frame)."""
+    gt = F.truth()
+    with h5py.File(tmp / "pw/flows-fs-optimized" / f"{F.EPISODE}_flows.h5", "r+") as f:
+        for n, key in enumerate(k for k in F.CLIPS if int(k.split(":")[0]) <= frame < int(k.split(":")[1])):
+            r = 2 * frame + steps[n % len(steps)]
+            quat = Rotation.from_euler("xyz", gt["cart"][r, 3:]).as_quat()
+            f[key]["gripper_pose"][frame - int(key.split(":")[0])] = np.concatenate([gt["cart"][r, :3], quat])
+
+
+def test_one_state_frame_off_by_one_raw_step_is_invalidated_not_the_episode(tmp_path):
+    """Real finding: 13 of 294 AUTOLab episodes were rejected because PointWorld gave exactly one canonical frame the
+    robot state of raw step 2i-1 (error 0 against it; the frame's depth and images are raw step 2i by timestamp)."""
+    gt = F.truth()
+    frame = 12
+    tight = {"manifest": {"max_xyz_m": 5e-5, "max_rot_rad": 1e-4}}  # the fixture arm moves ~0.2 mm per raw step
+    assert np.linalg.norm(gt["cart"][2 * frame - 1, :3] - gt["cart"][2 * frame, :3]) > 1e-4  # the check sees it
+    report = _rebuild(tmp_path / "a", lambda t, e, i, h: _offbyone_pose(t, frame), **tight)
+    assert report["accepted"] == 1, report
+    row = join.load_manifest(tmp_path / "a/m.jsonl")[0]
+    assert row["frames"]["state_offbyone_frames"] == [frame] and row["frames"]["state_max_xyz_m"] < 5e-5
+    assert all(not row["frames"]["valid"][role][frame] for role in ("ext1", "ext2", "wrist"))
+    ds = DroidLargeScaleDataset(tmp_path / "a/m.jsonl", **F.dataset_kwargs({"tmp": tmp_path / "a", "manifest": tmp_path / "a/m.jsonl"}))
+    stride = ds.stride
+    starts = [i for _, _, i in ds.windows[0 : len(ds.windows)]]
+    assert starts and all(frame not in (i, i + stride, i + 2 * stride) for i in starts)
+    # two different frames, or a state that matches no neighbouring raw step, still reject the episode
+    two = _rebuild(tmp_path / "b", lambda t, e, i, h: (_offbyone_pose(t, frame), _offbyone_pose(t, 3)), **tight)
+    assert two["accepted"] == 0 and "frame mapping rejected" in two["rejected"][F.EPISODE]
+    far = _rebuild(tmp_path / "c", lambda t, e, i, h: _offbyone_pose(t, frame, steps=(-3,)), **tight)
+    assert far["accepted"] == 0 and "frame mapping rejected" in far["rejected"][F.EPISODE]
 
 
 # ------------------------------------------------------------------------------------------------ dataset

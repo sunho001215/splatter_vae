@@ -359,9 +359,13 @@ def rotation_angle(Ra: np.ndarray, Rb: np.ndarray) -> np.ndarray:
     return np.arccos(np.clip(cos, -1, 1))
 
 
-def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_dt_ms, max_xyz_m, max_rot_rad) -> dict:
+def validate_frames(
+    root, layout, episode, summary, entry, rlds_reader, *, max_dt_ms, max_xyz_m, max_rot_rad, max_offbyone_fraction=0.05
+) -> dict:
     """Validated frame mapping: canonical i -> RLDS step 2i (state agreement on every clip frame) and, per camera,
-    the depth frame nearest to the canonical timestamp must *be* raw step 2i within ``max_dt_ms``."""
+    the depth frame nearest to the canonical timestamp must *be* raw step 2i within ``max_dt_ms``. A canonical frame
+    whose PointWorld state is exactly raw step 2i +- 1 (``state_offbyone_frames``, at most ``max_offbyone_fraction``
+    of the timeline, at least one) is invalid for every camera; any other state disagreement rejects the episode."""
     import h5py
 
     from s4d.data.droid.largescale.geometry import pose6_to_matrix, pose7_to_matrix
@@ -376,8 +380,9 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
     # convention diagnostic: controller EE frame relative to the Franka flange (FK of the same joint reading)
     flange_ee = invert(C.franka_fk(state["joint_position"])) @ pose6_to_matrix(state["cartesian_position"])
     flange_offset = np.linalg.norm(flange_ee[:, :3, 3], axis=-1)
-    xyz_err, rot_err = [], []
+    xyz_err, rot_err, frame_of = [], [], []
     with h5py.File(Path(root) / layout["flows"].format(episode=episode), "r") as flow:
+        pw_by_frame = {}
         for key in summary.clips:
             start, end = map(int, key.split(":"))
             if end > usable.sum():
@@ -386,15 +391,41 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
             rlds = pose6_to_matrix(state["cartesian_position"][start:end])
             xyz_err.append(np.linalg.norm(pw[:, :3, 3] - rlds[:, :3, 3], axis=-1))
             rot_err.append(rotation_angle(pw[:, :3, :3], rlds[:, :3, :3]))
-    xyz_err, rot_err = np.concatenate(xyz_err), np.concatenate(rot_err)
-    if xyz_err.max() > max_xyz_m or rot_err.max() > max_rot_rad:
-        raise JoinError(
-            f"{episode}: PointWorld gripper_pose != RLDS cartesian_position[2i] "
-            f"(max {xyz_err.max():.4g} m, {rot_err.max():.4g} rad); frame mapping rejected"
-        )
+            frame_of.append(np.arange(start, end))
+            for j, i in enumerate(range(start, end)):
+                pw_by_frame.setdefault(i, []).append(pw[j])
+    xyz_err, rot_err, frame_of = np.concatenate(xyz_err), np.concatenate(rot_err), np.concatenate(frame_of)
+    bad = (xyz_err > max_xyz_m) | (rot_err > max_rot_rad)
+    # Real data (13 of 294 AUTOLab episodes): PointWorld assigned the robot state of raw step 2i-1 to exactly one
+    # canonical frame (error 0 against 2i-1), while that frame's images, depth and tracks are raw step 2i (timestamps).
+    # Such a frame is invalidated for every camera instead of rejecting the episode; anything else still rejects it.
+    offbyone = sorted({int(i) for i in frame_of[bad]})
+    if offbyone:
+        neighbours = sorted({CANONICAL_STRIDE * i + d for i in offbyone for d in (-1, 1)} & set(range(entry["rlds"]["num_steps"])))
+        near = dict(zip(neighbours, pose6_to_matrix(
+            rlds_reader.read(rl["shard"], rl["row"], np.asarray(neighbours), cameras=(), numeric=("cartesian_position",))["cartesian_position"]
+        )))
+
+        def explained(i: int) -> bool:
+            for d in (-1, 1):
+                T = near.get(CANONICAL_STRIDE * i + d)
+                if T is not None and all(
+                    np.linalg.norm(P[:3, 3] - T[:3, 3]) <= max_xyz_m and rotation_angle(P[:3, :3], T[:3, :3]) <= max_rot_rad
+                    for P in pw_by_frame[i]
+                ):
+                    return True
+            return False
+
+        if len(offbyone) > max(1, int(max_offbyone_fraction * len(stamps))) or not all(map(explained, offbyone)):
+            raise JoinError(
+                f"{episode}: PointWorld gripper_pose != RLDS cartesian_position[2i] "
+                f"(max {xyz_err.max():.4g} m, {rot_err.max():.4g} rad); frame mapping rejected"
+            )
+    good = ~bad
     out = {
-        "state_max_xyz_m": float(xyz_err.max()),
-        "state_max_rot_rad": float(rot_err.max()),
+        "state_max_xyz_m": float(xyz_err[good].max()),
+        "state_max_rot_rad": float(rot_err[good].max()),
+        "state_offbyone_frames": offbyone,
         "flange_to_cartesian_m": float(np.median(flange_offset)),
         "flange_to_cartesian_spread_m": float(flange_offset.max() - flange_offset.min()),
         "depth_index": {},
@@ -409,6 +440,7 @@ def validate_frames(root, layout, episode, summary, entry, rlds_reader, *, max_d
             idx = nearest_index(ts, stamps)
             dt = np.abs(ts[idx] - stamps)
             ok = (idx == raw_steps) & (dt <= max_dt_ms) & usable
+            ok[offbyone] = False
             out["depth_index"][role] = idx.tolist()
             out["valid"][role] = ok.tolist()
             out["max_dt_ms"][role] = float(dt[ok].max()) if ok.any() else None
