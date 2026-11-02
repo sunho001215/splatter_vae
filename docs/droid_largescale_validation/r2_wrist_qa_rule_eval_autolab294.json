@@ -1,0 +1,262 @@
+{
+ "2023-10-21": {
+  "card": {
+   "episodes": 62,
+   "v2_pass": 62,
+   "old_pass": 0
+  },
+  "dq_only": {
+   "episodes": 62,
+   "v2_pass": 62,
+   "old_pass": 5
+  },
+  "no_corrections": {
+   "episodes": 62,
+   "v2_pass": 59,
+   "old_pass": 4
+  },
+  "card_refined_icp": {
+   "episodes": 62,
+   "v2_pass": 62,
+   "old_pass": 11
+  },
+  "droid_metadata_handeye": {
+   "episodes": 62,
+   "v2_pass": 5,
+   "old_pass": 0
+  },
+  "NEG_card_no_rot180": {
+   "episodes": 62,
+   "v2_pass": 0,
+   "old_pass": 0
+  },
+  "pointworld_recipe_cart": {
+   "episodes": 62,
+   "v2_pass": 0,
+   "old_pass": 0
+  },
+  "NEG_card_other_robot_handeye": {
+   "episodes": 62,
+   "v2_pass": 54,
+   "old_pass": 0
+  },
+  "NEG_card_shift2cm_x": {
+   "episodes": 62,
+   "v2_pass": 61,
+   "old_pass": 0
+  },
+  "NEG_card_rot3deg_y": {
+   "episodes": 62,
+   "v2_pass": 61,
+   "old_pass": 0
+  }
+ },
+ "2023-10-27": {
+  "card": {
+   "episodes": 89,
+   "v2_pass": 89,
+   "old_pass": 88
+  },
+  "dq_only": {
+   "episodes": 89,
+   "v2_pass": 89,
+   "old_pass": 88
+  },
+  "no_corrections": {
+   "episodes": 89,
+   "v2_pass": 88,
+   "old_pass": 88
+  },
+  "card_refined_icp": {
+   "episodes": 89,
+   "v2_pass": 89,
+   "old_pass": 89
+  },
+  "droid_metadata_handeye": {
+   "episodes": 89,
+   "v2_pass": 89,
+   "old_pass": 86
+  },
+  "NEG_card_no_rot180": {
+   "episodes": 89,
+   "v2_pass": 4,
+   "old_pass": 0
+  },
+  "pointworld_recipe_cart": {
+   "episodes": 89,
+   "v2_pass": 4,
+   "old_pass": 0
+  },
+  "NEG_card_other_robot_handeye": {
+   "episodes": 89,
+   "v2_pass": 89,
+   "old_pass": 88
+  },
+  "NEG_card_shift2cm_x": {
+   "episodes": 89,
+   "v2_pass": 89,
+   "old_pass": 89
+  },
+  "NEG_card_rot3deg_y": {
+   "episodes": 89,
+   "v2_pass": 88,
+   "old_pass": 89
+  }
+ },
+ "2023-11-03": {
+  "card": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 8
+  },
+  "dq_only": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 8
+  },
+  "no_corrections": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 7
+  },
+  "card_refined_icp": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 8
+  },
+  "droid_metadata_handeye": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 5
+  },
+  "NEG_card_no_rot180": {
+   "episodes": 9,
+   "v2_pass": 0,
+   "old_pass": 0
+  },
+  "pointworld_recipe_cart": {
+   "episodes": 9,
+   "v2_pass": 0,
+   "old_pass": 0
+  },
+  "NEG_card_other_robot_handeye": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 2
+  },
+  "NEG_card_shift2cm_x": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 6
+  },
+  "NEG_card_rot3deg_y": {
+   "episodes": 9,
+   "v2_pass": 9,
+   "old_pass": 4
+  }
+ },
+ "2023-12-02": {
+  "card": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "dq_only": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "no_corrections": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "card_refined_icp": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "droid_metadata_handeye": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "NEG_card_no_rot180": {
+   "episodes": 134,
+   "v2_pass": 5,
+   "old_pass": 0
+  },
+  "pointworld_recipe_cart": {
+   "episodes": 134,
+   "v2_pass": 4,
+   "old_pass": 0
+  },
+  "NEG_card_other_robot_handeye": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "NEG_card_shift2cm_x": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  },
+  "NEG_card_rot3deg_y": {
+   "episodes": 134,
+   "v2_pass": 134,
+   "old_pass": 134
+  }
+ },
+ "all": {
+  "card": {
+   "episodes": 294,
+   "v2_pass": 294,
+   "old_pass": 230
+  },
+  "dq_only": {
+   "episodes": 294,
+   "v2_pass": 294,
+   "old_pass": 235
+  },
+  "no_corrections": {
+   "episodes": 294,
+   "v2_pass": 290,
+   "old_pass": 233
+  },
+  "card_refined_icp": {
+   "episodes": 294,
+   "v2_pass": 294,
+   "old_pass": 242
+  },
+  "droid_metadata_handeye": {
+   "episodes": 294,
+   "v2_pass": 237,
+   "old_pass": 225
+  },
+  "NEG_card_no_rot180": {
+   "episodes": 294,
+   "v2_pass": 9,
+   "old_pass": 0
+  },
+  "pointworld_recipe_cart": {
+   "episodes": 294,
+   "v2_pass": 8,
+   "old_pass": 0
+  },
+  "NEG_card_other_robot_handeye": {
+   "episodes": 294,
+   "v2_pass": 286,
+   "old_pass": 224
+  },
+  "NEG_card_shift2cm_x": {
+   "episodes": 294,
+   "v2_pass": 293,
+   "old_pass": 229
+  },
+  "NEG_card_rot3deg_y": {
+   "episodes": 294,
+   "v2_pass": 292,
+   "old_pass": 227
+  }
+ }
+}

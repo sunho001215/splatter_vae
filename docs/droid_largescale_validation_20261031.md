@@ -113,6 +113,12 @@ configuration changed.
 
 ## 4. Training smoke (csw4, real data)
 
+> **Superseded 2026-11-02** (`docs/droid_largescale_validation_20261102.md`): this smoke ran the **LEGACY DROID-base
+> profile** (`pretrain.yaml` + `largescale.yaml`) with the four csw4 variant files on top, so its architecture and loss
+> weights were the DROID base's, not csw4's, and its synthetic views came from the Meta-World camera rig (fixed in
+> `e807898`). The csw4 profile for DROID is `configs/droid/csw4_largescale.yaml`. The results below remain valid as a
+> functional smoke of the data path and the trainer's checkpoint/resume mechanics.
+
 Gate: full native suite on the final sources (commit `87b7846`), local, MIG `2ebd9e11`, **1,283 passed, 0 failed,
 0 errors, 0 skipped** in 486 s (`docs/tests.json`, `docs/droid_largescale_validation/full_suite_summary.json`). A
 first run (1,277 passed, 1 failed) lacked the official DINO ViT-S/8 weights in the worktree cache. That was an
@@ -132,7 +138,7 @@ Meta-World csw4 configuration:
             train.log_every=10 train.num_workers=4 eval.max_batches=4 --no-wandb
 
 The base keys that differ between the Meta-World csw4 configuration and the DROID base keep their DROID values (see
-`smoke_csw4_analysis.json` → `resolved_differences_metaworld_csw4_vs_droid_run`; open decision §6):
+`legacy_droid_base_smoke_20261031_analysis.json` (renamed 2026-11-02; was smoke_csw4_analysis.json) → `resolved_differences_metaworld_csw4_vs_droid_run`; open decision §6):
 
 - decoder: dim 256 vs 128, heads 8 vs 4, scene/dynamic parents 1536/512 vs 768/256, scene offset_scale 0.25 vs 0.15;
 - encoder: `num_slots` 16 vs 1, `slot_dim` 384 vs 256;
@@ -142,7 +148,7 @@ The base keys that differ between the Meta-World csw4 configuration and the DROI
 - the schedule.
 
 Anchor statistics came from the 60 training-split episodes only and are smoke-only. The resolved configuration is in
-`smoke_csw4_resolved_config.yaml`.
+`legacy_droid_base_smoke_20261031_resolved_config.yaml` (renamed 2026-11-02).
 
 Results (batch 2, 3,029 training and 100 validation windows; 0.76 GB GPU; about 0.09 s per step):
 

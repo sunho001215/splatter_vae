@@ -1,0 +1,28 @@
+{
+ "batches": 24,
+ "batch_size": 2,
+ "synth_views": 2,
+ "image": [
+  144,
+  256
+ ],
+ "patch": 16,
+ "visible_tokens_kept": 108,
+ "tokens_per_row": 432,
+ "real_views_valid_depth_fraction": 0.9236201519767443,
+ "metaworld": {
+  "covered_pixel_fraction_mean": 0.2462810936073462,
+  "patches_ge_0.9_covered_fraction_mean": 0.08533468345801036,
+  "rows_with_fewer_eligible_tokens_than_kept": 1.0,
+  "eligible_tokens_median": 32.0,
+  "rows": 96
+ },
+ "training_cameras": {
+  "covered_pixel_fraction_mean": 0.7721636717518171,
+  "patches_ge_0.9_covered_fraction_mean": 0.47820215796430904,
+  "rows_with_fewer_eligible_tokens_than_kept": 0.010416666666666666,
+  "eligible_tokens_median": 203.5,
+  "rows": 96
+ },
+ "peak_rss_bytes": 591396864
+}

@@ -1,0 +1,34 @@
+{
+ "listed_at": "2026-11-02",
+ "revision": "dd9aaeec94bb14e27ab6b16b6e4aa0dbcf3ef56f",
+ "previous_downloads_bytes": 8430788523,
+ "planned": [
+  {
+   "path": "droid/flows-fs-optimized/shard-000360/package.tar.zst.part-0000",
+   "size": 3506795008,
+   "lfs_sha256": "5193fee86de53e31fb6ed013d11fc8918bd0cbbef4fbfe6e58a6f549723d2789"
+  },
+  {
+   "path": "droid/flows-fs-optimized/shard-000220/package.tar.zst.part-0000",
+   "size": 3534436030,
+   "lfs_sha256": "138431b367b7fe93f74c023373f81dce0370109d7a944b1b7eb193b177da6365"
+  },
+  {
+   "path": "droid/flows-fs-optimized/shard-000521/package.tar.zst.part-0000",
+   "size": 3503286904,
+   "lfs_sha256": "77c0a361a3d80e172965771fd164bf3f43a8bb8f27bb8713b0730a2be8d75f6f"
+  },
+  {
+   "path": "droid/flows-fs-optimized/shard-000002/package.tar.zst.part-0000",
+   "size": 3520634658,
+   "lfs_sha256": "c626faa023b5eab0e616cc03455650352975b0f4a4abbfdf49dc57ced7c6c0fb"
+  },
+  {
+   "path": "droid/flows-fs-optimized/shard-000003/package.tar.zst.part-0000",
+   "size": 3484607305,
+   "lfs_sha256": "99a2ee1208675f3808590f2965a1e43d7939516c177a9a8cb9f6cd6ad02e5e57"
+  }
+ ],
+ "planned_total_bytes": 17549759905,
+ "budget_bytes": 25000000000
+}

@@ -1,0 +1,1384 @@
+{
+ "episodes": 73,
+ "errors": [],
+ "robots": 21,
+ "labs": [
+  "CLVR",
+  "GuptaLab",
+  "ILIAD",
+  "IPRL",
+  "IRIS",
+  "PennPAL",
+  "RAD",
+  "RAIL",
+  "REAL",
+  "RPL",
+  "TRI"
+ ],
+ "summary": {
+  "NEG_card_no_rot180": {
+   "colour_scene_soft": {
+    "median": 59.333333333333336,
+    "p10": 40.4,
+    "p90": 82.39999999999999,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 60.666666666666664,
+    "p10": 42.13333333333333,
+    "p90": 82.4,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 88.33333333333333,
+    "p10": 44.666666666666664,
+    "p90": 149.2,
+    "n": 73
+   }
+  },
+  "NEG_card_other_robot_handeye": {
+   "colour_scene_soft": {
+    "median": 30.0,
+    "p10": 17.666666666666668,
+    "p90": 49.93333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 35.666666666666664,
+    "p10": 19.06666666666667,
+    "p90": 57.666666666666664,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.33333333333333,
+    "p10": 48.53333333333333,
+    "p90": 167.26666666666665,
+    "n": 73
+   }
+  },
+  "NEG_card_rot3deg_y": {
+   "colour_scene_soft": {
+    "median": 32.333333333333336,
+    "p10": 18.466666666666665,
+    "p90": 51.13333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 38.666666666666664,
+    "p10": 20.466666666666665,
+    "p90": 57.666666666666664,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 109.0,
+    "p10": 49.53333333333334,
+    "p90": 173.6,
+    "n": 73
+   }
+  },
+  "NEG_card_shift2cm_x": {
+   "colour_scene_soft": {
+    "median": 31.333333333333332,
+    "p10": 18.2,
+    "p90": 50.93333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 37.666666666666664,
+    "p10": 20.733333333333334,
+    "p90": 58.8,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 109.66666666666667,
+    "p10": 49.4,
+    "p90": 173.26666666666665,
+    "n": 73
+   }
+  },
+  "card": {
+   "colour_scene_soft": {
+    "median": 29.333333333333332,
+    "p10": 16.866666666666667,
+    "p90": 49.8,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 35.333333333333336,
+    "p10": 18.866666666666667,
+    "p90": 57.19999999999999,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 110.66666666666667,
+    "p10": 47.06666666666667,
+    "p90": 172.7333333333333,
+    "n": 73
+   }
+  },
+  "card_capture_time": {
+   "colour_scene_soft": {
+    "median": 30.0,
+    "p10": 17.133333333333333,
+    "p90": 50.33333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 35.333333333333336,
+    "p10": 18.933333333333334,
+    "p90": 57.19999999999999,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.66666666666667,
+    "p10": 47.86666666666667,
+    "p90": 171.9333333333333,
+    "n": 73
+   }
+  },
+  "card_time+1raw": {
+   "colour_scene_soft": {
+    "median": 29.666666666666668,
+    "p10": 17.133333333333333,
+    "p90": 49.266666666666666,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 36.333333333333336,
+    "p10": 18.8,
+    "p90": 57.533333333333324,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 110.33333333333333,
+    "p10": 47.4,
+    "p90": 174.26666666666665,
+    "n": 73
+   }
+  },
+  "card_time+2raw": {
+   "colour_scene_soft": {
+    "median": 31.333333333333332,
+    "p10": 18.0,
+    "p90": 49.83333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 36.666666666666664,
+    "p10": 19.933333333333334,
+    "p90": 57.599999999999994,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 110.33333333333333,
+    "p10": 48.53333333333333,
+    "p90": 175.5333333333333,
+    "n": 73
+   }
+  },
+  "card_time-1raw": {
+   "colour_scene_soft": {
+    "median": 30.333333333333332,
+    "p10": 17.666666666666668,
+    "p90": 50.06666666666666,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 35.666666666666664,
+    "p10": 19.0,
+    "p90": 57.133333333333326,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.66666666666667,
+    "p10": 48.6,
+    "p90": 171.39999999999995,
+    "n": 73
+   }
+  },
+  "card_time-2raw": {
+   "colour_scene_soft": {
+    "median": 31.333333333333332,
+    "p10": 18.266666666666666,
+    "p90": 50.93333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 37.333333333333336,
+    "p10": 19.46666666666667,
+    "p90": 57.133333333333326,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 112.33333333333333,
+    "p10": 47.800000000000004,
+    "p90": 170.66666666666663,
+    "n": 73
+   }
+  },
+  "dT_only": {
+   "colour_scene_soft": {
+    "median": 29.666666666666668,
+    "p10": 17.53333333333333,
+    "p90": 50.599999999999994,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 36.333333333333336,
+    "p10": 18.466666666666665,
+    "p90": 57.73333333333333,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.0,
+    "p10": 48.4,
+    "p90": 173.26666666666662,
+    "n": 73
+   }
+  },
+  "dq_only": {
+   "colour_scene_soft": {
+    "median": 27.0,
+    "p10": 16.666666666666668,
+    "p90": 43.0,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 32.333333333333336,
+    "p10": 18.0,
+    "p90": 54.133333333333326,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.66666666666667,
+    "p10": 46.46666666666667,
+    "p90": 167.79999999999998,
+    "n": 73
+   }
+  },
+  "dq_only_capture_time": {
+   "colour_scene_soft": {
+    "median": 28.0,
+    "p10": 17.066666666666666,
+    "p90": 43.86666666666667,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 33.666666666666664,
+    "p10": 18.133333333333333,
+    "p90": 53.93333333333333,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 112.66666666666667,
+    "p10": 47.06666666666667,
+    "p90": 167.0,
+    "n": 73
+   }
+  },
+  "droid_metadata_handeye": {
+   "colour_scene_soft": {
+    "median": 27.333333333333332,
+    "p10": 17.066666666666666,
+    "p90": 44.53333333333333,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 34.666666666666664,
+    "p10": 17.733333333333334,
+    "p90": 53.93333333333333,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.66666666666667,
+    "p10": 47.13333333333333,
+    "p90": 168.86666666666665,
+    "n": 73
+   }
+  },
+  "no_corrections": {
+   "colour_scene_soft": {
+    "median": 27.0,
+    "p10": 16.733333333333334,
+    "p90": 44.599999999999994,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 33.666666666666664,
+    "p10": 17.733333333333334,
+    "p90": 53.93333333333333,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 111.66666666666667,
+    "p10": 47.06666666666667,
+    "p90": 168.86666666666665,
+    "n": 73
+   }
+  },
+  "pointworld_recipe_cart": {
+   "colour_scene_soft": {
+    "median": 59.0,
+    "p10": 39.733333333333334,
+    "p90": 84.6,
+    "n": 73
+   },
+   "colour_scene": {
+    "median": 61.333333333333336,
+    "p10": 43.06666666666667,
+    "p90": 81.79999999999998,
+    "n": 73
+   },
+   "colour_gripper": {
+    "median": 85.66666666666667,
+    "p10": 44.8,
+    "p90": 141.93333333333334,
+    "n": 73
+   }
+  }
+ },
+ "wins": {
+  "colour_scene_soft": {
+   "card": 11,
+   "dq_only": 34,
+   "no_corrections": 8,
+   "droid_metadata_handeye": 12,
+   "dT_only": 5,
+   "pointworld_recipe_cart": 3
+  },
+  "nn_median": {},
+  "soft_inlier_2cm": {}
+ },
+ "per_robot_colour_scene_soft": {
+  "CLVR|panda-295341-1325882": {
+   "card": {
+    "median": 43.666666666666664,
+    "n": 1
+   },
+   "dq_only": {
+    "median": 44.666666666666664,
+    "n": 1
+   },
+   "dT_only": {
+    "median": 44.0,
+    "n": 1
+   },
+   "no_corrections": {
+    "median": 44.333333333333336,
+    "n": 1
+   },
+   "droid_metadata_handeye": {
+    "median": 44.0,
+    "n": 1
+   },
+   "card_capture_time": {
+    "median": 44.0,
+    "n": 1
+   },
+   "NEG_card_no_rot180": {
+    "median": 69.66666666666667,
+    "n": 1
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 45.333333333333336,
+    "n": 1
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 43.666666666666664,
+    "n": 1
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-295341-1325882",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 2.338320338439396,
+    "dT_gw_rot_deg": 1.0302162010847107,
+    "dq_max_deg": 0.6593777646540098
+   }
+  },
+  "GuptaLab|295341-1325237": {
+   "card": {
+    "median": 18.166666666666664,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 17.333333333333332,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 18.833333333333336,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 18.0,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 18.0,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 17.833333333333336,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 61.83333333333333,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 17.666666666666668,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 18.666666666666668,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "295341-1325237",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.087291878721138,
+    "dT_gw_rot_deg": 2.481320621827555,
+    "dq_max_deg": 1.1455218682758093
+   }
+  },
+  "ILIAD|295341-1325494": {
+   "card": {
+    "median": 28.333333333333332,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 26.833333333333336,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 27.333333333333336,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 26.333333333333332,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 26.5,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 28.333333333333336,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 60.5,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 26.666666666666664,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 31.5,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "295341-1325494",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.9572751353926913,
+    "dT_gw_rot_deg": 0.9597096475692132,
+    "dq_max_deg": 0.9357935460128689
+   }
+  },
+  "ILIAD|panda-295341-1325494": {
+   "card": {
+    "median": 17.166666666666668,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 16.833333333333336,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 17.833333333333332,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 16.833333333333336,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 17.166666666666664,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 17.333333333333336,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 60.16666666666667,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 17.0,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 19.333333333333336,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-295341-1325494",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.005318100559364,
+    "dT_gw_rot_deg": 1.1729481570065705,
+    "dq_max_deg": 1.0218928829776397
+   }
+  },
+  "IPRL|panda-295341-1325686": {
+   "card": {
+    "median": 26.333333333333336,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 26.666666666666664,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 26.666666666666664,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 26.333333333333332,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 31.5,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 26.0,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 59.16666666666667,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 29.5,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 27.166666666666668,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-295341-1325686",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.0764604528698607,
+    "dT_gw_rot_deg": 1.7158329718679843,
+    "dq_max_deg": 0.6713834229458939
+   }
+  },
+  "IRIS|295341-1326372": {
+   "card": {
+    "median": 42.333333333333336,
+    "n": 3
+   },
+   "dq_only": {
+    "median": 42.333333333333336,
+    "n": 3
+   },
+   "dT_only": {
+    "median": 42.333333333333336,
+    "n": 3
+   },
+   "no_corrections": {
+    "median": 42.333333333333336,
+    "n": 3
+   },
+   "droid_metadata_handeye": {
+    "median": 42.0,
+    "n": 3
+   },
+   "card_capture_time": {
+    "median": 42.333333333333336,
+    "n": 3
+   },
+   "NEG_card_no_rot180": {
+    "median": 95.33333333333333,
+    "n": 3
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 42.666666666666664,
+    "n": 3
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 42.666666666666664,
+    "n": 3
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "295341-1326372",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.37065859267120277,
+    "dT_gw_rot_deg": 2.0953178961802807,
+    "dq_max_deg": 0.8188230346601097
+   }
+  },
+  "IRIS|panda-295341-1326372": {
+   "card": {
+    "median": 35.666666666666664,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 34.0,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 37.166666666666664,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 35.0,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 35.5,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 36.5,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 72.5,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 36.16666666666667,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 33.833333333333336,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-295341-1326372",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.4597359243471604,
+    "dT_gw_rot_deg": 1.6947169110839955,
+    "dq_max_deg": 0.9010820977640409
+   }
+  },
+  "IRIS|unknown": {
+   "card": {
+    "median": 79.16666666666666,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 42.5,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 75.66666666666666,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 41.0,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 41.0,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 79.66666666666667,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 65.83333333333333,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 80.0,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 78.0,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": false,
+    "asset_key": "unknown",
+    "wrist_native_wh": [
+     672,
+     376
+    ],
+    "dT_gw_t_cm": 2.0420472513719323,
+    "dT_gw_rot_deg": 39.068645920179655,
+    "dq_max_deg": 9.387864495298038
+   }
+  },
+  "PennPAL|fr3-295341-1326691": {
+   "card": {
+    "median": 28.166666666666664,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 28.0,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 28.0,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 28.333333333333332,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 28.666666666666668,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 27.833333333333336,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 70.83333333333334,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 28.166666666666664,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 30.0,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "fr3-295341-1326691",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.28292335036804117,
+    "dT_gw_rot_deg": 1.3442842041484184,
+    "dq_max_deg": 1.2437912149593677
+   }
+  },
+  "RAD|panda-295341-1325422": {
+   "card": {
+    "median": 33.166666666666664,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 33.666666666666664,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 33.0,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 33.333333333333336,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 34.166666666666664,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 33.166666666666664,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 51.5,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 35.16666666666667,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 36.16666666666667,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-295341-1325422",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.9270870964158675,
+    "dT_gw_rot_deg": 1.9695082407556963,
+    "dq_max_deg": 0.8950690233343439
+   }
+  },
+  "RAIL|290102-1324143": {
+   "card": {
+    "median": 29.0,
+    "n": 3
+   },
+   "dq_only": {
+    "median": 25.0,
+    "n": 3
+   },
+   "dT_only": {
+    "median": 28.333333333333332,
+    "n": 3
+   },
+   "no_corrections": {
+    "median": 25.333333333333332,
+    "n": 3
+   },
+   "droid_metadata_handeye": {
+    "median": 26.0,
+    "n": 3
+   },
+   "card_capture_time": {
+    "median": 28.333333333333332,
+    "n": 3
+   },
+   "NEG_card_no_rot180": {
+    "median": 42.5,
+    "n": 3
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 29.0,
+    "n": 3
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 31.333333333333332,
+    "n": 3
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "290102-1324143",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.8282182518672342,
+    "dT_gw_rot_deg": 2.6837255256621972,
+    "dq_max_deg": 1.1432716411094075
+   }
+  },
+  "RAIL|fr3-290102-1324143": {
+   "card": {
+    "median": 36.0,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 26.5,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 35.83333333333333,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 29.0,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 30.333333333333332,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 35.16666666666667,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 55.66666666666667,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 31.0,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 39.5,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "fr3-290102-1324143",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.2352067795300024,
+    "dT_gw_rot_deg": 2.350977997020946,
+    "dq_max_deg": 1.0277009983713836
+   }
+  },
+  "RAIL|panda-290102-1324143": {
+   "card": {
+    "median": 38.0,
+    "n": 1
+   },
+   "dq_only": {
+    "median": 34.0,
+    "n": 1
+   },
+   "dT_only": {
+    "median": 36.333333333333336,
+    "n": 1
+   },
+   "no_corrections": {
+    "median": 35.0,
+    "n": 1
+   },
+   "droid_metadata_handeye": {
+    "median": 35.0,
+    "n": 1
+   },
+   "card_capture_time": {
+    "median": 37.333333333333336,
+    "n": 1
+   },
+   "NEG_card_no_rot180": {
+    "median": 73.33333333333333,
+    "n": 1
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 36.0,
+    "n": 1
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 44.333333333333336,
+    "n": 1
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-290102-1324143",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.8803122275784921,
+    "dT_gw_rot_deg": 2.9797297137849252,
+    "dq_max_deg": 0.875689215338079
+   }
+  },
+  "RAIL|unknown": {
+   "card": {
+    "median": 49.0,
+    "n": 1
+   },
+   "dq_only": {
+    "median": 30.0,
+    "n": 1
+   },
+   "dT_only": {
+    "median": 47.333333333333336,
+    "n": 1
+   },
+   "no_corrections": {
+    "median": 32.0,
+    "n": 1
+   },
+   "droid_metadata_handeye": {
+    "median": 33.666666666666664,
+    "n": 1
+   },
+   "card_capture_time": {
+    "median": 49.0,
+    "n": 1
+   },
+   "NEG_card_no_rot180": {
+    "median": 44.333333333333336,
+    "n": 1
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 48.666666666666664,
+    "n": 1
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 49.333333333333336,
+    "n": 1
+   },
+   "_meta": {
+    "identifies_robot": false,
+    "asset_key": "unknown",
+    "wrist_native_wh": [
+     672,
+     376
+    ],
+    "dT_gw_t_cm": 4.080468153587589,
+    "dT_gw_rot_deg": 38.32540130786606,
+    "dq_max_deg": 5.636122692706428
+   }
+  },
+  "REAL|295341-1326783": {
+   "card": {
+    "median": 31.166666666666668,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 29.5,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 32.66666666666667,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 30.5,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 32.5,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 31.166666666666668,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 66.5,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 31.166666666666668,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 32.66666666666667,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "295341-1326783",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.1552014122711276,
+    "dT_gw_rot_deg": 2.7100000864408624,
+    "dq_max_deg": 1.5115005861997233
+   }
+  },
+  "REAL|FR3-295341-1326783": {
+   "card": {
+    "median": 26.666666666666664,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 23.666666666666664,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 29.166666666666668,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 23.166666666666664,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 23.5,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 27.166666666666668,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 70.16666666666667,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 27.5,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 32.5,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "FR3-295341-1326783",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 1.4713313869107665,
+    "dT_gw_rot_deg": 2.690463717290927,
+    "dq_max_deg": 1.5231505410462378
+   }
+  },
+  "RPL|295341-1324688": {
+   "card": {
+    "median": 29.0,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 26.333333333333332,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 30.5,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 26.0,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 26.0,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 29.0,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 66.83333333333334,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 30.5,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 29.333333333333336,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "295341-1324688",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.48339718778261653,
+    "dT_gw_rot_deg": 1.9905123035195933,
+    "dq_max_deg": 0.536889581029791
+   }
+  },
+  "RPL|panda-295341-1324688": {
+   "card": {
+    "median": 32.833333333333336,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 34.166666666666664,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 33.333333333333336,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 32.33333333333333,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 32.33333333333333,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 32.833333333333336,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 64.33333333333333,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 34.333333333333336,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 32.33333333333333,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "panda-295341-1324688",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.5519727332153669,
+    "dT_gw_rot_deg": 2.180994575975202,
+    "dq_max_deg": 0.606449668280229
+   }
+  },
+  "TRI|fr3-": {
+   "card": {
+    "median": 22.166666666666664,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 21.333333333333332,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 20.333333333333336,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 20.166666666666664,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 20.166666666666664,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 22.166666666666668,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 40.5,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 23.666666666666664,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 19.833333333333336,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": false,
+    "asset_key": "fr3-",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.6586484190402366,
+    "dT_gw_rot_deg": 0.6472518901410571,
+    "dq_max_deg": 1.006060611203256
+   }
+  },
+  "TRI|fr3-295341-1326895": {
+   "card": {
+    "median": 22.333333333333332,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 21.0,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 23.666666666666664,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 21.333333333333332,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 21.5,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 22.166666666666668,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 45.0,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 24.333333333333336,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 22.333333333333332,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "fr3-295341-1326895",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.3032147732805244,
+    "dT_gw_rot_deg": 0.9850654510111625,
+    "dq_max_deg": 1.1381199709279253
+   }
+  },
+  "TRI|fr3-295341-1326898": {
+   "card": {
+    "median": 21.0,
+    "n": 4
+   },
+   "dq_only": {
+    "median": 21.333333333333336,
+    "n": 4
+   },
+   "dT_only": {
+    "median": 21.5,
+    "n": 4
+   },
+   "no_corrections": {
+    "median": 21.666666666666668,
+    "n": 4
+   },
+   "droid_metadata_handeye": {
+    "median": 21.666666666666668,
+    "n": 4
+   },
+   "card_capture_time": {
+    "median": 21.5,
+    "n": 4
+   },
+   "NEG_card_no_rot180": {
+    "median": 41.33333333333333,
+    "n": 4
+   },
+   "NEG_card_other_robot_handeye": {
+    "median": 21.166666666666668,
+    "n": 4
+   },
+   "NEG_card_shift2cm_x": {
+    "median": 22.0,
+    "n": 4
+   },
+   "_meta": {
+    "identifies_robot": true,
+    "asset_key": "fr3-295341-1326898",
+    "wrist_native_wh": [
+     1280,
+     720
+    ],
+    "dT_gw_t_cm": 0.4123910904638332,
+    "dT_gw_rot_deg": 1.4522567365773895,
+    "dq_max_deg": 1.22673815359255
+   }
+  }
+ },
+ "icp": null
+}

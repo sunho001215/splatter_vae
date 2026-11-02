@@ -1,0 +1,8 @@
+{
+ "before": "/home/ws/ws/validation-20261031/item8/input_manifest_before.json",
+ "after": "/home/ws/ws/validation-20261031/item8/r2/checks/input_manifest_after_r2.json",
+ "files": 25,
+ "dirs": 9,
+ "identical": true,
+ "differences": []
+}

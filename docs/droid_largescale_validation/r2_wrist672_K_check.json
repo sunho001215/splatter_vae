@@ -1,0 +1,132 @@
+{
+ "IRIS+ef107c48+2023-03-02-15h-01m-57s": {
+  "robot": "unknown",
+  "K_parser_vs_independent_max_abs": 0.0,
+  "scores": {
+   "independent_xy (parser)": {
+    "no_corrections": 44.666666666666664,
+    "dq_only": 43.0,
+    "droid_metadata_handeye": 45.333333333333336
+   },
+   "uniform_by_width_centre": {
+    "no_corrections": 44.666666666666664,
+    "dq_only": 43.0,
+    "droid_metadata_handeye": 45.0
+   },
+   "uniform_by_height_centre": {
+    "no_corrections": 45.0,
+    "dq_only": 43.0,
+    "droid_metadata_handeye": 45.666666666666664
+   },
+   "native_K_x0.5": {
+    "no_corrections": 48.0,
+    "dq_only": 44.666666666666664,
+    "droid_metadata_handeye": 49.0
+   }
+  }
+ },
+ "IRIS+ef107c48+2023-03-02-15h-16m-51s": {
+  "robot": "unknown",
+  "K_parser_vs_independent_max_abs": 0.0,
+  "scores": {
+   "independent_xy (parser)": {
+    "no_corrections": 40.0,
+    "dq_only": 42.666666666666664,
+    "droid_metadata_handeye": 40.0
+   },
+   "uniform_by_width_centre": {
+    "no_corrections": 40.0,
+    "dq_only": 42.666666666666664,
+    "droid_metadata_handeye": 40.0
+   },
+   "uniform_by_height_centre": {
+    "no_corrections": 40.0,
+    "dq_only": 42.666666666666664,
+    "droid_metadata_handeye": 40.0
+   },
+   "native_K_x0.5": {
+    "no_corrections": 40.0,
+    "dq_only": 42.666666666666664,
+    "droid_metadata_handeye": 40.0
+   }
+  }
+ },
+ "IRIS+ef107c48+2023-03-07-15h-58m-31s": {
+  "robot": "unknown",
+  "K_parser_vs_independent_max_abs": 0.0,
+  "scores": {
+   "independent_xy (parser)": {
+    "no_corrections": 42.0,
+    "dq_only": 42.333333333333336,
+    "droid_metadata_handeye": 42.0
+   },
+   "uniform_by_width_centre": {
+    "no_corrections": 42.0,
+    "dq_only": 42.333333333333336,
+    "droid_metadata_handeye": 42.0
+   },
+   "uniform_by_height_centre": {
+    "no_corrections": 42.0,
+    "dq_only": 42.333333333333336,
+    "droid_metadata_handeye": 42.0
+   },
+   "native_K_x0.5": {
+    "no_corrections": 42.333333333333336,
+    "dq_only": 42.333333333333336,
+    "droid_metadata_handeye": 42.333333333333336
+   }
+  }
+ },
+ "IRIS+ef107c48+2023-03-07-16h-19m-59s": {
+  "robot": "unknown",
+  "K_parser_vs_independent_max_abs": 0.0,
+  "scores": {
+   "independent_xy (parser)": {
+    "no_corrections": 23.666666666666668,
+    "dq_only": 27.333333333333332,
+    "droid_metadata_handeye": 24.0
+   },
+   "uniform_by_width_centre": {
+    "no_corrections": 23.333333333333332,
+    "dq_only": 27.333333333333332,
+    "droid_metadata_handeye": 24.0
+   },
+   "uniform_by_height_centre": {
+    "no_corrections": 23.666666666666668,
+    "dq_only": 27.0,
+    "droid_metadata_handeye": 24.0
+   },
+   "native_K_x0.5": {
+    "no_corrections": 25.333333333333332,
+    "dq_only": 27.666666666666668,
+    "droid_metadata_handeye": 25.333333333333332
+   }
+  }
+ },
+ "RAIL+80edfcb1+2023-04-12-15h-55m-10s": {
+  "robot": "unknown",
+  "K_parser_vs_independent_max_abs": 0.0,
+  "scores": {
+   "independent_xy (parser)": {
+    "no_corrections": 32.0,
+    "dq_only": 30.0,
+    "droid_metadata_handeye": 33.666666666666664
+   },
+   "uniform_by_width_centre": {
+    "no_corrections": 32.0,
+    "dq_only": 30.0,
+    "droid_metadata_handeye": 33.666666666666664
+   },
+   "uniform_by_height_centre": {
+    "no_corrections": 32.0,
+    "dq_only": 30.0,
+    "droid_metadata_handeye": 34.0
+   },
+   "native_K_x0.5": {
+    "no_corrections": 33.666666666666664,
+    "dq_only": 31.333333333333332,
+    "droid_metadata_handeye": 35.666666666666664
+   }
+  }
+ }
+}

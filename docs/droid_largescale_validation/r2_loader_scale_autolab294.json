@@ -1,0 +1,479 @@
+{
+ "boundaries": {
+  "windows": 9742,
+  "episodes": 294,
+  "episode_boundaries": 293,
+  "boundary_windows_checked": 42,
+  "image_mismatches_vs_direct_rlds_read": [],
+  "shuffled_batch_distinct_episodes": 16,
+  "windows_cross_clip_or_episode": 0
+ },
+ "memory_handles": {
+  "items": 3000,
+  "max_open_files": 8,
+  "trace": [
+   {
+    "item": 0,
+    "rss_mb": 799.5,
+    "open_fds": 8,
+    "flow_open": 1,
+    "depth_open": 1,
+    "rlds_open": 1
+   },
+   {
+    "item": 100,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 200,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 300,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 400,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 500,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 600,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 700,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 800,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 900,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1000,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1100,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1200,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1300,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1400,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1500,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1600,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1700,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1800,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 1900,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2000,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2100,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2200,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2300,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2400,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2500,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2600,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2700,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2800,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2900,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   },
+   {
+    "item": 2999,
+    "rss_mb": 799.5,
+    "open_fds": 29,
+    "flow_open": 8,
+    "depth_open": 8,
+    "rlds_open": 8
+   }
+  ],
+  "peak": {
+   "fds": 29,
+   "flow": 8,
+   "depth": 8,
+   "rlds": 8
+  },
+  "rss_growth_mb_after_first_100": 0.0,
+  "fds_baseline_before": 5,
+  "fds_after_close": 5,
+  "seconds": 295.8,
+  "maxrss_mb": 802.1796875
+ },
+ "workers": {
+  "windows": 96,
+  "batches": 12,
+  "identical_to_workers0": {
+   "4": true,
+   "8": true
+  },
+  "process_stats": {
+   "0": {
+    "pids": 1,
+    "max_worker_fds": 29,
+    "max_pool": 8,
+    "max_worker_rss_mb": 799.546875,
+    "parent_fds_before_after": [
+     5,
+     29
+    ]
+   },
+   "4": {
+    "pids": 4,
+    "max_worker_fds": 57,
+    "max_pool": 8,
+    "max_worker_rss_mb": 524.140625,
+    "parent_fds_before_after": [
+     29,
+     29
+    ]
+   },
+   "8": {
+    "pids": 8,
+    "max_worker_fds": 78,
+    "max_pool": 8,
+    "max_worker_rss_mb": 524.25,
+    "parent_fds_before_after": [
+     29,
+     29
+    ]
+   }
+  },
+  "parent_fds_start_end": [
+   5,
+   29
+  ],
+  "note": "fds 0->29 in the parent are its own pooled handles (workers=0 ran in the parent); holding received batches keeps one shared-memory fd per tensor (torch file_descriptor strategy)",
+  "parent_fds_after_close": 5
+ },
+ "throughput": {
+  "split": "train",
+  "windows": 9458,
+  "image_hw": [
+   144,
+   256
+  ],
+  "with_wrist": true,
+  "omp_num_threads": "4",
+  "cpu_count": 384,
+  "results": {
+   "0": {
+    "windows_per_s": 9.7,
+    "batches": 25,
+    "batch_size": 8
+   },
+   "4": {
+    "windows_per_s": 39.2,
+    "batches": 60,
+    "batch_size": 8
+   },
+   "8": {
+    "windows_per_s": 79.3,
+    "batches": 100,
+    "batch_size": 8
+   }
+  }
+ },
+ "contract": {
+  "windows_validated": 120,
+  "episodes": 96,
+  "nonfinite": [],
+  "shapes": {
+   "images": [
+    3,
+    2,
+    3,
+    144,
+    256
+   ],
+   "K": [
+    2,
+    3,
+    3
+   ],
+   "w2c": [
+    2,
+    4,
+    4
+   ],
+   "c2w": [
+    2,
+    4,
+    4
+   ],
+   "depth": [
+    3,
+    2,
+    1,
+    144,
+    256
+   ],
+   "motion_score": [
+    3,
+    2,
+    1,
+    144,
+    256
+   ],
+   "track_src": [
+    3,
+    2,
+    4096,
+    3
+   ],
+   "track_disp": [
+    3,
+    2,
+    4096,
+    3
+   ],
+   "track_weight": [
+    3,
+    2,
+    4096
+   ],
+   "track_count": [
+    2
+   ],
+   "gripper_points": [
+    3,
+    32,
+    3
+   ],
+   "gripper_weight": [
+    3,
+    2,
+    32
+   ],
+   "probe_state": [
+    3,
+    7
+   ],
+   "robot_joint_position": [
+    3,
+    7
+   ],
+   "wrist_images": [
+    3,
+    3,
+    144,
+    256
+   ],
+   "wrist_depth": [
+    3,
+    1,
+    144,
+    256
+   ],
+   "wrist_K": [
+    3,
+    3
+   ],
+   "wrist_w2c": [
+    3,
+    4,
+    4
+   ],
+   "wrist_c2w": [
+    3,
+    4,
+    4
+   ],
+   "wrist_valid": [
+    3
+   ],
+   "wrist_track_weight": [
+    3,
+    2,
+    4096
+   ]
+  },
+  "wrist_valid_frame_fraction_mean": 1.0,
+  "windows_with_wrist": 120,
+  "wrist_depth_valid_fraction_mean": 0.8386932720740636,
+  "wrist_track_supervised_fraction_mean": 0.07907986109300207,
+  "manifest_episodes_with_wrist": 294,
+  "manifest_episodes": 294
+ },
+ "resume": {
+  "train_windows": 9458,
+  "batches_per_epoch": 2364,
+  "workers": 4,
+  "batch_size": 4,
+  "resumed_at_step": 7,
+  "identical_batches_7_to_11": true
+ }
+}
