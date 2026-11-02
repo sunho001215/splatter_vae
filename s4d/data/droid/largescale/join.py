@@ -401,10 +401,10 @@ def validate_frames(
     # Such a frame is invalidated for every camera instead of rejecting the episode; anything else still rejects it.
     offbyone = sorted({int(i) for i in frame_of[bad]})
     if offbyone:
-        neighbours = sorted({CANONICAL_STRIDE * i + d for i in offbyone for d in (-1, 1)} & set(range(entry["rlds"]["num_steps"])))
-        near = dict(zip(neighbours, pose6_to_matrix(
-            rlds_reader.read(rl["shard"], rl["row"], np.asarray(neighbours), cameras=(), numeric=("cartesian_position",))["cartesian_position"]
-        )))
+        steps = set(range(entry["rlds"]["num_steps"]))
+        neighbours = sorted({CANONICAL_STRIDE * i + d for i in offbyone for d in (-1, 1)} & steps)
+        cart = rlds_reader.read(rl["shard"], rl["row"], np.asarray(neighbours), cameras=(), numeric=("cartesian_position",))
+        near = dict(zip(neighbours, pose6_to_matrix(cart["cartesian_position"])))
 
         def explained(i: int) -> bool:
             for d in (-1, 1):
@@ -586,7 +586,8 @@ def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, settings: di
     candidates = sorted(clip_of)
     if not candidates:
         return {"decision": "no valid wrist frames", "depth_rotation_deg": None}
-    pick = np.unique(np.linspace(0, len(candidates) - 1, min(int(settings["max_frames"]), len(candidates))).round().astype(int))
+    n_pick = min(int(settings["max_frames"]), len(candidates))
+    pick = np.unique(np.linspace(0, len(candidates) - 1, n_pick).round().astype(int))
     frames = [candidates[j] for j in pick]
     raw = CANONICAL_STRIDE * np.asarray(frames)
     rl = entry["rlds"]
@@ -621,7 +622,9 @@ def wrist_qa(root, layout, episode, summary, entry, rlds_reader, *, settings: di
         "rotated180": wrist_depth_consistency(points, w2c, K, depth[:, ::-1, ::-1], mask[::-1, ::-1], settings),
     }
     passes = {
-        k: v["count"] >= settings["min_count"] and v["inlier"] >= settings["min_inlier"] and v["freespace"] <= settings["max_freespace"]
+        k: v["count"] >= settings["min_count"]
+        and v["inlier"] >= settings["min_inlier"]
+        and v["freespace"] <= settings["max_freespace"]
         for k, v in stats.items()
     }
     out = {

@@ -389,7 +389,8 @@ def test_one_state_frame_off_by_one_raw_step_is_invalidated_not_the_episode(tmp_
     row = join.load_manifest(tmp_path / "a/m.jsonl")[0]
     assert row["frames"]["state_offbyone_frames"] == [frame] and row["frames"]["state_max_xyz_m"] < 5e-5
     assert all(not row["frames"]["valid"][role][frame] for role in ("ext1", "ext2", "wrist"))
-    ds = DroidLargeScaleDataset(tmp_path / "a/m.jsonl", **F.dataset_kwargs({"tmp": tmp_path / "a", "manifest": tmp_path / "a/m.jsonl"}))
+    manifest = tmp_path / "a/m.jsonl"
+    ds = DroidLargeScaleDataset(manifest, **F.dataset_kwargs({"tmp": tmp_path / "a", "manifest": manifest}))
     stride = ds.stride
     starts = [i for _, _, i in ds.windows[0 : len(ds.windows)]]
     assert starts and all(frame not in (i, i + stride, i + 2 * stride) for i in starts)
