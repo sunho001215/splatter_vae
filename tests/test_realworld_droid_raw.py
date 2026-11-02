@@ -177,3 +177,140 @@ def test_gripper_links_follow_gripper_subtree_for_non_panda_arm_names(tmp_path):
     assert geom.gripper_links() == ["finger", "grip_base", "world"]
     geom.desc = RobotDescription("franka_panda", "robotiq_2f_85", str(tmp_path / "r.urdf"), None)
     assert "fr3_link8" in geom.gripper_links()  # the legacy rule's misclassification, kept only without the frame
+
+
+# ------------------------------------------------------------ DROID-3D joint offsets follow the calibration used
+
+UUID = "LAB+deadbeef+2023-01-01-00h-00m-00s"
+SERIAL = "FR3-295341-1000000"
+DQ = [0.001, -0.002, 0.0005, -0.003, 0.02, -0.001, 0.004]
+
+
+def _raw_episode(tmp_path, serial=SERIAL, T=6):
+    import h5py
+
+    from s4d.realworld.robot import panda_dh_fk
+
+    ep = tmp_path / "raw" / UUID
+    ep.mkdir(parents=True)
+    (ep / f"metadata_{UUID}.json").write_text(json.dumps({"uuid": UUID, "robot_serial": serial}))
+    rng = np.random.default_rng(0)
+    q = np.array([0.0, -0.3, 0.0, -2.2, 0.0, 2.0, 0.8]) + 0.1 * rng.standard_normal((T, 7))
+    from scipy.spatial.transform import Rotation
+
+    cart = np.stack([np.r_[F[:3, 3], Rotation.from_matrix(F[:3, :3]).as_euler("xyz")]
+                     for F in (panda_dh_fk(a)[-1] for a in q)])
+    with h5py.File(ep / "trajectory.h5", "w") as f:
+        f["observation/timestamp/robot_state/read_start"] = np.arange(T, dtype=np.int64) * 66
+        f["observation/timestamp/robot_state/read_end"] = np.arange(T, dtype=np.int64) * 66 + 2
+        f["observation/robot_state/cartesian_position"] = cart
+        f["observation/robot_state/joint_positions"] = q
+        f["observation/robot_state/gripper_position"] = np.zeros(T)
+    return ep, q
+
+
+def _x3d(tmp_path, *records):
+    path = tmp_path / "extrinsics.jsonl"
+    T = np.eye(4).tolist()
+    path.write_text("".join(json.dumps({"episode_uuid": u, "robot_serial": s, "T0_ext1_in_world": T,
+                                        "T1_ext2_in_world": T, "dq_joint_correction": dq,
+                                        "dT_gw_gripper_in_world_correction": T, "_meta": {}}) + "\n"
+                            for u, s, dq in records))
+    return path
+
+
+def _droid_adapter(tmp_path, ep, x3d, calibration_source):
+    from s4d.realworld.adapters import get_adapter
+
+    cfg = {"episodes": {UUID: str(ep)}, "calibration_dir": str(tmp_path), "cameras": [],
+           "cache_dir": str(tmp_path / "cache"), "robot": {"flange_frame": "panda_link8"}}
+    if x3d is not None:
+        cfg["droid3d_extrinsics"] = str(x3d)
+    if calibration_source is not None:
+        cfg["calibration_source"] = calibration_source
+    return get_adapter("droid_raw_svo", cfg)
+
+
+def test_droid3d_dq_applied_only_with_the_matching_droid3d_calibration(tmp_path):
+    from s4d.realworld.robot import panda_dh_fk
+
+    ep, q = _raw_episode(tmp_path)
+    x3d = _x3d(tmp_path, ("OTHER+00000000+2023-01-01-00h-00m-00s", SERIAL, [0.5] * 7), (UUID, SERIAL, DQ))
+    meta = _droid_adapter(tmp_path, ep, x3d, "adapter_provided").read_meta(UUID)
+    tr = meta.trajectory
+    np.testing.assert_allclose(tr.joint_positions, q + np.asarray(DQ), atol=1e-12)
+    np.testing.assert_allclose(tr.extra["joint_positions_raw"], q, atol=0)
+    for k in range(len(q)):  # recorded EE moved like the joints: still equals FK of the stored joints
+        np.testing.assert_allclose(tr.ee_pose_base[k], panda_dh_fk(tr.joint_positions[k])[-1], atol=1e-9)
+    jc = json.loads(meta.provenance.notes)["joint_correction"]
+    assert jc["applied"] and jc["dq"] == DQ
+    assert jc["requires_calibration"] == {"kind": "droid3d_extrinsics", "path": str(x3d), "episode_uuid": UUID,
+                                          "robot_serial": SERIAL}
+    provider = _droid_adapter(tmp_path, ep, x3d, "adapter_provided")
+    provider.cameras = ("ext1",)  # provided poses (no SVO access needed) name exactly the record the joints use
+    src = provider.provided_extrinsics(UUID)["ext1/left"]["source"]
+    assert all(src[k] == v for k, v in jc["requires_calibration"].items())
+
+
+@pytest.mark.parametrize("case", ["missing", "other_robot", "unknown_serial", "empty_serial", "bad_dq", "nan_dq"])
+def test_droid3d_dq_never_borrowed_or_invalid(tmp_path, case):
+    serial = {"unknown_serial": "unknown", "empty_serial": "fr3-"}.get(case, SERIAL)
+    ep, q = _raw_episode(tmp_path, serial=serial)
+    rec = {"missing": ("OTHER+00000000+2023-01-01-00h-00m-00s", serial, DQ),
+           "other_robot": (UUID, "FR3-295341-1999999", DQ),
+           "bad_dq": (UUID, serial, DQ[:6]), "nan_dq": (UUID, serial, DQ[:6] + [float("nan")])}.get(case, (UUID, serial, DQ))
+    meta = _droid_adapter(tmp_path, ep, _x3d(tmp_path, rec), "adapter_provided").read_meta(UUID)
+    np.testing.assert_array_equal(meta.trajectory.joint_positions, q)
+    assert "joint_positions_raw" not in meta.trajectory.extra
+    jc = json.loads(meta.provenance.notes)["joint_correction"]
+    assert not jc["applied"] and "raw joints" in jc["reason"]
+
+
+@pytest.mark.parametrize("source", [None, "landmarks"])
+def test_droid3d_dq_not_applied_when_calibration_comes_from_elsewhere(tmp_path, source):
+    ep, q = _raw_episode(tmp_path)
+    adapter = _droid_adapter(tmp_path, ep, _x3d(tmp_path, (UUID, SERIAL, DQ)), source)
+    meta = adapter.read_meta(UUID)
+    np.testing.assert_array_equal(meta.trajectory.joint_positions, q)
+    assert not json.loads(meta.provenance.notes)["joint_correction"]["applied"]
+
+
+def test_cli_ties_adapter_calibration_source_to_the_calibrate_stage():
+    from s4d.realworld.cli import adapter_config
+
+    cfg = {"adapter": {"config": {"episodes": {}}}, "stages": {"calibrate": {"source": "adapter_provided"}}}
+    assert adapter_config(cfg)["calibration_source"] == "adapter_provided"
+    assert "calibration_source" not in adapter_config({"adapter": {"config": {}}})
+    cfg["adapter"]["config"]["calibration_source"] = "landmarks"
+    with pytest.raises(ValueError):
+        adapter_config(cfg)
+
+
+def test_calibrate_provided_refuses_poses_from_another_record_than_the_joint_correction(tmp_path):
+    from s4d.realworld import io as rio
+    from s4d.realworld import pipeline as P
+    from s4d.realworld.adapters import get_adapter
+
+    adapter = get_adapter("synthetic", {"asset_dir": str(tmp_path / "assets"), "frames": 2})
+    ep = adapter.list_episodes()[0]
+    P.ingest(adapter, ep, tmp_path)
+    path = rio.episode_dir(tmp_path, ep) / "normalized" / "episode.json"
+    doc = json.loads(path.read_text())
+    need = {"kind": "droid3d_extrinsics", "path": "/x.jsonl", "episode_uuid": ep, "robot_serial": SERIAL}
+    doc["provenance"]["notes"] = json.dumps({"joint_correction": {"applied": True, "kind": "droid3d_dq_joint_correction",
+                                                                  "dq": DQ, "requires_calibration": need}})
+    path.write_text(json.dumps(doc))
+    meta = P.load_meta(tmp_path, ep)
+    cam = meta.stereo[0].left_stream
+    T = np.eye(4)
+    T[:3, 3] = [0.1, -0.2, 0.9]
+    with pytest.raises(ValueError, match="not the record"):
+        P.calibrate_provided(tmp_path, ep, {cam: {"T_cam_base": T, "source": {**need, "robot_serial": "other"}}})
+    with pytest.raises(ValueError, match="not the record"):
+        P.calibrate_provided(tmp_path, ep, {cam: {"T_cam_base": T, "source": {"kind": "test"}}})
+    rec = P.calibrate_provided(tmp_path, ep, {cam: {"T_cam_base": T, "source": dict(need)}})
+    assert rec["summary"][cam]["status"] == "accepted"
+    cal = json.loads((rio.stage_dir(tmp_path, ep, "calibrate") / f"{rio.safe_name(cam)}.json").read_text())
+    assert cal["diagnostics"]["robot_joint_correction_dq"] == DQ
+    with pytest.raises(ValueError, match="raw joints"):
+        P.calibrate(tmp_path, ep, lambda *a: None, landmark_links=[])

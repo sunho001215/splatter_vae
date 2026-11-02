@@ -19,6 +19,16 @@ Configuration::
         decoder: {python: <env with PyAV>, timeout_s: 1800}
         droid3d_extrinsics: <extrinsics.jsonl>   # optional: provided camera poses
         droid3d_intrinsics: <camera_intrinsics.jsonl>  # optional: SDK baseline cross-check
+        calibration_source: adapter_provided     # set by the CLI from stages.calibrate.source
+
+Joint corrections: DROID-3D fits its extrinsics jointly with per-robot joint offsets, ``FK(q + dq)``. When the camera
+calibration actually used is this adapter's DROID-3D record (``calibration_source: adapter_provided``) and that record
+belongs to this episode and robot (same ``episode_uuid``, same established ``robot_serial``, 7 finite offsets), the
+trajectory carries ``q + dq`` as joint positions; raw ``q`` is kept in ``extra["joint_positions_raw"]`` and the recorded
+EE pose is moved the same way (``FK(q+dq) FK(q)^-1 T_ee``) so the FK cross-check stays meaningful. The decision and
+its reasons go to ``provenance.notes["joint_correction"]``. In every other case (another calibration source, no or a
+mismatched record, a pooled/empty serial) the raw joints are used unchanged; no other robot's ``dq`` is ever borrowed.
+The wrist hand-eye (``T_gw_static``, ``dT_gw``) is not used here and is never altered.
 """
 
 from __future__ import annotations
@@ -45,6 +55,35 @@ from s4d.realworld.contract import (
 
 ROLES = ("ext1", "ext2", "wrist")
 VIEW_KEYS = {"ext1": "T0_ext1_in_world", "ext2": "T1_ext2_in_world"}
+
+
+def droid3d_joint_correction(record: dict | None, episode_id: str, robot_serial, calibration_source,
+                             path) -> tuple[np.ndarray | None, dict]:
+    """(dq or None, provenance) for DROID-3D's per-robot joint offsets; dq only when the record is the one whose
+    extrinsics calibrate this episode and its robot identity is established (see the module docstring)."""
+    prov = {"kind": "droid3d_dq_joint_correction", "applied": False, "calibration_source": calibration_source,
+            "path": str(path) if path else None, "episode_uuid": episode_id, "robot_serial": robot_serial}
+    serial = str(robot_serial or "")
+    if calibration_source != "adapter_provided" or not path:
+        prov["reason"] = "camera calibration is not the adapter-provided DROID-3D record: raw joints"
+    elif record is None:
+        prov["reason"] = "no DROID-3D record for this episode: raw joints"
+    elif record.get("episode_uuid") != episode_id:
+        prov["reason"] = f"DROID-3D record episode {record.get('episode_uuid')!r} != {episode_id!r}: raw joints"
+    elif str(record.get("robot_serial")) != serial:
+        prov["reason"] = f"DROID-3D robot_serial {record.get('robot_serial')!r} != metadata {serial!r}: raw joints"
+    elif not serial or serial.lower() == "unknown" or serial.endswith("-"):
+        prov["reason"] = f"robot identity not established (serial {serial!r}; DROID-3D pools such episodes): raw joints"
+    else:
+        dq = np.asarray(record.get("dq_joint_correction", []), dtype=np.float64)
+        if dq.shape != (7,) or not np.isfinite(dq).all():
+            prov["reason"] = f"dq_joint_correction is not 7 finite values (shape {dq.shape}): raw joints"
+        else:
+            prov.update(applied=True, dq=dq.tolist(), meta=record.get("_meta", {}),
+                        requires_calibration={"kind": "droid3d_extrinsics", "path": str(path),
+                                              "episode_uuid": episode_id, "robot_serial": serial})
+            return dq, prov
+    return None, prov
 
 
 def _jsonl_record(path: str | Path, episode_id: str) -> dict | None:
@@ -158,13 +197,31 @@ class DroidRawSvoAdapter(EpisodeAdapter):
                 ee = np.tile(np.eye(4), (len(cart), 1, 1))
                 ee[:, :3, :3] = Rotation.from_euler("xyz", cart[:, 3:]).as_matrix()
                 ee[:, :3, 3] = cart[:, :3]
+            q_raw = traj[f"{rs}/joint_positions"][:].astype(np.float64)
+            x3d = self.config.get("droid3d_extrinsics")
+            cal_src = self.config.get("calibration_source")
+            record = _jsonl_record(x3d, episode_id) if x3d and cal_src == "adapter_provided" else None
+            dq, correction = droid3d_joint_correction(record, episode_id, meta.get("robot_serial"), cal_src, x3d)
+            extra = {"cartesian_position": cart}
+            units = {"cartesian_position": "m (xyz) + rad (extrinsic xyz Euler), DROID controller EE frame"}
+            q = q_raw
+            if dq is not None:
+                from s4d.realworld.robot import panda_dh_fk
+
+                q = q_raw + dq
+                extra["joint_positions_raw"] = q_raw
+                units["joint_positions_raw"] = "rad, as recorded; joint_positions = this + DROID-3D dq_joint_correction"
+                if ee is not None:  # recorded EE = controller FK(q_raw): move it like the corrected joints
+                    ee = np.stack([panda_dh_fk(a)[-1] @ np.linalg.inv(panda_dh_fk(b)[-1]) @ e
+                                   for a, b, e in zip(q, q_raw, ee)])
+                    units["cartesian_position"] += " (raw; ee_pose_base = FK(q+dq) FK(q)^-1 of it)"
             trajectory = RobotTrajectory(
-                timestamps_ns=ts, joint_positions=traj[f"{rs}/joint_positions"][:].astype(np.float64),
+                timestamps_ns=ts, joint_positions=q,
                 gripper_state=traj[f"{rs}/gripper_position"][:].astype(np.float64),
                 ee_pose_base=ee, ee_frame=rc.get("flange_frame") if ee is not None else None,
-                extra={"cartesian_position": cart},
-                extra_units={"cartesian_position": "m (xyz) + rad (extrinsic xyz Euler), DROID controller EE frame"})
+                extra=extra, extra_units=units)
         assumptions += [
+            f"joints: {'q + DROID-3D dq ' + str(correction['dq']) if correction['applied'] else correction['reason']}",
             f"robot {meta.get('robot_serial')} recorded as franka_panda (same 7-DoF kinematic chain); "
             "robot-grounded calibration is not used for DROID",
             "gripper: Robotiq 2F-85, DROID gripper_position = normalized closure (0 open, 1 closed)",
@@ -194,7 +251,7 @@ class DroidRawSvoAdapter(EpisodeAdapter):
                                              for p in self.source_files(episode_id)),
                           created_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                           notes=json.dumps({"uuid": meta["uuid"], "task": meta.get("current_task"),
-                                            "cameras": notes}))
+                                            "cameras": notes, "joint_correction": correction}))
         return EpisodeMeta(episode_id=episode_id, streams=tuple(streams), stereo=tuple(stereo), robot=robot,
                            trajectory=trajectory, stream_timestamps_ns=stamps_by_stream, provenance=prov,
                            clock="DROID host clock (laptop): ZED image timestamps and robot_state read times",
@@ -259,6 +316,8 @@ class DroidRawSvoAdapter(EpisodeAdapter):
             if role in VIEW_KEYS:
                 out[f"{role}/left"] = {"T_cam_base": np.asarray(rec[VIEW_KEYS[role]], float),
                                        "source": {"kind": "droid3d_extrinsics", "path": str(path),
+                                                  "episode_uuid": rec.get("episode_uuid"),
+                                                  "robot_serial": rec.get("robot_serial"),
                                                   "field": VIEW_KEYS[role], "convention": "world->camera view matrix "
                                                   "of the SDK-rectified left camera (README 'Conventions' 1)",
                                                   "meta": rec.get("_meta", {})}}
