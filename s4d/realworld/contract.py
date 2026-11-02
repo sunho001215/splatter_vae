@@ -71,10 +71,6 @@ class EpisodeContractError(ValueError):
     pass
 
 
-def _array(value, dtype=None) -> np.ndarray:
-    return np.asarray(value, dtype=dtype)
-
-
 @dataclass(frozen=True)
 class Intrinsics:
     width: int
