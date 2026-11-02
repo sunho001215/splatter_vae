@@ -12,7 +12,6 @@ import argparse
 import atexit
 import io
 import json
-import os
 import pickle
 import random
 import sys
@@ -35,28 +34,11 @@ from ops.resources.gpu_guard import validate_runtime_path  # noqa: E402
 from s4d.rl import sb3_ppo  # noqa: E402
 from s4d.rl.env import env_kwargs  # noqa: E402
 from s4d.rl.protocol import resolve_config  # noqa: E402
+from s4d.rl.run_io import append_jsonl, atomic_save, rss_gb  # noqa: E402
 from ops.jobs.run_identity import record_run_identity  # noqa: E402
 
 SHORT_RUN_STEPS = 1000
 ALGORITHM = "sb3_ppo"
-
-
-def rss_gb() -> float:
-    for line in Path("/proc/self/status").read_text().splitlines():
-        if line.startswith("VmRSS:"):
-            return int(line.split()[1]) / 2**20
-    return float("nan")
-
-
-def atomic_save(payload, path: Path) -> None:
-    tmp = path.with_suffix(".tmp")
-    torch.save(payload, tmp)
-    os.replace(tmp, path)
-
-
-def append_jsonl(path: Path, record: dict) -> None:
-    with open(path, "a") as f:
-        f.write(json.dumps(record, allow_nan=False) + "\n")
 
 
 def main() -> None:
