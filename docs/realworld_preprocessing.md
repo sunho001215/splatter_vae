@@ -324,9 +324,11 @@ Found by reading `s4d/baselines/*`:
      +pi/2 yaw. Its xyz = 0 omits the coupling.
    - Robotiq states the Panda/FR3 flange is ISO 9409-1-50-4-M6 ("DIN ISO 9409-1-A50" in Franka's datasheet), with
      coupling GRP-CPL-062 and no adapter plate.
-   - Robotiq's drawings give 11.0 mm from the flange face to the 2F-85 base frame (`robotiq_85_base_link`): a 16.9 mm
-     coupling, minus its 3 mm robot-side recess, minus its 2.9 mm gripper-side recess.
-   - Documented configurations live in `s4d/realworld/mounts.py`. Compose with
+   - Robotiq's drawings give a provisional 11.0 mm from the flange face to the 2F-85 base frame
+     (`robotiq_85_base_link`): a 16.9 mm coupling, minus its 3 mm robot-side recess, minus a 2.9 mm gripper-side
+     recess taken from the blank coupling.
+   - Mount configurations live in `s4d/realworld/mounts.py`, with a status (measured / provisional / assumption)
+     and the missing measurement. Compose with
      `scripts/realworld_compose_robot_urdf.py --mount-config NAME` (or with explicit `--mount-xyz/--mount-rpy/
      --mount-source`). The manifest records the stack and its sources.
    - The coupling offset on our own rig must still be measured; the drawings are not a measurement.

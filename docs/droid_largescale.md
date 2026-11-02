@@ -209,8 +209,9 @@ Source: `droid-dataset/droid` @ `33ae6a6`.
 
 Three gripper-related transforms that must not be mixed:
 1. **Physical mount** `T_flange_gripper`.
-   - Value: `s4d/realworld/mounts.py` `droid_robotiq_2f85_iso50_coupling`, xyz (0, 0, 0.011), rpy (0, 0, π/2). This
-     is Robotiq's coupling stack, 16.9 − 3.0 − 2.9 mm, to `robotiq_85_base_link`.
+   - Value: `s4d/realworld/mounts.py` `droid_robotiq_2f85_iso50_coupling`, xyz (0, 0, 0.011), rpy (0, 0, π/2), to
+     `robotiq_85_base_link`. It is **PROVISIONAL**: Robotiq drawing stack 16.9 − 3.0 − 2.9 mm, with the coupling
+     identity inferred from the guide photos. It is not measured.
    - Used only when composing the URDF for the real-world pipeline (`scripts/realworld_compose_robot_urdf.py
      --mount-config`). See `docs/realworld_droid_validation.md`.
 2. **`data.gripper_offset_m`** (−0.019).
@@ -218,7 +219,7 @@ Three gripper-related transforms that must not be mixed:
      frame and applied through `corrected_ee_pose`. It was fitted by median depth residual on the sample episode.
    - It never reads the URDF, and the URDF path never reads it, so correcting (1) does not double-count.
    - It is not a coupling thickness: at −19 mm its finger samples sit 56–106 mm from the flange, while the
-     documented pads are about 103–174 mm.
+     2F-85 pads are about 103–174 mm, given the provisional mount.
    - If these points are ever replaced by URDF points composed with (1), set the offset to 0 and stop fitting it.
 3. **DROID-3D `T_gw_static` · `dT_gw`**, the wrist camera relative to the flange (FK ends at `panda_link8`).
    - The ZED Mini bracket screws to the link-7 ring, so the coupling is not in this chain.
