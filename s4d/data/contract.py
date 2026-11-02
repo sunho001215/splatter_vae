@@ -33,6 +33,11 @@ track_weight   (B,P,V,N)        float32 in [0,1] from the source-time visibility
 track_count    (B,V)            int64 real tracks per camera; entries [count, N) are zero padding
 gripper_points (B,T,G,3)        float32 world-frame gripper forward-kinematics points
 gripper_weight (B,P,V,G)        float32 in [0,1] source-time depth-test visibility in each camera
+
+Square-crop padding (DROID square-crop profile, s4d/data/droid/largescale/crop.py; optional, given together; one crop per
+camera per window, so the same for all T frames):
+observed       (B,V,1,H,W)      bool   pixels no padding contributes to; depth is 0 (invalid) wherever False
+token_padded   (B,V,N)          bool   N = (H/p)(W/p) row-major patches; True iff the patch has a non-observed pixel
 """
 
 from __future__ import annotations
@@ -50,6 +55,7 @@ TRACK_MOTION = ("track_src", "track_disp", "track_weight", "track_count", "gripp
 EVAL_FIELDS = ("eval_images", "eval_K", "eval_w2c", "eval_depth")
 HISTORY_FIELDS = ("history_images", "history_depth", "history_motion_score", "actions", "future_stride")
 HARDNEG_FIELDS = ("hardneg_images", "hardneg_valid", "hardneg_t0", "hardneg_hand_disp")
+CROP_FIELDS = ("observed", "token_padded")
 
 
 class ContractError(ValueError):
@@ -197,6 +203,19 @@ def validate_batch(batch: dict, *, training: bool = True) -> dict:
         _check_tensor(batch, "hardneg_valid", (B,), torch.bool)
         _check_tensor(batch, "hardneg_t0", (B,), torch.int64)
         _check_tensor(batch, "hardneg_hand_disp", (B,), torch.float32)
+    crop = [name for name in CROP_FIELDS if name in batch]
+    if crop:
+        _check(len(crop) == len(CROP_FIELDS), f"crop padding fields must be given together, found {crop}")
+        observed = _check_tensor(batch, "observed", (B, V, 1, H, W), torch.bool)
+        padded = batch["token_padded"]
+        _check(torch.is_tensor(padded) and padded.dim() == 3, "token_padded must be a 3-D tensor (B,V,N)")
+        N = padded.shape[2]
+        p = int(round((H * W / max(N, 1)) ** 0.5))
+        _check(N > 0 and p * p * N == H * W and H % p == 0 and W % p == 0, f"token_padded N={N} is not a patch grid")
+        _check_tensor(batch, "token_padded", (B, V, N), torch.bool)
+        _check(not bool((depth[:, :, :, 0] * ~observed[:, None, :, 0]).any()), "depth must be 0 on padded pixels")
+        full = observed.view(B, V, H // p, p, W // p, p).all(dim=5).all(dim=3).flatten(2)
+        _check(torch.equal(padded, ~full), "token_padded must mark exactly the patches with a non-observed pixel")
     # Held-out fields are optional in both regimes, including DROID validation.
     _check("meta" in batch and isinstance(batch["meta"], dict), "meta must be a dict")
     return {"B": B, "T": T, "V": V, "H": H, "W": W}

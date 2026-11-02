@@ -12,6 +12,15 @@
   all privileged geometry (tracks, gripper points, wrist pose/depth) are supervision fields; nothing here alters the
   encoder input contract. Wrist camera data are emitted as separate ``wrist_*`` fields because the wrist pose varies
   per frame while the contract's training views have one pose per window.
+* Square crop (``crop``, profile ``configs/droid/vits_largescale.yaml``; ``s4d/data/droid/largescale/crop.py``): instead
+  of the aspect-keeping resize, every camera gets ONE crop box per window on the native 180x320 grid (``crop_policy``
+  "motion": the motion-informed stochastic crop, a pure function of ``(seed, episode, clip, first frame, camera)``;
+  "center": the deterministic padding-free central square of evaluation and inference), applied identically to its
+  three frames, depth, intrinsics, motion score and track/gripper visibility. Extra fields: ``observed`` (V,1,S,S) bool
+  (no padding contributes), ``token_padded`` (V,N) bool (border-patch rule: any non-observed pixel), diagnostics
+  ``crop_box`` (V,3) ``[x0, y0, s]`` native pixels, ``crop_fallback`` (V,) (``crop.FALLBACK_CODES``),
+  ``crop_moving_tracks`` (V,); with the wrist: ``wrist_observed`` (1,S,S), ``wrist_crop_box`` (3,),
+  ``wrist_crop_fallback`` ().
 """
 
 from __future__ import annotations
@@ -29,9 +38,11 @@ from torch.utils.data import Dataset
 from s4d.data.contract import PAIRS, validate_batch
 from s4d.data.droid.gripper import gripper_points
 from s4d.data.droid.largescale import calibration as C
+from s4d.data.droid.largescale import crop as CR
 from s4d.data.droid.largescale.geometry import (
     invert,
     pose6_to_matrix,
+    project,
     rebase_static_camera_points,
     scale_intrinsics,
     transform_points,
@@ -117,9 +128,23 @@ class DroidLargeScaleDataset(Dataset):
         layout: dict = DEFAULT_LAYOUT,
         validate: bool = True,
         with_eval: bool = False,
+        crop: dict | None = None,
+        crop_policy: str = "motion",
+        patch_size: int = 16,
+        min_eligible_tokens: int = 0,
     ):
         if split not in ("train", "validation", "all"):
             raise ValueError("split must be train, validation or all")
+        self.crop = CR.CropSettings.from_config(crop)
+        self.crop_policy, self.patch_size = str(crop_policy), int(patch_size)
+        if self.crop is not None:
+            if crop_policy not in CR.POLICIES:
+                raise ValueError(f"crop_policy must be one of {CR.POLICIES}")
+            if (int(image_height), int(image_width)) != (self.crop.out_size, self.crop.out_size):
+                raise ValueError(f"data.crop.out_size {self.crop.out_size} must equal the encoder image size "
+                                 f"{image_height}x{image_width}")
+            # equal unpadded tokens in every frame: at least ceil(kept temporal tokens / 3) per frame
+            self.min_eligible_per_frame = -(-int(min_eligible_tokens) // 3)
         self.stride, self.H, self.W = int(stride), int(image_height), int(image_width)
         self.max_tracks, self.with_wrist, self.seed = int(max_tracks), bool(with_wrist), int(seed)
         self.gripper_offset_m, self.validate = float(gripper_offset_m), bool(validate)
@@ -232,6 +257,7 @@ class DroidLargeScaleDataset(Dataset):
         images, depths_r, Ks, w2cs, scores, srcs, disps, weights, counts, gweights = ([] for _ in range(10))
         ext_points, ext_vis = [], []
         sample_ids = {}
+        crop_fields = []
         for role in EXT_ROLES:
             K_nat, w2c, w2c_pw = self._ext_geometry(row, role)
             serial = row["cameras"][role]["serial"]
@@ -251,8 +277,21 @@ class DroidLargeScaleDataset(Dataset):
             for t in range(3):
                 vis[t] &= depth_test(points[t], K_nat, w2c, depth_nat[t], continuous=True)[0]
                 gvis[t] &= depth_test(grip[t], K_nat, w2c, depth_nat[t], continuous=True)[0]
-            K = scale_intrinsics(K_nat, NATIVE_WH, (self.W, self.H))
-            d_r = np.stack([resize(d, self.H, self.W, nearest=True) for d in depth_nat])
+            if self.crop is None:
+                K = scale_intrinsics(K_nat, NATIVE_WH, (self.W, self.H))
+                d_r = np.stack([resize(d, self.H, self.W, nearest=True) for d in depth_nat])
+                image = np.stack([resize(im, self.H, self.W, nearest=False) for im in state[role]])
+            else:
+                uv = np.stack([project(points[t], K_nat, w2c)[0] for t in range(3)])
+                motion, reliable = CR.track_motion(points, vis)
+                cropped = self._crop_camera(episode, clip, i0, role, state[role], depth_nat, K_nat,
+                                            uv=uv, visible=vis, motion=motion, reliable=reliable)
+                K, d_r, image = cropped["K"], cropped["depth"], cropped["images"]
+                cropped["vis_native"] = vis.copy()
+                for t in range(3):  # tracks / gripper points outside the crop's observed pixels are not visible
+                    vis[t] &= CR.in_observed(project(points[t], K, w2c)[0], cropped["observed"])
+                    gvis[t] &= CR.in_observed(project(grip[t], K, w2c)[0], cropped["observed"])
+                crop_fields.append(cropped)
             scores.append(splat_score(np.concatenate([points, grip], 1), np.concatenate([vis, gvis], 1), K, w2c, d_r))
             src, disp, weight = track_targets(points, vis)
             pad = self.max_tracks - len(keep)
@@ -261,7 +300,7 @@ class DroidLargeScaleDataset(Dataset):
             weights.append(np.pad(weight, ((0, 0), (0, pad))))
             counts.append(len(keep))
             gweights.append(gvis[[a for a, _, _ in PAIRS]].astype(np.float32))
-            images.append(np.stack([resize(im, self.H, self.W, nearest=False) for im in state[role]]))
+            images.append(image)
             depths_r.append(d_r)
             Ks.append(K)
             w2cs.append(w2c)
@@ -287,8 +326,17 @@ class DroidLargeScaleDataset(Dataset):
             ),
             "robot_joint_position": torch.from_numpy(state["joint_position"].astype(np.float32)),
         }
+        if crop_fields:
+            sample.update({
+                "observed": torch.from_numpy(np.stack([c["observed"][None] for c in crop_fields])),
+                "token_padded": torch.from_numpy(np.stack([c["token_padded"] for c in crop_fields])),
+                "crop_box": torch.from_numpy(np.stack([c["box"].as_array() for c in crop_fields])),
+                "crop_fallback": torch.tensor([c["fallback"] for c in crop_fields], dtype=torch.int64),
+                "crop_moving_tracks": torch.tensor([c["info"]["moving_tracks"] for c in crop_fields], dtype=torch.int64),
+            })
         if self.with_wrist:
-            sample.update(self._wrist_fields(row, episode, canon, state, wrist_cal, ext_points, ext_vis))
+            sample.update(self._wrist_fields(row, episode, canon, state, wrist_cal, ext_points, ext_vis,
+                                            (clip, i0, [c["vis_native"] for c in crop_fields])))
         sample["meta"] = {
             "task": "droid_largescale",
             "episode": episode,
@@ -303,7 +351,29 @@ class DroidLargeScaleDataset(Dataset):
             validate_batch({k: v if k == "meta" else v.unsqueeze(0) for k, v in sample.items()})
         return sample
 
-    def _wrist_fields(self, row, episode, canon, state, wrist_cal, ext_points, ext_vis) -> dict:
+    def _crop_camera(self, episode, clip, i0, role, images, depth_nat, K_nat, **tracks) -> dict:
+        """One crop box for this camera and window (``crop.sample_crop``), applied to its three frames and depth."""
+        H, W = images.shape[1:3]
+        if (W, H) != NATIVE_WH or depth_nat.shape[1:] != (H, W):
+            raise ValueError(f"the square crop is defined on the native {NATIVE_WH[1]}x{NATIVE_WH[0]} grid")
+        rng = np.random.default_rng(stable_hash(self.seed, "crop", episode, clip, i0, role))
+        S = self.crop.out_size
+        box, info = CR.sample_crop(rng, self.crop, H, W, policy=self.crop_policy, patch=self.patch_size,
+                                   min_eligible_per_frame=self.min_eligible_per_frame, **tracks)
+        observed = CR.observed_mask(box, H, W, S)
+        return {
+            "box": box,
+            "info": info,
+            "fallback": CR.FALLBACK_CODES[info["fallback"]],
+            "observed": observed,
+            "token_padded": CR.token_padding(observed, self.patch_size),
+            "K": CR.crop_intrinsics(K_nat, box, S),
+            "depth": np.stack([CR.crop_depth(d, box, S, observed) for d in depth_nat]),
+            "images": np.stack([CR.crop_rgb(im, box, S) for im in images]),
+        }
+
+    def _wrist_fields(self, row, episode, canon, state, wrist_cal, ext_points, ext_vis, window=None) -> dict:
+        """``window`` (crop only): (clip, first frame, the external tracks' visibility before their cameras' crops)."""
         H, W, P, V = self.H, self.W, len(PAIRS), len(EXT_ROLES)
         valid = np.zeros(3, bool)
         K_r = np.eye(3)
@@ -322,16 +392,39 @@ class DroidLargeScaleDataset(Dataset):
                 depth_nat = np.ascontiguousarray(depth_nat[:, ::-1, ::-1])
             depth_nat[~valid] = 0
             depth_r = np.stack([resize(d, H, W, nearest=True) for d in depth_nat])
+            in_wrist = [[depth_test(ext_points[v][t], K_nat, w2c[t], depth_nat[t], continuous=True)[0] & bool(valid[t])
+                         for v in range(V)] for t in range(3)]
+            seen_t = [[in_wrist[t][v] & ext_vis[v][t] for v in range(V)] for t in range(3)]
             for p, (a, _, _) in enumerate(PAIRS):
                 if not valid[a]:
                     continue
                 for v in range(V):
-                    seen = depth_test(ext_points[v][a], K_nat, w2c[a], depth_nat[a], continuous=True)[0] & ext_vis[v][a]
+                    seen = seen_t[a][v]
                     track_w[p, v, : len(seen)] = seen
         else:
-            K_r = scale_intrinsics(np.array([[100.0, 0, 160], [0, 100.0, 90], [0, 0, 1]]), NATIVE_WH, (W, H))
-        images = np.stack([resize(im, H, W, nearest=False) for im in state["wrist"]]).transpose(0, 3, 1, 2)
-        return {
+            K_nat = np.array([[100.0, 0, 160], [0, 100.0, 90], [0, 0, 1]])
+            K_r = scale_intrinsics(K_nat, NATIVE_WH, (W, H))
+        if self.crop is None:
+            images = np.stack([resize(im, H, W, nearest=False) for im in state["wrist"]]).transpose(0, 3, 1, 2)
+        else:
+            tracks = {}
+            if wrist_cal is not None and group is not None:  # world-frame motion of the external cameras' tracks
+                points = np.concatenate(ext_points, 1)
+                visible = np.stack([np.concatenate([in_wrist[t][v] & window[2][v][t] for v in range(V)])
+                                    for t in range(3)])
+                motion, reliable = CR.track_motion(points, visible)
+                uv = np.stack([project(points[t], K_nat, w2c[t])[0] for t in range(3)])
+                tracks = {"uv": uv, "visible": visible, "motion": motion, "reliable": reliable}
+            else:
+                depth_nat = np.zeros((3, *NATIVE_WH[::-1]), np.float32)
+            cropped = self._crop_camera(episode, window[0], window[1], "wrist", state["wrist"], depth_nat, K_nat, **tracks)
+            K_r, depth_r, images = cropped["K"], cropped["depth"], cropped["images"].transpose(0, 3, 1, 2)
+            if wrist_cal is not None and group is not None:
+                for p, (a, _, _) in enumerate(PAIRS):
+                    for v in range(V):
+                        n = ext_points[v].shape[1]
+                        track_w[p, v, :n] *= CR.in_observed(project(ext_points[v][a], K_r, w2c[a])[0], cropped["observed"])
+        out = {
             "wrist_images": torch.from_numpy(images.copy()),
             "wrist_depth": torch.from_numpy(depth_r[:, None].astype(np.float32)),
             "wrist_K": torch.from_numpy(K_r.astype(np.float32)),
@@ -340,6 +433,13 @@ class DroidLargeScaleDataset(Dataset):
             "wrist_valid": torch.from_numpy(valid.copy()),
             "wrist_track_weight": torch.from_numpy(track_w),
         }
+        if self.crop is not None:
+            out.update({
+                "wrist_observed": torch.from_numpy(cropped["observed"][None].copy()),
+                "wrist_crop_box": torch.from_numpy(cropped["box"].as_array()),
+                "wrist_crop_fallback": torch.tensor(cropped["fallback"], dtype=torch.int64),
+            })
+        return out
 
 
 def worker_open_files() -> int:
