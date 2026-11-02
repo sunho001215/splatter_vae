@@ -404,7 +404,7 @@ loss path takes the previous branch.
 - Tested: projecting the same 3D points with K and K' matches the analytic mapping to < 1e-4 px for boxes with
   negative and out-of-image offsets (numpy and torch projections). The resampled RGB follows the same mapping: a blob's
   centroid lands within 0.05 px of the mapped point. On 11 real windows (33 camera crops) the transformed-K projection of
-  every supervised track agrees with the mapped native projection to ≤ 1.4e-5 px (float32 K).
+  every supervised track agrees with the mapped native projection to ≤ 1.2e-5 px (float32 K).
 
 ### 7.2 Resampling and validity
 
@@ -414,20 +414,33 @@ loss path takes the previous branch.
   exactly the RGB path, is 0 there, i.e. no padded native pixel contributes to it.
 - **Depth.** Nearest native pixel of each output pixel centre. It is 0 (invalid) on padding and on every non-observed
   pixel. No depth is interpolated or fabricated (tested: every output value is a native measurement).
-- **Tracks and gripper points.** They stay 3D world positions. A track or gripper point is visible at a time only if it
-  passed the native visibility and depth tests and its projection with K' falls on an observed output pixel. Tracks
-  leaving the crop therefore get zero weight; they are never clamped to the border.
+- **Tracks and gripper points.** They stay 3D world positions.
+  - A displacement pair (a → b) is supervised only if the point passed the native visibility and depth tests at the
+    source time AND its projection with K' falls on an observed output pixel at BOTH endpoints (`crop.pair_membership`).
+    A track leaving the crop (tested: native u = 249 → 251 for the box (70, 0, 180)) gets zero weight; it is never
+    clamped to the border.
+  - `track_src` / `track_disp` keep the positions of every natively visible track (zero weight when gated by the
+    crop), so wrist weights can refer to them. Without a crop the legacy source-visibility rule is unchanged.
 - **Motion score.** Splatted on the cropped grid with K' and the cropped depth, so it is 0 on padding.
-- **Wrist fields** (supervision only, unused by the loss) get their own crop. `wrist_K`, `wrist_depth`, `wrist_images`
-  and `wrist_track_weight` are transformed the same way, and `wrist_observed` is added.
+- **Wrist fields** (supervision only, unused by the loss) get their own crop. `wrist_K`, `wrist_depth` and
+  `wrist_images` are transformed the same way, and `wrist_observed` is added. `wrist_track_weight` uses the external
+  tracks' native visibility (an external camera's crop says nothing about the wrist view), then only the wrist crop's
+  membership at both endpoints of each pair, with the wrist's per-frame poses (tested).
 - **Losses.** Padding is never supervision:
-  - RGB L1 uses weights `(1 + λ·score)·observed`, normalised per image, i.e. the weighted mean over observed pixels;
+  - RGB L1 uses weights `(1 + λ·score)·observed`, normalised to mean 1 over the whole image, so its full-image mean is
+    the weighted mean over observed pixels;
   - SSIM additionally drops pixels whose 11 × 11 window reaches padding (`ssim_support`);
-  - coverage, depth L1 and Chamfer use the depth validity `depth > 0 (< far) ∧ observed`;
+  - coverage and depth (L1, and the gradient / hard-depth terms when enabled) use the depth validity
+    `depth > 0 (< far) ∧ observed`. They already divide by the valid-pixel count, so they take the same weights
+    rescaled to mean 1 over observed pixels. Otherwise padding would be compensated twice and the crop size would change
+    the relative weight of these terms. Tested: uniform errors give the same RGB, coverage and depth-L1 loss for
+    s = 180 and s = 320;
+  - Chamfer uses the same fused valid depth;
   - synthetic views fuse only valid depth, so padded pixels are never fused or rendered as targets;
-  - PSNR/SSIM metrics are restricted to observed pixels.
+  - PSNR metrics are restricted to observed pixels, SSIM metrics to the SSIM support of observed pixels.
 
-  Tested: replacing the RGB of padded pixels changes neither the loss nor any gradient.
+  Tested: replacing the RGB of padded pixels changes neither the loss, nor any gradient, nor the PSNR/SSIM metrics
+  (with a windowed SSIM stand-in).
 - **Batch contract** (`s4d/data/contract.py`): `observed` and `token_padded` are optional but given together. The
   contract checks that depth is 0 wherever a pixel is not observed and that `token_padded` follows the border-patch
   rule.
@@ -436,8 +449,13 @@ loss path takes the previous branch.
 
 One crop per camera and window, applied identically to the three history frames, that camera's depth, K, motion score
 and track visibility. Different cameras get their own crops. The crop is a pure function of `(train.seed, episode,
-clip, first frame, camera)`, like the existing track subsampling. It is therefore reproducible, and it is the same
-window's crop in every epoch: overlapping windows (start t, t+1, …) draw independent crops.
+clip, first frame, camera, epoch)`, so a window draws a new crop on every visit and the crop stays reproducible.
+
+- The epoch reaches the dataset with the index. For a crop dataset (`epoch_tagged_indices`), the trainer's
+  `ResumableDistributedSampler` yields `(index, epoch)`. This works with persistent workers, and a resume (`infinite`
+  re-derives the epoch from the step) replays the same `(epoch, step)` batches exactly (tested with two persistent
+  workers).
+- Every other dataset receives plain integer indices as before. A direct `dataset[i]` is epoch 0.
 
 1. Motion uses only existing tracks. A track's motion `m` is its largest world-frame 3D displacement between two
    history frames where it is visible. External cameras are static and tracks are in the robot-base frame, so the
@@ -517,14 +535,18 @@ tokens, effective masked fraction and the geometry checks.
 - **Scan of 200 random training windows.**
   - External cameras: 387 / 400 crops were motion-informed and 13 used the `weak_motion` fallback. There was no
     `dispersed` or `few_reliable_tracks` case.
-  - Side quantiles (0/10/50/90/100 %): 180 / 193 / 235 / 299 / 318.
-  - Padded temporal tokens: median 168, maximum 294.
+  - Side quantiles (0/10/50/90/100 %): 180 / 190 / 236.5 / 296.1 / 320.
+  - Padded temporal tokens: median 168, 90th percentile 252, maximum 294.
+  - These numbers are for epoch 0, from the run after the 2026-11-02 review fixes.
   - Wrist: 193 `weak_motion`, 5 `few_reliable_tracks`, 2 motion-informed. Few world-moving external tracks are seen by
     the wrist camera, so the wrist (supervision-only) almost always gets a broad crop.
 - **Geometry checks.** Supervised tracks that stay in the crop pass the depth test against the cropped depth with K'
-  in 97.8–100 % of cases on external cameras and 94.8–100 % on the wrist (100 % against native depth). The difference
+  in 97.0–100 % of cases on external cameras and 93.0–100 % on the wrist (100 % against native depth). The difference
   comes from nearest-neighbour depth resampling at depth edges (2 cm tolerance).
 - **Visual check.** In the inspected motion-informed external crops, the moving arm and the manipulated object (bowl,
   cube, can) stay inside the crop with surrounding table context in all three history frames. When the arm descends
   into view during the window, the crop covers its path, because the extent pools all frames. A broad fallback can cut
-  off part of a slowly moving arm (for example window 3747 ext2): it is not motion-targeted by design.
+  off part of a slowly moving arm (for example window 3747 ext2 in the first inspection run): it is not
+  motion-targeted by design. The panels were regenerated after the review fixes (epoch-tagged crops, both-endpoint
+  gating, wrist targets). In window 1394, ext1 and ext2 keep the arm, the gripper and the shelf contents in all three
+  frames, and the wrist crop is motion-informed; tracks that leave the crop are marked and unsupervised.
