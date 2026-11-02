@@ -6705,3 +6705,37 @@ recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first 
 - SNeRL pretraining on soccer, window-open and sweep-into: fine PSNR is 21–29 dB, but the coarse network has stayed
   near 7 dB so far. drawer-open-r2's coarse network left 7 dB only after about 450k steps.
 - `ds-sac-cnn-soccer-s2000`: SAC temperature `alpha` 52 (alpha loss −1966) at hand-back.
+
+**15:00–16:40 — Real-data validation completed for items 5/6; item 8 round 2; integration branch updated.**
+
+- **Item 5/6 baseline** (clean 81b202c, `validation-20261031/item5/runs/baseline-81b202c`, workers on the reserved
+  slices): every stage through export and the real `dino_snerl` stage.
+  - Export: 148 windows, all passing `validate_batch`.
+  - DINO stage: 148 token windows; consumer equality verified.
+  - Stereo, tracks and SAM 3 reproduce the dev-run numbers.
+  - Document: `docs/realworld_droid_validation.md` (83e6be0), with the status matrix.
+- **DROID mount check** (gripper points vs SAM 3 robot masks):
+  - yaw ±90° (0.80) is confirmed against 0°/45° (0.66–0.72);
+  - along the approach axis the score peaks at +1–2 cm, so the data indicate a coupling of about 1.5 cm that the
+    assumed xyz = 0 omits;
+  - not adopted, so the comparison stays like-for-like. DROID-only, not our rig.
+- **Item 8 round 2** (agent; `droid-largescale-20261031` 964c787, report `validation-20261031/item8/REPORT_20261102.md`):
+  - The wrist QA rejection was occlusion, not calibration. QA v2 passes 294/294 and rejects wrong chains (≥ 285/294
+    caught). Chain, rotation, timing and hand-eye were checked on 21 robots in 11 labs.
+  - Integration fixes:
+    - synthetic views used the Meta-World rig on DROID;
+    - a null `anchor_stats` silently used the Meta-World anchors;
+    - an off-by-one PointWorld state frame rejected whole episodes.
+    The Meta-World defaults are unchanged; the golden tests will confirm.
+  - csw4 profile `configs/droid/csw4_largescale.yaml`: its method keys are machine-checked equal to Meta-World csw4.
+  - Scale: 294 episodes / 9,742 windows; bounded memory and handles; 0/4/8 workers identical; resume replay
+    bit-exact.
+  - The csw4 trainer smoke waits for the full-suite gate.
+- **Integration:** `integrate-20261031` 6d8225d = splatter4d 2278e99 + refactor2 + droid r2 + realworld + the
+  reservation port (209a055, a separate functional commit). Targeted tests: 182 passed.
+- **Full suite:** a tracked task waits for `memory_watch fits 40e9`. Local RAM is held by the 18 jobs admitted at
+  restart; the reservation keeps the freed headroom for the suite.
+- **Open for the user:**
+  - (a) DROID image size: 144×256 gives 144 tokens per frame against csw4's 64 at 128×128.
+  - (b) Per-robot `dT_gw`: deciding it needs other robots' wrist depth, at 4.9 GB per depth part.
+  - (c) Adopt the about 1.5 cm DROID coupling estimate?
