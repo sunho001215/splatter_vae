@@ -186,6 +186,21 @@ def sample_random_tokens(rows: int, tokens: int, keep: int, device, generator: t
     return visible
 
 
+def sample_eligible_tokens(eligible: torch.Tensor, keep: int, generator: torch.Generator | None = None) -> torch.Tensor:
+    """``sample_random_tokens`` restricted to ``eligible`` (rows, tokens) bool: exactly ``keep`` visible tokens per row,
+    uniform among the row's eligible tokens (ineligible ones, e.g. tokens overlapping crop padding, are always masked).
+    One masking stage: every other token is masked; a row with fewer than ``keep`` eligible tokens is an error."""
+    short = eligible.sum(1) < keep
+    if bool(short.any()):
+        raise ValueError(f"{int(short.sum())} rows have fewer than {keep} eligible tokens")
+    noise = torch.rand(eligible.shape, device=eligible.device, generator=generator)
+    noise = torch.where(eligible, noise, torch.full_like(noise, 2.0))
+    ids = torch.argsort(noise, dim=1)[:, :keep]
+    visible = torch.zeros_like(eligible)
+    visible.scatter_(1, ids, True)
+    return visible
+
+
 def sample_tube_mask(patch_scores: torch.Tensor, mask_ratio: float, threshold: float) -> torch.Tensor:
     """Visible-patch mask (True = visible) of shape (B, N) shared across time.
 
