@@ -6870,7 +6870,8 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   - step time about +9–14 % vs chlrm on a shared slice (second splat channel, mask sampling).
 - **Codex review, round 1** (gpt-6.1-sol, xhigh; `validation-20261031/codex/h1/`); all four findings fixed, with tests:
   - one shared winner for RGB and saliency at equal-depth ties;
-  - feasible synthetic overlap avoided by most-constrained-first allocation;
+  - the reported feasible synthetic overlap avoided by most-constrained-first allocation (still greedy: other
+    feasible cases can overlap; the overlap frequency is logged);
   - exact tube ranking (the tie-break noise had reordered unequal scores);
   - legacy `loss.self_render` refused with hybrid.
 
@@ -6885,15 +6886,25 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   - representation: 200k retrieval and probes;
   - rendering: PSNR / SSIM / LPIPS by region with the chl analysis pipeline, Chamfer, depth, 3D flow;
   - masking diagnostics.
-- **Decision rule:** hybrid counts as better than chlrm only if all three hold:
-  - mean held-out last-5 success difference with a CI above 0;
-  - training IQM difference ≥ −0.05 with a CI lower bound > −0.10;
-  - validation PSNR within −0.3 dB and Chamfer within +10 %.
-- A subset of tasks never suffices. Adoption is never automatic.
-- chlhm vs chl also changes the masking ratio, so it is not a pure strategy contrast.
+- **Decision rule** (tightened after Codex round 2): hybrid is reported as improving held-out success over chlrm
+  *within the registered tolerances* only if all three hold:
+  - the one confirmatory endpoint, the equal-task mean of eval0–3 last-5 success (chlhm − chlrm), has a
+    task-stratified bootstrap 95 % CI above 0 (B = 10 000, seeds resampled within task, arms independent);
+  - non-inferiority on the training cameras with a 5-point margin: the CI lower bound of IQM(chlhm) − IQM(chlrm) of
+    last-5 success is above −0.05, with both IQMs recomputed in every draw;
+  - mean validation PSNR is within −0.3 dB and mean validation Chamfer within +10 %. Held-out geometry is reported
+    but not gated.
+- Every other metric is exploratory. A subset of tasks never suffices. Adoption is never automatic.
+- **Attribution:** the contrast covers the whole hybrid policy: motion tube, per-frame quota, disjointness, fallback
+  under the quota and synthetic tie handling. It is conditional on these 8 tasks and one pretrained encoder per task and
+  arm. chlhm vs chl also changes the masking ratio, so it is not a pure strategy contrast.
 
 **Rows (64, `runs/setup/tools/register_chlhm_eight_task_20261103.py`):** copies of the chlrm rows as registered.
 - Only these change: names (`chlrm-` → `chlhm-`), the variant file, the bookkeeping fields, and the scheduling
   priority.
 - Priority: pretraining, DrM trainers and evaluators 1 (chlrm: 2); exports 0. Scheduling is non-preemptive.
 - The remote driver runs `chlhm-*` only on HYB_COMMIT once its acceptance manifest exists; until then they stay local.
+  There they rank before every other ready remote row and pool unit (Codex round 2); other rows keep their order.
+- Rollout safety (Codex round 2): `runs/setup/remote-hold-admissions` is set around the merge and the registration,
+  until every remote-driver pass that loaded the old code has exited. The registration proof is written atomically,
+  with a `--recover` path.

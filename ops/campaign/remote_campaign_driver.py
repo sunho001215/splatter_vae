@@ -74,13 +74,13 @@ SNERL_NT_COMMIT = 'dd86d78321963d10d84645cbeb6ed3938983df06'
 SNERL_NT_IDS = ('ds-pre-snerl-drawer-open-r2', 'ds-pre-snerl-window-open', 'ds-pre-snerl-soccer', 'ds-pre-snerl-sweep-into')
 RELEASES[(SNERL_NT_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{SNERL_NT_COMMIT[:7]}-cc/manifest.json'
 SNERL_NT_READY = (REPO / RELEASES[(SNERL_NT_COMMIT, POOL_IMAGE)]).is_file()
-# 75 % hybrid masking release (user directive 2026-11-03, HIGH priority): HYB_COMMIT = the commit that adds
+# 75 % hybrid masking release (user directive 2026-11-03, HIGH priority): HYB_COMMIT = the release commit that adds
 # model.encoder.mask_mode "hybrid" (s4d/model/encoder.py sample_hybrid_mask, synthetic-view motion transport,
 # configs/metaworld/variants/chamfer_lean_hybrid75.yaml; every existing mode bit for bit, tests/test_hybrid_masking.py).
 # ONLY chlhm-* rows (pretraining, export, DrM pairs: an export records mask_mode "hybrid", which older code refuses) run
 # on it; every other row keeps its release. Offered only once its acceptance manifest exists; retries keep the release
 # of their first launch.
-HYB_COMMIT = '94623aef4dd0537817b788004d1ee62826fc6c78'
+HYB_COMMIT = 'fd5e950eac86e3c33365d00388e0e51884ccfba7'
 HYB_PREFIXES = ('chlhm-',)
 RELEASES[(HYB_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{HYB_COMMIT[:7]}-cc/manifest.json'
 HYB_READY = (REPO / RELEASES[(HYB_COMMIT, POOL_IMAGE)]).is_file()
@@ -473,6 +473,8 @@ def dispatch_key(job):
         rank = 1.6  # the follow-up pretrains gate 24 RL pairs: after the baseline pretrains, before baseline RL
     if job['id'].startswith(ENC_PREFIXES):
         rank += 100  # encoder pilots: after every other remote row
+    if job['id'].startswith(HYB_PREFIXES) and job.get('priority', 5) <= 1:
+        rank -= 10  # hybrid masking (user 2026-11-03, HIGH priority): before every other ready remote row; non-preemptive
     return rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
@@ -580,7 +582,8 @@ if POOL_READY and not DRY and not held:
     if not SNERL_NT_READY:
         units = [m for m in units if m[0]['id'] not in SNERL_NT_IDS]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
-    units.sort(key=lambda m: (m[0]['id'].startswith(ENC_PREFIXES),
+    units.sort(key=lambda m: (not m[0]['id'].startswith(HYB_PREFIXES),  # hybrid masking first (HIGH priority)
+                              m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
     plan = []
     for members in units:
