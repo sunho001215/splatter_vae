@@ -54,41 +54,27 @@ from s4d.train.augment import (
     synth_camera_rig,
     synthesize_views,
 )
+from s4d.train.loop import (  # the reference's constants and (B,T,V,…) helpers; loop imports this module lazily
+    ACTIVE_OPACITY,
+    MOVING_SCORE,
+    STATIC_SCORE,
+    _float_set,
+    _nanmean,
+    _per_t,
+    _rows,
+)
+from s4d.train.loop import temporal_ramp as _ramp
 
-MOVING_SCORE = 0.5
-STATIC_SCORE = 0.05
-ACTIVE_OPACITY = 0.05
 UNSUPPORTED = {  # reference options outside the pilot definition: refused instead of silently ignored
     "loss.depth_grad": 0.0, "loss.depth_hard": 0.0, "loss.visibility": 0.0, "loss.occlusion": 0.0,
     "loss.self_render": 0.0, "loss.depth_align": "none", "loss.teacher_scale_jitter": None,
 }
 
 
-def _rows(x: torch.Tensor) -> torch.Tensor:
-    return x.reshape(-1, *x.shape[3:])
-
-
-def _per_t(x: torch.Tensor, B: int, T: int, V: int) -> torch.Tensor:
-    return x.view(B, T, V).mean(dim=(0, 2))
-
-
-def _nanmean(x: torch.Tensor) -> torch.Tensor:
-    return torch.nanmean(x) if torch.isfinite(x).any() else x.new_tensor(float("nan"))
-
-
-def _ramp(step: int, ramp_steps: int) -> float:
-    return 1.0 if ramp_steps <= 0 else min(1.0, max(0.0, step / ramp_steps))
-
-
 def index_set(gs: GaussianSet, rows: torch.Tensor) -> GaussianSet:
     """The sets of batch rows ``rows`` (all attributes, displacements included)."""
     return GaussianSet(gs.xyz[rows], gs.scales[rows], gs.quats[rows], gs.opacity[rows], gs.rgb[rows], gs.delta01[rows],
                        gs.delta12[rows], gs.group)
-
-
-def _float_set(gs: GaussianSet) -> GaussianSet:
-    return GaussianSet(gs.xyz.float(), gs.scales.float(), gs.quats.float(), gs.opacity.float(), gs.rgb.float(),
-                       gs.delta01.float(), gs.delta12.float(), gs.group)
 
 
 def _per_time_cams(x: torch.Tensor, S: int) -> torch.Tensor:

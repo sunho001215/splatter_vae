@@ -130,6 +130,12 @@ def _nanmean(x: torch.Tensor) -> torch.Tensor:
     return torch.nanmean(x) if torch.isfinite(x).any() else x.new_tensor(float("nan"))
 
 
+def _float_set(gs: GaussianSet) -> GaussianSet:
+    """The decoded set with every tensor attribute cast to float32 (used after the bf16 autocast forward)."""
+    return GaussianSet(gs.xyz.float(), gs.scales.float(), gs.quats.float(), gs.opacity.float(), gs.rgb.float(),
+                       gs.delta01.float(), gs.delta12.float(), gs.group)
+
+
 # ---- synthetic-view source (variant selfrender_replace_v2, user requirement 4 of 2026-10-29 + amendment) ---------------
 # "pointcloud" (default, the reference): the training cameras' GT depth + RGB fused and splatted into near-jittered cameras
 #   (augment.synthesize_views) are the synthetic encoder inputs (InfoNCE / consistency positives) and, with
@@ -410,16 +416,7 @@ def forward_losses(
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
             syn_slots = encoder.forward_visible(syn_in, syn_visible)["slots"]
         syn_slots = syn_slots.float().view(B, n_syn, *syn_slots.shape[1:])
-    gs = GaussianSet(
-        gs.xyz.float(),
-        gs.scales.float(),
-        gs.quats.float(),
-        gs.opacity.float(),
-        gs.rgb.float(),
-        gs.delta01.float(),
-        gs.delta12.float(),
-        gs.group,
-    )
+    gs = _float_set(gs)
     if single_frame:
         gs.delta01 = gs.delta01 * 0.0
         gs.delta12 = gs.delta12 * 0.0
