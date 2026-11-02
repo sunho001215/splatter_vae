@@ -400,7 +400,9 @@ def test_padding_is_never_supervision_nor_encoder_input(env, monkeypatch):
     from test_review_options import _fake_rasterizer
 
     monkeypatch.setattr(render, "_rasterize", _fake_rasterizer([]))
-    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - (x - y).square())
+    # a windowed stand-in (11 x 11 box mean, like the SSIM window): values near the padding boundary see padded pixels
+    monkeypatch.setattr(rgb, "_ssim_map", lambda x, y: 1 - torch.nn.functional.avg_pool2d(
+        (x - y).square(), 11, stride=1, padding=5, count_include_pad=False))
     ds = make_ds(env, max_tracks=32, crop={**CROP, "side_min": 300, "broad_side_min": 300})  # large sides: padding
     batch = collate([ds[0], ds[7]])
     assert batch["token_padded"].any() and (~batch["observed"]).any()
@@ -432,6 +434,9 @@ def test_padding_is_never_supervision_nor_encoder_input(env, monkeypatch):
     assert not torch.equal(noisy["images"], batch["images"])
     out2, grads2 = run(noisy)
     assert torch.equal(out2["total"].detach(), out["total"].detach())
+    for name in ("psnr", "ssim", "ssim_static", "psnr_static"):  # metrics ignore padding too
+        assert torch.equal(out2["metrics"][name], out["metrics"][name]) or (
+            torch.isnan(out2["metrics"][name]) and torch.isnan(out["metrics"][name])), name
     assert all(torch.equal(a, b) for a, b in zip(grads, grads2))
     model.eval()
     with torch.no_grad():  # evaluation (mask_ratio 0): no crop masking, every token visible

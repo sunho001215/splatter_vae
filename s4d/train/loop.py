@@ -647,6 +647,10 @@ def forward_losses(
         score_rows = _rows(score)
         all_mask = torch.ones_like(score_rows, dtype=torch.bool) if obs_rows is None else obs_rows
         static_mask = score_rows < STATIC_SCORE if obs_rows is None else (score_rows < STATIC_SCORE) & obs_rows
+        # crop: SSIM metrics only where the whole SSIM window is observed (as the loss), else padding would enter them
+        support = None if obs_rows is None else ssim_support(obs_rows) > 0.5
+        ssim_masks = ((all_mask, score_rows > MOVING_SCORE, static_mask) if support is None else
+                      (support, (score_rows > MOVING_SCORE) & support, static_mask & support))
         psnr_all = masked_psnr(rgb_rows, tgt_rows, all_mask).view(B, T, V)
         psnr_mov = masked_psnr(rgb_rows, tgt_rows, score_rows > MOVING_SCORE).view(B, T, V)
         psnr_sta = masked_psnr(rgb_rows, tgt_rows, static_mask).view(B, T, V)
@@ -657,9 +661,9 @@ def forward_losses(
             "psnr": _nanmean(psnr_all),
             "psnr_moving": _nanmean(psnr_mov),
             "psnr_static": _nanmean(psnr_sta),
-            "ssim": _nanmean(masked_ssim(rgb_rows, tgt_rows, all_mask)),
-            "ssim_moving": _nanmean(masked_ssim(rgb_rows, tgt_rows, score_rows > MOVING_SCORE)),
-            "ssim_static": _nanmean(masked_ssim(rgb_rows, tgt_rows, static_mask)),
+            "ssim": _nanmean(masked_ssim(rgb_rows, tgt_rows, ssim_masks[0])),
+            "ssim_moving": _nanmean(masked_ssim(rgb_rows, tgt_rows, ssim_masks[1])),
+            "ssim_static": _nanmean(masked_ssim(rgb_rows, tgt_rows, ssim_masks[2])),
             "depth_absrel": absrel.mean(),
             "coverage_mean": alpha_rows.mean(),
             "coverage_valid_mean": (alpha_rows * valid).sum() / valid.sum().clamp_min(1),
