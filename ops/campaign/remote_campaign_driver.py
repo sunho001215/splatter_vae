@@ -523,16 +523,22 @@ def place(job):
     fitting = [g for g in GPUS
                if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' else 0.0) + 1e-9
                and gpu_mem[g] + float(job['mem_gb']) <= 90
-               and (g != hyb_reserved or job['id'].startswith(HYB_PREFIXES))]
+               and (g != hyb_reserved or may_use_reserved(job['id']))]
     return min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g])) if fitting else None
 
 
 # Head-of-line reservation for the HIGH-priority hybrid masking rows (user 2026-11-03; non-preemptive): when the first
 # ready chlhm-* trainer or pretraining does not fit, the one GPU closest to fitting it (lowest load among GPUs with
 # room for its memory) takes no new lower-priority row in this pass, so the capacity freed there by finishing jobs
-# accumulates until the chlhm row fits. Running jobs are never touched; the other GPUs, the load limit, the memory cap
-# and every other row's order are unchanged; at most one GPU is reserved at a time.
-hyb_reserved = None
+# accumulates until the chlhm row fits. Only that blocked row may use the reserved GPU (later, smaller chlhm rows may
+# not refill it; Codex round 4), except retries of already launched rows, which only restore existing work (an
+# evaluator on the reserved GPU may be waiting for such a trainer; no deadlock). Running jobs are never touched; the
+# other GPUs, the load limit, the memory cap and every other row's order are unchanged; at most one GPU is reserved.
+hyb_reserved = hyb_reserved_for = None
+
+
+def may_use_reserved(job_id):
+    return job_id == hyb_reserved_for or bool(state.get(job_id, {}).get('attempts'))
 
 
 def reserve_for_hybrid(job):
@@ -553,7 +559,7 @@ for job in candidates:
     gpu = place(job)
     if gpu is None:
         if hyb_reserved is None and job['id'].startswith(HYB_PREFIXES) and not job['id'].endswith('-eval'):
-            hyb_reserved = reserve_for_hybrid(job)
+            hyb_reserved, hyb_reserved_for = reserve_for_hybrid(job), job['id']
             messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
                             f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
         continue
@@ -613,7 +619,7 @@ if POOL_READY and not DRY and not held:
             need = int(float(u['ram_gb']) * 2**30)
             fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
                        and gpu_mem[g] + float(u['mem_gb']) <= 90
-                       and (g != hyb_reserved or u['id'].startswith(HYB_PREFIXES))]
+                       and (g != hyb_reserved or may_use_reserved(u['id']))]
             if total + need > CAP or not fitting:
                 break
             g = min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g]))
