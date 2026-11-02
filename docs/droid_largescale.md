@@ -195,6 +195,35 @@ Source: `droid-dataset/droid` @ `33ae6a6`.
 - **ZED image flip** is `FLIP_MODE.OFF` everywhere.
 - **Control rate** is 15 Hz.
 
+### 2.5 Hardware, EE frame, and the three gripper-related transforms (DOC/CODE, 2026-11-02)
+
+**Hardware.**
+- **Arm.** The paper and site say Franka Panda. The guide and code support Panda or FR3: libfranka 0.9.0 / 0.10.0,
+  `robot_type` 'panda'/'fr3'.
+  - Both use polymetis `panda_arm.urdf` with `ee_link_name: panda_link8` (`config/{panda,fr3}/franka_panda.yaml`).
+  - DROID-3D serials carry lab-entered `panda-` / `fr3-` prefixes, which are inconsistent: `290102-1324143` appears
+    with both.
+- **Gripper.** Robotiq 2F-85 on Robotiq's ISO 9409-1-50-4-M6 coupling, directly on the flange (assembly guide).
+- **EE frame.** `cartesian_position` is polymetis FK of `panda_link8`, the flange. There is no TCP offset, and none
+  of Franka Hand's −45° / 0.1034 m. Desk's end-effector transformation is the identity.
+
+Three gripper-related transforms that must not be mixed:
+1. **Physical mount** `T_flange_gripper`.
+   - Value: `s4d/realworld/mounts.py` `droid_robotiq_2f85_iso50_coupling`, xyz (0, 0, 0.011), rpy (0, 0, π/2). This
+     is Robotiq's coupling stack, 16.9 − 3.0 − 2.9 mm, to `robotiq_85_base_link`.
+   - Used only when composing the URDF for the real-world pipeline (`scripts/realworld_compose_robot_urdf.py
+     --mount-config`). See `docs/realworld_droid_validation.md`.
+2. **`data.gripper_offset_m`** (−0.019).
+   - A constant z shift of the 32 hand-made points in `s4d/data/droid/gripper.py`, expressed in DROID's EE (= flange)
+     frame and applied through `corrected_ee_pose`. It was fitted by median depth residual on the sample episode.
+   - It never reads the URDF, and the URDF path never reads it, so correcting (1) does not double-count.
+   - It is not a coupling thickness: at −19 mm its finger samples sit 56–106 mm from the flange, while the
+     documented pads are about 103–174 mm.
+   - If these points are ever replaced by URDF points composed with (1), set the offset to 0 and stop fitting it.
+3. **DROID-3D `T_gw_static` · `dT_gw`**, the wrist camera relative to the flange (FK ends at `panda_link8`).
+   - The ZED Mini bracket screws to the link-7 ring, so the coupling is not in this chain.
+   - Kept exactly as published, together with `dq`.
+
 ## 3. Conventions used here (`geometry.py`)
 
 - **Transforms:** `T_a_b` maps frame-b points into frame a. `w2c` = `T_cam_world`, `c2w` = its exact rigid inverse.
