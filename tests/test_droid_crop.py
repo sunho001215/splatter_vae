@@ -315,11 +315,16 @@ def test_dataset_crop_fields_geometry_and_contract(env):
         n = int(item["track_count"][v])
         w, w_ref = item["track_weight"][:, v, :n].numpy(), ref["track_weight"][:, v, :n].numpy()
         assert (w <= w_ref).all()
-        for p, (a, _, _) in enumerate(((0, 1, 0), (1, 2, 1), (0, 2, 0))):
-            src = ref["track_src"][p, v, :n].numpy()
-            uv, _ = G.project(src, item["K"][v].numpy().astype(np.float64), item["w2c"][v].numpy().astype(np.float64))
-            inside = CR.in_observed(uv, obs)
+        K2, w2c2 = item["K"][v].numpy().astype(np.float64), item["w2c"][v].numpy().astype(np.float64)
+        for p in range(3):  # inside the crop at both endpoints of the pair
+            src = ref["track_src"][p, v, :n].numpy().astype(np.float64)
+            dst = src + ref["track_disp"][p, v, :n].numpy()
+            inside = CR.in_observed(G.project(src, K2, w2c2)[0], obs) & CR.in_observed(G.project(dst, K2, w2c2)[0], obs)
             np.testing.assert_array_equal(w[p] > 0, (w_ref[p] > 0) & inside)
+        grip = item["gripper_points"].numpy().astype(np.float64)
+        g_in = np.stack([CR.in_observed(G.project(grip[t], K2, w2c2)[0], obs) for t in range(3)])
+        expected = (ref["gripper_weight"][:, v].numpy() > 0) & CR.pair_membership(g_in, ((0, 1, 0), (1, 2, 1), (0, 2, 0)))
+        np.testing.assert_array_equal(item["gripper_weight"][:, v].numpy() > 0, expected)
         assert torch.equal(item["track_src"][:, v][item["track_weight"][:, v] > 0],
                            ref["track_src"][:, v][item["track_weight"][:, v] > 0])  # world positions unchanged
         # the same crop for every history frame: each frame is the crop of its own native frame (uniform fixture colour)
@@ -497,3 +502,30 @@ def test_padding_does_not_change_the_relative_weight_of_depth_and_coverage(monke
             float(depth_gradient_loss(target * torch.exp(0.01 * xx.float()), target, obs, levels=1)), rel=1e-5)
     np.testing.assert_allclose(values[180][:3], values[320][:3], rtol=1e-4, atol=1e-7)
     assert values[180][2] == pytest.approx(0.5) and values[180][1] == pytest.approx(np.log(2), rel=1e-5)
+
+
+def test_a_track_leaving_the_crop_is_not_supervised():
+    """Box (70, 0, 180) covers native u in [70, 250): a track at u = 249 (t0) that moves to u = 251 (t1, t2) exits the
+    crop. Source-only visibility (the legacy pair rule) would supervise pairs 01 and 02; the crop rule drops every
+    pair whose endpoints are not both inside. The same rule applies to gripper points."""
+    from s4d.data.contract import PAIRS
+    from s4d.data.droid.pointworld import track_targets
+
+    K, w2c, _ = _camera()
+    box = CR.CropBox(70, 0, 180)
+    K2 = CR.crop_intrinsics(K, box, S)
+    c2w = G.invert(w2c)
+    z = 1.2
+    rays = [G.unproject(np.array([[u, 90.0], [150.0, 90.0]]), np.full(2, z), K, c2w) for u in (249.0, 251.0, 251.5)]
+    points = np.stack(rays)  # (T=3, N=2, 3): track 0 exits, track 1 stays at u = 150
+    uv = np.stack([G.project(points[t], K, w2c)[0] for t in range(3)])
+    np.testing.assert_allclose(uv[:, 0, 0], [249.0, 251.0, 251.5], atol=1e-6)
+    visible = np.ones((3, 2), bool)
+    observed = CR.observed_mask(box, H, W, S)
+    inside = np.stack([CR.in_observed(G.project(points[t], K2, w2c)[0], observed) for t in range(3)])
+    assert inside[:, 0].tolist() == [True, False, False] and inside[:, 1].all()
+    _, _, legacy = track_targets(points, visible & inside)  # source-time gating only
+    assert legacy[:, 0].tolist() == [1.0, 0.0, 1.0]  # pairs 01 and 02 would still supervise the exiting track
+    _, _, weight = track_targets(points, visible)
+    weight *= CR.pair_membership(inside, PAIRS)
+    assert weight[:, 0].tolist() == [0.0, 0.0, 0.0] and weight[:, 1].tolist() == [1.0, 1.0, 1.0]

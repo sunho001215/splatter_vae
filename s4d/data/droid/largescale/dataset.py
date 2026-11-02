@@ -293,18 +293,30 @@ class DroidLargeScaleDataset(Dataset):
                                             uv=uv, visible=vis, motion=motion, reliable=reliable)
                 K, d_r, image = cropped["K"], cropped["depth"], cropped["images"]
                 cropped["vis_native"] = vis.copy()
-                for t in range(3):  # tracks / gripper points outside the crop's observed pixels are not visible
-                    vis[t] &= CR.in_observed(project(points[t], K, w2c)[0], cropped["observed"])
-                    gvis[t] &= CR.in_observed(project(grip[t], K, w2c)[0], cropped["observed"])
+                # crop membership per time: the projection with K' lands on an observed output pixel
+                inside = np.stack([CR.in_observed(project(points[t], K, w2c)[0], cropped["observed"]) for t in range(3)])
+                g_inside = np.stack([CR.in_observed(project(grip[t], K, w2c)[0], cropped["observed"]) for t in range(3)])
                 crop_fields.append(cropped)
-            scores.append(splat_score(np.concatenate([points, grip], 1), np.concatenate([vis, gvis], 1), K, w2c, d_r))
-            src, disp, weight = track_targets(points, vis)
+            if self.crop is None:
+                scores.append(splat_score(np.concatenate([points, grip], 1), np.concatenate([vis, gvis], 1), K, w2c, d_r))
+                src, disp, weight = track_targets(points, vis)
+                gweight = gvis[[a for a, _, _ in PAIRS]].astype(np.float32)
+            else:
+                # positions / displacements of the native-visible tracks (so wrist weights can refer to them); a pair is
+                # supervised only if the track is inside the crop at BOTH endpoints: a track leaving the crop is never
+                # supervised, never clamped. The same for the gripper points.
+                src, disp, weight = track_targets(points, vis)
+                weight *= CR.pair_membership(inside, PAIRS)
+                gweight = (gvis[[a for a, _, _ in PAIRS]] & CR.pair_membership(g_inside, PAIRS)).astype(np.float32)
+                vis &= inside  # visible in the crop (motion score; external visibility for the wrist targets)
+                gvis &= g_inside
+                scores.append(splat_score(np.concatenate([points, grip], 1), np.concatenate([vis, gvis], 1), K, w2c, d_r))
             pad = self.max_tracks - len(keep)
             srcs.append(np.pad(src, ((0, 0), (0, pad), (0, 0))))
             disps.append(np.pad(disp, ((0, 0), (0, pad), (0, 0))))
             weights.append(np.pad(weight, ((0, 0), (0, pad))))
             counts.append(len(keep))
-            gweights.append(gvis[[a for a, _, _ in PAIRS]].astype(np.float32))
+            gweights.append(gweight)
             images.append(image)
             depths_r.append(d_r)
             Ks.append(K)

@@ -220,6 +220,12 @@ def in_observed(uv_out: np.ndarray, observed: np.ndarray) -> np.ndarray:
     return out
 
 
+def pair_membership(inside: np.ndarray, pairs) -> np.ndarray:
+    """inside (T, N) crop membership per time -> (P, N): a displacement pair (a, b, _) is supervised only if the point
+    is inside the crop at BOTH endpoints (a point leaving the crop is dropped, never clamped)."""
+    return np.stack([inside[a] & inside[b] for a, b, _ in pairs])
+
+
 # ------------------------------------------------------------------------------------------------ sampling
 def center_box(height: int, width: int) -> CropBox:
     s = min(height, width)
