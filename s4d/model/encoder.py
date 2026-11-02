@@ -257,11 +257,13 @@ def sample_hybrid_mask(
        every frame, uniformly at random (the fill when fewer than ``tube`` reliable dynamic patches exist); only when
        fewer than ``tube`` positions are eligible in every frame, the positions eligible in most frames (coverage
        exception: their ineligible frames keep a hole token, counted).
-    2. Random: per frame, in frame order, ``per_frame - tube`` positions outside the tube, uniform among the frame's
-       eligible positions not yet taken by an earlier frame's random set; then eligible positions already taken by an
-       earlier frame (overlap only when unavoidable); ineligible positions only when the frame has too few eligible
-       ones (the existing coverage exception). With every token eligible (real views) the three random sets are
-       disjoint and uniform over the remaining positions: 4 + 3 x 12 = 40 of 64 positions are seen per sample.
+    2. Random: ``per_frame - tube`` positions per frame outside the tube. Frames are filled most-constrained first (the
+       frame with the fewest eligible non-tube positions first, equal counts in random order); each takes positions
+       uniformly among its eligible positions not yet taken by another frame's random set, then eligible positions
+       already taken (overlap only when this greedy allocation cannot avoid it; not a global optimum), and ineligible
+       positions only when the frame has too few eligible ones (coverage exception). With every token eligible (real
+       views) the three random sets are disjoint and uniform over the remaining positions: 4 + 3 x 12 = 40 of 64
+       positions are seen per sample.
 
     Exactly ``per_frame`` tokens per frame, no token dropped; the tube and the random set of a frame never coincide."""
     B, N = patch_scores.shape
@@ -274,16 +276,23 @@ def sample_hybrid_mask(
     every = eligible.all(1)  # (B,N) eligible in every frame
     moving = every & (patch_scores > threshold)
     u = torch.rand(B, N, device=device, generator=generator)
-    # bands: reliable dynamic (3 + score, ties broken at random) > eligible everywhere (2 + U) > most eligible frames
-    tube_priority = torch.where(
-        moving, 3.0 + patch_scores.float().clamp(0.0, 1.0) + 1e-3 * u,
-        torch.where(every, 2.0 + u, (eligible.sum(1).float() + u) / (frames + 1.0)))
+    # bands: reliable dynamic (3 + score) > eligible in every frame (2) > the number of eligible frames (count / (T+1));
+    # exact ranking with uniformly random tie-breaking: a random order, then a stable sort by priority (so any score
+    # difference is respected and only exact ties - e.g. the clamped score 1.0, or the fill band - are random)
+    tube_priority = torch.where(moving, 3.0 + patch_scores.float().clamp(0.0, 1.0),
+                                torch.where(every, torch.full_like(u, 2.0), eligible.sum(1).float() / (frames + 1.0)))
+    order = torch.argsort(u, dim=1)
+    ranked = torch.argsort(tube_priority.gather(1, order), dim=1, descending=True, stable=True)
     tube_mask = torch.zeros(B, N, dtype=torch.bool, device=device)
-    tube_mask.scatter_(1, torch.topk(tube_priority, tube, dim=1).indices, True)
+    tube_mask.scatter_(1, order.gather(1, ranked[:, :tube]), True)
+    available = (eligible & ~tube_mask[:, None]).sum(2).float()  # (B,frames) eligible non-tube positions
+    frame_order = torch.argsort(available + 0.5 * torch.rand(B, frames, device=device, generator=generator), dim=1)
+    rows_b = torch.arange(B, device=device)
     taken = torch.zeros_like(tube_mask)
-    rows = []
-    for t in range(frames):
-        e_t = eligible[:, t]
+    picks = torch.zeros(B, frames, N, dtype=torch.bool, device=device)
+    for k in range(frames):
+        f = frame_order[:, k]
+        e_t = eligible[rows_b, f]
         u = torch.rand(B, N, device=device, generator=generator)
         prio = torch.where(e_t & ~taken, 3.0 + u, torch.where(e_t, 2.0 + u, torch.where(~taken, 1.0 + u, u)))
         prio = torch.where(tube_mask, torch.full_like(prio, -1.0), prio)
@@ -291,8 +300,8 @@ def sample_hybrid_mask(
         if n_random:
             pick.scatter_(1, torch.topk(prio, n_random, dim=1).indices, True)
         taken |= pick
-        rows.append(pick | tube_mask)
-    visible = torch.stack(rows, 1)  # (B,frames,N)
+        picks[rows_b, f] = pick
+    visible = picks | tube_mask[:, None]  # (B,frames,N)
     info = {
         "tube": tube_mask,
         "tube_dynamic": (tube_mask & moving).sum(1),  # reliable dynamic patches among the tube positions

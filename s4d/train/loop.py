@@ -423,9 +423,10 @@ def forward_losses(
         # the legacy cosine term would add self-render gradients outside the registered warm-up / ramp (Codex review)
         raise ValueError("loss.self_render is not combined with aug.synth_source gaussian_self_render")
     hybrid = getattr(model, "module", model).encoder.cfg.mask_mode == "hybrid"
-    if hybrid and (future or single_frame or crop or shift or synth["source"] != "pointcloud"):
+    if hybrid and (future or single_frame or crop or shift or synth["source"] != "pointcloud"
+                   or float(get(cfg, "loss.self_render", 0.0) or 0.0) > 0):
         raise ValueError("mask_mode 'hybrid' is defined for the reconstruction objective with the three-frame encoder, "
-                         "point-cloud synthetic views and without aug.crop / aug.shift")
+                         "point-cloud synthetic views, no legacy loss.self_render and without aug.crop / aug.shift")
     crop_kw, crop_stats = {}, {}
     if "token_padded" in batch:  # square-crop profile: padded tokens are always masked, one masking stage
         enc_cfg = getattr(model, "module", model).encoder.cfg

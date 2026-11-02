@@ -132,6 +132,58 @@ def splat_batched(
     return torch.cat(rgbs), torch.cat(covers), torch.cat(depths)
 
 
+def splat_batched_shared(
+    points: torch.Tensor,
+    colors: torch.Tensor,
+    values: torch.Tensor,
+    valid: torch.Tensor,
+    K: torch.Tensor,
+    w2c: torch.Tensor,
+    height: int,
+    width: int,
+    near: float,
+    chunk: int = 8,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``splat_batched`` plus one extra per-point channel ``values`` (G,N) taken from the SAME winning point as the
+    colour (hybrid masking: a synthetic pixel's motion saliency must be that of the point whose RGB it shows). The z-buffer
+    and front test are ``splat_batched``'s; among equal-depth front points the winner is the highest point index
+    (deterministic; ``splat_batched`` leaves such ties to the scatter order). Returns rgb (G,V,3,H,W), covered, depth
+    (as ``splat_batched``) and values (G,V,1,H,W), 0 where uncovered."""
+    G, N = points.shape[:2]
+    V = K.shape[1]
+    rgbs, covers, depths, vals = [], [], [], []
+    for g0 in range(0, G, chunk):
+        p, c, f, ok = points[g0 : g0 + chunk], colors[g0 : g0 + chunk], values[g0 : g0 + chunk], valid[g0 : g0 + chunk]
+        Gc = len(p)
+        uv, z = project(p[:, None].expand(Gc, V, N, 3), K[g0 : g0 + Gc], w2c[g0 : g0 + Gc])
+        u, v = torch.floor(uv[..., 0]).long(), torch.floor(uv[..., 1]).long()
+        keep = ok[:, None] & (z > near) & (u >= 0) & (u < width) & (v >= 0) & (v < height)
+        view = torch.arange(Gc * V, device=p.device).view(Gc, V, 1)
+        index = ((view * height + v) * width + u)[keep]
+        depth = z[keep]
+        # flat point id (cloud * N + point): every point hitting a pixel belongs to that pixel's cloud, so the largest id
+        # among the front points is one well-defined winner per pixel
+        source = (torch.arange(Gc, device=p.device).view(Gc, 1, 1) * N
+                  + torch.arange(N, device=p.device).view(1, 1, N)).expand(Gc, V, N)[keep]
+        pixels = Gc * V * height * width
+        zbuf = torch.full((pixels,), float("inf"), device=p.device)
+        zbuf.scatter_reduce_(0, index, depth, reduce="amin")
+        front = depth <= zbuf[index]
+        best = torch.full((pixels,), -1, dtype=torch.long, device=p.device)
+        best.scatter_reduce_(0, index[front], source[front], reduce="amax")
+        covered = torch.isfinite(zbuf)
+        hit = best >= 0
+        rgb = torch.zeros(pixels, 3, device=p.device)
+        val = torch.zeros(pixels, device=p.device)
+        rgb[hit] = c.reshape(Gc * N, 3)[best[hit]].float()
+        val[hit] = f.reshape(Gc * N)[best[hit]].float()
+        rgbs.append(rgb.view(Gc, V, height, width, 3).permute(0, 1, 4, 2, 3))
+        covers.append(covered.view(Gc, V, 1, height, width))
+        depths.append(torch.where(covered, zbuf, torch.zeros_like(zbuf)).view(Gc, V, 1, height, width))
+        vals.append(val.view(Gc, V, 1, height, width))
+    return torch.cat(rgbs), torch.cat(covers), torch.cat(depths), torch.cat(vals)
+
+
 def fused_training_clouds(batch: dict, far: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Per (sample, time): the training cameras' GT pixels lifted to the world. Returns points and colours (B*T,V*H*W,3)
     and valid (B*T,V*H*W) for 0 < depth <= far."""

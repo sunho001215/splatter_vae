@@ -24,7 +24,7 @@ import torch.nn.functional as F
 import yaml
 
 from s4d.data.metaworld.cameras import LOOKAT, TRAIN_CAMERAS, offsets_to_orbit, orbit_rig, sample_offsets
-from s4d.diag.heldout import fused_training_clouds, splat_batched
+from s4d.diag.heldout import fused_training_clouds, splat_batched, splat_batched_shared
 from s4d.model.encoder import sample_hybrid_mask
 
 PATCH_COVERAGE = 0.9  # a synthetic-view patch is a token only if this fraction of its pixels is covered in every frame
@@ -283,26 +283,26 @@ def synthesize_views_with_motion(batch: dict, cams: dict, near: float, far: floa
                                  score_key: str = "motion_score") -> dict[str, torch.Tensor]:
     """``synthesize_views`` plus a training-only motion saliency of each synthetic view (encoder ``mask_mode``
     "hybrid"). Every fused training-camera point carries its own pixel's ``batch[score_key]`` (the real views' masking
-    score: the 3D rigid-body displacement magnitude of the point over the window, derived from simulator body poses of
-    the training split and used only to choose masks) and is splatted into ``cams`` with exactly the geometry of the RGB
-    splat (same points, validity, cameras, near plane and z-buffer), so a synthetic pixel's score is that of the surface
-    point it shows. The synthetic camera is fixed over the window, as for the RGB. Holes have score 0 (they are never
-    reliable dynamic patches). Returns the ``synthesize_views`` dict (identical images / covered / depth) and
-    motion_score (B,T,n,1,H,W) in [0,1]."""
+    score: the 3D rigid-body displacement magnitude of the point over the window / 0.03 m, from simulator body poses of
+    the training split, used only to choose masks). One splat (``splat_batched_shared``: the points, validity, cameras,
+    near plane and z-buffer of ``synthesize_views``) gives each synthetic pixel the RGB AND the score of the same winning
+    point, so a pixel's saliency is that of the surface point it shows; equal-depth ties take the highest point index
+    (``synthesize_views`` leaves them to the scatter order, so only such ties can differ from it). The synthetic camera is
+    fixed over the window, as for the RGB. Holes have score 0 (never reliable dynamic patches). Returns images / covered /
+    depth as ``synthesize_views`` and motion_score (B,T,n,1,H,W) in [0,1]."""
     B, T = batch["depth"].shape[:2]
     H, W = batch["depth"].shape[-2:]
     points, colors, valid = fused_training_clouds(batch, far)
     n = cams["K"].shape[1]
     K = cams["K"][:, None].expand(B, T, n, 3, 3).reshape(B * T, n, 3, 3)
     w2c = cams["w2c"][:, None].expand(B, T, n, 4, 4).reshape(B * T, n, 4, 4)
-    rgb, cov, dep = splat_batched(points, colors, valid, K, w2c, H, W, near)
-    score = batch[score_key][:, :, :, 0].float().reshape(B * T, -1, 1).expand(-1, -1, 3)  # fused-cloud point order
-    syn_score, _, _ = splat_batched(points, score, valid, K, w2c, H, W, near)
+    score = batch[score_key][:, :, :, 0].float().reshape(B * T, -1)  # the fused cloud's point order
+    rgb, cov, dep, syn_score = splat_batched_shared(points, colors, score, valid, K, w2c, H, W, near)
     return {
         "images": rgb.view(B, T, n, 3, H, W),
         "covered": cov.view(B, T, n, 1, H, W),
         "depth": dep.view(B, T, n, 1, H, W),
-        "motion_score": syn_score[:, :, :1].clamp(0.0, 1.0).view(B, T, n, 1, H, W),
+        "motion_score": syn_score.clamp(0.0, 1.0).view(B, T, n, 1, H, W),
     }
 
 
