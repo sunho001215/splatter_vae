@@ -25,7 +25,13 @@ from pathlib import Path
 
 import numpy as np
 
-from s4d.data.droid.largescale.geometry import check_rigid, invert, rotate180_camera, scale_intrinsics
+from s4d.data.droid.largescale.geometry import (
+    check_rigid,
+    invert,
+    rotate180_camera,
+    scale_intrinsics,
+    to_continuous_centres,
+)
 
 FLIP = np.diag([-1.0, -1.0, 1.0, 1.0])
 
@@ -98,8 +104,7 @@ def parse_droid3d_intrinsics(record: dict, role: str, *, eye: str = "left", out_
     cam = record["cameras"][role][eye]
     w, h = int(cam["width"]), int(cam["height"])
     K = np.array([[cam["fx"], 0, cam["cx"]], [0, cam["fy"], cam["cy"]], [0, 0, 1]], dtype=np.float64)
-    K[0, 2] += 0.5  # OpenCV/ZED integer pixel centres -> continuous
-    K[1, 2] += 0.5
+    K = to_continuous_centres(K, integer_centres=True)  # OpenCV/ZED integer pixel centres -> continuous
     serial = record["cameras"][role].get("serial")
     return {
         "K": scale_intrinsics(K, (w, h), tuple(out_wh)),
