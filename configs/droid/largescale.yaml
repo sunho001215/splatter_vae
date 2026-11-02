@@ -1,3 +1,8 @@
+# LEGACY DROID-base smoke profile (2026-11-02): this overlay on configs/droid/pretrain.yaml keeps the DROID base's
+# architecture and loss weights (decoder 256/8 heads, 1536/512 Gaussian parents, 16 slots of 384, consistency 0.1,
+# depth_align scale, far 4.0). It is NOT csw4, also not with the Meta-World csw4 variant files stacked on top (the
+# item-8 smoke of 2026-10-31 did that; it now stops at the synthetic-camera guard). For csw4 on DROID use
+# configs/droid/csw4_largescale.yaml alone (tests/test_droid_csw4_profile.py).
 # Overlay for configs/droid/pretrain.yaml: lazy RLDS x PointWorld-DROID x DROID-3D windows (docs/droid_largescale.md).
 #   python scripts/train.py --config configs/droid/pretrain.yaml configs/droid/largescale.yaml \
 #       --set data.manifest=... data.pointworld_root=... data.rlds_index_dir=... data.rlds_data_root=... --name ...
