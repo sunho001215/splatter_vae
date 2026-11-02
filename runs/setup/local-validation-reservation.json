@@ -1,9 +1,0 @@
-{
- "ram_bytes": 40000000000,
- "expires_unix": 1793790039.368081,
- "created": "2026-11-02T20:00:39+0900",
- "reason": "user directive 2026-11-02 evening: DROID ViT-S/crop/masking development, trainer smoke, integration suite (+40 GB)",
- "gpus_withheld": [
-  "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70"
- ]
-}

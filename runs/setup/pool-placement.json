@@ -12698,6 +12698,1543 @@
    },
    "queue_sha256_before": "c138a7225138d0692c8215906b998d5ae11e2a7ac50bdacf97e45b366e5251f6",
    "queue_sha256_after": "5a08f1760b3486148a763a5969205300987e9be44e0b37eacc3d0b878eb9ab83"
+  },
+  {
+   "time": "2026-11-03T04:45:03+09:00",
+   "to": "remote",
+   "reason": "manual",
+   "ids": [
+    "chlhm-seed0-coffee-push-200k",
+    "chlhm-seed0-door-open-200k",
+    "chlhm-seed0-peg-insert-side-200k",
+    "chlhm-seed0-peg-unplug-side-200k",
+    "chlhm-seed0-stick-push-200k"
+   ],
+   "rewritten_exports": [
+    "chlhm-export-seed0-coffee-push-200k",
+    "chlhm-export-seed0-door-open-200k",
+    "chlhm-export-seed0-peg-insert-side-200k",
+    "chlhm-export-seed0-peg-unplug-side-200k",
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "original": {
+    "chlhm-seed0-coffee-push-200k": {
+     "id": "chlhm-seed0-coffee-push-200k",
+     "host": "local",
+     "script": "scripts/train.py",
+     "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/coffee-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+      "--name",
+      "chlhm-seed0-coffee-push-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+     ],
+     "gpu": "any",
+     "mem_gb": 10,
+     "ram_gb": 13,
+     "disk_gb": 30,
+     "priority": 1,
+     "deps": [],
+     "max_restarts": 3,
+     "stage": 5,
+     "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-export-seed0-coffee-push-200k": {
+     "id": "chlhm-export-seed0-coffee-push-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/pretrain/chlhm-seed0-coffee-push-200k",
+      "--checkpoint",
+      "runs/pretrain/chlhm-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-seed0-door-open-200k": {
+     "id": "chlhm-seed0-door-open-200k",
+     "host": "local",
+     "script": "scripts/train.py",
+     "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/door-open.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+      "--name",
+      "chlhm-seed0-door-open-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+     ],
+     "gpu": "any",
+     "mem_gb": 10,
+     "ram_gb": 13,
+     "disk_gb": 30,
+     "priority": 1,
+     "deps": [],
+     "max_restarts": 3,
+     "stage": 5,
+     "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-export-seed0-door-open-200k": {
+     "id": "chlhm-export-seed0-door-open-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/pretrain/chlhm-seed0-door-open-200k",
+      "--checkpoint",
+      "runs/pretrain/chlhm-seed0-door-open-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-seed0-peg-insert-side-200k": {
+     "id": "chlhm-seed0-peg-insert-side-200k",
+     "host": "local",
+     "script": "scripts/train.py",
+     "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-insert-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+      "--name",
+      "chlhm-seed0-peg-insert-side-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+     ],
+     "gpu": "any",
+     "mem_gb": 10,
+     "ram_gb": 13,
+     "disk_gb": 30,
+     "priority": 1,
+     "deps": [],
+     "max_restarts": 3,
+     "stage": 5,
+     "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-export-seed0-peg-insert-side-200k": {
+     "id": "chlhm-export-seed0-peg-insert-side-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/pretrain/chlhm-seed0-peg-insert-side-200k",
+      "--checkpoint",
+      "runs/pretrain/chlhm-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-seed0-peg-unplug-side-200k": {
+     "id": "chlhm-seed0-peg-unplug-side-200k",
+     "host": "local",
+     "script": "scripts/train.py",
+     "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/peg-unplug-side.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+      "--name",
+      "chlhm-seed0-peg-unplug-side-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+     ],
+     "gpu": "any",
+     "mem_gb": 10,
+     "ram_gb": 13,
+     "disk_gb": 30,
+     "priority": 1,
+     "deps": [],
+     "max_restarts": 3,
+     "stage": 5,
+     "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-export-seed0-peg-unplug-side-200k": {
+     "id": "chlhm-export-seed0-peg-unplug-side-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/pretrain/chlhm-seed0-peg-unplug-side-200k",
+      "--checkpoint",
+      "runs/pretrain/chlhm-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-seed0-stick-push-200k": {
+     "id": "chlhm-seed0-stick-push-200k",
+     "host": "local",
+     "script": "scripts/train.py",
+     "args": [
+      "--config",
+      "configs/metaworld/base.yaml",
+      "configs/metaworld/tasks/stick-push.yaml",
+      "configs/metaworld/variants/chamfer_lean.yaml",
+      "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+      "--name",
+      "chlhm-seed0-stick-push-200k",
+      "--output-root",
+      "runs/pretrain",
+      "--resume",
+      "auto",
+      "--set",
+      "train.steps=200000",
+      "train.seed=0"
+     ],
+     "gpu": "any",
+     "mem_gb": 10,
+     "ram_gb": 13,
+     "disk_gb": 30,
+     "priority": 1,
+     "deps": [],
+     "max_restarts": 3,
+     "stage": 5,
+     "required_results": [
+      "completion.json",
+      "metrics.jsonl",
+      "checkpoints/step_0200000.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-export-seed0-stick-push-200k": {
+     "id": "chlhm-export-seed0-stick-push-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/pretrain/chlhm-seed0-stick-push-200k",
+      "--checkpoint",
+      "runs/pretrain/chlhm-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    }
+   },
+   "queue_sha256_before": "f90bce62b17afc181499a90de13db37ebc66fae9818de69ca0526013ab78c4d5",
+   "queue_sha256_after": "510e17c2674f9f7618629235817e6f167afea724d5e12e6c8c9207dd411fe4b2"
+  },
+  {
+   "time": "2026-11-03T04:46:01+09:00",
+   "to": "remote",
+   "reason": "manual",
+   "ids": [
+    "chlhm-export-seed0-coffee-push-200k",
+    "chlhm-export-seed0-door-open-200k",
+    "chlhm-export-seed0-peg-insert-side-200k",
+    "chlhm-export-seed0-peg-unplug-side-200k",
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "rewritten_exports": [],
+   "original": {
+    "chlhm-export-seed0-coffee-push-200k": {
+     "id": "chlhm-export-seed0-coffee-push-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/chlhm-seed0-coffee-push-200k",
+      "--checkpoint",
+      "runs/chlhm-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+     "placement": "pool 2026-11-03T04:45:03+09:00 (input paths of a moved pretraining run; runs/setup/pool-placement.json)"
+    },
+    "chlhm-export-seed0-door-open-200k": {
+     "id": "chlhm-export-seed0-door-open-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/chlhm-seed0-door-open-200k",
+      "--checkpoint",
+      "runs/chlhm-seed0-door-open-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+     "placement": "pool 2026-11-03T04:45:03+09:00 (input paths of a moved pretraining run; runs/setup/pool-placement.json)"
+    },
+    "chlhm-export-seed0-peg-insert-side-200k": {
+     "id": "chlhm-export-seed0-peg-insert-side-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/chlhm-seed0-peg-insert-side-200k",
+      "--checkpoint",
+      "runs/chlhm-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+     "placement": "pool 2026-11-03T04:45:03+09:00 (input paths of a moved pretraining run; runs/setup/pool-placement.json)"
+    },
+    "chlhm-export-seed0-peg-unplug-side-200k": {
+     "id": "chlhm-export-seed0-peg-unplug-side-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/chlhm-seed0-peg-unplug-side-200k",
+      "--checkpoint",
+      "runs/chlhm-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+     "placement": "pool 2026-11-03T04:45:03+09:00 (input paths of a moved pretraining run; runs/setup/pool-placement.json)"
+    },
+    "chlhm-export-seed0-stick-push-200k": {
+     "id": "chlhm-export-seed0-stick-push-200k",
+     "host": "local",
+     "script": "scripts/export_encoder.py",
+     "args": [
+      "--run",
+      "runs/chlhm-seed0-stick-push-200k",
+      "--checkpoint",
+      "runs/chlhm-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+      "--out",
+      "runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+     ],
+     "gpu": "any",
+     "mem_gb": 2,
+     "ram_gb": 4,
+     "disk_gb": 1,
+     "priority": 0,
+     "deps": [
+      "chlhm-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "required_results": [
+      "encoder.pt"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+     "placement": "pool 2026-11-03T04:45:03+09:00 (input paths of a moved pretraining run; runs/setup/pool-placement.json)"
+    }
+   },
+   "queue_sha256_before": "510e17c2674f9f7618629235817e6f167afea724d5e12e6c8c9207dd411fe4b2",
+   "queue_sha256_after": "b6171de751bfb057564da424fcb792478e77b4ba74a0d07dd788268893f41a42"
+  },
+  {
+   "time": "2026-11-03T04:46:30+09:00",
+   "to": "remote",
+   "reason": "manual",
+   "ids": [
+    "chlhm-drm-coffee-push-s2000",
+    "chlhm-drm-coffee-push-s2000-eval",
+    "chlhm-drm-coffee-push-s2001",
+    "chlhm-drm-coffee-push-s2001-eval",
+    "chlhm-drm-coffee-push-s2002",
+    "chlhm-drm-coffee-push-s2002-eval",
+    "chlhm-drm-door-open-s2000",
+    "chlhm-drm-door-open-s2000-eval",
+    "chlhm-drm-door-open-s2001",
+    "chlhm-drm-door-open-s2001-eval",
+    "chlhm-drm-door-open-s2002",
+    "chlhm-drm-door-open-s2002-eval",
+    "chlhm-drm-peg-insert-side-s2000",
+    "chlhm-drm-peg-insert-side-s2000-eval",
+    "chlhm-drm-peg-insert-side-s2001",
+    "chlhm-drm-peg-insert-side-s2001-eval",
+    "chlhm-drm-peg-insert-side-s2002",
+    "chlhm-drm-peg-insert-side-s2002-eval",
+    "chlhm-drm-peg-unplug-side-s2000",
+    "chlhm-drm-peg-unplug-side-s2000-eval",
+    "chlhm-drm-peg-unplug-side-s2001",
+    "chlhm-drm-peg-unplug-side-s2001-eval",
+    "chlhm-drm-peg-unplug-side-s2002",
+    "chlhm-drm-peg-unplug-side-s2002-eval",
+    "chlhm-drm-stick-push-s2000",
+    "chlhm-drm-stick-push-s2000-eval",
+    "chlhm-drm-stick-push-s2001",
+    "chlhm-drm-stick-push-s2001-eval",
+    "chlhm-drm-stick-push-s2002",
+    "chlhm-drm-stick-push-s2002-eval"
+   ],
+   "rewritten_exports": [],
+   "original": {
+    "chlhm-drm-coffee-push-s2000": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-coffee-push-s2000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "coffee-push",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2000",
+      "--run-dir",
+      "runs/chlhm-drm-coffee-push-s2000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-coffee-push-s2000-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-coffee-push-s2000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-coffee-push-s2000",
+      "--train-job",
+      "chlhm-drm-coffee-push-s2000",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-coffee-push-s2000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-coffee-push-s2001": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-coffee-push-s2001",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "coffee-push",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2001",
+      "--run-dir",
+      "runs/chlhm-drm-coffee-push-s2001",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-coffee-push-s2001-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-coffee-push-s2001-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-coffee-push-s2001",
+      "--train-job",
+      "chlhm-drm-coffee-push-s2001",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-coffee-push-s2001-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-coffee-push-s2002": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-coffee-push-s2002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "coffee-push",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2002",
+      "--run-dir",
+      "runs/chlhm-drm-coffee-push-s2002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-coffee-push-s2002-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-coffee-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-coffee-push-s2002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-coffee-push-s2002",
+      "--train-job",
+      "chlhm-drm-coffee-push-s2002",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-coffee-push-s2002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-door-open-s2000": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-door-open-s2000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "door-open",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2000",
+      "--run-dir",
+      "runs/chlhm-drm-door-open-s2000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-door-open-s2000-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-door-open-s2000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-door-open-s2000",
+      "--train-job",
+      "chlhm-drm-door-open-s2000",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-door-open-s2000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-door-open-s2001": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-door-open-s2001",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "door-open",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2001",
+      "--run-dir",
+      "runs/chlhm-drm-door-open-s2001",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-door-open-s2001-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-door-open-s2001-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-door-open-s2001",
+      "--train-job",
+      "chlhm-drm-door-open-s2001",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-door-open-s2001-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-door-open-s2002": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-door-open-s2002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "door-open",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2002",
+      "--run-dir",
+      "runs/chlhm-drm-door-open-s2002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-door-open-s2002-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-door-open-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-door-open-s2002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-door-open-s2002",
+      "--train-job",
+      "chlhm-drm-door-open-s2002",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-door-open-s2002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-insert-side-s2000": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-insert-side-s2000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-insert-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2000",
+      "--run-dir",
+      "runs/chlhm-drm-peg-insert-side-s2000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-insert-side-s2000-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-insert-side-s2000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-peg-insert-side-s2000",
+      "--train-job",
+      "chlhm-drm-peg-insert-side-s2000",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-peg-insert-side-s2000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-insert-side-s2001": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-insert-side-s2001",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-insert-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2001",
+      "--run-dir",
+      "runs/chlhm-drm-peg-insert-side-s2001",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-insert-side-s2001-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-insert-side-s2001-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-peg-insert-side-s2001",
+      "--train-job",
+      "chlhm-drm-peg-insert-side-s2001",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-peg-insert-side-s2001-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-insert-side-s2002": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-insert-side-s2002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-insert-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2002",
+      "--run-dir",
+      "runs/chlhm-drm-peg-insert-side-s2002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-insert-side-s2002-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-insert-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-insert-side-s2002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-peg-insert-side-s2002",
+      "--train-job",
+      "chlhm-drm-peg-insert-side-s2002",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-peg-insert-side-s2002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-unplug-side-s2000": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-unplug-side-s2000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-unplug-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2000",
+      "--run-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-unplug-side-s2000-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-unplug-side-s2000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2000",
+      "--train-job",
+      "chlhm-drm-peg-unplug-side-s2000",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-unplug-side-s2001": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-unplug-side-s2001",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-unplug-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2001",
+      "--run-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2001",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-unplug-side-s2001-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-unplug-side-s2001-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2001",
+      "--train-job",
+      "chlhm-drm-peg-unplug-side-s2001",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2001-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-unplug-side-s2002": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-unplug-side-s2002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "peg-unplug-side",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2002",
+      "--run-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-peg-unplug-side-s2002-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-peg-unplug-side-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-peg-unplug-side-s2002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2002",
+      "--train-job",
+      "chlhm-drm-peg-unplug-side-s2002",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-peg-unplug-side-s2002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-stick-push-s2000": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-stick-push-s2000",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "stick-push",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2000",
+      "--run-dir",
+      "runs/chlhm-drm-stick-push-s2000",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-stick-push-s2000-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-stick-push-s2000-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-stick-push-s2000",
+      "--train-job",
+      "chlhm-drm-stick-push-s2000",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-stick-push-s2000-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-stick-push-s2001": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-stick-push-s2001",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "stick-push",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2001",
+      "--run-dir",
+      "runs/chlhm-drm-stick-push-s2001",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-stick-push-s2001-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-stick-push-s2001-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-stick-push-s2001",
+      "--train-job",
+      "chlhm-drm-stick-push-s2001",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-stick-push-s2001-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-stick-push-s2002": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-stick-push-s2002",
+     "script": "scripts/train_rl.py",
+     "args": [
+      "--task",
+      "stick-push",
+      "--encoder",
+      "splatter4d",
+      "--seed",
+      "2002",
+      "--run-dir",
+      "runs/chlhm-drm-stick-push-s2002",
+      "--set",
+      "train.num_train_steps=1000000",
+      "vision.export_path=runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+     ],
+     "mem_gb": 4,
+     "ram_gb": 6,
+     "disk_gb": 10,
+     "required_results": [
+      "final.json",
+      "train.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    },
+    "chlhm-drm-stick-push-s2002-eval": {
+     "host": "local",
+     "gpu": "any",
+     "priority": 1,
+     "deps": [
+      "chlhm-export-seed0-stick-push-200k"
+     ],
+     "max_restarts": 1,
+     "stage": 5,
+     "id": "chlhm-drm-stick-push-s2002-eval",
+     "script": "scripts/eval_rl.py",
+     "args": [
+      "--run-dir",
+      "runs/chlhm-drm-stick-push-s2002",
+      "--train-job",
+      "chlhm-drm-stick-push-s2002",
+      "--workers",
+      "6",
+      "--envs-per-worker",
+      "8",
+      "--output-dir",
+      "runs/chlhm-drm-stick-push-s2002-eval"
+     ],
+     "mem_gb": 3,
+     "ram_gb": 8,
+     "disk_gb": 1,
+     "required_results": [
+      "eval.jsonl"
+     ],
+     "variant": "chamfer_lean_hybrid75",
+     "variant_definition": "runs/setup/chlhm-definition-20261103.json"
+    }
+   },
+   "queue_sha256_before": "b6171de751bfb057564da424fcb792478e77b4ba74a0d07dd788268893f41a42",
+   "queue_sha256_after": "c99b7d29897ee414e79ffb1378edbcddfce3c2136c0350b54200bad4d2d4c8c6"
   }
  ],
  "effective_jobs": {
@@ -24361,6 +25898,1356 @@
    "variant_definition": "runs/setup/downstream-selection-rule-20261028-a1.json",
    "placement": "pool 2026-10-31T20:49:21+09:00 (remote; runs/setup/pool-placement.json)",
    "priority": 1
+  },
+  "chlhm-seed0-coffee-push-200k": {
+   "id": "chlhm-seed0-coffee-push-200k",
+   "host": "remote",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/coffee-push.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+    "--name",
+    "chlhm-seed0-coffee-push-200k",
+    "--output-root",
+    "runs",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 30,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0200000.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:45:03+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-export-seed0-coffee-push-200k": {
+   "id": "chlhm-export-seed0-coffee-push-200k",
+   "host": "remote",
+   "script": "scripts/export_encoder.py",
+   "args": [
+    "--run",
+    "runs/chlhm-seed0-coffee-push-200k",
+    "--checkpoint",
+    "runs/chlhm-seed0-coffee-push-200k/checkpoints/step_0200000.pt",
+    "--out",
+    "runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+   ],
+   "gpu": "any",
+   "mem_gb": 2,
+   "ram_gb": 4,
+   "disk_gb": 1,
+   "priority": 0,
+   "deps": [
+    "chlhm-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "required_results": [
+    "encoder.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:01+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-seed0-door-open-200k": {
+   "id": "chlhm-seed0-door-open-200k",
+   "host": "remote",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/door-open.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+    "--name",
+    "chlhm-seed0-door-open-200k",
+    "--output-root",
+    "runs",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 30,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0200000.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:45:03+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-export-seed0-door-open-200k": {
+   "id": "chlhm-export-seed0-door-open-200k",
+   "host": "remote",
+   "script": "scripts/export_encoder.py",
+   "args": [
+    "--run",
+    "runs/chlhm-seed0-door-open-200k",
+    "--checkpoint",
+    "runs/chlhm-seed0-door-open-200k/checkpoints/step_0200000.pt",
+    "--out",
+    "runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+   ],
+   "gpu": "any",
+   "mem_gb": 2,
+   "ram_gb": 4,
+   "disk_gb": 1,
+   "priority": 0,
+   "deps": [
+    "chlhm-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "required_results": [
+    "encoder.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:01+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-seed0-peg-insert-side-200k": {
+   "id": "chlhm-seed0-peg-insert-side-200k",
+   "host": "remote",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/peg-insert-side.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+    "--name",
+    "chlhm-seed0-peg-insert-side-200k",
+    "--output-root",
+    "runs",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 30,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0200000.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:45:03+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-export-seed0-peg-insert-side-200k": {
+   "id": "chlhm-export-seed0-peg-insert-side-200k",
+   "host": "remote",
+   "script": "scripts/export_encoder.py",
+   "args": [
+    "--run",
+    "runs/chlhm-seed0-peg-insert-side-200k",
+    "--checkpoint",
+    "runs/chlhm-seed0-peg-insert-side-200k/checkpoints/step_0200000.pt",
+    "--out",
+    "runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+   ],
+   "gpu": "any",
+   "mem_gb": 2,
+   "ram_gb": 4,
+   "disk_gb": 1,
+   "priority": 0,
+   "deps": [
+    "chlhm-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "required_results": [
+    "encoder.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:01+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-seed0-peg-unplug-side-200k": {
+   "id": "chlhm-seed0-peg-unplug-side-200k",
+   "host": "remote",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/peg-unplug-side.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+    "--name",
+    "chlhm-seed0-peg-unplug-side-200k",
+    "--output-root",
+    "runs",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 30,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0200000.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:45:03+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-export-seed0-peg-unplug-side-200k": {
+   "id": "chlhm-export-seed0-peg-unplug-side-200k",
+   "host": "remote",
+   "script": "scripts/export_encoder.py",
+   "args": [
+    "--run",
+    "runs/chlhm-seed0-peg-unplug-side-200k",
+    "--checkpoint",
+    "runs/chlhm-seed0-peg-unplug-side-200k/checkpoints/step_0200000.pt",
+    "--out",
+    "runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+   ],
+   "gpu": "any",
+   "mem_gb": 2,
+   "ram_gb": 4,
+   "disk_gb": 1,
+   "priority": 0,
+   "deps": [
+    "chlhm-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "required_results": [
+    "encoder.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:01+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-seed0-stick-push-200k": {
+   "id": "chlhm-seed0-stick-push-200k",
+   "host": "remote",
+   "script": "scripts/train.py",
+   "args": [
+    "--config",
+    "configs/metaworld/base.yaml",
+    "configs/metaworld/tasks/stick-push.yaml",
+    "configs/metaworld/variants/chamfer_lean.yaml",
+    "configs/metaworld/variants/chamfer_lean_hybrid75.yaml",
+    "--name",
+    "chlhm-seed0-stick-push-200k",
+    "--output-root",
+    "runs",
+    "--resume",
+    "auto",
+    "--set",
+    "train.steps=200000",
+    "train.seed=0"
+   ],
+   "gpu": "any",
+   "mem_gb": 10,
+   "ram_gb": 13,
+   "disk_gb": 30,
+   "priority": 1,
+   "deps": [],
+   "max_restarts": 3,
+   "stage": 5,
+   "required_results": [
+    "completion.json",
+    "metrics.jsonl",
+    "checkpoints/step_0200000.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:45:03+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-export-seed0-stick-push-200k": {
+   "id": "chlhm-export-seed0-stick-push-200k",
+   "host": "remote",
+   "script": "scripts/export_encoder.py",
+   "args": [
+    "--run",
+    "runs/chlhm-seed0-stick-push-200k",
+    "--checkpoint",
+    "runs/chlhm-seed0-stick-push-200k/checkpoints/step_0200000.pt",
+    "--out",
+    "runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+   ],
+   "gpu": "any",
+   "mem_gb": 2,
+   "ram_gb": 4,
+   "disk_gb": 1,
+   "priority": 0,
+   "deps": [
+    "chlhm-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "required_results": [
+    "encoder.pt"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:01+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-coffee-push-s2000": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-coffee-push-s2000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "coffee-push",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/chlhm-drm-coffee-push-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-coffee-push-s2000-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-coffee-push-s2000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-coffee-push-s2000",
+    "--train-job",
+    "chlhm-drm-coffee-push-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-coffee-push-s2000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-coffee-push-s2001": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-coffee-push-s2001",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "coffee-push",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2001",
+    "--run-dir",
+    "runs/chlhm-drm-coffee-push-s2001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-coffee-push-s2001-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-coffee-push-s2001-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-coffee-push-s2001",
+    "--train-job",
+    "chlhm-drm-coffee-push-s2001",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-coffee-push-s2001-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-coffee-push-s2002": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-coffee-push-s2002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "coffee-push",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2002",
+    "--run-dir",
+    "runs/chlhm-drm-coffee-push-s2002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-coffee-push-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-coffee-push-s2002-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-coffee-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-coffee-push-s2002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-coffee-push-s2002",
+    "--train-job",
+    "chlhm-drm-coffee-push-s2002",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-coffee-push-s2002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-door-open-s2000": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-door-open-s2000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "door-open",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/chlhm-drm-door-open-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-door-open-s2000-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-door-open-s2000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-door-open-s2000",
+    "--train-job",
+    "chlhm-drm-door-open-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-door-open-s2000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-door-open-s2001": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-door-open-s2001",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "door-open",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2001",
+    "--run-dir",
+    "runs/chlhm-drm-door-open-s2001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-door-open-s2001-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-door-open-s2001-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-door-open-s2001",
+    "--train-job",
+    "chlhm-drm-door-open-s2001",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-door-open-s2001-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-door-open-s2002": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-door-open-s2002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "door-open",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2002",
+    "--run-dir",
+    "runs/chlhm-drm-door-open-s2002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-door-open-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-door-open-s2002-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-door-open-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-door-open-s2002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-door-open-s2002",
+    "--train-job",
+    "chlhm-drm-door-open-s2002",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-door-open-s2002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-insert-side-s2000": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-insert-side-s2000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-insert-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/chlhm-drm-peg-insert-side-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-insert-side-s2000-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-insert-side-s2000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-peg-insert-side-s2000",
+    "--train-job",
+    "chlhm-drm-peg-insert-side-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-peg-insert-side-s2000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-insert-side-s2001": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-insert-side-s2001",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-insert-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2001",
+    "--run-dir",
+    "runs/chlhm-drm-peg-insert-side-s2001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-insert-side-s2001-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-insert-side-s2001-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-peg-insert-side-s2001",
+    "--train-job",
+    "chlhm-drm-peg-insert-side-s2001",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-peg-insert-side-s2001-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-insert-side-s2002": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-insert-side-s2002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-insert-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2002",
+    "--run-dir",
+    "runs/chlhm-drm-peg-insert-side-s2002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-peg-insert-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-insert-side-s2002-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-insert-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-insert-side-s2002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-peg-insert-side-s2002",
+    "--train-job",
+    "chlhm-drm-peg-insert-side-s2002",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-peg-insert-side-s2002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-unplug-side-s2000": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-unplug-side-s2000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-unplug-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-unplug-side-s2000-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-unplug-side-s2000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2000",
+    "--train-job",
+    "chlhm-drm-peg-unplug-side-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-unplug-side-s2001": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-unplug-side-s2001",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-unplug-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2001",
+    "--run-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-unplug-side-s2001-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-unplug-side-s2001-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2001",
+    "--train-job",
+    "chlhm-drm-peg-unplug-side-s2001",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2001-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-unplug-side-s2002": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-unplug-side-s2002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "peg-unplug-side",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2002",
+    "--run-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-peg-unplug-side-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-peg-unplug-side-s2002-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-peg-unplug-side-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-peg-unplug-side-s2002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2002",
+    "--train-job",
+    "chlhm-drm-peg-unplug-side-s2002",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-peg-unplug-side-s2002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-stick-push-s2000": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-stick-push-s2000",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "stick-push",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2000",
+    "--run-dir",
+    "runs/chlhm-drm-stick-push-s2000",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-stick-push-s2000-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-stick-push-s2000-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-stick-push-s2000",
+    "--train-job",
+    "chlhm-drm-stick-push-s2000",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-stick-push-s2000-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-stick-push-s2001": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-stick-push-s2001",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "stick-push",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2001",
+    "--run-dir",
+    "runs/chlhm-drm-stick-push-s2001",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-stick-push-s2001-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-stick-push-s2001-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-stick-push-s2001",
+    "--train-job",
+    "chlhm-drm-stick-push-s2001",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-stick-push-s2001-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-stick-push-s2002": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-stick-push-s2002",
+   "script": "scripts/train_rl.py",
+   "args": [
+    "--task",
+    "stick-push",
+    "--encoder",
+    "splatter4d",
+    "--seed",
+    "2002",
+    "--run-dir",
+    "runs/chlhm-drm-stick-push-s2002",
+    "--set",
+    "train.num_train_steps=1000000",
+    "vision.export_path=runs/chlhm-export-seed0-stick-push-200k/encoder.pt"
+   ],
+   "mem_gb": 4,
+   "ram_gb": 6,
+   "disk_gb": 10,
+   "required_results": [
+    "final.json",
+    "train.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
+  },
+  "chlhm-drm-stick-push-s2002-eval": {
+   "host": "remote",
+   "gpu": "any",
+   "priority": 1,
+   "deps": [
+    "chlhm-export-seed0-stick-push-200k"
+   ],
+   "max_restarts": 1,
+   "stage": 5,
+   "id": "chlhm-drm-stick-push-s2002-eval",
+   "script": "scripts/eval_rl.py",
+   "args": [
+    "--run-dir",
+    "runs/chlhm-drm-stick-push-s2002",
+    "--train-job",
+    "chlhm-drm-stick-push-s2002",
+    "--workers",
+    "6",
+    "--envs-per-worker",
+    "8",
+    "--output-dir",
+    "runs/chlhm-drm-stick-push-s2002-eval"
+   ],
+   "mem_gb": 3,
+   "ram_gb": 8,
+   "disk_gb": 1,
+   "required_results": [
+    "eval.jsonl"
+   ],
+   "variant": "chamfer_lean_hybrid75",
+   "variant_definition": "runs/setup/chlhm-definition-20261103.json",
+   "placement": "pool 2026-11-03T04:46:30+09:00 (remote; runs/setup/pool-placement.json)"
   }
  }
 }

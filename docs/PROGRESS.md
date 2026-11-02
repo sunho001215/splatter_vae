@@ -13,7 +13,7 @@ SNeRL/DynaMo/3D-MVP integrate cleanly; pinned upstream code now executes (863/0/
 Chronology: `EXPERIMENT_LOG.md`; failures: `RESULTS.md`; restart state: `HANDOFF.md` (shutdown ledger is historical).
 
 ## Codex jobs (until integrated or discarded)
-**2026-10-30: Codex retired (user).** No new Codex jobs; reviews are done by Claude directly. The table is historical.
+**2026-10-30: Codex retired; 2026-11-02/03: available again (gpt-6.1-sol xhigh via `validation-20261031/codex/run_codex.sh`), used actively for review.** The table below is historical.
 Codex cannot run shell commands in this container (bwrap namespace denied); reviews run as read-only tasks with the
 diff inline.
 | id | purpose | worktree | outcome |
@@ -27,6 +27,10 @@ diff inline.
 | codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: no findings; merged a1815c4 |
 
 ## Current phase
+- **Hybrid masking `chlhm` (user 2026-11-03, HIGH priority):** 64 rows registered (8 tasks × pretraining/export/DrM
+  ×3 + evaluators). Three pretrainings run locally (hammer, pick-place, bin-picking). Five tasks are on the remote
+  (release fd5e950), served by the head-of-line GPU reservation (9556b0c). Protocol and decision rule:
+  `runs/setup/chlhm-definition-20261103.json`.
 - **Scheduling (2026-11-02 14:49):** local controllers own dispatch again. The remote runner was stopped via STOP and
   162 launches reconciled (EXPERIMENT_LOG 2026-11-02). The temporary validation reservation (MIG-8da55219,
   MIG-c4ec2a95, 50 GB RAM) was released at 19:21; record in `runs/setup/handback-20261102/`.

@@ -6957,3 +6957,35 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
     file.
   - It wrote two report files, now moved to `validation-20261031/refactor3/accidental/`.
   - The capture tool was fixed. The rule stands: never execute campaign drivers or their entry points for inspection.
+
+## 2026-11-03 04:20–06:12 — Hybrid masking (`chlhm`) launched: merge, registration, placement, remote reservation
+- **Merge and checks:**
+  - `splatter4d` = 33ee935 (suite 1487/0), pushed.
+  - Trainer smoke through the gated `scripts/train.py` (`validation-20261031/hybrid75/smoke_*`): resume at 100;
+    loss continuity ≤ 1.4e-4; final encoder ≤ 2.3e-4; 19 `mask_hybrid_*` metrics logged (16 per frame, 40 positions,
+    tube 99.7 % dynamic, no synthetic exception).
+  - Clean clone of 33ee935: 194 imports, 129 configs, 56 CLIs, 452 targeted tests (incl. hybrid) passed.
+- **Registration** (`runs/setup/chlhm-registration-eight-task-20261103.json`): 64 rows. Priorities are pretraining,
+  DrM and evaluator 1, exports 0; no existing priority changed.
+  - Remote admissions were held from the merge until no old-code driver pass was alive (04:20–04:21).
+  - The validation reservation was released at 04:22: MIG-c4ec2a95 is back in the queue limits; RAM cap 140 GB.
+- **Local:** at 04:27 the local driver admitted chlhm hammer, pick-place and bin-picking (head-of-line trainer
+  reservation), on 33ee935.
+- **Remote:**
+  - Release fd5e950 accepted at 04:43 (`runs/remote/acceptance/fd5e950-cc/`).
+  - The five unstarted tasks (door-open, peg-insert-side, peg-unplug-side, coffee-push, stick-push) moved to the remote
+    as whole units: pretraining, then export, then DrM pairs (`pool_placement.py move`; host fields and output paths
+    only).
+- **Remote starvation found and fixed:**
+  - The remote GPUs were at load 4.0 / 3.3 / 3.5 / 3.6 (limit 4.0). Pretraining needs 1.0, while smaller rows backfill
+    freed capacity.
+  - Fix 9556b0c, after Codex round 4 (`validation-20261031/codex/h4/`): a non-preemptive head-of-line GPU reservation
+    for the first ready blocked `chlhm-*` row.
+    - One GPU at a time: the lowest load with memory room.
+    - Only that row may use it; retries of launched rows are exempt (no deadlock).
+    - Other GPUs, the 4.0 limit and all other orders are unchanged.
+  - Local suite headroom was unavailable (projected 191 / 150 GB), so the full suite ran on the remote via the release
+    chain: verify-native-9556b0c-cc, 1487/0.
+  - Its evidence was adopted (`adopt_remote_suite_evidence.py`) together with the ff-merge to 9556b0c, under both
+    driver locks and a remote admission hold (06:09–06:12). The previous evidence is kept as
+    `runs/setup/tests.before-adoption-20261103-061027.json`.

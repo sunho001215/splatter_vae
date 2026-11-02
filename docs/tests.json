@@ -1,28 +1,28 @@
 {
-  "started_utc": "2026-11-02T18:34:19.842438+00:00",
+  "started_utc": "2026-11-02T20:49:39.889076+00:00",
   "python": "3.10.19 (main, Feb 12 2026, 00:42:18) [Clang 21.1.4 ]",
   "torch": "2.10.0+cu129",
   "cuda_runtime": "12.9",
-  "host": "local",
-  "expected_commit": null,
-  "expected_image_digest": null,
+  "host": "remote",
+  "expected_commit": "9556b0caa8b93516c6c7856a5f86b21ebb8a3a5f",
+  "expected_image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
   "gpu_mapping": [
     {
       "index": 0,
-      "uuid": "MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70",
-      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition MIG 1g.24gb"
+      "uuid": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+      "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
     }
   ],
   "pytest_args": [
-    "/home/ws/ws/splatter4d/.worktrees/hybrid75/tests",
+    "/workspace/splatter4d/tests",
     "-q",
     "--tb=short",
-    "--junitxml=/home/ws/ws/splatter4d/.worktrees/hybrid75/docs/tests.junit.xml",
+    "--junitxml=/home/compu/kaist/sunho/runtime/verification/verify-native-9556b0c-cc/a1/evidence/tests.junit.xml",
     "-o",
-    "cache_dir=/home/ws/ws/splatter4d/.worktrees/hybrid75/docs/pytest-cache"
+    "cache_dir=/home/compu/kaist/sunho/runtime/verification/verify-native-9556b0c-cc/a1/evidence/pytest-cache"
   ],
   "exit_code": 0,
-  "duration_seconds": 2099.843259537003,
+  "duration_seconds": 740.9853710918687,
   "counts": {
     "passed": 1487,
     "error": 0,
@@ -200,7 +200,7 @@
     "ops/campaign/prepare_remote_verification.py": "0a803232b465a634d891aa5f3dddb25937231208f7084cfbd19149c46dc867c6",
     "ops/campaign/reconcile_unlaunched_remote.py": "4338e88428f7c580a4ccc87e825b04e235d031a28f6c59036300b37bf4b1d0f5",
     "ops/campaign/release_chain.py": "942d9168b5036cea36ee2b93c8b3c2998d07945c3adbb7acda80bb31621b00e8",
-    "ops/campaign/remote_campaign_driver.py": "ea18e69551d371a5cd7e46ee3ed3202c2877e419d50f97ae22b53d19472d7eb0",
+    "ops/campaign/remote_campaign_driver.py": "1b420bbed54dd36ab8ffab31147dc9f9df47505897ca8d216aef2ef2442b5570",
     "ops/campaign/stage2_local_driver.py": "48b1ce12060dd7780c54e253fe082ba2c0633b089b1715aeccf1f1a31b83708e",
     "ops/containers/__init__.py": "64d2f629877eaf07a3fccd6b36dc07f44141a0fd2f45d63e0866b75c2f77ae40",
     "ops/containers/launch.py": "29b76827dcc2962eea36790b2e0e512edc025b5a55a144d9bb8840aad0095553",
@@ -691,7 +691,7 @@
     "ops/campaign/prepare_remote_verification.py": "0a803232b465a634d891aa5f3dddb25937231208f7084cfbd19149c46dc867c6",
     "ops/campaign/reconcile_unlaunched_remote.py": "4338e88428f7c580a4ccc87e825b04e235d031a28f6c59036300b37bf4b1d0f5",
     "ops/campaign/release_chain.py": "942d9168b5036cea36ee2b93c8b3c2998d07945c3adbb7acda80bb31621b00e8",
-    "ops/campaign/remote_campaign_driver.py": "ea18e69551d371a5cd7e46ee3ed3202c2877e419d50f97ae22b53d19472d7eb0",
+    "ops/campaign/remote_campaign_driver.py": "1b420bbed54dd36ab8ffab31147dc9f9df47505897ca8d216aef2ef2442b5570",
     "ops/campaign/stage2_local_driver.py": "48b1ce12060dd7780c54e253fe082ba2c0633b089b1715aeccf1f1a31b83708e",
     "ops/containers/__init__.py": "64d2f629877eaf07a3fccd6b36dc07f44141a0fd2f45d63e0866b75c2f77ae40",
     "ops/containers/launch.py": "29b76827dcc2962eea36790b2e0e512edc025b5a55a144d9bb8840aad0095553",
@@ -2964,5 +2964,17 @@
     ]
   },
   "problems": [],
-  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance."
+  "limitations": "Function trace covers the test parent. Gloo child results are asserted by tests/test_ddp.py. Synthetic renders are not CUDA acceptance.",
+  "adopted_evidence": {
+    "host": "remote",
+    "job": "verify-native-9556b0c-cc",
+    "commit": "9556b0caa8b93516c6c7856a5f86b21ebb8a3a5f",
+    "image_digest": "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a",
+    "report": "runs/verify-native-9556b0c-cc/evidence/tests.json",
+    "report_sha256": "9a279335d8bd18a055e4b8408316a102f4c110bcd2c88e3a2be0ecdceaab8dc2",
+    "gpu": "GPU-4391fcee-537f-d408-d138-10d8a3866eea",
+    "adopted_at": "2026-11-03T06:10:27+0900",
+    "local_runs": [],
+    "policy": "user instruction 2026-10-23: remote RAM for the remaining validation; the full native suite of the exact sources on the remote host is accepted as the launch-gate evidence when the local host lacks the suite headroom; provenance kept here (not a local run)"
+  }
 }
