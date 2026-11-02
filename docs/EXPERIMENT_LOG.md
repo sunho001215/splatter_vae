@@ -6614,3 +6614,23 @@ above the old 4.0. Remote: `remote_runner/gpu_load_limit.txt` = 4.5, re-read eve
   - Flip-and-swap left/right consistency: median 0.32/0.22 px.
   - Cross-rig metric consistency through the DROID-3D poses: median 0.75 %/0.82 %, signed −1.0/+3.6 mm.
   - PointWorld depth: median 0.61 %/0.50 %.
+
+**23:05–23:22 — Local stop requested by the user (20-minute deadline); validation and merge paused.**
+- Results since the last entry:
+  - SAM 3 stage (video): box/mask IoU 0.985/0.989; temporal identity IoU 0.85–0.99; explicit absences ("gripper" in
+    both cameras, "blue brick" in ext2); SNeRL consumer cross-entropy finite.
+  - Tracks: temporal indexing OK; lifted static tracks drift 7/4 mm; lifted points vs the other rig's depth 0.62 %/0.53 %.
+- Export needed robot assets. It now has them, with official sources and an assumed mount:
+  - composed FR3 (franka_description 7aeeddc) + Robotiq 2F-85 (ros2_robotiq_gripper a74d007);
+  - the mount is an assumption: Franka external_gripper_example, xyz 0, yaw +π/2;
+  - URDF flange = DROID `cartesian_position` to 3e-8 m.
+- Integration fix: `gripper_links` used hard-coded `panda_link` names (1066187).
+- The baseline run of 81b202c started at 23:16 and was **stopped at 23:20 during `stereo_depth`** (ingest done) on
+  the user's instruction.
+- Merges:
+  - `integrate-20261031` = 127092c + refactor2 + droid-largescale + realworld;
+  - realworld `workers` package refactor (9abb93b; committed while one isolation test failed, fixed in a014e4d: 166 tests
+    pass).
+- All four branches were pushed normally. Nothing is merged into `splatter4d` yet.
+- Resume steps: `docs/RESUME_VALIDATION_MERGE_20261031.md`.
+- No local process is running. The remote runner was not touched.
