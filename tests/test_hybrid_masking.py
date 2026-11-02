@@ -82,6 +82,11 @@ def test_tube_ranking_respects_small_score_differences_and_breaks_exact_ties_at_
     scores[:, :5] = torch.tensor([0.9, 0.8, 0.7, 0.5001, 0.5])
     vis, _ = sample_hybrid_mask(scores, T, 0.75, THR, generator=torch.Generator().manual_seed(3))
     assert bool(_parts(vis)[1][:, :4].all())  # 0.5001 beats 0.5 in every row
+    close = torch.zeros(4000, N)  # float32 neighbours that collapse once shifted by 3 (Codex round 2)
+    close[:, :5] = torch.tensor([0.9, 0.8, 0.7, 0.5000000596046448, 0.5])
+    assert float(close[0, 3]) != float(close[0, 4]) and float(3.0 + close[0, 3]) == float(3.0 + close[0, 4])
+    vis, _ = sample_hybrid_mask(close, T, 0.75, THR, generator=torch.Generator().manual_seed(5))
+    assert bool(_parts(vis)[1][:, :4].all())
     tied = torch.zeros(4000, N)
     tied[:, :8] = 1.0  # eight clamped (equal) scores for four tube slots: uniform among them
     vis, _ = sample_hybrid_mask(tied, T, 0.75, THR, generator=torch.Generator().manual_seed(4))

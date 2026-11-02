@@ -276,15 +276,17 @@ def sample_hybrid_mask(
     every = eligible.all(1)  # (B,N) eligible in every frame
     moving = every & (patch_scores > threshold)
     u = torch.rand(B, N, device=device, generator=generator)
-    # bands: reliable dynamic (3 + score) > eligible in every frame (2) > the number of eligible frames (count / (T+1));
-    # exact ranking with uniformly random tie-breaking: a random order, then a stable sort by priority (so any score
-    # difference is respected and only exact ties - e.g. the clamped score 1.0, or the fill band - are random)
-    tube_priority = torch.where(moving, 3.0 + patch_scores.float().clamp(0.0, 1.0),
-                                torch.where(every, torch.full_like(u, 2.0), eligible.sum(1).float() / (frames + 1.0)))
+    # lexicographic ranking, (band, score, random): band = 2 reliable dynamic, 1 eligible in every frame, else the
+    # fraction of eligible frames (< 1); within the dynamic band the raw score (never shifted, so no float32 collapse);
+    # exact ties at random. A random permutation, then stable sorts by the secondary and the primary key.
+    band = torch.where(moving, torch.full_like(u, 2.0),
+                       torch.where(every, torch.ones_like(u), eligible.sum(1).float() / (frames + 1.0)))
+    score = torch.where(moving, patch_scores.float(), torch.zeros_like(u))
     order = torch.argsort(u, dim=1)
-    ranked = torch.argsort(tube_priority.gather(1, order), dim=1, descending=True, stable=True)
+    order = order.gather(1, torch.argsort(score.gather(1, order), dim=1, descending=True, stable=True))
+    order = order.gather(1, torch.argsort(band.gather(1, order), dim=1, descending=True, stable=True))
     tube_mask = torch.zeros(B, N, dtype=torch.bool, device=device)
-    tube_mask.scatter_(1, order.gather(1, ranked[:, :tube]), True)
+    tube_mask.scatter_(1, order[:, :tube], True)
     available = (eligible & ~tube_mask[:, None]).sum(2).float()  # (B,frames) eligible non-tube positions
     frame_order = torch.argsort(available + 0.5 * torch.rand(B, frames, device=device, generator=generator), dim=1)
     rows_b = torch.arange(B, device=device)
