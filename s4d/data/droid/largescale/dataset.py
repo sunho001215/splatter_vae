@@ -413,7 +413,10 @@ class DroidLargeScaleDataset(Dataset):
             depth_r = np.stack([resize(d, H, W, nearest=True) for d in depth_nat])
             in_wrist = [[depth_test(ext_points[v][t], K_nat, w2c[t], depth_nat[t], continuous=True)[0] & bool(valid[t])
                          for v in range(V)] for t in range(3)]
-            seen_t = [[in_wrist[t][v] & ext_vis[v][t] for v in range(V)] for t in range(3)]
+            # crop: the external tracks' NATIVE visibility (an external camera's crop says nothing about the wrist);
+            # only the wrist's own crop membership is applied below
+            ext_seen = ext_vis if self.crop is None else window[2]
+            seen_t = [[in_wrist[t][v] & ext_seen[v][t] for v in range(V)] for t in range(3)]
             for p, (a, _, _) in enumerate(PAIRS):
                 if not valid[a]:
                     continue
@@ -429,8 +432,7 @@ class DroidLargeScaleDataset(Dataset):
             tracks = {}
             if wrist_cal is not None and group is not None:  # world-frame motion of the external cameras' tracks
                 points = np.concatenate(ext_points, 1)
-                visible = np.stack([np.concatenate([in_wrist[t][v] & window[2][v][t] for v in range(V)])
-                                    for t in range(3)])
+                visible = np.stack([np.concatenate(seen_t[t]) for t in range(3)])
                 motion, reliable = CR.track_motion(points, visible)
                 uv = np.stack([project(points[t], K_nat, w2c[t])[0] for t in range(3)])
                 tracks = {"uv": uv, "visible": visible, "motion": motion, "reliable": reliable}
@@ -439,11 +441,12 @@ class DroidLargeScaleDataset(Dataset):
             cropped = self._crop_camera(episode, window[0], window[1], "wrist", state["wrist"], depth_nat, K_nat,
                                         epoch=window[3], **tracks)
             K_r, depth_r, images = cropped["K"], cropped["depth"], cropped["images"].transpose(0, 3, 1, 2)
-            if wrist_cal is not None and group is not None:
-                for p, (a, _, _) in enumerate(PAIRS):
-                    for v in range(V):
-                        n = ext_points[v].shape[1]
-                        track_w[p, v, :n] *= CR.in_observed(project(ext_points[v][a], K_r, w2c[a])[0], cropped["observed"])
+            if wrist_cal is not None and group is not None:  # inside the wrist crop at both endpoints of a pair
+                for v in range(V):
+                    n = ext_points[v].shape[1]
+                    inside = np.stack([CR.in_observed(project(ext_points[v][t], K_r, w2c[t])[0], cropped["observed"])
+                                       for t in range(3)])
+                    track_w[:, v, :n] *= CR.pair_membership(inside, PAIRS)
         out = {
             "wrist_images": torch.from_numpy(images.copy()),
             "wrist_depth": torch.from_numpy(depth_r[:, None].astype(np.float32)),

@@ -529,3 +529,30 @@ def test_a_track_leaving_the_crop_is_not_supervised():
     _, _, weight = track_targets(points, visible)
     weight *= CR.pair_membership(inside, PAIRS)
     assert weight[:, 0].tolist() == [0.0, 0.0, 0.0] and weight[:, 1].tolist() == [1.0, 1.0, 1.0]
+
+
+def test_wrist_targets_use_native_external_visibility_and_the_wrist_crop_only(env):
+    """A track excluded by an external camera's crop but seen inside the wrist crop keeps its wrist weight; the wrist
+    weight is the native one restricted to wrist-crop membership at both endpoints (per-frame wrist poses)."""
+    from s4d.data.contract import PAIRS
+
+    plain = DroidLargeScaleDataset(env["manifest"], **F.dataset_kwargs(env))
+    ds = make_ds(env, crop={**CROP, "side_max": 180, "broad_side_min": 180})  # 180 x 180 crops cut 140 columns
+    found = 0
+    for index in range(len(ds)):
+        item, ref = ds[index], plain[index]
+        if not item["wrist_valid"].any():
+            continue
+        obs = item["wrist_observed"][0].numpy()
+        K2, w2c = item["wrist_K"].numpy().astype(np.float64), item["wrist_w2c"].numpy().astype(np.float64)
+        for v in range(2):
+            n = int(ref["track_count"][v])
+            for p, (a, b, _) in enumerate(PAIRS):
+                src = ref["track_src"][p, v, :n].numpy().astype(np.float64)
+                dst = src + ref["track_disp"][p, v, :n].numpy()
+                inside = CR.in_observed(G.project(src, K2, w2c[a])[0], obs) & CR.in_observed(G.project(dst, K2, w2c[b])[0], obs)
+                native = ref["wrist_track_weight"][p, v, :n].numpy() > 0
+                got = item["wrist_track_weight"][p, v, :n].numpy() > 0
+                np.testing.assert_array_equal(got, native & inside)
+                found += int((got & (item["track_weight"][p, v, :n].numpy() == 0)).sum())
+    assert found > 0  # wrist supervision survives the external crop that excludes the track
