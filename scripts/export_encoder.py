@@ -27,6 +27,19 @@ from s4d.model.encoder import DEFAULT_ONLY_FIELDS, Encoder, EncoderConfig  # noq
 EXPORT_FORMAT = "splatter4d-encoder-v1"
 
 
+def input_contract(cfg: dict) -> dict | None:
+    """The image preprocessing a policy applies before this encoder, recorded only for square-crop profiles
+    (``data.crop``, configs/droid/vits_largescale.yaml): the padding-free central square of the camera frame resized to
+    the encoder size (``s4d.data.droid.largescale.crop.inference_center_crop``, which also transforms K). None (no
+    payload key) for every other profile, whose exports are unchanged."""
+    crop = (cfg.get("data") or {}).get("crop")
+    if not crop:
+        return None
+    size = int(crop.get("out_size", 224))
+    return {"crop": "center_square", "side": "min(H, W)", "size": [size, size], "resample": "bilinear",
+            "function": "s4d.data.droid.largescale.crop.inference_center_crop"}
+
+
 def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
     try:
         out = validate_runtime_path(out, repository=REPO)
@@ -59,6 +72,9 @@ def export(run_dir: Path, checkpoint: Path | None, out: Path) -> Path:
         "source_checkpoint": str(ckpt),
         "run_name": cfg.get("run", {}).get("name"),
     }
+    contract = input_contract(cfg)
+    if contract is not None:  # square-crop profiles: the inference crop the encoder expects
+        payload["input_contract"] = contract
     if cfg.get("model", {}).get("perframe"):  # per-frame pilots: the policy input is the stack of per-frame states
         payload["policy_frames"] = "stack"
     for key, default in DEFAULT_ONLY_FIELDS.items():  # fields added later are written only when they change something
