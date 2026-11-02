@@ -522,8 +522,22 @@ chosen, total, taken = [], reserved, set()
 def place(job):
     fitting = [g for g in GPUS
                if gpu_load[g] + load(job) <= GPU_LOAD_LIMIT + (2.0 if kind(job['id']) == 'proxy' else 0.0) + 1e-9
-               and gpu_mem[g] + float(job['mem_gb']) <= 90]
+               and gpu_mem[g] + float(job['mem_gb']) <= 90
+               and (g != hyb_reserved or job['id'].startswith(HYB_PREFIXES))]
     return min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g])) if fitting else None
+
+
+# Head-of-line reservation for the HIGH-priority hybrid masking rows (user 2026-11-03; non-preemptive): when the first
+# ready chlhm-* trainer or pretraining does not fit, the one GPU closest to fitting it (lowest load among GPUs with
+# room for its memory) takes no new lower-priority row in this pass, so the capacity freed there by finishing jobs
+# accumulates until the chlhm row fits. Running jobs are never touched; the other GPUs, the load limit, the memory cap
+# and every other row's order are unchanged; at most one GPU is reserved at a time.
+hyb_reserved = None
+
+
+def reserve_for_hybrid(job):
+    room = [g for g in GPUS if gpu_mem[g] + float(job['mem_gb']) <= 90] or list(GPUS)
+    return min(room, key=lambda g: (gpu_load[g], gpu_mem[g]))
 
 
 for job in candidates:
@@ -538,6 +552,10 @@ for job in candidates:
         continue
     gpu = place(job)
     if gpu is None:
+        if hyb_reserved is None and job['id'].startswith(HYB_PREFIXES) and not job['id'].endswith('-eval'):
+            hyb_reserved = reserve_for_hybrid(job)
+            messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
+                            f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
         continue
     gpu_load[gpu] += load(job)
     gpu_mem[gpu] += float(job['mem_gb'])
@@ -594,7 +612,8 @@ if POOL_READY and not DRY and not held:
                     0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5)))
             need = int(float(u['ram_gb']) * 2**30)
             fitting = [g for g in GPUS if gpu_load[g] + row_load <= GPU_LOAD_LIMIT + 1e-9
-                       and gpu_mem[g] + float(u['mem_gb']) <= 90]
+                       and gpu_mem[g] + float(u['mem_gb']) <= 90
+                       and (g != hyb_reserved or u['id'].startswith(HYB_PREFIXES))]
             if total + need > CAP or not fitting:
                 break
             g = min(fitting, key=lambda g: (gpu_load[g], gpu_mem[g]))
