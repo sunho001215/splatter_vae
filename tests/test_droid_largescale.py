@@ -668,8 +668,9 @@ def test_index_and_manifest_clis_are_resumable_and_refuse_writing_into_the_relea
 # ------------------------------------------------------------------------------------------------ wrist QA
 def test_wrist_qa_accepts_the_true_model_and_records_orientation(env):
     qa = join.load_manifest(env["manifest"])[0]["wrist_qa"]
-    assert qa["decision"] == "ok" and qa["depth_rotation_deg"] == 0 and qa["count"] >= 50
+    assert qa["decision"] == "ok" and qa["depth_rotation_deg"] == 0 and qa["count"] >= join.WRIST_QA["min_count"]
     assert qa["median_residual_m"]["as_stored"] < 3e-3 < qa["median_residual_m"]["rotated180"]
+    assert qa["stats"]["as_stored"]["inlier"] > 0.95 and qa["stats"]["rotated180"]["inlier"] * 1.5 < 0.95
 
 
 def test_wrist_depth_stored_rotated_is_detected_and_undone(env, tmp_path):
@@ -679,6 +680,46 @@ def test_wrist_depth_stored_rotated_is_detected_and_undone(env, tmp_path):
     a, b = make_ds(env), make_ds(rotated)
     i = a.windows.index((0, "0:11", 1))
     torch.testing.assert_close(b[i]["wrist_depth"], a[i]["wrist_depth"], atol=0, rtol=0)
+
+
+def test_wrist_qa_is_not_decided_by_gripper_occlusion(tmp_path):
+    """Real finding (62 episodes, robot FR3-295341-1326595): the fingers fill ~25 % of the wrist view at 7-15 cm, and the
+    earlier all-points median |z - d| rejected every episode, even under the pose that best fits the data. The gripper
+    mask (from the wrist depth itself) and soft visibility keep the true pose; a gross hand-eye error is still rejected."""
+    occluded = F.build_all(tmp_path / "fingers", wrist_fingers=0.6, n_tracks=(400, 520))
+    qa = join.load_manifest(occluded["manifest"])[0]["wrist_qa"]
+    assert qa["median_residual_m"]["as_stored"] > 0.03  # the earlier statistic would have rejected the true model
+    assert qa["decision"] == "ok" and qa["depth_rotation_deg"] == 0, qa
+    assert 0.5 < qa["gripper_mask_fraction"] < 0.75 and qa["stats"]["as_stored"]["inlier"] > 0.9
+    # still rejected with the occluder: an 8 cm hand-eye error (orientation: test_wrist_depth_stored_rotated_...)
+    for kw in ({"hand_eye_error_m": 0.08},):
+        bad = F.build_all(tmp_path / "bad", wrist_fingers=0.6, n_tracks=(400, 520), **kw)
+        row = join.load_manifest(bad["manifest"])[0]
+        assert row["cameras"]["wrist"] is None and "inconsistent" in row["wrist_qa"]["decision"], row["wrist_qa"]
+
+
+def test_wrist_depth_consistency_separates_occlusion_from_free_space():
+    K = np.array([[100.0, 0, 32.0], [0, 100.0, 24.0], [0, 0, 1]])
+    w2c = [np.eye(4)]
+    ys, xs = np.mgrid[0:48, 0:64] + 0.5
+    pts = np.stack([(xs - 32) / 100 * 1.0, (ys - 24) / 100 * 1.0, np.ones_like(xs)], -1).reshape(-1, 3)  # plane at 1 m
+    none = np.zeros((48, 64), bool)
+    near = np.full((1, 48, 64), 0.5)  # something nearer hides the plane: occlusion, not an inconsistency
+    far = np.full((1, 48, 64), 1.5)  # the wrist sees through the externally observed plane: free-space violation
+    occ = join.wrist_depth_consistency([pts], w2c, K, near, none)
+    fsv = join.wrist_depth_consistency([pts], w2c, K, far, none)
+    assert occ["occluded"] == 1.0 and occ["freespace"] == 0.0 and fsv["freespace"] == 1.0 and fsv["occluded"] == 0.0
+    # sparse points behind a nearer surface do not count as visible (soft visibility); the gripper mask is excluded
+    behind = pts.copy()
+    behind[:, 2] += 0.5
+    sparse_front = pts.reshape(48, 64, 3)[::3, ::3].reshape(-1, 3)  # a 3 px grid, sparser than the wrist pixels
+    stats = join.wrist_depth_consistency([np.concatenate([sparse_front, behind * np.array([1.5, 1.5, 1.0])])], w2c, K,
+                                         np.ones((1, 48, 64)), none)
+    assert stats["inlier"] > 0.9, stats
+    mask = np.zeros((48, 64), bool)
+    mask[24:] = True
+    assert join.wrist_depth_consistency([pts], w2c, K, np.ones((1, 48, 64)), mask)["count"] == 24 * 64
+    assert join.gripper_mask(np.stack([np.where(mask, 0.08, 1.0)] * 4)).sum() > mask.sum()  # dilated
 
 
 def test_wrong_hand_eye_disables_the_wrist_but_keeps_external_windows(tmp_path):
