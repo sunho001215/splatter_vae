@@ -75,14 +75,13 @@ DROID cannot establish the RealSense stream configuration or the Panda–Robotiq
 
 ## Open decisions
 
-1. **Per-robot or per-session wrist calibration.** The published chain is right on average and is the best fit for
-   three of four AUTOLab sessions. One session shows a consistent 1.0 cm / 3.3° offset, and three robots look worse
-   with `dT_gw` (photometric, 1-4 episodes each). Options:
-   - keep the chain everywhere (current);
-   - add a per-session refinement (ICP against the external cloud);
-   - drop `dT_gw` for named robots.
-
-   The last two need wrist depth from more robots.
+1. **Per-robot wrist calibration: DECIDED (user, 2026-11-02).** Keep the published DROID-3D chain, including the
+   per-robot `dT_gw` and the joint corrections `dq`, wherever robot identity and calibration provenance are valid. No
+   rule removes `dT_gw` for named robots on the strength of the limited photometric comparisons. Further research must
+   not block integration or training. Feasibility of more wrist depth: the PointWorld depth package has no per-episode
+   access (252 parts of one zstd frame); raw DROID episodes are per-episode (~35 MB with the wrist ZED Mini SVO; ~40
+   episodes ≈ 1.4 GB fits the remaining item-8 budget), but wrist stereo depth needs the unexplained 2.2–2.9 px wrist
+   rectification offset resolved first (`/home/ws/ws/validation-20261031/droid_calib_sample_feasibility.md`).
 2. **QA thresholds** were set from one robot, between the published chain and gross-error controls. Re-validate them
    with depth from other robots.
 3. **Calibration default:** `droid3d` is kept.
@@ -91,7 +90,14 @@ DROID cannot establish the RealSense stream configuration or the Panda–Robotiq
    ViT-S-sized profile uses 224 × 224 square crops instead (196 tokens per frame); csw4 keeps 144x256.
 6. **Crop per visit (resolved 2026-11-02 review).** The trainer sampler tags crop-dataset indices with the epoch, so a
    window draws a new crop on every visit. Resume replay is exact; other datasets are unchanged.
-7. **Wrist crops are almost always broad** (193 / 200 `weak_motion`): few world-moving external tracks are visible to
+7. **Known risks from the integration review (2026-11-02, not fixed; recorded):**
+   - The real-world dq guard compares calibration path, episode and robot identity but not the record's content hash;
+     a record replaced at the same path could pair old corrected joints with revised extrinsics (immutable release
+     inputs are unaffected).
+   - The exported `input_contract` (central square crop → 224) is written and tested but not enforced by
+     `s4d/rl/encoders.py::load_encoder`; a caller that resizes a rectangular frame directly to 224 passes the shape check.
+     Future inference code must apply `inference_center_crop`.
+8. **Wrist crops are almost always broad** (193 / 200 `weak_motion`): few world-moving external tracks are visible to
    the wrist camera. The wrist fields are supervision-only and unused by the loss.
 
 ## Remaining steps (in order)

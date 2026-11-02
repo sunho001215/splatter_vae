@@ -533,8 +533,10 @@ with this policy no token is padded.
 
   Per sample, the dataset emits `crop_box` (`[x0, y0, s]`), `crop_fallback` (`crop.FALLBACK_CODES`) and
   `crop_moving_tracks`.
-- Consequence: with padding the effective masked fraction within observed content falls below 0.75. It is 0.5 at the
-  maximum 294 padded tokens.
+- Consequence: with padding the effective masked fraction within observed content falls below 0.75. Supported worst
+  case: a side-320 crop leaves 84 eligible patches per frame, i.e. 336 padded temporal tokens, 252 eligible, effective
+  masked fraction 1 − 147/252 = 0.417 (reachable by the default sampler, e.g. `(0, −68, 316)`). The inspected sample's
+  maximum was 294 padded tokens (0.5). The fixed 147-token budget always holds.
 - A side of 181–183 pads 1–3 native rows, and the any-pixel rule then masks a whole token row (42 temporal tokens).
 
 ### 7.5 Inference contract (real-world deployment)
