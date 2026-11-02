@@ -6739,3 +6739,52 @@ recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first 
   - (a) DROID image size: 144×256 gives 144 tokens per frame against csw4's 64 at 128×128.
   - (b) Per-robot `dT_gw`: deciding it needs other robots' wrist depth, at 4.9 GB per depth part.
   - (c) Adopt the about 1.5 cm DROID coupling estimate?
+
+**17:06–18:40 — Acceptance on the integration sources; `splatter4d` fast-forwarded to 61d4153 and published.**
+
+- **Full native suite** on `integrate-20261031` 6d8225d (MIG-c4ec2a95, started once `memory_watch fits 40e9` held):
+  1404 passed, 0 failed/errors/skipped, 9 min. Evidence committed as 71fb0aa.
+- **Real data on 71fb0aa** (`validation-20261031/item5/runs/merged-71fb0aa`, `compare_vs_baseline.json`): every stage
+  through export, SAM 3 and `dino_snerl` is **bitwise equal** to baseline-81b202c:
+  - disparity, depth and rectified images: max |diff| 0;
+  - tracks and lifted points;
+  - SAM 3 masks (IoU 1.0);
+  - DINO tokens.
+  The diagnostics JSONs (rectify, stereo, tracks, SAM 3, export) are identical. Stage ids differ only because
+  fingerprints include the code revision.
+- **DROID round 2 on 71fb0aa** (`item8/reruns/merged-71fb0aa-r2/SUMMARY.md`):
+  - the 294-episode manifest is byte-identical to the validated v2;
+  - contract, loader, 0/4/8 workers, memory and handles, and resume replay match round 2;
+  - wrist diagnostics (16 episodes): 9,632 scores identical.
+- **csw4 trainer smoke** on the DROID profile, the first run through the test gate: 200 steps, plus a stop at 100
+  and `--resume auto`. Gradients are finite; resumed − reference loss ≤ 9.8e-4 and final encoder ≤ 3.0e-4.
+  Optimizer and scheduler steps are consistent, and no method key differs from Meta-World csw4.
+- **Import, CLI and config checks:**
+  - the import sweep covers 191 `s4d`/`ops` modules with 0 failures. `ops.campaign` modules are only compiled: they
+    are top-level driver scripts, and one import attempt started a baseline-driver pass that skipped on the
+    admission lock;
+  - all 127 `configs/**/*.yaml` load through `s4d.config.load_config`;
+  - 56/56 CLIs print usage. `verify_metaworld_tasks.py` needs the scripts directory on `sys.path` (it fails under
+    `-I`); this predates the merge.
+- **Merge:**
+  - `splatter4d` 803e93f was merged into integrate (61d4153, EXPERIMENT_LOG only). The suite fingerprints of
+    61d4153 equal the recorded ones (480 files).
+  - `splatter4d` was fast-forwarded to 61d4153 while holding both driver locks (`stage2-driver.lock`,
+    `remote-driver.lock`), then pushed.
+  - Changed shared-path sources: `s4d/train/{augment,loop,perframe}.py`, `scripts/train.py` and
+    `scripts/compute_workspace_stats.py`, all Meta-World-default-preserving. No running job imports `s4d.train`.
+  - The drivers now run their `ops/` implementations through the entry points. Post-merge passes are normal; the
+    baseline cap of 90 GB confirms the ported reservation.
+  - Remote releases stay pinned; nothing was deployed into running experiments.
+- **Clean checkout** (`validation-20261031/clean_clone`, HEAD 61d4153 = origin):
+  - submodules pinned;
+  - sweep 191/0 and 127/0;
+  - CLIs 56/56;
+  - DROID, realworld, `ops`, jobs and remote tests: 394 passed.
+  - pytest basetemp must lie inside the repository (GPU guard).
+- **Reservation released:** MIG-8da55219 and MIG-c4ec2a95 are back in `queue.yaml` limits, and the 50 GB hold file
+  is archived to `runs/setup/handback-20261102/`.
+- **Outage-era rows:**
+  - srv4 exports: one transient `remote_verification_failed` each, because the producer's verification was not yet
+    visible. Both verified on the next pass, so the srv4 pilot inputs are sound.
+  - Three remote SSH drops of about 2 minutes reconnected by themselves.

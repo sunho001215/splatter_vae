@@ -1,3 +1,7 @@
+**COMPLETED 2026-11-02 18:23–18:35 KST.** `splatter4d` = 61d4153 (published, clean clone verified). Tested sources
+6d8225d / evidence 71fb0aa (suite 1404/0); 61d4153 adds only the 803e93f EXPERIMENT_LOG merge (fingerprints equal).
+Results: EXPERIMENT_LOG 2026-11-02 18:40. This document is historical.
+
 # Resume: real-data validation (items 5/6/8), refactor pass 2, merge into `splatter4d`
 
 Written 2026-10-31 at 23:22 KST, when the user asked for all local work to stop within 20 minutes.

@@ -1,5 +1,6 @@
 **2026-11-02 14:45–14:49: HANDED BACK** (user-authorized). The runner stopped via STOP and 162 launches were reconciled.
 Local controllers own dispatch. See EXPERIMENT_LOG 2026-11-02. This briefing is historical.
+Validation/merge resumed and completed the same day (`splatter4d` 61d4153, 18:23); the validation reservation is released.
 
 # Restart briefing — local server shutdown (time chosen by the user)
 

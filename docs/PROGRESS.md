@@ -28,10 +28,13 @@ diff inline.
 
 ## Current phase
 - **Scheduling (2026-11-02 14:49):** local controllers own dispatch again. The remote runner was stopped via STOP and
-  162 launches reconciled (EXPERIMENT_LOG 2026-11-02). A temporary validation reservation holds MIG-8da55219 and
-  MIG-c4ec2a95 plus 50 GB RAM (`runs/setup/local-validation-reservation.json`) for the real-world/DROID validation
-  and the integration suite. In progress: item 5/6 baseline run, item 8 wrist/csw4 work, integration of
-  `integrate-20261031` into `splatter4d` (`docs/RESUME_VALIDATION_MERGE_20261031.md`).
+  162 launches reconciled (EXPERIMENT_LOG 2026-11-02). The temporary validation reservation (MIG-8da55219,
+  MIG-c4ec2a95, 50 GB RAM) was released at 18:35; record in `runs/setup/handback-20261102/`.
+- **Integration (2026-11-02 18:23):** `splatter4d` fast-forwarded to 61d4153 (= `integrate-20261031`: refactor pass 2,
+  item 8 round 2, real-world items 3–6). Tested sources 6d8225d: full suite 1404/0 (evidence 71fb0aa); real-data
+  re-runs bitwise equal to the 81b202c baseline; DROID round-2 re-run and csw4 trainer smoke passed; clean clone
+  verified. Not deployed into running experiments (remote releases stay pinned). Open user decisions: DROID image
+  size, per-robot `dT_gw`, DROID ~1.5 cm coupling.
 - **Self-render (2026-10-31):** the v2 pilot (`sr-csw4-*`) was stopped at the user's instruction (checkpoints
   kept). It is replaced by `selfrender_replace_v4`: ±5 % radial camera jitter plus the viewpoint domain relaxed
   ×0.95 (466 cells). Rows `srv4-csw4-*` (pretraining from step 0, export, FlashSAC s2000–2002) were registered
