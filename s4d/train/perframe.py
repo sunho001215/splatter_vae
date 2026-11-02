@@ -47,7 +47,13 @@ from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weight
 from s4d.model.encoder import visible_count
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_rgbd
-from s4d.train.augment import coverage_visible_tokens, jitter_cameras, synthesize_views
+from s4d.train.augment import (
+    coverage_visible_tokens,
+    jitter_cameras,
+    jitter_training_cameras,
+    synth_camera_rig,
+    synthesize_views,
+)
 
 MOVING_SCORE = 0.5
 STATIC_SCORE = 0.05
@@ -161,6 +167,7 @@ def forward_losses_perframe(
     score = batch["motion_score"].float()
     training = model.training
     aug = get(cfg, "aug", None) or {}
+    rig = synth_camera_rig(cfg)
     bf16 = bool(get(cfg, "train.bf16", True))
     if source is None:
         source = torch.randint(V, (B,), device=device)
@@ -212,7 +219,11 @@ def forward_losses_perframe(
     n_syn = int(aug.get("synth_views", 0)) if training else 0
     syn_slots = None
     if n_syn:
-        syn_cams = jitter_cameras(B, n_syn, K[:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
+        scale = float(aug.get("synth_range_scale", 1.0))
+        if rig == "metaworld":
+            syn_cams = jitter_cameras(B, n_syn, K[:, 0], H, W, scale)
+        else:
+            syn_cams = jitter_training_cameras(K, batch["c2w"], batch["depth"], n_syn, scale, near=near, far=far)
         syn = synthesize_views(batch, syn_cams, near, far)  # (B,T,n,…)
         syn_in = syn["images"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn * T, 1, 3, H, W)
         syn_cov = syn["covered"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn * T, 1, 1, H, W)

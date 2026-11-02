@@ -36,9 +36,11 @@ from s4d.train.augment import (
     coverage_visible_tokens,
     domain_cameras,
     jitter_cameras,
+    jitter_training_cameras,
     load_viewpoint_domain,
     random_resized_crop,
     random_shift,
+    synth_camera_rig,
     synthesize_views,
 )
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
@@ -167,6 +169,15 @@ def synthetic_settings(aug: dict, *, future: bool, hardneg: bool) -> dict:
             raise ValueError("aug.synth_ramp_steps must be [start, full] with 0 <= start <= full")
         ramp = (int(ramp[0]), int(ramp[1]))
     return {"source": source, "ramp": ramp, "domain": domain, "radius_jitter": radius_jitter}
+
+
+def synthetic_cameras(rig: str, batch: dict, views: int, H: int, W: int, scale: float, near: float,
+                      far: float) -> dict[str, torch.Tensor]:
+    """The near-jittered synthetic cameras of ``aug.synth_camera_rig`` (augment.synth_camera_rig): the Meta-World rig
+    (``jitter_cameras``, the reference, unchanged) or the batch's own training cameras (``jitter_training_cameras``)."""
+    if rig == "metaworld":
+        return jitter_cameras(batch["K"].shape[0], views, batch["K"][:, 0], H, W, scale)
+    return jitter_training_cameras(batch["K"], batch["c2w"], batch["depth"], views, scale, near=near, far=far)
 
 
 def selfrender_weight(step: int, ramp: tuple[int, int] | None) -> float:
@@ -320,6 +331,7 @@ def forward_losses(
     # review item 2 (training only; all off by default): crop the encoder input, synthesise near views, self-render
     training = model.training
     aug = get(cfg, "aug", None) or {}
+    rig = synth_camera_rig(cfg)
     crop = aug.get("crop") if training else None
     if crop:
         enc_in, score_in = random_resized_crop(
@@ -344,7 +356,7 @@ def forward_losses(
     n_syn = int(aug.get("synth_views", 0)) if training else 0
     syn = syn_slots = None
     if n_syn and synth["source"] == "pointcloud":
-        syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
+        syn_cams = synthetic_cameras(rig, batch, n_syn, H, W, float(aug.get("synth_range_scale", 1.0)), near, far)
         syn = synthesize_views(batch, syn_cams, near, far)  # render targets: the target window
         # invariance positives: the same synthetic cameras rendered from the encoder's (history) window
         syn_pos = synthesize_views({**batch, "images": batch["history_images"], "depth": batch["history_depth"]},
@@ -390,7 +402,8 @@ def forward_losses(
                     sr_stats["synth_camera_distance_dev"] = (syn_cams["poses"][..., 2] / domain["distance"] - 1.0).abs(
                     ).mean().to(device=device, dtype=torch.float32)
             else:
-                syn_cams = jitter_cameras(B, n_syn, batch["K"][:, 0], H, W, float(aug.get("synth_range_scale", 1.0)))
+                syn_cams = synthetic_cameras(rig, batch, n_syn, H, W, float(aug.get("synth_range_scale", 1.0)), near,
+                                             far)
             syn_slots, stats = self_render_positives(encoder, gs, xyz_seq, syn_cams, enc_in.shape[1], mask_ratio, bf16,
                                                      near, far)
             sr_stats.update(stats)
@@ -558,7 +571,7 @@ def forward_losses(
     if self_w > 0 and future:  # would force the encoding of rendered FUTURE frames to equal the history encoding
         raise ValueError("loss.self_render is incompatible with the future objective")
     if self_w > 0:  # review item 2c: re-encode renders of the decoded scene from jittered cameras
-        sr_cams = jitter_cameras(B, 2, batch["K"][:, 0], H, W)
+        sr_cams = synthetic_cameras(rig, batch, 2, H, W, 1.0, near, far)
         with torch.no_grad():  # stop-gradient on the decoder path
             sr = render_rgbd(gs, xyz_seq, sr_cams["w2c"], sr_cams["K"], H, W, near, far)["rgb"].clamp(0, 1)
         sr_in = sr.permute(0, 2, 1, 3, 4, 5).reshape(B * 2, T, 3, H, W)[:, : enc_in.shape[1]]
