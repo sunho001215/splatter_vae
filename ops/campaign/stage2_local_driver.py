@@ -24,7 +24,22 @@ from ops.resources import memory_budget as mb  # noqa: E402
 
 # Local budget (user instruction 2026-10-21): cgroup working set max(0, memory.current - inactive_file) vs 150 GB,
 # minus the transient-overhead margin (runs/setup/tools/memory_budget.py)
-CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD
+# Temporary local validation reservation (user 2026-11-02): RAM withheld from local admission for the real-world/DROID
+# validation and the integration suite (scripts/run_tests.py, +40 GB). runs/setup/local-validation-reservation.json
+# {"ram_bytes": N, "expires_unix": T, "reason": ...}; absent or expired = 0. GPUs are reserved by leaving them out of
+# experiments/queue.yaml limits.
+def _validation_reservation():
+    import json as _json
+    import time as _time
+    try:
+        doc = _json.loads((Path('/home/ws/ws/splatter4d/runs/setup/local-validation-reservation.json')).read_text())
+    except FileNotFoundError:
+        return 0
+    return int(doc['ram_bytes']) if _time.time() < float(doc['expires_unix']) else 0
+
+
+VALIDATION_RESERVATION = _validation_reservation()
+CAP = mb.CEILING - mb.TRANSIENT_OVERHEAD - VALIDATION_RESERVATION
 TRAINER_PSS = 10.77e9  # measured trainer peak PSS (user rule)
 # Measured splatter4d DrM peaks (2026-10-14): trainer RSS <= 2.65 GB at 1M (runs/s3-drm-splatter4d-*/final.json),
 # local session PSS 2.80 GB at 667k; evaluator session PSS 3.5-3.8 GB. ~25% margin. Other jobs: declared ram_gb.
