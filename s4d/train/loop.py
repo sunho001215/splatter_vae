@@ -24,9 +24,9 @@ from s4d.losses.motion import expected_displacement, motion_loss
 from s4d.losses.motion3d import motion3d_loss, motion3d_track_loss, track_candidates
 from s4d.losses.occlusion import occlusion_loss, usage_diagnostics
 from s4d.losses.regularizers import visibility_loss
-from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss
+from s4d.losses.rgb import coverage_loss, masked_psnr, masked_ssim, pixel_weights, rgb_loss, ssim_support
 from s4d.model.decoder import DecoderConfig, GaussianDecoder, GroupConfig
-from s4d.model.encoder import Encoder, EncoderConfig, visible_count
+from s4d.model.encoder import Encoder, EncoderConfig, sample_eligible_tokens, visible_count
 from s4d.model.gaussians import DYNAMIC_GROUP, GaussianSet
 from s4d.model.render import render_features, render_hard_depth, render_rgbd
 from s4d.train import ddp
@@ -72,10 +72,15 @@ class Model(nn.Module):
         mask_ratio: float | None = None,
         actions: torch.Tensor | None = None,
         future_stride: torch.Tensor | None = None,
+        visible: torch.Tensor | None = None,
     ):
         """The encoder sees only ``images_bv`` (and the masking score); ``actions`` reach the decoder's displacement
-        heads only (action-conditioned variant)."""
-        enc = self.encoder(images_bv, score_bv, mask_ratio=mask_ratio)
+        heads only (action-conditioned variant). ``visible`` (B*V, T*N): an explicit visible-token mask (square-crop
+        padding, ``crop_visible_tokens``) instead of the encoder's own masking."""
+        if visible is None:
+            enc = self.encoder(images_bv, score_bv, mask_ratio=mask_ratio)
+        else:
+            enc = self.encoder.forward_visible(images_bv, visible)
         slots = enc["slots"]
         B = slots.shape[0] // num_views
         slots = slots.view(B, num_views, *slots.shape[1:])
@@ -169,6 +174,19 @@ def synthetic_settings(aug: dict, *, future: bool, hardneg: bool) -> dict:
             raise ValueError("aug.synth_ramp_steps must be [start, full] with 0 <= start <= full")
         ramp = (int(ramp[0]), int(ramp[1]))
     return {"source": source, "ramp": ramp, "domain": domain, "radius_jitter": radius_jitter}
+
+
+def crop_visible_tokens(token_padded: torch.Tensor, frames: int, keep: int) -> tuple[torch.Tensor, dict]:
+    """Square-crop masking (s4d/data/droid/largescale/crop.py): token_padded (B,V,N) -> visible (B*V, frames*N),
+    frame-major. Every token overlapping padding is masked (the same patches in every frame: one crop per camera and
+    window); exactly ``keep`` = visible_count(frames * N, mask_ratio) tokens stay visible, uniform among the remaining
+    tokens, so the masked count is fixed at frames * N - keep whatever the crop (75 %: 441 of 588 at 224 / 16 / 3).
+    Returns the mask and per-row diagnostics: padded temporal tokens and the masked fraction within observed content."""
+    B, V, N = token_padded.shape
+    eligible = (~token_padded).reshape(B * V, 1, N).expand(-1, frames, -1).reshape(B * V, frames * N)
+    visible = sample_eligible_tokens(eligible, keep)
+    count = eligible.sum(1).float()
+    return visible, {"padded_tokens": frames * N - count, "masked_fraction_observed": 1.0 - keep / count}
 
 
 def synthetic_cameras(rig: str, batch: dict, views: int, H: int, W: int, scale: float, near: float,
@@ -300,6 +318,8 @@ def forward_losses(
 
     Per-frame pilots (``model.perframe``) use ``s4d.train.perframe.forward_losses_perframe`` (same output keys)."""
     if get(cfg, "model.perframe"):
+        if "token_padded" in batch:
+            raise ValueError("square-crop padding is not defined for the per-frame pilots")
         if str(get(cfg, "aug.synth_source", "pointcloud")) != "pointcloud":
             raise ValueError("aug.synth_source gaussian_self_render is not defined for the per-frame pilots")
         from s4d.train.perframe import forward_losses_perframe
@@ -347,11 +367,27 @@ def forward_losses(
     if synth["source"] == "gaussian_self_render" and float(get(cfg, "loss.self_render", 0.0) or 0.0) > 0:
         # the legacy cosine term would add self-render gradients outside the registered warm-up / ramp (Codex review)
         raise ValueError("loss.self_render is not combined with aug.synth_source gaussian_self_render")
+    crop_kw, crop_stats = {}, {}
+    if "token_padded" in batch:  # square-crop profile: padded tokens are always masked, one masking stage
+        enc_cfg = getattr(model, "module", model).encoder.cfg
+        if future or single_frame or crop or shift or enc_cfg.mask_mode != "random":
+            raise ValueError("square-crop padding is defined for the reconstruction objective with mask_mode 'random' "
+                             "and without aug.crop / aug.shift")
+        ratio = enc_cfg.mask_ratio if mask_ratio is None else mask_ratio
+        padded = batch["token_padded"]
+        if training and ratio > 0.0:
+            frames = enc_in.shape[1]
+            crop_kw["visible"], stats = crop_visible_tokens(padded, frames, visible_count(frames * padded.shape[2], ratio))
+            crop_stats = {"crop_padded_tokens": stats["padded_tokens"].mean(),
+                          "crop_masked_fraction_observed": stats["masked_fraction_observed"].mean()}
+        crop_stats["crop_padded_token_fraction"] = padded.float().mean()
+        if "crop_fallback" in batch:
+            crop_stats["crop_fallback_fraction"] = (batch["crop_fallback"] > 0).float().mean()
     if source is None:
         source = torch.randint(V, (B,), device=device)
     bf16 = bool(get(cfg, "train.bf16", True))
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
-        slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio, **action_kw)
+        slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio, **action_kw, **crop_kw)
     encoder = getattr(model, "module", model).encoder
     n_syn = int(aug.get("synth_views", 0)) if training else 0
     syn = syn_slots = None
@@ -415,11 +451,16 @@ def forward_losses(
     if jitter:
         factor = torch.empty(B, T, V, 1, 1, 1, device=device).uniform_(float(jitter[0]), float(jitter[1]))
         depth_t = depth_t * factor
-    weights = pixel_weights(_rows(score), float(loss_cfg.get("lambda_dyn", 1.0)))
+    # square-crop padding (batch["observed"]): never RGB / SSIM / coverage / depth supervision (depth is already 0 there)
+    obs_rows = _rows(batch["observed"][:, None].expand(B, T, V, 1, H, W)) if "observed" in batch else None
+    weights = pixel_weights(_rows(score), float(loss_cfg.get("lambda_dyn", 1.0)), obs_rows)
     valid_far = bool(loss_cfg.get("depth_valid_far", False))  # directive item 1b: depth beyond the far plane is invalid
     valid = (_rows(depth_t) > 0) & (_rows(depth_t) < far) if valid_far else _rows(depth_t) > 0
+    if obs_rows is not None:
+        valid = valid & obs_rows
     rgb_rows, tgt_rows, depth_rows, alpha_rows = _rows(r["rgb"]), _rows(images01), _rows(r["depth"]), _rows(r["alpha"])
-    rgb_l = rgb_loss(rgb_rows, tgt_rows, weights, float(loss_cfg.get("ssim_weight", 0.2)))
+    rgb_l = rgb_loss(rgb_rows, tgt_rows, weights, float(loss_cfg.get("ssim_weight", 0.2)),
+                     ssim_weights=None if obs_rows is None else weights * ssim_support(obs_rows))
     cov_l = coverage_loss(alpha_rows, valid, weights)
     align_mode = loss_cfg.get("depth_align", "none")
     if step < int(loss_cfg.get("depth_align_warmup_steps", 0)):
@@ -601,10 +642,11 @@ def forward_losses(
     # ---- metrics -------------------------------------------------------------------------------
     with torch.no_grad():
         score_rows = _rows(score)
-        all_mask = torch.ones_like(score_rows, dtype=torch.bool)
+        all_mask = torch.ones_like(score_rows, dtype=torch.bool) if obs_rows is None else obs_rows
+        static_mask = score_rows < STATIC_SCORE if obs_rows is None else (score_rows < STATIC_SCORE) & obs_rows
         psnr_all = masked_psnr(rgb_rows, tgt_rows, all_mask).view(B, T, V)
         psnr_mov = masked_psnr(rgb_rows, tgt_rows, score_rows > MOVING_SCORE).view(B, T, V)
-        psnr_sta = masked_psnr(rgb_rows, tgt_rows, score_rows < STATIC_SCORE).view(B, T, V)
+        psnr_sta = masked_psnr(rgb_rows, tgt_rows, static_mask).view(B, T, V)
         absrel = abs_rel(depth_rows, _rows(depth_t), valid).view(B, T, V)
         opacity = gs.opacity
         metrics = {
@@ -614,7 +656,7 @@ def forward_losses(
             "psnr_static": _nanmean(psnr_sta),
             "ssim": _nanmean(masked_ssim(rgb_rows, tgt_rows, all_mask)),
             "ssim_moving": _nanmean(masked_ssim(rgb_rows, tgt_rows, score_rows > MOVING_SCORE)),
-            "ssim_static": _nanmean(masked_ssim(rgb_rows, tgt_rows, score_rows < STATIC_SCORE)),
+            "ssim_static": _nanmean(masked_ssim(rgb_rows, tgt_rows, static_mask)),
             "depth_absrel": absrel.mean(),
             "coverage_mean": alpha_rows.mean(),
             "coverage_valid_mean": (alpha_rows * valid).sum() / valid.sum().clamp_min(1),
@@ -643,6 +685,7 @@ def forward_losses(
         metrics.update(m_metrics)
         metrics.update(nce_metrics)
         metrics.update({k: v.detach() for k, v in sr_stats.items()})
+        metrics.update({k: v.detach() for k, v in crop_stats.items()})
         used = None
         if log_step:
             metrics.update({k: v.detach() for k, v in cham_stats.items()})
