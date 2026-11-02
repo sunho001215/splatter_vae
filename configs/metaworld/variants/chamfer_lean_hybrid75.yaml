@@ -1,0 +1,23 @@
+# Variant chamfer_lean_hybrid75 (user directive 2026-11-03; a masking experiment, not the frozen method). Applied ON TOP
+# of chamfer_lean.yaml, exactly as chamfer_lean_randmask.yaml (job config list: base, task, chamfer_lean.yaml, this
+# file); it changes ONLY the encoder masking. Resolved-config difference vs chamfer_lean_randmask (chlrm):
+#   model.encoder.mask_mode: random -> hybrid        (mask_ratio 0.75 in both; everything else identical)
+# 75 % hybrid masking (s4d/model/encoder.py sample_hybrid_mask): per sample and camera, 48 of the 3 x 64 temporal
+# tokens are visible, exactly 16 per frame:
+#   12 motion-aware tube tokens: 4 spatial positions visible in all three frames, the highest-scoring reliable dynamic
+#      patches (training-only motion score: per-pixel 3D rigid-body displacement over the window, max over each patch
+#      and over the three frames, threshold model.encoder.motion_patch_threshold 0.05, as the tube mode); positions
+#      are filled uniformly at random when fewer than four reliable dynamic patches exist;
+#   36 random temporal tokens: 12 per frame, uniform over the 60 non-tube positions and disjoint across the three frames
+#      (40 of 64 positions seen per sample), independent of motion, so static regions keep 36 of 48 visible tokens.
+# Synthetic point-cloud views (aug.synth_views 2, also render targets; unchanged): the same scheme per view, with the
+# existing eligibility rule (a token's own-frame patch covered to >= 0.9) and coverage exception (ineligible tokens only
+# when a frame or the tube lacks eligible positions); their motion saliency is the real views' motion score carried by
+# each fused point and splatted with the RGB geometry (s4d/train/augment.py synthesize_views_with_motion).
+# Unchanged: encoder (width 128, depth 8, 8 heads, one 256-D state slot, patchify stem), decoder and Gaussian
+# parameterization, Chamfer (weight 5) and the simplified loss set of chamfer_lean, RGB / depth L1 / coverage / M3D /
+# InfoNCE / consistency, synthetic views, optimiser and schedule, temporal sampling, data, export, RL adapter.
+model:
+  encoder:
+    mask_mode: hybrid
+    mask_ratio: 0.75

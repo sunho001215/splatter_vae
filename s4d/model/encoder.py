@@ -4,7 +4,11 @@ Masking (training only, ``mask_mode``): "tube" (default, the frozen method) keep
 frame, half of them the highest-scoring moving patches; "random" (SinCro-style ablation, 2026-10-23) keeps a uniform
 random subset of the T x N concatenated temporal tokens of each row, with no per-frame quota, no shared spatial mask and
 no motion prioritisation (for T = 1 this is per-image uniform random masking). Both keep
-``visible_count(L, mask_ratio)`` tokens, L = N (tube) or T * N (random).
+``visible_count(L, mask_ratio)`` tokens, L = N (tube) or T * N (random). "hybrid" (75 % hybrid masking, 2026-11-03;
+``sample_hybrid_mask``) keeps ``visible_count(T * N, mask_ratio)`` temporal tokens with the same count in every frame:
+HYBRID_TUBE_PATCHES spatial positions shared by all frames (the highest-scoring moving patches, random fill) plus an
+independent per-frame random set drawn from the other positions, disjoint across frames where possible
+(192 tokens at 0.75: 4 x 3 tube + 12 x 3 random = 48, 16 per frame).
 
 Patch embedding (``stem``): "patchify" (default, the frozen method) is one patch_size x patch_size stride-patch_size
 convolution; "patch_cnn" (encoder pilot cs, 2026-10-25) applies a small CNN to every patch independently (four 3x3
@@ -40,6 +44,7 @@ class EncoderConfig:
     num_frames: int = 3
     mask_ratio: float = 0.5
     mask_mode: str = "tube"  # "tube" (motion-aware, shared over time) | "random" (uniform over the T*N tokens)
+    #                          | "hybrid" (motion-aware shared tube + per-frame random; sample_hybrid_mask)
     motion_patch_threshold: float = 0.05
     drop_path: float = 0.1
     layerscale_init: float | None = None
@@ -218,6 +223,87 @@ def sample_tube_mask(patch_scores: torch.Tensor, mask_ratio: float, threshold: f
     return visible
 
 
+HYBRID_TUBE_PATCHES = 4  # mask_mode "hybrid": shared spatial positions visible in every frame (user design 2026-11-03)
+
+
+def hybrid_counts(frames: int, patches: int, mask_ratio: float, tube: int = HYBRID_TUBE_PATCHES) -> tuple[int, int]:
+    """(visible tokens per frame, random tokens per frame) of ``sample_hybrid_mask``: ``visible_count(frames * patches,
+    mask_ratio)`` split equally over the frames, ``tube`` of each frame's share shared by every frame."""
+    keep = visible_count(frames * patches, mask_ratio)
+    if keep % frames or keep // frames < tube:
+        raise ValueError(f"hybrid masking needs a visible count divisible by {frames} frames with at least {tube} "
+                         f"tokens per frame; got {keep} of {frames * patches}")
+    return keep // frames, keep // frames - tube
+
+
+def sample_hybrid_mask(
+    patch_scores: torch.Tensor,
+    frames: int,
+    mask_ratio: float,
+    threshold: float,
+    eligible: torch.Tensor | None = None,
+    tube: int = HYBRID_TUBE_PATCHES,
+    generator: torch.Generator | None = None,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """75 % hybrid masking: a frame-major visible-token mask (B, frames * N) with exactly ``per_frame`` True tokens in
+    every frame (``hybrid_counts``) and the selection record.
+
+    patch_scores (B,N): training-only motion score per spatial patch, aggregated over the frames (the encoder's
+    ``patch_scores``: max over time and patch, the tube mode's aggregation). eligible (B,frames,N) bool or None (all
+    eligible): per-frame token validity (synthetic views: own-frame patch coverage >= 0.9).
+
+    1. Tube: ``tube`` spatial positions visible in every frame. Ranked first: positions eligible in every frame whose
+       score exceeds ``threshold`` (reliable dynamic patches), highest score first; then the other positions eligible in
+       every frame, uniformly at random (the fill when fewer than ``tube`` reliable dynamic patches exist); only when
+       fewer than ``tube`` positions are eligible in every frame, the positions eligible in most frames (coverage
+       exception: their ineligible frames keep a hole token, counted).
+    2. Random: per frame, in frame order, ``per_frame - tube`` positions outside the tube, uniform among the frame's
+       eligible positions not yet taken by an earlier frame's random set; then eligible positions already taken by an
+       earlier frame (overlap only when unavoidable); ineligible positions only when the frame has too few eligible
+       ones (the existing coverage exception). With every token eligible (real views) the three random sets are
+       disjoint and uniform over the remaining positions: 4 + 3 x 12 = 40 of 64 positions are seen per sample.
+
+    Exactly ``per_frame`` tokens per frame, no token dropped; the tube and the random set of a frame never coincide."""
+    B, N = patch_scores.shape
+    per_frame, n_random = hybrid_counts(frames, N, mask_ratio, tube)
+    device = patch_scores.device
+    if eligible is None:
+        eligible = torch.ones(B, frames, N, dtype=torch.bool, device=device)
+    if eligible.shape != (B, frames, N):
+        raise ValueError(f"eligible must be ({B},{frames},{N}), got {tuple(eligible.shape)}")
+    every = eligible.all(1)  # (B,N) eligible in every frame
+    moving = every & (patch_scores > threshold)
+    u = torch.rand(B, N, device=device, generator=generator)
+    # bands: reliable dynamic (3 + score, ties broken at random) > eligible everywhere (2 + U) > most eligible frames
+    tube_priority = torch.where(
+        moving, 3.0 + patch_scores.float().clamp(0.0, 1.0) + 1e-3 * u,
+        torch.where(every, 2.0 + u, (eligible.sum(1).float() + u) / (frames + 1.0)))
+    tube_mask = torch.zeros(B, N, dtype=torch.bool, device=device)
+    tube_mask.scatter_(1, torch.topk(tube_priority, tube, dim=1).indices, True)
+    taken = torch.zeros_like(tube_mask)
+    rows = []
+    for t in range(frames):
+        e_t = eligible[:, t]
+        u = torch.rand(B, N, device=device, generator=generator)
+        prio = torch.where(e_t & ~taken, 3.0 + u, torch.where(e_t, 2.0 + u, torch.where(~taken, 1.0 + u, u)))
+        prio = torch.where(tube_mask, torch.full_like(prio, -1.0), prio)
+        pick = torch.zeros_like(tube_mask)
+        if n_random:
+            pick.scatter_(1, torch.topk(prio, n_random, dim=1).indices, True)
+        taken |= pick
+        rows.append(pick | tube_mask)
+    visible = torch.stack(rows, 1)  # (B,frames,N)
+    info = {
+        "tube": tube_mask,
+        "tube_dynamic": (tube_mask & moving).sum(1),  # reliable dynamic patches among the tube positions
+        "dynamic_available": moving.sum(1),
+        "hole_tokens": (visible & ~eligible).flatten(1).sum(1),  # coverage-exception tokens kept
+        "positions_seen": visible.any(1).sum(1),
+        "random_overlap": (visible & ~tube_mask[:, None]).sum(1).gt(1).sum(1),  # positions in >= 2 random sets
+    }
+    return visible.flatten(1), info
+
+
 class Encoder(nn.Module):
     def __init__(self, cfg: EncoderConfig):
         super().__init__()
@@ -251,8 +337,10 @@ class Encoder(nn.Module):
             nn.init.trunc_normal_(p, std=0.02)
         if self.cls_token is not None:
             nn.init.trunc_normal_(self.cls_token, std=0.02)
-        if cfg.mask_mode not in ("tube", "random"):
+        if cfg.mask_mode not in ("tube", "random", "hybrid"):
             raise ValueError(f"unknown encoder mask_mode {cfg.mask_mode!r}")
+        if cfg.mask_mode == "hybrid":
+            hybrid_counts(cfg.num_frames, cfg.num_patches, cfg.mask_ratio)
         if cfg.backbone == "dinov2_vits14":
             load_dinov2_vits14(self, cfg.pretrained_path)
 
@@ -265,6 +353,11 @@ class Encoder(nn.Module):
         B, T = motion_score.shape[:2]
         pooled = F.max_pool2d(motion_score.flatten(0, 1).float(), self.cfg.patch_size)
         return pooled.view(B, T, -1).amax(1)
+
+    def patch_token_scores(self, motion_score: torch.Tensor) -> torch.Tensor:
+        """(B,T,1,H,W) pixel scores -> (B,T,N) max over each frame's patch (hybrid-mask diagnostics)."""
+        B, T = motion_score.shape[:2]
+        return F.max_pool2d(motion_score.flatten(0, 1).float(), self.cfg.patch_size).view(B, T, -1)
 
     def forward(
         self, images: torch.Tensor, motion_score: torch.Tensor | None = None, mask_ratio: float | None = None
@@ -293,6 +386,13 @@ class Encoder(nn.Module):
             if visible is None and cfg.mask_mode == "random":
                 visible = sample_random_tokens(B, T * cfg.num_patches, visible_count(T * cfg.num_patches, ratio),
                                                images.device)
+            elif visible is None and cfg.mask_mode == "hybrid":
+                scores = (
+                    self.patch_scores(motion_score)
+                    if motion_score is not None
+                    else torch.zeros(B, cfg.num_patches, device=images.device)
+                )
+                visible, _ = sample_hybrid_mask(scores, T, ratio, cfg.motion_patch_threshold)
             elif visible is None:
                 scores = (
                     self.patch_scores(motion_score)

@@ -35,6 +35,7 @@ from s4d.train.augment import (
     coverage_visible,
     coverage_visible_tokens,
     domain_cameras,
+    hybrid_synthetic_visible,
     jitter_cameras,
     jitter_training_cameras,
     load_viewpoint_domain,
@@ -42,6 +43,7 @@ from s4d.train.augment import (
     random_shift,
     synth_camera_rig,
     synthesize_views,
+    synthesize_views_with_motion,
 )
 from s4d.train.checkpoint import gather_rng_states, load_checkpoint, save_checkpoint
 from s4d.train.workers import fork_safe_iter
@@ -103,6 +105,8 @@ def build_model(cfg: dict) -> Model:
         slot_dim=encoder_cfg.slot_dim, num_slots=encoder_cfg.num_slots, scene=scene, dynamic=dynamic, **dec
     )
     perframe = get(cfg, "model.perframe")
+    if perframe and encoder_cfg.mask_mode == "hybrid":
+        raise ValueError("mask_mode 'hybrid' is defined for the joint three-frame encoder, not model.perframe")
     if perframe:  # per-frame pilots (s4d/train/perframe.py): single-image encoder, static per-frame decoding
         if encoder_cfg.num_frames != 1 or decoder_cfg.motion_head:
             raise ValueError("model.perframe needs model.encoder.num_frames = 1 and model.decoder.motion_head = false")
@@ -111,6 +115,49 @@ def build_model(cfg: dict) -> Model:
     elif not decoder_cfg.motion_head or decoder_cfg.temporal_branch:
         raise ValueError("model.decoder.motion_head = false / temporal_branch are defined only with model.perframe")
     return Model(Encoder(encoder_cfg), GaussianDecoder(decoder_cfg), frame_mode="stack" if perframe else "joint")
+
+
+@torch.no_grad()
+def hybrid_mask_statistics(visible: torch.Tensor, token_scores: torch.Tensor, threshold: float, prefix: str) -> dict:
+    """Masking diagnostics of ``mask_mode`` "hybrid" (logged only for that mode): visible (R,T,N) bool, token_scores
+    (R,T,N) per-frame patch motion scores. Tube = positions visible in every frame; dynamic = score > threshold."""
+    R, T, N = visible.shape
+    tube = visible.all(1)
+    agg = token_scores.amax(1)
+    dynamic_tok = token_scores > threshold
+    rand = visible & ~tube[:, None]
+    return {
+        f"{prefix}tube_positions": tube.sum(1).float().mean(),
+        f"{prefix}tube_dynamic_fraction": ((tube & (agg > threshold)).sum(1).float() / tube.sum(1).clamp_min(1)).mean(),
+        f"{prefix}tube_fill_rows": ((agg > threshold).sum(1) < tube.sum(1)).float().mean(),
+        f"{prefix}visible_dynamic_fraction": (visible & dynamic_tok).sum() / visible.sum().clamp_min(1),
+        f"{prefix}dynamic_token_fraction": dynamic_tok.float().mean(),
+        f"{prefix}random_dynamic_fraction": (rand & dynamic_tok).sum() / rand.sum().clamp_min(1),
+        f"{prefix}static_positions_seen": (visible.any(1) & (agg <= threshold)).sum(1).float().mean(),
+        f"{prefix}positions_seen": visible.any(1).sum(1).float().mean(),
+        f"{prefix}random_overlap_positions": rand.sum(1).gt(1).sum(1).float().mean(),
+        f"{prefix}per_frame_min": visible.sum(2).amin().float(),
+        f"{prefix}per_frame_max": visible.sum(2).amax().float(),
+    }
+
+
+@torch.no_grad()
+def hybrid_synthetic_statistics(visible: torch.Tensor, info: dict, frames: int) -> dict:
+    """Synthetic-view eligibility and fallback statistics of ``mask_mode`` "hybrid": the point-cloud views' existing
+    keys (synth_token_eligible_fraction, synth_coverage_exception_rows, synth_kept_ineligible_fraction) plus the hybrid
+    selection record (tube positions from reliable transported motion, fallback rows)."""
+    eligible = info["eligible"]
+    per_frame = visible.sum(2)[0, 0]
+    return {
+        "synth_token_eligible_fraction": eligible.float().mean(),
+        "synth_coverage_exception_rows": ((eligible.sum(2) < per_frame).any(1) | (eligible.all(1).sum(1) < info["tube"].sum(1))).float().mean(),
+        "synth_kept_ineligible_fraction": (visible & ~eligible).sum() / visible.sum().clamp_min(1),
+        "mask_hybrid_synth_tube_dynamic_fraction": (info["tube_dynamic"].float() / info["tube"].sum(1).clamp_min(1)).mean(),
+        "mask_hybrid_synth_tube_fill_rows": (info["dynamic_available"] < info["tube"].sum(1)).float().mean(),
+        "mask_hybrid_synth_tube_hole_rows": (eligible.all(1).sum(1) < info["tube"].sum(1)).float().mean(),
+        "mask_hybrid_synth_positions_seen": info["positions_seen"].float().mean(),
+        "mask_hybrid_synth_random_overlap_positions": info["random_overlap"].float().mean(),
+    }
 
 
 def temporal_ramp(step: int, ramp_steps: int) -> float:
@@ -240,6 +287,8 @@ def self_render_positives(
     rgb = r["rgb"].detach().clamp(0.0, 1.0).permute(0, 2, 1, 3, 4, 5).reshape(B * n, T, 3, H, W)[:, :frames]
     alpha = r["alpha"].detach().clamp(0.0, 1.0).permute(0, 2, 1, 3, 4, 5).reshape(B * n, T, 1, H, W)[:, :frames]
     cfg = encoder.cfg
+    if cfg.mask_mode == "hybrid":
+        raise ValueError("mask_mode 'hybrid' is not defined for aug.synth_source gaussian_self_render")
     ratio = cfg.mask_ratio if mask_ratio is None else mask_ratio
     frac = F.avg_pool2d(alpha.flatten(0, 1), cfg.patch_size).view(B * n, frames, -1)
     if cfg.mask_mode == "random":
@@ -373,6 +422,10 @@ def forward_losses(
     if synth["source"] == "gaussian_self_render" and float(get(cfg, "loss.self_render", 0.0) or 0.0) > 0:
         # the legacy cosine term would add self-render gradients outside the registered warm-up / ramp (Codex review)
         raise ValueError("loss.self_render is not combined with aug.synth_source gaussian_self_render")
+    hybrid = getattr(model, "module", model).encoder.cfg.mask_mode == "hybrid"
+    if hybrid and (future or single_frame or crop or shift or synth["source"] != "pointcloud"):
+        raise ValueError("mask_mode 'hybrid' is defined for the reconstruction objective with the three-frame encoder, "
+                         "point-cloud synthetic views and without aug.crop / aug.shift")
     crop_kw, crop_stats = {}, {}
     if "token_padded" in batch:  # square-crop profile: padded tokens are always masked, one masking stage
         enc_cfg = getattr(model, "module", model).encoder.cfg
@@ -395,11 +448,16 @@ def forward_losses(
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
         slots, visible, gs = model(enc_in, score_in, V, source, mask_ratio=mask_ratio, **action_kw, **crop_kw)
     encoder = getattr(model, "module", model).encoder
+    mask_stats = {}
+    if hybrid and training and visible.shape[-1] == enc_in.shape[1] * encoder.cfg.num_patches:
+        mask_stats = hybrid_mask_statistics(visible.reshape(B * V, enc_in.shape[1], -1), encoder.patch_token_scores(score_in),
+                                            encoder.cfg.motion_patch_threshold, "mask_hybrid_")
     n_syn = int(aug.get("synth_views", 0)) if training else 0
     syn = syn_slots = None
     if n_syn and synth["source"] == "pointcloud":
         syn_cams = synthetic_cameras(rig, batch, n_syn, H, W, float(aug.get("synth_range_scale", 1.0)), near, far)
-        syn = synthesize_views(batch, syn_cams, near, far)  # render targets: the target window
+        # render targets: the target window (hybrid masking also transports the motion score into these views)
+        syn = (synthesize_views_with_motion if hybrid else synthesize_views)(batch, syn_cams, near, far)
         # invariance positives: the same synthetic cameras rendered from the encoder's (history) window
         syn_pos = synthesize_views({**batch, "images": batch["history_images"], "depth": batch["history_depth"]},
                                    syn_cams, near, far) if future else syn
@@ -410,6 +468,11 @@ def forward_losses(
         if encoder.cfg.mask_mode == "random":  # the same temporal-token scheme as the real views, holes excluded
             keep = visible_count(frames * encoder.cfg.num_patches, ratio)
             syn_visible = coverage_visible_tokens(syn_cov, encoder.cfg.patch_size, keep)
+        elif hybrid:  # the real views' hybrid scheme, holes excluded; tube from the transported motion score
+            syn_score = syn_pos["motion_score"].permute(0, 2, 1, 3, 4, 5).reshape(B * n_syn, T, 1, H, W)[:, :frames]
+            syn_visible, info = hybrid_synthetic_visible(syn_cov, syn_score, encoder.cfg.patch_size, ratio,
+                                                         encoder.cfg.motion_patch_threshold)
+            mask_stats.update(hybrid_synthetic_statistics(syn_visible.view(B * n_syn, frames, -1), info, frames))
         else:
             keep = visible_count(encoder.cfg.num_patches, ratio)
             syn_visible = coverage_visible(syn_cov, encoder.cfg.patch_size, keep)
@@ -690,6 +753,7 @@ def forward_losses(
         metrics.update(nce_metrics)
         metrics.update({k: v.detach() for k, v in sr_stats.items()})
         metrics.update({k: v.detach() for k, v in crop_stats.items()})
+        metrics.update({k: v.detach() for k, v in mask_stats.items()})
         used = None
         if log_step:
             metrics.update({k: v.detach() for k, v in cham_stats.items()})

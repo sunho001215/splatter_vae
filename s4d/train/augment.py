@@ -25,6 +25,7 @@ import yaml
 
 from s4d.data.metaworld.cameras import LOOKAT, TRAIN_CAMERAS, offsets_to_orbit, orbit_rig, sample_offsets
 from s4d.diag.heldout import fused_training_clouds, splat_batched
+from s4d.model.encoder import sample_hybrid_mask
 
 PATCH_COVERAGE = 0.9  # a synthetic-view patch is a token only if this fraction of its pixels is covered in every frame
 REPO = Path(__file__).resolve().parents[2]
@@ -276,6 +277,50 @@ def synthesize_views(batch: dict, cams: dict, near: float, far: float) -> dict[s
         "covered": cov.view(B, T, n, 1, H, W),
         "depth": dep.view(B, T, n, 1, H, W),
     }
+
+
+def synthesize_views_with_motion(batch: dict, cams: dict, near: float, far: float,
+                                 score_key: str = "motion_score") -> dict[str, torch.Tensor]:
+    """``synthesize_views`` plus a training-only motion saliency of each synthetic view (encoder ``mask_mode``
+    "hybrid"). Every fused training-camera point carries its own pixel's ``batch[score_key]`` (the real views' masking
+    score: the 3D rigid-body displacement magnitude of the point over the window, derived from simulator body poses of
+    the training split and used only to choose masks) and is splatted into ``cams`` with exactly the geometry of the RGB
+    splat (same points, validity, cameras, near plane and z-buffer), so a synthetic pixel's score is that of the surface
+    point it shows. The synthetic camera is fixed over the window, as for the RGB. Holes have score 0 (they are never
+    reliable dynamic patches). Returns the ``synthesize_views`` dict (identical images / covered / depth) and
+    motion_score (B,T,n,1,H,W) in [0,1]."""
+    B, T = batch["depth"].shape[:2]
+    H, W = batch["depth"].shape[-2:]
+    points, colors, valid = fused_training_clouds(batch, far)
+    n = cams["K"].shape[1]
+    K = cams["K"][:, None].expand(B, T, n, 3, 3).reshape(B * T, n, 3, 3)
+    w2c = cams["w2c"][:, None].expand(B, T, n, 4, 4).reshape(B * T, n, 4, 4)
+    rgb, cov, dep = splat_batched(points, colors, valid, K, w2c, H, W, near)
+    score = batch[score_key][:, :, :, 0].float().reshape(B * T, -1, 1).expand(-1, -1, 3)  # fused-cloud point order
+    syn_score, _, _ = splat_batched(points, score, valid, K, w2c, H, W, near)
+    return {
+        "images": rgb.view(B, T, n, 3, H, W),
+        "covered": cov.view(B, T, n, 1, H, W),
+        "depth": dep.view(B, T, n, 1, H, W),
+        "motion_score": syn_score[:, :, :1].clamp(0.0, 1.0).view(B, T, n, 1, H, W),
+    }
+
+
+def hybrid_synthetic_visible(covered: torch.Tensor, motion_score: torch.Tensor, patch: int, mask_ratio: float,
+                             threshold: float) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Hybrid-mask form of ``coverage_visible_tokens`` for synthetic encoder inputs: covered / motion_score
+    (R,T,1,H,W) -> visible-token mask (R,T*N) (frame-major) and the selection record of ``sample_hybrid_mask``.
+    Eligibility is the existing rule (a token's own-frame patch covered to >= PATCH_COVERAGE); the motion score of a
+    patch is the max of the transported score over the patch (holes 0), aggregated over the frames by max, exactly as
+    the real views' score. The budget is unchanged: exactly ``per_frame`` tokens per frame; ineligible tokens are kept
+    only in the existing coverage exception (counted in ``hole_tokens``)."""
+    R, T = covered.shape[:2]
+    frac = F.avg_pool2d(covered.flatten(0, 1).float(), patch).view(R, T, -1)  # (R,T,N)
+    eligible = frac >= PATCH_COVERAGE
+    pooled = F.max_pool2d((motion_score * covered).flatten(0, 1).float(), patch).view(R, T, -1)
+    visible, info = sample_hybrid_mask(pooled.amax(1), T, mask_ratio, threshold, eligible=eligible)
+    info["eligible"] = eligible
+    return visible, info
 
 
 def coverage_visible(covered: torch.Tensor, patch: int, keep: int) -> torch.Tensor:
