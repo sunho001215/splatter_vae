@@ -1,3 +1,6 @@
+**2026-11-02 14:45–14:49: HANDED BACK** (user-authorized). The runner stopped via STOP and 162 launches were reconciled.
+Local controllers own dispatch. See EXPERIMENT_LOG 2026-11-02. This briefing is historical.
+
 # Restart briefing — local server shutdown (time chosen by the user)
 
 **Update 2026-10-31 ~21:50 KST.** The user withdrew the 23:00 KST shutdown and the 22:45 drain deadline and will
