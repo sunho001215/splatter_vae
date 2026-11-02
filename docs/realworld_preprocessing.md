@@ -321,10 +321,17 @@ Found by reading `s4d/baselines/*`:
 3. **The measured mount transform `T_flange_gripper`** (`panda_link8` to the gripper base link), including the
    coupling thickness and the yaw.
    - Franka's `external_gripper_example` uses `xyz 0 0 0, rpy 0 0 +pi/2`, and the DROID code comments the same
-     +pi/2 yaw.
-   - Robotiq states the Panda flange is ISO 9409-1-50-4-M6 with coupling GRP-CPL-062 and no adapter plate. This
-     was not cross-checked against a Franka datasheet.
-   - The coupling offset must be measured.
+     +pi/2 yaw. Its xyz = 0 omits the coupling.
+   - Robotiq states the Panda/FR3 flange is ISO 9409-1-50-4-M6 ("DIN ISO 9409-1-A50" in Franka's datasheet), with
+     coupling GRP-CPL-062 and no adapter plate.
+   - Robotiq's drawings give a provisional 11.0 mm from the flange face to the 2F-85 base frame
+     (`robotiq_85_base_link`): a 16.9 mm coupling, minus its 3 mm robot-side recess, minus a 2.9 mm gripper-side
+     recess taken from the blank coupling.
+   - Mount configurations live in `s4d/realworld/mounts.py`, with a status (measured / provisional / assumption)
+     and the missing measurement. Compose with
+     `scripts/realworld_compose_robot_urdf.py --mount-config NAME` (or with explicit `--mount-xyz/--mount-rpy/
+     --mount-source`). The manifest records the stack and its sources.
+   - The coupling offset on our own rig must still be measured; the drawings are not a measurement.
    - Combine the two URDFs with `robot.compose_urdf`.
 4. **The gripper-state mapping.** `robot.gripper_joint_value` assumes a linear map to `finger_joint`
    (2F-85: 0..0.8 rad, 2F-140: 0..0.7 rad). **Verify it on the real gripper.**

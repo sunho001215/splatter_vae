@@ -179,13 +179,83 @@ frames, and the score is the fraction landing on SAM 3's robot mask (`item5/moun
 
 - The assumed yaw of +90° (Franka external_gripper_example) is confirmed; 180°-symmetric alternatives are
   indistinguishable for the 2F-85.
-- Along the approach axis the score peaks between +1 and +2 cm (0.83 at +2 cm, 0.79 at 0; 76 frames). The data
-  indicate a coupling of about 1.5 cm that the assumed xyz = 0 omits.
+- Along the approach axis the score peaks between +1 and +2 cm (0.83 at +2 cm, 0.79 at 0; 76 frames). This 1-D scan was
+  read at the time as a coupling of about 1.5 cm that the assumed xyz = 0 omits. It is superseded by the analysis
+  below.
 
-**What the asset used means.** The baseline uses the documented assumption, xyz = 0, so the merged-revision comparison
-stays like-for-like. The estimated offset is a DROID finding only.
-- The 84 % median of exported gripper points on the robot mask is consistent with this: the misses lie at mask
-  boundaries, plus a small approach-axis shortfall.
+**Provisional mount (2026-11-02, `s4d/realworld/mounts.py` `droid_robotiq_2f85_iso50_coupling`).**
+
+`T_fr3_link8→robotiq_85_base_link` = xyz (0, 0, **0.011** m), rpy (0, 0, +π/2).
+
+Status: **PROVISIONAL**. It is applied as the default for guide-built DROID robots until a measurement exists. It is
+derived from Robotiq drawings, the coupling's identity is inferred from photos, and it is not measured. Only magnitude
+cross-checks corroborate it.
+
+- **Parts (partly inferred).** The DROID assembly guide (`droid-dataset/droid` `33ae6a6`
+  `docs/hardware-setup/assembly.md`, "Mounting Robotiq Gripper on Robot") names only a "gripper mount" taken from the
+  gripper box.
+  - Its photos show a Robotiq pigtail coupling (AGC-CPL-062-002 family) screwed directly to the Franka flange, with no
+    spacer. The flange is ISO 9409-1-A50 on both Panda and FR3.
+  - The coupling's exact part number and revision are not established.
+  - The ZED Mini bracket (the guide's only printed parts, `hand_camera_part_{1,2}.stl`) screws to the link-7 ring. It
+    is not in the stack.
+- **Stack.** From the Robotiq 2F-85/2F-140 manual §6.1.1:
+  - GRP-CPL-062 drawing: 16.9 mm overall, minus its 3 mm robot-side Ø63 F8 recess (which takes the flange).
+  - Minus 2.9 mm for the gripper-side Ø71 recess (which takes the gripper's Ø71 h8 boss). This number comes from the
+    dimensioned *blank* coupling AGC-CPL-BLANK-002 and is inferred to be the same on DROID's coupling.
+  - Total: 11.0 mm from the flange face to the boss face. This assumes the flange spigot fully seats in the coupling.
+  - The boss face is PickNik's `robotiq_85_base_link`: the URDF fingertip tops sit at 149.3 / 162.8 mm above it, which
+    are Robotiq's open / closed heights.
+- **Corroboration (magnitude only; neither identifies DROID's part).**
+  - Robotiq's TCP table puts the TCP at 174.0 mm, coupling included: 174.0 − 162.8 = 11.2 mm.
+  - PickNik's `ur_to_robotiq_adapter` (the same ISO-50 coupling, on UR) places the gripper at z = 0.011.
+- **Scope.** Provisional default for DROID robots built per the guide, Panda and FR3 alike. Robots with verified
+  different hardware need their own `MountConfig`.
+  - Both arm generations share the same flange and flange frame. DROID's polymetis `ee_link` is `panda_link8` for
+    both.
+  - The `panda-` / `fr3-` serial prefixes are typed in by each lab and are inconsistent: `290102-1324143` carries both.
+- **Assets.** The old asset (xyz = 0) omitted the coupling: neither input URDF contains one. The new asset is
+  `/home/ws/ws/validation-20261031/droid_mount/robot_assets/fr3_robotiq_2f85_droid_iso50.urdf`.
+  - It is composed with `--mount-config droid_robotiq_2f85_iso50_coupling`.
+  - Its manifest records `status: provisional`, the stack, sources, scope, caveats and `missing_measurement`.
+  - `configs/realworld/droid_raw_validation.yaml` now uses it. Results produced before this change carry the old
+    asset's sha256 (`9d25470e…`) in their `episode.json`.
+
+**What the images do and do not show** (`/home/ws/ws/validation-20261031/droid_mount/`, 172 frames, both cameras).
+- An axial-only scan still peaks at +17–18 mm, both with and without DROID-3D `dq`, and in both cameras.
+  - Re-run with the adapter's corrected geometry FK(q + dq) (below), the scores are identical to the manual `dq` run.
+- A lateral control finds the best fit at dx = −12, dy = +4 mm in `fr3_link8`. A coupling cannot cause that offset.
+  - The offset points towards the unmodelled ZED Mini.
+  - Mask score 0.902 against 0.836 at no lateral shift.
+  - Only the axial positions 5, 11, 17 and 23 mm were sampled.
+- With the lateral shift free, the two scores disagree: the mask fraction peaks at the sampled +11 mm, the depth-inlier
+  fraction at the sampled +17 mm.
+- These are competing sampled optima under an unresolved registration and model bias: whole-robot mask, no camera or
+  bracket geometry, calibration error. They give no confidence interval and no bound.
+- The single-episode fit is not used, and it must not be applied to other robots.
+
+**Not affected.**
+- `data.gripper_offset_m` (−0.019) is a fitted shift of a 32-point surrogate in DROID's flange-frame EE pose. It never
+  reads the URDF.
+- DROID-3D `T_gw_static` / `dT_gw` is the wrist camera relative to the flange, and the coupling is not in that chain.
+- Both stay unchanged (see `docs/droid_largescale.md` §2.5).
+
+**Joint offsets with DROID-3D calibration (adapter fix, 2026-11-02).** The `droid_raw_svo` adapter now supplies
+FK(q + dq) joints in exactly one case: the episode is calibrated with its own DROID-3D record, i.e. the CLI passes
+`calibration_source: adapter_provided`.
+- The record must match the episode and the robot serial, the serial must be established, and `dq` must be 7 finite
+  values.
+- Raw `q` is kept in `extra.joint_positions_raw`. The decision is recorded in `provenance.notes.joint_correction`.
+- Otherwise the adapter keeps raw `q`, and it never uses another robot's `dq`.
+- `calibrate_provided` refuses poses from any other record, and robot-grounded calibration refuses corrected joints.
+- On the validation episode the FK cross-check stays at 2.9e-8 m, and the mount scores equal the manual `dq` run.
+
+**Missing measurement (what would make the mount non-provisional).** On a guide-built DROID robot:
+- Along the flange normal, the distance from the Franka flange face (`link8`) to the Robotiq 2F-85 Ø71 boss face
+  (`robotiq_85_base_link`). Equivalently, flange face to closed fingertip ends, minus 162.8 mm.
+- The coupling's part number and revision, or its dimensioned drawing or CAD.
+- The gripper yaw relative to the flange dowel-pin hole.
+
 - None of this establishes the mount of our future Panda–Robotiq rig, which must be measured.
 
 ## Status matrix (items 5 and 6, real DROID data)
@@ -201,7 +271,7 @@ stays like-for-like. The estimated offset is a DROID finding only.
 | Calibration from provided poses (DROID-3D) | VERIFIED-REAL | positions within ~2 cm of DROID's own; cross-rig depth |
 | Robot-grounded calibration (landmarks) | NOT-RUN on real data | no landmark annotations or detector for DROID |
 | Export + batch contract | VERIFIED-REAL | 148/148 windows through validate_batch |
-| DROID gripper mount | PARTIAL | yaw confirmed; ~1.5 cm coupling offset estimated, not adopted |
+| DROID gripper mount | PROVISIONAL (not measured) | 11.0 mm Robotiq ISO-50 stack + yaw +90° from drawings, coupling identity inferred from guide photos (`mounts.py`); single-episode image optima disagree (mask 11 mm, depth 17 mm, with an unexplained 1.2 cm lateral preference) |
 | DINO (SNeRL contract) worker + `dino_snerl` stage | VERIFIED-REAL | consumer equality, 148 windows |
 | SAM 3 text-prompted temporal masks + `sam3_masks` stage | VERIFIED-REAL (with model misses recorded) | sam3.json |
 | Wrist ZED Mini in the fixed-rig pipeline | NOT SUPPORTED / not run | KB4 model: unexplained 2.2–2.9 px offset; item 8 handles the moving wrist |

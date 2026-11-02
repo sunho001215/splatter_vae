@@ -10,8 +10,10 @@ What must be supplied for the real robot (see docs/realworld_preprocessing.md, "
   gripper" is not further specified); STL or OBJ meshes (Collada .dae visual meshes must be converted, or the
   collision STLs used);
 * the measured mounting transform ``T_flange_gripper`` (panda_link8 -> gripper base link) including the coupling
-  thickness and the yaw (Franka's ``external_gripper_example`` uses xyz 0 0 0, rpy 0 0 +pi/2; DROID's code
-  comments the same +pi/2 yaw; the coupling offset must be measured on the real robot);
+  thickness and the yaw (Franka's ``external_gripper_example`` uses xyz 0 0 0, rpy 0 0 +pi/2, i.e. no coupling;
+  configurations with provenance, e.g. DROID's provisional Robotiq ISO-50 coupling at +0.011 m, are in
+  ``s4d.realworld.mounts``;
+  the coupling offset must be measured on the real robot);
 * the mapping from the recorded gripper state to the URDF gripper joint (``gripper_joint_value``).
 
 ``compose_urdf`` attaches the gripper URDF to the arm with that transform. Without these assets the calibration

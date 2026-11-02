@@ -390,11 +390,26 @@ def fk_vs_recorded_ee(meta: EpisodeMeta, geom) -> dict | None:
     return {"ee_frame": tr.ee_frame, "max_trans_m": max(errs_t), "max_rot_deg": max(errs_r)}
 
 
+def applied_joint_correction(meta: EpisodeMeta) -> dict | None:
+    """The adapter's joint-correction provenance (``provenance.notes["joint_correction"]``) when it was applied, i.e.
+    when ``trajectory.joint_positions`` are recorded joints plus offsets that belong to one specific calibration."""
+    try:
+        notes = json.loads(meta.provenance.notes or "{}")
+    except (TypeError, ValueError):
+        return None
+    jc = notes.get("joint_correction") if isinstance(notes, dict) else None
+    return jc if isinstance(jc, dict) and jc.get("applied") else None
+
+
 def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: list[str], every: int = 1,
               cfg: CalibrationConfig | None = None, overlays: int = 3, force: bool = False) -> dict:
     """landmark_source(camera_id, frame_index, landmark_links) -> (uv (M,2) continuous on the rectified left grid
     with NaN for missing, conf (M,)) - visual evidence (detector, annotation or render-and-match worker)."""
     meta = load_meta(root, episode_id)
+    if applied_joint_correction(meta):
+        raise ValueError(f"{episode_id}: joints carry corrections tied to an external calibration "
+                         f"({applied_joint_correction(meta)['kind']}); robot-grounded calibration needs raw joints - "
+                         "re-ingest with a calibration_source other than adapter_provided")
     depth_rec = rio.read_record(rio.stage_dir(root, episode_id, "stereo_depth"))
     geom = RobotGeometry(meta)
 
@@ -463,8 +478,19 @@ def calibrate_provided(root: Path, episode_id: str, provided: dict, *, force: bo
     """Camera poses supplied by an external, documented calibration (e.g. DROID-3D extrinsics) instead of the
     robot-grounded optimisation. ``provided`` maps camera id -> {"T_cam_base": 4x4, "source": {...}}. The poses are
     stored in the calibrate stage's format (status ``accepted``, ``init_method`` ``provided``) only after a rigidity
-    check; cameras without a provided pose get status ``rejected`` (lift3d/export then skip them)."""
+    check; cameras without a provided pose get status ``rejected`` (lift3d/export then skip them). If the ingested joints
+    carry corrections tied to a calibration (``applied_joint_correction``), every provided pose must come from exactly
+    that calibration record; anything else is refused rather than mixing geometries."""
     meta = load_meta(root, episode_id)
+    jc = applied_joint_correction(meta)
+    if jc:
+        need = jc["requires_calibration"]
+        for cam, entry in provided.items():
+            src = entry.get("source", {}) or {}
+            bad = {k: src.get(k) for k, v in need.items() if src.get(k) != v}
+            if bad:
+                raise ValueError(f"{episode_id} {cam}: provided calibration {bad} is not the record the ingested joint "
+                                 f"correction belongs to ({need})")
 
     def build(tmp: Path) -> dict:
         summary = {}
@@ -484,7 +510,8 @@ def calibrate_provided(root: Path, episode_id: str, provided: dict, *, force: bo
                 else:
                     doc.update(status="accepted", T_cam_base=T.tolist(), T_cam_base_init=T.tolist())
                     doc["diagnostics"] = {"source": entry.get("source", {}),
-                                          "camera_position_base_m": (-R.T @ T[:3, 3]).tolist()}
+                                          "camera_position_base_m": (-R.T @ T[:3, 3]).tolist(),
+                                          "robot_joint_correction_dq": jc["dq"] if jc else None}
             rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", doc)
             summary[cam] = {"status": doc["status"], "reasons": doc["reasons"], "init": "provided",
                             "source": (entry or {}).get("source", {}).get("kind")}

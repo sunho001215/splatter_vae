@@ -49,6 +49,19 @@ def _spec(cfg: dict, name: str):
                       checkpoint=w.get("checkpoint"), env=w.get("env", {}), timeout_s=float(w.get("timeout_s", 3600)))
 
 
+def adapter_config(cfg: dict) -> dict:
+    """Adapter config plus ``calibration_source`` = ``stages.calibrate.source``, so an adapter can tie robot geometry to
+    the camera calibration actually used (e.g. DROID-3D joint offsets only with DROID-3D extrinsics). An explicit
+    adapter value must agree with the stage."""
+    acfg = dict(cfg["adapter"].get("config", {}) or {})
+    stage = ((cfg.get("stages") or {}).get("calibrate") or {}).get("source")
+    if "calibration_source" in acfg and acfg["calibration_source"] != stage:
+        raise ValueError(f"adapter calibration_source {acfg['calibration_source']!r} != stages.calibrate.source {stage!r}")
+    if stage is not None:
+        acfg["calibration_source"] = stage
+    return acfg
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="s4d.realworld")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -76,7 +89,7 @@ def main(argv=None) -> int:
     from s4d.realworld.adapters import get_adapter
     from s4d.realworld.contract import validate_episode
 
-    adapter = get_adapter(cfg["adapter"]["name"], cfg["adapter"].get("config", {}))
+    adapter = get_adapter(cfg["adapter"]["name"], adapter_config(cfg))
     if args.cmd == "validate":
         ok = True
         for ep in adapter.list_episodes():
