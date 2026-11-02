@@ -6740,7 +6740,7 @@ recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first 
   - (b) Per-robot `dT_gw`: deciding it needs other robots' wrist depth, at 4.9 GB per depth part.
   - (c) Adopt the about 1.5 cm DROID coupling estimate?
 
-**17:06–18:40 — Acceptance on the integration sources; `splatter4d` fast-forwarded to 61d4153 and published.**
+**17:06–19:30 — Acceptance on the integration sources; `splatter4d` fast-forwarded to 61d4153 and published.**
 
 - **Full native suite** on `integrate-20261031` 6d8225d (MIG-c4ec2a95, started once `memory_watch fits 40e9` held):
   1404 passed, 0 failed/errors/skipped, 9 min. Evidence committed as 71fb0aa.
@@ -6783,7 +6783,7 @@ recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first 
   - DROID, realworld, `ops`, jobs and remote tests: 394 passed.
   - pytest basetemp must lie inside the repository (GPU guard).
 - **Reservation released:** MIG-8da55219 and MIG-c4ec2a95 are back in `queue.yaml` limits, and the 50 GB hold file
-  is archived to `runs/setup/handback-20261102/`.
+  is archived to `runs/setup/handback-20261102/` (19:21). The first pass after it (19:30) runs with cap 140 GB and admits again.
 - **Outage-era rows:**
   - srv4 exports: one transient `remote_verification_failed` each, because the producer's verification was not yet
     visible. Both verified on the next pass, so the srv4 pilot inputs are sound.

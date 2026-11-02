@@ -29,7 +29,7 @@ diff inline.
 ## Current phase
 - **Scheduling (2026-11-02 14:49):** local controllers own dispatch again. The remote runner was stopped via STOP and
   162 launches reconciled (EXPERIMENT_LOG 2026-11-02). The temporary validation reservation (MIG-8da55219,
-  MIG-c4ec2a95, 50 GB RAM) was released at 18:35; record in `runs/setup/handback-20261102/`.
+  MIG-c4ec2a95, 50 GB RAM) was released at 19:21; record in `runs/setup/handback-20261102/`.
 - **Integration (2026-11-02 18:23):** `splatter4d` fast-forwarded to 61d4153 (= `integrate-20261031`: refactor pass 2,
   item 8 round 2, real-world items 3–6). Tested sources 6d8225d: full suite 1404/0 (evidence 71fb0aa); real-data
   re-runs bitwise equal to the 81b202c baseline; DROID round-2 re-run and csw4 trainer smoke passed; clean clone
