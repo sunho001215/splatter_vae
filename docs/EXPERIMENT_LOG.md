@@ -6905,6 +6905,55 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
 - Priority: pretraining, DrM trainers and evaluators 1 (chlrm: 2); exports 0. Scheduling is non-preemptive.
 - The remote driver runs `chlhm-*` only on HYB_COMMIT once its acceptance manifest exists; until then they stay local.
   There they rank before every other ready remote row and pool unit (Codex round 2); other rows keep their order.
+  Placement rule (Codex round 3): once the release is accepted, a task whose pretraining has not started is moved to
+  the remote as a whole (pretraining, export and its DrM pairs; `pool_placement.py move --to remote`). Every row then
+  competes as a remote candidate, which ranks first; the pool path, which comes after remote candidates, is not relied
+  on.
 - Rollout safety (Codex round 2): `runs/setup/remote-hold-admissions` is set around the merge and the registration,
   until every remote-driver pass that loaded the old code has exited. The registration proof is written atomically,
   with a `--recover` path.
+
+## 2026-11-03 01:38 — Self-render v4 vs csw4: full analysis published (analysis only; no job started or changed)
+- **Sources:** `reports/results-artifact/src/srv4_{analysis,figures,pages}_20261103.py`, hooked into
+  `build_results_20261102.py`.
+- **Artifacts updated in place:** RL `selfrender-rl`, viewpoint `selfrender-viewpoint`, rendering `selfrender`, plus a
+  hub finding.
+- **Matched protocol:** identical FlashSAC arguments except the export, identical `s4d/` / `scripts/` / `configs/`
+  trees, 3 seeds each.
+- **Training cameras, pooled self-render v4 − csw4:** last-5 nR −0.25 [−0.47, −0.09], stratified permutation
+  p = 0.001.
+  - Every task's point estimate is negative.
+  - bin-picking seed 2001 never solved the task, in a clean single attempt.
+  - pick-place stays at random level, where csw4 makes slow progress.
+- **Stress cameras eval0–3:** +0.12 [+0.08, +0.16], almost entirely from hammer (0.28 → 0.60, on eval1/eval2). All
+  four cameras lie inside the v4 domain.
+- **Moving 1× paths:** −0.18 [−0.35, −0.07].
+- **Representation:** eval→train retrieval ×1.6–2.6, opening exactly at the 20k–40k ramp.
+  - Rendering into eval0–3 is −0.8 to −1.4 dB, a gap already present before 20k (from removing csw4's point-cloud
+    bundle).
+  - 3D flow EPE is worse on all three tasks.
+- **Missing:** camera suite v2 and 2×/3× for FlashSAC; a second pretraining seed.
+- **Verdict:** not an improvement as a replacement. Proposed next steps (not started): a v2-suite evaluation on the
+  18 checkpoints, a 2×2 of view source × viewpoint range, and an additive variant.
+
+## 2026-11-03 03:35 — Refactor pass 3 merged and published (`splatter4d` = bf717bf); validation complete
+- **Change set:** 4da1097, 9bae334, 2090061, 587f1fa, 2a8fbe1, 655861d, 94f32aa (Codex f1 fixes), e9a2e64 (merge of
+  2accfad), bf717bf (evidence).
+- **Before/after comparison** (`validation-20261031/refactor3/compare.json`): API, CLI, configs, goldens and references
+  are OK. The only API additions are `s4d.rl.run_io` and `geometry.to_continuous_centres`.
+- **Tested:**
+  - full suite 1462/0 on e9a2e64 (the sources of bf717bf);
+  - real data on bf717bf: ViT-S trainer smoke with stop/resume (continuity ≤ 2.3e-3, final encoder ≤ 2.5e-4), item-8
+    r2 rerun identical, item-5 rerun bitwise vs baseline (export identical to 2230bc6).
+- **Published:** ff-merge under both driver locks, then push; `origin/splatter4d` = bf717bf. Main's fingerprint
+  equals its evidence, so the drivers keep admitting.
+- **Clean checkout** (`validation-20261031/clean_clone_checks_bf717bf/`):
+  - clean, equal to origin, submodules at their pins;
+  - 194 imports, 128 configs, 56 CLI `--help`;
+  - 411 targeted tests passed (basetemp inside the clone).
+- **Incident during the refactor (recorded late):** the refactor agent's CLI capture ran
+  `runs/setup/tools/baseline_local_driver.py --help`.
+  - The driver parses no arguments, so this was a real admission pass. It admitted nothing and truncated the lock
+    file.
+  - It wrote two report files, now moved to `validation-20261031/refactor3/accidental/`.
+  - The capture tool was fixed. The rule stands: never execute campaign drivers or their entry points for inspection.
