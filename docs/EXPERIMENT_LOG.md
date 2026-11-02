@@ -6828,3 +6828,72 @@ recorded: sha256 match) launched 162 jobs in total since 10-31 20:31 KST (first 
   - The remote driver's gate only blocks these rows when `method-frozen-v1.json` exists. It does not, so the 8 rows
     could have launched once remote capacity freed.
   - This matches the documented hold; the registration is untouched.
+
+## 2026-11-03 02:00 — 75 % hybrid masking on chlrm (`chlhm`): implementation and pre-registration (before any result)
+**Directive (user, 2026-11-03, HIGH priority).** Test whether a motion-aware temporal tube plus broader spatial
+coverage improves viewpoint generalization and downstream RL. Only the masking changes. The chlrm architecture,
+Chamfer and the simplified loss set stay. The completed baselines are reused and never retrained:
+- `chl-*`: chamfer_lean, 50 % motion-aware tube;
+- `chlrm-*`: 75 % random temporal.
+
+**Mode `model.encoder.mask_mode: hybrid`** (`s4d/model/encoder.py` `sample_hybrid_mask`; tube and random unchanged):
+- 48 of 192 temporal tokens visible, exactly 16 per frame.
+- **Tube, 12 tokens:** 4 spatial positions visible in all three frames.
+  - Selection uses the training-only motion score: per-pixel 3D rigid-body displacement from simulator body poses of
+    the training split, max over each patch and over the three frames (the tube mode's aggregation).
+  - Only normalized scores > 0.05 count as reliable dynamic patches (score = displacement / 0.03 m, so about
+    1.5 mm). They are ranked exactly by score; exact ties break at random.
+  - If fewer than 4 reliable dynamic patches exist, the rest of the tube is filled at random.
+- **Random, 36 tokens:** 12 positions per frame, uniform over the 60 non-tube positions and independent of motion.
+  - Frames are filled most-constrained first (random order among equals), each avoiding positions already taken, so
+    real views always see 40 of 64 positions; frames are exchangeable (tested).
+- **Synthetic point-cloud views** (2 per sample; unchanged as positives and render targets) use the same scheme:
+  - eligibility is the existing rule, own-frame patch coverage ≥ 0.9;
+  - motion saliency is the real views' score carried by each fused training-camera point and splatted with the RGB
+    geometry into the fixed synthetic camera (`augment.synthesize_views_with_motion`); holes score 0;
+  - the tube prefers positions eligible in every frame;
+  - ineligible tokens are used only in the existing coverage exception, and are counted;
+  - the budget is always 16 per frame;
+  - one splat gives each pixel the RGB and the score of the same winning point (`heldout.splat_batched_shared`).
+- **Fallback caveat (Codex):** the per-frame quota and the shared tube can force hole tokens where chlrm, with no
+  quota, needs none (e.g. frame 0 with only 10 eligible positions). The frequency is logged and reported with the
+  results: `synth_coverage_exception_rows`, `synth_kept_ineligible_fraction`, `mask_hybrid_synth_tube_hole_rows`.
+- New metrics are logged only in this mode: `mask_hybrid_*`, plus the point-cloud synthetic eligibility keys.
+- The mode is refused for per-frame pilots, the future objective, single frame, `aug.crop`/`shift` and self-render.
+- Variant `configs/metaworld/variants/chamfer_lean_hybrid75.yaml`. Its only resolved-config difference from chlrm is
+  `model.encoder.mask_mode random → hybrid` (tested).
+- **Real-batch functional check** (hammer, 25 batches of 8, full-size model, reserved validation slice):
+  - exactly 16 tokens per frame and 40 positions seen per sample;
+  - tube positions were reliable dynamic patches 96.5 % of the time; 4.5 % of rows needed random fill;
+  - dynamic tokens: 22 % of all tokens, 36 % of visible tokens;
+  - synthetic views: 81 % of tokens eligible, no coverage exception;
+  - step time about +9–14 % vs chlrm on a shared slice (second splat channel, mask sampling).
+- **Codex review, round 1** (gpt-6.1-sol, xhigh; `validation-20261031/codex/h1/`); all four findings fixed, with tests:
+  - one shared winner for RGB and saliency at equal-depth ties;
+  - feasible synthetic overlap avoided by most-constrained-first allocation;
+  - exact tube ranking (the tie-break noise had reordered unequal scores);
+  - legacy `loss.self_render` refused with hybrid.
+
+**Protocol and criteria** (`runs/setup/chlhm-definition-20261103.json`, recorded before launch):
+- Training protocol: 8 tasks, 200k pretraining at seed 0 from scratch, export at 200k, DrM 1M agent steps with seeds
+  2000–2002, the chlrm evaluator.
+- **Primary:** training-camera last-5 success IQM over 8 × 3 with a stratified bootstrap 95 % CI, plus per-task
+  differences.
+- **Secondary:**
+  - viewpoint: eval0–3 and 1× moving success, last-5 and AUC;
+  - efficiency: AUC windows and steps to 0.5 / 0.9 success;
+  - representation: 200k retrieval and probes;
+  - rendering: PSNR / SSIM / LPIPS by region with the chl analysis pipeline, Chamfer, depth, 3D flow;
+  - masking diagnostics.
+- **Decision rule:** hybrid counts as better than chlrm only if all three hold:
+  - mean held-out last-5 success difference with a CI above 0;
+  - training IQM difference ≥ −0.05 with a CI lower bound > −0.10;
+  - validation PSNR within −0.3 dB and Chamfer within +10 %.
+- A subset of tasks never suffices. Adoption is never automatic.
+- chlhm vs chl also changes the masking ratio, so it is not a pure strategy contrast.
+
+**Rows (64, `runs/setup/tools/register_chlhm_eight_task_20261103.py`):** copies of the chlrm rows as registered.
+- Only these change: names (`chlrm-` → `chlhm-`), the variant file, the bookkeeping fields, and the scheduling
+  priority.
+- Priority: pretraining, DrM trainers and evaluators 1 (chlrm: 2); exports 0. Scheduling is non-preemptive.
+- The remote driver runs `chlhm-*` only on HYB_COMMIT once its acceptance manifest exists; until then they stay local.
