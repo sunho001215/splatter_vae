@@ -2,22 +2,20 @@
 # Looked up via the GitHub API on 2026-10-31 (default-branch HEAD at that time). Each worker reports
 # `git rev-parse HEAD` of its checkout; a mismatch with `commit` is a hard error (WorkerSpec.expected_commit).
 # Checkpoints are NOT downloaded by this repository; fetch them once inside each isolated environment and
-# record their sha256 here after the first verified run (fields left null until then).
-foundation_stereo:
-  repo: https://github.com/NVlabs/FoundationStereo
-  branch: master
-  commit: 6e8806816b533e4d13ddbb95ffa907b797060a62   # 2025-12-19
-  license: "NVIDIA research/non-commercial license (GitHub license field NOASSERTION)"
-  environment: >-
-    upstream environment.yml (conda env "foundation_stereo" with python 3.11, torch 2.4.1, torchvision 0.19.1,
-    xformers 0.0.28.post1; flash-attn installed separately)
-  checkpoint: pretrained_models/23-51-11/model_best_bp2.pth   # ViT-L (best); 11-33-40 = ViT-S (faster); cfg.yaml alongside
-  checkpoint_sha256: null
-  entrypoint_reference: >-
-    scripts/run_demo.py (K.txt holds the 9 floats of K and the baseline in metres; depth = K[0,0] * baseline / disp)
-  notes: >-
-    inputs must be rectified and undistorted and must not be swapped; InputPadder(divis_by=32);
-    the hiera option is advised for images over 1000 px
+# Known checkpoint hashes are recorded below; no worker downloads are performed by the pipeline.
+map_anything:
+  repo: https://github.com/facebookresearch/map-anything
+  commit: 3d10cf7a3016fc0f9bb13a071ee66c47b10be0d9   # v1.1.3+1, 2026-08-07
+  license: CC-BY-NC-4.0
+  environment: "isolated mapanything environment; pinned upstream checkout, local Hugging Face weights"
+  checkpoint: facebook/map-anything/model.safetensors
+  checkpoint_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa
+  checkpoint_sha256: 981f060c64664dff3272b5f5a823d350abe71a2f144444db4cfc325f3ed5a3a0
+  encoder_hub_code:
+    repo: facebookresearch/dinov2
+    commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8
+  entrypoint_reference: "MapAnything.from_pretrained + preprocess_inputs + model.infer"
+  notes: "Known intrinsics and metric camera poses; sensor depth optional; outputs depth_z on the input grid"
 alltracker:
   repo: https://github.com/aharley/alltracker
   branch: master
@@ -27,7 +25,7 @@ alltracker:
     conda create -n alltracker python=3.12.8; pip install -r requirements.txt (torch is unpinned upstream, so record
     the torch/torchvision actually installed after setup); pytorch_lightning 2.4.0
   checkpoint: "alltracker.pth (https://huggingface.co/aharley/alltracker/resolve/main/alltracker.pth)"
-  checkpoint_sha256: null
+  checkpoint_sha256: ffd9ebcfb6d206d594b646999a150540f92c049cf9b2bf940facf7123f62aa1d
   entrypoint_reference: "demo.py forward_video -> model.forward_sliding(rgbs[:, q:], iters, sw=None, is_training=False)"
   notes: >-
     rgbs are 1,T,3,H,W floats in 0..255 with H, W multiples of 8; visconf channel 0 is visibility, channel 1 is
@@ -39,7 +37,7 @@ sam3:
   license: "SAM License (GitHub license field NOASSERTION)"
   environment: "python >= 3.12, torch 2.10.0 (cu128 per README), pip install -e . at the pinned commit"
   checkpoint: "facebook/sam3 sam3.pt (gated Hugging Face repo; hf auth login)"
-  checkpoint_sha256: null
+  checkpoint_sha256: 9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e
   entrypoint_reference: >-
     README image API (build_sam3_image_model, Sam3Processor.set_image / set_text_prompt) and video API
     (build_sam3_video_predictor, handle_request start_session / add_prompt / close_session,
@@ -59,7 +57,7 @@ reference_only:   # read for the method, not executed
     paper: https://arxiv.org/abs/2610.08780
   dinov2:
     repo: https://github.com/facebookresearch/dinov2
-    commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8   # not used by any baseline stage here
+    commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8   # MapAnything encoder hub code; distinct from the SNeRL DINO teacher
   robotiq_description:
     candidates:
       - "https://github.com/PickNikRobotics/ros2_robotiq_gripper @ a74d007d8f2f06dc6a503ad21038ba869d4999a6 (BSD-3; robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro, robotiq_2f_140_macro.urdf.xacro)"

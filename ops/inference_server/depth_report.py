@@ -177,16 +177,26 @@ def contact_sheet(root, ep, streams, sets, path, picks=(0.1, 0.5, 0.9), lo=0.4, 
     """Per camera and picked set: RGB | raw depth | MapAnything depth | |MA - raw| (0..5 cm) | MA confidence;
     depth colours on one fixed [lo, hi] m scale, invalid black (image composition only, local)."""
     import h5py
-    from matplotlib import colormaps
     from PIL import Image
 
     from s4d.realworld.depth_stages import depth_file, load_view_depth
     from s4d.realworld.pipeline import read_frames
 
-    turbo, mag = colormaps["turbo"], colormaps["magma"]
+
+    def turbo(x):  # Google's polynomial approximation of the turbo colormap (no matplotlib in the runtime venv)
+        x = np.clip(x, 0, 1)[..., None]
+        c = np.array([[0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943],
+                      [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604],
+                      [0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973]])
+        powers = np.concatenate([x ** k for k in range(6)], -1)
+        return np.clip(powers @ c.T, 0, 1)
+
+    def mag(x):  # dark-to-bright single-hue ramp for differences / confidence
+        x = np.clip(x, 0, 1)[..., None]
+        return np.concatenate([x, x ** 2, 0.4 * x ** 3], -1)
 
     def colour(x, valid, a, b, cmap):
-        rgb = (cmap(np.clip((x - a) / (b - a), 0, 1))[..., :3] * 255).astype(np.uint8)
+        rgb = (cmap(np.clip((x - a) / (b - a), 0, 1)) * 255).astype(np.uint8)
         rgb[~valid] = 0
         return rgb
 

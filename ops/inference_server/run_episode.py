@@ -29,9 +29,10 @@ import yaml  # noqa: E402
 
 from ops.inference_server.session import RemoteRunner, Server  # noqa: E402
 from ops.inference_server.stream_client import RemoteWorkerPool  # noqa: E402
+from s4d.realworld.cli import BASELINE_STAGES  # noqa: E402
+from s4d.realworld.cli import STAGES as PIPELINE_STAGES  # noqa: E402
 
-STAGES = ("ingest", "sensor_depth", "sam3_masks", "calibrate", "mapanything_depth", "track2d", "lift3d", "export",
-          "dino_snerl")
+STAGES = PIPELINE_STAGES + BASELINE_STAGES
 
 
 def spec(cfg: dict, name: str, **override):
@@ -40,6 +41,22 @@ def spec(cfg: dict, name: str, **override):
     w = {**cfg["workers"][name], **override}
     return WorkerSpec(name, w["python"], repo_dir=w.get("repo_dir"), expected_commit=w.get("expected_commit"),
                       checkpoint=w.get("checkpoint"), timeout_s=float(w.get("timeout_s", 3600)))
+
+
+def remote_pipeline_config(pipeline: dict, server: dict) -> dict:
+    """Resolve worker locations in the container while leaving adapter and output paths on the host.
+
+    Server worker fields override host-specific worker paths; model parameters merge so inference settings from
+    the episode config survive. This also supplies the kernel interpreter to older stereo episode configs.
+    """
+    from copy import deepcopy
+
+    cfg = deepcopy(pipeline)
+    workers = cfg.setdefault("workers", {})
+    for name, remote in server["workers"].items():
+        local = workers.get(name, {})
+        workers[name] = {**local, **remote, "params": {**local.get("params", {}), **remote.get("params", {})}}
+    return cfg
 
 
 def local_head() -> str:
@@ -60,17 +77,18 @@ def main(argv=None) -> int:
     ap.add_argument("--force-stage", action="append", default=[])
     ap.add_argument("--skip-weights", action="store_true", help="weights already staged (still sha-checked)")
     args = ap.parse_args(argv)
+    wanted = args.stages.split(",")
+    unknown = (set(wanted) | set(args.force_stage)) - set(STAGES)
+    if unknown:
+        ap.error(f"unknown stages: {sorted(unknown)}")
 
     from s4d.realworld import io as rio
-    from s4d.realworld import pipeline as P
     from s4d.realworld.adapters import get_adapter
-    from s4d.realworld.baseline_stages import dino_snerl, sam3_masks
-    from s4d.realworld.calibration import CalibrationConfig
-    from s4d.realworld.depth_stages import MapAnythingBackend, mapanything_depth, sensor_depth
-    from s4d.realworld.export import export
+    from s4d.realworld.cli import adapter_config, run_stages
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
     server = Server.load(Path(args.server))
+    cfg = remote_pipeline_config(cfg, server.config)
     root = Path(cfg["output_root"])
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = root / "runs" / stamp
@@ -95,13 +113,11 @@ def main(argv=None) -> int:
     kernels = spec(cfg, "s4d_kernels", expected_commit=head)
     runner = RemoteRunner(pool, kernels, describe={"server": server.config["ssh"][-1], "container": server.container,
                                                    "source_commit": head})
-    adapter = get_adapter(cfg["adapter"]["name"], cfg["adapter"]["config"])
-    st = cfg.get("stages", {})
-    wanted = args.stages.split(",")
+    adapter = get_adapter(cfg["adapter"]["name"], adapter_config(cfg))
     ep = args.episode
 
     def run(name, fn):
-        if name not in wanted or name in record["stages"]:
+        if name not in wanted:
             return
         t0 = time.time()
         n0 = len(runner.calls)
@@ -124,49 +140,7 @@ def main(argv=None) -> int:
               f"{' (skipped: complete)' if rec.get('skipped') else ''}", flush=True)
 
     try:
-        run("ingest", lambda f: P.ingest(adapter, ep, root, force=f))
-        sc = st.get("sensor_depth", {})
-        run("sensor_depth", lambda f: sensor_depth(root, ep, runner, force=f, **sc))
-        cc = dict(st.get("calibrate", {}))
-        ccfg = CalibrationConfig(evidence=cc.get("evidence", "landmarks"), **cc.get("cfg", {}))
-        s3 = st.get("sam3_masks", {})
-        meta = P.load_meta(root, ep)
-
-        def run_sam3():
-            run("sam3_masks", lambda f: sam3_masks(root, ep, spec(cfg, "sam3"),
-                                                   cameras=s3.get("cameras") or [v.stream_id for v in meta.views()],
-                                                   prompts=s3["prompts"], mode=s3.get("mode", "segment_images"),
-                                                   chunk=s3.get("chunk", 16),
-                                                   score_threshold=s3.get("score_threshold", 0.5), force=f,
-                                                   runner=runner))
-
-        if cc.get("robot_mask_stage") == "sam3_masks":  # segmentation is calibration evidence: run it first
-            run_sam3()
-        run("calibrate", lambda f: P.calibrate(root, ep, None, landmark_links=cc.get("landmark_links", []),
-                                               every=cc.get("every", 1), cfg=ccfg, overlays=cc.get("overlays", 3),
-                                               force=f, runner=runner, robot_mask_stage=cc.get("robot_mask_stage")))
-        mc = st.get("mapanything_depth", {})
-        ma = MapAnythingBackend(spec(cfg, "mapanything"), runner, cfg["workers"]["mapanything"].get("params", {}))
-        run("mapanything_depth", lambda f: mapanything_depth(root, ep, ma, force=f, **mc))
-        tc = st.get("track2d", {})
-        tracker = P.WorkerTrackerBackend(spec(cfg, "alltracker"), root / "_unused", cfg["workers"]["alltracker"].get(
-            "params"), runner=runner)
-        run("track2d", lambda f: P.track2d(root, ep, tracker, window=tc.get("window", 16), step=tc.get("step", 8),
-                                           grid_stride=tc.get("grid_stride", 8),
-                                           tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None,
-                                           force=f))
-        run("lift3d", lambda f: P.lift3d(root, ep, **st.get("lift3d", {}), force=f, runner=runner))
-        ec = st.get("export", {})
-        run("export", lambda f: export(root, ep, root / "export" / ep, strides=tuple(ec.get("strides", (1, 2))),
-                                       validation_tail_frames=ec.get("validation_tail_frames", 0),
-                                       max_sync_ns=ec.get("max_sync_ns"), max_gap_factor=ec.get("max_gap_factor"),
-                                       aspect=ec.get("aspect", "stretch"), force=f))
-        if cc.get("robot_mask_stage") != "sam3_masks":
-            run_sam3()
-        dc = st.get("dino_snerl", {})
-        run("dino_snerl", lambda f: dino_snerl(root / "export" / ep, rio.stage_dir(root, ep, "dino_snerl"),
-                                               spec(cfg, "dino_snerl"), backbone=dc.get("backbone", "scratch"),
-                                               force=f, runner=runner))
+        run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=lambda name: spec(cfg, name))
     finally:
         record["sessions"] = {name: pool.session_info(name) for name in server.config["workers"]
                               if name in pool._info}

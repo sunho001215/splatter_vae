@@ -10,7 +10,8 @@ inputs
   ``images``  (S,V,H,W,3) uint8 RGB on each view's pinhole grid (all views share H, W)
   ``K``       (V,3,3) float intrinsics of that grid in the REPOSITORY convention (continuous pixels, centre of the
               top-left pixel at (0.5, 0.5))
-  ``cam2world`` (V,4,4) float, OpenCV axes, metres, world = robot base (``inv(T_cam_base)``)
+  ``cam2world`` (V,4,4) float, OpenCV axes, metres; world = robot base or left rig frame
+              (inverse of the supplied world-to-camera pose)
   ``depth``   (S,V,H,W) float32 metric camera-z (0 = invalid), optional (noisy metric sensor depth)
   ``joint``   (S,) bool, optional: False processes that set's views one by one (never as one static scene)
 params ``model_hw`` [h, w] (multiples of 14; 640x480 -> [392, 518]), ``hf_dir``, ``hf_revision``, ``use_depth``,

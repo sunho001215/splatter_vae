@@ -3,12 +3,13 @@
 ``sensor_depth``      RGB-D rigs: the device's own depth registered onto the colour grid (z-buffer forward warp with
                       the recorded depth->colour extrinsic). Raw, noisy, metric; holes stay invalid. Used by the
                       robot-grounded calibration and as MapAnything's metric depth input.
+``mapanything_rig_depth`` Stereo rigs: one rectified pair with known metric rig-frame poses, before world calibration.
 ``mapanything_depth`` MapAnything (facebookresearch/map-anything) on synchronized multi-view frame sets: per set,
                       every view's image, intrinsics, calibrated pose (``calibrate`` stage, never MapAnything's own
                       pose estimate) and, when available, the sensor depth as metric input. Its predicted camera-z
                       depth (plus validity and confidence) is the depth every later stage lifts with.
 
-Output layout (both stages): ``<stage>/<view stream>.h5`` with ``depth`` (N,H,W) float32 metric camera-z (0 invalid),
+Output layout (all depth stages): ``<stage>/<view stream>.h5`` with ``depth`` (N,H,W) float32 metric camera-z (0 invalid),
 ``valid`` (N,H,W) bool and attrs ``K`` (continuous convention of that grid), ``stream_id``, ``rig_id``, ``grid``;
 MapAnything adds ``conf``, ``non_ambiguous``, ``set_index``, ``joint`` and per-frame pose diagnostics.
 
@@ -28,8 +29,8 @@ import numpy as np
 
 from s4d.realworld import io as rio
 
-STAGE_VERSIONS = {"sensor_depth": "1", "mapanything_depth": "1"}
-DEPTH_STAGES = ("mapanything_depth", "sensor_depth")
+STAGE_VERSIONS = {"sensor_depth": "1", "mapanything_depth": "1", "mapanything_rig_depth": "1"}
+DEPTH_STAGES = ("mapanything_depth", "mapanything_rig_depth", "sensor_depth")
 
 
 def depth_file(root: Path, episode_id: str, stage: str, stream_id: str) -> Path:
@@ -45,7 +46,15 @@ def load_view_depth(root, episode_id, stream_id, indices, stage: str = "mapanyth
         return depth, valid, np.asarray(f.attrs["K"], float)
 
 
-def view_K(meta, stream_id: str) -> np.ndarray:
+def view_K(meta, stream_id: str, *, root=None, episode_id=None) -> np.ndarray:
+    """Intrinsics of the shared grid; stereo intrinsics come from the completed rectification stage."""
+    rig = next((g for g in meta.stereo if stream_id in (g.left_stream, g.right_stream)), None)
+    if rig is not None:
+        if root is None or episode_id is None:
+            raise ValueError(f"{stream_id}: stereo grid intrinsics need root and episode_id")
+        path = rio.stage_dir(root, episode_id, "stereo_rectify") / f"{rio.safe_name(rig.rig_id)}.h5"
+        with h5py.File(path, "r") as f:
+            return np.asarray(f.attrs["K_left" if stream_id == rig.left_stream else "K_right"], float)
     intr = meta.stream(stream_id).intrinsics
     if intr.distortion_model != "none" and any(abs(c) > 0 for c in intr.distortion):
         raise NotImplementedError(f"{stream_id}: distorted stream ({intr.distortion_model}); undistort in the adapter")
@@ -188,14 +197,30 @@ class MapAnythingBackend:
 
 
 def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, *, chunk: int = 4,
-                      input_depth_stage: str | None = "sensor_depth", max_sync_ns: int | None = None,
-                      max_set_motion_m: float = 0.005, force: bool = False) -> dict:
-    from s4d.realworld.pipeline import RobotGeometry, accepted_calibration, load_meta, read_frames
+                      input_depth_stage: str | None = "auto", max_sync_ns: int | None = None,
+                      max_set_motion_m: float = 0.005, include_right_eyes: bool = True, force: bool = False) -> dict:
+    from s4d.realworld.contract import CameraView
+    from s4d.realworld.pipeline import RobotGeometry, accepted_calibration, load_meta
 
     meta = load_meta(root, episode_id)
-    views = [v for v in meta.views() if v.kind == "rgbd" or meta.stream(v.stream_id).modality == "rgb"]
+    if meta.stereo and not backend.params.get("use_pose", True):
+        raise ValueError("stereo mapanything_depth requires use_pose=True for calibrated geometry")
+    views, poses = [], {}
+    for view in meta.views():
+        if view.kind == "stereo" and meta.rig_stereo(view.rig_id).status != "metric":
+            continue
+        views.append(view)
+        poses[view.stream_id] = accepted_calibration(root, episode_id, view.stream_id)
+        if view.kind == "stereo" and include_right_eyes:
+            g = meta.rig_stereo(view.rig_id)
+            views.append(CameraView(g.rig_id, g.right_stream, "stereo"))
+            T = poses[g.left_stream]
+            poses[g.right_stream] = None if T is None else rectified_rig_pose(root, episode_id, g.rig_id) @ T
     streams = [v.stream_id for v in views]
-    poses = {s: accepted_calibration(root, episode_id, s) for s in streams}
+    if not streams:
+        raise ValueError("mapanything_depth needs at least one metric view")
+    if input_depth_stage == "auto":
+        input_depth_stage = "sensor_depth" if meta.rgbd and not meta.stereo else None
     missing = [s for s, T in poses.items() if T is None]
     if missing:
         raise RuntimeError(f"mapanything_depth needs an accepted calibration for every view; missing/rejected: {missing}")
@@ -203,7 +228,7 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
     geom = RobotGeometry(meta)
     motion = set_robot_motion(meta, sets["stamps_ns"], geom)
     joint = motion <= max_set_motion_m
-    Ks = np.stack([view_K(meta, s) for s in streams])
+    Ks = np.stack([view_K(meta, s, root=root, episode_id=episode_id) for s in streams])
     c2w = np.stack([np.linalg.inv(poses[s]) for s in streams])
     hw = {(meta.stream(s).intrinsics.height, meta.stream(s).intrinsics.width) for s in streams}
     if len(hw) != 1:
@@ -212,10 +237,14 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
     directory = rio.stage_dir(root, episode_id, "mapanything_depth")
     inputs = {"ingest": _record_build_id(root, episode_id, "ingest"),
               "calibrate": _record_build_id(root, episode_id, "calibrate")}
+    if meta.stereo:
+        inputs["stereo_rectify"] = _record_build_id(root, episode_id, "stereo_rectify")
     if input_depth_stage:
         inputs[input_depth_stage] = _record_build_id(root, episode_id, input_depth_stage)
     config = {"chunk": chunk, "input_depth_stage": input_depth_stage, "max_sync_ns": sets["max_sync_ns"],
               "max_set_motion_m": max_set_motion_m, "streams": streams, "backend": backend.config()}
+    if meta.stereo:
+        config["include_right_eyes"] = include_right_eyes
     store = rio.ChunkStore(directory, rio.stage_fingerprint("mapanything_depth", STAGE_VERSIONS["mapanything_depth"],
                                                             config, inputs))
     if force:
@@ -226,7 +255,9 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
         files = {}
         for v, s in enumerate(streams):
             f = h5py.File(tmp / f"{rio.safe_name(s)}.h5", "w")
-            f.attrs.update(K=Ks[v], stream_id=s, rig_id=views[v].rig_id, grid="view pinhole grid (as recorded)",
+            f.attrs.update(K=Ks[v], stream_id=s, rig_id=views[v].rig_id,
+                           grid=("stereo rectified pinhole grid" if views[v].kind == "stereo"
+                                 else "view pinhole grid (as recorded)"),
                            depth_convention="metric camera-z, 0 invalid", T_cam_base=poses[s],
                            source="MapAnything predicted depth_z with calibrated poses as input")
             for name, dtype in (("depth", np.float32), ("valid", bool), ("conf", np.float16), ("non_ambiguous", bool)):
@@ -245,7 +276,7 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
                 cid = f"sets/{start:05d}-{ks[-1]:05d}"
                 got = store.get(cid)
                 if got is None:
-                    images = np.stack([np.stack([read_frames(root, episode_id, s, [int(sets["index"][k, v])])[0]
+                    images = np.stack([np.stack([model_view_frames(root, episode_id, meta, s, [int(sets["index"][k, v])])[0]
                                                  for v, s in enumerate(streams)]) for k in ks])
                     arrays = {"images": images, "K": Ks, "cam2world": c2w, "joint": joint[ks]}
                     if input_depth_stage:
@@ -290,3 +321,104 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
     store.cleanup()
     return rec
 
+
+def rectified_rig_pose(root, episode_id, rig_id: str) -> np.ndarray:
+    """Right-from-left transform of the actual shared image grids, in metres."""
+    path = rio.stage_dir(root, episode_id, "stereo_rectify") / f"{rio.safe_name(rig_id)}.h5"
+    with h5py.File(path, "r") as f:
+        return np.asarray(f.attrs["T_rr_rl"], float)
+
+
+def model_view_frames(root, episode_id, meta, stream_id, indices):
+    """MapAnything RGB input; stereo eyes use the shared grid (IR replication is model input only)."""
+    from s4d.realworld.pipeline import _model_input_rgb, grid_frames, read_frames, to_model_rgb
+
+    g = next((g for g in meta.stereo if stream_id in (g.left_stream, g.right_stream)), None)
+    if g is None:
+        # Preserve the existing RGB-D input path exactly.
+        return read_frames(root, episode_id, stream_id, indices)
+    eye = "left" if stream_id == g.left_stream else "right"
+    return _model_input_rgb(to_model_rgb(grid_frames(root, episode_id, meta, g, indices, eye), meta.stream(stream_id)))
+
+
+def mapanything_rig_depth(root: Path, episode_id: str, backend: MapAnythingBackend, *,
+                          force: bool = False) -> dict:
+    """Metric stereo depth before world calibration: one two-view scene per rig and time, in the left rig frame.
+
+    Both eyes are saved in the common depth layout; calibration reads only the primary (left) view.
+    Known rig poses and intrinsics are required inputs, never replaced by model estimates.
+    """
+    from contextlib import ExitStack
+
+    from s4d.realworld.pipeline import load_meta
+
+    meta = load_meta(root, episode_id)
+    directory = rio.stage_dir(root, episode_id, "mapanything_rig_depth")
+    if not backend.params.get("use_pose", True):
+        raise ValueError("mapanything_rig_depth requires use_pose=True for metric rig geometry")
+    params = {**backend.params, "use_pose": True, "use_depth": False}
+    config = {"backend": backend.config(), "params": params}
+    inputs = {s: _record_build_id(root, episode_id, s) for s in ("ingest", "stereo_rectify")}
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("mapanything_rig_depth",
+                                                            STAGE_VERSIONS["mapanything_rig_depth"], config, inputs))
+    if force:
+        store.clear()
+
+    def build(tmp):
+        summary = {}
+        for g in meta.stereo:
+            streams = [g.left_stream, g.right_stream]
+            if g.status != "metric":
+                for stream in streams:
+                    summary[stream] = {"skipped": f"stereo geometry {g.status}: no metric depth (scale never invented)"}
+                continue
+            sets = frame_sets(meta, streams, max_sync_ns=1_000_000)
+            n = len(sets["index"])
+            Ks = np.stack([view_K(meta, stream, root=root, episode_id=episode_id) for stream in streams])
+            poses = np.stack([np.eye(4), rectified_rig_pose(root, episode_id, g.rig_id)])
+            c2w = np.linalg.inv(poses)
+            intr = meta.stream(g.left_stream).intrinsics
+            hw = (intr.height, intr.width)
+            identity = backend.identity
+            with ExitStack() as stack:
+                files = [stack.enter_context(h5py.File(tmp / f"{rio.safe_name(stream)}.h5", "w")) for stream in streams]
+                for v, (stream, f) in enumerate(zip(streams, files)):
+                    f.attrs.update(K=Ks[v], stream_id=stream, rig_id=g.rig_id, grid="stereo rectified pinhole grid",
+                                   depth_convention="metric camera-z, 0 invalid", T_cam_rig=poses[v],
+                                   source="MapAnything predicted depth_z with metric rig poses as input")
+                    for key, dtype in (("depth", np.float32), ("valid", bool), ("conf", np.float16),
+                                       ("non_ambiguous", bool)):
+                        f.create_dataset(key, (n, *hw), dtype, chunks=(1, *hw), compression="lzf")
+                    f.create_dataset("cam2world_pred", (n, 4, 4), np.float32)
+                    f.create_dataset("metric_scale", (n,), np.float32)
+                for k, indices in enumerate(sets["index"]):
+                    cid = f"rig/{g.rig_id}/{k:05d}"
+                    got = store.get(cid)
+                    if got is None:
+                        images = np.stack([model_view_frames(root, episode_id, meta, stream, [int(i)])[0]
+                                           for stream, i in zip(streams, indices)])[None]
+                        resp, out, handle = backend.runner.worker(
+                            backend.spec, "infer_views", params,
+                            {"images": images, "K": Ks, "cam2world": c2w, "joint": np.ones(1, bool)},
+                            chunk_id=cid, allow_mock=backend.allow_mock)
+                        rmeta = {"model": resp["model"], "meta": resp["meta"]}
+                        store.put(cid, out, rmeta)
+                        backend.runner.ack(handle)
+                        got = (out, rmeta)
+                    out, rmeta = got
+                    identity = rmeta["model"]
+                    for v, f in enumerate(files):
+                        i = int(indices[v])
+                        for key in ("depth", "valid", "conf", "non_ambiguous", "cam2world_pred", "metric_scale"):
+                            f[key][i] = out[key][0, v]
+            backend.identity = identity
+            for stream in streams:
+                summary[stream] = {"frames": n, "model": identity, "rig_id": g.rig_id,
+                                   "model_input": "infrared replicated to 3 channels (model input only)"
+                                   if meta.stream(stream).modality == "infrared" else "rgb"}
+        return summary
+
+    rec = rio.run_stage(directory, stage="mapanything_rig_depth", version=STAGE_VERSIONS["mapanything_rig_depth"],
+                        config=config, inputs=inputs, build=build, force=force)
+    store.cleanup()
+    return rec

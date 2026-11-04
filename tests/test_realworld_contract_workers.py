@@ -57,20 +57,27 @@ def test_contract_rejects_inconsistent_metadata(meta, mutate, message):
 def test_mock_worker_subprocess_protocol(tmp_path):
     left, right, depth, _, K = rectified_pair()
     spec = WorkerSpec("mock", sys.executable, timeout_s=120)
+    c2w = np.stack([np.eye(4), np.eye(4)])
+    c2w[1, 0, 3] = 0.1
+    images = np.repeat(np.stack([left, right])[None, ..., None], 3, axis=-1)
+    arrays = {"images": images, "K": np.stack([K, K]), "cam2world": c2w}
     with pytest.raises(WorkerError, match="mock output refused"):
-        call_worker(spec, "stereo_disparity", {"max_disparity": 12},
-                    {"left": left[None].astype(np.uint8), "right": right[None].astype(np.uint8)}, tmp_path / "w0")
-    resp, out = call_worker(spec, "stereo_disparity", {"max_disparity": 12},
-                            {"left": left[None], "right": right[None]}, tmp_path / "w1", allow_mock=True)
-    assert resp["model"]["is_mock"] is True and out["disparity"].shape == (1, *left.shape)
-    m = np.isfinite(out["disparity"][0])
-    assert np.median(np.abs(out["disparity"][0][m] - K[0, 0] * 0.1 / depth[m])) < 0.3
+        call_worker(spec, "infer_views", {"max_disparity": 12}, arrays, tmp_path / "w0")
+    resp, out = call_worker(spec, "infer_views", {"max_disparity": 12}, arrays, tmp_path / "w1", allow_mock=True)
+    assert resp["model"]["is_mock"] is True and out["depth"].shape == (1, 2, *left.shape)
+    m = out["valid"][0, 0]
+    assert np.median(np.abs(out["depth"][0, 0][m] - depth[m]) / depth[m]) < 0.03
+    assert set(out) == {"depth", "valid", "conf", "non_ambiguous", "cam2world_pred", "K_pred_model", "metric_scale"}
     pinned = WorkerSpec("mock", sys.executable, expected_commit="0" * 40, timeout_s=120)
     with pytest.raises(WorkerError, match="pinned"):
-        call_worker(pinned, "stereo_disparity", {}, {"left": left[None], "right": right[None]}, tmp_path / "w2",
-                    allow_mock=True)
+        call_worker(pinned, "infer_views", {}, arrays, tmp_path / "w2", allow_mock=True)
     with pytest.raises(WorkerError, match="unknown task"):
         call_worker(spec, "nope", {}, {"x": np.zeros(1)}, tmp_path / "w3", allow_mock=True)
+    # RGB-D/multi-view oracle returns input metric depth and matching validity on the original grid.
+    supplied = np.broadcast_to(depth, (1, 2, *depth.shape)).copy()
+    supplied[:, :, :2] = 0
+    _, echo = call_worker(spec, "infer_views", {}, {**arrays, "depth": supplied}, tmp_path / "w4", allow_mock=True)
+    assert np.array_equal(echo["depth"], supplied) and np.array_equal(echo["valid"], supplied > 0)
 
 
 def test_run_stage_is_atomic_and_restartable(tmp_path):
@@ -134,7 +141,7 @@ def test_configs_parse_and_pins_are_full_shas():
     import yaml
 
     pins = yaml.safe_load((REPO / "configs/realworld/upstream_pins.yaml").read_text())
-    for name in ("foundation_stereo", "alltracker", "sam3", "dino_snerl"):
+    for name in ("map_anything", "alltracker", "sam3", "dino_snerl"):
         sha = pins[name]["commit"]
         assert len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)
     for name in ("pipeline_example", "template_adapter"):
@@ -148,5 +155,5 @@ def test_workers_is_one_package_holding_the_worker_scripts():
     assert Path(workers.__file__).name == "__init__.py"
     assert workers.WORKER_DIR == Path(workers.__file__).resolve().parent == REPO / "s4d/realworld/workers"
     assert not (REPO / "s4d/realworld/workers.py").exists()
-    for name in ("foundation_stereo", "alltracker", "sam3", "dino_snerl", "svo_decode", "mock"):
+    for name in ("mapanything", "alltracker", "sam3", "dino_snerl", "svo_decode", "mock"):
         assert workers.WorkerSpec(name, "python").script_path().is_file(), name

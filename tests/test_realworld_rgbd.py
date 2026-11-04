@@ -600,3 +600,54 @@ def test_export_drops_windows_crossing_recording_gap(rgbd_meta, tmp_path):
     assert filtered["windows_dropped_for_time_gaps"] == 6
     assert [w["canonical_indices"] for w in filtered["windows"]] == [[0, 1, 2], [1, 2, 3], [4, 5, 6], [5, 6, 7]]
     assert filtered["depth_stage"] == "sensor_depth"
+
+
+def test_rgbd_mapanything_preserves_sensor_input_and_primary_outputs(panda_file, tmp_path, monkeypatch):
+    from s4d.realworld import depth_stages as D
+    from s4d.realworld.workers import WorkerSpec
+
+    root, ep = tmp_path / "out", "panda"
+    pipeline.ingest(panda_file.adapter, ep, root)
+    meta = pipeline.load_meta(root, ep)
+    runner = LocalRunner(tmp_path / "worker")
+    D.sensor_depth(root, ep, runner)
+    poses = {v.stream_id: make_T(np.eye(3), [j * 0.1, 0, 0]) for j, v in enumerate(meta.views())}
+
+    def calibration(tmp):
+        for stream, T in poses.items():
+            rio.atomic_write_json(tmp / f"{rio.safe_name(stream)}.json", {"status": "accepted", "T_cam_base": T.tolist()})
+        return {}
+
+    rio.run_stage(rio.stage_dir(root, ep, "calibrate"), stage="calibrate", version="test", config={}, inputs={},
+                  build=calibration)
+    # The mock's depth-input echo tests this stage's contracts without a robot optimisation or upstream model.
+    monkeypatch.setattr(pipeline, "RobotGeometry", lambda _: None)
+    monkeypatch.setattr(D, "set_robot_motion", lambda m, stamps, geom: np.zeros(len(stamps)))
+    calls = []
+    worker = runner.worker
+
+    def capture(spec, task, params, arrays, **kwargs):
+        calls.append(arrays)
+        return worker(spec, task, params, arrays, **kwargs)
+
+    monkeypatch.setattr(runner, "worker", capture)
+    backend = D.MapAnythingBackend(WorkerSpec("mock", sys.executable), runner, {}, allow_mock=True)
+    rec = D.mapanything_depth(root, ep, backend)
+    streams = [v.stream_id for v in meta.views()]
+    assert rec["config"]["input_depth_stage"] == "sensor_depth"
+    assert "include_right_eyes" not in rec["config"] and "stereo_rectify" not in rec["inputs"]
+    assert rec["summary"]["views"] == streams
+    for v, stream in enumerate(streams):
+        np.testing.assert_array_equal(calls[0]["images"][:, v], pipeline.read_frames(root, ep, stream, list(range(4))))
+        np.testing.assert_array_equal(calls[0]["K"][v], meta.stream(stream).intrinsics.K())
+        np.testing.assert_array_equal(calls[0]["cam2world"][v], np.linalg.inv(poses[stream]))
+        expected, valid, K = D.load_view_depth(root, ep, stream, np.arange(6), "sensor_depth")
+        actual, actual_valid, actual_K = D.load_view_depth(root, ep, stream, np.arange(6))
+        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(actual_valid, valid)
+        np.testing.assert_array_equal(actual_K, K)
+        with h5py.File(D.depth_file(root, ep, "mapanything_depth", stream), "r") as f:
+            assert f.attrs["grid"] == "view pinhole grid (as recorded)"
+            np.testing.assert_array_equal(f["input_depth_valid"][:], valid)
+            np.testing.assert_array_equal(f.attrs["T_cam_base"], poses[stream])
+    assert D.mapanything_depth(root, ep, backend)["skipped"]

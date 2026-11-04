@@ -1,22 +1,24 @@
 # Real-world preprocessing (Franka Panda + Robotiq + three RealSense rigs)
 
-Branch `realworld-preproc-20261031`, package `s4d/realworld/`. This is a separate, self-contained pipeline. It
-is not the DROID loader, and no existing module imports it. A test enforces that rule
-(`test_existing_code_does_not_import_realworld`).
+FoundationStereo removed on 2026-11-05, replaced by MapAnything.
 
-**Status in one line:** the numerical core is validated on synthetic fixtures only. Those parts are the contract,
-stereo conventions, rectification, calibration estimator and gates, 2D-to-3D lifting, and export to the training
-contract. No real recording, real robot asset or real upstream model has been run. See
-[realworld_preprocessing_STATUS.md](realworld_preprocessing_STATUS.md) and the
-"Validated vs. awaiting real data" table at the end.
+Maintained package: `s4d/realworld/`, branch `realworld-fsrm-20261105`. Existing training and data modules do not
+import it; `test_existing_code_does_not_import_realworld` enforces this boundary.
 
+```text
+Stereo: adapter -> ingest -> stereo_rectify -> mapanything_rig_depth -> calibrate
+                                                                       |
+                               export <- lift3d <- track2d <- mapanything_depth
+RGB-D:  adapter -> ingest -> sensor_depth -> calibrate (evidence: rgbd) -> mapanything_depth -> track2d -> lift3d -> export
+DROID with provided poses: ingest -> stereo_rectify -> calibrate (source: adapter_provided) -> mapanything_depth -> ...
+Optional baselines: stereo_rectify / RGB-D ingest -> sam3_masks; export -> dino_snerl
 ```
-adapter (format-specific, read-only)  ──>  ingest ──> stereo_depth ──> calibrate ──> track2d ──> lift3d ──> export
-                                            │          (FoundationStereo  (visual init +   (AllTracker   (same-frame    (DROID-track
-                                            │           worker)            robot-grounded   worker)       depth + calib) cache layout)
-                                            │                              refinement)
-                                            └──> optional, baseline-only: sam3_masks (SAM 3 worker), dino_snerl (SNeRL DINO teacher)
-```
+
+Rig depth is needed by landmark calibration's depth term. Adapter-provided calibration can skip it. Stereo images,
+tracks, masks, calibration and all depths share the rectified grid; raw and rectified grids are never mixed.
+The RGB-D path registers recorded sensor depth for calibration and uses MapAnything depth for lifting/export.
+New stereo MapAnything integration is checked with a flagged CPU mock; real-model stereo quality awaits validation.
+See [status](realworld_preprocessing_STATUS.md) and [DROID validation](realworld_droid_validation.md).
 
 ## 1. On-disk layout and restartability
 
@@ -36,7 +38,8 @@ its sha256.
 - The fingerprint is a hash of the stage version, its config and its inputs. The config includes the full
   worker spec: commit, checkpoint, params and the mock flag. Inputs are the upstream *build ids*, which change
   on every rebuild, including a forced rebuild with an identical config, so downstream stages are invalidated.
-  `track2d` depends on `stereo_depth` because tracks live on the rectified grid.
+  Stereo `track2d`, `calibrate`, and `sam3_masks` depend on `stereo_rectify` because they share that grid.
+  MapAnything stages use durable chunks and acknowledge a runner result only after saving it.
 - If the record exists with the same fingerprint, the stage is skipped.
 - Otherwise the stage is built in a fresh `.<stage>.building.*` directory, which is swapped in atomically. The
   record is written last.
@@ -52,8 +55,9 @@ its sha256.
 | Dataclass | Fields |
 |---|---|
 | `Intrinsics` | width, height, fx, fy, cx, cy, skew, `pixel_convention` (`integer_centers` as librealsense/OpenCV, or `continuous`), `distortion_model` + coefficients (OpenCV plumb_bob/rational, RealSense model names kept verbatim, Kannala-Brandt), `source`. `K()` converts to the repository's continuous convention. |
-| `CameraStream` | `stream_id`, `rig_id` (one RealSense), `eye` (left/right/mono), `modality` (`rgb` or `infrared`), `channels`, `channel_order` (RGB/BGR/GRAY), dtype (uint8/uint16), `rectified` (True/False/None = unknown), serial, sensor name, timestamp source, IR emitter state. |
+| `CameraStream` | `stream_id`, `rig_id` (one RealSense), `eye` (left/right/mono), `modality` (`rgb`, `infrared`, or `depth`), `channels`, `channel_order` (RGB/BGR/GRAY), dtype (uint8/uint16), depth units/scale/kind, `rectified` (True/False/None = unknown), serial, sensor name, timestamp source, IR emitter state. |
 | `StereoGeometry` | per rig: `status` (`metric`/`missing`/`unverified`), `T_right_left` (left-camera points into the right camera, metres), `baseline_m`, source. |
+| `RgbdGeometry` | colour stream, depth stream, metric status, recorded `T_color_depth`, pairing tolerance. |
 | `RobotDescription` | arm (`franka_panda`), exact `gripper_model`, composed URDF path, mesh root, base/flange/gripper frames, `T_flange_gripper` mount, gripper-state semantics, driven gripper joint, asset hashes. |
 | `RobotTrajectory` | int64 ns timestamps, joints (T,7) rad, gripper state (T,), optional recorded EE pose plus its frame (cross-check only), extra state with units. |
 | `Provenance`, `EpisodeMeta` | clock, `assumptions` (every adapter guess awaiting confirmation), conventions. |
@@ -65,7 +69,6 @@ Conventions (also written into every episode):
 - The world frame is the robot base `panda_link0`, so `T_cam_base` is the same thing as `w2c` in `s4d/data/contract.py`.
 - Pixel coordinates are continuous: the centre of the top-left pixel is (0.5, 0.5).
 - Depth is metric camera-z with 0 meaning invalid.
-- Disparity is `x_left - x_right`.
 
 `validate_episode` returns errors and warnings.
 
@@ -90,7 +93,7 @@ rectification, and an unknown gripper or missing URDF (calibration refuses to ru
 - `read_meta(id) -> EpisodeMeta`
 - `iter_frames(id, stream, start, stop)`, which yields `(index, timestamp_ns, array)` exactly as recorded.
 
-There are three implementations:
+The supported adapters are:
 
 - **`template_realsense`** (`template.py`, config `configs/realworld/template_adapter.yaml`). No layout is
   invented: each method raises `NotImplementedError` naming the open question. The module docstring is the
@@ -112,6 +115,14 @@ There are three implementations:
   - a stand-in Panda kinematic chain (official joint origins) with primitive link geometry and a two-finger
     mimic gripper. This is NOT the real Panda or Robotiq meshes.
 
+- **`panda_teleop_h5`** (`panda_teleop.py`): `panda_teleop_episode` format v2, JPEG colour + PNG uint16
+  depth per RealSense, recorded intrinsics, depth scale and depth-to-colour extrinsics. Device stamps mapped onto
+  the host monotonic clock are used; arrival times are not substituted. Colour/depth pairing, invalid flags and
+  missing calibration are checked. Robotiq register 0..255 has its own clock and is interpolated as recorded.
+  `configs/realworld/mug_hanging_rgbd.yaml` supplies the real robot assets and `evidence: rgbd` calibration.
+- **`droid_raw_svo`** (`droid_raw.py`, `droid_svo.py`): genuine raw ZED left/right SVO pairs, factory calibration,
+  isolated decoder and optional DROID-3D provided poses. Joint corrections remain tied to that calibration source.
+
 **Writing the real adapter:**
 1. Subclass `EpisodeAdapter` and decorate it with `@register_adapter`.
 2. Fill `read_meta` from the recorded metadata.
@@ -131,35 +142,41 @@ coefficients mean no distortion, whatever the model name.
 - Checks every frame's shape, dtype and timestamp against the metadata.
 - The record carries the validation warnings and the adapter assumptions.
 
-### 4.2 `stereo_depth` (`pipeline.stereo_depth`, `stereo.py`, `geometry.py`)
-- **Rectification.**
-  - Streams flagged rectified must carry no distortion, and K is used as is.
-  - Unrectified streams are rectified with Bouguet's method (`geometry.stereo_rectify`: half-rotations, baseline
-    aligned with +x, shared `K_rect`). Then `rectify_map`/`remap` undistort and rotate.
-  - Rectified images are stored next to the depth, and all later stages work on the rectified-left grid.
-  - Unknown rectification is an error.
-  - Rigs whose stereo geometry is not `metric` are skipped with the reason recorded. Metric scale is never invented.
-- **Depth.** `z = fx * B / (d - doffs)`, where `doffs = cx_left - cx_right` (0 after Bouguet with a shared K).
-- **Validity.** The value must be finite, satisfy `d - doffs > min_disparity`, and the matched pixel must lie
-  inside the other image:
-  - left reference: `x - d >= 0`, the same rule as FoundationStereo's `remove_invisible`;
-  - right reference: `x + d <= W`.
-  - Depth is 0 wherever the result is invalid, and the `valid` mask is stored.
-- **Reference images.**
-  - FoundationStereo returns disparity on the left image.
-  - The right-image depth uses flip-and-swap (`stereo.flip_and_swap_right_disparity`): feed `flip(right)` as left
-    and `flip(left)` as right, then flip the result back. With x' = W - x, the magnitude `x_l - x_r` is preserved,
-    and so is doffs.
-  - A naive input swap without flipping asks for negative disparities. The tests show it fails, while
-    flip-and-swap matches ground truth.
-- **Resize, crop and flip** are `PixelAffine` maps in continuous coordinates.
-  - `apply_K` gives the intrinsics after any chain of them.
-  - Depth is resampled nearest-neighbour (`warp_affine(order=0)`), and images bilinearly.
-  - `rescale_disparity` converts disparity measured on a resized copy back to the original grid: x scale only;
-    crops shift both eyes equally.
-- **Model input.** FoundationStereo expects 3-channel images, so IR pairs are channel-replicated as model input
-  only, and the stage record says so. The stored streams stay 1-channel infrared. BGR streams are converted to
-  RGB before any model call (stereo, tracker, SAM 3).
+### 4.2 Shared grids and depth (`pipeline.py`, `depth_stages.py`, `geometry.py`)
+
+- **`sensor_depth`** (RGB-D only): metric device depth is filtered by configured range and z-buffer registered to
+  the colour grid with recorded intrinsics and `T_color_depth`. Zeroes and disocclusions stay invalid. Calibration
+  uses this stage; it is also the default RGB-D metric depth input to MapAnything.
+- **`stereo_rectify`** (stereo only): each rig has `<rig>.h5`, with `K_left`, `K_right`, `T_rr_rl` (metres) and
+  rectification metadata. Already-rectified streams are recorded without copying images, preserving their K and
+  recorded `T_right_left`. Otherwise Bouguet rotations, `rectify_map` and bilinear `remap(order=1)` produce both
+  `left/rectified_image` and `right/rectified_image`; both K equal `K_rect` and
+  `T_rr_rl = [R2 R_right_left R1^T | R2 t_right_left]`. Images retain recorded channel order; model inputs convert
+  BGR to RGB and replicate infrared to three channels. Unknown rectification is refused; nonmetric rigs are skipped.
+  `grid_frames`, `calibration_image` and SAM 3 use this grid and refuse an absent required rectification.
+- **`mapanything_rig_depth`**: one `infer_views` call per metric rig and time, with two rectified views. The left
+  camera pose is identity and the right pose is `T_rr_rl` in the rig frame (inverted for worker `cam2world`). No
+  world calibration is read. Known metric poses are mandatory (`use_pose: false` is refused for both stereo depth stages); no sensor depth is
+  supplied. Both eyes are saved, and landmark calibration reads the left stream's depth.
+- **`mapanything_depth`**: synchronized frame sets use accepted calibrated poses. Each metric stereo rig contributes
+  the rectified left eye; `include_right_eyes: true` (default) also adds its right eye with
+  `T_right_base = T_rr_rl @ T_left_base`. The accepted left pose already refers to the shared grid: no additional
+  left rectification rotation is applied. RGB-D views and their depth input remain unchanged. Predicted poses are
+  diagnostics only. Primary-view depth drives lifting/export; right-eye outputs are optional and never consumed by
+  training. Nonmetric stereo rigs are omitted, and missing/rejected metric-view calibration is an error.
+
+All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-z metres, `valid` bool, and attrs
+`K`, `stream_id`, `rig_id`, `grid`. MapAnything also writes confidence, non-ambiguity and pose/scale diagnostics.
+`default_depth_stage(meta, "calibrate")` selects `sensor_depth` for RGB-D and `mapanything_rig_depth` for stereo;
+`"lift"` selects `mapanything_depth` for both. Mixed RGB-D/stereo episodes require explicit depth selection.
+The automatic MapAnything depth input is `sensor_depth` for pure RGB-D and none for stereo; explicit
+`input_depth_stage` overrides it. It is not a fallback to another model.
+
+Synchronized sets must pair every frame exactly once within the tolerance. Sets exceeding the robot-motion
+threshold are processed as individual views. Views currently need a common H,W; differing grids are refused.
+Image resize/crop uses explicit continuous-coordinate pixel affines; depth uses nearest-neighbour sampling.
+Server worker settings explicitly override interpreter, repo, checkpoint and `hf_dir` paths for remote runs; adapter
+and output paths remain on the host. Existing RGB-D worker specs resolve identically.
 
 ### 4.3 `calibrate`: per-episode, robot-grounded extrinsics (`calibration.py`)
 
@@ -182,14 +199,14 @@ used.
    its `identity` blocks export unless mock outputs are explicitly allowed.
 2. **Visual initialisation.**
    - RANSAC PnP: normalised DLT, then a Cauchy-robust reprojection refinement.
-   - When metric stereo depth exists, also a RANSAC Kabsch fit of depth-lifted landmarks (bootstrap depth, no scale
+   - When metric rig depth exists, also a RANSAC Kabsch fit of depth-lifted landmarks (bootstrap depth, no scale
      estimation).
    - The candidate with more inliers and lower reprojection error wins.
    - A previous episode's pose may be used only as a fallback prior (`T_init`).
 3. **Robot-grounded refinement** (`scipy.optimize.least_squares`, Cauchy loss over the 6-DoF extrinsic):
    - landmark reprojection residuals, scaled by `cauchy_px` (5 px) and weighted by confidence;
    - robot-surface depth residuals: URDF surface points (meshes or primitives) projected and compared with bilinear
-     stereo depth, scaled by `cauchy_depth_m` (10 mm, DepthWorld's c3d). Two gates apply:
+     rig depth, scaled by `cauchy_depth_m` (10 mm, DepthWorld's c3d). Two gates apply:
      - self-occlusion uses the robot's own z-buffer (back and side surfaces would otherwise bias the result; this
        was measured);
      - a one-sided occlusion test keeps in-front residuals and drops points hidden behind something closer.
@@ -218,7 +235,7 @@ optimisation.
 | DepthWorld | Here |
 |---|---|
 | One factor graph per physical robot over ~1k–9k episodes. Per-episode ext1/ext2 corrections, plus a shared wrist hand-eye (6 DoF) and joint offsets δq (7 DoF). GPU Levenberg-Marquardt with a Schur complement. | One camera of one episode at a time. 6 DoF only. No hand-eye, no joint offsets, no wrist camera. |
-| Initial calibration from factory extrinsics, S2M2 stereo depth (FoundationStereo was tested and rejected there), RoMa-v2 ext-ext correspondences with MAGSAC, and two-pass bundle adjustment. | Initialisation from robot landmarks (PnP / depth Kabsch). Depth from FoundationStereo (the requirement here). No ext-ext correspondences. |
+| Initial calibration from factory extrinsics, S2M2 stereo depth, RoMa-v2 ext-ext correspondences with MAGSAC, and two-pass bundle adjustment. | Initialisation from robot landmarks (PnP / depth Kabsch). Depth from MapAnything posed in each stereo rig frame. No ext-ext correspondences. |
 | Residuals: EE reprojection, wrist-ext 2D/3D, URDF-landmark reprojection (LoMa-G render matches) and featuremetric (dropped in deployment). Cauchy with c3d = 10 mm, c_l = 50 px, c_ee = 5 px. | URDF-landmark reprojection plus a robot-surface depth term. The depth term is PointWorld-style; DepthWorld uses robot depth and mask IoU only for evaluation. Cauchy 5 px / 10 mm. |
 | Mask IoU and robot-depth error as evaluation metrics. | Robot-depth residuals on held-out frames; mask hit-rate if a mask is given. |
 
@@ -298,7 +315,7 @@ Found by reading `s4d/baselines/*`:
   - the prompts, the model identity, and per-frame per-prompt `count`, where 0 means an absent detection, listed
     in `<cam>_absent.json`;
   - a derived semantic map (highest score wins) with per-frame class presence.
-  - Segmentation runs on the same grid as depth, tracks and export: rectified images when the depth stage
+  - Segmentation runs on the same grid as depth, tracks and export: rectified images when `stereo_rectify`
     rectified the rig.
   - The video API gets a fresh frame directory per call.
 - **3D-MVP** needs RGB-D, K, c2w and scene bounds in the base frame. The bounds must be chosen for the real
@@ -347,17 +364,17 @@ Found by reading `s4d/baselines/*`:
 
 | Worker | Environment (set up by the operator; nothing was installed here) |
 |---|---|
-| `foundation_stereo_worker.py` | Upstream `environment.yml` (conda `foundation_stereo`: py3.11, torch 2.4.1, torchvision 0.19.1, xformers 0.0.28.post1, flash-attn separately). Checkpoint `23-51-11/model_best_bp2.pth` with `cfg.yaml` (ViT-L), or `11-33-40` (ViT-S). |
+| `mapanything_worker.py` | Isolated MapAnything environment and pinned `facebookresearch/map-anything` checkout. Local `facebook/map-anything` weights, revision `a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa`; `model.safetensors` (CC-BY-NC-4.0). Uses `infer_views`, known K/metric poses and optional sensor depth. |
 | `alltracker_worker.py` | `conda create -n alltracker python=3.12.8`, then `pip install -r requirements.txt` at the pinned commit. Upstream leaves torch unpinned: record the installed versions. Checkpoint `alltracker.pth` (Hugging Face `aharley/alltracker`). |
 | `sam3_worker.py` | Python ≥3.12, torch 2.10 (cu128), `pip install -e .` at the pinned commit. Gated checkpoint `facebook/sam3`. |
 | `dino_snerl_worker.py` | This repository's `.venv`. It is the consumer environment, with `third_party/dino` at 7c446df. |
-| `mock_worker.py` | Any Python. **Mock**: CPU block matching and fake tokens/masks, always flagged `is_mock`. |
+| `mock_worker.py` | Any Python. **Mock**: `infer_views` echoes supplied depth; without depth only an exactly two-view rectified rig is accepted by the CPU SAD oracle. Fake tokens/masks and all depth outputs are always flagged `is_mock`. |
 
-**Upstream pins** (GitHub API, 2026-10-31; full list and notes in `configs/realworld/upstream_pins.yaml`):
+**Upstream pins** (maintained as of 2026-11-05; full list and notes in `configs/realworld/upstream_pins.yaml`):
 
 | Repo | Commit |
 |---|---|
-| FoundationStereo | `6e8806816b533e4d13ddbb95ffa907b797060a62` |
+| MapAnything | `3d10cf7a3016fc0f9bb13a071ee66c47b10be0d9` (v1.1.3+1, 2026-08-07) |
 | AllTracker | `e7553135e7b361590dbccd10e2b274b024f41cd6` |
 | SAM 3 | `f1647e8d0c1d280991f4d1b7d974c2704537fe66` |
 | DINO | `7c446df5b9f45747937fb0d72314eb9f7b66930a` |
@@ -366,34 +383,35 @@ Found by reading `s4d/baselines/*`:
 ## 7. Run commands
 
 ```bash
-# tests (small, CPU numerics; the GPU guard needs a MIG UUID)
-cd <worktree> && CUDA_VISIBLE_DEVICES=MIG-... nice -n 10 /home/ws/ws/splatter4d/.venv/bin/python -m pytest -q \
-  -p no:cacheprovider tests/test_realworld_stereo.py tests/test_realworld_calibration.py tests/test_realworld_pipeline.py \
-  tests/test_realworld_contract_workers.py tests/test_realworld_baselines.py
-# contract validation of an adapter's episodes
+# CPU-only tests (the conftest guard needs an allowed MIG UUID)
+CUDA_VISIBLE_DEVICES=MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c nice -n 10 /home/ws/ws/splatter4d/.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_realworld_*.py
+/home/ws/ws/splatter4d/.venv/bin/ruff check s4d/realworld ops/inference_server scripts/realworld_*.py tests/test_realworld_*.py
 python -m s4d.realworld.cli validate --config configs/realworld/pipeline_example.yaml
-# full run (after the real adapter, assets, worker environments and a landmark source exist)
-python -m s4d.realworld.cli run --config <cfg.yaml> --episode <id> --stages ingest,stereo_depth,calibrate,track2d,lift3d,export
+# Stereo with landmark calibration
+python -m s4d.realworld.cli run --config <stereo.yaml> --episode <id> --stages ingest,stereo_rectify,mapanything_rig_depth,calibrate,mapanything_depth,track2d,lift3d,export
+# RGB-D (recorded sensor depth calibration, then MapAnything lifting depth)
+python -m s4d.realworld.cli run --config configs/realworld/mug_hanging_rgbd.yaml --episode <id> --stages ingest,sensor_depth,calibrate,mapanything_depth,track2d,lift3d,export
+# DROID-3D provided calibration does not require rig depth
+python -m s4d.realworld.cli run --config configs/realworld/droid_raw_validation.yaml --episode <id> --stages ingest,stereo_rectify,calibrate,mapanything_depth,track2d,lift3d,export
 python -m s4d.realworld.cli status --root <output_root> --episode <id>
+# Same stages remotely; local CLI uses LocalRunner file protocol
+python -I ops/inference_server/run_episode.py --pipeline <pipeline.yaml> --server configs/realworld/inference_server.yaml --episode <id> --stages <comma-separated-stages>
 ```
 
 ## 8. Validated vs. awaiting real data
 
 | Item | State |
 |---|---|
-| Contract round trip; rejection of 3-channel IR, bad baselines, non-monotonic stamps, schema mismatch | validated (unit tests) |
-| Disparity-to-depth scale, doffs, validity, missing baseline refused | validated (synthetic) |
-| Right-reference flip-and-swap versus ground truth; naive swap fails | validated (synthetic, CPU block matcher) |
-| Bouguet rectification (rows aligned, depth exact, remap inverse); in-pipeline rectification of a rotated rig (~0.9 % vs ~20 % without) | validated (synthetic) |
-| K through resize/crop/flip; depth/image alignment after resize+crop | validated (synthetic) |
-| URDF FK equals Franka DH; mimic joints; mount composition; safe URDF numbers | validated (stand-in URDF) |
-| Calibration recovery (0.5 px noise, 5 % outliers, 3 mm depth noise): < 0.3°, < 5 mm; rejection for low visibility, static robot, no visual evidence, failed optimisation | validated (synthetic robot, stand-in geometry) |
-| 2D-to-3D lifting versus ground truth; occlusion flagged; camera-local ids; NaN for invalid | validated (oracle tracker) |
-| Export passes `validate_batch`; refuses mock and infrared without opt-in; idempotent stages | validated (synthetic, MOCK models) |
-| FoundationStereo, AllTracker and SAM 3 worker scripts | **UNVERIFIED**: written against upstream READMEs/demos at the pinned commits, never executed (no envs or checkpoints here) |
-| DINO worker equality with `dino_target` | implemented; only runs with the official weights (not run here) |
-| Real RealSense layout, modality, rectification state, clocks, intrinsics convention | **awaiting real data** (template adapter only) |
-| Exact Robotiq model, URDF and meshes, mount transform, gripper-state mapping | **awaiting assets and measurements** |
-| Landmark source on real images (annotation, marker or render-and-match) | interface only; render-and-match not implemented |
-| Depth on an RGB camera (colour sensor ≠ IR left) | `geometry.reproject_depth` (z-buffer forward warp) validated on synthetic data; not yet wired into stages (export uses the IR-left grid) |
-| Robot mask from the accepted calibration (`geometry.point_mask`, depth-gated) | validated (synthetic); optional alternative/check for the SAM 3 robot class |
+| Episode contract, registered RGB-D sensor depth, timestamps, pixel affines | CPU contract and geometry tests |
+| Stereo record-only/Bouguet grids, right-from-left rectified transform, refusal to mix grids | CPU geometry and pipeline tests |
+| Rig-frame MapAnything depth; rotated-right-camera depth accuracy | flagged mock CPU oracle, not real model quality |
+| World MapAnything stereo view selection, right pose composition, optional right outputs | mock worker contract tests |
+| Calibration, URDF FK, gates, tracking/lifting, training export | synthetic tests; archived DROID evidence separately linked |
+| RGB-D recorder adapter and sensor-depth calibration path | existing CPU tests, maintained without behavior changes |
+| MapAnything on real DROID stereo rigs after this migration | awaiting real-model validation |
+| Real model workers on this change | not run; no network, GPU, SSH or container execution |
+| Exact own-rig Robotiq mount and gripper mapping | awaiting measurement/verification |
+| Real-image landmarks or render-and-match source | annotation interface; render-and-match remains unimplemented |
+
+The supplied hashes for MapAnything, AllTracker and SAM 3 are recorded in `configs/realworld/upstream_pins.yaml`.
+Archived model evidence does not establish the new stereo MapAnything pipeline's accuracy.

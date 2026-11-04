@@ -123,7 +123,7 @@ Sources: `docs/POINTWORLD_SCHEMA.md`, the HF tree API, `_shards_manifest.json`, 
 
 - Keys `uuid`, `scene_path`, `optimization_success`, `optimization_summary`, and per external serial
   `optimized_extrinsics` (4x4 w2c, equal to the flow `extrinsic`).
-- The extrinsics start from a VGGT initialization. They are then refined against FoundationStereo depth with URDF
+- The extrinsics start from a VGGT initialization. They are then refined against the released stereo depth with URDF
   render-and-compare (VERIFIED-code, `extrinsics_pipeline.py`).
 
 **Packaging** (VERIFIED-bytes, HF tree):
@@ -582,3 +582,8 @@ tokens, effective masked fraction and the geometry checks.
   motion-targeted by design. The panels were regenerated after the review fixes (epoch-tagged crops, both-endpoint
   gating, wrist targets). In window 1394, ext1 and ext2 keep the arm, the gripper and the shelf contents in all three
   frames, and the wrist crop is motion-informed; tracks that leave the crop are marked and unsupervised.
+
+The maintained `s4d/realworld` preprocessing route uses `stereo_rectify`, optional rig-frame MapAnything depth for
+landmark calibration, and world-posed MapAnything depth for lifting/export. RGB-D recordings use registered sensor
+depth for calibration. This does not regenerate or change the released large-scale dataset's historical depth;
+see [realworld_preprocessing.md](realworld_preprocessing.md).

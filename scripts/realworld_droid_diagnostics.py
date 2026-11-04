@@ -5,7 +5,7 @@ rectification check) and optional reference depth (PointWorld-DROID ``*_depth.h5
 matplotlib, so it runs in an isolated environment, e.g.
 
     <media env>/bin/python -I scripts/realworld_droid_diagnostics.py rectify --config CONFIG --episode ID --out DIR
-    ... stereo | tracks  (after the stereo_depth / track2d+lift3d stages)
+    ... stereo | tracks  (after the stereo_rectify+mapanything_depth / track2d+lift3d stages)
 
 Every subcommand writes ``<out>/<name>.json`` (numbers) and PNGs next to it.
 """
@@ -110,7 +110,7 @@ def cmd_rectify(args) -> dict:
         idx = list(range(0, len(meta.stream_timestamps_ns[g.left_stream]), args.every))
         raw_l = P.read_frames(root, args.episode, g.left_stream, idx)
         raw_r = P.read_frames(root, args.episode, g.right_stream, idx)
-        # (a) the pipeline's own rectification (stereo_depth stage path): left/right row alignment
+        # (a) the pipeline's own rectification (stereo_rectify stage path): left/right row alignment
         rect, KL, KR, _ = P.rig_rectification(meta, g.rig_id)
         maps = (G.rectify_map(L.intrinsics.K(), L.intrinsics.distortion_model, L.intrinsics.distortion, rect.R1, KL, hw),
                 G.rectify_map(R.intrinsics.K(), R.intrinsics.distortion_model, R.intrinsics.distortion, rect.R2, KR, hw))
@@ -167,87 +167,67 @@ def cmd_rectify(args) -> dict:
 
 
 def cmd_stereo(args) -> dict:
+    from s4d.realworld.depth_stages import depth_file, frame_sets, load_view_depth, rectified_rig_pose
+
     cfg, root = load(args.config)
     meta = P.load_meta(root, args.episode)
-    rec = rio.read_record(rio.stage_dir(root, args.episode, "stereo_depth"))
-    out = {"model": {k: v.get("model") for k, v in rec["summary"].items()}}
+    stage = "mapanything_depth"
+    rec = rio.read_record(rio.stage_dir(root, args.episode, stage))
+    if rec is None:
+        raise RuntimeError("run mapanything_depth before stereo depth diagnostics")
+    out = {"model": rec["summary"].get("model"), "depth_stage": stage, "rigs": {}}
     poses = {g.rig_id: P.accepted_calibration(root, args.episode, g.left_stream) for g in meta.stereo}
-    rigs = {}
     for g in meta.stereo:
-        with h5py.File(rio.stage_dir(root, args.episode, "stereo_depth") / f"{g.rig_id}.h5", "r") as f:
-            n = f["left"]["depth"].shape[0]
-            idx = list(range(0, n, args.every))
-            dl = np.stack([f["left"]["disparity"][i] for i in idx])
-            vl = np.stack([f["left"]["valid"][i] for i in idx])
-            zl = np.stack([f["left"]["depth"][i] for i in idx])
-            img_l = np.stack([f["left"]["rectified_image"][i] for i in idx])
-            has_right = "right" in f
-            if has_right:
-                dr = np.stack([f["right"]["disparity"][i] for i in idx])
-                vr = np.stack([f["right"]["valid"][i] for i in idx])
-                img_r = np.stack([f["right"]["rectified_image"][i] for i in idx])
-            K = np.asarray(f.attrs["K_left"])
-            B = float(f.attrs["baseline_m"])
-        H, W = dl.shape[1:]
+        if not depth_file(root, args.episode, stage, g.left_stream).is_file():
+            continue
+        n = len(meta.stream_timestamps_ns[g.left_stream])
+        idx = list(range(0, n, args.every))
+        zl, vl, K = load_view_depth(root, args.episode, g.left_stream, idx, stage)
+        img_l = P.grid_frames(root, args.episode, meta, g, idx)
         res = {"frames": idx, "valid_fraction_left": float(vl.mean()), "depth_left_m": stats(zl[vl]),
-               "disparity_left_px": stats(dl[vl]), "baseline_m": B, "K": K.tolist()}
-        # sparse, independent check: SIFT left/right correspondences on the rectified pair vs model disparity
-        sparse = []
-        for k in range(len(idx)):
-            if not has_right:
-                break
-            pa, pb = sift_matches(img_l[k], img_r[k])
-            ok = (pa[:, 0] > pb[:, 0]) & (np.abs(pa[:, 1] - pb[:, 1]) < 1.5)
-            u, v = pa[ok, 0], pa[ok, 1]  # integer-centre keypoints == array indices
-            iu, iv = np.clip(np.rint(u).astype(int), 0, W - 1), np.clip(np.rint(v).astype(int), 0, H - 1)
-            sparse.append(dl[k, iv, iu] - (pa[ok, 0] - pb[ok, 0]))
-        if sparse:
-            res["model_minus_sift_disparity_px"] = stats(np.concatenate(sparse))
-        if has_right:  # left/right consistency: d_R(x - d_L) == d_L
-            xs = np.arange(W)[None, None, :] + 0.5 - dl
-            xi = np.clip(np.floor(xs).astype(int), 0, W - 1)
-            dr_at = np.take_along_axis(dr, xi, axis=2)
-            both = vl & np.take_along_axis(vr, xi, axis=2)
-            lr = np.abs(dr_at - dl)[both]
-            res["lr_consistency_abs_px"] = stats(lr)
-            res["lr_consistent_fraction_1px"] = float((lr < 1.0).mean()) if len(lr) else None
+               "baseline_m": g.baseline_m, "K": K.tolist()}
+        if depth_file(root, args.episode, stage, g.right_stream).is_file():
+            zr, vr, Kr = load_view_depth(root, args.episode, g.right_stream, idx, stage)
+            T = rectified_rig_pose(root, args.episode, g.rig_id)
+            errs = []
+            for z, ok, target, tok in zip(zl, vl, zr, vr):
+                pred = G.reproject_depth(np.where(ok, z, 0), K, T, Kr, z.shape)
+                both = (pred > 0) & tok
+                errs.append((pred - target)[both])
+            res["lr_depth_consistency_m"] = stats(np.concatenate(errs))
             res["valid_fraction_right"] = float(vr.mean())
-        k = 0
-        save_png(Path(args.out) / f"depth_{g.rig_id}_{idx[k]:04d}.png", np.concatenate([
-            img_l[k], colorize(dl[k], 0, np.percentile(dl[vl], 99), vl[k]),
-            colorize(zl[k], 0.2, 2.0, vl[k])], 1))
-        rigs[g.rig_id] = res
-    out["rigs"] = rigs
-    # cross-camera metric consistency: lift rig A's left depth with its provided pose, project into rig B
-    names = [g.rig_id for g in meta.stereo]
+        save_png(Path(args.out) / f"depth_{g.rig_id}_{idx[0]:04d}.png", np.concatenate([
+            img_l[0], colorize(zl[0], 0.2, 2.0, vl[0])], 1))
+        out["rigs"][g.rig_id] = res
     cross = {}
-    for a in names:
-        for b in names:
+    for ga in meta.stereo:
+        for gb in meta.stereo:
+            a, b = ga.rig_id, gb.rig_id
             if a == b or poses[a] is None or poses[b] is None:
                 continue
-            with h5py.File(rio.stage_dir(root, args.episode, "stereo_depth") / f"{a}.h5", "r") as fa, \
-                    h5py.File(rio.stage_dir(root, args.episode, "stereo_depth") / f"{b}.h5", "r") as fb:
-                Ka, Kb = np.asarray(fa.attrs["K_left"]), np.asarray(fb.attrs["K_left"])
-                errs, rel = [], []
-                for i in range(0, fa["left"]["depth"].shape[0], args.every):
-                    za, zb = fa["left"]["depth"][i], fb["left"]["depth"][i]
-                    T_ba = poses[b] @ G.invert_T(poses[a])
-                    pred = G.reproject_depth(za, Ka, T_ba, Kb, zb.shape)
-                    both = (pred > 0) & (zb > 0)
-                    d = (pred - zb)[both]
-                    errs.append(d)
-                    rel.append(np.abs(d) / zb[both])
-                    if i == 0:
-                        img = fb["left"]["rectified_image"][i]
-                        err = np.zeros(zb.shape)
-                        err[both] = np.abs(pred - zb)[both]
-                        save_png(Path(args.out) / f"cross_{a}_to_{b}_{i:04d}.png", np.concatenate([
-                            img, colorize(pred, 0.2, 2.0, pred > 0), colorize(err, 0, 0.05, both)], 1))
+            if a not in out["rigs"] or b not in out["rigs"]:
+                continue
+            sets = frame_sets(meta, [ga.left_stream, gb.left_stream])
+            errs, rel = [], []
+            for k in range(0, len(sets["index"]), args.every):
+                ia, ib = map(int, sets["index"][k])
+                za, va, Ka = load_view_depth(root, args.episode, ga.left_stream, [ia], stage)
+                zb, vb, Kb = load_view_depth(root, args.episode, gb.left_stream, [ib], stage)
+                pred = G.reproject_depth(np.where(va[0], za[0], 0), Ka, poses[b] @ G.invert_T(poses[a]), Kb, zb[0].shape)
+                both = (pred > 0) & vb[0]
+                d = (pred - zb[0])[both]
+                errs.append(d)
+                rel.append(np.abs(d) / zb[0][both])
+                if k == 0:
+                    img = P.grid_frames(root, args.episode, meta, gb, [ib])[0]
+                    err = np.zeros(zb[0].shape)
+                    err[both] = np.abs(d)
+                    save_png(Path(args.out) / f"cross_{a}_to_{b}_{ib:04d}.png", np.concatenate([
+                        img, colorize(pred, 0.2, 2.0, pred > 0), colorize(err, 0, 0.05, both)], 1))
             e, r = np.concatenate(errs), np.concatenate(rel)
             cross[f"{a}->{b}"] = {"signed_m": stats(e), "relative": stats(r), "rel_below_2pct": float((r < 0.02).mean()),
                                   "note": "z-buffered reprojection; occlusions and non-overlapping regions included"}
     out["cross_camera"] = cross
-    # reference depth (PointWorld-DROID full depth package, uint16 mm, 320x180 on the SDK-rectified grid K/4)
     if args.reference_depth:
         ac = cfg["adapter"]["config"]
         notes = json.loads(meta.provenance.notes)["cameras"]
@@ -255,21 +235,19 @@ def cmd_stereo(args) -> dict:
         with h5py.File(args.reference_depth, "r") as f:
             for g in meta.stereo:
                 key = f"{notes[g.rig_id]['serial']}+ext"
-                if key not in f:
+                if key not in f or g.rig_id not in out["rigs"]:
                     continue
-                K_sdk = sdk_left_K(ac["droid3d_intrinsics"], args.episode, g.rig_id)
-                K_ref = K_sdk.copy()
-                K_ref[:2, 2] += 0.5  # SDK integer-centre -> continuous
-                K_ref[:2] *= 0.25  # 1280x720 -> 320x180 is an exact x0.25 map in continuous coordinates
-                rect, KL, _, _ = P.rig_rectification(meta, g.rig_id)
+                K_ref = sdk_left_K(ac["droid3d_intrinsics"], args.episode, g.rig_id).copy()
+                K_ref[:2, 2] += 0.5
+                K_ref[:2] *= 0.25
                 diffs, rels = [], []
-                with h5py.File(rio.stage_dir(root, args.episode, "stereo_depth") / f"{g.rig_id}.h5", "r") as fd:
-                    for i in range(0, fd["left"]["depth"].shape[0], args.every):
-                        ours = G.reproject_depth(fd["left"]["depth"][i], np.asarray(KL), np.eye(4), K_ref, (180, 320))
-                        theirs = f[key]["depth"][i].astype(np.float32) / 1000.0
-                        both = (ours > 0) & (theirs > 0)
-                        diffs.append((ours - theirs)[both])
-                        rels.append(np.abs(ours - theirs)[both] / theirs[both])
+                for i in out["rigs"][g.rig_id]["frames"]:
+                    d, valid, K = load_view_depth(root, args.episode, g.left_stream, [i], stage)
+                    ours = G.reproject_depth(np.where(valid[0], d[0], 0), K, np.eye(4), K_ref, (180, 320))
+                    theirs = f[key]["depth"][i].astype(np.float32) / 1000.0
+                    both = (ours > 0) & (theirs > 0)
+                    diffs.append((ours - theirs)[both])
+                    rels.append(np.abs(ours - theirs)[both] / theirs[both])
                 d, r = np.concatenate(diffs), np.concatenate(rels)
                 ref[g.rig_id] = {"signed_m": stats(d), "relative": stats(r), "rel_below_2pct": float((r < 0.02).mean()),
                                  "reference": str(args.reference_depth), "reference_K_continuous": K_ref.tolist()}
@@ -301,7 +279,7 @@ def cmd_tracks(args) -> dict:
             conf_all.append(tr.confidence.ravel())
             if name in (l3d or {}).get("summary", {}).get(cam, {}).get("chunks", []):
                 with np.load(rio.stage_dir(root, args.episode, "lift3d") / name) as z:
-                    xyz, status = z["xyz_base"], z["status"]
+                    xyz = z["xyz_base"]
                 ok = np.isfinite(xyz).all(-1)
                 full = ok.all(0)
                 if full.any():
@@ -316,15 +294,16 @@ def cmd_tracks(args) -> dict:
                 img = frames[-1].copy()
                 sel = np.arange(0, tr.uv.shape[1], max(1, tr.uv.shape[1] // 600))
                 for p in sel:
-                    color = tuple(int(x) for x in (np.array(cv2.applyColorMap(np.uint8([[p * 255 // max(1, tr.uv.shape[1])]]),
-                                                                               cv2.COLORMAP_TURBO)[0, 0])[::-1]))
+                    intensity = np.uint8([[p * 255 // max(1, tr.uv.shape[1])]])
+                    color = tuple(int(x) for x in cv2.applyColorMap(intensity, cv2.COLORMAP_TURBO)[0, 0][::-1])
                     pts = tr.uv[:, p]
                     vis = tr.visibility[:, p] > 0.5
                     for t in range(1, len(pts)):
                         if vis[t] and vis[t - 1] and np.isfinite(pts[t]).all() and np.isfinite(pts[t - 1]).all():
                             cv2.line(img, tuple(np.int32(pts[t - 1] - 0.5)), tuple(np.int32(pts[t] - 0.5)), color, 1)
-                save_png(Path(args.out) / f"tracks_{g.rig_id}_q{tr.query_frame:05d}.png", np.concatenate([frames[0], img], 1))
-        # lifted points of this camera seen by the other rigs: projected depth vs that rig's own stereo depth
+                save_png(Path(args.out) / f"tracks_{g.rig_id}_q{tr.query_frame:05d}.png",
+                         np.concatenate([frames[0], img], 1))
+        # lifted points of this camera seen by the other rigs: projected depth vs that rig's MapAnything depth
         cross = {}
         for other in meta.stereo:
             if other.rig_id == g.rig_id:
@@ -333,8 +312,9 @@ def cmd_tracks(args) -> dict:
             if T_o is None:
                 continue
             rel = []
-            with h5py.File(rio.stage_dir(root, args.episode, "stereo_depth") / f"{other.rig_id}.h5", "r") as fo:
-                K_o = np.asarray(fo.attrs["K_left"])
+            with h5py.File(rio.stage_dir(root, args.episode, "mapanything_depth") / f"{rio.safe_name(other.left_stream)}.h5",
+                           "r") as fo:
+                K_o = np.asarray(fo.attrs["K"])
                 for name in chunks:
                     p3 = rio.stage_dir(root, args.episode, "lift3d") / name
                     if not p3.is_file():
@@ -346,15 +326,17 @@ def cmd_tracks(args) -> dict:
                         if not len(pts):
                             continue
                         uv, zc = G.project(G.transform_points(T_o, pts), K_o)
-                        d_o = fo["left"]["depth"][int(fidx[t])]
+                        d_o = fo["depth"][int(fidx[t])]
                         H, W = d_o.shape
-                        ok = np.isfinite(uv).all(1) & (zc > 0) & (uv[:, 0] >= 0) & (uv[:, 0] < W) & (uv[:, 1] >= 0) & (uv[:, 1] < H)
+                        ok = (np.isfinite(uv).all(1) & (zc > 0) & (uv[:, 0] >= 0) & (uv[:, 0] < W)
+                              & (uv[:, 1] >= 0) & (uv[:, 1] < H))
                         ii, jj = np.floor(uv[ok, 1]).astype(int), np.floor(uv[ok, 0]).astype(int)
                         target = d_o[ii, jj]
                         vis = (target > 0) & (zc[ok] <= target + 0.02)  # not occluded in the other view
                         rel.append(np.abs(zc[ok][vis] - target[vis]) / target[vis])
             r = np.concatenate(rel) if rel else np.zeros(0)
-            cross[other.rig_id] = {"relative_depth_error": stats(r), "below_2pct": float((r < 0.02).mean()) if len(r) else None,
+            cross[other.rig_id] = {"relative_depth_error": stats(r),
+                                   "below_2pct": float((r < 0.02).mean()) if len(r) else None,
                                    "selection": "in image, positive depth, projected z <= target + 2 cm (occlusion test "
                                                 "uses the target depth: not an independent calibration test)"}
         out["cameras"][cam] = {
@@ -440,7 +422,8 @@ def cmd_sam3(args) -> dict:
                         union = np.logical_or(mk[a], mk[a + 1]).sum()
                         if union:
                             ious.append(inter / union)
-            per_prompt[text] = {"frames_detected": int((count[:, p] > 0).sum()), "frames_absent": int((count[:, p] == 0).sum()),
+            per_prompt[text] = {"frames_detected": int((count[:, p] > 0).sum()),
+                                "frames_absent": int((count[:, p] == 0).sum()),
                                 "object_ids": ids, "consecutive_iou": stats(np.array(ious)),
                                 "scores": stats(scores[sel]), "mask_area_px": stats(masks[sel].sum((1, 2)))}
         box_iou = []  # reported box vs the tight box of the mask (pixel edges; checks the box convention/scaling)

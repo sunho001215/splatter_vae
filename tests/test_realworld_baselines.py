@@ -40,11 +40,12 @@ def test_instances_to_semantic_resolves_overlaps_and_reports_absence():
 
 def test_baseline_stages_plumbing_with_mock_worker(tmp_path):
     from s4d.realworld.adapters import get_adapter
-    from s4d.realworld.pipeline import ingest
+    from s4d.realworld.pipeline import ingest, stereo_rectify
 
     adapter = get_adapter("synthetic", {"asset_dir": str(tmp_path / "a"), "frames": 3})
     root = tmp_path / "out"
     ingest(adapter, "synthetic_ep000", root)
+    stereo_rectify(root, "synthetic_ep000")
     spec = WorkerSpec("mock", sys.executable, timeout_s=120)
     with pytest.raises(Exception, match="mock output refused"):
         sam3_masks(root, "synthetic_ep000", spec, cameras=["rig0/left"], prompts={"robot arm": "robot"})

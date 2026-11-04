@@ -1,3 +1,7 @@
+> **2026-11-05:** FoundationStereo was removed from the maintained pipeline and replaced by MapAnything
+> (`docs/realworld_preprocessing.md`). This report is the historical 2026-10-31 evidence for the implementation it
+> describes; its FoundationStereo measurements do not validate the maintained depth stage.
+
 # Real-data validation of the real-world pipeline on a raw DROID episode (2026-10-31)
 
 This validates items 5 (FoundationStereo + AllTracker, 3D lifting) and 6 (SNeRL DINO teacher, SAM 3 masks). It runs

@@ -131,6 +131,10 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
     config = {"cameras": cameras, "prompts": prompts, "mode": mode, "chunk": chunk,
               "score_threshold": score_threshold, "worker": spec.name}
     inputs = {"ingest": rio.build_id(rio.read_record(rio.episode_dir(root, episode_id) / "normalized"))}
+    if any(cam in (g.left_stream, g.right_stream) for cam in cameras for g in meta.stereo):
+        from s4d.realworld.pipeline import _record_fp
+
+        inputs["stereo_rectify"] = _record_fp(root, episode_id, "stereo_rectify")
     store = rio.ChunkStore(directory, rio.stage_fingerprint("sam3_masks", "1", config, inputs))
     if force:
         store.clear()
@@ -150,7 +154,7 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
                     rig = [g for g in meta.stereo if cam in (g.left_stream, g.right_stream)]
-                    if rig:  # same grid as depth/tracks/export (rectified when the depth stage rectified)
+                    if rig:  # same grid as depth/tracks/export (rectified by stereo_rectify)
                         eye = "left" if rig[0].left_stream == cam else "right"
                         frames = grid_frames(root, episode_id, meta, rig[0], idx, eye=eye)
                     else:
