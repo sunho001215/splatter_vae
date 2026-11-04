@@ -84,6 +84,14 @@ HYB_COMMIT = 'fd5e950eac86e3c33365d00388e0e51884ccfba7'
 HYB_PREFIXES = ('chlhm-',)
 RELEASES[(HYB_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{HYB_COMMIT[:7]}-cc/manifest.json'
 HYB_READY = (REPO / RELEASES[(HYB_COMMIT, POOL_IMAGE)]).is_file()
+# CSW4 tube-ratio campaign (user directive 2026-11-04: CSW4 + the existing motion-aware tube masking at mask_ratio
+# 0.50 vs 0.75, eight tasks; priority over other unstarted work, after the running hybrid campaign): cst50-* / cst75-*
+# rows (pretraining, export, DrM pairs) run on the accepted hybrid release, whose s4d is the local main's and whose tube
+# and random modes are bit for bit unchanged (tests/test_hybrid_masking.py); the arms differ only by --set overrides of
+# the CSW4 config stack (no new config file). Retries keep the release of their first launch.
+CST_COMMIT = HYB_COMMIT
+CST_PREFIXES = ('cst50-', 'cst75-')
+CST_READY = HYB_READY
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -475,6 +483,8 @@ def dispatch_key(job):
         rank += 100  # encoder pilots: after every other remote row
     if job['id'].startswith(HYB_PREFIXES) and job.get('priority', 5) <= 1:
         rank -= 10  # hybrid masking (user 2026-11-03, HIGH priority): before every other ready remote row; non-preemptive
+    elif job['id'].startswith(CST_PREFIXES) and job.get('priority', 5) <= 1:
+        rank -= 5  # CSW4 tube-ratio campaign (user 2026-11-04): after hybrid masking, before every other row
     return rank, not companion, seed, [j['id'] for j in remote].index(job['id'])
 
 
@@ -503,6 +513,8 @@ if not SRV4_READY:
     candidates = [j for j in candidates if not j['id'].startswith(SRV4_PREFIXES)]
 if not HYB_READY:
     candidates = [j for j in candidates if not j['id'].startswith(HYB_PREFIXES)]
+if not CST_READY:
+    candidates = [j for j in candidates if not j['id'].startswith(CST_PREFIXES)]
 if not SNERL_NT_READY:
     candidates = [j for j in candidates if j['id'] not in SNERL_NT_IDS]
 candidates.sort(key=dispatch_key)
@@ -558,7 +570,7 @@ for job in candidates:
         continue
     gpu = place(job)
     if gpu is None:
-        if hyb_reserved is None and job['id'].startswith(HYB_PREFIXES) and not job['id'].endswith('-eval'):
+        if hyb_reserved is None and job['id'].startswith(HYB_PREFIXES + CST_PREFIXES) and not job['id'].endswith('-eval'):
             hyb_reserved, hyb_reserved_for = reserve_for_hybrid(job), job['id']
             messages.append(f"HYB_RESERVED {hyb_reserved} for waiting {job['id']} (load {gpu_load[hyb_reserved]:.1f} + "
                             f"{load(job):.1f} > {GPU_LOAD_LIMIT}; no new lower-priority rows there this pass)")
@@ -603,10 +615,13 @@ if POOL_READY and not DRY and not held:
         units = [m for m in units if not m[0]['id'].startswith(SRV4_PREFIXES)]
     if not HYB_READY:
         units = [m for m in units if not m[0]['id'].startswith(HYB_PREFIXES)]
+    if not CST_READY:
+        units = [m for m in units if not m[0]['id'].startswith(CST_PREFIXES)]
     if not SNERL_NT_READY:
         units = [m for m in units if m[0]['id'] not in SNERL_NT_IDS]
     # encoder-pilot units after every other unit (stable sort keeps the established order otherwise)
     units.sort(key=lambda m: (not m[0]['id'].startswith(HYB_PREFIXES),  # hybrid masking first (HIGH priority)
+                              not m[0]['id'].startswith(CST_PREFIXES),  # then the CSW4 tube-ratio campaign
                               m[0]['id'].startswith(ENC_PREFIXES),
                               {'scripts/export_encoder.py': -1, 'scripts/train.py': 0}.get(m[0]['script'], 1)))
     plan = []
@@ -668,6 +683,8 @@ def job_release(job):
         return SRV4_COMMIT, POOL_IMAGE
     if job['id'].startswith(HYB_PREFIXES):
         return HYB_COMMIT, POOL_IMAGE
+    if job['id'].startswith(CST_PREFIXES):
+        return CST_COMMIT, POOL_IMAGE
     if job['id'].startswith(DS_PREFIXES):
         return DS_COMMIT, POOL_IMAGE
     return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)

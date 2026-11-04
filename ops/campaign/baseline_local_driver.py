@@ -91,7 +91,8 @@ REGISTRATIONS = ['baselines-sanity-registration-20261016.json', 'baselines-eight
                  'snerl-drawer-open-r2-registration-20261031.json',
                  # 75 % hybrid masking on chlrm, eight tasks (user directive 2026-11-03, HIGH priority: pretraining,
                  # DrM trainers and evaluators 1, exports 0; non-preemptive)
-                 'chlhm-registration-eight-task-20261103.json']
+                 'chlhm-registration-eight-task-20261103.json',
+                 'cst-registration-eight-task-20261104.json']
 ONLY = {'baselines-sanity-registration-20261016.json': {'bxs-dynamo-hammer-rand-s1000-eval'}}
 PLACEMENT = Path('/home/ws/ws/splatter4d/runs/setup/baselines-placement-20261018.json')
 POOL = Path('/home/ws/ws/splatter4d/runs/setup/pool-placement.json')
