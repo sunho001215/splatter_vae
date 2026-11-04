@@ -311,21 +311,28 @@ def _trimmed(d: np.ndarray, keep: float) -> float:
     return float(np.partition(d, k - 1)[:k].mean())
 
 
+def _depth_evidence_frames(frames):
+    usable = [f for f in frames if f.depth is not None]
+    masked = bool(usable) and all(f.robot_mask is not None for f in usable)
+    return usable, masked
+
+
+def _depth_evidence_masks(usable, masked, cfg):
+    if masked:
+        return np.stack([f.robot_mask & (f.depth > 0) for f in usable])
+    return moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+
+
 def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
     """Global registration of the moving URDF surface to the moving measured depth (see module doc)."""
     from scipy.spatial import cKDTree
 
-    usable = [f for f in frames if f.depth is not None]
+    usable, masked = _depth_evidence_frames(frames)
     diag = {"method": "rgbd_robot_registration"}
-    masked = bool(usable) and all(f.robot_mask is not None for f in usable)
     if len(usable) < (1 if masked else 3):  # motion evidence needs a temporal median; masks work per frame
         return None, {**diag, "error": f"too few frames with depth ({len(usable)})"}
-    if masked:  # robot segmentation available: observed robot points
-        masks = np.stack([f.robot_mask & (f.depth > 0) for f in usable])
-        diag["evidence"] = "robot_mask"
-    else:
-        masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
-        diag["evidence"] = "moving_depth"
+    masks = _depth_evidence_masks(usable, masked, cfg)
+    diag["evidence"] = "robot_mask" if masked else "moving_depth"
     pick = np.linspace(0, len(usable) - 1, min(cfg.init_frames, len(usable))).round().astype(int)
     surf = np.stack([usable[k].surface_base for k in range(len(usable))])  # same sample order every frame
     if diag["evidence"] == "robot_mask":  # the whole robot is observed: register the whole articulated surface
@@ -441,14 +448,10 @@ def explained_fraction(T, frames, K, cfg) -> float | None:
     temporal-median test) within ``explained_tol_m`` of the posed URDF surface."""
     from scipy.spatial import cKDTree
 
-    usable = [f for f in frames if f.depth is not None]
-    masked = bool(usable) and all(f.robot_mask is not None for f in usable)
+    usable, masked = _depth_evidence_frames(frames)
     if len(usable) < (1 if masked else 3):
         return None
-    if masked:  # same evidence as the initialisation
-        masks = np.stack([f.robot_mask & (f.depth > 0) for f in usable])
-    else:
-        masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+    masks = _depth_evidence_masks(usable, masked, cfg)
     from s4d.realworld.geometry import pixel_centers
 
     centers = pixel_centers(*usable[0].depth.shape)

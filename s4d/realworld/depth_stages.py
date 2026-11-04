@@ -283,12 +283,10 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
                                  else "view pinhole grid (as recorded)"),
                            depth_convention="metric camera-z, 0 invalid", T_cam_base=poses[s],
                            source="MapAnything predicted depth_z with calibrated poses as input")
-            for name, dtype in (("depth", np.float32), ("valid", bool), ("conf", np.float16), ("non_ambiguous", bool)):
-                f.create_dataset(name, (n, H, W), dtype, chunks=(1, H, W), compression="lzf")
+            _create_prediction_planes(f, n, (H, W))
             for name, shape, dtype in (("input_depth_valid", (n, H, W), bool),):
                 f.create_dataset(name, shape, dtype, chunks=(1, H, W), compression="lzf")
-            f.create_dataset("cam2world_pred", (n, 4, 4), np.float32)
-            f.create_dataset("metric_scale", (n,), np.float32)
+            _create_prediction_pose(f, n)
             f.create_dataset("set_index", data=np.arange(len(plan["sets"]["index"])))
             f.create_dataset("set_joint", data=plan["joint"])
             files[s] = f
@@ -326,12 +324,10 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
                         for j, m in enumerate(members):
                             i = int(sets["index"][k, j])
                             f = files[streams[m]]
-                            for name in ("depth", "valid", "conf", "non_ambiguous"):
-                                f[name][i] = out[name][jk, j]
+                            _write_prediction(f, i, out, jk, j, ("depth", "valid", "conf", "non_ambiguous"))
                             if "input_depth_valid" in out:
                                 f["input_depth_valid"][i] = out["input_depth_valid"][jk, j]
-                            f["cam2world_pred"][i] = out["cam2world_pred"][jk, j]
-                            f["metric_scale"][i] = out["metric_scale"][jk, j]
+                            _write_prediction(f, i, out, jk, j, ("cam2world_pred", "metric_scale"))
         finally:
             for f in files.values():
                 f.close()
@@ -429,11 +425,8 @@ def mapanything_rig_depth(root: Path, episode_id: str, backend: MapAnythingBacke
                     f.attrs.update(K=Ks[v], stream_id=stream, rig_id=g.rig_id, grid="stereo rectified pinhole grid",
                                    depth_convention="metric camera-z, 0 invalid", T_cam_rig=poses[v],
                                    source="MapAnything predicted depth_z with metric rig poses as input")
-                    for key, dtype in (("depth", np.float32), ("valid", bool), ("conf", np.float16),
-                                       ("non_ambiguous", bool)):
-                        f.create_dataset(key, (n, *hw), dtype, chunks=(1, *hw), compression="lzf")
-                    f.create_dataset("cam2world_pred", (n, 4, 4), np.float32)
-                    f.create_dataset("metric_scale", (n,), np.float32)
+                    _create_prediction_planes(f, n, hw)
+                    _create_prediction_pose(f, n)
                 for k, indices in enumerate(sets["index"]):
                     cid = f"rig/{g.rig_id}/{k:05d}"
                     got = store.get(cid)
@@ -452,8 +445,8 @@ def mapanything_rig_depth(root: Path, episode_id: str, backend: MapAnythingBacke
                     identity = rmeta["model"]
                     for v, f in enumerate(files):
                         i = int(indices[v])
-                        for key in ("depth", "valid", "conf", "non_ambiguous", "cam2world_pred", "metric_scale"):
-                            f[key][i] = out[key][0, v]
+                        _write_prediction(f, i, out, 0, v,
+                                          ("depth", "valid", "conf", "non_ambiguous", "cam2world_pred", "metric_scale"))
             backend.identity = identity
             for stream in streams:
                 summary[stream] = {"frames": n, "model": identity, "rig_id": g.rig_id,
@@ -465,3 +458,18 @@ def mapanything_rig_depth(root: Path, episode_id: str, backend: MapAnythingBacke
                         config=config, inputs=inputs, build=build, force=force)
     store.cleanup()
     return rec
+
+
+def _create_prediction_planes(f, n, hw):
+    for name, dtype in (("depth", np.float32), ("valid", bool), ("conf", np.float16), ("non_ambiguous", bool)):
+        f.create_dataset(name, (n, *hw), dtype, chunks=(1, *hw), compression="lzf")
+
+
+def _create_prediction_pose(f, n):
+    f.create_dataset("cam2world_pred", (n, 4, 4), np.float32)
+    f.create_dataset("metric_scale", (n,), np.float32)
+
+
+def _write_prediction(f, i, out, set_index, view_index, names):
+    for name in names:
+        f[name][i] = out[name][set_index, view_index]

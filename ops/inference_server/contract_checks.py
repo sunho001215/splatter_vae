@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO))
 import numpy as np  # noqa: E402
 import yaml  # noqa: E402
 
+from ops.inference_server.command_support import pool_config  # noqa: E402
 from ops.inference_server.run_episode import local_head, spec  # noqa: E402
 from ops.inference_server.session import RemoteRunner, Server  # noqa: E402
 from ops.inference_server.stream_client import RemoteWorkerPool  # noqa: E402
@@ -95,9 +96,7 @@ def main(argv=None) -> int:
     server.verify_container()
     server.verify_source(head)
     audit = server.audit_start()
-    pool_cfg = {k: server.config[k] for k in ("ssh", "container", "workdir", "source_root", "retries", "backoff_s",
-                                              "call_timeout_s", "hello_timeout_s", "workers", "env")}
-    pool_cfg["expected_source_commit"] = head
+    pool_cfg = pool_config(server.config, head)
     pool = RemoteWorkerPool(pool_cfg, log_dir=out_dir / "worker_logs")
     runner = RemoteRunner(pool, spec(cfg, "s4d_kernels", expected_commit=head))
     cache = root / "export" / ep

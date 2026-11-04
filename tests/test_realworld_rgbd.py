@@ -509,7 +509,7 @@ def test_sensor_depth_local_runner_resumes_only_remaining_chunks(panda_file, tmp
 
 @pytest.fixture(scope="module")
 def depth_only_robot():
-    from test_realworld_calibration import HW, T_TRUE, K, make_episode
+    from realworld_calibration_fixtures import HW, T_TRUE, K, make_episode
 
     frames = make_episode(T_TRUE, n=20, outlier_rate=0.0, depth_noise=0.002)
     for f in frames:

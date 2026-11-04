@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO))
 import numpy as np  # noqa: E402
 import yaml  # noqa: E402
 
+from ops.inference_server.command_support import pool_config  # noqa: E402
 from ops.inference_server.run_episode import local_head, spec  # noqa: E402
 from ops.inference_server.session import RemoteRunner, Server  # noqa: E402
 from ops.inference_server.stream_client import RemoteWorkerPool  # noqa: E402
@@ -84,9 +85,7 @@ def main(argv=None) -> int:
     for s in streams:
         p = rio.stage_dir(root, ep, "sam3_masks") / f"{rio.safe_name(s)}.h5"
         sam[s] = p if p.is_file() else None
-    pool_cfg = {k: server.config[k] for k in ("ssh", "container", "workdir", "source_root", "retries", "backoff_s",
-                                              "call_timeout_s", "hello_timeout_s", "workers", "env")}
-    pool_cfg["expected_source_commit"] = head
+    pool_cfg = pool_config(server.config, head)
     pool = RemoteWorkerPool(pool_cfg, log_dir=out_dir / "worker_logs")
     runner = RemoteRunner(pool, spec(cfg, "s4d_kernels", expected_commit=head))
     config = {"chunk": args.chunk, "kernel": "depth_set_diagnostics", "occlusion_m": 0.05, "grid_step": 8,

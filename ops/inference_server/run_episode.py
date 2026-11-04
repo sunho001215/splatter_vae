@@ -27,6 +27,7 @@ sys.path.insert(0, str(REPO))
 
 import yaml  # noqa: E402
 
+from ops.inference_server import command_support as _command_support  # noqa: E402
 from ops.inference_server.session import RemoteRunner, Server  # noqa: E402
 from ops.inference_server.stream_client import RemoteWorkerPool  # noqa: E402
 from s4d.realworld.cli import BASELINE_STAGES  # noqa: E402
@@ -36,11 +37,7 @@ STAGES = PIPELINE_STAGES + BASELINE_STAGES
 
 
 def spec(cfg: dict, name: str, **override):
-    from s4d.realworld.workers import WorkerSpec
-
-    w = {**cfg["workers"][name], **override}
-    return WorkerSpec(name, w["python"], repo_dir=w.get("repo_dir"), expected_commit=w.get("expected_commit"),
-                      checkpoint=w.get("checkpoint"), timeout_s=float(w.get("timeout_s", 3600)))
+    return _command_support.spec(cfg, name, **override)
 
 
 def remote_pipeline_config(pipeline: dict, server: dict) -> dict:
@@ -49,23 +46,11 @@ def remote_pipeline_config(pipeline: dict, server: dict) -> dict:
     Server worker fields override host-specific worker paths; model parameters merge so inference settings from
     the episode config survive. This also supplies the kernel interpreter to older stereo episode configs.
     """
-    from copy import deepcopy
-
-    cfg = deepcopy(pipeline)
-    workers = cfg.setdefault("workers", {})
-    for name, remote in server["workers"].items():
-        local = workers.get(name, {})
-        workers[name] = {**local, **remote, "params": {**local.get("params", {}), **remote.get("params", {})}}
-    return cfg
+    return _command_support.remote_pipeline_config(pipeline, server)
 
 
 def local_head() -> str:
-    dirty = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "--untracked-files=no"],
-                           capture_output=True, text=True, check=True).stdout.strip()
-    if dirty:
-        raise SystemExit(f"local checkout {REPO} has uncommitted changes; commit before a remote run")
-    return subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True,
-                          check=True).stdout.strip()
+    return _command_support.local_head(repo=REPO, subprocess_module=subprocess)
 
 
 def main(argv=None) -> int:
@@ -109,9 +94,7 @@ def main(argv=None) -> int:
     record["weights"] = server.stage_weights(fetch=not args.skip_weights)
     record["audit_start"] = server.audit_start()
     save()
-    pool_cfg = {k: server.config[k] for k in ("ssh", "container", "workdir", "source_root", "retries", "backoff_s",
-                                              "call_timeout_s", "hello_timeout_s", "workers", "env")}
-    pool_cfg["expected_source_commit"] = head
+    pool_cfg = _command_support.pool_config(server.config, head)
     pool = RemoteWorkerPool(pool_cfg, log_dir=run_dir / "worker_logs")
     kernels = spec(cfg, "s4d_kernels", expected_commit=head)
     runner = RemoteRunner(pool, kernels, describe={"server": server.config["ssh"][-1], "container": server.container,

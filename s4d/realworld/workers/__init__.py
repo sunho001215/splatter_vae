@@ -69,16 +69,22 @@ def call_worker(spec: WorkerSpec, task: str, params: dict, arrays: dict, workdir
     if not response_path.is_file():
         raise WorkerError(f"{spec.name}: no response (exit {proc.returncode}); see {workdir / 'worker.log'}")
     response = json.loads(response_path.read_text())
-    if response.get("protocol") != PROTOCOL:
-        raise WorkerError(f"{spec.name}: protocol {response.get('protocol')!r} != {PROTOCOL!r}")
-    if not response.get("ok"):
-        raise WorkerError(f"{spec.name}: {response.get('error')}")
-    model = response.get("model") or {}
-    if model.get("is_mock") and not allow_mock:
-        raise WorkerError(f"{spec.name}: mock output refused (allow_mock=False)")
-    if spec.expected_commit and model.get("commit") != spec.expected_commit:
-        raise WorkerError(f"{spec.name}: upstream commit {model.get('commit')} != pinned {spec.expected_commit}")
+    validate_response(spec, response, allow_mock, protocol=PROTOCOL, error_type=WorkerError)
     with np.load(workdir / response["outputs"]) as data:
         outputs = {k: data[k] for k in data.files}
     response["spec"] = asdict(spec)
     return response, outputs
+
+
+def validate_response(spec: WorkerSpec, response: dict, allow_mock: bool = False, *,
+                      protocol=PROTOCOL, error_type=WorkerError) -> None:
+    """Validate the protocol and model identity in the same order for file and stream calls."""
+    if response.get("protocol") != protocol:
+        raise error_type(f"{spec.name}: protocol {response.get('protocol')!r} != {protocol!r}")
+    if not response.get("ok"):
+        raise error_type(f"{spec.name}: {response.get('error')}")
+    model = response.get("model") or {}
+    if model.get("is_mock") and not allow_mock:
+        raise error_type(f"{spec.name}: mock output refused (allow_mock=False)")
+    if spec.expected_commit and model.get("commit") != spec.expected_commit:
+        raise error_type(f"{spec.name}: upstream commit {model.get('commit')} != pinned {spec.expected_commit}")

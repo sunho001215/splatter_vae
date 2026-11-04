@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
-from s4d.realworld.workers import PROTOCOL, WorkerError, WorkerSpec
+from s4d.realworld.workers import PROTOCOL, WorkerError, WorkerSpec, validate_response
 from s4d.realworld.workers._framing import MAX_PAYLOAD, pack_arrays, read_frame, unpack_arrays, write_frame
 from s4d.realworld.workers._protocol import json_safe
 
@@ -259,15 +259,7 @@ class RemoteWorkerPool:
                     log.write(message + "\n")
                 time.sleep(delay)
         try:
-            if response.get("protocol") != PROTOCOL:
-                raise WorkerError(f"{spec.name}: protocol {response.get('protocol')!r} != {PROTOCOL!r}")
-            if not response.get("ok"):
-                raise WorkerError(f"{spec.name}: {response.get('error')}")
-            model = response.get("model") or {}
-            if model.get("is_mock") and not allow_mock:
-                raise WorkerError(f"{spec.name}: mock output refused (allow_mock=False)")
-            if spec.expected_commit and model.get("commit") != spec.expected_commit:
-                raise WorkerError(f"{spec.name}: upstream commit {model.get('commit')} != pinned {spec.expected_commit}")
+            validate_response(spec, response, allow_mock, protocol=PROTOCOL, error_type=WorkerError)
         except WorkerError:
             self._discard(spec.name)
             raise

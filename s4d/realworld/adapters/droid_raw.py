@@ -40,6 +40,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from s4d.realworld.adapters._robot_manifest import _composed_robot
 from s4d.realworld.adapters.base import EpisodeAdapter, register_adapter
 from s4d.realworld.adapters.droid_svo import index_svo, zed_stereo_calibration
 from s4d.realworld.contract import (
@@ -232,15 +233,7 @@ class DroidRawSvoAdapter(EpisodeAdapter):
         ]
         rc = self.config.get("robot", {})
         if rc.get("urdf_path"):  # composed arm + gripper URDF (scripts/realworld_compose_robot_urdf.py)
-            manifest = json.loads(Path(rc["urdf_path"]).with_suffix(".manifest.json").read_text())
-            robot = RobotDescription(
-                arm_model="franka_panda", gripper_model=rc.get("gripper_model", "robotiq_2f_85"),
-                urdf_path=str(rc["urdf_path"]), mesh_root=None, base_frame=rc["base_frame"],
-                flange_frame=rc["flange_frame"], gripper_base_frame=manifest["mount"]["gripper_root"],
-                T_flange_gripper=tuple(map(tuple, manifest["mount"]["T_parent_gripper"])),
-                mount_source=manifest["mount"]["source"], joint_names=tuple(rc["joint_names"]),
-                gripper_state_semantics="normalized_closure", gripper_joint=rc["gripper_joint"],
-                asset_sha256={"urdf": manifest["urdf_sha256"]})
+            robot, manifest = _composed_robot(rc, gripper_state_semantics="normalized_closure")
             assumptions.append(f"robot assets: {manifest['provenance']}; mount: {manifest['mount']['source']}")
         else:
             robot = RobotDescription(arm_model="franka_panda", gripper_model="robotiq_2f_85", urdf_path=None,
