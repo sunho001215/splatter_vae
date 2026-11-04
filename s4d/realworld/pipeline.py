@@ -446,12 +446,14 @@ def applied_joint_correction(meta: EpisodeMeta) -> dict | None:
 
 def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: list[str], every: int = 1,
               cfg: CalibrationConfig | None = None, overlays: int = 3, force: bool = False, runner=None,
-              depth_stage: str | None = None) -> dict:
+              depth_stage: str | None = None, robot_mask_stage: str | None = None) -> dict:
     """landmark_source(camera_id, frame_index, landmark_links) -> (uv (M,2) continuous on the view grid with NaN for
     missing, conf (M,)) - visual evidence (detector, annotation or render-and-match worker). With
     ``cfg.evidence == "rgbd"`` there is no landmark source (``None``): the metric depth of ``depth_stage`` (default:
-    the registered sensor depth of RGB-D rigs) is the evidence. The solve runs as the ``calibrate_camera`` kernel
-    through ``runner`` (in-process by default)."""
+    the registered sensor depth of RGB-D rigs) is the evidence. ``robot_mask_stage`` (e.g. ``sam3_masks``) supplies
+    per-frame robot masks (semantic class ``robot``) that gate the depth term and, in RGB-D mode, select the observed
+    robot points of the initialisation. The solve runs as the ``calibrate_camera`` kernel through ``runner``
+    (in-process by default)."""
     meta = load_meta(root, episode_id)
     if applied_joint_correction(meta):
         raise ValueError(f"{episode_id}: joints carry corrections tied to an external calibration "
@@ -470,6 +472,9 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
               "landmark_source": getattr(landmark_source, "identity", repr(landmark_source))}
     if depth_stage != "stereo_depth":
         config["depth_stage"] = depth_stage  # (absent for stereo episodes: their fingerprints stay unchanged)
+    if robot_mask_stage:
+        config["robot_mask_stage"] = robot_mask_stage
+        inputs[robot_mask_stage] = _record_fp(root, episode_id, robot_mask_stage)
     directory = rio.stage_dir(root, episode_id, "calibrate")
     store = rio.ChunkStore(directory, rio.stage_fingerprint("calibrate", STAGE_VERSIONS["calibrate"], config, inputs))
     if force:
@@ -530,6 +535,11 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             if depth is not None:
                 arrays["depth"] = np.stack(rows["depth"]).astype(np.float32)
             arrays["K"] = K
+            if robot_mask_stage:
+                with h5py.File(rio.stage_dir(root, episode_id, robot_mask_stage) / f"{rio.safe_name(cam)}.h5", "r") as f:
+                    robot_class = json.loads(f.attrs.get("class_names", '["background", "robot", "object", "fixture"]'))
+                    arrays["robot_mask"] = np.stack([f["semantic"][i] == robot_class.index("robot")
+                                                     for i in rows["t_index"]])
             n = len(rows["t_index"])
             pick = np.linspace(0, n - 1, min(overlays, n)).astype(int) if n else np.zeros(0, int)
             if len(pick):
