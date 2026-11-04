@@ -68,3 +68,4 @@ typing_extensions==4.16.0
 tzdata==2026.6
 wcwidth==0.9.4
 yarl==1.25.1
+setuptools==84.2.1

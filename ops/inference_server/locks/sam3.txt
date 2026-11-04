@@ -52,3 +52,4 @@ triton==3.6.0
 truststore==0.10.5
 typing_extensions==4.16.0
 wcwidth==0.9.4
+setuptools==80.10.2
