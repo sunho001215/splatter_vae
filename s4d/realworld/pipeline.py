@@ -1,9 +1,9 @@
-"""Restartable per-episode stages: ingest -> stereo_depth -> calibrate -> track2d -> lift3d -> export
+"""Restartable per-episode stages with MapAnything depth on a shared pinhole grid.
 (+ optional dino_snerl, sam3_masks in s4d.realworld.baseline_stages).
 
 Every stage runs through ``s4d.realworld.io.run_stage`` (fingerprinted completion record, atomic swap-in) and
 processes frames in bounded chunks. Model calls go through backends; the real ones wrap isolated workers
-(``WorkerStereoBackend`` / ``WorkerTrackerBackend``), test ones are flagged ``is_mock`` and the exporter refuses
+(``MapAnythingBackend`` / ``WorkerTrackerBackend``), test ones are flagged ``is_mock`` and the exporter refuses
 mock-derived data unless explicitly allowed (and then stamps the manifest).
 """
 
@@ -20,12 +20,12 @@ from s4d.realworld import io as rio
 from s4d.realworld.calibration import CalibrationConfig
 from s4d.realworld.contract import EpisodeMeta, meta_from_json, meta_to_json, validate_episode
 from s4d.realworld.geometry import (
-    rectify_map,
-    remap,
     resize_affine,
-    stereo_rectify,
     undistort_pixels,
     warp_affine,
+)
+from s4d.realworld.geometry import (
+    stereo_rectify as bouguet_rectify,
 )
 from s4d.realworld.robot import (
     ROBOTIQ_FINGER_JOINT_MAX,
@@ -36,10 +36,9 @@ from s4d.realworld.robot import (
     landmarks,
 )
 from s4d.realworld.runners import LocalRunner
-from s4d.realworld.stereo import depth_from_pair
 from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, query_grid
 
-STAGE_VERSIONS = {"ingest": "1", "stereo_depth": "1", "calibrate": "1", "track2d": "1", "lift3d": "1", "export": "1"}
+STAGE_VERSIONS = {"ingest": "1", "stereo_rectify": "1", "calibrate": "1", "track2d": "1", "lift3d": "1", "export": "1"}
 # RGB-D episodes: calibrate runs on the registered sensor depth, lifting/export use MapAnything depth
 RGBD_CALIBRATION_DEPTH, RGBD_LIFT_DEPTH = "sensor_depth", "mapanything_depth"
 
@@ -67,14 +66,6 @@ def to_model_rgb(frames: np.ndarray, stream) -> np.ndarray:
     return frames
 
 
-class StereoBackend:
-    identity: dict = {}
-
-    def disparity(self, left: np.ndarray, right: np.ndarray) -> np.ndarray:
-        """(N,H,W[,C]) rectified pairs -> (N,H,W) left-reference disparity."""
-        raise NotImplementedError
-
-
 class TrackerBackend:
     identity: dict = {}
 
@@ -86,21 +77,6 @@ class TrackerBackend:
 def _model_input_rgb(x: np.ndarray) -> np.ndarray:
     """Infrared (N,H,W) -> (N,H,W,3) by channel replication, as MODEL INPUT ONLY (recorded in stage records)."""
     return np.repeat(x[..., None], 3, -1) if x.ndim == 3 else x
-
-
-class WorkerStereoBackend(StereoBackend):
-    def __init__(self, spec, workdir: Path, params: dict | None = None, allow_mock: bool = False):
-        self.spec, self.workdir, self.params, self.allow_mock = spec, Path(workdir), dict(params or {}), allow_mock
-        self.identity = {"worker": spec.name}
-
-    def disparity(self, left, right):
-        from s4d.realworld.workers import call_worker
-
-        resp, out = call_worker(self.spec, "stereo_disparity", self.params,
-                                {"left": _model_input_rgb(left), "right": _model_input_rgb(right)}, self.workdir,
-                                allow_mock=self.allow_mock)
-        self.identity = {**resp["model"], "meta": resp["meta"]}
-        return out["disparity"]
 
 
 class WorkerTrackerBackend(TrackerBackend):
@@ -202,7 +178,7 @@ def ingest(adapter, episode_id: str, root: Path, *, chunk: int = 64, force: bool
                          inputs={}, build=build, force=force)
 
 
-# ---------------------------------------------------------------- stage 2: stereo depth
+# ---------------------------------------------------------------- shared stereo grid
 
 
 def rig_rectification(meta: EpisodeMeta, rig: str):
@@ -216,19 +192,28 @@ def rig_rectification(meta: EpisodeMeta, rig: str):
         return None, KL, KR, hw
     if L.rectified is None or R.rectified is None:
         raise ValueError(f"{rig}: rectification state unknown; the adapter must decide")
-    rect = stereo_rectify(KL, KR, g.T(), hw)
+    rect = bouguet_rectify(KL, KR, g.T(), hw)
     return rect, rect.K_rect, rect.K_rect, hw
 
 
-def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: int = 16,
-                 references: tuple = ("left",), pair_sync_ns: int = 1_000_000, force: bool = False) -> dict:
+def stereo_rectify(root: Path, episode_id: str, *, chunk: int = 16, pair_sync_ns: int = 1_000_000,
+                   force: bool = False, runner=None) -> dict:
+    """Record each stereo grid, rectifying both eyes only when necessary. Images retain recorded channel order."""
     meta = load_meta(root, episode_id)
+    runner = runner or LocalRunner(rio.episode_dir(root, episode_id) / "_work" / "stereo_rectify")
+    directory = rio.stage_dir(root, episode_id, "stereo_rectify")
+    config = {"chunk": chunk, "pair_sync_ns": pair_sync_ns}
+    inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("stereo_rectify", STAGE_VERSIONS["stereo_rectify"],
+                                                            config, inputs))
+    if force:
+        store.clear()
 
     def build(tmp: Path) -> dict:
         summary = {}
         for g in meta.stereo:
             if g.status != "metric":
-                summary[g.rig_id] = {"skipped": f"stereo geometry {g.status}: no metric depth (scale never invented)"}
+                summary[g.rig_id] = {"skipped": f"stereo geometry {g.status}: no metric grid (scale never invented)"}
                 continue
             rect, KL, KR, hw = rig_rectification(meta, g.rig_id)
             L, R = meta.stream(g.left_stream), meta.stream(g.right_stream)
@@ -238,84 +223,58 @@ def stereo_depth(root: Path, episode_id: str, backend: StereoBackend, *, chunk: 
             pair_err = np.abs(meta.stream_timestamps_ns[g.left_stream] - meta.stream_timestamps_ns[g.right_stream])
             if pair_err.max() > pair_sync_ns:
                 raise ValueError(f"{g.rig_id}: left/right frames up to {pair_err.max()} ns apart (> {pair_sync_ns})")
-            maps = None
+            T_rr_rl = g.T().copy()
             if rect is not None:
-                maps = (rectify_map(L.intrinsics.K(), L.intrinsics.distortion_model, L.intrinsics.distortion, rect.R1,
-                                    rect.K_rect, hw),
-                        rectify_map(R.intrinsics.K(), R.intrinsics.distortion_model, R.intrinsics.distortion, rect.R2,
-                                    rect.K_rect, hw))
-            with h5py.File(tmp / f"{g.rig_id}.h5", "w") as f:
+                T_rr_rl[:3, :3] = rect.R2 @ g.T()[:3, :3] @ rect.R1.T
+                T_rr_rl[:3, 3] = rect.R2 @ g.T()[:3, 3]
+            with h5py.File(tmp / f"{rio.safe_name(g.rig_id)}.h5", "w") as f:
                 f.attrs.update(rig_id=g.rig_id, left_stream=g.left_stream, right_stream=g.right_stream,
-                               baseline_m=g.baseline_m, K_left=KL, K_right=KR, modality=L.modality,
-                               rectification=json.dumps(rect.to_json() if rect else "input already rectified"),
-                               depth_convention="metric camera-z, 0 invalid", disparity="x_left - x_right")
-                for ref in references:
-                    grp = f.create_group(ref)
-                    grp.create_dataset("depth", (n, *hw), np.float32, chunks=(1, *hw), compression="lzf")
-                    grp.create_dataset("valid", (n, *hw), bool, chunks=(1, *hw), compression="lzf")
-                    grp.create_dataset("disparity", (n, *hw), np.float32, chunks=(1, *hw), compression="lzf")
-                    if rect is not None:
-                        grp.create_dataset("rectified_image", (n, *hw) + ((3,) if L.channels == 3 else ()),
-                                           L.dtype, compression="lzf")
-                for start in range(0, n, chunk):
-                    idx = list(range(start, min(n, start + chunk)))
-                    left = to_model_rgb(read_frames(root, episode_id, g.left_stream, idx), L)
-                    right = to_model_rgb(read_frames(root, episode_id, g.right_stream, idx), R)
-                    if maps is not None:
-                        left = np.stack([remap(x, maps[0], order=1) for x in left])
-                        right = np.stack([remap(x, maps[1], order=1) for x in right])
-                    batch_left = backend.disparity(left, right)
-                    # right reference: flip-and-swap inputs for the whole chunk in ONE backend call (a worker call
-                    # loads the model once); depth_from_pair flips the returned disparity back.
-                    batch_flipped = (backend.disparity(np.ascontiguousarray(right[:, :, ::-1]),
-                                                       np.ascontiguousarray(left[:, :, ::-1]))
-                                     if "right" in references else None)
-                    for k, i in enumerate(idx):
-                        for ref in references:
-                            if ref == "left":
-                                matcher = (lambda _a, _b, d=batch_left[k]: d)
-                            else:
-                                matcher = (lambda _a, _b, d=batch_flipped[k]: d)
-                            res = depth_from_pair(left[k], right[k], KL, KR, g.baseline_m, matcher, ref)
-                            f[ref]["depth"][i], f[ref]["valid"][i], f[ref]["disparity"][i] = (res.depth, res.valid,
-                                                                                               res.disparity)
-                            if maps is not None:
-                                f[ref]["rectified_image"][i] = (left if ref == "left" else right)[k]
-            summary[g.rig_id] = {"frames": n, "references": list(references), "rectified_here": rect is not None,
-                                 "model": backend.identity,
-                                 "model_input": "infrared replicated to 3 channels (model input only)"
-                                 if L.modality == "infrared" else "rgb"}
+                               baseline_m=g.baseline_m, K_left=KL, K_right=KR, T_rr_rl=T_rr_rl,
+                               rectification=json.dumps(rect.to_json() if rect else "input already rectified"))
+                if rect is not None:
+                    for eye, stream in (("left", L), ("right", R)):
+                        shape = (n, *hw) + ((stream.channels,) if stream.channels > 1 else ())
+                        f.create_dataset(f"{eye}/rectified_image", shape, stream.dtype, compression="lzf")
+                    for start in range(0, n, chunk):
+                        idx = list(range(start, min(n, start + chunk)))
+                        cid = f"{g.rig_id}/{start:05d}-{idx[-1]:05d}"
+                        got = store.get(cid)
+                        if got is None:
+                            params = {"rectification": rect.to_json(), "eyes": [
+                                {"distortion_model": v.intrinsics.distortion_model,
+                                 "distortion": list(v.intrinsics.distortion)} for v in (L, R)]}
+                            out, kmeta, handle = runner.kernel(
+                                "rectify_stereo", params,
+                                {"left": read_frames(root, episode_id, g.left_stream, idx),
+                                 "right": read_frames(root, episode_id, g.right_stream, idx),
+                                 "K_left": L.intrinsics.K(), "K_right": R.intrinsics.K()}, chunk_id=cid)
+                            store.put(cid, out, kmeta)
+                            runner.ack(handle)
+                            got = (out, kmeta)
+                        for eye in ("left", "right"):
+                            f[f"{eye}/rectified_image"][start:idx[-1] + 1] = got[0][eye]
+            summary[g.rig_id] = {"frames": n, "rectified_here": rect is not None}
         return summary
 
-    return rio.run_stage(rio.stage_dir(root, episode_id, "stereo_depth"), stage="stereo_depth",
-                         version=STAGE_VERSIONS["stereo_depth"],
-                         config={"references": list(references), "chunk": chunk, "pair_sync_ns": pair_sync_ns,
-                                 "backend": backend_config(backend)},
-                         inputs={"ingest": _record_fp(root, episode_id, "ingest")}, build=build, force=force)
+    rec = rio.run_stage(directory, stage="stereo_rectify", version=STAGE_VERSIONS["stereo_rectify"],
+                        config=config, inputs=inputs, build=build, force=force)
+    store.cleanup()
+    return rec
 
 
 def grid_frames(root, episode_id, meta: EpisodeMeta, g, indices, eye: str = "left") -> np.ndarray:
-    """Frames on the grid every later stage uses: rectified images when the depth stage rectified this rig. A rig
+    """Frames on the grid every later stage uses: rectified images when stereo_rectify rectified this rig. A rig
     that needs rectification but has no rectified images yet is an error (never mix raw tracks with rectified
     depth)."""
     stream = g.left_stream if eye == "left" else g.right_stream
-    path = rio.stage_dir(root, episode_id, "stereo_depth") / f"{g.rig_id}.h5"
+    path = rio.stage_dir(root, episode_id, "stereo_rectify") / f"{rio.safe_name(g.rig_id)}.h5"
     if path.is_file():
         with h5py.File(path, "r") as f:
             if eye in f and "rectified_image" in f[eye]:
                 return np.stack([f[eye]["rectified_image"][i] for i in indices])
-    s = meta.stream(stream)
-    if g.status == "metric" and not s.rectified:
-        raise RuntimeError(f"{stream}: needs rectification; run stereo_depth first")
+    if g.status == "metric" and not (meta.stream(g.left_stream).rectified and meta.stream(g.right_stream).rectified):
+        raise RuntimeError(f"{stream}: needs rectification; run stereo_rectify first")
     return read_frames(root, episode_id, stream, indices)
-
-
-def load_depth(root, episode_id, rig, indices, reference="left"):
-    with h5py.File(rio.stage_dir(root, episode_id, "stereo_depth") / f"{rig}.h5", "r") as f:
-        depth = np.stack([f[reference]["depth"][i] for i in indices])
-        K = f.attrs["K_left" if reference == "left" else "K_right"]
-        rectified = "rectified_image" in f[reference]
-    return depth, np.asarray(K), rectified
 
 
 def view_frames(root, episode_id, meta: EpisodeMeta, stream_id: str, indices) -> np.ndarray:
@@ -328,21 +287,18 @@ def view_frames(root, episode_id, meta: EpisodeMeta, stream_id: str, indices) ->
 
 
 def default_depth_stage(meta: EpisodeMeta, purpose: str) -> str:
-    """Depth source per purpose ("calibrate" or "lift"): stereo episodes use ``stereo_depth``; RGB-D episodes calibrate
-    on the registered sensor depth and lift with MapAnything depth."""
+    """RGB-D calibrates on sensor depth; stereo calibrates on rig depth. Both lift with MapAnything."""
+    if purpose not in ("calibrate", "lift"):
+        raise ValueError(f"unknown depth purpose {purpose!r}")
     if meta.rgbd and not meta.stereo:
         return RGBD_CALIBRATION_DEPTH if purpose == "calibrate" else RGBD_LIFT_DEPTH
     if meta.rgbd:
         raise NotImplementedError("episodes mixing stereo and RGB-D rigs need an explicit depth stage")
-    return "stereo_depth"
+    return "mapanything_rig_depth" if purpose == "calibrate" else "mapanything_depth"
 
 
 def view_depth(root, episode_id, meta: EpisodeMeta, stream_id: str, indices, stage: str):
     """(depth (n,H,W), K continuous) of a view from ``stage`` on that view's grid."""
-    if stage == "stereo_depth":
-        view = next(v for v in meta.views() if v.stream_id == stream_id)
-        depth, K, _ = load_depth(root, episode_id, view.rig_id, indices)
-        return depth, K
     from s4d.realworld.depth_stages import load_view_depth
 
     depth, valid, K = load_view_depth(root, episode_id, stream_id, indices, stage)
@@ -409,13 +365,11 @@ class RobotGeometry:
 
 
 def calibration_image(root, episode_id, rig, cam, index):
-    """The image on the grid calibration works in: the rectified left image when the depth stage rectified."""
-    path = rio.stage_dir(root, episode_id, "stereo_depth") / f"{rig}.h5"
-    if path.is_file():
-        with h5py.File(path, "r") as f:
-            if "rectified_image" in f["left"]:
-                return f["left"]["rectified_image"][index]
-    return read_frames(root, episode_id, cam, [index])[0]
+    """Calibration uses the shared rectified grid, with the same refusal as tracking and masks."""
+    meta = load_meta(root, episode_id)
+    g = meta.rig_stereo(rig)
+    eye = "left" if cam == g.left_stream else "right"
+    return to_model_rgb(grid_frames(root, episode_id, meta, g, [index], eye), meta.stream(cam))[0]
 
 
 def fk_vs_recorded_ee(meta: EpisodeMeta, geom) -> dict | None:
@@ -470,8 +424,9 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
         inputs[depth_stage] = rio.build_id(depth_rec)
     config = {"landmark_links": landmark_links, "every": every, "cfg": asdict(cfg or CalibrationConfig()),
               "landmark_source": getattr(landmark_source, "identity", repr(landmark_source))}
-    if depth_stage != "stereo_depth":
-        config["depth_stage"] = depth_stage  # (absent for stereo episodes: their fingerprints stay unchanged)
+    config["depth_stage"] = depth_stage
+    if meta.stereo:
+        inputs["stereo_rectify"] = _record_fp(root, episode_id, "stereo_rectify")
     if robot_mask_stage:
         config["robot_mask_stage"] = robot_mask_stage
         inputs[robot_mask_stage] = _record_fp(root, episode_id, robot_mask_stage)
@@ -490,17 +445,18 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             idx = list(range(0, len(stamps), every))
             q, grip, ok, sync = robot_state_at(meta, stamps[idx])
             intr = meta.stream(cam).intrinsics
-            if view.kind == "stereo":
-                g = meta.rig_stereo(view.rig_id)
-                has_depth = g.status == "metric" and depth_rec is not None and g.rig_id in depth_rec["summary"] and \
-                    "skipped" not in depth_rec["summary"][g.rig_id]
-            else:
-                has_depth = depth_rec is not None and cam in depth_rec["summary"] and \
-                    "skipped" not in depth_rec["summary"][cam]
+            has_depth = depth_rec is not None and cam in depth_rec["summary"] and \
+                "skipped" not in depth_rec["summary"][cam]
+            if view.kind == "stereo" and meta.rig_stereo(view.rig_id).status != "metric":
+                has_depth = False
             if has_depth:
                 depth, K = view_depth(root, episode_id, meta, cam, idx, depth_stage)
             else:
-                depth, K = None, intr.K()
+                from s4d.realworld.depth_stages import view_K
+
+                depth, K = None, (view_K(meta, cam, root=root, episode_id=episode_id)
+                                  if view.kind == "stereo" and meta.rig_stereo(view.rig_id).status == "metric"
+                                  else intr.K())
             local_cfg = CalibrationConfig(**{**asdict(cfg or CalibrationConfig()),
                                              "image_hw": (intr.height, intr.width)})
             rows = {k: [] for k in ("t_index", "timestamp_ns", "landmarks_base", "landmarks_uv", "landmarks_conf",
@@ -514,8 +470,9 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                 else:
                     uv, conf = np.full((len(landmark_links), 2), np.nan), np.zeros(len(landmark_links))
                 uv = np.asarray(uv, float)
-                if not has_depth and intr.distortion_model != "none":
-                    # raw (unrectified) grid: map observations to the ideal pinhole image of the same K
+                raw_grid = view.kind != "stereo" or meta.rig_stereo(view.rig_id).status != "metric"
+                if not has_depth and raw_grid and intr.distortion_model != "none":
+                    # Only a raw grid needs undistortion; metric stereo landmarks already use stereo_rectify.
                     uv = undistort_pixels(uv, intr.K(), intr.distortion_model, intr.distortion)
                 surf, _ = geom.surface.points(qd)
                 fk = geom.model.fk(qd)
@@ -560,8 +517,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             doc["diagnostics"]["robot_sync_max_ns"] = int(sync.max()) if len(sync) else None
             doc["diagnostics"]["frames_dropped_for_sync"] = int((~ok).sum())
             doc["diagnostics"]["depth_available"] = bool(has_depth)
-            if depth_stage != "stereo_depth":
-                doc["diagnostics"]["depth_stage"] = depth_stage
+            doc["diagnostics"]["depth_stage"] = depth_stage
             rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", doc)
             for img, k in zip(out["overlays"], arrays.get("overlay_frames", [])):
                 (tmp / "overlays").mkdir(exist_ok=True)
@@ -656,6 +612,8 @@ def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int
     inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
     if depth_rec is not None:
         inputs[depth_stage] = rio.build_id(depth_rec)  # tracks live on the grid the depth stage produced
+    if meta.stereo:
+        inputs["stereo_rectify"] = _record_fp(root, episode_id, "stereo_rectify")
     config = {"window": window, "step": step, "grid_stride": grid_stride,
               "tracker_hw": list(tracker_hw) if tracker_hw else None, "backend": backend_config(backend)}
     directory = rio.stage_dir(root, episode_id, "track2d")
@@ -723,15 +681,14 @@ def load_tracks2d(path: Path, camera_id: str) -> Tracks2D:
 
 def lift3d(root: Path, episode_id: str, *, vis_threshold: float = 0.5, conf_threshold: float = 0.5,
            force: bool = False, depth_stage: str | None = None, runner=None) -> dict:
-    """Same-frame lifting of every 2D track chunk with the depth of ``depth_stage`` (default: stereo depth for stereo
-    episodes, MapAnything depth for RGB-D episodes) and the accepted calibration (``lift_tracks`` kernel)."""
+    """Same-frame lifting of every 2D track chunk with the depth of ``depth_stage`` (default: MapAnything depth for stereo
+    and RGB-D episodes) and the accepted calibration (``lift_tracks`` kernel)."""
     meta = load_meta(root, episode_id)
     depth_stage = depth_stage or default_depth_stage(meta, "lift")
     t2d = rio.read_record(rio.stage_dir(root, episode_id, "track2d"))
     runner = runner or LocalRunner(rio.episode_dir(root, episode_id) / "_work" / "lift3d")
     config = {"vis_threshold": vis_threshold, "conf_threshold": conf_threshold}
-    if depth_stage != "stereo_depth":
-        config["depth_stage"] = depth_stage
+    config["depth_stage"] = depth_stage
     inputs = {k: _record_fp(root, episode_id, k) for k in (depth_stage, "calibrate", "track2d")}
 
     def build(tmp: Path) -> dict:

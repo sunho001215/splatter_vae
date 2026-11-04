@@ -314,3 +314,17 @@ def snerl_check(params: dict, arrays: dict) -> tuple[dict, dict]:
             "near_far_units": [float(cfg["nerf"]["near"]), float(cfg["nerf"]["far"])],
             "dino_spec": getattr(worker, "SNERL_DINO", None)}
     return {"images128": np.stack(imgs_out)}, _finite(meta)
+
+
+@kernel("rectify_stereo")
+def rectify_stereo_kernel(params: dict, arrays: dict) -> tuple[dict, dict]:
+    """Bouguet maps and bilinear resampling for both eyes, preserving recorded channel order."""
+    from s4d.realworld.geometry import rectify_map, remap
+
+    rect = params["rectification"]
+    out = {}
+    for eye, rotation, spec in zip(("left", "right"), (rect["R1"], rect["R2"]), params["eyes"]):
+        coords = rectify_map(arrays[f"K_{eye}"], spec["distortion_model"], spec["distortion"],
+                             np.asarray(rotation), np.asarray(rect["K_rect"]), tuple(rect["size_hw"]))
+        out[eye] = np.stack([remap(im, coords, order=1) for im in arrays[eye]])
+    return out, {"interpolation_order": 1}

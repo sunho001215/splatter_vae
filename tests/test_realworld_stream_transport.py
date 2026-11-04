@@ -489,9 +489,9 @@ def test_remote_argv_is_built_from_config_without_spawning(monkeypatch, tmp_path
             assert argv[:-1] == config["ssh"]
             assert kwargs["cwd"] is None
         assert shlex.split(captured[0][0][-1]) == ["docker", "exec", "-i", "-w", workdir, "test-container",
-                                                  "/opt/test-env/bin/python", "-I",
+                                                  "/opt/test-env/bin/python", "-I", "-B",
                                                   "/opt/test-source/s4d/realworld/workers/mock_worker.py", "--stream"]
         assert shlex.split(captured[1][0][-1]) == ["docker", "exec", "-i", "-w", workdir, "test-container",
-                                                  "/opt/other/bin/python", "-I", "/opt/custom.py", "--stream"]
+                                                  "/opt/other/bin/python", "-I", "-B", "/opt/custom.py", "--stream"]
     finally:
         instance.close()

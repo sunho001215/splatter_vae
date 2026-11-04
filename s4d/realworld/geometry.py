@@ -134,7 +134,7 @@ def crop_affine(top: int, left: int) -> PixelAffine:
 
 def hflip_affine(width: int) -> PixelAffine:
     """Horizontal flip about the image centre: x' = W - x. NOT a valid pinhole change of K alone (it mirrors the
-    camera); used only to flip-and-swap stereo pairs and flip results back (see s4d.realworld.stereo)."""
+    camera); callers must account for that reflection when interpreting camera geometry."""
     return PixelAffine(-1.0, 1.0, float(width), 0.0)
 
 
@@ -208,7 +208,7 @@ class Rectification:
 
     R1/R2 rotate left/right raw camera frames into the rectified frames (x_rect = R @ x_raw). In the rectified
     frames the right camera sits at (-baseline, 0, 0) relative to the left, so for a point at depth z:
-    x_left - x_right = fx * baseline / z + (cx_left - cx_right) (here cx_left == cx_right, doffs = 0).
+    x_left - x_right = fx * baseline / z + (cx_left - cx_right) (here cx_left == cx_right).
     """
 
     R1: np.ndarray

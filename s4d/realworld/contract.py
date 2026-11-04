@@ -115,7 +115,7 @@ class CameraStream:
     channel_order: str  # RGB / BGR / GRAY / DEPTH
     dtype: str  # uint8 / uint16
     intrinsics: Intrinsics
-    rectified: bool | None  # None = unknown; stereo depth refuses unknown unless a rectification stage runs
+    rectified: bool | None  # None = unknown; stereo_rectify requires the adapter to decide
     device_serial: str | None = None
     sensor_name: str | None = None
     timestamp_source: str = "unspecified"  # e.g. device_hardware, host_arrival, global_time

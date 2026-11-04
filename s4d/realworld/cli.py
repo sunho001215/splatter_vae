@@ -1,9 +1,10 @@
 """Command line for the real-world preprocessing pipeline.
 
     python -m s4d.realworld.cli validate --config configs/realworld/pipeline_example.yaml
-    python -m s4d.realworld.cli run --config CONFIG --episode ID --stages ingest,stereo_depth,calibrate,track2d,lift3d,export
+    python -m s4d.realworld.cli run --config CONFIG --episode ID --stages ingest,stereo_rectify,mapanything_rig_depth
+    python -m s4d.realworld.cli run --config CONFIG --episode ID --stages calibrate,mapanything_depth,track2d,lift3d,export
     python -m s4d.realworld.cli status --root OUTPUT_ROOT --episode ID
-    optional baseline stages (not needed by our method): --stages sam3_masks,dino_snerl (after stereo_depth / export)
+    optional baseline stages (not needed by our method): --stages sam3_masks,dino_snerl (after stereo_rectify / export)
 
 Stages are idempotent: re-running skips complete stages whose fingerprint matches (``--force`` rebuilds).
 """
@@ -19,7 +20,8 @@ import yaml
 
 from s4d.realworld import io as rio
 
-STAGES = ("ingest", "stereo_depth", "calibrate", "track2d", "lift3d", "export")
+STAGES = ("ingest", "sensor_depth", "stereo_rectify", "mapanything_rig_depth", "calibrate",
+          "mapanything_depth", "track2d", "lift3d", "export")
 BASELINE_STAGES = ("sam3_masks", "dino_snerl")
 
 
@@ -78,7 +80,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     if args.cmd == "status":
-        for stage in ("normalized",) + STAGES[1:5]:
+        for stage in ("normalized",) + STAGES[1:-1] + BASELINE_STAGES:
             d = (rio.episode_dir(args.root, args.episode) / "normalized" if stage == "normalized"
                  else rio.stage_dir(args.root, args.episode, stage))
             rec = rio.read_record(d)
@@ -98,60 +100,88 @@ def main(argv=None) -> int:
             print(json.dumps({"episode": ep, "errors": rep.errors, "warnings": rep.warnings}, indent=1))
         return 0 if ok else 1
 
-    from s4d.realworld import pipeline as P
-    from s4d.realworld.export import export
+    from s4d.realworld.runners import LocalRunner
 
     root = Path(cfg["output_root"])
-    st = cfg.get("stages", {})
+    runner = LocalRunner(root / "_worker_tmp" / args.episode)
     wanted = args.stages.split(",")
-    work = root / "_worker_tmp" / args.episode
-    if "ingest" in wanted:
-        print(json.dumps(P.ingest(adapter, args.episode, root, force=args.force)["summary"], indent=1, default=str))
-    if "stereo_depth" in wanted:
-        sc = st.get("stereo_depth", {})
-        backend = P.WorkerStereoBackend(_spec(cfg, "foundation_stereo"), work / "stereo",
-                                        cfg["workers"]["foundation_stereo"].get("params"))
-        P.stereo_depth(root, args.episode, backend, chunk=sc.get("chunk", 16),
-                       references=tuple(sc.get("references", ["left"])), force=args.force)
-    if "calibrate" in wanted:
-        cc = st["calibrate"]
-        if cc.get("source") == "adapter_provided":  # documented external calibration (e.g. DROID-3D extrinsics)
-            print(json.dumps(P.calibrate_provided(root, args.episode, adapter.provided_extrinsics(args.episode),
-                                                  force=args.force)["summary"], indent=1))
-        else:
-            P.calibrate(root, args.episode, AnnotationLandmarkSource(cc["landmark_source"]),
-                        landmark_links=cc["landmark_links"], every=cc.get("every", 1), force=args.force)
+    unknown = set(wanted) - set(STAGES + BASELINE_STAGES)
+    if unknown:
+        ap.error(f"unknown stages: {sorted(unknown)}")
+
+    def run(name, fn):
+        if name in wanted:
+            print(json.dumps({name: fn(args.force)["summary"]}, indent=1, default=str))
+
+    run_stages(cfg, adapter, args.episode, runner, run, wanted)
+    return 0
+
+
+def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
+    """Identical local/remote stage dispatch. ``run`` persists the caller's stage report and applies force policy."""
+    from s4d.realworld import pipeline as P
+    from s4d.realworld.baseline_stages import dino_snerl, sam3_masks
+    from s4d.realworld.calibration import CalibrationConfig
+    from s4d.realworld.depth_stages import MapAnythingBackend, mapanything_depth, mapanything_rig_depth, sensor_depth
+    from s4d.realworld.export import export
+
+    root, st = Path(cfg["output_root"]), cfg.get("stages", {})
+    spec_factory = spec_factory or (lambda name: _spec(cfg, name))
+    run("ingest", lambda f: P.ingest(adapter, ep, root, force=f))
+    run("sensor_depth", lambda f: sensor_depth(root, ep, runner, force=f, **st.get("sensor_depth", {})))
+    has_stereo = (bool(P.load_meta(root, ep).stereo)
+                  if any(s in wanted for s in ("stereo_rectify", "mapanything_rig_depth")) else False)
+    if has_stereo:
+        run("stereo_rectify", lambda f: P.stereo_rectify(root, ep, runner=runner, force=f,
+                                                        **st.get("stereo_rectify", {})))
+    if any(stage in wanted for stage in ("mapanything_rig_depth", "mapanything_depth")):
+        ma = MapAnythingBackend(spec_factory("mapanything"), runner, cfg["workers"]["mapanything"].get("params", {}))
+        if has_stereo:
+            run("mapanything_rig_depth", lambda f: mapanything_rig_depth(root, ep, ma, force=f,
+                                                                        **st.get("mapanything_rig_depth", {})))
+    cc = dict(st.get("calibrate", {}))
+
+    def calibration(force):
+        if cc.get("source") == "adapter_provided":
+            return P.calibrate_provided(root, ep, adapter.provided_extrinsics(ep), force=force)
+        options = {k: v for k, v in cc.items() if k not in ("source", "evidence", "landmark_source", "cfg")}
+        options.setdefault("landmark_links", [])
+        source = AnnotationLandmarkSource(cc["landmark_source"]) if cc.get("landmark_source") else None
+        return P.calibrate(root, ep, source, cfg=CalibrationConfig(**{**cc.get("cfg", {}),
+                                                                     "evidence": cc.get("evidence", "landmarks")}),
+                           force=force, runner=runner, **options)
+
+    run("calibrate", calibration)
+    if "mapanything_depth" in wanted:
+        run("mapanything_depth", lambda f: mapanything_depth(root, ep, ma, force=f, **st.get("mapanything_depth", {})))
     if "track2d" in wanted:
         tc = st.get("track2d", {})
-        backend = P.WorkerTrackerBackend(_spec(cfg, "alltracker"), work / "track",
-                                         cfg["workers"]["alltracker"].get("params"))
-        P.track2d(root, args.episode, backend, window=tc.get("window", 16), step=tc.get("step", 8),
-                  grid_stride=tc.get("grid_stride", 8),
-                  tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None, force=args.force)
-    if "lift3d" in wanted:
-        P.lift3d(root, args.episode, **st.get("lift3d", {}), force=args.force)
-    if "export" in wanted:
-        ec = st.get("export", {})
-        export(root, args.episode, root / "export" / args.episode, strides=tuple(ec.get("strides", (1, 2))),
-               allow_infrared_input=ec.get("allow_infrared_input", False),
-               validation_tail_frames=ec.get("validation_tail_frames", 0), max_sync_ns=ec.get("max_sync_ns"),
-               force=args.force)
+        tracker = P.WorkerTrackerBackend(spec_factory("alltracker"), root / "_unused",
+                                         cfg["workers"]["alltracker"].get("params"), runner=runner)
+        run("track2d", lambda f: P.track2d(root, ep, tracker, window=tc.get("window", 16), step=tc.get("step", 8),
+                                           grid_stride=tc.get("grid_stride", 8),
+                                           tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None,
+                                           force=f))
+    run("lift3d", lambda f: P.lift3d(root, ep, **st.get("lift3d", {}), force=f, runner=runner))
+    ec = st.get("export", {})
+    run("export", lambda f: export(root, ep, root / "export" / ep, strides=tuple(ec.get("strides", (1, 2))),
+                                   allow_infrared_input=ec.get("allow_infrared_input", False),
+                                   validation_tail_frames=ec.get("validation_tail_frames", 0),
+                                   max_sync_ns=ec.get("max_sync_ns"), max_gap_factor=ec.get("max_gap_factor"),
+                                   aspect=ec.get("aspect", "stretch"), force=f))
     if "sam3_masks" in wanted:
-        from s4d.realworld.baseline_stages import sam3_masks
-
-        sc = st["sam3_masks"]
-        rec = sam3_masks(root, args.episode, _spec(cfg, "sam3"), cameras=sc["cameras"], prompts=sc["prompts"],
-                         mode=sc.get("mode", "segment_images"), chunk=sc.get("chunk", 16),
-                         score_threshold=sc.get("score_threshold", 0.5), force=args.force)
-        print(json.dumps(rec["summary"], indent=1, default=str))
+        s3 = st.get("sam3_masks", {})
+        meta = P.load_meta(root, ep)
+        run("sam3_masks", lambda f: sam3_masks(root, ep, spec_factory("sam3"),
+                                               cameras=s3.get("cameras") or [v.stream_id for v in meta.views()],
+                                               prompts=s3["prompts"], mode=s3.get("mode", "segment_images"),
+                                               chunk=s3.get("chunk", 16), score_threshold=s3.get("score_threshold", 0.5),
+                                               force=f, runner=runner))
     if "dino_snerl" in wanted:
-        from s4d.realworld.baseline_stages import dino_snerl
-
         dc = st.get("dino_snerl", {})
-        rec = dino_snerl(root / "export" / args.episode, rio.stage_dir(root, args.episode, "dino_snerl"),
-                         _spec(cfg, "dino_snerl"), backbone=dc.get("backbone", "scratch"), force=args.force)
-        print(json.dumps(rec["summary"], indent=1, default=str))
-    return 0
+        run("dino_snerl", lambda f: dino_snerl(root / "export" / ep, rio.stage_dir(root, ep, "dino_snerl"),
+                                               spec_factory("dino_snerl"), backbone=dc.get("backbone", "scratch"),
+                                               force=f, runner=runner))
 
 
 if __name__ == "__main__":

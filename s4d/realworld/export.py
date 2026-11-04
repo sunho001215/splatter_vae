@@ -71,7 +71,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
     never match the same frame of another camera). ``validation_tail_frames`` puts windows lying entirely in the
     last frames of the reference timeline into the validation split; windows straddling the boundary are dropped,
     so no frame is shared between splits (same episode: not generalisation evidence). ``depth_stage`` defaults to
-    stereo depth for stereo episodes and MapAnything depth for RGB-D episodes. ``max_gap_factor`` drops windows whose
+    MapAnything depth for stereo and RGB-D episodes. ``max_gap_factor`` drops windows whose
     canonical frames are further apart than ``max_gap_factor * stride * median reference period`` (recording pauses
     between segments would otherwise enter as one uniform time step). ``aspect="center_crop"`` first crops the largest
     centred region with the target aspect ratio (square pixels, e.g. 4:3 RealSense -> 16:9 targets); the default
@@ -259,14 +259,12 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             "conventions": CONVENTIONS,
             "intrinsics_convention": "continuous pixel coordinates; K tracked through resize as a pixel affine",
             "aspect": aspect,
-            "depth_resize": "nearest neighbour, zero invalid, metric camera-z of the rectified left image"
-            if depth_stage == "stereo_depth" else
-            f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})",
-            "motion_target": ("per-camera AllTracker tracks lifted with same-frame stereo depth and the accepted "
-                              "calibration; weight 1 where the source-time status is valid and both positions finite")
-            if depth_stage == "stereo_depth" else
-            (f"per-camera AllTracker tracks lifted with same-frame {depth_stage} depth and the accepted calibration; "
-             "weight 1 where the source-time status is valid and both positions finite"),
+            "depth_resize": ("nearest neighbour, zero invalid, metric camera-z of the rectified left image "
+                             f"({depth_stage})" if meta.stereo else
+                             f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})"),
+            "motion_target": (f"per-camera AllTracker tracks lifted with same-frame {depth_stage} depth and the "
+                              "accepted calibration; weight 1 where the source-time status is valid "
+                              "and both positions finite"),
             "depth_stage": depth_stage,
             "windows_dropped_for_time_gaps": gap_dropped,
             "gripper_target": f"{len(pick)} surface points of the URDF gripper links ({grip_links}) via FK at the "
@@ -292,7 +290,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                                  "allow_infrared_input": allow_infrared_input, "allow_mock": allow_mock,
                                  "max_sync_ns": max_sync_ns, "gripper_points": gripper_points,
                                  "validation_tail_frames": validation_tail_frames,
-                                 **({} if depth_stage == "stereo_depth" else {"depth_stage": depth_stage}),
+                                 "depth_stage": depth_stage,
                                  **({} if max_gap_factor is None else {"max_gap_factor": max_gap_factor}),
                                  **({} if aspect == "stretch" else {"aspect": aspect})},
                          inputs={k: rio.build_id(v) for k, v in records.items()}, build=build, force=force)

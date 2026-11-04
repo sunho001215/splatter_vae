@@ -16,9 +16,20 @@ call_timeout_s: 3600
 hello_timeout_s: 600
 env: {TMPDIR: /ram/tmp, HF_HUB_OFFLINE: "1", S4D_CACHE_ROOT: /ram/s4d-cache, USER: shkim, LOGNAME: shkim}  # uid 1001 has no passwd entry in the image
 workers:
-  mapanything: {python: /opt/envs/mapanything/bin/python}
-  alltracker: {python: /opt/envs/alltracker/bin/python}
-  sam3: {python: /opt/envs/sam3/bin/python, env: {CC: /opt/envs/sam3/bin/cc-zig}}  # Triton JIT (sam3 NMS) needs a C compiler
+  mapanything:
+    python: /opt/envs/mapanything/bin/python
+    repo_dir: /opt/upstream/map-anything
+    checkpoint: /ram/weights/map-anything-a1d87e90/model.safetensors
+    params: {hf_dir: /ram/weights/map-anything-a1d87e90}
+  alltracker:
+    python: /opt/envs/alltracker/bin/python
+    repo_dir: /opt/upstream/alltracker
+    checkpoint: /ram/weights/alltracker/alltracker.pth
+  sam3:
+    python: /opt/envs/sam3/bin/python
+    repo_dir: /opt/upstream/sam3
+    checkpoint: /ram/weights/sam3/sam3.pt
+    env: {CC: /opt/envs/sam3/bin/cc-zig}  # Triton JIT (sam3 NMS) needs a C compiler
   dino_snerl: {python: /opt/envs/s4d/bin/python}
   s4d_kernels: {python: /opt/envs/s4d/bin/python}
 weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart
