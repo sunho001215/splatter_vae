@@ -14,7 +14,7 @@ retries: 3
 backoff_s: [5, 30, 120]
 call_timeout_s: 3600
 hello_timeout_s: 600
-env: {TMPDIR: /ram/tmp, HF_HUB_OFFLINE: "1", S4D_CACHE_ROOT: /ram/s4d-cache}
+env: {TMPDIR: /ram/tmp, HF_HUB_OFFLINE: "1", S4D_CACHE_ROOT: /ram/s4d-cache, USER: shkim, LOGNAME: shkim}  # uid 1001 has no passwd entry in the image
 workers:
   mapanything: {python: /opt/envs/mapanything/bin/python}
   alltracker: {python: /opt/envs/alltracker/bin/python}
