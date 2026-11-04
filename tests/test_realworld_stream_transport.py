@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import io
+import shlex
 import struct
 import subprocess
 import sys
@@ -457,7 +458,8 @@ def test_deadline_covers_blocked_request_write(tmp_path, arrays):
         session.close()
 
 
-def test_remote_argv_is_built_from_config_without_spawning(monkeypatch, tmp_path):
+@pytest.mark.parametrize("workdir", ["/ram/test", "/ram/test with spaces"])
+def test_remote_argv_is_built_from_config_without_spawning(monkeypatch, tmp_path, workdir):
     captured = []
 
     class FakeSession:
@@ -473,7 +475,7 @@ def test_remote_argv_is_built_from_config_without_spawning(monkeypatch, tmp_path
 
     monkeypatch.setattr(stream_client, "StreamSession", FakeSession)
     config = {"ssh": ["ssh", "-o", "BatchMode=yes", "test-host"], "container": "test-container",
-              "workdir": "/ram/test", "source_root": "/opt/test-source", "expected_source_commit": "a" * 40,
+              "workdir": workdir, "source_root": "/opt/test-source", "expected_source_commit": "a" * 40,
               "workers": {"mock": {"python": "/opt/test-env/bin/python"},
                           "custom": {"python": "/opt/other/bin/python", "script": "/opt/custom.py"}}}
     instance = RemoteWorkerPool(config, log_dir=tmp_path / "logs")
@@ -482,10 +484,14 @@ def test_remote_argv_is_built_from_config_without_spawning(monkeypatch, tmp_path
         instance.session_info("mock")
         instance.session_info("custom")
         assert len(captured) == 2
-        assert captured[0][0] == ["ssh", "-o", "BatchMode=yes", "test-host", "docker", "exec", "-i", "-w",
-                                   "/ram/test", "test-container", "/opt/test-env/bin/python", "-I",
-                                   "/opt/test-source/s4d/realworld/workers/mock_worker.py", "--stream"]
-        assert captured[0][1]["cwd"] is None
-        assert captured[1][0][-4:] == ["/opt/other/bin/python", "-I", "/opt/custom.py", "--stream"]
+        for argv, kwargs in captured:
+            assert len(argv) == len(config["ssh"]) + 1  # one shell command follows the SSH host
+            assert argv[:-1] == config["ssh"]
+            assert kwargs["cwd"] is None
+        assert shlex.split(captured[0][0][-1]) == ["docker", "exec", "-i", "-w", workdir, "test-container",
+                                                  "/opt/test-env/bin/python", "-I",
+                                                  "/opt/test-source/s4d/realworld/workers/mock_worker.py", "--stream"]
+        assert shlex.split(captured[1][0][-1]) == ["docker", "exec", "-i", "-w", workdir, "test-container",
+                                                  "/opt/other/bin/python", "-I", "/opt/custom.py", "--stream"]
     finally:
         instance.close()

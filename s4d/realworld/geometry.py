@@ -149,10 +149,12 @@ def warp_affine(image: np.ndarray, affine: PixelAffine, out_hw: tuple[int, int],
     src = inv.apply_uv(centers) - 0.5  # continuous -> array index coordinates
     coords = [src[..., 1], src[..., 0]]
     image = np.asarray(image)
+    # Nearest samples occupy whole pixel cells, including the outer half-pixels of an upscaled image.
+    mode = "grid-constant" if order == 0 else "constant"
     if image.ndim == 2:
-        return _cast(map_coordinates(image.astype(float), coords, order=order, mode="constant", cval=0), image.dtype)
+        return _cast(map_coordinates(image.astype(float), coords, order=order, mode=mode, cval=0), image.dtype)
     return _cast(np.stack(
-        [map_coordinates(image[..., c].astype(float), coords, order=order, mode="constant", cval=0)
+        [map_coordinates(image[..., c].astype(float), coords, order=order, mode=mode, cval=0)
          for c in range(image.shape[-1])], axis=-1), image.dtype)
 
 

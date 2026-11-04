@@ -152,8 +152,12 @@ class ChunkStore:
         atomic_write_npz(self.dir / name, **arrays)
         rec = {"chunk_id": chunk_id, "file": name, "sha256": sha256_file(self.dir / name),
                "bytes": (self.dir / name).stat().st_size, "saved_unix": time.time(), "meta": meta or {}}
-        with open(self.dir / self.MANIFEST, "a") as f:
-            f.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
+        with open(self.dir / self.MANIFEST, "ab+") as f:
+            if f.tell():
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":  # isolate a torn last line before appending a new durable record
+                    f.write(b"\n")
+            f.write((json.dumps(rec, sort_keys=True, default=str) + "\n").encode())
             f.flush()
             os.fsync(f.fileno())
         self.index()[chunk_id] = rec
