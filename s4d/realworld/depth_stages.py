@@ -1,0 +1,299 @@
+"""Depth stages on each camera view's pinhole grid (the colour grid of an RGB-D rig, the left eye of a stereo rig).
+
+``sensor_depth``      RGB-D rigs: the device's own depth registered onto the colour grid (z-buffer forward warp with
+                      the recorded depth->colour extrinsic). Raw, noisy, metric; holes stay invalid. Used by the
+                      robot-grounded calibration and as MapAnything's metric depth input.
+``mapanything_depth`` MapAnything (facebookresearch/map-anything) on synchronized multi-view frame sets: per set,
+                      every view's image, intrinsics, calibrated pose (``calibrate`` stage, never MapAnything's own
+                      pose estimate) and, when available, the sensor depth as metric input. Its predicted camera-z
+                      depth (plus validity and confidence) is the depth every later stage lifts with.
+
+Output layout (both stages): ``<stage>/<view stream>.h5`` with ``depth`` (N,H,W) float32 metric camera-z (0 invalid),
+``valid`` (N,H,W) bool and attrs ``K`` (continuous convention of that grid), ``stream_id``, ``rig_id``, ``grid``;
+MapAnything adds ``conf``, ``non_ambiguous``, ``set_index``, ``joint`` and per-frame pose diagnostics.
+
+Synchronized sets: the reference view's frames define set times; every view contributes its nearest frame within
+``max_sync_ns``, and every frame of every view must belong to exactly one set (otherwise the stage refuses - views
+of different robot-motion instants are never merged silently). A set whose robot moved more than
+``max_set_motion_m`` (largest displacement of the URDF surface between the set's earliest and latest timestamp) is
+processed view by view instead of as one static scene, and recorded as such.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import h5py
+import numpy as np
+
+from s4d.realworld import io as rio
+
+STAGE_VERSIONS = {"sensor_depth": "1", "mapanything_depth": "1"}
+DEPTH_STAGES = ("mapanything_depth", "sensor_depth")
+
+
+def depth_file(root: Path, episode_id: str, stage: str, stream_id: str) -> Path:
+    return rio.stage_dir(root, episode_id, stage) / f"{rio.safe_name(stream_id)}.h5"
+
+
+def load_view_depth(root, episode_id, stream_id, indices, stage: str = "mapanything_depth"):
+    """(depth (n,H,W) float32, valid (n,H,W) bool, K continuous) of one view from a depth stage."""
+    with h5py.File(depth_file(root, episode_id, stage, stream_id), "r") as f:
+        idx = np.asarray(indices)
+        depth = np.stack([f["depth"][i] for i in idx]) if len(idx) else f["depth"][:0]
+        valid = np.stack([f["valid"][i] for i in idx]) if len(idx) else f["valid"][:0]
+        return depth, valid, np.asarray(f.attrs["K"], float)
+
+
+def view_K(meta, stream_id: str) -> np.ndarray:
+    intr = meta.stream(stream_id).intrinsics
+    if intr.distortion_model != "none" and any(abs(c) > 0 for c in intr.distortion):
+        raise NotImplementedError(f"{stream_id}: distorted stream ({intr.distortion_model}); undistort in the adapter")
+    return intr.K()
+
+
+def _record_build_id(root, episode_id, stage):
+    from s4d.realworld.pipeline import _record_fp
+
+    return _record_fp(root, episode_id, stage)
+
+
+# ---------------------------------------------------------------- sensor depth (RGB-D rigs)
+
+
+def sensor_depth(root: Path, episode_id: str, runner, *, chunk: int = 32, min_depth_m: float = 0.1,
+                 max_depth_m: float = 6.0, splat: int = 2, force: bool = False) -> dict:
+    from s4d.realworld.pipeline import load_meta, read_frames
+
+    meta = load_meta(root, episode_id)
+    directory = rio.stage_dir(root, episode_id, "sensor_depth")
+    config = {"chunk": chunk, "min_depth_m": min_depth_m, "max_depth_m": max_depth_m, "splat": splat,
+              "kernel": "register_depth"}
+    inputs = {"ingest": _record_build_id(root, episode_id, "ingest")}
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("sensor_depth", STAGE_VERSIONS["sensor_depth"], config,
+                                                            inputs))
+    if force:
+        store.clear()
+
+    def build(tmp: Path) -> dict:
+        summary = {}
+        for g in meta.rgbd:
+            if g.status != "metric":
+                summary[g.color_stream] = {"skipped": f"RGB-D geometry {g.status}"}
+                continue
+            cs, ds = meta.stream(g.color_stream), meta.stream(g.depth_stream)
+            K_c, K_d = view_K(meta, g.color_stream), view_K(meta, g.depth_stream)
+            hw = (cs.intrinsics.height, cs.intrinsics.width)
+            n = len(meta.stream_timestamps_ns[g.color_stream])
+            stats = []
+            with h5py.File(tmp / f"{rio.safe_name(g.color_stream)}.h5", "w") as f:
+                f.attrs.update(K=K_c, stream_id=g.color_stream, rig_id=g.rig_id, depth_stream=g.depth_stream,
+                               grid="colour sensor pinhole grid (zero distortion)", T_color_depth=g.T(),
+                               depth_convention="metric camera-z of the colour camera, 0 invalid",
+                               source="sensor depth registered by z-buffer forward warp (holes not filled)")
+                dd = f.create_dataset("depth", (n, *hw), np.float32, chunks=(1, *hw), compression="lzf")
+                vv = f.create_dataset("valid", (n, *hw), bool, chunks=(1, *hw), compression="lzf")
+                for start in range(0, n, chunk):
+                    idx = list(range(start, min(n, start + chunk)))
+                    cid = f"{g.color_stream}/{start:05d}-{idx[-1]:05d}"
+                    got = store.get(cid)
+                    if got is None:
+                        out, kmeta, handle = runner.kernel(
+                            "register_depth",
+                            {"color_hw": list(hw), "min_depth_m": min_depth_m, "max_depth_m": max_depth_m,
+                             "depth_scale_m": ds.depth_scale_m, "splat": splat},
+                            {"depth_raw": read_frames(root, episode_id, g.depth_stream, idx), "K_depth": K_d,
+                             "K_color": K_c, "T_color_depth": g.T()}, chunk_id=cid)
+                        store.put(cid, out, kmeta)
+                        runner.ack(handle)
+                        got = (out, kmeta)
+                    out, kmeta = got
+                    dd[idx[0]:idx[-1] + 1] = out["depth"]
+                    vv[idx[0]:idx[-1] + 1] = out["valid"]
+                    stats += kmeta["frames"]
+            summary[g.color_stream] = {
+                "frames": n, "sensor_valid_fraction_mean": float(np.mean([s["sensor_valid_fraction"] for s in stats])),
+                "registered_valid_fraction_mean": float(np.mean([s["registered_valid_fraction"] for s in stats])),
+                "rejected_above_max_total": int(sum(s["rejected_above_max"] for s in stats)),
+                "rejected_below_min_total": int(sum(s["rejected_below_min"] for s in stats))}
+        summary["runner"] = runner.describe()
+        return summary
+
+    rec = rio.run_stage(directory, stage="sensor_depth", version=STAGE_VERSIONS["sensor_depth"], config=config,
+                        inputs=inputs, build=build, force=force)
+    store.cleanup()
+    return rec
+
+
+# ---------------------------------------------------------------- synchronized frame sets
+
+
+def frame_sets(meta, streams: list[str], max_sync_ns: int | None = None) -> dict:
+    """Group the views' frames into synchronized sets (reference = first stream). Raises unless every frame of every
+    view belongs to exactly one set within ``max_sync_ns`` (default: a third of the reference frame period)."""
+    from s4d.data.droid.pointworld import nearest_timestamps
+
+    ref = np.asarray(meta.stream_timestamps_ns[streams[0]])
+    if max_sync_ns is None:
+        max_sync_ns = int(np.median(np.diff(ref)) // 3) if len(ref) > 1 else 0
+    index, offset = {}, {}
+    for s in streams:
+        stamps = np.asarray(meta.stream_timestamps_ns[s])
+        idx = nearest_timestamps(stamps, ref)
+        err = np.abs(stamps[idx] - ref)
+        if (err > max_sync_ns).any() or len(np.unique(idx)) != len(idx) or len(idx) != len(stamps):
+            raise ValueError(f"{s}: frames do not pair 1:1 with {streams[0]} within {max_sync_ns} ns "
+                             f"(max offset {int(err.max())} ns, {len(np.unique(idx))} unique of {len(stamps)} frames); "
+                             "multi-view sets would merge different instants")
+        index[s], offset[s] = idx, stamps[idx] - ref
+    stamps = np.stack([np.asarray(meta.stream_timestamps_ns[s])[index[s]] for s in streams], 1)
+    return {"streams": streams, "index": np.stack([index[s] for s in streams], 1), "stamps_ns": stamps,
+            "spread_ns": stamps.max(1) - stamps.min(1), "max_sync_ns": max_sync_ns}
+
+
+def set_robot_motion(meta, stamps_ns: np.ndarray, geom) -> np.ndarray:
+    """Largest URDF-surface displacement (m) of the robot between each set's earliest and latest timestamp."""
+    from s4d.realworld.pipeline import robot_state_at
+
+    lo, hi = stamps_ns.min(1), stamps_ns.max(1)
+    q0, g0, _, _ = robot_state_at(meta, lo.astype(np.float64))
+    q1, g1, _, _ = robot_state_at(meta, hi.astype(np.float64))
+    motion = np.zeros(len(lo))
+    for k in range(len(lo)):
+        if hi[k] == lo[k]:
+            continue
+        a, _ = geom.surface.points(geom.q(q0[k], g0[k]))
+        b, _ = geom.surface.points(geom.q(q1[k], g1[k]))
+        motion[k] = float(np.linalg.norm(a - b, axis=1).max())
+    return motion
+
+
+# ---------------------------------------------------------------- MapAnything
+
+
+class MapAnythingBackend:
+    """MapAnything through an isolated worker (``mapanything_worker.py``) reached by a runner."""
+
+    def __init__(self, spec, runner, params: dict, allow_mock: bool = False):
+        self.spec, self.runner, self.params, self.allow_mock = spec, runner, dict(params), allow_mock
+        self.identity = {"worker": spec.name}
+
+    def config(self) -> dict:
+        from dataclasses import asdict
+
+        spec = asdict(self.spec)
+        spec.pop("timeout_s", None)
+        spec.pop("env", None)
+        return {"class": type(self).__name__, "spec": spec, "params": self.params, "allow_mock": self.allow_mock}
+
+
+def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, *, chunk: int = 4,
+                      input_depth_stage: str | None = "sensor_depth", max_sync_ns: int | None = None,
+                      max_set_motion_m: float = 0.005, force: bool = False) -> dict:
+    from s4d.realworld.pipeline import RobotGeometry, accepted_calibration, load_meta, read_frames
+
+    meta = load_meta(root, episode_id)
+    views = [v for v in meta.views() if v.kind == "rgbd" or meta.stream(v.stream_id).modality == "rgb"]
+    streams = [v.stream_id for v in views]
+    poses = {s: accepted_calibration(root, episode_id, s) for s in streams}
+    missing = [s for s, T in poses.items() if T is None]
+    if missing:
+        raise RuntimeError(f"mapanything_depth needs an accepted calibration for every view; missing/rejected: {missing}")
+    sets = frame_sets(meta, streams, max_sync_ns)
+    geom = RobotGeometry(meta)
+    motion = set_robot_motion(meta, sets["stamps_ns"], geom)
+    joint = motion <= max_set_motion_m
+    Ks = np.stack([view_K(meta, s) for s in streams])
+    c2w = np.stack([np.linalg.inv(poses[s]) for s in streams])
+    hw = {(meta.stream(s).intrinsics.height, meta.stream(s).intrinsics.width) for s in streams}
+    if len(hw) != 1:
+        raise NotImplementedError(f"views have different grids {hw}")
+    (H, W), = hw
+    directory = rio.stage_dir(root, episode_id, "mapanything_depth")
+    inputs = {"ingest": _record_build_id(root, episode_id, "ingest"),
+              "calibrate": _record_build_id(root, episode_id, "calibrate")}
+    if input_depth_stage:
+        inputs[input_depth_stage] = _record_build_id(root, episode_id, input_depth_stage)
+    config = {"chunk": chunk, "input_depth_stage": input_depth_stage, "max_sync_ns": sets["max_sync_ns"],
+              "max_set_motion_m": max_set_motion_m, "streams": streams, "backend": backend.config()}
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("mapanything_depth", STAGE_VERSIONS["mapanything_depth"],
+                                                            config, inputs))
+    if force:
+        store.clear()
+
+    def build(tmp: Path) -> dict:
+        n = len(sets["index"])
+        files = {}
+        for v, s in enumerate(streams):
+            f = h5py.File(tmp / f"{rio.safe_name(s)}.h5", "w")
+            f.attrs.update(K=Ks[v], stream_id=s, rig_id=views[v].rig_id, grid="view pinhole grid (as recorded)",
+                           depth_convention="metric camera-z, 0 invalid", T_cam_base=poses[s],
+                           source="MapAnything predicted depth_z with calibrated poses as input")
+            for name, dtype in (("depth", np.float32), ("valid", bool), ("conf", np.float16), ("non_ambiguous", bool)):
+                f.create_dataset(name, (n, H, W), dtype, chunks=(1, H, W), compression="lzf")
+            for name, shape, dtype in (("input_depth_valid", (n, H, W), bool),):
+                f.create_dataset(name, shape, dtype, chunks=(1, H, W), compression="lzf")
+            f.create_dataset("cam2world_pred", (n, 4, 4), np.float32)
+            f.create_dataset("metric_scale", (n,), np.float32)
+            f.create_dataset("set_index", data=np.arange(n))
+            f.create_dataset("set_joint", data=joint)
+            files[s] = f
+        identity, metas = None, []
+        try:
+            for start in range(0, n, chunk):
+                ks = list(range(start, min(n, start + chunk)))
+                cid = f"sets/{start:05d}-{ks[-1]:05d}"
+                got = store.get(cid)
+                if got is None:
+                    images = np.stack([np.stack([read_frames(root, episode_id, s, [int(sets["index"][k, v])])[0]
+                                                 for v, s in enumerate(streams)]) for k in ks])
+                    arrays = {"images": images, "K": Ks, "cam2world": c2w, "joint": joint[ks]}
+                    if input_depth_stage:
+                        from s4d.realworld.depth_stages import load_view_depth as _lvd
+
+                        arrays["depth"] = np.stack([np.stack([_lvd(root, episode_id, s, [int(sets["index"][k, v])],
+                                                                   input_depth_stage)[0][0]
+                                                              for v, s in enumerate(streams)]) for k in ks])
+                    resp, out, handle = backend.runner.worker(backend.spec, "infer_views", backend.params, arrays,
+                                                              chunk_id=cid, allow_mock=backend.allow_mock)
+                    rmeta = {"model": resp["model"], "meta": resp["meta"], "transport": resp.get("transport")}
+                    if input_depth_stage:
+                        out = {**out, "input_depth_valid": arrays["depth"] > 0}
+                    store.put(cid, out, rmeta)
+                    backend.runner.ack(handle)
+                    got = (out, rmeta)
+                out, rmeta = got
+                identity = rmeta["model"]
+                metas.append(rmeta["meta"])
+                for j, k in enumerate(ks):
+                    for v, s in enumerate(streams):
+                        i = int(sets["index"][k, v])
+                        f = files[s]
+                        for name in ("depth", "valid", "conf", "non_ambiguous"):
+                            f[name][i] = out[name][j, v]
+                        if "input_depth_valid" in out:
+                            f["input_depth_valid"][i] = out["input_depth_valid"][j, v]
+                        f["cam2world_pred"][i] = out["cam2world_pred"][j, v]
+                        f["metric_scale"][i] = out["metric_scale"][j, v]
+        finally:
+            for f in files.values():
+                f.close()
+        backend.identity = identity or backend.identity
+        peak = max((m.get("max_memory_allocated", 0) for m in metas), default=0)
+        return {"views": streams, "sets": int(n), "joint_sets": int(joint.sum()),
+                "single_view_sets": int((~joint).sum()), "max_set_spread_ns": int(sets["spread_ns"].max()),
+                "set_robot_motion_m": {"max": float(motion.max()), "median": float(np.median(motion))},
+                "model": identity, "peak_cuda_allocated_bytes": int(peak),
+                "preprocess_checks": metas[-1].get("checks") if metas else None,
+                "sets_detail": {"stamps_ns": sets["stamps_ns"].tolist(), "robot_motion_m": motion.tolist()}}
+
+    rec = rio.run_stage(directory, stage="mapanything_depth", version=STAGE_VERSIONS["mapanything_depth"],
+                        config=config, inputs=inputs, build=build, force=force)
+    store.cleanup()
+    return rec
+
+
+def write_json(path: Path, doc) -> None:
+    rio.atomic_write_json(path, json.loads(json.dumps(doc, default=lambda x: x.tolist() if hasattr(x, "tolist")
+                                                     else str(x))))

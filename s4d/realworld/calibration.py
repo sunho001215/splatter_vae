@@ -10,6 +10,15 @@ One constant ``T_cam_base`` per camera per episode (cameras may move between epi
    URDF surface points (arm + gripper at the recorded gripper state) projected into the camera and compared with
    the bootstrap stereo depth (scale ``cauchy_depth_m``), gated for occlusion and re-gated in an outer loop.
 
+RGB-D evidence (``CalibrationConfig.evidence = "rgbd"``): when no 2D landmark source exists for the images but the
+camera measures metric depth (RealSense), the visual initialisation is replaced by a registration of the moving
+articulated URDF surface (recorded joints + gripper state) to the moving part of the measured depth (pixels that
+differ from the per-pixel temporal median): a global search over camera orientations (optical axis on a sphere x
+roll) with centroid-aligned translations, scored by the trimmed mean observed-to-model distance, followed by trimmed
+ICP. The refinement is the same robot-grounded depth term; the landmark gates do not apply and are replaced by depth
+gates on fit AND held-out frames plus an explained-fraction gate (moving measured points within ``explained_tol_m`` of
+the posed robot surface). No pose ever comes from a learned reconstruction model.
+
 What is NOT reproduced from DepthWorld (see docs): the multi-episode factor graph per physical robot, the shared
 hand-eye and joint-offset (dq) corrections, the wrist camera, ext-ext RoMa correspondences and the featuremetric
 term, LoMa-G render-to-image matching (here an injectable landmark source), and the GPU Schur solver.
@@ -71,6 +80,20 @@ class CalibrationConfig:
     max_trans_std_m: float = 0.01
     max_condition: float = 1e10
     min_inlier_fraction: float = 0.5
+    # evidence: "landmarks" (2D robot landmarks; optional depth term) or "rgbd" (metric depth only, see module doc)
+    evidence: str = "landmarks"
+    init_frames: int = 10
+    init_obs_points: int = 400
+    init_axes: int = 400
+    init_rolls: int = 24
+    init_top: int = 12
+    icp_iters: int = 30
+    motion_threshold_m: float = 0.03
+    moving_link_motion_m: float = 0.05
+    init_trim: float = 0.8
+    explained_tol_m: float = 0.02
+    min_explained_fraction: float = 0.5
+    max_heldout_depth_median_m: float = 0.02
 
 
 @dataclass
@@ -237,6 +260,143 @@ def _visual_init(frames, K, cfg):
     return name, T, X, uv
 
 
+# ---------------------------------------------------------------- RGB-D initialisation (no landmarks)
+
+
+def moving_masks(depths: np.ndarray, threshold_m: float) -> np.ndarray:
+    """(F,H,W) bool: valid measured depth that differs from the per-pixel temporal median (or where the median is
+    invalid) by more than ``threshold_m`` - the moving robot (and whatever it moves), never the static scene."""
+    d = np.where(depths > 0, depths, np.nan)
+    bg = np.nanmedian(d, axis=0)
+    return (depths > 0) & (~np.isfinite(bg) | (np.abs(np.nan_to_num(d - bg, nan=0.0)) > threshold_m))
+
+
+def fibonacci_sphere(n: int) -> np.ndarray:
+    i = np.arange(n) + 0.5
+    phi = np.arccos(1 - 2 * i / n)
+    theta = np.pi * (1 + 5 ** 0.5) * i
+    return np.stack([np.cos(theta) * np.sin(phi), np.sin(theta) * np.sin(phi), np.cos(phi)], 1)
+
+
+def _rotations(n_axes: int, n_rolls: int) -> np.ndarray:
+    """Camera rotations R_cam_base whose optical axis (+z, in base coordinates) covers the sphere, times rolls."""
+    out = []
+    for z in fibonacci_sphere(n_axes):
+        a = np.array([1.0, 0, 0]) if abs(z[0]) < 0.9 else np.array([0, 1.0, 0])
+        x = np.cross(a, z)
+        x /= np.linalg.norm(x)
+        y = np.cross(z, x)
+        for r in np.linspace(0, 2 * np.pi, n_rolls, endpoint=False):
+            c, s_ = np.cos(r), np.sin(r)
+            xr, yr = c * x + s_ * y, -s_ * x + c * y
+            out.append(np.stack([xr, yr, z]))  # rows = camera axes in base coordinates -> R_cam_base
+    return np.asarray(out)
+
+
+def _trimmed(d: np.ndarray, keep: float) -> float:
+    k = max(1, int(len(d) * keep))
+    return float(np.partition(d, k - 1)[:k].mean())
+
+
+def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
+    """Global registration of the moving URDF surface to the moving measured depth (see module doc)."""
+    from scipy.spatial import cKDTree
+
+    usable = [f for f in frames if f.depth is not None]
+    diag = {"method": "rgbd_robot_registration"}
+    if len(usable) < 3:
+        return None, {**diag, "error": "fewer than 3 frames with depth"}
+    masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+    pick = np.linspace(0, len(usable) - 1, min(cfg.init_frames, len(usable))).round().astype(int)
+    surf = np.stack([usable[k].surface_base for k in range(len(usable))])  # same sample order every frame
+    moving = np.linalg.norm(surf - surf.mean(0), axis=2).max(0) > cfg.moving_link_motion_m
+    diag["moving_model_points"] = int(moving.sum())
+    obs, trees, cents_obs, cents_model = [], [], [], []
+    hw = usable[0].depth.shape
+    from s4d.realworld.geometry import pixel_centers
+
+    centers = pixel_centers(*hw)
+    for k in pick:
+        f, m = usable[k], masks[k]
+        uv = centers[m]
+        if len(uv) < 50:
+            continue
+        sel = rng.choice(len(uv), min(cfg.init_obs_points, len(uv)), replace=False)
+        P = unproject(uv[sel], f.depth[m][sel], K)
+        model = f.surface_base[moving]
+        obs.append(P)
+        trees.append(cKDTree(model))
+        cents_obs.append(P.mean(0))
+        cents_model.append(model.mean(0))
+    diag["init_frames"] = len(obs)
+    diag["moving_pixels_median"] = int(np.median(masks.reshape(len(masks), -1).sum(1)))
+    if len(obs) < 3 or moving.sum() < 20:
+        return None, {**diag, "error": "too little robot motion visible in the measured depth"}
+
+    def cost(R, t, keep=cfg.init_trim):
+        Rt = R.T
+        ds = [trees[j].query((obs[j] - t) @ Rt.T, k=1, distance_upper_bound=0.5)[0] for j in range(len(obs))]
+        d = np.minimum(np.concatenate(ds), 0.5)
+        return _trimmed(d, keep)
+
+    co, cm = np.mean(cents_obs, 0), np.mean(cents_model, 0)
+    scores = []
+    for R in _rotations(cfg.init_axes, cfg.init_rolls):
+        t = co - R @ cm
+        scores.append((cost(R, t), R, t))
+    scores.sort(key=lambda x: x[0])
+    refined = []
+    for _, R, t in scores[:cfg.init_top]:
+        for _ in range(cfg.icp_iters):  # trimmed point-to-point ICP over all init frames (observed -> model)
+            src, dst = [], []
+            for j in range(len(obs)):
+                pb = (obs[j] - t) @ R  # observed points in base coordinates
+                d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5)
+                ok = np.isfinite(d)
+                if ok.sum() < 3:
+                    continue
+                thr = np.quantile(d[ok], cfg.init_trim)
+                ok &= d <= thr
+                src.append(trees[j].data[idx[ok]])
+                dst.append(obs[j][ok])
+            if not src:
+                break
+            T_new = kabsch(np.concatenate(src), np.concatenate(dst))
+            R, t = T_new[:3, :3], T_new[:3, 3]
+        refined.append((cost(R, t), R, t))
+    refined.sort(key=lambda x: x[0])
+    best = refined[0]
+    T0 = make_T(best[1], best[2])
+    distinct = [r for r in refined[1:] if np.degrees(np.arccos(np.clip((np.trace(r[1] @ best[1].T) - 1) / 2, -1, 1))) > 10
+                or np.linalg.norm(r[2] - best[2]) > 0.05]
+    diag.update({"candidates": len(scores), "best_trimmed_mean_m": best[0],
+                 "second_distinct_trimmed_mean_m": distinct[0][0] if distinct else None,
+                 "coarse_best_trimmed_mean_m": scores[0][0]})
+    return T0, diag
+
+
+def explained_fraction(T, frames, K, cfg) -> float | None:
+    """Fraction of moving measured points (temporal-median test) within ``explained_tol_m`` of the posed URDF surface."""
+    from scipy.spatial import cKDTree
+
+    usable = [f for f in frames if f.depth is not None]
+    if len(usable) < 3:
+        return None
+    masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+    from s4d.realworld.geometry import pixel_centers
+
+    centers = pixel_centers(*usable[0].depth.shape)
+    hits, total = 0, 0
+    for f, m in zip(usable, masks):
+        if not m.any():
+            continue
+        P = unproject(centers[m], f.depth[m], K)
+        d, _ = cKDTree(transform_points(T, f.surface_base)).query(P, k=1)
+        hits += int((d <= cfg.explained_tol_m).sum())
+        total += len(d)
+    return hits / total if total else None
+
+
 # ---------------------------------------------------------------- refinement
 
 
@@ -350,22 +510,35 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     """Calibrate one camera of one episode. ``T_init`` (e.g. a previous episode) is used only if visual init fails."""
     reasons: list[str] = []
     diag: dict = {"config": asdict(cfg), "camera_id": camera_id, "frames": len(frames)}
-    method, T0, X, uv = _visual_init(frames, K, cfg)
+    rgbd = cfg.evidence == "rgbd"
+    if cfg.evidence not in ("landmarks", "rgbd"):
+        raise ValueError(f"unknown calibration evidence {cfg.evidence!r}")
+    if rgbd:
+        T0, diag["rgbd_init"] = rgbd_initialisation(frames, K, cfg, np.random.default_rng(cfg.seed))
+        method = "rgbd_robot_registration" if T0 is not None else None
+    else:
+        method, T0, X, uv = _visual_init(frames, K, cfg)
     if T0 is None and T_init is not None:
         method, T0 = "external_prior", np.asarray(T_init, float)
     diag["init_method"] = method
     total_obs = int(sum((np.isfinite(f.landmarks_uv).all(1) & (f.landmarks_conf > 0)).sum() for f in frames))
     diag["landmark_observations"] = total_obs
     if T0 is None:
-        return CalibrationResult(camera_id, "rejected", ["visual initialisation failed (too few landmark observations)"],
-                                 None, None, None, diag)
+        why = ("RGB-D initialisation failed: " + diag["rgbd_init"].get("error", "no solution")) if rgbd else \
+            "visual initialisation failed (too few landmark observations)"
+        return CalibrationResult(camera_id, "rejected", [why], None, None, None, diag)
     # visibility under the initial estimate
     rows0 = _frame_stats(T0, frames, K, cfg)
-    visible = [r["robot_in_view_fraction"] >= cfg.min_visible_fraction and r["landmarks_observed"] > 0 for r in rows0]
+    if rgbd:  # no landmarks: visibility = robot in view and measured depth present
+        visible = [r["robot_in_view_fraction"] >= cfg.min_visible_fraction and f.depth is not None
+                   for r, f in zip(rows0, frames)]
+    else:
+        visible = [r["robot_in_view_fraction"] >= cfg.min_visible_fraction and r["landmarks_observed"] > 0
+                   for r in rows0]
     diag["visible_frames"] = int(sum(visible))
     if sum(visible) < cfg.min_visible_frames:
         reasons.append(f"insufficient robot visibility: {sum(visible)} frames < {cfg.min_visible_frames}")
-    if total_obs < cfg.min_landmark_obs:
+    if not rgbd and total_obs < cfg.min_landmark_obs:
         reasons.append(f"too few landmark observations: {total_obs} < {cfg.min_landmark_obs}")
     use = [f for f, v in zip(frames, visible) if v]
     holdout = [f for i, f in enumerate(use) if cfg.holdout_every and i % cfg.holdout_every == cfg.holdout_every - 1]
@@ -379,6 +552,9 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         return CalibrationResult(camera_id, "rejected", reasons or ["no usable frames"], None, T0, method, diag)
     rng = np.random.default_rng(cfg.seed)
     use_depth = cfg.depth_term and any(f.depth is not None for f in fit)
+    if rgbd and not use_depth:
+        return CalibrationResult(camera_id, "rejected", reasons + ["RGB-D evidence needs the depth term"], None, T0,
+                                 method, diag)
     T = T0
     res = None
     for _ in range(max(1, cfg.outer_iters)):
@@ -440,14 +616,27 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     delta = invert_T(T0) @ T
     diag["init_to_final"] = {"rot_deg": float(np.degrees(np.linalg.norm(vec_from_pose(delta)[:3]))),
                              "trans_m": float(np.linalg.norm(delta[:3, 3]))}
-    if bad(diag["reproj_median_px"], cfg.max_reproj_median_px):
-        reasons.append(f"reprojection median {diag['reproj_median_px']} px > {cfg.max_reproj_median_px}")
-    if holdout and bad(diag["heldout_reproj_median_px"], cfg.max_heldout_reproj_median_px):
-        reasons.append(f"held-out reprojection median {diag['heldout_reproj_median_px']} px too high")
-    if use_depth and bad(diag["depth_abs_median_m"], cfg.max_depth_median_m):
-        reasons.append(f"robot-depth residual median {diag['depth_abs_median_m']} m > {cfg.max_depth_median_m}")
-    if diag["landmark_inlier_fraction"] < cfg.min_inlier_fraction:
-        reasons.append(f"landmark inlier fraction {diag['landmark_inlier_fraction']:.2f} too low")
+    if rgbd:
+        diag["landmark_gates"] = "not applicable (RGB-D evidence: no 2D landmark source)"
+        diag["explained_fraction_fit"] = explained_fraction(T, fit, K, cfg)
+        diag["explained_fraction_heldout"] = explained_fraction(T, holdout, K, cfg) if holdout else None
+        if holdout and bad(diag["heldout_depth_abs_median_m"], cfg.max_heldout_depth_median_m):
+            reasons.append(f"held-out robot-depth residual median {diag['heldout_depth_abs_median_m']} m > "
+                           f"{cfg.max_heldout_depth_median_m}")
+        ef = diag["explained_fraction_heldout"] if holdout else diag["explained_fraction_fit"]
+        if ef is None or not np.isfinite(ef) or ef < cfg.min_explained_fraction:
+            reasons.append(f"moving measured depth explained by the posed robot: {ef} < {cfg.min_explained_fraction}")
+        if bad(diag["depth_abs_median_m"], cfg.max_depth_median_m):
+            reasons.append(f"robot-depth residual median {diag['depth_abs_median_m']} m > {cfg.max_depth_median_m}")
+    else:
+        if bad(diag["reproj_median_px"], cfg.max_reproj_median_px):
+            reasons.append(f"reprojection median {diag['reproj_median_px']} px > {cfg.max_reproj_median_px}")
+        if holdout and bad(diag["heldout_reproj_median_px"], cfg.max_heldout_reproj_median_px):
+            reasons.append(f"held-out reprojection median {diag['heldout_reproj_median_px']} px too high")
+        if use_depth and bad(diag["depth_abs_median_m"], cfg.max_depth_median_m):
+            reasons.append(f"robot-depth residual median {diag['depth_abs_median_m']} m > {cfg.max_depth_median_m}")
+        if diag["landmark_inlier_fraction"] < cfg.min_inlier_fraction:
+            reasons.append(f"landmark inlier fraction {diag['landmark_inlier_fraction']:.2f} too low")
     if not use_depth:
         diag["note"] = "no metric depth: reprojection-only refinement"
     return CalibrationResult(camera_id, "rejected" if reasons else "accepted", reasons, T, T0, method, diag)

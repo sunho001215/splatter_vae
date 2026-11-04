@@ -97,6 +97,78 @@ def read_record(directory: Path) -> dict | None:
         return None
 
 
+def stage_fingerprint(stage: str, version: str, config: dict, inputs: dict) -> str:
+    """The completion-record fingerprint ``run_stage`` uses (also keys a stage's ``ChunkStore``)."""
+    return fingerprint({"stage": stage, "version": version, "config": config, "inputs": inputs})
+
+
+class ChunkStore:
+    """Durable per-chunk results of ONE stage build, so an interrupted build resumes chunk by chunk.
+
+    Lives next to the stage directory as ``.<stage>.chunks.<fingerprint[:16]>/`` (a config or input change starts a new
+    store). ``put`` writes the chunk's arrays atomically (fsync) and then appends one line to ``_chunks.jsonl``
+    (fsync); only after ``put`` returns may a remote producer be acknowledged. ``get`` returns a chunk only when its
+    manifest line exists and the file's sha256 matches it. ``cleanup`` removes the store once the stage is swapped in.
+    """
+
+    MANIFEST = "_chunks.jsonl"
+
+    def __init__(self, stage_directory: Path, fingerprint_: str):
+        stage_directory = Path(stage_directory)
+        self.dir = stage_directory.with_name(f".{stage_directory.name}.chunks.{fingerprint_[:16]}")
+        self.fingerprint = fingerprint_
+        self._index: dict | None = None
+
+    @staticmethod
+    def _file(chunk_id: str) -> str:
+        return hashlib.sha256(chunk_id.encode()).hexdigest()[:24] + ".npz"
+
+    def index(self) -> dict:
+        if self._index is None:
+            self._index = {}
+            path = self.dir / self.MANIFEST
+            if path.is_file():
+                for line in path.read_text().splitlines():
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:  # a torn last line from a crash: ignored, the chunk is redone
+                        continue
+                    self._index[rec["chunk_id"]] = rec
+        return self._index
+
+    def get(self, chunk_id: str) -> tuple[dict, dict] | None:
+        rec = self.index().get(chunk_id)
+        if rec is None:
+            return None
+        path = self.dir / rec["file"]
+        if not path.is_file() or sha256_file(path) != rec["sha256"]:
+            return None
+        with np.load(path, allow_pickle=False) as z:
+            return {k: z[k] for k in z.files}, rec.get("meta", {})
+
+    def put(self, chunk_id: str, arrays: dict, meta: dict | None = None) -> dict:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        name = self._file(chunk_id)
+        atomic_write_npz(self.dir / name, **arrays)
+        rec = {"chunk_id": chunk_id, "file": name, "sha256": sha256_file(self.dir / name),
+               "bytes": (self.dir / name).stat().st_size, "saved_unix": time.time(), "meta": meta or {}}
+        with open(self.dir / self.MANIFEST, "a") as f:
+            f.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        self.index()[chunk_id] = rec
+        return rec
+
+    def records(self) -> list[dict]:
+        return list(self.index().values())
+
+    def clear(self) -> None:
+        shutil.rmtree(self.dir, ignore_errors=True)
+        self._index = None
+
+    cleanup = clear
+
+
 def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs: dict,
               build: Callable[[Path], dict], force: bool = False) -> dict:
     """Idempotent, restartable stage execution.
@@ -106,7 +178,7 @@ def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs
     and the record is written last, so an interrupted run leaves either the old complete stage or nothing.
     """
     directory = Path(directory)
-    fp = fingerprint({"stage": stage, "version": version, "config": config, "inputs": inputs})
+    fp = stage_fingerprint(stage, version, config, inputs)
     rec = read_record(directory)
     if rec is not None and rec.get("fingerprint") == fp and not force:
         return {**rec, "skipped": True}

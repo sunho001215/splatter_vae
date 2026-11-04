@@ -1,0 +1,231 @@
+"""Adapter for ``panda_teleop_episode`` HDF5 recordings (format_version 2): Franka arm, Robotiq gripper and Intel
+RealSense D400 cameras recording colour (JPEG) + depth (PNG z16) per device.
+
+Everything comes from the file; nothing is invented:
+- streams, intrinsics, distortion model, depth scale and the depth->colour extrinsic from each camera's
+  ``calibration_json`` (librealsense active stream profiles of the running pipeline);
+- timestamps from ``t`` (colour) and ``stereo/t`` (depth): the device hardware/global-time stamp mapped onto host
+  CLOCK_MONOTONIC (its frame-to-frame steps equal ``hw_timestamp_ms`` steps; arrival ``t_recv`` is ~65 ms later);
+- depth frame k is the frame the recorder paired with colour frame k (``stereo/color_index == k``, offset recorded in
+  ``stereo/color_offset_ms``);
+- robot joints, flange poses (``panda_link8``, the recorded EE frame) and the Robotiq position register
+  (``gripper/position``, raw 0..255, its own ~60 Hz clock -> interpolated onto robot times; recorded as such).
+The file holds NO camera-to-robot extrinsics (root attribute ``camera_calibration`` is empty): those come from the
+robot-grounded ``calibrate`` stage. Adapter-level guesses are listed in ``EpisodeMeta.assumptions``.
+
+Config::
+
+    episodes: {<episode_id>: /path/episode_000000.h5}
+    cameras: [<serial>, ...]          # optional subset, default all ``cameras/cam_<serial>`` groups
+    robot: {urdf_path, gripper_model, gripper_joint, base_frame, flange_frame, joint_names, arm_note}
+"""
+
+from __future__ import annotations
+
+import io
+import json
+from collections.abc import Iterator
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+
+from s4d.realworld.adapters.base import EpisodeAdapter, register_adapter
+from s4d.realworld.contract import (
+    CameraStream,
+    EpisodeMeta,
+    Intrinsics,
+    Provenance,
+    RgbdGeometry,
+    RobotDescription,
+    RobotTrajectory,
+    SourceFile,
+)
+
+FORMAT = "panda_teleop_episode"
+DISTORTION = {"brown_conrady": "realsense_brown_conrady", "inverse_brown_conrady": "realsense_inverse_brown_conrady",
+              "modified_brown_conrady": "realsense_modified_brown_conrady", "none": "none"}
+PAIR_TOLERANCE_NS = 1_000_000  # declared colour/depth pairing bound (recorded offsets are ~0.04 ms)
+
+
+def _ns(seconds: np.ndarray) -> np.ndarray:
+    return np.rint(np.asarray(seconds, np.float64) * 1e9).astype(np.int64)
+
+
+def _intrinsics(d: dict, source: str) -> Intrinsics:
+    model = DISTORTION.get(d["distortion_model"])
+    if model is None:
+        raise ValueError(f"unknown RealSense distortion model {d['distortion_model']!r}")
+    coeffs = tuple(float(c) for c in d["distortion_coeffs"])
+    if model == "none":
+        coeffs = ()
+    return Intrinsics(width=int(d["width"]), height=int(d["height"]), fx=float(d["fx"]), fy=float(d["fy"]),
+                      cx=float(d["ppx"]), cy=float(d["ppy"]), pixel_convention="integer_centers",
+                      distortion_model=model, distortion=coeffs, source=source)
+
+
+def _pose_matrix(p: np.ndarray) -> np.ndarray:
+    """(T,7) [x y z qx qy qz qw] -> (T,4,4)."""
+    from scipy.spatial.transform import Rotation
+
+    T = np.tile(np.eye(4), (len(p), 1, 1))
+    T[:, :3, :3] = Rotation.from_quat(p[:, 3:7]).as_matrix()
+    T[:, :3, 3] = p[:, :3]
+    return T
+
+
+@register_adapter
+class PandaTeleopH5Adapter(EpisodeAdapter):
+    name = "panda_teleop_h5"
+    version = "1"
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.episodes = {k: Path(v) for k, v in config["episodes"].items()}
+
+    def list_episodes(self) -> list[str]:
+        return sorted(self.episodes)
+
+    def source_files(self, episode_id: str) -> list[Path]:
+        return [self.episodes[episode_id]]
+
+    def _open(self, episode_id: str):
+        import h5py
+
+        f = h5py.File(self.episodes[episode_id], "r")
+        if f.attrs.get("format") != FORMAT or int(f.attrs.get("format_version", 0)) != 2:
+            f.close()
+            raise ValueError(f"{episode_id}: not a {FORMAT} v2 file")
+        return f
+
+    def _serials(self, f) -> list[str]:
+        found = sorted(k[len("cam_"):] for k in f["cameras"] if k.startswith("cam_"))
+        wanted = self.config.get("cameras")
+        if wanted:
+            missing = sorted(set(map(str, wanted)) - set(found))
+            if missing:
+                raise ValueError(f"cameras {missing} not in the recording ({found})")
+            return [s for s in found if s in set(map(str, wanted))]
+        return found
+
+    def read_meta(self, episode_id: str) -> EpisodeMeta:
+        with self._open(episode_id) as f:
+            streams, rgbd, stamps, notes = [], [], {}, {}
+            for serial in self._serials(f):
+                g = f["cameras"][f"cam_{serial}"]
+                cal = json.loads(g.attrs["calibration_json"])
+                if cal["device"]["serial_number"] != serial:
+                    raise ValueError(f"cam_{serial}: calibration belongs to {cal['device']['serial_number']}")
+                color, depth = cal["streams"]["color"], cal["streams"]["depth"]
+                src = f"librealsense {cal['device']['sdk_version']} active profile (calibration_id {cal['calibration_id']})"
+                if not (g["t_valid"][()].all() and g["stereo/t_valid"][()].all() and g["stereo/depth_ok"][()].all()):
+                    raise ValueError(f"cam_{serial}: invalid timestamps or depth frames flagged by the recorder")
+                if not (g["stereo/color_index"][()] == np.arange(len(g["t"]))).all():
+                    raise ValueError(f"cam_{serial}: depth frames are not paired 1:1 with colour frames")
+                emitter = cal.get("emitter", {})
+                common = dict(rig_id=serial, eye="mono", rectified=True, device_serial=serial,
+                              timestamp_source="device global-time stamp mapped to host CLOCK_MONOTONIC (recorder t)")
+                cid, did = f"{serial}/color", f"{serial}/depth"
+                streams.append(CameraStream(
+                    stream_id=cid, modality="rgb", channels=3, channel_order="RGB", dtype="uint8",
+                    intrinsics=_intrinsics(color["intrinsics"], src), sensor_name=f"{cal['device']['name']} RGB",
+                    notes=f"recorded {color['format']} {color['width']}x{color['height']}@{color['fps']} as JPEG; "
+                          "decoded to RGB; zero distortion coefficients (pinhole, no rectification needed)", **common))
+                streams.append(CameraStream(
+                    stream_id=did, modality="depth", channels=1, channel_order="DEPTH", dtype="uint16",
+                    intrinsics=_intrinsics(depth["intrinsics"], src), sensor_name=f"{cal['device']['name']} depth",
+                    ir_emitter="on" if emitter.get("emitter_enabled") else "off", depth_scale_m=float(cal["depth_scale"]),
+                    depth_kind="z", notes=f"{depth['format']} PNG16, laser power {emitter.get('laser_power')}", **common))
+                e = cal["extrinsics"]["color_from_depth"]
+                if (e["source"], e["target"]) != ("depth", "color"):
+                    raise ValueError(f"cam_{serial}: unexpected extrinsic direction {e['source']}->{e['target']}")
+                T = np.eye(4)
+                T[:3, :3] = np.asarray(e["R_target_from_source"], float)
+                T[:3, 3] = np.asarray(e["t_target_from_source_m"], float)
+                stamps[cid], stamps[did] = _ns(g["t"][()]), _ns(g["stereo/t"][()])
+                offset_ns = np.abs(stamps[cid] - stamps[did])
+                rgbd.append(RgbdGeometry(
+                    rig_id=serial, color_stream=cid, depth_stream=did, status="metric",
+                    T_color_depth=tuple(map(tuple, T)), max_pair_offset_ns=PAIR_TOLERANCE_NS,
+                    pairing=f"recorder pairing stereo/color_index == k (max |t_color - t_depth| {int(offset_ns.max())} ns)",
+                    source=f"{src}: extrinsics color_from_depth ({cal['extrinsics_convention']})"))
+                notes[serial] = {"frames": int(len(g["t"])), "segments": np.bincount(g["segment"][()]).tolist(),
+                                 "firmware": cal["device"]["firmware_version"]}
+            trajectory = self._trajectory(f)
+            rc = self.config.get("robot", {})
+            if rc.get("urdf_path"):  # composed arm + gripper URDF (scripts/realworld_compose_robot_urdf.py)
+                manifest = json.loads(Path(rc["urdf_path"]).with_suffix(".manifest.json").read_text())
+                robot = RobotDescription(
+                    arm_model="franka_panda", gripper_model=rc.get("gripper_model", "robotiq_2f_85"),
+                    urdf_path=str(rc["urdf_path"]), mesh_root=None, base_frame=rc["base_frame"],
+                    flange_frame=rc["flange_frame"], gripper_base_frame=manifest["mount"]["gripper_root"],
+                    T_flange_gripper=tuple(map(tuple, manifest["mount"]["T_parent_gripper"])),
+                    mount_source=manifest["mount"]["source"], joint_names=tuple(rc["joint_names"]),
+                    gripper_state_semantics="robotiq_position_register", gripper_joint=rc["gripper_joint"],
+                    asset_sha256={"urdf": manifest["urdf_sha256"]})
+                trajectory.ee_frame = rc["flange_frame"]
+            else:
+                robot = RobotDescription(arm_model="franka_panda", gripper_model="unknown", urdf_path=None,
+                                         mesh_root=None, gripper_state_semantics="robotiq_position_register")
+                trajectory.ee_frame = robot.flange_frame
+            assumptions = [
+                "colour JPEG (recorded from bgr8, quality 90) decoded as RGB; checked visually on the first episode",
+                "RealSense intrinsics use librealsense's integer-centre pixel convention",
+                f"arm: recorded frames panda_link0/panda_link8; URDF {rc.get('urdf_path')} - "
+                f"{rc.get('arm_note', 'arm generation not recorded in the file')}",
+                f"gripper: {robot.gripper_model} (file convention 'Robotiq position 3 + 227 * closure (DROID)'); "
+                f"mount: {robot.mount_source}",
+                "gripper state: raw Robotiq position register (gripper/position, ~60 Hz) linearly interpolated onto "
+                "robot/t; register -> finger joint mapping linear (s4d.realworld.robot.gripper_joint_value)",
+                "robot/t is the state time on host CLOCK_MONOTONIC (file conventions_json 'time')",
+            ]
+            prov = Provenance(
+                adapter=self.name, adapter_version=self.version, source_root=str(self.episodes[episode_id].parent),
+                source_files=tuple(SourceFile(str(p), "", p.stat().st_size) for p in self.source_files(episode_id)),
+                created_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                notes=json.dumps({"format": FORMAT, "software_version": str(f.attrs.get("software_version")),
+                                  "task": str(f.attrs.get("task_name")), "hostname": str(f.attrs.get("hostname")),
+                                  "status": str(f.attrs.get("status")), "cameras": notes,
+                                  "segments": {"t_start": f["segments/t_start"][()].tolist(),
+                                               "t_end": f["segments/t_end"][()].tolist()},
+                                  "conventions": json.loads(f.attrs["conventions_json"]),
+                                  "T_flange_controller_ee": np.asarray(f.attrs["T_flange_controller_ee"]).tolist(),
+                                  "T_flange_tcp": np.asarray(f.attrs["T_flange_tcp"]).tolist(),
+                                  "camera_calibration_attr": str(f.attrs.get("camera_calibration"))}))
+            return EpisodeMeta(episode_id=episode_id, streams=tuple(streams), stereo=(), robot=robot,
+                               trajectory=trajectory, stream_timestamps_ns=stamps, provenance=prov,
+                               clock=f"host CLOCK_MONOTONIC of the recorder ({f.attrs.get('hostname')})",
+                               assumptions=tuple(assumptions), rgbd=tuple(rgbd))
+
+    @staticmethod
+    def _trajectory(f) -> RobotTrajectory:
+        t = np.asarray(f["robot/t"][()], np.float64)
+        gt, gp = np.asarray(f["gripper/t"][()], np.float64), np.asarray(f["gripper/position"][()], np.float64)
+        grip = np.interp(t, gt, gp)  # clamps to the first/last register value outside the gripper samples
+        return RobotTrajectory(
+            timestamps_ns=_ns(t), joint_positions=np.asarray(f["robot/q"][()], np.float64), gripper_state=grip,
+            ee_pose_base=_pose_matrix(np.asarray(f["robot/flange_pose"][()], np.float64)), ee_frame=None,
+            extra={"dq": np.asarray(f["robot/dq"][()]), "tau_ext": np.asarray(f["robot/tau_ext"][()]),
+                   "joint_frames": np.asarray(f["robot/joint_frames"][()])},
+            extra_units={"dq": "rad/s", "tau_ext": "N m",
+                         "joint_frames": "per joint [x y z qx qy qz qw] in the base frame (m), as recorded"})
+
+    def iter_frames(self, episode_id: str, stream_id: str, start: int = 0,
+                    stop: int | None = None) -> Iterator[tuple[int, int, np.ndarray]]:
+        from PIL import Image
+
+        serial, kind = stream_id.split("/")
+        with self._open(episode_id) as f:
+            g = f["cameras"][f"cam_{serial}"]
+            data = g["color"] if kind == "color" else g["stereo/depth"]
+            stamps = _ns(g["t"][()] if kind == "color" else g["stereo/t"][()])
+            stop = len(stamps) if stop is None else min(stop, len(stamps))
+            for i in range(start, stop):
+                img = Image.open(io.BytesIO(bytes(data[i])))
+                if kind == "color":
+                    arr = np.asarray(img.convert("RGB"))
+                else:
+                    if img.mode not in ("I;16", "I;16B", "I;16L"):
+                        raise ValueError(f"{stream_id}[{i}]: depth PNG mode {img.mode} is not 16-bit")
+                    arr = np.asarray(img, dtype=np.uint16)
+                yield i, int(stamps[i]), arr

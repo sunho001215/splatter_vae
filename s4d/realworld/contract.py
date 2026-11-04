@@ -1,8 +1,9 @@
 """Versioned normalized episode contract for real-world recordings.
 
 The contract is what every ingestion adapter must produce and what every downstream stage consumes. It records
-camera identity, stream modality (RGB versus infrared, never blurred), timestamps, intrinsics + distortion, stereo
-geometry (or its explicit absence), robot state, robot assets, units, coordinate conventions and provenance.
+camera identity, stream modality (RGB versus infrared versus sensor depth, never blurred), timestamps, intrinsics +
+distortion, stereo geometry (or its explicit absence), RGB-D rig geometry (colour sensor + depth sensor of one
+device), robot state, robot assets, units, coordinate conventions and provenance.
 
 Image pixels are not held in ``EpisodeMeta``; they are read lazily through the adapter (ingest) or the
 normalized frame store (later stages), so episodes of any length stay bounded in memory.
@@ -29,7 +30,8 @@ from typing import Any
 
 import numpy as np
 
-SCHEMA_VERSION = "s4d.realworld.episode/1.0.0"
+SCHEMA_VERSION = "s4d.realworld.episode/1.1.0"  # 1.1.0: depth streams and RGB-D rigs (``EpisodeMeta.rgbd``)
+SUPPORTED_SCHEMAS = ("s4d.realworld.episode/1.0.0", SCHEMA_VERSION)  # 1.0.0 documents have no RGB-D rigs
 
 CONVENTIONS = {
     "length": "m",
@@ -42,9 +44,13 @@ CONVENTIONS = {
     "pixel_coordinates": "continuous: image corner (0,0); pixel (row i, col j) centre at (j+.5, i+.5)",
     "depth": "metric camera-z float32, 0 = invalid",
     "disparity": "left-reference x_left - x_right in rectified pixels (positive), unless stated",
+    "sensor_depth": "depth streams store raw sensor units (uint16); metres = value * depth_scale_m, 0 = invalid; "
+                    "depth_kind z = axial camera-z of the depth sensor's own optical frame",
 }
 
-MODALITIES = ("rgb", "infrared")
+MODALITIES = ("rgb", "infrared", "depth")
+DEPTH_KINDS = ("z",)  # axial camera-z; ray-length depth is not accepted (it would silently bias every unprojection)
+RGBD_STATUS = ("metric", "unverified")
 EYES = ("left", "right", "mono")
 PIXEL_CONVENTIONS = ("integer_centers", "continuous")
 # Number of coefficients per distortion model. RealSense SDK names are kept verbatim so that an adapter can
@@ -104,17 +110,19 @@ class CameraStream:
     stream_id: str  # unique in the episode, e.g. "rig0/left"
     rig_id: str  # physical device (one RealSense)
     eye: str  # left / right / mono
-    modality: str  # rgb / infrared
-    channels: int  # 3 for rgb, 1 for infrared (replicated grayscale is NOT rgb)
-    channel_order: str  # RGB / BGR / GRAY
+    modality: str  # rgb / infrared / depth
+    channels: int  # 3 for rgb, 1 for infrared (replicated grayscale is NOT rgb) and depth
+    channel_order: str  # RGB / BGR / GRAY / DEPTH
     dtype: str  # uint8 / uint16
     intrinsics: Intrinsics
     rectified: bool | None  # None = unknown; stereo depth refuses unknown unless a rectification stage runs
     device_serial: str | None = None
     sensor_name: str | None = None
     timestamp_source: str = "unspecified"  # e.g. device_hardware, host_arrival, global_time
-    ir_emitter: str | None = None  # on / off / alternating / unknown (infrared only)
+    ir_emitter: str | None = None  # on / off / alternating / unknown (infrared and active depth)
     notes: str = ""
+    depth_scale_m: float | None = None  # depth only: metres per stored unit
+    depth_kind: str | None = None  # depth only: one of DEPTH_KINDS
 
 
 @dataclass(frozen=True)
@@ -132,6 +140,39 @@ class StereoGeometry:
         if self.T_right_left is None:
             raise EpisodeContractError(f"rig {self.rig_id}: stereo extrinsic is missing (status={self.status})")
         return np.asarray(self.T_right_left, np.float64)
+
+
+@dataclass(frozen=True)
+class RgbdGeometry:
+    """One RGB-D device: a colour stream and a depth stream with their own intrinsics and a rigid extrinsic.
+
+    Depth frame ``k`` is paired with colour frame ``k`` (the adapter establishes the pairing and declares how);
+    ``T_color_depth`` maps points of the depth sensor's optical frame into the colour camera's optical frame."""
+
+    rig_id: str
+    color_stream: str
+    depth_stream: str
+    status: str  # metric / unverified
+    T_color_depth: tuple | None = None  # 4x4 nested tuple, metres
+    pairing: str = "unspecified"  # how depth frame k pairs with colour frame k
+    max_pair_offset_ns: int | None = None  # declared bound on |t_color[k] - t_depth[k]|
+    source: str = "unspecified"
+    notes: str = ""
+
+    def T(self) -> np.ndarray:
+        if self.T_color_depth is None:
+            raise EpisodeContractError(f"rig {self.rig_id}: colour-from-depth extrinsic is missing")
+        return np.asarray(self.T_color_depth, np.float64)
+
+
+@dataclass(frozen=True)
+class CameraView:
+    """The image stream a camera contributes to downstream stages: the left eye of a stereo rig, or the colour
+    sensor of an RGB-D rig (whose depth is registered onto the colour grid)."""
+
+    rig_id: str
+    stream_id: str
+    kind: str  # "stereo" | "rgbd"
 
 
 @dataclass(frozen=True)
@@ -192,6 +233,7 @@ class EpisodeMeta:
     assumptions: tuple[str, ...] = ()  # every adapter assumption awaiting confirmation on real data
     schema_version: str = SCHEMA_VERSION
     conventions: dict = field(default_factory=lambda: dict(CONVENTIONS))
+    rgbd: tuple[RgbdGeometry, ...] = ()
 
     def stream(self, stream_id: str) -> CameraStream:
         for item in self.streams:
@@ -204,6 +246,17 @@ class EpisodeMeta:
             if item.rig_id == rig_id:
                 return item
         raise KeyError(rig_id)
+
+    def rig_rgbd(self, rig_id: str) -> RgbdGeometry:
+        for item in self.rgbd:
+            if item.rig_id == rig_id:
+                return item
+        raise KeyError(rig_id)
+
+    def views(self) -> list[CameraView]:
+        """Stereo rigs (left eye) first, then RGB-D rigs (colour stream), in declaration order."""
+        return [CameraView(g.rig_id, g.left_stream, "stereo") for g in self.stereo] + \
+            [CameraView(g.rig_id, g.color_stream, "rgbd") for g in self.rgbd]
 
 
 # ---------------------------------------------------------------- validation
@@ -235,8 +288,8 @@ def validate_episode(meta: EpisodeMeta) -> ValidationReport:
     """Structural and physical checks; errors make the episode unusable, warnings disable specific stages."""
     rep = ValidationReport()
     err, warn = rep.errors.append, rep.warnings.append
-    if meta.schema_version != SCHEMA_VERSION:
-        err(f"schema {meta.schema_version!r} != {SCHEMA_VERSION!r}")
+    if meta.schema_version not in SUPPORTED_SCHEMAS:
+        err(f"schema {meta.schema_version!r} not in {SUPPORTED_SCHEMAS}")
     if not meta.episode_id or "/" in meta.episode_id:
         err("episode_id must be a non-empty path-safe string")
     ids = [s.stream_id for s in meta.streams]
@@ -252,6 +305,15 @@ def validate_episode(meta: EpisodeMeta) -> ValidationReport:
             err(f"{tag}: infrared must be stored as 1-channel GRAY; replicated grayscale is not rgb")
         if s.modality == "rgb" and (s.channels != 3 or s.channel_order not in ("RGB", "BGR")):
             err(f"{tag}: rgb streams need 3 channels in RGB or BGR order")
+        if s.modality == "depth":
+            if s.channels != 1 or s.channel_order != "DEPTH" or s.dtype != "uint16":
+                err(f"{tag}: depth streams are 1-channel DEPTH uint16 (raw sensor units)")
+            if not (s.depth_scale_m and s.depth_scale_m > 0):
+                err(f"{tag}: depth stream needs a positive depth_scale_m")
+            if s.depth_kind not in DEPTH_KINDS:
+                err(f"{tag}: depth_kind {s.depth_kind!r} not in {DEPTH_KINDS}")
+        elif s.depth_scale_m is not None or s.depth_kind is not None:
+            err(f"{tag}: depth_scale_m/depth_kind only apply to depth streams")
         if s.dtype not in ("uint8", "uint16"):
             err(f"{tag}: dtype {s.dtype!r} unsupported")
         k = s.intrinsics
@@ -305,6 +367,34 @@ def validate_episode(meta: EpisodeMeta) -> ValidationReport:
                     err(f"{tag}: baseline must be positive")
         else:
             warn(f"{tag}: stereo geometry {g.status}; metric stereo depth is unavailable (never invented)")
+    rigs = [g.rig_id for g in meta.stereo] + [g.rig_id for g in meta.rgbd]
+    if len(set(rigs)) != len(rigs):
+        err("a rig is declared twice (stereo and/or RGB-D)")
+    for g in meta.rgbd:
+        tag = f"rgbd rig {g.rig_id}"
+        if g.status not in RGBD_STATUS:
+            err(f"{tag}: status {g.status!r} not in {RGBD_STATUS}")
+            continue
+        for sid, modality in ((g.color_stream, "rgb"), (g.depth_stream, "depth")):
+            if sid not in ids:
+                err(f"{tag}: stream {sid!r} missing")
+            elif meta.stream(sid).modality != modality or meta.stream(sid).rig_id != g.rig_id:
+                err(f"{tag}: stream {sid!r} is not the {modality} stream of this rig")
+        if g.color_stream in ids and g.depth_stream in ids:
+            tc = np.asarray(meta.stream_timestamps_ns.get(g.color_stream, []))
+            td = np.asarray(meta.stream_timestamps_ns.get(g.depth_stream, []))
+            if len(tc) != len(td):
+                err(f"{tag}: colour/depth frame counts differ ({len(tc)} vs {len(td)}); pair frames in the adapter")
+            elif g.max_pair_offset_ns is None:
+                err(f"{tag}: max_pair_offset_ns must declare the colour/depth pairing tolerance")
+            elif len(tc) and np.abs(tc - td).max() > g.max_pair_offset_ns:
+                err(f"{tag}: colour/depth frames up to {int(np.abs(tc - td).max())} ns apart "
+                    f"(> declared {g.max_pair_offset_ns})")
+        if g.status == "metric":
+            if g.T_color_depth is None or not _rigid(g.T()):
+                err(f"{tag}: metric RGB-D needs a rigid T_color_depth")
+        else:
+            warn(f"{tag}: RGB-D geometry {g.status}; sensor depth cannot be registered to the colour grid")
     r = meta.robot
     if r.arm_model != "franka_panda":
         err(f"arm {r.arm_model!r} unsupported (franka_panda only)")
@@ -387,6 +477,7 @@ def meta_from_json(doc: dict, arrays: dict) -> EpisodeMeta:
 
     streams = tuple(CameraStream(**{**s, "intrinsics": intr(s["intrinsics"])}) for s in doc["streams"])
     stereo = tuple(StereoGeometry(**{**g, "T_right_left": _tuple4(g["T_right_left"])}) for g in doc["stereo"])
+    rgbd = tuple(RgbdGeometry(**{**g, "T_color_depth": _tuple4(g["T_color_depth"])}) for g in doc.get("rgbd", ()))
     rd = doc["robot"]
     robot = RobotDescription(**{**rd, "T_flange_gripper": _tuple4(rd["T_flange_gripper"]),
                                 "joint_names": tuple(rd["joint_names"])})
@@ -406,7 +497,7 @@ def meta_from_json(doc: dict, arrays: dict) -> EpisodeMeta:
     return EpisodeMeta(
         episode_id=doc["episode_id"], streams=streams, stereo=stereo, robot=robot, trajectory=tr,
         stream_timestamps_ns=stamps, provenance=prov, clock=doc["clock"], assumptions=tuple(doc["assumptions"]),
-        schema_version=doc["schema_version"], conventions=doc["conventions"],
+        schema_version=doc["schema_version"], conventions=doc["conventions"], rgbd=rgbd,
     )
 
 
