@@ -198,7 +198,12 @@ class MapAnythingBackend:
 
 def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, *, chunk: int = 4,
                       input_depth_stage: str | None = "auto", max_sync_ns: int | None = None,
-                      max_set_motion_m: float = 0.005, include_right_eyes: bool = True, force: bool = False) -> dict:
+                      max_set_motion_m: float = 0.005, include_right_eyes: bool = True, grouping: str = "all",
+                      force: bool = False) -> dict:
+    """``grouping="all"``: every view of a synchronized set in one MapAnything scene (requires all cameras to be
+    synchronized within ``max_sync_ns``). ``"per_rig"``: each rig's views (a stereo pair, or one RGB-D colour view)
+    form their own posed scenes, for recordings whose rigs are not synchronized with each other (e.g. DROID's ZED
+    cameras); views of different instants are never merged in either mode."""
     from s4d.realworld.contract import CameraView
     from s4d.realworld.pipeline import RobotGeometry, accepted_calibration, load_meta
 
@@ -224,16 +229,27 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
     missing = [s for s, T in poses.items() if T is None]
     if missing:
         raise RuntimeError(f"mapanything_depth needs an accepted calibration for every view; missing/rejected: {missing}")
-    sets = frame_sets(meta, streams, max_sync_ns)
+    if grouping not in ("all", "per_rig"):
+        raise ValueError(f"grouping {grouping!r} not in ('all', 'per_rig')")
+    if grouping == "all":
+        groups = [("", list(range(len(streams))))]
+    else:
+        rigs = list(dict.fromkeys(v.rig_id for v in views))
+        groups = [(rig, [i for i, v in enumerate(views) if v.rig_id == rig]) for rig in rigs]
     geom = RobotGeometry(meta)
-    motion = set_robot_motion(meta, sets["stamps_ns"], geom)
-    joint = motion <= max_set_motion_m
+    plans = []
+    for name, members in groups:
+        sets = frame_sets(meta, [streams[i] for i in members], max_sync_ns)
+        motion = set_robot_motion(meta, sets["stamps_ns"], geom)
+        plans.append({"name": name, "members": members, "sets": sets, "motion": motion,
+                      "joint": motion <= max_set_motion_m})
     Ks = np.stack([view_K(meta, s, root=root, episode_id=episode_id) for s in streams])
     c2w = np.stack([np.linalg.inv(poses[s]) for s in streams])
     hw = {(meta.stream(s).intrinsics.height, meta.stream(s).intrinsics.width) for s in streams}
     if len(hw) != 1:
         raise NotImplementedError(f"views have different grids {hw}")
     (H, W), = hw
+    n_frames = {s: len(meta.stream_timestamps_ns[s]) for s in streams}
     directory = rio.stage_dir(root, episode_id, "mapanything_depth")
     inputs = {"ingest": _record_build_id(root, episode_id, "ingest"),
               "calibrate": _record_build_id(root, episode_id, "calibrate")}
@@ -241,19 +257,22 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
         inputs["stereo_rectify"] = _record_build_id(root, episode_id, "stereo_rectify")
     if input_depth_stage:
         inputs[input_depth_stage] = _record_build_id(root, episode_id, input_depth_stage)
-    config = {"chunk": chunk, "input_depth_stage": input_depth_stage, "max_sync_ns": sets["max_sync_ns"],
+    config = {"chunk": chunk, "input_depth_stage": input_depth_stage, "max_sync_ns": plans[0]["sets"]["max_sync_ns"],
               "max_set_motion_m": max_set_motion_m, "streams": streams, "backend": backend.config()}
     if meta.stereo:
         config["include_right_eyes"] = include_right_eyes
+    if grouping != "all":  # (absent in the default mode: earlier fingerprints stay valid)
+        config["grouping"] = grouping
     store = rio.ChunkStore(directory, rio.stage_fingerprint("mapanything_depth", STAGE_VERSIONS["mapanything_depth"],
                                                             config, inputs))
     if force:
         store.clear()
 
     def build(tmp: Path) -> dict:
-        n = len(sets["index"])
         files = {}
         for v, s in enumerate(streams):
+            n = n_frames[s]
+            plan = next(p for p in plans if v in p["members"])
             f = h5py.File(tmp / f"{rio.safe_name(s)}.h5", "w")
             f.attrs.update(K=Ks[v], stream_id=s, rig_id=views[v].rig_id,
                            grid=("stereo rectified pinhole grid" if views[v].kind == "stereo"
@@ -266,55 +285,70 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
                 f.create_dataset(name, shape, dtype, chunks=(1, H, W), compression="lzf")
             f.create_dataset("cam2world_pred", (n, 4, 4), np.float32)
             f.create_dataset("metric_scale", (n,), np.float32)
-            f.create_dataset("set_index", data=np.arange(n))
-            f.create_dataset("set_joint", data=joint)
+            f.create_dataset("set_index", data=np.arange(len(plan["sets"]["index"])))
+            f.create_dataset("set_joint", data=plan["joint"])
             files[s] = f
         identity, metas = None, []
         try:
-            for start in range(0, n, chunk):
-                ks = list(range(start, min(n, start + chunk)))
-                cid = f"sets/{start:05d}-{ks[-1]:05d}"
-                got = store.get(cid)
-                if got is None:
-                    images = np.stack([np.stack([model_view_frames(root, episode_id, meta, s, [int(sets["index"][k, v])])[0]
-                                                 for v, s in enumerate(streams)]) for k in ks])
-                    arrays = {"images": images, "K": Ks, "cam2world": c2w, "joint": joint[ks]}
-                    if input_depth_stage:
-                        arrays["depth"] = np.stack([np.stack([
-                            load_view_depth(root, episode_id, s, [int(sets["index"][k, v])], input_depth_stage)[0][0]
-                            for v, s in enumerate(streams)]) for k in ks])
-                    resp, out, handle = backend.runner.worker(backend.spec, "infer_views", backend.params, arrays,
-                                                              chunk_id=cid, allow_mock=backend.allow_mock)
-                    rmeta = {"model": resp["model"], "meta": resp["meta"], "transport": resp.get("transport")}
-                    if input_depth_stage:
-                        out = {**out, "input_depth_valid": arrays["depth"] > 0}
-                    store.put(cid, out, rmeta)
-                    backend.runner.ack(handle)
-                    got = (out, rmeta)
-                out, rmeta = got
-                identity = rmeta["model"]
-                metas.append(rmeta["meta"])
-                for j, k in enumerate(ks):
-                    for v, s in enumerate(streams):
-                        i = int(sets["index"][k, v])
-                        f = files[s]
-                        for name in ("depth", "valid", "conf", "non_ambiguous"):
-                            f[name][i] = out[name][j, v]
-                        if "input_depth_valid" in out:
-                            f["input_depth_valid"][i] = out["input_depth_valid"][j, v]
-                        f["cam2world_pred"][i] = out["cam2world_pred"][j, v]
-                        f["metric_scale"][i] = out["metric_scale"][j, v]
+            for plan in plans:
+                sets, joint, members = plan["sets"], plan["joint"], plan["members"]
+                n = len(sets["index"])
+                for start in range(0, n, chunk):
+                    ks = list(range(start, min(n, start + chunk)))
+                    cid = (f"{plan['name']}/" if plan["name"] else "") + f"sets/{start:05d}-{ks[-1]:05d}"
+                    got = store.get(cid)
+                    if got is None:
+                        images = np.stack([np.stack([
+                            model_view_frames(root, episode_id, meta, streams[m], [int(sets["index"][k, j])])[0]
+                            for j, m in enumerate(members)]) for k in ks])
+                        arrays = {"images": images, "K": Ks[members], "cam2world": c2w[members], "joint": joint[ks]}
+                        if input_depth_stage:
+                            arrays["depth"] = np.stack([np.stack([
+                                load_view_depth(root, episode_id, streams[m], [int(sets["index"][k, j])],
+                                                input_depth_stage)[0][0]
+                                for j, m in enumerate(members)]) for k in ks])
+                        resp, out, handle = backend.runner.worker(backend.spec, "infer_views", backend.params, arrays,
+                                                                  chunk_id=cid, allow_mock=backend.allow_mock)
+                        rmeta = {"model": resp["model"], "meta": resp["meta"], "transport": resp.get("transport")}
+                        if input_depth_stage:
+                            out = {**out, "input_depth_valid": arrays["depth"] > 0}
+                        store.put(cid, out, rmeta)
+                        backend.runner.ack(handle)
+                        got = (out, rmeta)
+                    out, rmeta = got
+                    identity = rmeta["model"]
+                    metas.append(rmeta["meta"])
+                    for jk, k in enumerate(ks):
+                        for j, m in enumerate(members):
+                            i = int(sets["index"][k, j])
+                            f = files[streams[m]]
+                            for name in ("depth", "valid", "conf", "non_ambiguous"):
+                                f[name][i] = out[name][jk, j]
+                            if "input_depth_valid" in out:
+                                f["input_depth_valid"][i] = out["input_depth_valid"][jk, j]
+                            f["cam2world_pred"][i] = out["cam2world_pred"][jk, j]
+                            f["metric_scale"][i] = out["metric_scale"][jk, j]
         finally:
             for f in files.values():
                 f.close()
         backend.identity = identity or backend.identity
         peak = max((m.get("max_memory_allocated", 0) for m in metas), default=0)
-        return {"views": streams, "sets": int(n), "joint_sets": int(joint.sum()),
-                "single_view_sets": int((~joint).sum()), "max_set_spread_ns": int(sets["spread_ns"].max()),
-                "set_robot_motion_m": {"max": float(motion.max()), "median": float(np.median(motion))},
-                "model": identity, "peak_cuda_allocated_bytes": int(peak),
-                "preprocess_checks": metas[-1].get("checks") if metas else None,
-                "sets_detail": {"stamps_ns": sets["stamps_ns"].tolist(), "robot_motion_m": motion.tolist()}}
+
+        def describe(plan):
+            sets, joint, motion = plan["sets"], plan["joint"], plan["motion"]
+            return {"sets": int(len(sets["index"])), "joint_sets": int(joint.sum()),
+                    "single_view_sets": int((~joint).sum()), "max_set_spread_ns": int(sets["spread_ns"].max()),
+                    "set_robot_motion_m": {"max": float(motion.max()), "median": float(np.median(motion))},
+                    "sets_detail": {"stamps_ns": sets["stamps_ns"].tolist(), "robot_motion_m": motion.tolist()}}
+
+        common = {"model": identity, "peak_cuda_allocated_bytes": int(peak),
+                  "preprocess_checks": metas[-1].get("checks") if metas else None}
+        if grouping == "all":
+            d = describe(plans[0])
+            return {"views": streams, **{k: d[k] for k in ("sets", "joint_sets", "single_view_sets",
+                                                           "max_set_spread_ns", "set_robot_motion_m")},
+                    **common, "sets_detail": d["sets_detail"]}
+        return {"views": streams, "grouping": grouping, "groups": {p["name"]: describe(p) for p in plans}, **common}
 
     rec = rio.run_stage(directory, stage="mapanything_depth", version=STAGE_VERSIONS["mapanything_depth"],
                         config=config, inputs=inputs, build=build, force=force)

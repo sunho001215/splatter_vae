@@ -55,7 +55,7 @@ workers:   # paths inside the inference container (configs/realworld/inference_s
 stages:
   stereo_rectify: {chunk: 16}
   mapanything_rig_depth: {}
-  mapanything_depth: {chunk: 4, input_depth_stage: null, include_right_eyes: true}
+  mapanything_depth: {chunk: 4, input_depth_stage: null, include_right_eyes: true, grouping: per_rig}   # ext1/ext2 not synchronized with each other
   calibrate: {source: adapter_provided}
   track2d: {window: 16, step: 8, grid_stride: 16, tracker_hw: [360, 640]}
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
