@@ -31,7 +31,8 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.environ.get('S4D_REPO', '/home/ws/ws/splatter4d'), 'scripts'))
+sys.path.insert(0, os.path.join(os.environ['S4D_REPO'], 'scripts') if 'S4D_REPO' in os.environ
+                else os.path.dirname(os.path.abspath(__file__)))  # -I omits the script directory (remote: /workspace)
 from _bootstrap import REPO, guard_gpus  # noqa: E402
 
 GPU_MAPPING = guard_gpus()

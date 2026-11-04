@@ -12,3 +12,8 @@ def test_pinned_rows_are_not_movable():
     by_id = {r['id']: r for r in (free, pinned)}
     assert pool.movable(free, {}, by_id)
     assert not pool.movable(pinned, {}, by_id)
+
+
+def test_rows_pinned_remote_wait_for_their_move():
+    pinned_remote = _row('pin-test-remote-200k', pin_host='remote')
+    assert pool.movable(pinned_remote, {}, {pinned_remote['id']: pinned_remote})  # the pool may move it to the remote

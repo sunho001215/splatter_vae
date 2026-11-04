@@ -278,6 +278,12 @@ for job in remote:
         (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
         messages.append(f'EXPORT_VERIFIED {jid} (remote export)')
         continue
+    if kind(jid) == 'analysis':  # 2026-11-04: an inference-only analysis row; its required results are verified by the sync
+        record.update(results={name: state[jid]['sync']['files'].get(name) for name in job['required_results']})
+        assert all(record['results'].values()), (jid, record['results'])
+        (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+        messages.append(f'ANALYSIS_VERIFIED {jid}')
+        continue
     if kind(jid) in ('proxy', 'brl', 'orl', 'nbrl', 'pool_rl'):
         if state.get(f'{jid}-eval', {}).get('status') != jobs.DONE:
             continue
@@ -413,8 +419,14 @@ def ready(job):
     if k == 'pool_export':  # inputs are the remote pretraining's files, released by the dependency on that run
         return True
     if k == 'analysis':  # inputs (existing checkpoints / exports, uploaded with checksums) are listed in 'inputs'
-        return all((REPO / 'runs/remote/analysis-inputs' / (p.replace('/', '__') + '.json')).is_file()
-                   for p in job.get('inputs', []))
+        if not job.get('inputs'):
+            return False
+        for p in job['inputs']:
+            marker = REPO / 'runs/remote/analysis-inputs' / (p.replace('/', '__') + '.json')
+            if not marker.is_file() or json.loads(marker.read_text()).get('sha256') != hashlib.sha256(
+                    (REPO / p).read_bytes()).hexdigest():
+                return False
+        return True
     if job.get('reevaluates'):  # camera suite v2 re-evaluation (2026-10-29): registered on the host that holds the
         return True  # completed run's final snapshot and encoder export; no trainer row, nothing to upload
     if k == 'pool_rl':  # the export (a local file) is uploaded once, checksum-verified, before the pair starts

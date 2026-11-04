@@ -123,7 +123,8 @@ for name in REGISTRATIONS:
             overlay = {**overlay, **json.loads(POOL.read_text())['effective_jobs']}
         record_jobs = [overlay.get(j['id'], j) for j in record['jobs']]
         assert [by_queue[j['id']] for j in record_jobs] == record_jobs, f'{name}: jobs changed in the queue'
-        registered += [j for j in record_jobs if name not in ONLY or j['id'] in ONLY[name]]
+        registered += [j for j in record_jobs if (name not in ONLY or j['id'] in ONLY[name])
+                       and not (j.get('host', 'local') == 'local' and j.get('pin_host') == 'remote')]  # waits for its move
 by_id = {j['id']: j for j in registered}
 if not registered:
     print('BASELINES nothing registered for local admission')
