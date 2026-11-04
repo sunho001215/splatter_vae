@@ -1,8 +1,10 @@
-# Real-data validation of the real-world pipeline on one raw DROID episode (host-specific paths, 2026-10-31).
-# Inputs are read-only; every output/cache lives under /home/ws/ws/validation-20261031/item5 (docs/realworld_droid_validation.md).
-#   python -m s4d.realworld.cli run --config configs/realworld/droid_raw_validation.yaml \
-#       --episode AUTOLab+0d4edc83+2023-10-21-19h-07m-04s --stages ingest,stereo_rectify,mapanything_rig_depth,calibrate,mapanything_depth,track2d,lift3d,export
-output_root: /home/ws/ws/validation-20261031/item5/root
+# Real-data validation of the maintained real-world pipeline (MapAnything; FoundationStereo removed 2026-11-05) on one
+# raw DROID episode, ZED 2 stereo pairs. Inputs are read-only. The historical 2026-10-31 FoundationStereo outputs under
+# /home/ws/ws/validation-20261031/item5 are left untouched; this config writes to a new versioned output root.
+# Remote run (all compute in the inference container, RAM-only streaming; ops/inference_server/README.md):
+#   .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/droid_raw_validation.yaml \
+#       --server configs/realworld/inference_server.yaml --episode AUTOLab+0d4edc83+2023-10-21-19h-07m-04s
+output_root: /home/ws/ws/realworld-20261104/processed/droid-v1
 adapter:
   name: droid_raw_svo
   config:
@@ -25,57 +27,31 @@ adapter:
       base_frame: fr3_link0
       flange_frame: fr3_link8
       joint_names: [fr3_joint1, fr3_joint2, fr3_joint3, fr3_joint4, fr3_joint5, fr3_joint6, fr3_joint7]
-workers:
+workers:   # paths inside the inference container (configs/realworld/inference_server.yaml)
   mapanything:
-    python: /home/ws/ws/validation-20261031/envs/mapanything/bin/python
-    repo_dir: /home/ws/ws/validation-20261031/upstream/map-anything
+    python: /opt/envs/mapanything/bin/python
+    repo_dir: /opt/upstream/map-anything
     expected_commit: 3d10cf7a3016fc0f9bb13a071ee66c47b10be0d9
-    checkpoint: /home/ws/ws/validation-20261031/downloads/map-anything-a1d87e90/model.safetensors
-    params: {hf_dir: /home/ws/ws/validation-20261031/downloads/map-anything-a1d87e90,
-             hf_repo: facebook/map-anything, hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa,
-             model_hw: [392, 518], use_depth: true, use_pose: true, apply_mask: true, mask_edges: true, amp_dtype: bf16}
-    timeout_s: 7200
-    env:
-      CUDA_VISIBLE_DEVICES: MIG-8da55219-bd6b-5260-8be1-3b2a76ac733c
-      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
-      HF_HOME: /home/ws/ws/validation-20261031/cache/hf
-      XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
-      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
+    checkpoint: /ram/weights/map-anything-a1d87e90/model.safetensors
+    params: {hf_dir: /ram/weights/map-anything-a1d87e90, hf_repo: facebook/map-anything,
+             hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa, model_hw: [294, 518], use_depth: true,
+             use_pose: true, apply_mask: true, mask_edges: true, amp_dtype: bf16}   # 16:9 ZED frames -> 518 x 294
   alltracker:
-    python: /home/ws/ws/validation-20261031/envs/alltracker/bin/python
-    repo_dir: /home/ws/ws/validation-20261031/upstream/alltracker
+    python: /opt/envs/alltracker/bin/python
+    repo_dir: /opt/upstream/alltracker
     expected_commit: e7553135e7b361590dbccd10e2b274b024f41cd6
-    checkpoint: /home/ws/ws/validation-20261031/downloads/alltracker/alltracker.pth
+    checkpoint: /ram/weights/alltracker/alltracker.pth
     params: {window_len: 16, inference_iters: 4}
-    timeout_s: 7200
-    env:
-      CUDA_VISIBLE_DEVICES: MIG-c4ec2a95-30cc-5398-82bf-d9b11787fc70
-      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
-      HF_HOME: /home/ws/ws/validation-20261031/cache/hf
-      XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
-      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
-  sam3:   # optional baseline stage (SNeRL semantics); gated facebook/sam3 checkpoint, HF revision 3c879f39
-    python: /home/ws/ws/validation-20261031/envs/sam3/bin/python
-    repo_dir: /home/ws/ws/validation-20261031/upstream/sam3
+  sam3:
+    python: /opt/envs/sam3/bin/python
+    repo_dir: /opt/upstream/sam3
     expected_commit: f1647e8d0c1d280991f4d1b7d974c2704537fe66
-    checkpoint: /home/ws/ws/validation-20261031/downloads/sam3/sam3.pt
-    timeout_s: 7200
-    env:
-      CUDA_VISIBLE_DEVICES: MIG-02b55a66-ed41-53c2-9004-c3f5619d6369
-      HF_HUB_OFFLINE: "1"
-      HF_HOME: /home/ws/ws/validation-20261031/cache/hf
-      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
-      XDG_CACHE_HOME: /home/ws/ws/validation-20261031/cache/xdg
-      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
-  dino_snerl:   # optional baseline stage; runs in the repository venv like the SNeRL consumer
-    python: /home/ws/ws/splatter4d/.venv/bin/python
+    checkpoint: /ram/weights/sam3/sam3.pt
+  dino_snerl:
+    python: /opt/envs/s4d/bin/python
     expected_commit: 7c446df5b9f45747937fb0d72314eb9f7b66930a
-    timeout_s: 3600
-    env:
-      CUDA_VISIBLE_DEVICES: MIG-423203d9-5801-5892-a489-30f16a5a2d4a
-      S4D_CACHE_ROOT: /home/ws/ws/splatter4d/.cache   # sha256-checked dino_deitsmall8_pretrain.pth (read only)
-      TORCH_HOME: /home/ws/ws/validation-20261031/cache/torch
-      TMPDIR: /home/ws/ws/validation-20261031/cache/tmp
+  s4d_kernels:
+    python: /opt/envs/s4d/bin/python
 stages:
   stereo_rectify: {chunk: 16}
   mapanything_rig_depth: {}
