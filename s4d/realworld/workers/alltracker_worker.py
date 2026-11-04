@@ -8,6 +8,8 @@ outputs ``flows`` (T',2,H,W) float32 (pixel offsets from the query grid, integer
 ``visconf`` (T',2,H,W) float32 sigmoids (channel 0 visibility, channel 1 confidence).
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -15,20 +17,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _protocol import git_commit, main, sha256  # noqa: E402
 
+_MODELS: dict[tuple, object] = {}
+
 
 def handle(request, inputs):
     import numpy as np
     import torch
 
     repo = Path(request["repo_dir"]).resolve()
-    sys.path.insert(0, str(repo))
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
     from nets.alltracker import Net  # upstream
 
     params = request["params"]
     ckpt = Path(request["checkpoint"])  # alltracker.pth downloaded once into the alltracker env, never here
-    model = Net(int(params.get("window_len", 16)))
-    model.load_state_dict(torch.load(ckpt, map_location="cpu")["model"], strict=True)
-    model.cuda().eval()
+    key = (str(repo), str(ckpt.resolve()), int(params.get("window_len", 16)))
+    if key not in _MODELS:
+        model = Net(key[2])
+        model.load_state_dict(torch.load(ckpt, map_location="cpu")["model"], strict=True)
+        _MODELS[key] = model.cuda().eval()
+    model = _MODELS[key]
     rgbs = torch.from_numpy(inputs["rgbs"]).permute(0, 3, 1, 2).float()[None].cuda()  # 1,T,3,H,W in 0..255
     q = int(params.get("query_frame", 0))
     if rgbs.shape[-1] % 8 or rgbs.shape[-2] % 8:

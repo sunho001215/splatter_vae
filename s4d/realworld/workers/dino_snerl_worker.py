@@ -13,6 +13,8 @@ the consumer's bilinear upsampling - and verifies on the first image that F.inte
 ``dino_target`` exactly (``meta.verified_against_consumer``); ``"upsampled"`` returns ``features`` (N,H,W,384).
 """
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -22,18 +24,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _protocol import git_commit, main  # noqa: E402
 
+_MODELS: dict[tuple, object] = {}
+
 
 def handle(request, inputs):
     import numpy as np
     import torch
 
     from s4d.baselines.snerl.model import dino_target
-    from s4d.baselines.snerl.upstream import DINO_WEIGHTS_SHA256, dino_extractor
+    from s4d.baselines.snerl.upstream import DINO_WEIGHTS_SHA256, dino_extractor, dino_weights_path
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     import torch.nn.functional as F
 
-    extractor = dino_extractor(device)
+    # The consumer fixes architecture/stride and resolves its own repository and official weights.
+    key = (str(REPO.resolve()), str(dino_weights_path().resolve()), device)
+    if key not in _MODELS:
+        _MODELS[key] = dino_extractor(device)
+    extractor = _MODELS[key]
     mode = request["params"].get("output", "tokens")
     feats, verified = [], None
     for k, image in enumerate(inputs["images"]):
