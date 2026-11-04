@@ -117,7 +117,8 @@ class Server:
         code = ("import hashlib,sys,os\np=sys.argv[1]\nif not os.path.isfile(p): print('missing'); raise SystemExit\n"
                 "h=hashlib.sha256()\nf=open(p,'rb')\nfor b in iter(lambda: f.read(1<<24), b''): h.update(b)\n"
                 "print(h.hexdigest())")
-        out = self.dexec([self.config["python_for_tools"], "-I", "-c", code, path], timeout=900).stdout.decode().strip()
+        out = self.dexec([self.config["python_for_tools"], "-I", "-B", "-c", code, path],
+                         timeout=900).stdout.decode().strip()
         return None if out == "missing" else out
 
     def stage_weights(self) -> dict:
@@ -142,7 +143,7 @@ class Server:
                             "hf_hub_download(sys.argv[1], sys.argv[2], revision=sys.argv[3], local_dir=sys.argv[4])")
                     self.ssh(" ".join(shlex.quote(a) for a in [
                         "docker", "exec", "-i", "-w", "/ram", "-e", "HF_HUB_OFFLINE=0", self.container,
-                        item["python"], "-I", "-c", code, item["hf_repo"], item["hf_file"], item["hf_revision"],
+                        item["python"], "-I", "-B", "-c", code, item["hf_repo"], item["hf_file"], item["hf_revision"],
                         str(Path(dest).parent)]), timeout=3600)
                     action = "downloaded_to_ram"
                 have = self._remote_sha(dest)
@@ -157,18 +158,26 @@ class Server:
 
     # ---------------------------------------------------------------- persistence audit
 
+    def _docker_diff(self) -> list[str]:
+        out = self.ssh(f"docker diff {shlex.quote(self.container)}").stdout.decode().split("\n")
+        return sorted(d for d in out if d.strip())
+
     def audit_start(self) -> dict:
+        """Start time plus the container's current ``docker diff`` (entries created by the NVIDIA CDI hook when the
+        container started: ld.so config, Vulkan/EGL/OpenCL ICDs, the hook socket). Any entry added later fails."""
         stamp = self.ssh("date -u +%Y-%m-%dT%H:%M:%S.%NZ").stdout.decode().strip()
-        return {"started_utc": stamp}
+        return {"started_utc": stamp, "docker_diff_baseline": self._docker_diff()}
 
     def audit_end(self, start: dict) -> dict:
         root = shlex.quote(self.config["host_root"])
         changed = self.ssh(f"find {root} -xdev -newermt {shlex.quote(start['started_utc'])} -type f "
                            "-not -path '*/src/splatter4d.git/*' 2>/dev/null | head -200").stdout.decode().split()
-        diff = self.ssh(f"docker diff {shlex.quote(self.container)}").stdout.decode().split("\n")
+        diff = self._docker_diff()
+        new = sorted(set(diff) - set(start.get("docker_diff_baseline", [])))
         ram = self.dexec(["sh", "-c", "du -sh /ram/* 2>/dev/null; df -h /ram /tmp | tail -2"]).stdout.decode()
-        return {"files_changed_below_host_root": changed, "docker_diff": [d for d in diff if d.strip()],
-                "ram_usage": ram.strip().splitlines(), "ok": not changed and not any(d.strip() for d in diff)}
+        return {"files_changed_below_host_root": changed, "docker_diff_new_entries": new,
+                "docker_diff_baseline_entries": len(start.get("docker_diff_baseline", [])),
+                "ram_usage": ram.strip().splitlines(), "ok": not changed and not new}
 
     def resources(self) -> dict:
         stats = self.ssh(f"docker stats --no-stream --format '{{{{json .}}}}' {shlex.quote(self.container)}").stdout

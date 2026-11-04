@@ -192,7 +192,7 @@ class RemoteWorkerPool:
             return self._sessions[name]
         worker = self.config["workers"][name]
         script = worker.get("script") or f"{self.config['source_root']}/s4d/realworld/workers/{name}_worker.py"
-        argv = [worker["python"], "-I", script, "--stream"]
+        argv = [worker["python"], "-I", "-B", script, "--stream"]  # -B: -I ignores PYTHONDONTWRITEBYTECODE
         local = self.config.get("local_argv", False)
         workdir = self.config.get("workdir", "/ram/work")
         if not local:  # ssh joins its arguments into one remote shell command: quote everything after the host
