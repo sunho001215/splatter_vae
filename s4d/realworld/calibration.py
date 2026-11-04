@@ -357,25 +357,41 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
         d = np.minimum(np.concatenate([x[1] for x in nearest(R, t)]), 0.5)
         return _trimmed(d, keep)
 
-    def score(R, t):
-        """Translation-only refinement (median residual of near points), then the inlier fraction (higher = better)."""
-        for _ in range(cfg.init_translation_steps):
-            res = []
-            for j, (_pb, d, idx) in enumerate(nearest(R, t)):
-                ok = d < 0.15
-                if ok.any():
-                    res.append(obs[j][ok] - (trees[j].data[idx[ok]] @ R.T + t))
-            if not res:
-                break
-            t = t + np.median(np.concatenate(res), 0)
-        d = np.concatenate([x[1] for x in nearest(R, t)])
-        return float((d <= cfg.init_inlier_m).mean()), t
+    def score_all(Rs, ts, batch=512):
+        """For every candidate (R, t): ``init_translation_steps`` translation-only updates (median residual of the
+        observed points within 15 cm of the model), then the inlier fraction within ``init_inlier_m`` (higher is
+        better). Vectorised over candidates: one KD-tree query per frame and candidate batch."""
+        ts = ts.copy()
+        inl = np.zeros(len(Rs))
+        for b0 in range(0, len(Rs), batch):
+            R, t = Rs[b0:b0 + batch], ts[b0:b0 + batch]
+            for step in range(cfg.init_translation_steps + 1):
+                res, hits, total = [], np.zeros(len(R)), 0
+                for j in range(len(obs)):
+                    pb = np.einsum("cpk,ckl->cpl", obs[j][None] - t[:, None], R)  # base coordinates (C,P,3)
+                    d, idx = trees[j].query(pb.reshape(-1, 3), k=1, distance_upper_bound=0.5, workers=-1)
+                    d = d.reshape(len(R), -1)
+                    total += d.shape[1]
+                    if step == cfg.init_translation_steps:
+                        hits += (d <= cfg.init_inlier_m).sum(1)
+                        continue
+                    idx = np.minimum(idx, len(trees[j].data) - 1).reshape(len(R), -1)
+                    pred = np.einsum("cpl,ckl->cpk", trees[j].data[idx], R) + t[:, None]
+                    r = obs[j][None] - pred
+                    r[~(d < 0.15)] = np.nan
+                    res.append(r)
+                if step == cfg.init_translation_steps:
+                    inl[b0:b0 + batch] = hits / max(1, total)
+                else:
+                    med = np.nanmedian(np.concatenate(res, 1), axis=1)
+                    t = t + np.nan_to_num(med)
+            ts[b0:b0 + batch] = t
+        return inl, ts
 
     co, cm = np.mean(cents_obs, 0), np.mean(cents_model, 0)
-    scores = []
-    for R in _rotations(cfg.init_axes, cfg.init_rolls):
-        inl, t = score(R, co - R @ cm)
-        scores.append((-inl, R, t))
+    Rs = _rotations(cfg.init_axes, cfg.init_rolls)
+    inl, ts = score_all(Rs, co[None] - np.einsum("ckl,l->ck", Rs, cm))
+    scores = [(-inl[c], Rs[c], ts[c]) for c in range(len(Rs))]
     scores.sort(key=lambda x: x[0])
     refined = []
     for _, R, t in scores[:cfg.init_top]:
