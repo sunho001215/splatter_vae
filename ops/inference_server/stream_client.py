@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import shlex
 import subprocess
 import threading
 import time
@@ -194,8 +195,11 @@ class RemoteWorkerPool:
         argv = [worker["python"], "-I", script, "--stream"]
         local = self.config.get("local_argv", False)
         workdir = self.config.get("workdir", "/ram/work")
-        if not local:
-            argv = [*self.config["ssh"], "docker", "exec", "-i", "-w", workdir, self.config["container"], *argv]
+        if not local:  # ssh joins its arguments into one remote shell command: quote everything after the host
+            env = {**self.config.get("env", {}), **worker.get("env", {})}
+            remote = ["docker", "exec", "-i", "-w", workdir, *[f"--env={k}={v}" for k, v in sorted(env.items())],
+                      self.config["container"], *argv]
+            argv = [*self.config["ssh"], " ".join(shlex.quote(str(a)) for a in remote)]
         session = StreamSession(argv, name=name, log_path=self.log_dir / f"{name}.log",
                                 call_timeout_s=self.config.get("call_timeout_s", 3600),
                                 hello_timeout_s=self.config.get("hello_timeout_s", 120),

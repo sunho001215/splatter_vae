@@ -1,0 +1,60 @@
+# Real-world mug-hanging episode: Franka (recorded frames panda_link0/8) + Robotiq 2F-85 + 3x RealSense D435I, each
+# recording RGB (JPEG) + depth (PNG z16) (2026-11-04 directive). Host-specific paths.
+# Run (local orchestration + I/O; all compute in the inference container, RAM-only streaming):
+#   .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging_rgbd.yaml \
+#       --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000000
+# Raw input (read-only): /home/ws/data/real_world/test/episode_000000.h5. Outputs: output_root (versioned).
+output_root: /home/ws/ws/realworld-20261104/processed/v1
+adapter:
+  name: panda_teleop_h5
+  config:
+    episodes: {mug-hanging-test-000000: /home/ws/data/real_world/test/episode_000000.h5}
+    robot:   # official FR3 (franka_description 7aeeddc) + Robotiq 2F-85 (ros2_robotiq_gripper a74d007), composed with
+             # the PROVISIONAL Robotiq ISO-50 coupling stack (s4d/realworld/mounts.py); same kinematic chain as Panda.
+      urdf_path: /home/ws/ws/validation-20261031/droid_mount/robot_assets/fr3_robotiq_2f85_droid_iso50.urdf
+      gripper_model: robotiq_2f_85
+      gripper_joint: robotiq_85_left_knuckle_joint
+      base_frame: fr3_link0
+      flange_frame: fr3_link8
+      joint_names: [fr3_joint1, fr3_joint2, fr3_joint3, fr3_joint4, fr3_joint5, fr3_joint6, fr3_joint7]
+      arm_note: >-
+        arm generation (Panda/FER vs FR3) not recorded in the file; FR3 meshes used (identical kinematic chain, verified
+        against the recorded flange poses by fk_vs_recorded_ee); coupling/mount not measured on this rig
+workers:   # paths inside the inference container
+  mapanything:
+    python: /opt/envs/mapanything/bin/python
+    repo_dir: /opt/upstream/map-anything
+    expected_commit: 3d10cf7a3016fc0f9bb13a071ee66c47b10be0d9
+    checkpoint: /ram/weights/map-anything-a1d87e90/model.safetensors
+    params: {hf_dir: /ram/weights/map-anything-a1d87e90, hf_repo: facebook/map-anything,
+             hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa, model_hw: [392, 518], use_depth: true,
+             use_pose: true, apply_mask: true, mask_edges: true, amp_dtype: bf16}
+  alltracker:
+    python: /opt/envs/alltracker/bin/python
+    repo_dir: /opt/upstream/alltracker
+    expected_commit: e7553135e7b361590dbccd10e2b274b024f41cd6
+    checkpoint: /ram/weights/alltracker/alltracker.pth
+    params: {window_len: 16, inference_iters: 4}
+  sam3:
+    python: /opt/envs/sam3/bin/python
+    repo_dir: /opt/upstream/sam3
+    expected_commit: f1647e8d0c1d280991f4d1b7d974c2704537fe66
+    checkpoint: /ram/weights/sam3/sam3.pt
+  dino_snerl:
+    python: /opt/envs/s4d/bin/python
+    expected_commit: 7c446df5b9f45747937fb0d72314eb9f7b66930a
+  s4d_kernels:   # expected_commit is set to the local HEAD at run time (server code == reviewed code)
+    python: /opt/envs/s4d/bin/python
+stages:
+  sensor_depth: {chunk: 32, min_depth_m: 0.1, max_depth_m: 6.0, splat: 2}
+  calibrate: {evidence: rgbd, every: 2, landmark_links: [], overlays: 4}
+  mapanything_depth: {chunk: 4, max_set_motion_m: 0.005}
+  track2d: {window: 16, step: 8, grid_stride: 16}
+  lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
+  export: {strides: [1, 2], validation_tail_frames: 0, max_gap_factor: 1.5}
+  sam3_masks:
+    prompts: {robot arm: robot, robotic gripper: robot, white mug: object, wooden mug tree: fixture}
+    mode: segment_video
+    chunk: 206
+    score_threshold: 0.5
+  dino_snerl: {backbone: scratch}

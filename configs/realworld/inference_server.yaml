@@ -1,0 +1,38 @@
+# Real-world preprocessing inference server (2026-11-04 directive). Host-specific; read by ops/inference_server.
+# Authentication: the operator opens the SSH ControlMaster "irsl" interactively (password typed once, never stored);
+# every call below reuses it with BatchMode=yes, so a missing master fails fast instead of prompting.
+ssh: [ssh, -o, BatchMode=yes, irsl]
+git_remote: irsl:shkim/src/splatter4d.git
+host_root: /home/irsl/shkim            # every project-controlled file on the host lives here
+host_source: /home/irsl/shkim/src/splatter4d
+container: shkim_rw                    # ONE persistent container (read-only rootfs, RAM tmpfs /ram, one GPU)
+gpu_uuid: GPU-9bcf38b6-8240-e910-6548-ca715643dc11   # the designated RTX 5090 (GPU 2 at setup time)
+workdir: /ram/work
+source_root: /opt/src/splatter4d
+python_for_tools: /opt/envs/s4d/bin/python
+retries: 3
+backoff_s: [5, 30, 120]
+call_timeout_s: 3600
+hello_timeout_s: 600
+env: {TMPDIR: /ram/tmp, HF_HUB_OFFLINE: "1", S4D_CACHE_ROOT: /ram/s4d-cache}
+workers:
+  mapanything: {python: /opt/envs/mapanything/bin/python}
+  alltracker: {python: /opt/envs/alltracker/bin/python}
+  sam3: {python: /opt/envs/sam3/bin/python}
+  dino_snerl: {python: /opt/envs/s4d/bin/python}
+  s4d_kernels: {python: /opt/envs/s4d/bin/python}
+weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart
+  - {dest: /ram/weights/map-anything-a1d87e90/config.json, hf_repo: facebook/map-anything, hf_file: config.json,
+     hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa, python: /opt/envs/mapanything/bin/python,
+     sha256: 65701d09d99ed37a21d295f0d138978b3d584ab3bccdbcb4a2853da212b676c5}
+  - {dest: /ram/weights/map-anything-a1d87e90/model.safetensors, hf_repo: facebook/map-anything,
+     hf_file: model.safetensors, hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa,
+     python: /opt/envs/mapanything/bin/python,
+     sha256: 981f060c64664dff3272b5f5a823d350abe71a2f144444db4cfc325f3ed5a3a0}
+  - {dest: /ram/weights/alltracker/alltracker.pth, local: /home/ws/ws/validation-20261031/downloads/alltracker/alltracker.pth,
+     sha256: ffd9ebcfb6d206d594b646999a150540f92c049cf9b2bf940facf7123f62aa1d}
+  - {dest: /ram/weights/sam3/sam3.pt, local: /home/ws/ws/validation-20261031/downloads/sam3/sam3.pt, sha256: 9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e}
+  - {dest: /ram/s4d-cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth,
+     local: /home/ws/ws/splatter4d/.cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth, sha256: 55c8b267f479b614ec20858947ce361ba804846c193e20be74263a096bb6d75e}
+ram_copies:   # pinned torch.hub code MapAnything's encoder loads (facebookresearch/dinov2 @ 7764ea0, no weights)
+  /opt/upstream/dinov2: /ram/torch/hub/facebookresearch_dinov2_main
