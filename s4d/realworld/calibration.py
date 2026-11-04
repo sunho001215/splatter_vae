@@ -99,6 +99,10 @@ class CalibrationConfig:
     explained_tol_m: float = 0.02
     min_explained_fraction: float = 0.5
     max_heldout_depth_median_m: float = 0.02
+    # RGB-D: Jacobian rows above this multiple of the median non-zero row norm are finite-difference jumps (a projected
+    # surface point crossing into invalid depth switches its residual on/off); they are excluded from the conditioning
+    # and covariance estimates, which they would otherwise distort (inflated largest eigenvalue, shrunken variance)
+    jac_discontinuity_factor: float = 100.0
 
 
 @dataclass
@@ -628,13 +632,27 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     if not res.success or not np.isfinite(res.x).all():
         reasons.append(f"optimisation failed: {res.message}")
     J = res.jac
+    jumps = 0
+    if rgbd:
+        rn = np.linalg.norm(J, axis=1)
+        nz = rn > 0
+        jump = rn > cfg.jac_discontinuity_factor * np.median(rn[nz]) if nz.any() else np.zeros(len(rn), bool)
+        jumps = int(jump.sum())
+        diag["condition_number_all_rows"] = float(np.linalg.cond(J.T @ J))
+        diag["jacobian_rows_excluded_discontinuous"] = jumps
+        J = J[~jump]
     JTJ = J.T @ J
     cond = float(np.linalg.cond(JTJ))
     diag["condition_number"] = cond
+    if rgbd:
+        w, V = np.linalg.eigh(JTJ)
+        diag["jtj_eigenvalues"] = w.tolist()
+        diag["jtj_weakest_direction"] = V[:, 0].tolist()  # [rotation vector (rad), translation (m)] components
     # only active residuals count (masked landmarks and gated depth samples are zero-filled entries)
     active = sum(2 * int((np.isfinite(f.landmarks_uv).all(1) & (f.landmarks_conf > 0)).sum()) for f in fit)
     if use_depth:
         active += sum(int(g["use"].sum()) for g in gates if g is not None)
+    active -= jumps
     dof = max(1, active - 6)
     diag["active_residuals"] = active
     try:
