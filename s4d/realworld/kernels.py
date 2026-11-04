@@ -134,7 +134,8 @@ def depth_set_diagnostics(params: dict, arrays: dict) -> tuple[dict, dict]:
     K, T = np.asarray(arrays["K"], float), np.asarray(arrays["T_cam_base"], float)
     occ, step = float(params.get("occlusion_m", 0.05)), int(params.get("grid_step", 8))
     sem = arrays.get("semantic")
-    gi, gj = np.meshgrid(np.arange(step // 2, H, step), np.arange(step // 2, W, step), indexing="ij")
+    gi, gj = (x.ravel() for x in np.meshgrid(np.arange(step // 2, H, step), np.arange(step // 2, W, step),
+                                             indexing="ij"))
     grid = {"raw": np.zeros((S, V, gi.size), np.float32), "ma": np.zeros((S, V, gi.size), np.float32),
             "static": np.zeros((S, V, gi.size), bool)}
     sets = []
@@ -206,7 +207,7 @@ def forward_check(params: dict, arrays: dict) -> tuple[dict, dict]:
     from s4d.train.loop import build_model, forward_losses, move_batch, seed_everything
 
     repo = __import__("pathlib").Path(__file__).resolve().parents[2]
-    cfg = load_config(str(repo / params["config"]), list(params.get("overrides", [])))
+    cfg = load_config([str(repo / params["config"])], list(params.get("overrides", [])))
     seed_everything(int(params.get("seed", 0)))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     batch = {k: torch.from_numpy(np.asarray(v)) for k, v in arrays.items()}
