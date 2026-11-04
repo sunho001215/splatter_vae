@@ -14,7 +14,14 @@ retries: 3
 backoff_s: [5, 30, 120]
 call_timeout_s: 3600
 hello_timeout_s: 600
-env: {TMPDIR: /ram/tmp, HF_HUB_OFFLINE: "1", S4D_CACHE_ROOT: /ram/s4d-cache, USER: shkim, LOGNAME: shkim}  # uid 1001 has no passwd entry in the image
+env:   # uid 1001 has no passwd entry in the image (USER/LOGNAME); git (s4d.third_party pins) from the tools env, read-only
+  TMPDIR: /ram/tmp
+  HF_HUB_OFFLINE: "1"
+  S4D_CACHE_ROOT: /ram/s4d-cache
+  USER: shkim
+  LOGNAME: shkim
+  GIT_OPTIONAL_LOCKS: "0"
+  PATH: /opt/envs/tools/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 workers:
   mapanything: {python: /opt/envs/mapanything/bin/python}
   alltracker: {python: /opt/envs/alltracker/bin/python}

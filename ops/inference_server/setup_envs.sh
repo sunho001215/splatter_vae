@@ -6,7 +6,7 @@
 # cached on disk (weights are placed in /ram/weights per session; see ops/inference_server/README.md).
 #
 #   docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh <env> [<env> ...]
-#   envs: mapanything alltracker sam3 s4d
+#   envs: mapanything alltracker sam3 s4d tools
 #
 # Versions:
 # - alltracker / sam3: the exact package sets of the environments verified on real DROID data
@@ -47,6 +47,11 @@ for env in "$@"; do
                 printf '#!/bin/sh\nexec /opt/envs/sam3/bin/python -I -B -m ziglang cc "$@"\n' > /opt/envs/sam3/bin/cc-zig
                 chmod +x /opt/envs/sam3/bin/cc-zig
             fi
+            ;;
+        tools)  # git for s4d.third_party (pinned submodule identity); conda-forge build via the static micromamba
+            MAMBA_ROOT_PREFIX=/ram/mamba /opt/bin/micromamba create -y -q -p /opt/envs/tools -c conda-forge git=2.47
+            /opt/envs/tools/bin/git --version
+            continue
             ;;
         s4d)
             cd $SRC

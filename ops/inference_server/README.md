@@ -12,7 +12,7 @@ episode, streams bounded chunks, saves results and assembles the training cache.
 | `~/shkim/upstream/{map-anything,alltracker,sam3,dinov2}` | upstream checkouts at the commits pinned in `configs/realworld/upstream_pins.yaml` |
 | `~/shkim/envs/{mapanything,alltracker,sam3,s4d}`, `~/shkim/envs/python` | isolated environments (`setup_envs.sh`), uv-managed CPython |
 | `~/shkim/assets/validation-20261031` | robot URDF + meshes, mounted read-only at the same absolute path the local configs use |
-| `~/shkim/bin/uv` | uv binary |
+| `~/shkim/bin/{uv,micromamba}` | uv; static micromamba (only for the `tools` env: conda-forge git, which `s4d.third_party` calls) |
 
 ## Container
 
@@ -29,7 +29,7 @@ docker run -d --name shkim_rw --restart unless-stopped \
   -e UV_CACHE_DIR=/ram/uv-cache -e UV_PYTHON_INSTALL_DIR=/opt/envs/python -e UV_LINK_MODE=copy -e PIP_NO_CACHE_DIR=1 \
   -e PYTHONDONTWRITEBYTECODE=1 -e LC_ALL=C.UTF-8 -e HF_HUB_OFFLINE=1 --label owner=shkim \
   nvidia/cuda:12.8.0-base-ubuntu22.04 sleep infinity
-docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh mapanything s4d alltracker sam3
+docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh mapanything s4d alltracker sam3 tools
 ```
 
 - GPU isolation: the CDI device request names the one GPU UUID; `nvidia-smi -L` inside shows only it (checked by
