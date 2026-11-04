@@ -18,7 +18,7 @@ env: {TMPDIR: /ram/tmp, HF_HUB_OFFLINE: "1", S4D_CACHE_ROOT: /ram/s4d-cache, USE
 workers:
   mapanything: {python: /opt/envs/mapanything/bin/python}
   alltracker: {python: /opt/envs/alltracker/bin/python}
-  sam3: {python: /opt/envs/sam3/bin/python}
+  sam3: {python: /opt/envs/sam3/bin/python, env: {CC: /opt/envs/sam3/bin/cc-zig}}  # Triton JIT (sam3 NMS) needs a C compiler
   dino_snerl: {python: /opt/envs/s4d/bin/python}
   s4d_kernels: {python: /opt/envs/s4d/bin/python}
 weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart

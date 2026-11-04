@@ -41,6 +41,11 @@ for env in "$@"; do
                 --extra-index-url $TORCH_INDEX -r $LOCKS/$env.txt
             if [ $env = sam3 ]; then
                 $UV pip install -q --python /opt/envs/sam3/bin/python --no-deps -e /opt/upstream/sam3
+                # Triton JIT-builds a small C helper for sam3's GPU NMS; the image has no compiler, so the env carries
+                # zig cc (pinned wheel) behind a CC wrapper (the worker config sets CC).
+                $UV pip install -q --python /opt/envs/sam3/bin/python ziglang==0.13.0.post1
+                printf '#!/bin/sh\nexec /opt/envs/sam3/bin/python -I -B -m ziglang cc "$@"\n' > /opt/envs/sam3/bin/cc-zig
+                chmod +x /opt/envs/sam3/bin/cc-zig
             fi
             ;;
         s4d)

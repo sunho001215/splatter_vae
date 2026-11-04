@@ -167,9 +167,46 @@ def main(argv=None) -> int:
                        "not-fitted split is the fairer comparison, still bounded by URDF/mount accuracy",
                        "smoother depth is not evidence of accuracy (temporal spread also shrinks with over-smoothing)"]})
     rio.atomic_write_json(out_dir / "depth_report.json", report)
+    contact_sheet(root, ep, streams, sets, out_dir / "depth_contact_sheet.png")
     store.cleanup()
     print(json.dumps(report["headline"], indent=1))
     return 0
+
+
+def contact_sheet(root, ep, streams, sets, path, picks=(0.1, 0.5, 0.9), lo=0.4, hi=2.0) -> None:
+    """Per camera and picked set: RGB | raw depth | MapAnything depth | |MA - raw| (0..5 cm) | MA confidence;
+    depth colours on one fixed [lo, hi] m scale, invalid black (image composition only, local)."""
+    import h5py
+    from matplotlib import colormaps
+    from PIL import Image
+
+    from s4d.realworld.depth_stages import depth_file, load_view_depth
+    from s4d.realworld.pipeline import read_frames
+
+    turbo, mag = colormaps["turbo"], colormaps["magma"]
+
+    def colour(x, valid, a, b, cmap):
+        rgb = (cmap(np.clip((x - a) / (b - a), 0, 1))[..., :3] * 255).astype(np.uint8)
+        rgb[~valid] = 0
+        return rgb
+
+    n = len(sets["index"])
+    rows = []
+    for frac in picks:
+        k = int(round(frac * (n - 1)))
+        for v, s in enumerate(streams):
+            i = int(sets["index"][k, v])
+            rgb = read_frames(root, ep, s, [i])[0]
+            dr, vr, _ = load_view_depth(root, ep, s, [i], "sensor_depth")
+            dm, vm, _ = load_view_depth(root, ep, s, [i], "mapanything_depth")
+            with h5py.File(depth_file(root, ep, "mapanything_depth", s), "r") as f:
+                conf = f["conf"][i].astype(np.float32)
+            both = vr[0] & vm[0]
+            tiles = [rgb, colour(dr[0], vr[0], lo, hi, turbo), colour(dm[0], vm[0], lo, hi, turbo),
+                     colour(np.abs(dm[0] - dr[0]), both, 0.0, 0.05, mag),
+                     colour(np.log(np.maximum(conf, 1e-6)), vm[0], 0.0, float(np.log(max(conf.max(), 1.0001))), mag)]
+            rows.append(np.concatenate([t[::2, ::2] for t in tiles], 1))
+    Image.fromarray(np.concatenate(rows, 0)).save(path)
 
 
 def _med(values):

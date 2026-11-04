@@ -166,7 +166,13 @@ class ChunkStore:
         shutil.rmtree(self.dir, ignore_errors=True)
         self._index = None
 
-    cleanup = clear
+    def cleanup(self) -> None:
+        """After the stage is swapped in: remove this store and stores of superseded fingerprints of the same stage
+        (left by interrupted builds whose config or inputs changed since)."""
+        for path in self.dir.parent.glob(self.dir.name.rsplit(".", 1)[0] + ".*"):
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+        self._index = None
 
 
 def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs: dict,
