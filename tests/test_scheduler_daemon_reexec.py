@@ -1,6 +1,8 @@
 """The scheduler daemon re-executes itself only when its sources changed to the suite-tested fingerprint (2026-11-04)."""
 import json
 import os
+import subprocess
+import sys
 
 from ops.jobs import scheduler as jobs
 
@@ -36,27 +38,67 @@ def test_pid_conflict(tmp_path):
     assert jobs.daemon_pid_conflict(pidfile, os.getpid()) is None  # dead pid
 
 
-def _loop(identities, tested, ticks):
-    calls = {"tick": 0, "exec": 0, "sleep": 0}
+def _loop(identities, tested, ticks, exec_error=None):
+    calls = {"tick": 0, "exec": 0, "sleep": 0, "reap": 0}
     seq = iter(identities)
 
     def tick_fn():
         calls["tick"] += 1
         return []
 
+    def identity_fn():
+        value = next(seq)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
     def exec_fn():
         calls["exec"] += 1
+        if exec_error is not None:
+            raise exec_error
 
-    jobs.run_daemon(0, tick_fn=tick_fn, identity_fn=lambda: next(seq), tested_fn=lambda: tested,
-                    exec_fn=exec_fn, sleep_fn=lambda _: calls.__setitem__("sleep", calls["sleep"] + 1), max_ticks=ticks)
+    jobs.run_daemon(0, tick_fn=tick_fn, identity_fn=identity_fn, tested_fn=lambda: tested, exec_fn=exec_fn,
+                    sleep_fn=lambda _: calls.__setitem__("sleep", calls["sleep"] + 1), max_ticks=ticks,
+                    reap_fn=lambda: calls.__setitem__("reap", calls["reap"] + 1))
     return calls
 
 
-def test_loop_reexecs_on_tested_change(capsys):
+def test_loop_reexecs_on_stable_tested_change(capsys):
     n = jobs.DAEMON_SOURCE_CHECK_TICKS
-    calls = _loop([{"v": 1}, {"v": 2}], {"v": 2}, 3 * n)
-    assert calls["exec"] == 1 and calls["tick"] == n  # re-executed at the first check, no further tick
+    calls = _loop([{"v": 1}, {"v": 2}, {"v": 2}], {"v": 2}, 5 * n)
+    assert calls["exec"] == 1 and calls["tick"] == 2 * n  # stable on two consecutive checks, then no further tick
+    assert calls["reap"] == 2 * n  # children reaped after every tick
     assert "re-executing" in capsys.readouterr().out
+
+
+def test_loop_waits_while_sources_keep_changing():
+    n = jobs.DAEMON_SOURCE_CHECK_TICKS
+    tested = {"v": 2}
+    calls = _loop([{"v": 1}, {"v": 2}, {"v": 3}, {"v": 2}, {"v": 4}], tested, 4 * n)
+    assert calls["exec"] == 0  # never the tested state on two consecutive checks
+
+
+def test_loop_survives_check_and_exec_failures(capsys):
+    n = jobs.DAEMON_SOURCE_CHECK_TICKS
+    calls = _loop([{"v": 1}, FileNotFoundError("gone mid-merge"), {"v": 2}, {"v": 2}, {"v": 2}, {"v": 2}], {"v": 2},
+                  5 * n, exec_error=OSError("exec failed"))
+    assert calls["tick"] == 5 * n  # scheduling continued through both failures
+    assert calls["exec"] == 2  # a failed exec resets stability: retried after two more stable checks
+    out = capsys.readouterr().out
+    assert "FileNotFoundError" in out and "OSError" in out
+
+
+def test_startup_warning_on_untested_sources(capsys):
+    _loop([{"v": 1}], {"v": 9}, 1)
+    assert "started on sources that differ" in capsys.readouterr().out
+
+
+def test_reap_children():
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT)  # exited, not yet reaped
+    child.returncode = 0  # this Popen object will not wait for it (as after an exec)
+    assert jobs.reap_children() >= 1
+    assert jobs.reap_children() == 0
 
 
 def test_loop_keeps_code_on_untested_change(capsys):

@@ -1136,31 +1136,59 @@ def daemon_pid_conflict(pidfile: Path, own_pid: int) -> int | None:
     return pid if pid != own_pid and pid_alive(pid) else None
 
 
+def reap_children() -> int:
+    """Reap exited children without blocking (the launch wrappers are children of the daemon process; after an
+    in-place re-exec Python no longer tracks them). Completion itself is read from each run's exit_code file."""
+    reaped = 0
+    while True:
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return reaped
+        if pid == 0:
+            return reaped
+        reaped += 1
+
+
 def run_daemon(interval: float, tick_fn=None, identity_fn=None, tested_fn=None, exec_fn=None, sleep_fn=time.sleep,
-               max_ticks: int | None = None) -> None:
+               max_ticks: int | None = None, reap_fn=reap_children) -> None:
     """The daemon loop. Between ticks (outside the registry lock) it re-executes itself in place when
-    daemon_reexec_needed: same pid, same argv and output redirection; local jobs run in their own sessions (setsid) and
-    remote jobs in containers, so neither is touched."""
+    daemon_reexec_needed holds on two consecutive checks (the tested fingerprint must be stable, not a merge in
+    progress): same pid, argv and output redirection; local jobs run in their own sessions (setsid) and remote jobs
+    in containers, so neither is touched. A failing check or exec is logged and the running daemon continues."""
     tick_fn = tick_fn or tick
     identity_fn = identity_fn or (lambda: source_identity()["source_sha256"])
     tested_fn = tested_fn or tested_source
     exec_fn = exec_fn or (lambda: os.execv(sys.executable, list(sys.orig_argv)))
-    loaded, warned, ticks = identity_fn(), None, 0
+    loaded, warned, candidate, ticks = identity_fn(), None, None, 0
+    if loaded != tested_fn():
+        print(time.strftime("%F %T"), "daemon: started on sources that differ from the suite-tested fingerprint",
+              flush=True)
     while max_ticks is None or ticks < max_ticks:
         for message in tick_fn():
             print(time.strftime("%F %T"), message, flush=True)
         ticks += 1
+        reap_fn()
         if ticks % DAEMON_SOURCE_CHECK_TICKS == 0:
-            current = identity_fn()
-            if daemon_reexec_needed(loaded, current, tested_fn()):
-                print(time.strftime("%F %T"), "daemon: sources changed to the suite-tested fingerprint; re-executing",
-                      flush=True)
-                exec_fn()
-                return
-            if current != loaded and warned != current:
-                warned = current
-                print(time.strftime("%F %T"), "daemon: sources changed but differ from the suite-tested fingerprint; "
-                      "keeping the loaded code", flush=True)
+            try:
+                current = identity_fn()
+                if daemon_reexec_needed(loaded, current, tested_fn()):
+                    if candidate == current:
+                        print(time.strftime("%F %T"), "daemon: sources changed to the suite-tested fingerprint; "
+                              "re-executing", flush=True)
+                        exec_fn()
+                        return
+                    candidate = current  # re-execute only if still unchanged at the next check
+                else:
+                    candidate = None
+                    if current != loaded and warned != current:
+                        warned = current
+                        print(time.strftime("%F %T"), "daemon: sources changed but differ from the suite-tested "
+                              "fingerprint; keeping the loaded code", flush=True)
+            except Exception as exc:  # noqa: BLE001  (never let the update check stop scheduling)
+                candidate = None
+                print(time.strftime("%F %T"), f"daemon: source check/re-exec failed ({type(exc).__name__}: "
+                      f"{str(exc)[:200]}); keeping the loaded code", flush=True)
         sleep_fn(interval)
 
 
