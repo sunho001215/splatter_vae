@@ -1107,6 +1107,63 @@ def status() -> str:
     return "\n".join(rows)
 
 
+DAEMON_SOURCE_CHECK_TICKS = 10  # the daemon compares its loaded sources with the files every 10 ticks
+
+
+def tested_source(report_path: Path | None = None) -> dict | None:
+    """The suite-tested source fingerprint (docs/tests.json with full_suite_passed), or None."""
+    try:
+        report = json.loads((report_path or REPO / "docs/tests.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return report.get("source_sha256") if report.get("full_suite_passed") is True else None
+
+
+def daemon_reexec_needed(loaded: dict, current: dict, tested: dict | None) -> bool:
+    """A long-running daemon keeps the modules it imported at start, while every driver pass is a fresh process.
+    Re-execute only when the sources changed since the daemon started AND now equal the suite-tested fingerprint, i.e.
+    exactly the code the drivers already run; untested edits never reach the daemon. (2026-11-04: a daemon started
+    before the hybrid-masking merge failed a hybrid export's remote verification with its stale encoder module.)"""
+    return current != loaded and tested is not None and current == tested
+
+
+def daemon_pid_conflict(pidfile: Path, own_pid: int) -> int | None:
+    """The pid of another live daemon recorded in ``pidfile``; a re-executed daemon keeps its pid and is not one."""
+    try:
+        pid = int(pidfile.read_text())
+    except (OSError, ValueError):
+        return None
+    return pid if pid != own_pid and pid_alive(pid) else None
+
+
+def run_daemon(interval: float, tick_fn=None, identity_fn=None, tested_fn=None, exec_fn=None, sleep_fn=time.sleep,
+               max_ticks: int | None = None) -> None:
+    """The daemon loop. Between ticks (outside the registry lock) it re-executes itself in place when
+    daemon_reexec_needed: same pid, same argv and output redirection; local jobs run in their own sessions (setsid) and
+    remote jobs in containers, so neither is touched."""
+    tick_fn = tick_fn or tick
+    identity_fn = identity_fn or (lambda: source_identity()["source_sha256"])
+    tested_fn = tested_fn or tested_source
+    exec_fn = exec_fn or (lambda: os.execv(sys.executable, list(sys.orig_argv)))
+    loaded, warned, ticks = identity_fn(), None, 0
+    while max_ticks is None or ticks < max_ticks:
+        for message in tick_fn():
+            print(time.strftime("%F %T"), message, flush=True)
+        ticks += 1
+        if ticks % DAEMON_SOURCE_CHECK_TICKS == 0:
+            current = identity_fn()
+            if daemon_reexec_needed(loaded, current, tested_fn()):
+                print(time.strftime("%F %T"), "daemon: sources changed to the suite-tested fingerprint; re-executing",
+                      flush=True)
+                exec_fn()
+                return
+            if current != loaded and warned != current:
+                warned = current
+                print(time.strftime("%F %T"), "daemon: sources changed but differ from the suite-tested fingerprint; "
+                      "keeping the loaded code", flush=True)
+        sleep_fn(interval)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1130,13 +1187,11 @@ def main() -> None:
             record({"event": "reset", "id": args.job_id})
     else:
         pidfile = REPO / "experiments/daemon.pid"
-        if pidfile.is_file() and pid_alive(int(pidfile.read_text())):
-            raise SystemExit(f"a scheduler daemon is already running (pid {pidfile.read_text()})")
+        other = daemon_pid_conflict(pidfile, os.getpid())
+        if other is not None:
+            raise SystemExit(f"a scheduler daemon is already running (pid {other})")
         pidfile.write_text(str(os.getpid()))
-        while True:
-            for message in tick():
-                print(time.strftime("%F %T"), message, flush=True)
-            time.sleep(args.interval)
+        run_daemon(args.interval)
 
 
 if __name__ == "__main__":
