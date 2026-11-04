@@ -161,14 +161,18 @@ def frame_sets(meta, streams: list[str], max_sync_ns: int | None = None) -> dict
 
 
 def set_robot_motion(meta, stamps_ns: np.ndarray, geom) -> np.ndarray:
-    """Largest URDF-surface displacement (m) of the robot between each set's earliest and latest timestamp."""
+    """Largest URDF-surface displacement (m) of the robot between each set's earliest and latest timestamp; ``inf``
+    (unknown, never merged) when either end lies outside the robot trajectory or beyond its sync tolerance."""
     from s4d.realworld.pipeline import robot_state_at
 
     lo, hi = stamps_ns.min(1), stamps_ns.max(1)
-    q0, g0, _, _ = robot_state_at(meta, lo.astype(np.float64))
-    q1, g1, _, _ = robot_state_at(meta, hi.astype(np.float64))
+    q0, g0, ok0, _ = robot_state_at(meta, lo.astype(np.float64))
+    q1, g1, ok1, _ = robot_state_at(meta, hi.astype(np.float64))
     motion = np.zeros(len(lo))
     for k in range(len(lo)):
+        if not (ok0[k] and ok1[k]):
+            motion[k] = np.inf
+            continue
         if hi[k] == lo[k]:
             continue
         a, _ = geom.surface.points(geom.q(q0[k], g0[k]))

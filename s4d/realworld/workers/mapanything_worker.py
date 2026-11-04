@@ -78,6 +78,7 @@ def _model(hf_dir: str, device: str):
 
 
 def handle(request, inputs):
+    import mapanything  # upstream
     import numpy as np
     import torch
     from mapanything.utils.image import preprocess_inputs  # upstream
@@ -85,6 +86,9 @@ def handle(request, inputs):
 
     params = request["params"]
     repo = Path(request["repo_dir"]).resolve()
+    if not Path(mapanything.__file__).resolve().is_relative_to(repo):  # the reported commit must be the code run
+        raise RuntimeError(f"mapanything is imported from {mapanything.__file__}, not the pinned checkout {repo} "
+                           "(install it editable from repo_dir)")
     hf_dir = params["hf_dir"]
     weights = str(Path(hf_dir) / "model.safetensors")
     model = _model(hf_dir, "cuda")

@@ -207,7 +207,18 @@ def cmd_stereo(args) -> dict:
                 continue
             if a not in out["rigs"] or b not in out["rigs"]:
                 continue
-            sets = frame_sets(meta, [ga.left_stream, gb.left_stream])
+            try:
+                sets = frame_sets(meta, [ga.left_stream, gb.left_stream])
+                pairing = "synchronized sets (frame_sets)"
+            except ValueError:  # rigs not synchronized with each other: nearest timestamps, offset recorded
+                from s4d.data.droid.pointworld import nearest_timestamps
+
+                sa = np.asarray(meta.stream_timestamps_ns[ga.left_stream])
+                sb = np.asarray(meta.stream_timestamps_ns[gb.left_stream])
+                ib_all = nearest_timestamps(sb, sa)
+                sets = {"index": np.stack([np.arange(len(sa)), ib_all], 1)}
+                pairing = (f"nearest timestamps (rigs unsynchronized; offsets up to "
+                           f"{int(np.abs(sb[ib_all] - sa).max()) / 1e6:.1f} ms, moving parts may disagree)")
             errs, rel = [], []
             for k in range(0, len(sets["index"]), args.every):
                 ia, ib = map(int, sets["index"][k])
@@ -225,7 +236,8 @@ def cmd_stereo(args) -> dict:
                     save_png(Path(args.out) / f"cross_{a}_to_{b}_{ib:04d}.png", np.concatenate([
                         img, colorize(pred, 0.2, 2.0, pred > 0), colorize(err, 0, 0.05, both)], 1))
             e, r = np.concatenate(errs), np.concatenate(rel)
-            cross[f"{a}->{b}"] = {"signed_m": stats(e), "relative": stats(r), "rel_below_2pct": float((r < 0.02).mean()),
+            cross[f"{a}->{b}"] = {"pairing": pairing, "signed_m": stats(e), "relative": stats(r),
+                                  "rel_below_2pct": float((r < 0.02).mean()),
                                   "note": "z-buffered reprojection; occlusions and non-overlapping regions included"}
     out["cross_camera"] = cross
     if args.reference_depth:

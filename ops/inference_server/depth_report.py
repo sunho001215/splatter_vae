@@ -49,6 +49,7 @@ def main(argv=None) -> int:
     ap.add_argument("--pipeline", required=True)
     ap.add_argument("--server", required=True)
     ap.add_argument("--episode", required=True)
+    ap.add_argument("--output-root", help="override the pipeline config's output_root (e.g. a fresh baseline run)")
     ap.add_argument("--chunk", type=int, default=6)
     ap.add_argument("--posefree-sets", type=int, default=12)
     args = ap.parse_args(argv)
@@ -60,6 +61,8 @@ def main(argv=None) -> int:
     from s4d.realworld.pipeline import RobotGeometry, accepted_calibration, load_meta, read_frames, robot_state_at
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
+    if args.output_root:
+        cfg["output_root"] = args.output_root
     server = Server.load(Path(args.server))
     root, ep = Path(cfg["output_root"]), args.episode
     out_dir = root / "reports" / ep / "depth"
@@ -146,10 +149,16 @@ def main(argv=None) -> int:
             depth = np.stack([load_view_depth(root, ep, s, [int(idx[v])], "sensor_depth")[0][0]
                               for v, s in enumerate(streams)])[None]
             Ks = np.stack([load_view_depth(root, ep, s, [0], "mapanything_depth")[2] for s in streams])
-            resp, outp, handle = runner.worker(ma_spec, "infer_views", {**mw["params"], "use_pose": False},
-                                               {"images": images, "K": Ks, "cam2world": np.stack([np.eye(4)] * len(streams)),
-                                                "depth": depth.astype(np.float32)}, chunk_id=f"posefree/{k}")
-            runner.ack(handle)
+            got = store.get(f"posefree/{k}")
+            if got is None:
+                resp, outp, handle = runner.worker(ma_spec, "infer_views", {**mw["params"], "use_pose": False},
+                                                   {"images": images, "K": Ks,
+                                                    "cam2world": np.stack([np.eye(4)] * len(streams)),
+                                                    "depth": depth.astype(np.float32)}, chunk_id=f"posefree/{k}")
+                store.put(f"posefree/{k}", {"cam2world_pred": outp["cam2world_pred"]}, {"model": resp["model"]})
+                runner.ack(handle)
+                got = store.get(f"posefree/{k}")
+            outp = got[0]
             P = outp["cam2world_pred"][0].astype(np.float64)
             posefree.append({"set": int(k), "pairs": {f"{a}->{b}": rel_pose_error(T[a], T[b], P[a], P[b])
                                                       for a in range(len(streams)) for b in range(len(streams)) if a < b}})

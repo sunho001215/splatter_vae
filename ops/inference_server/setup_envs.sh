@@ -33,7 +33,8 @@ for env in "$@"; do
             venv mapanything 3.12.12
             $UV pip install -q --python /opt/envs/mapanything/bin/python --index-url $TORCH_INDEX \
                 torch==2.10.0+cu129 torchvision==0.25.0+cu129
-            $UV pip install -q --python /opt/envs/mapanything/bin/python /opt/upstream/map-anything
+            # editable: the imported code is the pinned checkout whose commit the worker reports (and verifies)
+            $UV pip install -q --python /opt/envs/mapanything/bin/python -e /opt/upstream/map-anything
             ;;
         alltracker|sam3)
             venv $env 3.12.12

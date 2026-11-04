@@ -76,6 +76,9 @@ class Server:
             problems.append(f"GPU device requests {devices} != [{uuid}]")
         if "/ram" not in (hc.get("Tmpfs") or {}):
             problems.append("no /ram tmpfs")
+        if not hc.get("Memory") or hc.get("MemorySwap") != hc.get("Memory"):  # equal limits = swap disabled
+            problems.append(f"container may swap (Memory {hc.get('Memory')}, MemorySwap {hc.get('MemorySwap')}): "
+                            "RAM-only episode data could reach the host swap")
         host_root = cfg["host_root"].rstrip("/") + "/"
         for m in info.get("Mounts", []):
             if m["Type"] == "bind" and not m["Source"].startswith(host_root):
@@ -88,7 +91,8 @@ class Server:
             problems.append("root filesystem accepted a write")
         doc = {"container": self.container, "image": info["Config"]["Image"], "id": info["Id"][:12],
                "readonly_rootfs": hc.get("ReadonlyRootfs"), "gpu_device_requests": devices, "nvidia_smi": visible,
-               "memory_limit_bytes": hc.get("Memory"), "nano_cpus": hc.get("NanoCpus"), "tmpfs": hc.get("Tmpfs"),
+               "memory_limit_bytes": hc.get("Memory"), "memory_swap_limit_bytes": hc.get("MemorySwap"),
+               "nano_cpus": hc.get("NanoCpus"), "tmpfs": hc.get("Tmpfs"),
                "mounts": [{"source": m["Source"], "destination": m["Destination"], "rw": m["RW"]}
                           for m in info.get("Mounts", [])], "problems": problems}
         if problems:

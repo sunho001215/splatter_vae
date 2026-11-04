@@ -400,14 +400,16 @@ def applied_joint_correction(meta: EpisodeMeta) -> dict | None:
 
 def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: list[str], every: int = 1,
               cfg: CalibrationConfig | None = None, overlays: int = 3, force: bool = False, runner=None,
-              depth_stage: str | None = None, robot_mask_stage: str | None = None) -> dict:
+              depth_stage: str | None = None, robot_mask_stage: str | None = None,
+              max_frames: int | None = None) -> dict:
     """landmark_source(camera_id, frame_index, landmark_links) -> (uv (M,2) continuous on the view grid with NaN for
     missing, conf (M,)) - visual evidence (detector, annotation or render-and-match worker). With
     ``cfg.evidence == "rgbd"`` there is no landmark source (``None``): the metric depth of ``depth_stage`` (default:
     the registered sensor depth of RGB-D rigs) is the evidence. ``robot_mask_stage`` (e.g. ``sam3_masks``) supplies
     per-frame robot masks (semantic class ``robot``) that gate the depth term and, in RGB-D mode, select the observed
     robot points of the initialisation. The solve runs as the ``calibrate_camera`` kernel through ``runner``
-    (in-process by default)."""
+    (in-process by default); ``max_frames`` caps the frames per camera (evenly spaced after ``every``) so one request
+    stays bounded."""
     meta = load_meta(root, episode_id)
     if applied_joint_correction(meta):
         raise ValueError(f"{episode_id}: joints carry corrections tied to an external calibration "
@@ -430,6 +432,8 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
     if robot_mask_stage:
         config["robot_mask_stage"] = robot_mask_stage
         inputs[robot_mask_stage] = _record_fp(root, episode_id, robot_mask_stage)
+    if max_frames is not None:
+        config["max_frames"] = int(max_frames)
     directory = rio.stage_dir(root, episode_id, "calibrate")
     store = rio.ChunkStore(directory, rio.stage_fingerprint("calibrate", STAGE_VERSIONS["calibrate"], config, inputs))
     if force:
@@ -443,6 +447,8 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             cam = view.stream_id
             stamps = meta.stream_timestamps_ns[cam]
             idx = list(range(0, len(stamps), every))
+            if max_frames is not None and len(idx) > max_frames:
+                idx = [idx[k] for k in np.linspace(0, len(idx) - 1, int(max_frames)).round().astype(int)]
             q, grip, ok, sync = robot_state_at(meta, stamps[idx])
             intr = meta.stream(cam).intrinsics
             has_depth = depth_rec is not None and cam in depth_rec["summary"] and \
@@ -690,6 +696,10 @@ def lift3d(root: Path, episode_id: str, *, vis_threshold: float = 0.5, conf_thre
     config = {"vis_threshold": vis_threshold, "conf_threshold": conf_threshold}
     config["depth_stage"] = depth_stage
     inputs = {k: _record_fp(root, episode_id, k) for k in (depth_stage, "calibrate", "track2d")}
+    directory = rio.stage_dir(root, episode_id, "lift3d")
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("lift3d", STAGE_VERSIONS["lift3d"], config, inputs))
+    if force:
+        store.clear()
 
     def build(tmp: Path) -> dict:
         summary = {}
@@ -704,26 +714,35 @@ def lift3d(root: Path, episode_id: str, *, vis_threshold: float = 0.5, conf_thre
                 continue
             counts = {}
             for name in t2d["summary"][cam]["chunks"]:
-                tr = load_tracks2d(rio.stage_dir(root, episode_id, "track2d") / name, cam)
-                depth, K = view_depth(root, episode_id, meta, cam, tr.frame_indices, depth_stage)
-                out, kmeta, handle = runner.kernel(
-                    "lift_tracks", {"camera_id": cam, "query_frame": int(tr.query_frame),
-                                    "image_hw": [int(x) for x in tr.image_hw],
-                                    "source": tr.source, "vis_threshold": vis_threshold, "conf_threshold": conf_threshold},
-                    {"frame_indices": tr.frame_indices, "timestamps_ns": tr.timestamps_ns, "point_ids": tr.point_ids,
-                     "uv": tr.uv, "visibility": tr.visibility, "confidence": tr.confidence, "depth": depth, "K": K,
-                     "T_cam_base": T}, chunk_id=f"lift3d/{name}")
-                rio.atomic_write_npz(tmp / name, **out, query_frame=tr.query_frame, camera_id=cam,
-                                     source=json.dumps(kmeta["source"]))
-                runner.ack(handle)
+                got = store.get(name)
+                if got is None:
+                    tr = load_tracks2d(rio.stage_dir(root, episode_id, "track2d") / name, cam)
+                    depth, K = view_depth(root, episode_id, meta, cam, tr.frame_indices, depth_stage)
+                    out, kmeta, handle = runner.kernel(
+                        "lift_tracks", {"camera_id": cam, "query_frame": int(tr.query_frame),
+                                        "image_hw": [int(x) for x in tr.image_hw], "source": tr.source,
+                                        "vis_threshold": vis_threshold, "conf_threshold": conf_threshold},
+                        {"frame_indices": tr.frame_indices, "timestamps_ns": tr.timestamps_ns,
+                         "point_ids": tr.point_ids, "uv": tr.uv, "visibility": tr.visibility,
+                         "confidence": tr.confidence, "depth": depth, "K": K, "T_cam_base": T},
+                        chunk_id=f"lift3d/{name}")
+                    out = {**out, "query_frame": np.asarray(tr.query_frame), "camera_id": np.asarray(cam),
+                           "source": np.asarray(json.dumps(kmeta["source"]))}
+                    store.put(name, out, {"status_counts": kmeta["status_counts"]})
+                    runner.ack(handle)
+                    got = store.get(name)
+                out, kmeta = got
+                rio.atomic_write_npz(tmp / name, **out)
                 for k, v in kmeta["status_counts"].items():
                     counts[k] = counts.get(k, 0) + v
             summary[cam] = {"chunks": t2d["summary"][cam]["chunks"], "status_counts": counts,
                             "T_cam_base": T.tolist()}
         return summary
 
-    return rio.run_stage(rio.stage_dir(root, episode_id, "lift3d"), stage="lift3d", version=STAGE_VERSIONS["lift3d"],
-                         config=config, inputs=inputs, build=build, force=force)
+    rec = rio.run_stage(directory, stage="lift3d", version=STAGE_VERSIONS["lift3d"], config=config, inputs=inputs,
+                        build=build, force=force)
+    store.cleanup()
+    return rec
 
 
 def camera_poses(root, episode_id, meta) -> dict:

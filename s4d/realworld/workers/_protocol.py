@@ -154,7 +154,10 @@ def _mount_for(path: str, mountinfo: str) -> dict:
 
 
 def ram_backed() -> dict:
-    """Fail closed unless cwd and an explicitly set TMPDIR live on tmpfs/ramfs."""
+    """Fail closed unless cwd, an explicitly set TMPDIR and the effective temporary directory that libraries use
+    (``tempfile.gettempdir()``, e.g. /tmp when TMPDIR is unset) all live on tmpfs/ramfs."""
+    import tempfile
+
     try:
         mountinfo = Path("/proc/self/mountinfo").read_text()
         paths = {"cwd": _mount_for(os.getcwd(), mountinfo)}
@@ -163,6 +166,7 @@ def ram_backed() -> dict:
             paths["TMPDIR"] = _mount_for(tmpdir, mountinfo)
             if not tmpdir or not Path(tmpdir).is_dir() or not os.access(tmpdir, os.W_OK):
                 paths["TMPDIR"].update(ok=False, error="TMPDIR must be an existing writable directory")
+        paths["gettempdir"] = _mount_for(tempfile.gettempdir(), mountinfo)
         return {"ok": all(item["ok"] for item in paths.values()),
                 "override": os.environ.get("S4D_WORKER_ALLOW_DISK") == "1", **paths}
     except OSError as exc:

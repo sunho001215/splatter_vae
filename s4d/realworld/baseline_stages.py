@@ -40,6 +40,12 @@ SNERL_DINO = {
 SNERL_CLASSES = ("background", "robot", "object", "fixture")
 
 
+def worker_identity(spec: WorkerSpec) -> dict:
+    """Everything about a worker that determines its outputs (so resumed chunks never mix model versions)."""
+    return {"python": spec.python, "script": str(spec.script_path().name), "repo_dir": spec.repo_dir,
+            "expected_commit": spec.expected_commit, "checkpoint": spec.checkpoint}
+
+
 def dino_snerl(cache_dir: Path, out: Path, spec: WorkerSpec, *, backbone: str = "scratch",
                resolution: tuple = SNERL_DINO["input_resolution"], allow_infrared: bool = False,
                allow_mock: bool = False, force: bool = False, runner=None) -> dict:
@@ -51,7 +57,7 @@ def dino_snerl(cache_dir: Path, out: Path, spec: WorkerSpec, *, backbone: str = 
         raise RuntimeError("DINO on infrared images is a domain shift for an RGB teacher; pass allow_infrared")
 
     config = {"backbone": backbone, "resolution": list(resolution), "spec": SNERL_DINO, "worker": spec.name,
-              "allow_mock": allow_mock}
+              "allow_mock": allow_mock, "worker_identity": worker_identity(spec)}
     inputs = {"export_manifest": rio.sha256_file(cache_dir / "manifest.json")}
     store = rio.ChunkStore(Path(out), rio.stage_fingerprint("dino_snerl", "1", config, inputs))
     if force:
@@ -129,7 +135,7 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
         raise ValueError(f"prompt classes must be in {SNERL_CLASSES}")
     directory = rio.stage_dir(root, episode_id, "sam3_masks")
     config = {"cameras": cameras, "prompts": prompts, "mode": mode, "chunk": chunk,
-              "score_threshold": score_threshold, "worker": spec.name}
+              "score_threshold": score_threshold, "worker": spec.name, "worker_identity": worker_identity(spec)}
     inputs = {"ingest": rio.build_id(rio.read_record(rio.episode_dir(root, episode_id) / "normalized"))}
     if any(cam in (g.left_stream, g.right_stream) for cam in cameras for g in meta.stereo):
         from s4d.realworld.pipeline import _record_fp

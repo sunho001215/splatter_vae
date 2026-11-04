@@ -52,10 +52,19 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
+        fsync_dir(path.parent)  # the rename itself is durable only once the directory entry is
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
+
+
+def fsync_dir(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def atomic_write_json(path: Path, doc) -> None:
@@ -160,6 +169,8 @@ class ChunkStore:
             f.write((json.dumps(rec, sort_keys=True, default=str) + "\n").encode())
             f.flush()
             os.fsync(f.fileno())
+        fsync_dir(self.dir)  # a newly created manifest/store entry is durable too
+        fsync_dir(self.dir.parent)
         self.index()[chunk_id] = rec
         return rec
 

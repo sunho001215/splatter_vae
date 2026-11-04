@@ -317,9 +317,10 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
 
     usable = [f for f in frames if f.depth is not None]
     diag = {"method": "rgbd_robot_registration"}
-    if len(usable) < 3:
-        return None, {**diag, "error": "fewer than 3 frames with depth"}
-    if all(f.robot_mask is not None for f in usable):  # robot segmentation available: observed robot points
+    masked = bool(usable) and all(f.robot_mask is not None for f in usable)
+    if len(usable) < (1 if masked else 3):  # motion evidence needs a temporal median; masks work per frame
+        return None, {**diag, "error": f"too few frames with depth ({len(usable)})"}
+    if masked:  # robot segmentation available: observed robot points
         masks = np.stack([f.robot_mask & (f.depth > 0) for f in usable])
         diag["evidence"] = "robot_mask"
     else:
@@ -351,7 +352,7 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
         cents_model.append(model.mean(0))
     diag["init_frames"] = len(obs)
     diag["moving_pixels_median"] = int(np.median(masks.reshape(len(masks), -1).sum(1)))
-    if len(obs) < 3 or moving.sum() < 20:
+    if len(obs) < (1 if masked else 3) or moving.sum() < 20:
         return None, {**diag, "error": "too little robot motion visible in the measured depth"}
 
     def nearest(R, t):
@@ -441,9 +442,10 @@ def explained_fraction(T, frames, K, cfg) -> float | None:
     from scipy.spatial import cKDTree
 
     usable = [f for f in frames if f.depth is not None]
-    if len(usable) < 3:
+    masked = bool(usable) and all(f.robot_mask is not None for f in usable)
+    if len(usable) < (1 if masked else 3):
         return None
-    if all(f.robot_mask is not None for f in usable):  # same evidence as the initialisation
+    if masked:  # same evidence as the initialisation
         masks = np.stack([f.robot_mask & (f.depth > 0) for f in usable])
     else:
         masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
