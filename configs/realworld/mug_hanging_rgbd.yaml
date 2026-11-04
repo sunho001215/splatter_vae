@@ -51,6 +51,7 @@ stages:
     evidence: rgbd
     robot_mask_stage: sam3_masks
     every: 2
+    max_frames: 200   # bounded calibration request (103 frames used here)
     landmark_links: []
     overlays: 4
     cfg:   # this episode's arm moves little (flange path extents ~19 x 8 x 6 cm): the whole masked robot surface carries
