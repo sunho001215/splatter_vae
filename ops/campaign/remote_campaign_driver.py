@@ -92,6 +92,16 @@ HYB_READY = (REPO / RELEASES[(HYB_COMMIT, POOL_IMAGE)]).is_file()
 CST_COMMIT = HYB_COMMIT
 CST_PREFIXES = ('cst50-', 'cst75-')
 CST_READY = HYB_READY
+# Analysis rows (user directive 2026-11-04: run the pending hybrid analyses remotely through the scheduler): ana-* rows
+# run an analysis script of their own release (runs/setup/analysis-release-20261104.json names the commit; the
+# release's s4d equals fd5e950's), read existing checkpoints / exports / data in place and write only runs/<id>/. They
+# are offered once that release's acceptance manifest exists, charged 0.3 units (inference) and declared memory.
+ANA_PREFIXES = ('ana-',)
+ANA_RELEASE_FILE = REPO / 'runs/setup/analysis-release-20261104.json'
+ANA_COMMIT = json.loads(ANA_RELEASE_FILE.read_text())['commit'] if ANA_RELEASE_FILE.is_file() else None
+if ANA_COMMIT:
+    RELEASES[(ANA_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{ANA_COMMIT[:7]}-cc/manifest.json'
+ANA_READY = bool(ANA_COMMIT) and (REPO / RELEASES[(ANA_COMMIT, POOL_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -155,6 +165,8 @@ def kind(job_id):
         return 'orl'
     if job_id.startswith('s3-m3d-'):
         return 'final_pretrain'
+    if job_id.startswith(ANA_PREFIXES):
+        return 'analysis'
     return None
 
 
@@ -170,6 +182,8 @@ def load(job):
         return 1.0
     if kind(jid) in ('final_export', 'pool_export'):
         return 0.1
+    if kind(jid) == 'analysis':
+        return 0.3
     if kind(jid) == 's2_eval':
         return 0.6
     if jid.endswith('-eval'):
@@ -398,6 +412,9 @@ def ready(job):
         return True
     if k == 'pool_export':  # inputs are the remote pretraining's files, released by the dependency on that run
         return True
+    if k == 'analysis':  # inputs (existing checkpoints / exports, uploaded with checksums) are listed in 'inputs'
+        return all((REPO / 'runs/remote/analysis-inputs' / (p.replace('/', '__') + '.json')).is_file()
+                   for p in job.get('inputs', []))
     if job.get('reevaluates'):  # camera suite v2 re-evaluation (2026-10-29): registered on the host that holds the
         return True  # completed run's final snapshot and encoder export; no trainer row, nothing to upload
     if k == 'pool_rl':  # the export (a local file) is uploaded once, checksum-verified, before the pair starts
@@ -464,7 +481,7 @@ def ready(job):
     return need <= targets
 
 
-RANK = {'proxy': 0, 'final_export': 0, 'pool_export': 0, 's2_eval': 0, 's2_rl': 0.5, 'baseline': 1,
+RANK = {'proxy': 0, 'final_export': 0, 'pool_export': 0, 's2_eval': 0, 'analysis': 0.4, 's2_rl': 0.5, 'baseline': 1,
         'final_pretrain': 1, 'nbaseline': 1.5, 'pool_pretrain': 1.6, 'brl': 2, 'orl': 2, 'pool_rl': 2, 'nbrl': 2.2,
         's2_pretrain': 2.5, 'stage3': 3}
 
@@ -515,6 +532,8 @@ if not HYB_READY:
     candidates = [j for j in candidates if not j['id'].startswith(HYB_PREFIXES)]
 if not CST_READY:
     candidates = [j for j in candidates if not j['id'].startswith(CST_PREFIXES)]
+if not ANA_READY:
+    candidates = [j for j in candidates if not j['id'].startswith(ANA_PREFIXES)]
 if not SNERL_NT_READY:
     candidates = [j for j in candidates if j['id'] not in SNERL_NT_IDS]
 candidates.sort(key=dispatch_key)
@@ -685,6 +704,8 @@ def job_release(job):
         return HYB_COMMIT, POOL_IMAGE
     if job['id'].startswith(CST_PREFIXES):
         return CST_COMMIT, POOL_IMAGE
+    if job['id'].startswith(ANA_PREFIXES):
+        return ANA_COMMIT, POOL_IMAGE
     if job['id'].startswith(DS_PREFIXES):
         return DS_COMMIT, POOL_IMAGE
     return (POOL_COMMIT, POOL_IMAGE) if kind(job['id']) in ('pool_pretrain', 'pool_rl') else (COMMIT, IMAGE)

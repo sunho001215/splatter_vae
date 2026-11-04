@@ -63,6 +63,8 @@ def movable(job: dict, state: dict, by_id: dict) -> bool:
     evaluator writes to its own --output-dir so results sync per job); RL pairs must both be movable."""
     if job['script'] not in SCRIPTS or job.get('verification_purpose') or job.get('continues'):
         return False
+    if job.get('pin_host'):  # a matched campaign keeps both arms of a task on one host (CSW4 tube ratio, 2026-11-04)
+        return False
     if job['id'] in state or any(p.exists() for p in output_dirs(job)):
         return False
     if job['script'] == 'scripts/eval_rl.py' and '--output-dir' not in job['args']:
