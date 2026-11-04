@@ -17,7 +17,10 @@ differ from the per-pixel temporal median): a global search over camera orientat
 roll) with centroid-aligned translations, scored by the trimmed mean observed-to-model distance, followed by trimmed
 ICP. The refinement is the same robot-grounded depth term; the landmark gates do not apply and are replaced by depth
 gates on fit AND held-out frames plus an explained-fraction gate (moving measured points within ``explained_tol_m`` of
-the posed robot surface). No pose ever comes from a learned reconstruction model.
+the posed robot surface). With per-frame robot masks (e.g. SAM 3 "robot arm"), the observed points are the masked
+measured depth and the whole articulated surface is registered (the static base and links constrain the pose even when
+the arm moves little); without masks only the moving links can be separated from the scene. No pose ever comes from a
+learned reconstruction model.
 
 What is NOT reproduced from DepthWorld (see docs): the multi-episode factor graph per physical robot, the shared
 hand-eye and joint-offset (dq) corrections, the wrist camera, ext-ext RoMa correspondences and the featuremetric
@@ -320,8 +323,11 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
         diag["evidence"] = "moving_depth"
     pick = np.linspace(0, len(usable) - 1, min(cfg.init_frames, len(usable))).round().astype(int)
     surf = np.stack([usable[k].surface_base for k in range(len(usable))])  # same sample order every frame
-    moving = np.linalg.norm(surf - surf.mean(0), axis=2).max(0) > cfg.moving_link_motion_m
-    diag["moving_model_points"] = int(moving.sum())
+    if diag["evidence"] == "robot_mask":  # the whole robot is observed: register the whole articulated surface
+        moving = np.ones(surf.shape[1], bool)
+    else:  # only what moves is separable from the static scene: register the moving links
+        moving = np.linalg.norm(surf - surf.mean(0), axis=2).max(0) > cfg.moving_link_motion_m
+    diag["model_points"] = int(moving.sum())
     obs, trees, cents_obs, cents_model = [], [], [], []
     hw = usable[0].depth.shape
     from s4d.realworld.geometry import pixel_centers
@@ -426,13 +432,17 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
 
 
 def explained_fraction(T, frames, K, cfg) -> float | None:
-    """Fraction of moving measured points (temporal-median test) within ``explained_tol_m`` of the posed URDF surface."""
+    """Fraction of observed robot points (masked depth when masks exist, else the moving measured points of the
+    temporal-median test) within ``explained_tol_m`` of the posed URDF surface."""
     from scipy.spatial import cKDTree
 
     usable = [f for f in frames if f.depth is not None]
     if len(usable) < 3:
         return None
-    masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+    if all(f.robot_mask is not None for f in usable):  # same evidence as the initialisation
+        masks = np.stack([f.robot_mask & (f.depth > 0) for f in usable])
+    else:
+        masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
     from s4d.realworld.geometry import pixel_centers
 
     centers = pixel_centers(*usable[0].depth.shape)

@@ -30,7 +30,7 @@ import yaml  # noqa: E402
 from ops.inference_server.session import RemoteRunner, Server  # noqa: E402
 from ops.inference_server.stream_client import RemoteWorkerPool  # noqa: E402
 
-STAGES = ("ingest", "sensor_depth", "calibrate", "mapanything_depth", "track2d", "lift3d", "export", "sam3_masks",
+STAGES = ("ingest", "sensor_depth", "sam3_masks", "calibrate", "mapanything_depth", "track2d", "lift3d", "export",
           "dino_snerl")
 
 
@@ -101,7 +101,7 @@ def main(argv=None) -> int:
     ep = args.episode
 
     def run(name, fn):
-        if name not in wanted:
+        if name not in wanted or name in record["stages"]:
             return
         t0 = time.time()
         n0 = len(runner.calls)
@@ -128,10 +128,23 @@ def main(argv=None) -> int:
         sc = st.get("sensor_depth", {})
         run("sensor_depth", lambda f: sensor_depth(root, ep, runner, force=f, **sc))
         cc = dict(st.get("calibrate", {}))
-        ccfg = CalibrationConfig(evidence=cc.pop("evidence", "landmarks"))
+        ccfg = CalibrationConfig(evidence=cc.get("evidence", "landmarks"), **cc.get("cfg", {}))
+        s3 = st.get("sam3_masks", {})
+        meta = P.load_meta(root, ep)
+
+        def run_sam3():
+            run("sam3_masks", lambda f: sam3_masks(root, ep, spec(cfg, "sam3"),
+                                                   cameras=s3.get("cameras") or [v.stream_id for v in meta.views()],
+                                                   prompts=s3["prompts"], mode=s3.get("mode", "segment_images"),
+                                                   chunk=s3.get("chunk", 16),
+                                                   score_threshold=s3.get("score_threshold", 0.5), force=f,
+                                                   runner=runner))
+
+        if cc.get("robot_mask_stage") == "sam3_masks":  # segmentation is calibration evidence: run it first
+            run_sam3()
         run("calibrate", lambda f: P.calibrate(root, ep, None, landmark_links=cc.get("landmark_links", []),
                                                every=cc.get("every", 1), cfg=ccfg, overlays=cc.get("overlays", 3),
-                                               force=f, runner=runner))
+                                               force=f, runner=runner, robot_mask_stage=cc.get("robot_mask_stage")))
         mc = st.get("mapanything_depth", {})
         ma = MapAnythingBackend(spec(cfg, "mapanything"), runner, cfg["workers"]["mapanything"].get("params", {}))
         run("mapanything_depth", lambda f: mapanything_depth(root, ep, ma, force=f, **mc))
@@ -148,13 +161,8 @@ def main(argv=None) -> int:
                                        validation_tail_frames=ec.get("validation_tail_frames", 0),
                                        max_sync_ns=ec.get("max_sync_ns"), max_gap_factor=ec.get("max_gap_factor"),
                                        aspect=ec.get("aspect", "stretch"), force=f))
-        s3 = st.get("sam3_masks", {})
-        meta = P.load_meta(root, ep)
-        run("sam3_masks", lambda f: sam3_masks(root, ep, spec(cfg, "sam3"),
-                                               cameras=s3.get("cameras") or [v.stream_id for v in meta.views()],
-                                               prompts=s3["prompts"], mode=s3.get("mode", "segment_images"),
-                                               chunk=s3.get("chunk", 16), score_threshold=s3.get("score_threshold", 0.5),
-                                               force=f, runner=runner))
+        if cc.get("robot_mask_stage") != "sam3_masks":
+            run_sam3()
         dc = st.get("dino_snerl", {})
         run("dino_snerl", lambda f: dino_snerl(root / "export" / ep, rio.stage_dir(root, ep, "dino_snerl"),
                                                spec(cfg, "dino_snerl"), backbone=dc.get("backbone", "scratch"),

@@ -47,7 +47,15 @@ workers:   # paths inside the inference container
     python: /opt/envs/s4d/bin/python
 stages:
   sensor_depth: {chunk: 32, min_depth_m: 0.1, max_depth_m: 6.0, splat: 2}
-  calibrate: {evidence: rgbd, every: 2, landmark_links: [], overlays: 4}
+  calibrate:   # robot-grounded, RGB-D evidence: registered sensor depth + SAM 3 "robot arm" masks + URDF at recorded joints
+    evidence: rgbd
+    robot_mask_stage: sam3_masks
+    every: 2
+    landmark_links: []
+    overlays: 4
+    cfg:   # this episode's arm moves little (flange path extents ~19 x 8 x 6 cm): the whole masked robot surface carries
+           # the constraint, so the flange-path coverage gate is lowered from 8 to 5 cm; covariance gates unchanged
+      min_motion_extent_m: 0.05
   mapanything_depth: {chunk: 4, max_set_motion_m: 0.005}
   track2d: {window: 16, step: 8, grid_stride: 16}
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
