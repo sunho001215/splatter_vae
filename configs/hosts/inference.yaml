@@ -1,0 +1,6 @@
+# Real-world inference server (ops/inference_server/README.md): the designated RTX 5090 in the RAM-only container.
+# Used only for preprocessing/inference and bounded tests there; the scheduler's pools never include this host.
+name: inference
+gpu_uuids:
+  - GPU-9bcf38b6-8240-e910-6548-ca715643dc11
+runtime_root: /ram/s4d-runtime

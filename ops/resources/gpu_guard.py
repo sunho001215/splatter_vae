@@ -33,6 +33,9 @@ APPROVED_HOST_GPUS = MappingProxyType(
             "GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79",
             "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
         ),
+        # Real-world inference server (user, 2026-11-04): the one designated RTX 5090, inside the RAM-only inference
+        # container (ops/inference_server). Preprocessing, inference and bounded tests only - never a training-pool host.
+        "inference": ("GPU-9bcf38b6-8240-e910-6548-ca715643dc11",),
     }
 )
 LOCAL_MIG_PARENTS = (
@@ -47,7 +50,8 @@ MIG_DEVICES = MappingProxyType(
         for index, uuid in enumerate(APPROVED_HOST_GPUS["local"])
     }
 )
-APPROVED_RUNTIME_ROOTS = MappingProxyType({"local": None, "remote": Path("/home/compu/kaist/sunho")})
+APPROVED_RUNTIME_ROOTS = MappingProxyType({"local": None, "remote": Path("/home/compu/kaist/sunho"),
+                                           "inference": Path("/ram/s4d-runtime")})  # RAM tmpfs in the container
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -83,7 +87,7 @@ def load_host_config(path: Path) -> dict:
         _die("Host config must be a mapping.")
     name = config.get("name")
     if not isinstance(name, str) or name not in APPROVED_HOST_GPUS:
-        _die("Host config name must be exactly local or remote.")
+        _die("Host config name must be exactly local, remote or inference.")
     uuids = config.get("gpu_uuids")
     approved = APPROVED_HOST_GPUS[name]
     if (

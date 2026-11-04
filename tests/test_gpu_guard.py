@@ -26,11 +26,11 @@ def config_for(name):
     return {
         "name": name,
         "gpu_uuids": list(guard.APPROVED_HOST_GPUS[name]),
-        "runtime_root": str(guard.APPROVED_RUNTIME_ROOTS[name]) if name == "remote" else None,
+        "runtime_root": str(guard.APPROVED_RUNTIME_ROOTS[name]) if guard.APPROVED_RUNTIME_ROOTS[name] else None,
     }
 
 
-@pytest.mark.parametrize("name", ["local", "remote"])
+@pytest.mark.parametrize("name", ["local", "remote", "inference"])
 def test_exact_host_config_selects_only_approved_uuids(tmp_path, name):
     config = config_for(name)
     config["gpu_uuids"].reverse()
