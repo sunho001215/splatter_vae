@@ -323,7 +323,10 @@ def cmd_tracks(args) -> dict:
             T_o = P.accepted_calibration(root, args.episode, other.left_stream)
             if T_o is None:
                 continue
-            rel = []
+            rel, offsets = [], []
+            stamps_g = np.asarray(meta.stream_timestamps_ns[g.left_stream])
+            stamps_o = np.asarray(meta.stream_timestamps_ns[other.left_stream])
+            period = float(np.median(np.diff(stamps_o))) if len(stamps_o) > 1 else 0.0
             with h5py.File(rio.stage_dir(root, args.episode, "mapanything_depth") / f"{rio.safe_name(other.left_stream)}.h5",
                            "r") as fo:
                 K_o = np.asarray(fo.attrs["K"])
@@ -338,7 +341,12 @@ def cmd_tracks(args) -> dict:
                         if not len(pts):
                             continue
                         uv, zc = G.project(G.transform_points(T_o, pts), K_o)
-                        d_o = fo["depth"][int(fidx[t])]
+                        t_ns = stamps_g[int(fidx[t])]
+                        j = int(np.argmin(np.abs(stamps_o - t_ns)))  # the other rig's frame nearest in time
+                        if abs(int(stamps_o[j]) - int(t_ns)) > period / 2:
+                            continue
+                        offsets.append(abs(int(stamps_o[j]) - int(t_ns)))
+                        d_o = fo["depth"][j]
                         H, W = d_o.shape
                         ok = (np.isfinite(uv).all(1) & (zc > 0) & (uv[:, 0] >= 0) & (uv[:, 0] < W)
                               & (uv[:, 1] >= 0) & (uv[:, 1] < H))
@@ -347,7 +355,8 @@ def cmd_tracks(args) -> dict:
                         vis = (target > 0) & (zc[ok] <= target + 0.02)  # not occluded in the other view
                         rel.append(np.abs(zc[ok][vis] - target[vis]) / target[vis])
             r = np.concatenate(rel) if rel else np.zeros(0)
-            cross[other.rig_id] = {"relative_depth_error": stats(r),
+            cross[other.rig_id] = {"frame_offset_max_ns": int(max(offsets)) if offsets else None,
+                                   "relative_depth_error": stats(r),
                                    "below_2pct": float((r < 0.02).mean()) if len(r) else None,
                                    "selection": "in image, positive depth, projected z <= target + 2 cm (occlusion test "
                                                 "uses the target depth: not an independent calibration test)"}

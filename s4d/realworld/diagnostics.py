@@ -120,7 +120,8 @@ def edge_to_rgb_distance(depth, valid, rgb, *, max_px: int = 20) -> np.ndarray:
     return np.minimum(dist[d_e], max_px).astype(np.float32)
 
 
-def summarize(x: np.ndarray, tols=(0.01, 0.02, 0.05)) -> dict:
+def summarize(x: np.ndarray, tols=(0.01, 0.02, 0.05), unit: str = "mm", scale: float = 1000.0) -> dict:
+    """Median/mean/p90 of |x| and the fractions within each tolerance (keys ``within_<tol*scale><unit>``)."""
     x = np.asarray(x, np.float64)
     if not len(x):
         return {"n": 0}
@@ -128,5 +129,5 @@ def summarize(x: np.ndarray, tols=(0.01, 0.02, 0.05)) -> dict:
     out = {"n": int(len(x)), "median_abs": float(np.median(a)), "mean_signed": float(x.mean()),
            "p90_abs": float(np.percentile(a, 90))}
     for t in tols:
-        out[f"within_{int(t * 1000)}mm"] = float((a <= t).mean())
+        out[f"within_{int(round(t * scale))}{unit}"] = float((a <= t).mean())
     return out

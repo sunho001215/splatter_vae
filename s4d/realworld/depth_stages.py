@@ -372,9 +372,8 @@ def model_view_frames(root, episode_id, meta, stream_id, indices):
     from s4d.realworld.pipeline import _model_input_rgb, grid_frames, read_frames, to_model_rgb
 
     g = next((g for g in meta.stereo if stream_id in (g.left_stream, g.right_stream)), None)
-    if g is None:
-        # Preserve the existing RGB-D input path exactly.
-        return read_frames(root, episode_id, stream_id, indices)
+    if g is None:  # RGB-D colour stream: RGB order for the model (a BGR stream is flipped, as for the tracker)
+        return to_model_rgb(read_frames(root, episode_id, stream_id, indices), meta.stream(stream_id))
     eye = "left" if stream_id == g.left_stream else "right"
     return _model_input_rgb(to_model_rgb(grid_frames(root, episode_id, meta, g, indices, eye), meta.stream(stream_id)))
 

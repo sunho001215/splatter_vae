@@ -125,8 +125,9 @@ class Server:
                          timeout=900).stdout.decode().strip()
         return None if out == "missing" else out
 
-    def stage_weights(self) -> dict:
-        """Every configured weight file present in /ram with its pinned sha256 (upload or RAM download if not)."""
+    def stage_weights(self, fetch: bool = True) -> dict:
+        """Every configured weight file present in /ram with its pinned sha256 (upload or RAM download if not;
+        ``fetch=False`` only verifies and refuses a missing or different file)."""
         report = {}
         self.dexec(["sh", "-c", "mkdir -p /ram/weights /ram/work /ram/tmp /ram/torch/hub /ram/s4d-cache"])
         for item in self.config["weights"]:
@@ -135,6 +136,8 @@ class Server:
             t0 = time.time()
             have = self._remote_sha(dest)
             action = "present"
+            if have != want and not fetch:
+                raise RuntimeError(f"{dest}: sha256 {have} != pinned {want}; stage weights (run without --skip-weights)")
             if have != want:
                 self.dexec(["mkdir", "-p", str(Path(dest).parent)])
                 if "local" in item:

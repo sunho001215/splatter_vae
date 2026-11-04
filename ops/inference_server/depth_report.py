@@ -89,7 +89,8 @@ def main(argv=None) -> int:
     pool_cfg["expected_source_commit"] = head
     pool = RemoteWorkerPool(pool_cfg, log_dir=out_dir / "worker_logs")
     runner = RemoteRunner(pool, spec(cfg, "s4d_kernels", expected_commit=head))
-    config = {"chunk": args.chunk, "kernel": "depth_set_diagnostics", "occlusion_m": 0.05, "grid_step": 8}
+    config = {"chunk": args.chunk, "kernel": "depth_set_diagnostics", "occlusion_m": 0.05, "grid_step": 8,
+              "posefree_sets": args.posefree_sets, "mapanything": cfg["workers"]["mapanything"]}
     inputs = {k: rio.build_id(rio.read_record(rio.stage_dir(root, ep, k))) for k in
               ("sensor_depth", "mapanything_depth", "calibrate") + (("sam3_masks",) if all(sam.values()) else ())}
     store = rio.ChunkStore(out_dir / "sets", rio.stage_fingerprint("depth_report", "1", config, inputs))

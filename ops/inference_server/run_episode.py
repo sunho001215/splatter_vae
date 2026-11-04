@@ -106,7 +106,7 @@ def main(argv=None) -> int:
     record["source_commit"] = head
     record["container"] = server.verify_container()
     record["server_source"] = server.verify_source(head)
-    record["weights"] = server.stage_weights()
+    record["weights"] = server.stage_weights(fetch=not args.skip_weights)
     record["audit_start"] = server.audit_start()
     save()
     pool_cfg = {k: server.config[k] for k in ("ssh", "container", "workdir", "source_root", "retries", "backoff_s",

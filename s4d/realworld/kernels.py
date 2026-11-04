@@ -156,7 +156,8 @@ def depth_set_diagnostics(params: dict, arrays: dict) -> tuple[dict, dict]:
                 vrow[src] = {"valid_fraction": float(ok.mean()),
                              "robot_alignment": dg.summarize(ra),
                              "flying_pixel_fraction": dg.flying_pixel_fraction(d, ok),
-                             "edge_to_rgb_px": dg.summarize(dg.edge_to_rgb_distance(d, ok, imgs[s, v]), tols=(1, 2, 4)),
+                             "edge_to_rgb_px": dg.summarize(dg.edge_to_rgb_distance(d, ok, imgs[s, v]), tols=(1, 2, 4),
+                                                            unit="px", scale=1.0),
                              "object_valid_fraction": float(ok[obj].mean()) if obj.any() else None,
                              "fixture_valid_fraction": float(ok[fix].mean()) if fix.any() else None,
                              "static_valid_fraction": float(ok[static].mean()) if static.any() else None}
