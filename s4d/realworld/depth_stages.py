@@ -340,10 +340,16 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
 
         def describe(plan):
             sets, joint, motion = plan["sets"], plan["joint"], plan["motion"]
-            return {"sets": int(len(sets["index"])), "joint_sets": int(joint.sum()),
-                    "single_view_sets": int((~joint).sum()), "max_set_spread_ns": int(sets["spread_ns"].max()),
-                    "set_robot_motion_m": {"max": float(motion.max()), "median": float(np.median(motion))},
-                    "sets_detail": {"stamps_ns": sets["stamps_ns"].tolist(), "robot_motion_m": motion.tolist()}}
+            known = motion[np.isfinite(motion)]  # inf = robot state unknown at a set's time (never merged)
+            out = {"sets": int(len(sets["index"])), "joint_sets": int(joint.sum()),
+                   "single_view_sets": int((~joint).sum()), "max_set_spread_ns": int(sets["spread_ns"].max()),
+                   "set_robot_motion_m": {"max": float(known.max()) if len(known) else None,
+                                          "median": float(np.median(known)) if len(known) else None},
+                   "sets_detail": {"stamps_ns": sets["stamps_ns"].tolist(),
+                                   "robot_motion_m": [float(m) if np.isfinite(m) else None for m in motion]}}
+            if len(known) < len(motion):
+                out["unknown_robot_motion_sets"] = int(len(motion) - len(known))
+            return out
 
         common = {"model": identity, "peak_cuda_allocated_bytes": int(peak),
                   "preprocess_checks": metas[-1].get("checks") if metas else None}
