@@ -79,9 +79,8 @@ def _model(hf_dir: str, device: str):
 def handle(request, inputs):
     import numpy as np
     import torch
-    from PIL import Image
-
     from mapanything.utils.image import preprocess_inputs  # upstream
+    from PIL import Image
 
     params = request["params"]
     repo = Path(request["repo_dir"]).resolve()
@@ -125,7 +124,8 @@ def handle(request, inputs):
                         np.abs(pv["depth_z"][0].numpy() - views[v]["depth_z"]).max()))
             with torch.no_grad():
                 preds = model.infer(processed, memory_efficient_inference=False, use_amp=True,
-                                    amp_dtype=params.get("amp_dtype", "bf16"), apply_mask=bool(params.get("apply_mask", True)),
+                                    amp_dtype=params.get("amp_dtype", "bf16"),
+                                    apply_mask=bool(params.get("apply_mask", True)),
                                     mask_edges=bool(params.get("mask_edges", True)), apply_confidence_mask=False,
                                     ignore_calibration_inputs=False, ignore_depth_inputs=not use_depth,
                                     ignore_pose_inputs=not bool(params.get("use_pose", True)),

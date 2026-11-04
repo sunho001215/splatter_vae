@@ -24,10 +24,11 @@ from s4d.realworld.geometry import invert_T, resize_affine, warp_affine
 from s4d.realworld.pipeline import (
     RobotGeometry,
     accepted_calibration,
-    grid_frames,
-    load_depth,
+    default_depth_stage,
     load_meta,
     robot_state_at,
+    view_depth,
+    view_frames,
 )
 from s4d.realworld.tracking import VALID
 
@@ -52,15 +53,19 @@ def _load_chunk(root, episode_id, name):
 def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolutions: dict | None = None,
            cameras: list[str] | None = None, allow_infrared_input: bool = False, allow_mock: bool = False,
            max_sync_ns: int | None = None, gripper_points: int = 32, validation_tail_frames: int = 0,
-           force: bool = False) -> dict:
+           force: bool = False, depth_stage: str | None = None, max_gap_factor: float | None = None) -> dict:
     """``max_sync_ns`` defaults to a third of the reference camera's median frame period (so two canonical times can
     never match the same frame of another camera). ``validation_tail_frames`` puts windows lying entirely in the
     last frames of the reference timeline into the validation split; windows straddling the boundary are dropped,
-    so no frame is shared between splits (same episode: not generalisation evidence)."""
+    so no frame is shared between splits (same episode: not generalisation evidence). ``depth_stage`` defaults to
+    stereo depth for stereo episodes and MapAnything depth for RGB-D episodes. ``max_gap_factor`` drops windows whose
+    canonical frames are further apart than ``max_gap_factor * stride * median reference period`` (recording pauses
+    between segments would otherwise enter as one uniform time step)."""
     meta = load_meta(root, episode_id)
+    depth_stage = depth_stage or default_depth_stage(meta, "lift")
     resolutions = dict(resolutions or RESOLUTIONS)
     records = {k: rio.read_record(rio.stage_dir(root, episode_id, k)) for k in
-               ("stereo_depth", "calibrate", "track2d", "lift3d")}
+               (depth_stage, "calibrate", "track2d", "lift3d")}
     if any(v is None for v in records.values()):
         raise RuntimeError(f"export needs complete upstream stages: {[k for k, v in records.items() if v is None]}")
     # any model or landmark source flagged as mock anywhere in an upstream record (config or summary)
@@ -68,18 +73,19 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
     if mock and not allow_mock:
         raise RuntimeError("upstream stages used MOCK model outputs; refusing to export (allow_mock=False)")
     excluded, chosen = {}, []
-    for g in meta.stereo:
-        cam = g.left_stream
+    for view in meta.views():
+        cam = view.stream_id
+        status = meta.rig_stereo(view.rig_id).status if view.kind == "stereo" else meta.rig_rgbd(view.rig_id).status
         if cameras is not None and cam not in cameras:
             excluded[cam] = "not selected"
         elif accepted_calibration(root, episode_id, cam) is None:
             excluded[cam] = "calibration missing or rejected"
-        elif g.status != "metric":
-            excluded[cam] = f"stereo geometry {g.status}: no metric depth"
+        elif status != "metric":
+            excluded[cam] = f"{view.kind} geometry {status}: no metric depth"
         elif "skipped" in records["lift3d"]["summary"].get(cam, {"skipped": 1}):
             excluded[cam] = "no lifted tracks"
         else:
-            chosen.append((cam, g.rig_id))
+            chosen.append((cam, view.rig_id))
     if not chosen:
         raise RuntimeError(f"no exportable camera: {excluded}")
     modalities = {cam: meta.stream(cam).modality for cam, _ in chosen}
@@ -111,11 +117,15 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
     q_all, g_all, robot_ok, robot_err = robot_state_at(meta, ref_stamps, max_sync_ns)
     chunks = {cam: _chunks(root, episode_id, cam) for cam, _ in chosen}
 
-    windows = []
+    windows, gap_dropped = [], 0
+    period = float(np.median(np.diff(ref_stamps))) if len(ref_stamps) > 1 else 0.0
     for s in strides:
         for t0 in range(len(ref_stamps) - 2 * s):
             canon = [t0, t0 + s, t0 + 2 * s]
             if not robot_ok[canon].all() or any((sync_err[c][canon] > max_sync_ns).any() for c, _ in chosen):
+                continue
+            if max_gap_factor is not None and np.diff(ref_stamps[canon]).max() > max_gap_factor * s * period:
+                gap_dropped += 1
                 continue
             per_cam = {}
             for cam, _ in chosen:
@@ -156,14 +166,14 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                                                   [geom.closure(g_all[t])]]) for T, t in zip(flange, canon)]
                                  ).astype(np.float32)
                 cams = []
-                for cam, rig in chosen:
+                for cam, _rig in chosen:
                     info = w["cameras"][cam]
                     ch = _load_chunk(root, episode_id, info["chunk"])
                     pos = [list(ch["frame_indices"]).index(f) for f in info["frames"]]
                     pts = ch["xyz_base"][pos].astype(np.float32)
                     vis = ch["status"][pos] == VALID
-                    depth, K, _ = load_depth(root, episode_id, rig, info["frames"])
-                    imgs = grid_frames(root, episode_id, meta, meta.rig_stereo(rig), info["frames"])
+                    depth, K = view_depth(root, episode_id, meta, cam, info["frames"], depth_stage)
+                    imgs = view_frames(root, episode_id, meta, cam, info["frames"])
                     w2c = accepted_calibration(root, episode_id, cam).astype(np.float32)
                     cams.append((cam, pts, vis, depth, K, imgs, w2c))
                 for name, (H, W) in resolutions.items():
@@ -231,9 +241,16 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             "motion_pairs": [[0, 1, 0], [1, 2, 1], [0, 2, 0]],
             "conventions": CONVENTIONS,
             "intrinsics_convention": "continuous pixel coordinates; K tracked through resize as a pixel affine",
-            "depth_resize": "nearest neighbour, zero invalid, metric camera-z of the rectified left image",
-            "motion_target": "per-camera AllTracker tracks lifted with same-frame stereo depth and the accepted "
-                             "calibration; weight 1 where the source-time status is valid and both positions finite",
+            "depth_resize": "nearest neighbour, zero invalid, metric camera-z of the rectified left image"
+            if depth_stage == "stereo_depth" else
+            f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})",
+            "motion_target": ("per-camera AllTracker tracks lifted with same-frame stereo depth and the accepted "
+                              "calibration; weight 1 where the source-time status is valid and both positions finite")
+            if depth_stage == "stereo_depth" else
+            (f"per-camera AllTracker tracks lifted with same-frame {depth_stage} depth and the accepted calibration; "
+             "weight 1 where the source-time status is valid and both positions finite"),
+            "depth_stage": depth_stage,
+            "windows_dropped_for_time_gaps": gap_dropped,
             "gripper_target": f"{len(pick)} surface points of the URDF gripper links ({grip_links}) via FK at the "
                               "recorded gripper state; weight from the 2 cm source-time depth test",
             "probe_state": "panda flange xyz (m), flange euler xyz (rad, scipy 'xyz'), gripper closure in [0,1] "
@@ -243,7 +260,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                          "camera_sync_max_ns": {c: int(e.max()) for c, e in sync_err.items()},
                          "robot_sync_max_ns": int(robot_err.max())},
             "upstream_records": {k: rio.build_id(v) for k, v in records.items()},
-            "models": {k: records[k]["summary"] for k in ("stereo_depth", "track2d")},
+            "models": {k: records[k]["summary"] for k in (depth_stage, "track2d")},
             "calibration": records["calibrate"]["summary"],
             "MOCK_MODEL_OUTPUTS": bool(mock),
             "split_policy": f"windows inside the last {validation_tail_frames} reference frames are validation, "
@@ -256,5 +273,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                          config={"strides": list(strides), "resolutions": resolutions, "cameras": cameras,
                                  "allow_infrared_input": allow_infrared_input, "allow_mock": allow_mock,
                                  "max_sync_ns": max_sync_ns, "gripper_points": gripper_points,
-                                 "validation_tail_frames": validation_tail_frames},
+                                 "validation_tail_frames": validation_tail_frames,
+                                 **({} if depth_stage == "stereo_depth" else {"depth_stage": depth_stage}),
+                                 **({} if max_gap_factor is None else {"max_gap_factor": max_gap_factor})},
                          inputs={k: rio.build_id(v) for k, v in records.items()}, build=build, force=force)

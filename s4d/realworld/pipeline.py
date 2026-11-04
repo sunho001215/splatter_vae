@@ -17,7 +17,7 @@ import h5py
 import numpy as np
 
 from s4d.realworld import io as rio
-from s4d.realworld.calibration import CalibrationConfig, CalibrationFrame, calibrate_camera, overlay_image
+from s4d.realworld.calibration import CalibrationConfig
 from s4d.realworld.contract import EpisodeMeta, meta_from_json, meta_to_json, validate_episode
 from s4d.realworld.geometry import (
     rectify_map,
@@ -35,10 +35,13 @@ from s4d.realworld.robot import (
     joint_dict,
     landmarks,
 )
+from s4d.realworld.runners import LocalRunner
 from s4d.realworld.stereo import depth_from_pair
-from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, lift_tracks, query_grid, status_counts
+from s4d.realworld.tracking import Tracks2D, alltracker_to_tracks2d, query_grid
 
 STAGE_VERSIONS = {"ingest": "1", "stereo_depth": "1", "calibrate": "1", "track2d": "1", "lift3d": "1", "export": "1"}
+# RGB-D episodes: calibrate runs on the registered sensor depth, lifting/export use MapAnything depth
+RGBD_CALIBRATION_DEPTH, RGBD_LIFT_DEPTH = "sensor_depth", "mapanything_depth"
 
 
 # ---------------------------------------------------------------- backends
@@ -101,15 +104,24 @@ class WorkerStereoBackend(StereoBackend):
 
 
 class WorkerTrackerBackend(TrackerBackend):
-    def __init__(self, spec, workdir: Path, params: dict | None = None, allow_mock: bool = False):
+    """AllTracker worker. With a ``runner`` (``s4d.realworld.runners``) the call goes through it and the caller
+    acknowledges ``last_handle`` after saving; without one, the file protocol runs locally as before."""
+
+    def __init__(self, spec, workdir: Path, params: dict | None = None, allow_mock: bool = False, runner=None):
         self.spec, self.workdir, self.params, self.allow_mock = spec, Path(workdir), dict(params or {}), allow_mock
         self.identity = {"worker": spec.name}
+        self.runner, self.last_handle = runner, None
 
-    def track(self, camera_id, frames, frame_indices, query):
-        from s4d.realworld.workers import call_worker
+    def track(self, camera_id, frames, frame_indices, query, chunk_id: str | None = None):
+        params, arrays = {**self.params, "query_frame": int(query)}, {"rgbs": _model_input_rgb(frames)}
+        if self.runner is not None:
+            resp, out, self.last_handle = self.runner.worker(self.spec, "track", params, arrays,
+                                                             chunk_id=chunk_id or f"{camera_id}/{frame_indices[0]}",
+                                                             allow_mock=self.allow_mock)
+        else:
+            from s4d.realworld.workers import call_worker
 
-        resp, out = call_worker(self.spec, "track", {**self.params, "query_frame": int(query)},
-                                {"rgbs": _model_input_rgb(frames)}, self.workdir, allow_mock=self.allow_mock)
+            resp, out = call_worker(self.spec, "track", params, arrays, self.workdir, allow_mock=self.allow_mock)
         self.identity = {**resp["model"], "meta": resp["meta"]}
         return out["flows"], out["visconf"]
 
@@ -306,6 +318,37 @@ def load_depth(root, episode_id, rig, indices, reference="left"):
     return depth, np.asarray(K), rectified
 
 
+def view_frames(root, episode_id, meta: EpisodeMeta, stream_id: str, indices) -> np.ndarray:
+    """Frames of a camera view on the grid its depth, tracks and masks use: the stereo grid of ``grid_frames`` for a
+    stereo rig's left eye, the recorded (zero-distortion) colour grid of an RGB-D rig."""
+    view = next(v for v in meta.views() if v.stream_id == stream_id)
+    if view.kind == "stereo":
+        return grid_frames(root, episode_id, meta, meta.rig_stereo(view.rig_id), indices)
+    return read_frames(root, episode_id, stream_id, indices)
+
+
+def default_depth_stage(meta: EpisodeMeta, purpose: str) -> str:
+    """Depth source per purpose ("calibrate" or "lift"): stereo episodes use ``stereo_depth``; RGB-D episodes calibrate
+    on the registered sensor depth and lift with MapAnything depth."""
+    if meta.rgbd and not meta.stereo:
+        return RGBD_CALIBRATION_DEPTH if purpose == "calibrate" else RGBD_LIFT_DEPTH
+    if meta.rgbd:
+        raise NotImplementedError("episodes mixing stereo and RGB-D rigs need an explicit depth stage")
+    return "stereo_depth"
+
+
+def view_depth(root, episode_id, meta: EpisodeMeta, stream_id: str, indices, stage: str):
+    """(depth (n,H,W), K continuous) of a view from ``stage`` on that view's grid."""
+    if stage == "stereo_depth":
+        view = next(v for v in meta.views() if v.stream_id == stream_id)
+        depth, K, _ = load_depth(root, episode_id, view.rig_id, indices)
+        return depth, K
+    from s4d.realworld.depth_stages import load_view_depth
+
+    depth, valid, K = load_view_depth(root, episode_id, stream_id, indices, stage)
+    return np.where(valid, depth, 0.0).astype(np.float32), K
+
+
 # ---------------------------------------------------------------- robot state at camera time
 
 
@@ -402,76 +445,127 @@ def applied_joint_correction(meta: EpisodeMeta) -> dict | None:
 
 
 def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: list[str], every: int = 1,
-              cfg: CalibrationConfig | None = None, overlays: int = 3, force: bool = False) -> dict:
-    """landmark_source(camera_id, frame_index, landmark_links) -> (uv (M,2) continuous on the rectified left grid
-    with NaN for missing, conf (M,)) - visual evidence (detector, annotation or render-and-match worker)."""
+              cfg: CalibrationConfig | None = None, overlays: int = 3, force: bool = False, runner=None,
+              depth_stage: str | None = None) -> dict:
+    """landmark_source(camera_id, frame_index, landmark_links) -> (uv (M,2) continuous on the view grid with NaN for
+    missing, conf (M,)) - visual evidence (detector, annotation or render-and-match worker). With
+    ``cfg.evidence == "rgbd"`` there is no landmark source (``None``): the metric depth of ``depth_stage`` (default:
+    the registered sensor depth of RGB-D rigs) is the evidence. The solve runs as the ``calibrate_camera`` kernel
+    through ``runner`` (in-process by default)."""
     meta = load_meta(root, episode_id)
     if applied_joint_correction(meta):
         raise ValueError(f"{episode_id}: joints carry corrections tied to an external calibration "
                          f"({applied_joint_correction(meta)['kind']}); robot-grounded calibration needs raw joints - "
                          "re-ingest with a calibration_source other than adapter_provided")
-    depth_rec = rio.read_record(rio.stage_dir(root, episode_id, "stereo_depth"))
+    if landmark_source is None and (cfg is None or cfg.evidence != "rgbd"):
+        raise ValueError("a landmark source is required unless cfg.evidence == 'rgbd'")
+    depth_stage = depth_stage or default_depth_stage(meta, "calibrate")
+    depth_rec = rio.read_record(rio.stage_dir(root, episode_id, depth_stage))
     geom = RobotGeometry(meta)
+    runner = runner or LocalRunner(rio.episode_dir(root, episode_id) / "_work" / "calibrate")
+    inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
+    if depth_rec is not None:
+        inputs[depth_stage] = rio.build_id(depth_rec)
+    config = {"landmark_links": landmark_links, "every": every, "cfg": asdict(cfg or CalibrationConfig()),
+              "landmark_source": getattr(landmark_source, "identity", repr(landmark_source))}
+    if depth_stage != "stereo_depth":
+        config["depth_stage"] = depth_stage  # (absent for stereo episodes: their fingerprints stay unchanged)
+    directory = rio.stage_dir(root, episode_id, "calibrate")
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("calibrate", STAGE_VERSIONS["calibrate"], config, inputs))
+    if force:
+        store.clear()
 
     def build(tmp: Path) -> dict:
         from PIL import Image
 
         summary = {"fk_vs_recorded_ee": fk_vs_recorded_ee(meta, geom)}
-        for g in meta.stereo:
-            cam = g.left_stream
+        for view in meta.views():
+            cam = view.stream_id
             stamps = meta.stream_timestamps_ns[cam]
             idx = list(range(0, len(stamps), every))
             q, grip, ok, sync = robot_state_at(meta, stamps[idx])
-            has_depth = g.status == "metric" and depth_rec is not None and g.rig_id in depth_rec["summary"] and \
-                "skipped" not in depth_rec["summary"][g.rig_id]
-            if has_depth:
-                depth, K, _ = load_depth(root, episode_id, g.rig_id, idx)
+            intr = meta.stream(cam).intrinsics
+            if view.kind == "stereo":
+                g = meta.rig_stereo(view.rig_id)
+                has_depth = g.status == "metric" and depth_rec is not None and g.rig_id in depth_rec["summary"] and \
+                    "skipped" not in depth_rec["summary"][g.rig_id]
             else:
-                depth, K = None, meta.stream(cam).intrinsics.K()
+                has_depth = depth_rec is not None and cam in depth_rec["summary"] and \
+                    "skipped" not in depth_rec["summary"][cam]
+            if has_depth:
+                depth, K = view_depth(root, episode_id, meta, cam, idx, depth_stage)
+            else:
+                depth, K = None, intr.K()
             local_cfg = CalibrationConfig(**{**asdict(cfg or CalibrationConfig()),
-                                             "image_hw": (meta.stream(cam).intrinsics.height,
-                                                          meta.stream(cam).intrinsics.width)})
-            frames = []
+                                             "image_hw": (intr.height, intr.width)})
+            rows = {k: [] for k in ("t_index", "timestamp_ns", "landmarks_base", "landmarks_uv", "landmarks_conf",
+                                    "surface_base", "flange_base", "depth")}
             for k, i in enumerate(idx):
                 if not ok[k]:
                     continue
                 qd = geom.q(q[k], grip[k])
-                uv, conf = landmark_source(cam, i, landmark_links)
+                if landmark_source is not None:
+                    uv, conf = landmark_source(cam, i, landmark_links)
+                else:
+                    uv, conf = np.full((len(landmark_links), 2), np.nan), np.zeros(len(landmark_links))
                 uv = np.asarray(uv, float)
-                intr = meta.stream(cam).intrinsics
                 if not has_depth and intr.distortion_model != "none":
                     # raw (unrectified) grid: map observations to the ideal pinhole image of the same K
                     uv = undistort_pixels(uv, intr.K(), intr.distortion_model, intr.distortion)
                 surf, _ = geom.surface.points(qd)
                 fk = geom.model.fk(qd)
-                frames.append(CalibrationFrame(i, int(stamps[i]), landmarks(geom.model, qd, landmark_links),
-                                               np.asarray(uv, float), np.asarray(conf, float), surf,
-                                               fk[meta.robot.flange_frame][:3, 3],
-                                               depth[k] if depth is not None else None))
-            res = calibrate_camera(cam, frames, K, local_cfg)
-            res.diagnostics["robot_sync_max_ns"] = int(sync.max()) if len(sync) else None
-            res.diagnostics["frames_dropped_for_sync"] = int((~ok).sum())
-            res.diagnostics["depth_available"] = bool(has_depth)
-            rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", res.to_json())
-            if res.T_cam_base is not None:
-                for k in np.linspace(0, len(frames) - 1, min(overlays, len(frames))).astype(int):
-                    image = calibration_image(root, episode_id, g.rig_id, cam, frames[k].t_index)
-                    ov = overlay_image(image, res.T_cam_base, frames[k], K, local_cfg.image_hw)
-                    (tmp / "overlays").mkdir(exist_ok=True)
-                    Image.fromarray(ov).save(tmp / "overlays" / f"{rio.safe_name(cam)}_{frames[k].t_index:05d}.png")
-            summary[cam] = {"status": res.status, "reasons": res.reasons, "init": res.init_method,
-                            "reproj_median_px": res.diagnostics.get("reproj_median_px"),
-                            "depth_abs_median_m": res.diagnostics.get("depth_abs_median_m")}
+                rows["t_index"].append(i)
+                rows["timestamp_ns"].append(int(stamps[i]))
+                rows["landmarks_base"].append(landmarks(geom.model, qd, landmark_links).reshape(-1, 3))
+                rows["landmarks_uv"].append(uv.reshape(-1, 2))
+                rows["landmarks_conf"].append(np.asarray(conf, float).reshape(-1))
+                rows["surface_base"].append(surf)
+                rows["flange_base"].append(fk[meta.robot.flange_frame][:3, 3])
+                if depth is not None:
+                    rows["depth"].append(depth[k])
+            arrays = {k: np.asarray(v) for k, v in rows.items() if k != "depth"}
+            arrays["t_index"] = arrays["t_index"].astype(np.int64)
+            arrays["timestamp_ns"] = arrays["timestamp_ns"].astype(np.int64)
+            if depth is not None:
+                arrays["depth"] = np.stack(rows["depth"]).astype(np.float32)
+            arrays["K"] = K
+            n = len(rows["t_index"])
+            pick = np.linspace(0, n - 1, min(overlays, n)).astype(int) if n else np.zeros(0, int)
+            if len(pick):
+                arrays["overlay_frames"] = pick
+                arrays["overlay_images"] = np.stack([
+                    (calibration_image(root, episode_id, view.rig_id, cam, rows["t_index"][k]) if view.kind == "stereo"
+                     else to_model_rgb(read_frames(root, episode_id, cam, [rows["t_index"][k]]), meta.stream(cam))[0])
+                    for k in pick])
+            got = store.get(cam)
+            if got is None:
+                out, kmeta, handle = runner.kernel("calibrate_camera", {"camera_id": cam, "cfg": asdict(local_cfg)},
+                                                   arrays, chunk_id=f"calibrate/{cam}")
+                store.put(cam, out, kmeta)
+                runner.ack(handle)
+                got = (out, kmeta)
+            out, kmeta = got
+            doc = kmeta["result"]
+            doc["diagnostics"]["robot_sync_max_ns"] = int(sync.max()) if len(sync) else None
+            doc["diagnostics"]["frames_dropped_for_sync"] = int((~ok).sum())
+            doc["diagnostics"]["depth_available"] = bool(has_depth)
+            if depth_stage != "stereo_depth":
+                doc["diagnostics"]["depth_stage"] = depth_stage
+            rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}.json", doc)
+            for img, k in zip(out["overlays"], arrays.get("overlay_frames", [])):
+                (tmp / "overlays").mkdir(exist_ok=True)
+                Image.fromarray(img).save(tmp / "overlays" / f"{rio.safe_name(cam)}_{rows['t_index'][int(k)]:05d}.png")
+            summary[cam] = {"status": doc["status"], "reasons": doc["reasons"], "init": doc["init_method"],
+                            "reproj_median_px": doc["diagnostics"].get("reproj_median_px"),
+                            "depth_abs_median_m": doc["diagnostics"].get("depth_abs_median_m")}
+        if runner.describe().get("kind") != "local":
+            summary["runner"] = runner.describe()
         return summary
 
-    inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
-    if depth_rec is not None:
-        inputs["stereo_depth"] = rio.build_id(depth_rec)
-    return rio.run_stage(rio.stage_dir(root, episode_id, "calibrate"), stage="calibrate",
-                         version=STAGE_VERSIONS["calibrate"],
-                         config={"landmark_links": landmark_links, "every": every, "cfg": asdict(cfg or CalibrationConfig()),
-                                 "landmark_source": getattr(landmark_source, "identity", repr(landmark_source))},
-                         inputs=inputs, build=build, force=force)
+    rec = rio.run_stage(directory, stage="calibrate", version=STAGE_VERSIONS["calibrate"], config=config,
+                        inputs=inputs, build=build, force=force)
+    store.cleanup()
+    return rec
 
 
 def calibrate_provided(root: Path, episode_id: str, provided: dict, *, force: bool = False) -> dict:
@@ -540,55 +634,74 @@ def chunk_queries(n: int, window: int, step: int) -> list[tuple[int, list[int]]]
 
 
 def track2d(root: Path, episode_id: str, backend: TrackerBackend, *, window: int = 16, step: int = 8,
-            grid_stride: int = 8, tracker_hw: tuple | None = None, force: bool = False) -> dict:
+            grid_stride: int = 8, tracker_hw: tuple | None = None, force: bool = False,
+            depth_stage: str | None = None) -> dict:
     """``tracker_hw`` runs the tracker on resized frames (H, W multiples of 8 for AllTracker); the query grid lives on
-    the tracker grid and the returned positions are mapped back to the full rectified grid with the inverse pixel
-    affine, so depth lookup and lifting stay on the depth grid."""
+    the tracker grid and the returned positions are mapped back to the full view grid with the inverse pixel affine,
+    so depth lookup and lifting stay on the depth grid. Each query window is one resumable chunk."""
     meta = load_meta(root, episode_id)
-    depth_rec = rio.read_record(rio.stage_dir(root, episode_id, "stereo_depth"))
+    depth_stage = depth_stage or default_depth_stage(meta, "lift")
+    depth_rec = rio.read_record(rio.stage_dir(root, episode_id, depth_stage))
     inputs = {"ingest": _record_fp(root, episode_id, "ingest")}
     if depth_rec is not None:
-        inputs["stereo_depth"] = rio.build_id(depth_rec)  # tracks live on the grid the depth stage produced
+        inputs[depth_stage] = rio.build_id(depth_rec)  # tracks live on the grid the depth stage produced
+    config = {"window": window, "step": step, "grid_stride": grid_stride,
+              "tracker_hw": list(tracker_hw) if tracker_hw else None, "backend": backend_config(backend)}
+    directory = rio.stage_dir(root, episode_id, "track2d")
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("track2d", STAGE_VERSIONS["track2d"], config, inputs))
+    if force:
+        store.clear()
 
     def build(tmp: Path) -> dict:
         summary = {}
-        for g in meta.stereo:
-            cam = g.left_stream
+        for view in meta.views():
+            cam = view.stream_id
             n = len(meta.stream_timestamps_ns[cam])
             files = []
             for q, idx in chunk_queries(n, window, step):
-                frames = to_model_rgb(grid_frames(root, episode_id, meta, g, idx), meta.stream(cam))
-                hw = frames.shape[1:3]
-                aff = None
-                if tracker_hw is not None and tuple(tracker_hw) != tuple(hw):
-                    aff = resize_affine(hw, tuple(tracker_hw))
-                    top = np.iinfo(frames.dtype).max
-                    frames = np.stack([np.clip(np.rint(warp_affine(x.astype(np.float32), aff, tuple(tracker_hw), order=1)),
-                                               0, top) for x in frames]).astype(frames.dtype)
-                flows, visconf = backend.track(cam, frames, idx, 0)
-                thw = frames.shape[1:3]
-                source = dict(backend.identity)
-                tr = alltracker_to_tracks2d(flows, visconf, query_grid(thw, grid_stride, grid_stride // 2),
-                                            camera_id=cam, query_frame=q, frame_indices=idx,
-                                            timestamps_ns=meta.stream_timestamps_ns[cam][idx], source=source)
-                if aff is not None:
-                    tr.uv = aff.inverse().apply_uv(tr.uv).astype(np.float32)
-                    tr.image_hw = tuple(hw)
-                    tr.source["tracker_affine_full_to_tracker"] = aff.to_json()
                 name = f"{rio.safe_name(cam)}_q{q:05d}.npz"
-                rio.atomic_write_npz(tmp / name, frame_indices=tr.frame_indices, timestamps_ns=tr.timestamps_ns,
-                                     point_ids=tr.point_ids, uv=tr.uv, visibility=tr.visibility,
-                                     confidence=tr.confidence, query_frame=q, image_hw=np.array(hw),
-                                     source=json.dumps(tr.source))
+                got = store.get(name)
+                if got is None:
+                    frames = to_model_rgb(view_frames(root, episode_id, meta, cam, idx), meta.stream(cam))
+                    hw = frames.shape[1:3]
+                    aff = None
+                    if tracker_hw is not None and tuple(tracker_hw) != tuple(hw):
+                        aff = resize_affine(hw, tuple(tracker_hw))
+                        top = np.iinfo(frames.dtype).max
+                        frames = np.stack([np.clip(np.rint(warp_affine(x.astype(np.float32), aff, tuple(tracker_hw),
+                                                                       order=1)), 0, top)
+                                           for x in frames]).astype(frames.dtype)
+                    if isinstance(backend, WorkerTrackerBackend):
+                        flows, visconf = backend.track(cam, frames, idx, 0, chunk_id=f"track2d/{name}")
+                    else:
+                        flows, visconf = backend.track(cam, frames, idx, 0)
+                    thw = frames.shape[1:3]
+                    source = dict(backend.identity)
+                    tr = alltracker_to_tracks2d(flows, visconf, query_grid(thw, grid_stride, grid_stride // 2),
+                                                camera_id=cam, query_frame=q, frame_indices=idx,
+                                                timestamps_ns=meta.stream_timestamps_ns[cam][idx], source=source)
+                    if aff is not None:
+                        tr.uv = aff.inverse().apply_uv(tr.uv).astype(np.float32)
+                        tr.image_hw = tuple(hw)
+                        tr.source["tracker_affine_full_to_tracker"] = aff.to_json()
+                    arrays = dict(frame_indices=tr.frame_indices, timestamps_ns=tr.timestamps_ns,
+                                  point_ids=tr.point_ids, uv=tr.uv, visibility=tr.visibility, confidence=tr.confidence,
+                                  query_frame=q, image_hw=np.array(hw), source=json.dumps(tr.source))
+                    store.put(name, {k: np.asarray(v) for k, v in arrays.items()}, {"model": backend.identity})
+                    if getattr(backend, "runner", None) is not None:
+                        backend.runner.ack(backend.last_handle)
+                    got = store.get(name)
+                arrays, cmeta = got
+                rio.atomic_write_npz(tmp / name, **arrays)
+                backend.identity = cmeta.get("model", backend.identity)
                 files.append(name)
             summary[cam] = {"chunks": files, "model": backend.identity}
         return summary
 
-    return rio.run_stage(rio.stage_dir(root, episode_id, "track2d"), stage="track2d", version=STAGE_VERSIONS["track2d"],
-                         config={"window": window, "step": step, "grid_stride": grid_stride,
-                                 "tracker_hw": list(tracker_hw) if tracker_hw else None,
-                                 "backend": backend_config(backend)},
-                         inputs=inputs, build=build, force=force)
+    rec = rio.run_stage(directory, stage="track2d", version=STAGE_VERSIONS["track2d"], config=config, inputs=inputs,
+                        build=build, force=force)
+    store.cleanup()
+    return rec
 
 
 def load_tracks2d(path: Path, camera_id: str) -> Tracks2D:
@@ -598,42 +711,52 @@ def load_tracks2d(path: Path, camera_id: str) -> Tracks2D:
 
 
 def lift3d(root: Path, episode_id: str, *, vis_threshold: float = 0.5, conf_threshold: float = 0.5,
-           force: bool = False) -> dict:
+           force: bool = False, depth_stage: str | None = None, runner=None) -> dict:
+    """Same-frame lifting of every 2D track chunk with the depth of ``depth_stage`` (default: stereo depth for stereo
+    episodes, MapAnything depth for RGB-D episodes) and the accepted calibration (``lift_tracks`` kernel)."""
     meta = load_meta(root, episode_id)
+    depth_stage = depth_stage or default_depth_stage(meta, "lift")
     t2d = rio.read_record(rio.stage_dir(root, episode_id, "track2d"))
+    runner = runner or LocalRunner(rio.episode_dir(root, episode_id) / "_work" / "lift3d")
+    config = {"vis_threshold": vis_threshold, "conf_threshold": conf_threshold}
+    if depth_stage != "stereo_depth":
+        config["depth_stage"] = depth_stage
+    inputs = {k: _record_fp(root, episode_id, k) for k in (depth_stage, "calibrate", "track2d")}
 
     def build(tmp: Path) -> dict:
         summary = {}
-        for g in meta.stereo:
-            cam = g.left_stream
+        for view in meta.views():
+            cam = view.stream_id
             T = accepted_calibration(root, episode_id, cam)
             if T is None:
                 summary[cam] = {"skipped": "no accepted calibration for this episode/camera"}
                 continue
-            if g.status != "metric":
-                summary[cam] = {"skipped": f"stereo {g.status}: no metric depth"}
+            if view.kind == "stereo" and meta.rig_stereo(view.rig_id).status != "metric":
+                summary[cam] = {"skipped": f"stereo {meta.rig_stereo(view.rig_id).status}: no metric depth"}
                 continue
             counts = {}
             for name in t2d["summary"][cam]["chunks"]:
                 tr = load_tracks2d(rio.stage_dir(root, episode_id, "track2d") / name, cam)
-                depth, K, _ = load_depth(root, episode_id, g.rig_id, tr.frame_indices)
-                t3 = lift_tracks(tr, depth, K, T, vis_threshold=vis_threshold, conf_threshold=conf_threshold)
-                rio.atomic_write_npz(tmp / name, frame_indices=t3.frame_indices, timestamps_ns=t3.timestamps_ns,
-                                     point_ids=t3.point_ids, xyz_base=t3.xyz_base, xyz_cam=t3.xyz_cam,
-                                     status=t3.status, visibility=t3.visibility, confidence=t3.confidence,
-                                     query_frame=t3.query_frame, camera_id=cam, source=json.dumps(t3.source))
-                for k, v in status_counts(t3).items():
+                depth, K = view_depth(root, episode_id, meta, cam, tr.frame_indices, depth_stage)
+                out, kmeta, handle = runner.kernel(
+                    "lift_tracks", {"camera_id": cam, "query_frame": tr.query_frame, "image_hw": list(tr.image_hw),
+                                    "source": tr.source, "vis_threshold": vis_threshold, "conf_threshold": conf_threshold},
+                    {"frame_indices": tr.frame_indices, "timestamps_ns": tr.timestamps_ns, "point_ids": tr.point_ids,
+                     "uv": tr.uv, "visibility": tr.visibility, "confidence": tr.confidence, "depth": depth, "K": K,
+                     "T_cam_base": T}, chunk_id=f"lift3d/{name}")
+                rio.atomic_write_npz(tmp / name, **out, query_frame=tr.query_frame, camera_id=cam,
+                                     source=json.dumps(kmeta["source"]))
+                runner.ack(handle)
+                for k, v in kmeta["status_counts"].items():
                     counts[k] = counts.get(k, 0) + v
             summary[cam] = {"chunks": t2d["summary"][cam]["chunks"], "status_counts": counts,
                             "T_cam_base": T.tolist()}
         return summary
 
     return rio.run_stage(rio.stage_dir(root, episode_id, "lift3d"), stage="lift3d", version=STAGE_VERSIONS["lift3d"],
-                         config={"vis_threshold": vis_threshold, "conf_threshold": conf_threshold},
-                         inputs={k: _record_fp(root, episode_id, k) for k in ("stereo_depth", "calibrate", "track2d")},
-                         build=build, force=force)
+                         config=config, inputs=inputs, build=build, force=force)
 
 
 def camera_poses(root, episode_id, meta) -> dict:
-    return {g.left_stream: accepted_calibration(root, episode_id, g.left_stream) for g in meta.stereo}
+    return {v.stream_id: accepted_calibration(root, episode_id, v.stream_id) for v in meta.views()}
 

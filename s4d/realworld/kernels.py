@@ -77,7 +77,7 @@ def calibrate_camera_kernel(params: dict, arrays: dict) -> tuple[dict, dict]:
         for img, k in zip(arrays["overlay_images"], arrays["overlay_frames"]):
             overlays.append(overlay_image(img, res.T_cam_base, frames[int(k)], K, cfg.image_hw))
     out = {"overlays": np.stack(overlays) if overlays else np.zeros((0, *cfg.image_hw, 3), np.uint8)}
-    return out, {"result": json.loads(json.dumps(res.to_json(), default=_json_default))}
+    return out, {"result": _finite(json.loads(json.dumps(res.to_json(), default=_json_default)))}
 
 
 @kernel("lift_tracks")
@@ -94,6 +94,19 @@ def lift_tracks_kernel(params: dict, arrays: dict) -> tuple[dict, dict]:
            "xyz_base": t3.xyz_base, "xyz_cam": t3.xyz_cam, "status": t3.status, "visibility": t3.visibility,
            "confidence": t3.confidence}
     return out, {"status_counts": status_counts(t3), "source": json.loads(json.dumps(t3.source, default=_json_default))}
+
+
+def _finite(value):
+    """Non-finite floats -> "nan"/"inf"/"-inf" strings so results survive strict JSON (records use allow_nan=False)."""
+    import math
+
+    if isinstance(value, dict):
+        return {k: _finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_finite(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
+    return value
 
 
 def _json_default(x):

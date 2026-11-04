@@ -21,7 +21,6 @@ processed view by view instead of as one static scene, and recorded as such.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import h5py
@@ -250,11 +249,9 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
                                                  for v, s in enumerate(streams)]) for k in ks])
                     arrays = {"images": images, "K": Ks, "cam2world": c2w, "joint": joint[ks]}
                     if input_depth_stage:
-                        from s4d.realworld.depth_stages import load_view_depth as _lvd
-
-                        arrays["depth"] = np.stack([np.stack([_lvd(root, episode_id, s, [int(sets["index"][k, v])],
-                                                                   input_depth_stage)[0][0]
-                                                              for v, s in enumerate(streams)]) for k in ks])
+                        arrays["depth"] = np.stack([np.stack([
+                            load_view_depth(root, episode_id, s, [int(sets["index"][k, v])], input_depth_stage)[0][0]
+                            for v, s in enumerate(streams)]) for k in ks])
                     resp, out, handle = backend.runner.worker(backend.spec, "infer_views", backend.params, arrays,
                                                               chunk_id=cid, allow_mock=backend.allow_mock)
                     rmeta = {"model": resp["model"], "meta": resp["meta"], "transport": resp.get("transport")}
@@ -293,7 +290,3 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
     store.cleanup()
     return rec
 
-
-def write_json(path: Path, doc) -> None:
-    rio.atomic_write_json(path, json.loads(json.dumps(doc, default=lambda x: x.tolist() if hasattr(x, "tolist")
-                                                     else str(x))))

@@ -157,7 +157,7 @@ def test_gripper_links_follow_gripper_subtree_for_non_panda_arm_names(tmp_path):
     """FR3-style arm link names must not be classified as gripper links (real-asset integration finding)."""
     from s4d.realworld.contract import RobotDescription
     from s4d.realworld.pipeline import RobotGeometry
-    from s4d.realworld.robot import URDFModel, RobotSurface
+    from s4d.realworld.robot import RobotSurface, URDFModel
 
     box = '<visual><geometry><box size="0.02 0.02 0.02"/></geometry></visual>'
     links = ["base", "fr3_link0", "fr3_link8", "world", "grip_base", "finger"]

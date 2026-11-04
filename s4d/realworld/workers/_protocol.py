@@ -84,6 +84,25 @@ def sha256(path: str | None) -> str | None:
     return digest.hexdigest()
 
 
+def json_safe(value):
+    """Strict-JSON copy: non-finite floats become the strings "nan" / "inf" / "-inf" (headers are written with
+    ``allow_nan=False``; a diagnostic such as an infinite covariance must not kill the session), numpy scalars and
+    arrays become Python values."""
+    import math
+
+    if isinstance(value, dict):
+        return {str(k): json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return json_safe(value.tolist())
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
+    return value
+
+
 def resources() -> dict:
     """Peak RSS and cgroup/CUDA memory in bytes; never import torch for telemetry."""
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -235,7 +254,7 @@ def _serve_stream(handler, instream: BinaryIO, outstream: BinaryIO, *, worker_na
                 response["error"] = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
             response["meta"]["resources"] = resources()
             response["elapsed_s"] = time.monotonic() - started
-            write_frame(outstream, response, packed)
+            write_frame(outstream, json_safe(response), packed)
             pending = header["seq"]
             # Drop episode arrays before waiting for the caller's durable-save acknowledgement.
             payload = packed = b""

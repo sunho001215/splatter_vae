@@ -42,13 +42,20 @@ SNERL_CLASSES = ("background", "robot", "object", "fixture")
 
 def dino_snerl(cache_dir: Path, out: Path, spec: WorkerSpec, *, backbone: str = "scratch",
                resolution: tuple = SNERL_DINO["input_resolution"], allow_infrared: bool = False,
-               allow_mock: bool = False, force: bool = False) -> dict:
+               allow_mock: bool = False, force: bool = False, runner=None) -> dict:
     """Token grids for every exported window image, resized to the consumer resolution exactly as SNeRL images are
     (bilinear resize of the uint8 frame, then /255). Stored per window: tokens (T,V,31,31,384) float16 + record."""
     cache_dir = Path(cache_dir)
     manifest = json.loads((cache_dir / "manifest.json").read_text())
     if any("infrared" in v for v in manifest["image_modality"].values()) and not allow_infrared:
         raise RuntimeError("DINO on infrared images is a domain shift for an RGB teacher; pass allow_infrared")
+
+    config = {"backbone": backbone, "resolution": list(resolution), "spec": SNERL_DINO, "worker": spec.name,
+              "allow_mock": allow_mock}
+    inputs = {"export_manifest": rio.sha256_file(cache_dir / "manifest.json")}
+    store = rio.ChunkStore(Path(out), rio.stage_fingerprint("dino_snerl", "1", config, inputs))
+    if force:
+        store.clear()
 
     def build(tmp: Path) -> dict:
         identity = None
@@ -59,8 +66,20 @@ def dino_snerl(cache_dir: Path, out: Path, spec: WorkerSpec, *, backbone: str = 
                 aff = resize_affine((H, W), resolution)
                 flat = images.transpose(0, 1, 3, 4, 2).reshape(T * V, H, W, 3).astype(np.float32)
                 small = np.stack([warp_affine(im, aff, resolution, order=1) for im in flat]) / 255.0
-                resp, outp = call_worker(spec, "dino_snerl", {"output": "tokens"}, {"images": small.astype(np.float32)},
-                                         tmp / "_work", allow_mock=allow_mock)
+                if runner is None:
+                    resp, outp = call_worker(spec, "dino_snerl", {"output": "tokens"},
+                                             {"images": small.astype(np.float32)}, tmp / "_work", allow_mock=allow_mock)
+                else:  # durable chunk first, then acknowledge (resumable)
+                    got = store.get(name)
+                    if got is None:
+                        resp, outp, handle = runner.worker(spec, "dino_snerl", {"output": "tokens"},
+                                                           {"images": small.astype(np.float32)},
+                                                           chunk_id=f"dino_snerl/{name}", allow_mock=allow_mock)
+                        store.put(name, outp, {"model": resp["model"], "meta": resp["meta"]})
+                        runner.ack(handle)
+                        got = store.get(name)
+                    outp, rmeta = got
+                    resp = {"model": rmeta["model"], "meta": rmeta["meta"]}
                 tokens = outp["tokens"].reshape(T, V, *outp["tokens"].shape[1:])
                 dst.create_dataset(f"windows/{name}/tokens", data=tokens.astype(np.float16), compression="lzf")
                 identity = {**resp["model"], "meta": resp["meta"]}
@@ -69,11 +88,10 @@ def dino_snerl(cache_dir: Path, out: Path, spec: WorkerSpec, *, backbone: str = 
                                                                   "bilinear F.interpolate", "model_identity": identity})
         return {"model": identity, "windows": len(manifest["windows"])}
 
-    return rio.run_stage(Path(out), stage="dino_snerl", version="1",
-                         config={"backbone": backbone, "resolution": list(resolution), "spec": SNERL_DINO,
-                                 "worker": spec.name, "allow_mock": allow_mock},
-                         inputs={"export_manifest": rio.sha256_file(cache_dir / "manifest.json")}, build=build,
-                         force=force)
+    rec = rio.run_stage(Path(out), stage="dino_snerl", version="1", config=config, inputs=inputs, build=build,
+                        force=force)
+    store.cleanup()
+    return rec
 
 
 def instances_to_semantic(masks: np.ndarray, scores: np.ndarray, frame: np.ndarray, prompt_index: np.ndarray,
@@ -100,7 +118,7 @@ def instances_to_semantic(masks: np.ndarray, scores: np.ndarray, frame: np.ndarr
 
 def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[str], prompts: dict,
                mode: str = "segment_images", chunk: int = 16, score_threshold: float = 0.5,
-               allow_mock: bool = False, force: bool = False) -> dict:
+               allow_mock: bool = False, force: bool = False, runner=None) -> dict:
     """``prompts`` maps text prompt -> SNeRL class (e.g. {"robot arm": "robot", "gripper": "robot",
     "red mug": "object", "table": "fixture"}). Stores raw instances + the derived semantic map per camera."""
     from s4d.realworld.pipeline import grid_frames, load_meta, read_frames, to_model_rgb
@@ -109,6 +127,13 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
     texts, classes = list(prompts), [prompts[t] for t in prompts]
     if any(c not in SNERL_CLASSES for c in classes):
         raise ValueError(f"prompt classes must be in {SNERL_CLASSES}")
+    directory = rio.stage_dir(root, episode_id, "sam3_masks")
+    config = {"cameras": cameras, "prompts": prompts, "mode": mode, "chunk": chunk,
+              "score_threshold": score_threshold, "worker": spec.name}
+    inputs = {"ingest": rio.build_id(rio.read_record(rio.episode_dir(root, episode_id) / "normalized"))}
+    store = rio.ChunkStore(directory, rio.stage_fingerprint("sam3_masks", "1", config, inputs))
+    if force:
+        store.clear()
 
     def build(tmp: Path) -> dict:
         summary = {}
@@ -133,8 +158,22 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
                     frames = to_model_rgb(frames, s)
                     if frames.ndim == 3:
                         frames = np.repeat(frames[..., None], 3, -1)  # infrared: model input only, recorded
-                    resp, o = call_worker(spec, mode, {"prompts": texts, "score_threshold": score_threshold},
-                                          {"images": frames.astype(np.uint8)}, tmp / "_work", allow_mock=allow_mock)
+                    if runner is None:
+                        resp, o = call_worker(spec, mode, {"prompts": texts, "score_threshold": score_threshold},
+                                              {"images": frames.astype(np.uint8)}, tmp / "_work", allow_mock=allow_mock)
+                    else:  # durable chunk first, then acknowledge (resumable)
+                        cid = f"{cam}/{start:06d}"
+                        got = store.get(cid)
+                        if got is None:
+                            resp, o, handle = runner.worker(spec, mode, {"prompts": texts,
+                                                                         "score_threshold": score_threshold},
+                                                            {"images": frames.astype(np.uint8)},
+                                                            chunk_id=f"sam3/{cid}", allow_mock=allow_mock)
+                            store.put(cid, o, {"model": resp["model"], "meta": resp["meta"]})
+                            runner.ack(handle)
+                            got = store.get(cid)
+                        o, rmeta = got
+                        resp = {"model": rmeta["model"], "meta": rmeta["meta"]}
                     g = f.create_group(f"chunks/{start:06d}")
                     for k in ("masks", "scores", "boxes_xyxy", "frame", "prompt_index", "instance_id", "count"):
                         g.create_dataset(k, data=o[k], compression="lzf" if o[k].ndim >= 2 else None)
@@ -151,8 +190,7 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
             rio.atomic_write_json(tmp / f"{rio.safe_name(cam)}_absent.json", absent)
         return summary
 
-    return rio.run_stage(rio.stage_dir(root, episode_id, "sam3_masks"), stage="sam3_masks", version="1",
-                         config={"cameras": cameras, "prompts": prompts, "mode": mode, "chunk": chunk,
-                                 "score_threshold": score_threshold, "worker": spec.name},
-                         inputs={"ingest": rio.build_id(rio.read_record(rio.episode_dir(root, episode_id) / "normalized"))},
-                         build=build, force=force)
+    rec = rio.run_stage(directory, stage="sam3_masks", version="1", config=config, inputs=inputs, build=build,
+                        force=force)
+    store.cleanup()
+    return rec
