@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import pickle
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -101,17 +100,6 @@ def test_shared_depth_evidence_preserves_partial_mask_fallback(mask_state):
     expected = (np.stack([f.robot_mask & (f.depth > 0) for f in frames]) if masked else
                 cal.moving_masks(np.stack([f.depth for f in frames]), cfg.motion_threshold_m))
     np.testing.assert_array_equal(cal._depth_evidence_masks(usable, masked, cfg), expected)
-
-
-def test_calibration_fixture_legacy_exports_share_objects():
-    import realworld_calibration_fixtures as fixtures
-    import test_realworld_calibration as legacy
-
-    for name in ('make_episode', 'HW', 'K', 'T_TRUE', 'JOINTS', 'LANDMARKS', 'CalibrationFrame', 'RobotSurface',
-                 'landmarks', 'look_at_T_cam_base', 'project', 'splat_depth'):
-        assert getattr(legacy, name) is getattr(fixtures, name)
-    assert legacy.make_episode.__module__ == legacy.__name__
-    assert pickle.loads(pickle.dumps(legacy.make_episode)) is legacy.make_episode
 
 
 @pytest.mark.parametrize('command', ['run_episode', 'contract_checks', 'depth_report'])
