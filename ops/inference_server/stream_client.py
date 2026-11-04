@@ -14,6 +14,7 @@ from pathlib import Path
 
 from s4d.realworld.workers import PROTOCOL, WorkerError, WorkerSpec
 from s4d.realworld.workers._framing import MAX_PAYLOAD, pack_arrays, read_frame, unpack_arrays, write_frame
+from s4d.realworld.workers._protocol import json_safe
 
 LOG = logging.getLogger(__name__)
 
@@ -135,7 +136,8 @@ class StreamSession:
             raise WorkerError(f"{self.name}: ack seq {self.pending_seq} before the next call")
         self.seq += 1
         header = {"type": "request", "protocol": PROTOCOL, "seq": self.seq, "chunk_id": chunk_id, "task": task,
-                  "params": params, "repo_dir": repo_dir, "checkpoint": checkpoint, "expected_commit": expected_commit}
+                  "params": json_safe(params), "repo_dir": repo_dir, "checkpoint": checkpoint,
+                  "expected_commit": expected_commit}
         response, payload = self._exchange(header, pack_arrays(arrays), self.call_timeout_s)
         if (response.get("type") != "response" or type(response.get("seq")) is not int
                 or response["seq"] != self.seq or response.get("chunk_id") != chunk_id):

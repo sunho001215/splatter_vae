@@ -750,7 +750,8 @@ def lift3d(root: Path, episode_id: str, *, vis_threshold: float = 0.5, conf_thre
                 tr = load_tracks2d(rio.stage_dir(root, episode_id, "track2d") / name, cam)
                 depth, K = view_depth(root, episode_id, meta, cam, tr.frame_indices, depth_stage)
                 out, kmeta, handle = runner.kernel(
-                    "lift_tracks", {"camera_id": cam, "query_frame": tr.query_frame, "image_hw": list(tr.image_hw),
+                    "lift_tracks", {"camera_id": cam, "query_frame": int(tr.query_frame),
+                                    "image_hw": [int(x) for x in tr.image_hw],
                                     "source": tr.source, "vis_threshold": vis_threshold, "conf_threshold": conf_threshold},
                     {"frame_indices": tr.frame_indices, "timestamps_ns": tr.timestamps_ns, "point_ids": tr.point_ids,
                      "uv": tr.uv, "visibility": tr.visibility, "confidence": tr.confidence, "depth": depth, "K": K,
