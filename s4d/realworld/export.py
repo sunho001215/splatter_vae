@@ -20,7 +20,7 @@ from scipy.spatial.transform import Rotation
 from s4d.data.droid.pointworld import PAIR_TIMES, depth_test, nearest_timestamps, splat_score, track_targets
 from s4d.realworld import io as rio
 from s4d.realworld.contract import CONVENTIONS, SCHEMA_VERSION
-from s4d.realworld.geometry import invert_T, resize_affine, warp_affine
+from s4d.realworld.geometry import crop_affine, invert_T, resize_affine, warp_affine
 from s4d.realworld.pipeline import (
     RobotGeometry,
     accepted_calibration,
@@ -34,6 +34,18 @@ from s4d.realworld.tracking import VALID
 
 FORMAT = "splatter4d_realworld_v1_tracks"
 RESOLUTIONS = {"scratch": (144, 256), "dinov2": (140, 252)}
+
+
+def export_affine(src_hw: tuple, dst_hw: tuple, aspect: str = "stretch"):
+    """Pixel affine from a view grid to an export resolution: full-frame resize, or a centred crop to the target
+    aspect ratio (integer crop offsets) followed by the resize."""
+    if aspect == "stretch":
+        return resize_affine(src_hw, dst_hw)
+    H, W = src_hw
+    target = dst_hw[1] / dst_hw[0]
+    ch, cw = (H, int(round(H * target))) if W / H > target else (int(round(W / target)), W)
+    top, left = (H - ch) // 2, (W - cw) // 2
+    return crop_affine(top, left).then(resize_affine((ch, cw), dst_hw))
 
 
 def _chunks(root, episode_id, cam):
@@ -53,14 +65,19 @@ def _load_chunk(root, episode_id, name):
 def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolutions: dict | None = None,
            cameras: list[str] | None = None, allow_infrared_input: bool = False, allow_mock: bool = False,
            max_sync_ns: int | None = None, gripper_points: int = 32, validation_tail_frames: int = 0,
-           force: bool = False, depth_stage: str | None = None, max_gap_factor: float | None = None) -> dict:
+           force: bool = False, depth_stage: str | None = None, max_gap_factor: float | None = None,
+           aspect: str = "stretch") -> dict:
     """``max_sync_ns`` defaults to a third of the reference camera's median frame period (so two canonical times can
     never match the same frame of another camera). ``validation_tail_frames`` puts windows lying entirely in the
     last frames of the reference timeline into the validation split; windows straddling the boundary are dropped,
     so no frame is shared between splits (same episode: not generalisation evidence). ``depth_stage`` defaults to
     stereo depth for stereo episodes and MapAnything depth for RGB-D episodes. ``max_gap_factor`` drops windows whose
     canonical frames are further apart than ``max_gap_factor * stride * median reference period`` (recording pauses
-    between segments would otherwise enter as one uniform time step)."""
+    between segments would otherwise enter as one uniform time step). ``aspect="center_crop"`` first crops the largest
+    centred region with the target aspect ratio (square pixels, e.g. 4:3 RealSense -> 16:9 targets); the default
+    ``"stretch"`` resizes the full frame (exact K, but anisotropic pixels when the aspect ratios differ)."""
+    if aspect not in ("stretch", "center_crop"):
+        raise ValueError(f"aspect {aspect!r} not in ('stretch', 'center_crop')")
     meta = load_meta(root, episode_id)
     depth_stage = depth_stage or default_depth_stage(meta, "lift")
     resolutions = dict(resolutions or RESOLUTIONS)
@@ -181,7 +198,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                                                "track_weight", "track_count", "gripper_weight")}
                     for cam, pts, vis, depth, K, imgs, w2c in cams:
                         hw0 = depth.shape[1:]
-                        aff = resize_affine(hw0, (H, W))
+                        aff = export_affine(hw0, (H, W), aspect)
                         Kr = aff.apply_K(K).astype(np.float32)
                         rd = np.stack([warp_affine(d, aff, (H, W), order=0) for d in depth])
                         ri = np.stack([warp_affine(im.astype(np.float32), aff, (H, W), order=1) for im in imgs])
@@ -241,6 +258,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             "motion_pairs": [[0, 1, 0], [1, 2, 1], [0, 2, 0]],
             "conventions": CONVENTIONS,
             "intrinsics_convention": "continuous pixel coordinates; K tracked through resize as a pixel affine",
+            "aspect": aspect,
             "depth_resize": "nearest neighbour, zero invalid, metric camera-z of the rectified left image"
             if depth_stage == "stereo_depth" else
             f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})",
@@ -275,5 +293,6 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                                  "max_sync_ns": max_sync_ns, "gripper_points": gripper_points,
                                  "validation_tail_frames": validation_tail_frames,
                                  **({} if depth_stage == "stereo_depth" else {"depth_stage": depth_stage}),
-                                 **({} if max_gap_factor is None else {"max_gap_factor": max_gap_factor})},
+                                 **({} if max_gap_factor is None else {"max_gap_factor": max_gap_factor}),
+                                 **({} if aspect == "stretch" else {"aspect": aspect})},
                          inputs={k: rio.build_id(v) for k, v in records.items()}, build=build, force=force)

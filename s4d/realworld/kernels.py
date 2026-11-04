@@ -236,3 +236,81 @@ def forward_check(params: dict, arrays: dict) -> tuple[dict, dict]:
                 "train_mode": bool(params.get("train_mode", True)),
                 "max_memory_allocated": int(torch.cuda.max_memory_allocated()) if torch.cuda.is_available() else 0}
     return {}, _finite(meta_out)
+
+
+@kernel("snerl_check")
+def snerl_check(params: dict, arrays: dict) -> tuple[dict, dict]:
+    """SNeRL's own batch/loss interface on real scenes, inference only (``training_step`` under ``torch.no_grad``).
+
+    Scenes: every view of a synchronized set as encoder input, one view as target (cycled). Images: the largest
+    centred square, resized to ``size`` with PIL bilinear (antialiased; SNeRL renders are 128x128 squares), K by the
+    exact crop+resize pixel affine (``official_K`` keeps the rig K, as for Meta-World). Semantics: SAM 3 semantic map
+    (``SEMANTIC_CLASSES`` ids) resized by exact nearest lookup. Poses: OpenCV c2w -> ``normalise_c2w`` about ``lookat``
+    (metres, base frame) with ``pose_scale``. DINO: the ``dino_snerl`` worker's tokens on the SAME 128x128 image,
+    upsampled exactly as ``dino_target`` does, compared with the consumer's ``dino_target`` (equality expected)."""
+    import importlib.util
+    from pathlib import Path
+
+    import torch
+    from PIL import Image
+
+    from s4d.baselines.snerl.data import SEMANTIC_CLASSES, normalise_c2w, official_K
+    from s4d.baselines.snerl.model import create, dino_target, to_device_scene, training_step
+    from s4d.baselines.snerl.upstream import dino_extractor
+    from s4d.config import load_config
+    from s4d.realworld.geometry import crop_affine, resize_affine
+
+    repo = Path(__file__).resolve().parents[2]
+    cfg = load_config([str(repo / params["config"])], [])
+    size = int(params.get("size", 128))
+    device = torch.device("cuda")
+    torch.manual_seed(int(params.get("seed", 0)))
+    model = create(dict(cfg["nerf"]), device)
+    extractor = dino_extractor(device)
+    spec = importlib.util.spec_from_file_location("dino_snerl_worker", repo / "s4d/realworld/workers/dino_snerl_worker.py")
+    worker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(worker)
+    frames, sem = arrays["images"], arrays["semantic"]
+    S, V, H, W = frames.shape[:4]
+    side = min(H, W)
+    top, left = (H - side) // 2, (W - side) // 2
+    aff = crop_affine(top, left).then(resize_affine((side, side), (size, size)))
+    K128 = np.stack([aff.apply_K(np.asarray(k, float)) for k in arrays["K"]])
+    rows = (np.floor((np.arange(size) + 0.5) * side / size)).astype(int) + top
+    cols = (np.floor((np.arange(size) + 0.5) * side / size)).astype(int) + left
+    c2w = normalise_c2w(torch.from_numpy(np.asarray(arrays["cam2world"], np.float64)),
+                        tuple(float(x) for x in params["lookat"]), float(params.get("pose_scale", 4.0))).float()
+    rng = np.random.default_rng(int(params.get("seed", 0)))
+    weights = {k: float(v) for k, v in dict(cfg.get("loss") or {}).items() if k in ("semantic_weight", "dino_weight")}
+    out_rows, imgs_out = [], []
+    for s in range(S):
+        imgs = np.stack([np.asarray(Image.fromarray(frames[s, v][top:top + side, left:left + side]).resize(
+            (size, size), Image.BILINEAR)) for v in range(V)])
+        sem128 = sem[s][:, rows][:, :, cols].astype(np.int64)
+        tgt = s % V
+        scene = {"obs_rgb": imgs, "obs_c2w": c2w.clone(), "target_rgb": imgs[tgt], "target_semantic": sem128[tgt],
+                 "target_c2w": c2w[tgt].clone(), "target_K": torch.from_numpy(official_K(K128[tgt])),
+                 "episode": "real", "t": int(s), "target": int(tgt)}
+        dev = to_device_scene(scene, device)
+        with torch.no_grad():
+            loss, terms = training_step(model, extractor, dev, int(params.get("global_step", 1000)), rng, **weights)
+            target = dev["target_rgb"]
+            consumer = dino_target(extractor, target)
+            _, wout, wmeta = worker.handle({"params": {"output": "tokens"}}, {"images": target[None].cpu().numpy()})
+            tokens = torch.from_numpy(wout["tokens"]).to(device)
+            up = torch.nn.functional.interpolate(tokens.permute(0, 3, 1, 2), tuple(target.shape[:2]),
+                                                 mode="bilinear").permute(0, 2, 3, 1)[0]
+        frac = np.bincount(sem128[tgt].ravel(), minlength=len(SEMANTIC_CLASSES))[:len(SEMANTIC_CLASSES)] / sem128[tgt].size
+        out_rows.append({"set": int(s), "target_view": int(tgt), "loss": float(loss),
+                         "terms": {k: float(v) for k, v in terms.items()},
+                         "finite": bool(torch.isfinite(loss)) and all(np.isfinite(float(v)) for v in terms.values()),
+                         "dino_tokens_shape": list(wout["tokens"].shape),
+                         "dino_worker_equals_consumer": bool(torch.equal(up, consumer)),
+                         "dino_max_abs_diff": float((up - consumer).abs().max()),
+                         "target_class_fractions": dict(zip(SEMANTIC_CLASSES, map(float, frac)))})
+        imgs_out.append(imgs)
+    meta = {"scenes": out_rows, "size": size, "crop": [int(top), int(left), int(side)], "K128": K128.tolist(),
+            "lookat": list(map(float, params["lookat"])), "pose_scale": float(params.get("pose_scale", 4.0)),
+            "near_far_units": [float(cfg["nerf"]["near"]), float(cfg["nerf"]["far"])],
+            "dino_spec": getattr(worker, "SNERL_DINO", None)}
+    return {"images128": np.stack(imgs_out)}, _finite(meta)

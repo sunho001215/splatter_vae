@@ -147,7 +147,7 @@ def main(argv=None) -> int:
         run("export", lambda f: export(root, ep, root / "export" / ep, strides=tuple(ec.get("strides", (1, 2))),
                                        validation_tail_frames=ec.get("validation_tail_frames", 0),
                                        max_sync_ns=ec.get("max_sync_ns"), max_gap_factor=ec.get("max_gap_factor"),
-                                       force=f))
+                                       aspect=ec.get("aspect", "stretch"), force=f))
         s3 = st.get("sam3_masks", {})
         meta = P.load_meta(root, ep)
         run("sam3_masks", lambda f: sam3_masks(root, ep, spec(cfg, "sam3"),

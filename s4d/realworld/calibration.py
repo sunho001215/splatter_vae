@@ -86,8 +86,10 @@ class CalibrationConfig:
     init_obs_points: int = 400
     init_axes: int = 400
     init_rolls: int = 24
-    init_top: int = 12
+    init_top: int = 30
     icp_iters: int = 30
+    init_inlier_m: float = 0.03
+    init_translation_steps: int = 3
     motion_threshold_m: float = 0.03
     moving_link_motion_m: float = 0.05
     init_trim: float = 0.8
@@ -264,11 +266,15 @@ def _visual_init(frames, K, cfg):
 
 
 def moving_masks(depths: np.ndarray, threshold_m: float) -> np.ndarray:
-    """(F,H,W) bool: valid measured depth that differs from the per-pixel temporal median (or where the median is
-    invalid) by more than ``threshold_m`` - the moving robot (and whatever it moves), never the static scene."""
+    """(F,H,W) bool: valid measured depth IN FRONT of the per-pixel temporal median by more than ``threshold_m`` (or
+    where the median is invalid), cleaned by a 3x3 opening - the moving robot (and whatever it carries) occluding the
+    static scene. Pixels behind the median (where the robot was) and isolated depth noise are excluded."""
+    from scipy.ndimage import binary_opening
+
     d = np.where(depths > 0, depths, np.nan)
     bg = np.nanmedian(d, axis=0)
-    return (depths > 0) & (~np.isfinite(bg) | (np.abs(np.nan_to_num(d - bg, nan=0.0)) > threshold_m))
+    front = (depths > 0) & (~np.isfinite(bg) | (np.nan_to_num(bg - d, nan=0.0) > threshold_m))
+    return np.stack([binary_opening(m, structure=np.ones((3, 3), bool)) for m in front])
 
 
 def fibonacci_sphere(n: int) -> np.ndarray:
@@ -306,7 +312,12 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
     diag = {"method": "rgbd_robot_registration"}
     if len(usable) < 3:
         return None, {**diag, "error": "fewer than 3 frames with depth"}
-    masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+    if all(f.robot_mask is not None for f in usable):  # robot segmentation available: observed robot points
+        masks = np.stack([f.robot_mask & (f.depth > 0) for f in usable])
+        diag["evidence"] = "robot_mask"
+    else:
+        masks = moving_masks(np.stack([f.depth for f in usable]), cfg.motion_threshold_m)
+        diag["evidence"] = "moving_depth"
     pick = np.linspace(0, len(usable) - 1, min(cfg.init_frames, len(usable))).round().astype(int)
     surf = np.stack([usable[k].surface_base for k in range(len(usable))])  # same sample order every frame
     moving = np.linalg.norm(surf - surf.mean(0), axis=2).max(0) > cfg.moving_link_motion_m
@@ -333,17 +344,38 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
     if len(obs) < 3 or moving.sum() < 20:
         return None, {**diag, "error": "too little robot motion visible in the measured depth"}
 
+    def nearest(R, t):
+        """Per frame: observed points mapped to base coordinates and their nearest model points."""
+        out = []
+        for j in range(len(obs)):
+            pb = (obs[j] - t) @ R
+            d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5, workers=-1)
+            out.append((pb, d, idx))
+        return out
+
     def cost(R, t, keep=cfg.init_trim):
-        Rt = R.T
-        ds = [trees[j].query((obs[j] - t) @ Rt.T, k=1, distance_upper_bound=0.5)[0] for j in range(len(obs))]
-        d = np.minimum(np.concatenate(ds), 0.5)
+        d = np.minimum(np.concatenate([x[1] for x in nearest(R, t)]), 0.5)
         return _trimmed(d, keep)
+
+    def score(R, t):
+        """Translation-only refinement (median residual of near points), then the inlier fraction (higher = better)."""
+        for _ in range(cfg.init_translation_steps):
+            res = []
+            for j, (_pb, d, idx) in enumerate(nearest(R, t)):
+                ok = d < 0.15
+                if ok.any():
+                    res.append(obs[j][ok] - (trees[j].data[idx[ok]] @ R.T + t))
+            if not res:
+                break
+            t = t + np.median(np.concatenate(res), 0)
+        d = np.concatenate([x[1] for x in nearest(R, t)])
+        return float((d <= cfg.init_inlier_m).mean()), t
 
     co, cm = np.mean(cents_obs, 0), np.mean(cents_model, 0)
     scores = []
     for R in _rotations(cfg.init_axes, cfg.init_rolls):
-        t = co - R @ cm
-        scores.append((cost(R, t), R, t))
+        inl, t = score(R, co - R @ cm)
+        scores.append((-inl, R, t))
     scores.sort(key=lambda x: x[0])
     refined = []
     for _, R, t in scores[:cfg.init_top]:
@@ -351,7 +383,7 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
             src, dst = [], []
             for j in range(len(obs)):
                 pb = (obs[j] - t) @ R  # observed points in base coordinates
-                d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5)
+                d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5, workers=-1)
                 ok = np.isfinite(d)
                 if ok.sum() < 3:
                     continue
@@ -369,9 +401,11 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
     T0 = make_T(best[1], best[2])
     distinct = [r for r in refined[1:] if np.degrees(np.arccos(np.clip((np.trace(r[1] @ best[1].T) - 1) / 2, -1, 1))) > 10
                 or np.linalg.norm(r[2] - best[2]) > 0.05]
+    d_best = np.concatenate([x[1] for x in nearest(best[1], best[2])])
     diag.update({"candidates": len(scores), "best_trimmed_mean_m": best[0],
+                 "best_inlier_fraction": float((d_best <= cfg.init_inlier_m).mean()),
                  "second_distinct_trimmed_mean_m": distinct[0][0] if distinct else None,
-                 "coarse_best_trimmed_mean_m": scores[0][0]})
+                 "coarse_best_inlier_fraction": -scores[0][0]})
     return T0, diag
 
 
