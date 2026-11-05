@@ -31,6 +31,12 @@ def _model(repo: Path, ckpt: Path, params: dict):
     if key not in _MODELS:
         if str(repo) not in sys.path:
             sys.path.insert(0, str(repo))
+        # upstream Utils.py imports open3d at module level only for a point-cloud visualisation helper
+        # (toOpen3dCloud, Utils.py:44-51) that inference never calls; its native GUI/USB dependencies are absent in the
+        # RAM-only container, so an empty placeholder is registered (any use of it would raise AttributeError)
+        import types
+
+        sys.modules.setdefault("open3d", types.ModuleType("open3d"))
         from core.foundation_stereo import FoundationStereo  # upstream
 
         cfg = OmegaConf.load(ckpt.parent / "cfg.yaml")
