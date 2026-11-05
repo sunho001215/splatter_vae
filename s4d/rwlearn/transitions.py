@@ -61,7 +61,7 @@ def episode_transitions(raw: A.RawEpisode, tl: Timeline, contract: A.ActionContr
     K = len(tl.times)
     same_run = np.zeros(K, bool)
     same_run[:-1] = tl.run[:-1] == tl.run[1:]
-    ok = tab.transition_ok & same_run
+    ok = tab.transition_ok & same_run & np.r_[tab.state_ok[1:], False]  # the next observation needs a state too
     reachable = np.zeros(K, bool)
     reachable[1:] = ok[:-1]
     success = np.zeros(K, bool)

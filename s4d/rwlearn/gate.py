@@ -30,10 +30,11 @@ MANIFEST = Path("/home/ws/ws/realworld-ops/ingest/manifest.json")
 SCHEMA, SCHEMA_VERSION = "rw-ingest-manifest", 2
 STAGE_SCHEMA, STAGE_SCHEMA_VERSION = "rw-preprocess", 1
 TARGET = 100
-# Preprocessing stages the baselines and FQL consume (stage names suggested by the manifest README; the preprocessing
-# agent owns them - adjust here and in docs/realworld_baselines.md when it publishes its final list). DINO is NOT
-# required: SNeRL's DINO targets are computed online (data-format policy 2026-11-06).
-REQUIRED_STAGES = ("calibration", "ir_stereo_depth", "rgb_aligned_depth", "sam3", "export_training")
+# Preprocessing stages the baselines and FQL consume, named as the preprocessing dispatcher records them
+# (realworld-ops/pre/tools/rwprep_dispatch.py: the pipeline's stage records + its QA record) plus the compact training
+# store (``train_store``, format branch). DINO is NOT required: SNeRL's DINO targets are computed online (data-format
+# policy 2026-11-06). A name that never appears makes the gate fail closed; override with --required-stages.
+REQUIRED_STAGES = ("normalized", "calibrate", "foundation_stereo_depth", "sam3_masks", "qa", "train_store")
 NOT_FINAL = ("pending", "waiting", "incomplete", "retrying")
 
 

@@ -43,9 +43,9 @@ def test_both_tasks_pass_with_exactly_100_preprocessed_episodes():
     (lambda m: m["episodes"].pop("drawer-open/episode_000004.h5"), "99 episodes"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"].update(status="running"),
      "preprocessing 'running'"),
-    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"]["stages"].pop("sam3"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"]["stages"].pop("sam3_masks"),
      "required stages"),
-    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"]["stages"]["calibration"].update(
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"]["stages"]["calibrate"].update(
         input_sha256="other"), "required stages"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["transfer"].update(status="partial"), "transfer"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"duplicate_content": 1}), "flags"),

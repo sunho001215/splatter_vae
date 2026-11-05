@@ -1,0 +1,162 @@
+{
+ "root": "/home/ws/data/real_world",
+ "tasks": {
+  "drawer-open": {
+   "episodes": 48,
+   "camera_timelines": 144,
+   "valid_transitions": 21146,
+   "invalid_reasons": {
+    "segment_break": 15,
+    "long_step": 0,
+    "no_state": 26,
+    "no_command": 0,
+    "not_sent_or_engaged": 0
+   },
+   "recording_segments_per_episode": {
+    "1": 44,
+    "2": 3,
+    "3": 1
+   },
+   "round_trip_max_abs_error": 3.3306690738754696e-16,
+   "contract": {
+    "pos_scale_m": 0.0700215997,
+    "rot_scale_rad": 0.4991738488988659,
+    "nominal_period_s": 0.066714666,
+    "max_step_s": 0.10007199900000001,
+    "source": "action/flange_pose (sent command, lead-limited) at the last robot-loop row before tau_{k+1}",
+    "reference": "robot/flange_pose measured at the latest robot sample <= tau_k (observation time)",
+    "point": "panda_link8 (flange) origin; T_flange_tcp == identity (TCP == flange)",
+    "frame": "panda_link0 base frame (+x forward, +y left, +z up); left increment R_goal = exp(r) R_k",
+    "rotation": "rotation vector (axis-angle, rad)",
+    "units": "m, rad; gripper closure in [0, 1]",
+    "gripper": "action/gripper closure c (0 open .. 1 closed), Robotiq register = 3 + 227 c; policy g = 2c - 1",
+    "normalisation": "a_norm = [dp / pos_scale_m, r / rot_scale_rad, 2c - 1]; scales from the recorder's teleop limits (max_position_lead + max_linear_speed * max_step_s, rad(max_rotation_lead_deg) + max_angular_speed * max_step_s), max_step_s = 1.5 nominal frame periods",
+    "proprio": "[flange xyz (m, base), R[:, 0], R[:, 1] (6D), measured gripper closure (register - 3) / 227]",
+    "version": "rwlearn-action-v1",
+    "names": [
+     "dx",
+     "dy",
+     "dz",
+     "rx",
+     "ry",
+     "rz",
+     "gripper"
+    ]
+   },
+   "normalised_abs_max_per_dim": [
+    0.6395,
+    0.68,
+    0.6637,
+    0.6287,
+    0.4311,
+    0.2766,
+    1.0
+   ],
+   "command_offset_m_percentiles": [
+    0.0141,
+    0.0454,
+    0.0471,
+    0.0481
+   ],
+   "measured_motion_per_step_m_percentiles": [
+    0.0014,
+    0.0057,
+    0.0073,
+    0.0082
+   ],
+   "rotation_increment_deg_percentiles": [
+    5.82,
+    9.9,
+    19.45
+   ],
+   "cosine_command_offset_vs_measured_motion_when_moving": {
+    "median": 0.9860453094588753,
+    "p10": 0.9546804524925719
+   },
+   "lead_limited_fraction_mean": 0.5216789366687041,
+   "gripper_command": {
+    "fraction_closed_gt_0.5": 0.0,
+    "fraction_in_transition": 0.16050316844793341
+   }
+  },
+  "mug-hanging": {
+   "episodes": 29,
+   "camera_timelines": 87,
+   "valid_transitions": 20806,
+   "invalid_reasons": {
+    "segment_break": 105,
+    "long_step": 0,
+    "no_state": 23,
+    "no_command": 0,
+    "not_sent_or_engaged": 0
+   },
+   "recording_segments_per_episode": {
+    "1": 2,
+    "2": 21,
+    "3": 4,
+    "4": 2
+   },
+   "round_trip_max_abs_error": 5.551115123125783e-16,
+   "contract": {
+    "pos_scale_m": 0.0700216204,
+    "rot_scale_rad": 0.49917395239886586,
+    "nominal_period_s": 0.066714712,
+    "max_step_s": 0.10007206799999999,
+    "source": "action/flange_pose (sent command, lead-limited) at the last robot-loop row before tau_{k+1}",
+    "reference": "robot/flange_pose measured at the latest robot sample <= tau_k (observation time)",
+    "point": "panda_link8 (flange) origin; T_flange_tcp == identity (TCP == flange)",
+    "frame": "panda_link0 base frame (+x forward, +y left, +z up); left increment R_goal = exp(r) R_k",
+    "rotation": "rotation vector (axis-angle, rad)",
+    "units": "m, rad; gripper closure in [0, 1]",
+    "gripper": "action/gripper closure c (0 open .. 1 closed), Robotiq register = 3 + 227 c; policy g = 2c - 1",
+    "normalisation": "a_norm = [dp / pos_scale_m, r / rot_scale_rad, 2c - 1]; scales from the recorder's teleop limits (max_position_lead + max_linear_speed * max_step_s, rad(max_rotation_lead_deg) + max_angular_speed * max_step_s), max_step_s = 1.5 nominal frame periods",
+    "proprio": "[flange xyz (m, base), R[:, 0], R[:, 1] (6D), measured gripper closure (register - 3) / 227]",
+    "version": "rwlearn-action-v1",
+    "names": [
+     "dx",
+     "dy",
+     "dz",
+     "rx",
+     "ry",
+     "rz",
+     "gripper"
+    ]
+   },
+   "normalised_abs_max_per_dim": [
+    0.6433,
+    0.6819,
+    0.6746,
+    0.4098,
+    0.4419,
+    0.3745,
+    1.0
+   ],
+   "command_offset_m_percentiles": [
+    0.0097,
+    0.0334,
+    0.047,
+    0.0484
+   ],
+   "measured_motion_per_step_m_percentiles": [
+    0.0006,
+    0.0042,
+    0.0073,
+    0.0085
+   ],
+   "rotation_increment_deg_percentiles": [
+    5.72,
+    10.33,
+    16.33
+   ],
+   "cosine_command_offset_vs_measured_motion_when_moving": {
+    "median": 0.9790862594003006,
+    "p10": 0.9025006457181252
+   },
+   "lead_limited_fraction_mean": 0.25988307286207857,
+   "gripper_command": {
+    "fraction_closed_gt_0.5": 0.48082283956551,
+    "fraction_in_transition": 0.02955878112083053
+   }
+  }
+ }
+}
