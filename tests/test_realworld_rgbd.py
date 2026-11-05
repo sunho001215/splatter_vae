@@ -368,12 +368,15 @@ def test_panda_drops_colour_frames_without_a_stereo_record(panda_file, tmp_path)
     assert rec["summary"]["202/color"]["frames"] == 5 and rec["summary"]["101/color"]["frames"] == 6
 
 
-@pytest.mark.parametrize("case", ["out_of_range", "more_records_than_colour"])
+@pytest.mark.parametrize("case", ["out_of_range", "more_records_than_colour", "two_dimensional"])
 def test_panda_refuses_impossible_pairing_with_its_own_message(panda_file, case):
     with h5py.File(panda_file.path, "r+") as f:
         g = f["cameras/cam_101"]
         if case == "out_of_range":
             g["stereo/color_index"][:] = [0, 1, 2, 3, 4, 6]
+        elif case == "two_dimensional":
+            del g["stereo/color_index"]
+            g["stereo/color_index"] = np.arange(6)[:, None]
         else:  # a colour frame dropped instead: 6 stereo records for 5 colour frames
             for name in ("t", "t_valid", "segment", "color", "hw_timestamp_ms", "t_recv"):
                 data, dtype = g[name][()], g[name].dtype
@@ -413,6 +416,14 @@ def test_panda_task_identity_is_the_dataset_folder(panda_file, tmp_path, recorde
     if warned:
         assert notes["task_identity"]["dataset_folder"] == "drawer-open"
     assert validate_episode(meta).errors == []
+    # a disagreeing task_name is part of the ingest fingerprint (a cached episode.json without the note is rebuilt);
+    # every other recording keeps the earlier fingerprint
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        rec = pipeline.ingest(adapter, "ep", tmp_path / "out")
+    assert ("source_identity" in rec["config"]) == warned
+    assert json.loads(json.loads((tmp_path / "out/episodes/ep/normalized/episode.json").read_text())["provenance"]["notes"]
+                      ).get("task_identity") == notes.get("task_identity")
 
 
 @pytest.mark.parametrize("normal", [(0, 0, 1), (0.06, -0.04, 1)], ids=["frontoparallel", "tilted"])

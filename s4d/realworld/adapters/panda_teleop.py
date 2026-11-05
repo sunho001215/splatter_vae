@@ -95,7 +95,7 @@ def _paired_colour(g, serial: str) -> np.ndarray:
     ci = np.asarray(g["stereo/color_index"][()], np.int64)
     if len(ci) == n and np.array_equal(ci, np.arange(n)):
         return ci
-    if not (0 < len(ci) <= n and (ci >= 0).all() and (ci < n).all() and (np.diff(ci) > 0).all()):
+    if not (ci.ndim == 1 and 0 < len(ci) <= n and (ci >= 0).all() and (ci < n).all() and (np.diff(ci) > 0).all()):
         raise ValueError(f"cam_{serial}: depth frames are not paired 1:1 with colour frames (stereo/color_index of "
                          f"{len(ci)} records does not map strictly increasing onto the {n} colour frames)")
     return ci
@@ -232,14 +232,11 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
                 "robot/t; register -> finger joint mapping linear (s4d.realworld.robot.gripper_joint_value)",
                 "robot/t is the state time on host CLOCK_MONOTONIC (file conventions_json 'time')",
             ]
-            path = self.episodes[episode_id]
-            task_note = {}
-            if _task_mismatch(path.parent.name, f.attrs.get("task_name")):
-                task_note = {"task_identity": {
-                    "dataset_folder": path.parent.name, "recorded_task_name": str(f.attrs.get("task_name")),
-                    "note": "the task is the dataset folder; the recorder's task_name attribute disagrees and is unused"}}
+            task_note = self._task_identity(episode_id, f)
+            if task_note:
                 warnings.warn(f"{episode_id}: recorder task_name {f.attrs.get('task_name')!r} disagrees with the "
-                              f"dataset folder {path.parent.name!r} (the folder decides the task)", stacklevel=2)
+                              f"dataset folder {self.episodes[episode_id].parent.name!r} (the folder decides the task)",
+                              stacklevel=2)
             prov = Provenance(
                 adapter=self.name, adapter_version=self.version, source_root=str(self.episodes[episode_id].parent),
                 source_files=tuple(SourceFile(str(p), "", p.stat().st_size) for p in self.source_files(episode_id)),
@@ -261,6 +258,22 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
                                trajectory=trajectory, stream_timestamps_ns=stamps, provenance=prov,
                                clock=f"host CLOCK_MONOTONIC of the recorder ({f.attrs.get('hostname')})",
                                assumptions=tuple(assumptions), rgbd=tuple(rgbd), ir_stereo=tuple(ir_pairs))
+
+    def _task_identity(self, episode_id: str, f) -> dict:
+        """``{"task_identity": ...}`` when the recorder's task_name disagrees with the dataset folder, else ``{}``."""
+        folder = self.episodes[episode_id].parent.name
+        if not _task_mismatch(folder, f.attrs.get("task_name")):
+            return {}
+        return {"task_identity": {
+            "dataset_folder": folder, "recorded_task_name": str(f.attrs.get("task_name")),
+            "note": "the task is the dataset folder; the recorder's task_name attribute disagrees and is unused"}}
+
+    def ingest_identity(self, episode_id: str) -> dict:
+        """Per-episode source facts the ingest fingerprint must include (``pipeline.ingest``): the task-identity note
+        of a recording whose task_name disagrees with its folder, so a cached normalized episode without that note is
+        rebuilt; empty (fingerprint unchanged) for every other recording."""
+        with self._open(episode_id) as f:
+            return self._task_identity(episode_id, f)
 
     @staticmethod
     def _ir_pair(g, serial: str, cal: dict, src: str, common: dict, emitter: dict, stamps: dict):

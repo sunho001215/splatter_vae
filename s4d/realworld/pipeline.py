@@ -113,11 +113,12 @@ def ingest(adapter, episode_id: str, root: Path, *, chunk: int = 64, force: bool
             counts[s.stream_id] = n
         return {"warnings": report.warnings, "frames": counts, "assumptions": list(meta.assumptions)}
 
+    config = {"adapter": adapter.name, "adapter_version": adapter.version, "adapter_config": adapter.config}
+    source_identity = getattr(adapter, "ingest_identity", lambda _: {})(episode_id)
+    if source_identity:  # (absent otherwise: earlier fingerprints stay valid)
+        config["source_identity"] = source_identity
     return rio.run_stage(rio.episode_dir(root, episode_id) / "normalized", stage="ingest",
-                         version=STAGE_VERSIONS["ingest"], config={"adapter": adapter.name,
-                                                                   "adapter_version": adapter.version,
-                                                                   "adapter_config": adapter.config},
-                         inputs={}, build=build, force=force)
+                         version=STAGE_VERSIONS["ingest"], config=config, inputs={}, build=build, force=force)
 
 
 # ---------------------------------------------------------------- camera views
