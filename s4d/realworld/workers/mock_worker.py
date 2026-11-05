@@ -3,6 +3,7 @@
 tasks:
   infer_views       depth-input echo, or CPU SAD depth oracle for exactly two rectified rig views
   echo_tracks       returns the tracks given in the inputs (an oracle; synthetic tests only)
+  track_queries     converts supplied NORMALISED cam0 oracle predictions via the real TE adapter
 """
 
 import sys
@@ -77,6 +78,16 @@ def handle(request, inputs):
                        "count": count}, {"prompts": request["params"]["prompts"]}
     if task == "echo_tracks":
         return model, {k: inputs[k] for k in ("flows", "visconf")}, {"oracle": True}
+    if task == "track_queries":
+        from trackeverything_worker import predictions_to_base, validate_inputs
+
+        validate_inputs(inputs)
+        norm = float(inputs["norm_factor"])
+        out = predictions_to_base(inputs["query_coords"], inputs["query_visibs"], norm,
+                                  inputs["w2c"], inputs["queries"], inputs.get("query_dynamic_logits"))
+        model["name"] = "TrackEverything synthetic oracle"
+        return model, out, {"oracle": True, "norm_factor": norm, "single_view": True,
+                            "dynamic_logits_available": "dyn_logit" in out}
     raise ValueError(f"unknown task {task!r}")
 
 

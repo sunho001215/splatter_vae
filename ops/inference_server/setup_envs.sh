@@ -6,7 +6,7 @@
 # cached on disk (weights are placed in /ram/weights per session; see ops/inference_server/README.md).
 #
 #   docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh <env> [<env> ...]
-#   envs: mapanything alltracker sam3 s4d tools foundation_stereo
+#   envs: mapanything alltracker sam3 s4d tools foundation_stereo trackeverything
 #
 # Versions:
 # - alltracker / sam3: the exact package sets of the environments verified on real DROID data
@@ -44,6 +44,20 @@ for env in "$@"; do
             venv foundation_stereo 3.11.14  # newest 3.11 the container uv offers (local verified env: 3.11.17)
             $UV pip install -q --python /opt/envs/foundation_stereo/bin/python --index-strategy unsafe-best-match \
                 --extra-index-url $TORCH_INDEX -r $LOCKS/foundation_stereo.txt
+            ;;
+        trackeverything)
+            # Recipe stub: deliberately NOT executed/validated as part of the adapter implementation.
+            # Upstream checkout must be /opt/upstream/trackeverything (the package directory itself).
+            venv trackeverything 3.10.19
+            $UV pip install -q --python /opt/envs/trackeverything/bin/python --index-strategy unsafe-best-match \
+                --extra-index-url $TORCH_INDEX --find-links https://data.pyg.org/whl/torch-2.8.0+cu129.html \
+                --only-binary torch-scatter -r $LOCKS/trackeverything.txt
+            # sm_120 support of the pt28cu129 torch_scatter wheel is UNVERIFIED. Before inference, validate
+            # scatter_mean on the allocated GPU. If it reports "no kernel image", replace ONLY torch_scatter
+            # with a locally built torch_scatter 2.1.2 wheel against this exact torch/CUDA 12.9 ABI, using
+            # TORCH_CUDA_ARCH_LIST=12.0 and --no-build-isolation on a host with the matching CUDA toolkit.
+            # Record the replacement wheel sha256 and freeze the env; alternatively use a supported GPU.
+            # Do not build libs/ops (training only); do not install either geometry estimator.
             ;;
         alltracker|sam3)
             venv $env 3.12.12
