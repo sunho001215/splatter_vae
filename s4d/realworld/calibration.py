@@ -41,6 +41,55 @@ from scipy.optimize import least_squares
 from s4d.realworld.geometry import invert_T, make_T, pose_from_vec, project, transform_points, unproject, vec_from_pose
 
 
+def usable_cpus() -> int:
+    """CPUs this process may actually use: the affinity set, capped by a cgroup v2 CPU quota (``cpu.max``). The OS CPU
+    count overstates it in containers (48 visible, 16 allowed on the inference server)."""
+    import os
+
+    n = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
+        if quota != "max":
+            n = min(n, max(1, int(int(quota) // int(period))))
+    except (OSError, ValueError):
+        pass
+    return max(1, n)
+
+
+# cKDTree.query(workers=k) starts k Python threads PER CALL. workers=-1 (one per visible CPU) made thousands of small ICP
+# queries spend most of their time starting threads (profile 2026-11-05: 11.6 M thread starts; ICP 552 s vs 6 s with one
+# thread on a 384-CPU host). Large batched queries (the coarse rotation search) use a bounded pool, small ones one
+# thread. Results do not depend on the thread count (verified bitwise on the episode-0 initialisation).
+KD_WORKERS_BATCH = min(8, usable_cpus())
+
+_MS_FN = {}
+_MS_PROCESSES = {}
+
+
+def _ms_call(k):
+    return _MS_FN["fn"](k)
+
+
+def _map_starts(fn, n):
+    """Run independent refinement starts ``fn(0..n-1)`` in forked processes (one per start, capped by the usable CPUs;
+    S4D_CALIB_PROCESSES=1 forces sequential). Every start is deterministic and independent, so the returned list - and
+    the chosen solution - equals the sequential result; only wall time changes."""
+    import multiprocessing as mp
+    import os
+
+    procs = min(n, usable_cpus(), int(os.environ.get("S4D_CALIB_PROCESSES", "0")) or n)
+    _MS_PROCESSES["last"] = procs
+    if procs <= 1 or "fork" not in mp.get_all_start_methods():
+        _MS_PROCESSES["last"] = 1
+        return [fn(k) for k in range(n)]
+    _MS_FN["fn"] = fn
+    try:
+        with mp.get_context("fork").Pool(procs) as pool:
+            return pool.map(_ms_call, range(n), chunksize=1)
+    finally:
+        _MS_FN.clear()
+
+
 @dataclass
 class CalibrationFrame:
     t_index: int
@@ -382,7 +431,7 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
         out = []
         for j in range(len(obs)):
             pb = (obs[j] - t) @ R
-            d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5, workers=-1)
+            d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5, workers=1)
             out.append((pb, d, idx))
         return out
 
@@ -402,7 +451,8 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
                 res, hits, total = [], np.zeros(len(R)), 0
                 for j in range(len(obs)):
                     pb = np.einsum("cpk,ckl->cpl", obs[j][None] - t[:, None], R)  # base coordinates (C,P,3)
-                    d, idx = trees[j].query(pb.reshape(-1, 3), k=1, distance_upper_bound=0.5, workers=-1)
+                    d, idx = trees[j].query(pb.reshape(-1, 3), k=1, distance_upper_bound=0.5,
+                                            workers=KD_WORKERS_BATCH)
                     d = d.reshape(len(R), -1)
                     total += d.shape[1]
                     if step == cfg.init_translation_steps:
@@ -434,7 +484,7 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
             src, dst = [], []
             for j in range(len(obs)):
                 pb = (obs[j] - t) @ R  # observed points in base coordinates
-                d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5, workers=-1)
+                d, idx = trees[j].query(pb, k=1, distance_upper_bound=0.5, workers=1)
                 ok = np.isfinite(d)
                 if ok.sum() < 3:
                     continue
@@ -704,15 +754,18 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         T, res, gates = refine(T0, rng)
         timing["refinement"] = round(time.perf_counter() - t_phase, 3)
     else:
-        runs = []
-        for name, T_start in starts:  # each start gets the same seeded gate sampling
+        def one(k):  # each start gets the same seeded gate sampling, so results do not depend on scheduling
+            name, T_start = starts[k]
             t_s = time.perf_counter()
             T_s, res_s, gates_s = refine(T_start, np.random.default_rng(cfg.seed))
             key = "depth_abs_median_m" if use_depth else "reproj_median_px"
             vals = [r[key] for r in _frame_stats(T_s, fit, K, cfg) if r.get(key) is not None]
             score = float(np.median(vals)) if vals and np.isfinite(res_s.x).all() else float("inf")
-            runs.append((score, name, T_s, res_s, gates_s, round(time.perf_counter() - t_s, 3)))
+            return (score, name, T_s, res_s, gates_s, round(time.perf_counter() - t_s, 3))
+
+        runs = _map_starts(one, len(starts))
         timing["refinement_multistart"] = round(time.perf_counter() - t_phase, 3)
+        timing["multistart_processes"] = _MS_PROCESSES.get("last", 1)
         best = min(runs, key=lambda r: r[0])
         _, _, T, res, gates, _ = best
         diag["multistart"] = {"criterion": ("median |depth residual| over fit frames" if use_depth else
