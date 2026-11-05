@@ -33,9 +33,10 @@ STAGE_SCHEMA, STAGE_SCHEMA_VERSION = "rw-preprocess", 1
 TARGET = 100
 # Preprocessing stages the baselines and FQL consume, named as the preprocessing dispatcher records them
 # (realworld-ops/pre/tools/rwprep_dispatch.py: the pipeline's stage records + its QA record) plus the compact training
-# store (``train_store``, format branch). DINO is NOT required: SNeRL's DINO targets are computed online (data-format
-# policy 2026-11-06). A name that never appears makes the gate fail closed; override with --required-stages.
-REQUIRED_STAGES = ("normalized", "calibrate", "foundation_stereo_depth", "sam3_masks", "qa", "train_store")
+# store (stage ``train_data`` of s4d.realworld.train_store, format branch). DINO is NOT required: SNeRL's DINO
+# targets are computed online (data-format policy 2026-11-06). A name that never appears makes the gate fail
+# closed; override with --required-stages.
+REQUIRED_STAGES = ("normalized", "calibrate", "foundation_stereo_depth", "sam3_masks", "qa", "train_data")
 NOT_FINAL = ("pending", "waiting", "incomplete", "retrying")
 VALIDATION_STATUSES = NOT_FINAL + ("invalid", "valid")
 # ING's blocking flags (runs/setup/tools/realworld_ingest_20261106/ingest_worker.py BLOCKING_FLAGS); an override

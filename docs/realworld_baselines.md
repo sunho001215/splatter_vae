@@ -102,7 +102,7 @@ they hold.
 - no episode is still pending, incomplete or retrying;
 - every required preprocessing stage is `done` for that file's sha256. The default stages are the preprocessing
   dispatcher's own record names: `normalized`, `calibrate`, `foundation_stereo_depth`, `sam3_masks`, `qa`, plus the
-  compact store's `train_store`. The list is configurable; a name that is never recorded makes the gate fail closed.
+  compact store's stage `train_data`. The list is configurable; a name that is never recorded makes the gate fail closed.
   DINO is not required.
 
 Joint targets need both tasks. On the live manifest at 03:10 the gate correctly fails: 0/100 preprocessed per task.
