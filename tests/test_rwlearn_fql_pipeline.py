@@ -26,6 +26,17 @@ FIXTURE = Path(__file__).parent / "fixtures" / "rwlearn" / "raw_mug_hanging_ep3_
 N_FRAMES = 18  # per camera; the first segment of the fixture has ~114 frames, the test uses its start
 
 
+def look_at_w2c(centre, target=(0.33, -0.03, 0.35)):
+    z = np.asarray(target, float) - centre
+    z /= np.linalg.norm(z)
+    x = np.cross(z, [0, 0, 1.0])
+    x /= np.linalg.norm(x)
+    c2w = np.eye(4)
+    c2w[:3, :3] = np.stack([x, np.cross(z, x), z], 1)
+    c2w[:3, 3] = centre
+    return np.linalg.inv(c2w)
+
+
 def store_on_fixture(n=N_FRAMES, hw=128, seed=0) -> MemoryStore:
     raw = A.raw_from_arrays(np.load(FIXTURE))
     rng = np.random.default_rng(seed)
@@ -33,11 +44,10 @@ def store_on_fixture(n=N_FRAMES, hw=128, seed=0) -> MemoryStore:
     for v, serial in enumerate(raw.serials):
         t, seg = raw.cameras[serial]["t"][:n], raw.cameras[serial]["segment"][:n]
         K = np.array([[160.0, 0, 64.4], [0, 160.0, 65.1], [0, 0, 1]])
-        c2w = np.eye(4)
-        c2w[:3, 3] = [1.0 + 0.1 * v, -0.4 + 0.4 * v, 0.9]
+        w2c = look_at_w2c(np.array([1.0 + 0.1 * v, -0.6 + 0.6 * v, 0.9]))
         cams[serial] = {"t": t, "segment": seg, "rgb": rng.integers(0, 256, (n, hw, hw, 3), dtype=np.uint8),
-                        "depth": rng.uniform(0.6, 2.0, (n, hw, hw)).astype(np.float32),
-                        "semantic": rng.integers(0, 4, (n, hw, hw), dtype=np.uint8), "K": K, "w2c": np.linalg.inv(c2w)}
+                        "depth": rng.uniform(0.6, 1.4, (n, hw, hw)).astype(np.float32),
+                        "semantic": rng.integers(0, 4, (n, hw, hw), dtype=np.uint8), "K": K, "w2c": w2c}
     return MemoryStore({"mug-hanging/episode_000003": {"task": "mug-hanging", "raw": str(FIXTURE), "cameras": cams}},
                        (hw, hw))
 
@@ -69,11 +79,21 @@ def exports(tmp_path_factory):
             "num_views": 6, "num_ref_views": 2}
     mc = asdict(SinCroModelConfig(**tiny))
     save_sincro(d / "sincro.pt", build_sincro(mc, "cpu").eval(), mc, 1, 0)
+
+    from s4d.baselines.mvp3d.model import MVP3DConfig
+    from s4d.baselines.mvp3d.model import build_encoder as build_mvp
+    from s4d.baselines.mvp3d.model import save_export as save_mvp
+    from s4d.rwlearn.configs import MVP3D_BOUNDS
+
+    tiny_mvp = MVP3DConfig(img_size=24, img_patch_size=6, im_channels=16, attn_dim=32, attn_heads=2, attn_dim_head=16,
+                           depth=4, decoder_dim=32, decoder_heads=2, decoder_dim_head=16)
+    save_mvp(d / "mvp3d.pt", build_mvp(tiny_mvp).eval(), asdict(tiny_mvp), {"bounds": MVP3D_BOUNDS, "radius": 0.012},
+             0, random_init=True)
     return d
 
 
 @pytest.mark.parametrize("condition,timeline_names", [
-    ("dynamo", None), ("snerl", ["sync"]), ("sincro", None)])
+    ("dynamo", None), ("snerl", ["sync"]), ("sincro", None), ("mvp3d_single", None), ("mvp3d_multiview", ["sync"])])
 def test_dataset_build_sampling_and_policy_round_trip(tmp_path, exports, condition, timeline_names):
     torch.manual_seed(0)
     store = store_on_fixture()
@@ -130,6 +150,9 @@ def test_dataset_build_sampling_and_policy_round_trip(tmp_path, exports, conditi
         hist = [max(k - j, int(np.flatnonzero(run == run[k])[0])) for j in (2, 1, 0)]
         rgb = np.stack([np.stack([store.rgb(ep, c, [frames[h, v]])[0] for v, c in enumerate(cams)]) for h in hist])
         obs = {"rgb": rgb}
+        if FD.CONDITIONS[condition].depth:
+            obs["depth"] = np.stack([np.stack([store.depth(ep, c, [frames[h, v]])[0] for v, c in enumerate(cams)])
+                                     for h in hist])
         if FD.CONDITIONS[condition].cameras:
             obs["K"] = np.stack([store.intrinsics(ep, c) for c in cams])
             obs["c2w"] = np.stack([np.linalg.inv(store.w2c(ep, c)) for c in cams])
