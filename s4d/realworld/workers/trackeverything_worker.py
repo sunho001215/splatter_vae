@@ -30,8 +30,8 @@ def validate_inputs(inputs):
     if video.ndim != 4 or video.shape[-1] != 3 or video.dtype != np.uint8:
         raise ValueError("video must be (T,H,W,3) uint8 RGB, one camera only")
     t, h, w = video.shape[:3]
-    if not 0 < t <= 64 or h <= 0 or w <= 0 or h % 16 or w % 16:
-        raise ValueError("clips need 1..64 frames and H,W divisible by 16")
+    if not 0 < t <= 16 or h <= 0 or w <= 0 or h % 16 or w % 16:
+        raise ValueError("clips need 1..16 frames (one query window) and H,W divisible by 16")
     if depth.shape != (t, h, w) or depth.dtype != np.float32 or not np.isfinite(depth).all() or (depth < 0).any():
         raise ValueError("depth must be finite nonnegative (T,H,W) float32 camera-z metres; 0 invalid")
     if K.shape != (t, 3, 3) or w2c.shape != (t, 4, 4) or not np.isfinite(K).all() or not np.isfinite(w2c).all():
@@ -43,7 +43,37 @@ def validate_inputs(inputs):
         raise ValueError("query birth must be an integer clip frame")
     if ((queries[:, 1:] < 0) | (queries[:, 1:] >= [w, h])).any():
         raise ValueError("query pixels must lie inside the resized image")
+    x, y = np.floor(queries[:, 1:]).astype(int).T
+    if (depth[birth.astype(int), y, x] <= 0).any():
+        raise ValueError("queries require valid birth depth; depth invention is disabled")
     return video, depth, K, w2c, queries
+
+
+def continuous_query_unprojection(query_points_2d, depths, intrinsics, extrinsics):
+    """Our replacement for dfb29b5 demo_hf.py:196-246 (_unproject_2d_to_3d).
+
+    Upstream :223-226 rounds/clamps pixels and :228-232 invents missing depths. Continuous coordinates instead
+    select depth[t, floor(y), floor(x)] while retaining the original ray. Invalid support is an error, never filled.
+    Geometry depth still undergoes TE's boundary replacement (demo_hf.py:619-624; datasets/data_ops.py:1244-1245).
+    """
+    import torch
+
+    q = torch.as_tensor(query_points_2d, device=depths.device, dtype=depths.dtype)
+    t = q[:, 0].long()
+    xy = q[:, 1:]
+    h, w = depths.shape[1:]
+    if (not torch.isfinite(q).all() or (q[:, 0] != t).any() or (t < 0).any() or (t >= len(depths)).any()
+            or (xy < 0).any() or (xy >= q.new_tensor([w, h])).any()):
+        raise ValueError("queries must have finite in-bounds continuous pixels and integer birth frames")
+    x, y = torch.floor(xy).long().unbind(-1)
+    z = depths[t, y, x]
+    if not (torch.isfinite(z) & (z > 0)).all():
+        raise ValueError("query birth depth is invalid; depth invention is disabled")
+    uv_h = torch.cat([xy, torch.ones_like(q[:, :1])], -1)
+    rays = torch.linalg.solve(intrinsics[t], uv_h[..., None]).squeeze(-1)
+    cam_h = torch.cat([rays * z[:, None], torch.ones_like(q[:, :1])], -1)
+    world = torch.linalg.solve(extrinsics[t], cam_h[..., None]).squeeze(-1)[:, :3]
+    return torch.cat([q[:, :1], world], -1).unsqueeze(0)
 
 
 def _numpy(value):
@@ -99,6 +129,7 @@ def _model(repo, checkpoint, device):
 
         if Path(demo_hf.__file__).resolve() != repo / "demo_hf.py":
             raise RuntimeError("TrackEverything import does not match repo_dir")
+        demo_hf._unproject_2d_to_3d = continuous_query_unprojection
         identity = {"name": "TrackEverything", "repo": "ayushjain1144/trackeverything",
                     "commit": git_commit(str(repo)), "checkpoint": str(checkpoint),
                     "checkpoint_sha256": sha256(str(checkpoint)), "is_mock": False}
@@ -156,6 +187,9 @@ def handle(request, inputs):
                               "max_memory_reserved": int(torch.cuda.max_memory_reserved()),
                               "dynamic_logits_available": "dyn_logit" in arrays, "single_view": True,
                               "geometry": "supplied metric depth, continuous K, OpenCV world-to-camera",
+                              "query_depth_lookup": "depth[t, floor(y), floor(x)] on resized grid; no invention",
+                              "geometry_preprocessing": "TE boundary-depth replacement retained: "
+                                                        "demo_hf.py:619-624, datasets/data_ops.py:1244-1245",
                               "geometry_backend": "pi3 (estimator bypassed)", "torch": torch.__version__}
 
 
