@@ -350,14 +350,27 @@ def retry_in_place(job_id: str, host: str, current: dict | None, exceptions: dic
 
 
 def drain_evaluator(job: dict, host: str, roles: dict, trainer: dict | None) -> bool:
-    """The drain exception (configs/hosts/roles.yaml ``drain_evaluators``): ``job`` is the evaluator companion
-    (``<trainer>-eval`` running scripts/eval_rl.py, not a re-evaluation row) of a trainer whose registry state
-    (``trainer``) shows it running or completed on ``host``: the evaluator reads that trainer's snapshots, which exist
-    only there."""
+    """The drain exception (configs/hosts/roles.yaml ``drain_evaluators``): ``job`` is the evaluator companion of its
+    trainer (``<trainer>-eval`` running scripts/eval_rl.py on ``--run-dir runs/<trainer> --train-job <trainer>`` over
+    all snapshots of suite v1, i.e. not a re-evaluation) and the trainer's registry state (``trainer``) shows it
+    confirmed running (a recorded container / process) or completed on ``host``: the evaluator reads that trainer's
+    snapshots, which exist only there."""
+    run_id = job["id"].removesuffix("-eval")
+    args = _normalized(job.get("args", []))
+
+    def option(flag):
+        return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
+
+    trainer = trainer or {}
+    executed = trainer.get("status") in ("sync_pending", "done") or (
+        trainer.get("status") == "running" and bool(
+            (trainer.get("attempt_containers", {}).get(str(trainer.get("attempt"))) or {}).get("container_id")
+            if host == "remote" else trainer.get("pid")))
     return (roles["hosts"][host].get("drain_evaluators") is True and job["id"].endswith("-eval")
             and job.get("script") == "scripts/eval_rl.py" and not job.get("reevaluates")
-            and (trainer or {}).get("host") == host
-            and (trainer or {}).get("status") in ("launching", "running", "sync_pending", "done"))
+            and option("--train-job") == run_id and option("--run-dir") == f"runs/{run_id}"
+            and option("--snapshots") in (None, "all") and option("--suites") in (None, "v1")
+            and trainer.get("host") == host and not trainer.get("unknown") and executed)
 
 
 def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by_id: dict | None = None,

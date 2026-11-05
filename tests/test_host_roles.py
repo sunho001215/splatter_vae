@@ -784,13 +784,21 @@ def test_drain_exception_admits_only_evaluators_of_trainers_that_ran_on_the_remo
     or completed on the remote may still be admitted there (it reads that trainer's snapshots); nothing else, and the
     pool never moves rows by it (no trainer state is passed for placements)."""
     evaluator = remote_row(DRM_EVAL)
-    for status in ("running", "launching", "sync_pending", "done"):
-        trainer = {"host": "remote", "status": status}
+    running = {"host": "remote", "status": "running", "attempt": 1,
+               "attempt_containers": {"1": {"container": "c", "container_id": "f" * 64}}}
+    for trainer in (running, {"host": "remote", "status": "sync_pending"}, {"host": "remote", "status": "done"}):
         assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT, None, None, trainer) is None
     for trainer in ({"host": "remote", "status": "crashed"}, {"host": "remote", "status": "pending"},
-                    {"host": "local", "status": "running"}, None):
+                    {"host": "remote", "status": "launching"},  # never confirmed to execute
+                    {**running, "attempt_containers": {}}, {**running, "unknown": True},
+                    {**running, "host": "local"}, None):
         assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT, None, None, trainer) is not None
-    running = {"host": "remote", "status": "running"}
+    for args in (["--run-dir", "runs/other", "--train-job", DRM["id"]],  # not the trainer's companion
+                 ["--run-dir", f"runs/{DRM['id']}", "--train-job", "other"],
+                 ["--run-dir", f"runs/{DRM['id']}", "--train-job", DRM["id"], "--snapshots", "final"],
+                 ["--run-dir", f"runs/{DRM['id']}", "--train-job", DRM["id"], "--suites=v2"]):
+        assert roles_mod.refusal({**evaluator, "args": args}, "remote", ROLES, {}, CONTEXT, None, None,
+                                 running) is not None
     assert roles_mod.refusal(remote_row(DRM), "remote", ROLES, {}, CONTEXT, None, None, running) is not None
     assert roles_mod.refusal({**evaluator, "reevaluates": DRM["id"]}, "remote", ROLES, {}, CONTEXT, None, None,
                              running) is not None  # a re-evaluation row is not a companion
