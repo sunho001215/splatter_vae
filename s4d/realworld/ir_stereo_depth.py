@@ -32,7 +32,7 @@ import numpy as np
 
 from s4d.realworld import io as rio
 
-STAGE_VERSION = "1"
+STAGE_VERSION = "2"
 
 
 def ir_rigs(meta) -> list:
@@ -87,7 +87,7 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                 vv = f.create_dataset("valid", (n, *hw), bool, chunks=(1, *hw), compression="lzf")
                 si = f.create_dataset("source_index", (n, *hw), np.int32, chunks=(1, *hw), compression="lzf")
                 dl = f.create_dataset("disparity_left", (n, *ir_hw), np.float32, chunks=(1, *ir_hw), compression="lzf")
-                le = f.create_dataset("lr_error", (n, *ir_hw), np.float16, chunks=(1, *ir_hw), compression="lzf")
+                le = f.create_dataset("lr_error", (n, *ir_hw), np.float32, chunks=(1, *ir_hw), compression="lzf")
                 iv = f.create_dataset("ir_valid", (n, *ir_hw), bool, chunks=(1, *ir_hw), compression="lzf")
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
@@ -119,7 +119,7 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                     out, kmeta = got
                     sl = slice(idx[0], idx[-1] + 1)
                     dd[sl], vv[sl], si[sl] = out["depth"], out["depth"] > 0, out["source_index"]
-                    dl[sl], le[sl], iv[sl] = out["disparity_left"], out["lr_error"].astype(np.float16), out["ir_valid"]
+                    dl[sl], le[sl], iv[sl] = out["disparity_left"], out["lr_error"].astype(np.float32), out["ir_valid"]
                     stats += kmeta["frames"]
                     identity = kmeta["model"]
             summary[cam] = {"frames": n, "ir_valid_fraction_mean": float(np.mean([s["ir_valid_fraction"] for s in stats])),

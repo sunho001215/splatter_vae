@@ -111,6 +111,56 @@ def test_lr_consistency_with_block_matching_on_a_synthetic_pair():
     assert np.median(err[m]) < 0.5
 
 
+@pytest.mark.parametrize("bad", [0.0, -1.0, np.nan, np.inf, 0.5])
+def test_lr_consistency_rejects_either_invalid_interpolation_tap(bad):
+    dl = np.full((1, 20), 5.5, np.float32)
+    dr = np.full_like(dl, 11.0)
+    for col in (4, 5):  # left column 10 samples halfway between right columns 4 and 5
+        right = dr.copy()
+        right[0, col] = bad
+        assert np.isinf(lr_consistency(dl, right, min_disparity=0.5)[0, 10])
+    dr[0, 4:6] = [4.0, 7.0]
+    assert lr_consistency(dl, dr, min_disparity=0.5)[0, 10] == 0
+
+
+def test_stereo_stage_preserves_float32_lr_threshold(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import h5py
+
+    from s4d.realworld import depth_stages, ir_stereo_depth, pipeline
+    from s4d.realworld import io as rio
+    from s4d.realworld.workers import WorkerSpec
+
+    cam = "color"
+    g = SimpleNamespace(rig_id="rig", left_stream="left", right_stream="right", baseline_m=0.05,
+                        T_color=lambda: np.eye(4))
+    stream = SimpleNamespace(intrinsics=SimpleNamespace(height=2, width=3))
+    meta = SimpleNamespace(rig_rgbd=lambda _: SimpleNamespace(color_stream=cam), stream=lambda _: stream,
+                           stream_timestamps_ns={"left": [0], cam: [0]})
+    monkeypatch.setattr(pipeline, "load_meta", lambda *_: meta)
+    monkeypatch.setattr(pipeline, "read_frames", lambda *args: np.zeros((1, 2, 3), np.uint8))
+    monkeypatch.setattr(ir_stereo_depth, "ir_rigs", lambda _: [g])
+    monkeypatch.setattr(depth_stages, "view_K", lambda *_: np.eye(3))
+    rio.run_stage(rio.episode_dir(tmp_path, "ep") / "normalized", stage="ingest", version="test",
+                  config={}, inputs={}, build=lambda _: {})
+    error = np.array([[[1.0004, 0.9998, np.inf], [0.0, 0.0, 0.0]]], np.float32)
+    out = {"depth": np.ones((1, 2, 3), np.float32), "source_index": np.arange(6).reshape(1, 2, 3),
+           "lr_error": error, "ir_valid": np.ones((1, 2, 3), bool)}
+    disp = {"disparity_left": np.ones((1, 2, 3), np.float32), "disparity_right": np.ones((1, 2, 3), np.float32)}
+    stats = {"frames": [{"ir_valid_fraction": 1., "registered_valid_fraction": 1., "lr_error_median_px": 0.}]}
+    runner = SimpleNamespace(worker=lambda *a, **k: ({"model": {}, "meta": {}}, disp, None),
+                             kernel=lambda *a, **k: (out, stats, None), ack=lambda _: None, describe=lambda: {})
+    ir_stereo_depth.ir_stereo_depth(tmp_path, "ep", WorkerSpec("mock", "python"), runner)
+    src = rio.stage_dir(tmp_path, "ep", "foundation_stereo_depth") / "color.h5"
+    with h5py.File(src) as f:
+        assert f["lr_error"].dtype == np.float32
+        np.testing.assert_array_equal(f["lr_error"][:], error)
+    ir_stereo_depth.filter_stereo_depth(tmp_path, "ep")
+    with h5py.File(rio.stage_dir(tmp_path, "ep", "foundation_stereo_filtered") / "color.h5") as f:
+        np.testing.assert_array_equal(f["depth"][0, 0], [0., 1., 0.])
+
+
 def test_reproject_depth_source_index_keeps_the_default_output_and_names_the_winners():
     rng = np.random.default_rng(0)
     depth = rng.uniform(0.5, 2.0, (24, 32))

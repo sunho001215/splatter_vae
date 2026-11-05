@@ -24,6 +24,7 @@ from s4d.realworld.contract import (
     EpisodeContractError,
     EpisodeMeta,
     Intrinsics,
+    IrStereoGeometry,
     Provenance,
     RgbdGeometry,
     RobotDescription,
@@ -76,6 +77,23 @@ def test_rgbd_contract_and_disk_round_trip(rgbd_meta, tmp_path):
     for sid, stamps in rgbd_meta.stream_timestamps_ns.items():
         np.testing.assert_array_equal(loaded.stream_timestamps_ns[sid], stamps)
     assert validate_episode(loaded).errors == []
+
+
+def test_ir_contract_requires_negative_right_from_left_baseline(rgbd_meta):
+    streams = tuple(replace(rgbd_meta.streams[0], stream_id=f"ir/{eye}", eye=eye, modality="infrared",
+                            channels=1, channel_order="GRAY") for eye in ("left", "right"))
+    stamps = {**rgbd_meta.stream_timestamps_ns,
+              **{s.stream_id: rgbd_meta.trajectory.timestamps_ns for s in streams}}
+    for sign in (-1, 1):
+        T = make_T(np.eye(3), [sign * 0.05, 0, 0])
+        ir = IrStereoGeometry("rig", "ir/left", "ir/right", "metric", tuple(map(tuple, T)), 0.05,
+                              tuple(map(tuple, np.eye(4))))
+        meta = replace(rgbd_meta, streams=rgbd_meta.streams + streams, stream_timestamps_ns=stamps, ir_stereo=(ir,))
+        report = validate_episode(meta)
+        if sign < 0:
+            assert report.errors == []
+        else:
+            assert any("must be negative" in e for e in report.errors)
 
 
 @pytest.mark.parametrize("change, message", [

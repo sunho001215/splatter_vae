@@ -76,7 +76,7 @@ def ir_disparity_to_color(params: dict, arrays: dict) -> tuple[dict, dict]:
         z, ok = disparity_to_depth(dl[k], K_ir[0, 0], float(params["baseline_m"]), 0.0, float(params["min_disparity"]))
         ok &= visible_in_other(dl[k], "left") & (z >= lo) & (z <= hi)
         out["ir_valid"][k] = ok
-        out["lr_error"][k] = lr_consistency(dl[k], dr[k])
+        out["lr_error"][k] = lr_consistency(dl[k], dr[k], float(params["min_disparity"]))
         out["depth"][k], out["source_index"][k] = reproject_depth(np.where(ok, z, 0.0), K_ir, T, K_c, hw,
                                                                   splat=int(params["splat"]), return_source=True)
         e = out["lr_error"][k][ok & np.isfinite(out["lr_error"][k])]
