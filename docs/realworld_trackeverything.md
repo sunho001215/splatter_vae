@@ -26,7 +26,7 @@ spec = WorkerSpec(
     checkpoint="/ram/weights/trackeverything/model.pth",  # existing local file, never a hub ID
 )
 records = track_everything(
-    root, episode_id, spec, LocalRunner(workdir), depth_stage="sensor_depth",
+    root, episode_id, spec, LocalRunner(workdir), depth_stage="foundation_stereo_depth",
     window=16, step=8, grid_stride=16, model_hw=(384, 512), num_iters=3,
 )
 ```

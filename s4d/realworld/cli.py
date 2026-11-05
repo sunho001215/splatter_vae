@@ -154,8 +154,6 @@ def main(argv=None) -> int:
     from s4d.realworld.runners import LocalRunner
 
     root = Path(cfg["output_root"])
-    runner = LocalRunner(root / "_worker_tmp" / args.episode)
-    save_root_config(cfg, args.config)
     wanted = args.stages.split(",") if args.stages else default_stages(cfg)
     unknown = set(wanted) - set(STAGES + BASELINE_STAGES)
     if unknown:
@@ -164,6 +162,8 @@ def main(argv=None) -> int:
         check_stage_scope(cfg, wanted)
     except ValueError as exc:
         ap.error(str(exc))
+    runner = LocalRunner(root / "_worker_tmp" / args.episode)
+    save_root_config(cfg, args.config)
 
     def run(name, fn):
         if name in wanted:

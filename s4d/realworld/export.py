@@ -139,6 +139,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                (depth_stage, "calibrate", "track2d", "lift3d") + (("track_motion",) if track_source != "lift3d" else ())}
     if any(v is None for v in records.values()):
         raise RuntimeError(f"export needs complete upstream stages: {[k for k, v in records.items() if v is None]}")
+    motion_target = motion_target_source(records["track2d"], depth_stage)  # refuses other trackers, also when cached
     # any model or landmark source flagged as mock anywhere in an upstream record (config or summary)
     mock = any('"is_mock": true' in json.dumps(r, default=str) for r in records.values())
     if mock and not allow_mock:
@@ -339,7 +340,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             "intrinsics_convention": "continuous pixel coordinates; K tracked through resize as a pixel affine",
             "aspect": aspect,
             "depth_resize": f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})",
-            "motion_target": (motion_target_source(records["track2d"], depth_stage)
+            "motion_target": (motion_target
                               + "; weight 1 where the source-time status is valid and both positions finite"
                               + ("" if track_source == "lift3d" else
                                  "; ONLY tracks classified moving by track_motion (full valid trajectories), pairs "

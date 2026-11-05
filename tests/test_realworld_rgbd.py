@@ -572,3 +572,9 @@ def test_export_drops_windows_crossing_recording_gap(rgbd_meta, tmp_path):
     assert filtered["windows_dropped_for_time_gaps"] == 6
     assert [w["canonical_indices"] for w in filtered["windows"]] == [[0, 1, 2], [1, 2, 3], [4, 5, 6], [5, 6, 7]]
     assert filtered["depth_stage"] == "sensor_depth"
+    # tracks of another tracker are refused, also when a complete export would otherwise be reused
+    record = rio.stage_dir(root, ep, "track2d") / rio.RECORD
+    rio.atomic_write_json(record, {**json.loads(record.read_text()), "config": {"tracker": "AllTracker"}})
+    with pytest.raises(ValueError, match="not TrackEverything"):
+        export(root, ep, tmp_path / "cache-1.5", resolutions={"tiny": (12, 16)}, depth_stage="sensor_depth",
+               allow_mock=True, max_gap_factor=1.5)
