@@ -68,7 +68,7 @@ not csw4.
 | Training smoke with the csw4 profile | NOT-RUN (gate); legacy-profile smoke of 2026-10-31 VERIFIED-REAL |
 | ViT-S-sized profile: crop geometry, padding exclusion, forward/backward on real windows | VERIFIED-REAL on the 294-episode AUTOLab manifest (resource measurement, not the trainer smoke); trainer smoke NOT-RUN (gate) |
 | Crop thresholds (2 cm / 0.4 m / 32 tracks) | PARTIAL: set from 80 camera-windows of one lab; re-check on the corpus |
-| Anchor statistics, `render.far` justification | PARTIAL: one AUTOLab session; corpus statistics not computed |
+| Anchor statistics, `render.far` justification | PARTIAL: one lab (AUTOLab, 294 episodes, 4 dates); corpus statistics not computed. far4 versions (2026-11-05): all 294 episodes measured, `docs/droid_largescale_validation/far4_effective_config.md` |
 | Corpus join rate, other labs through the full manifest (depth) | NOT-RUN (the depth stream is sequential: 252 parts of 4.9 GB) |
 
 DROID cannot establish the RealSense stream configuration or the Panda–Robotiq mounting geometry of our own rig.
@@ -107,5 +107,6 @@ DROID cannot establish the RealSense stream configuration or the Panda–Robotiq
 2. Index the RLDS release in place.
 3. Extract flows (771 shards) and depth (252 sequential parts, about 3.9 TB of disk).
 4. Build the manifest; review the rejection reasons and the wrist QA across robots.
-5. Compute corpus `model.anchor_stats` and re-check `render.far`.
+5. Compute corpus `model.anchor_stats` and re-check `render.far` (`scripts/droid_ls_depth_range.py`; far4 profiles
+   `configs/droid/{csw4,vits}_largescale_far4.yaml`, user 2026-11-05).
 6. Resolve open decisions 1-2 with wrist depth from several robots.
