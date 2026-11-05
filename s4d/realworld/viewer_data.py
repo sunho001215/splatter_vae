@@ -59,8 +59,13 @@ def load_episode(root: Path, episode_id: str, *, gap_factor: float = 1.5) -> Vie
 
         path = root / "pipeline.yaml"
         cfg = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
-        depth_cfg = (cfg.get("stages") or {}).get("mapanything_depth") or {}
+        stages = cfg.get("stages") or {}
+        depth_cfg = stages.get("mapanything_depth") or {}
         policy = {k: depth_cfg[k] for k in ("max_sync_ns", "allow_unmatched") if k in depth_cfg}
+        export_sync = (stages.get("export") or {}).get("max_sync_ns")
+        if not policy and export_sync is not None:
+            # roots without MapAnything (sensor / stereo depth variants): the export's tolerance, mutual pairing
+            policy = {"max_sync_ns": int(export_sync), "allow_unmatched": True}
     sets = frame_sets(meta, streams, **policy)
     if not len(sets["index"]):
         raise ValueError(f"{episode_id}: no synchronized camera sets under policy {policy}")

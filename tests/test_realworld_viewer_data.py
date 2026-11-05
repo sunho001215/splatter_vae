@@ -44,3 +44,10 @@ def test_viewer_defaults_to_strict_and_honours_strict_record_tolerance(tmp_path,
     rio.run_stage(rio.stage_dir(tmp_path, "ep", "mapanything_depth"), stage="mapanything_depth", version="test",
                   config={"max_sync_ns": 30_000_000}, inputs={}, build=lambda _: {})
     assert load_episode(tmp_path, "ep").n_sets == 6
+
+
+def test_viewer_falls_back_to_export_tolerance_for_roots_without_mapanything(tmp_path, cameras):
+    # sensor/stereo depth variant roots keep no mapanything_depth config: the export's tolerance (mutual pairing) applies
+    (tmp_path / "pipeline.yaml").write_text(yaml.safe_dump({"stages": {"export": {"max_sync_ns": 30_000_000}}}))
+    ve = load_episode(tmp_path, "ep")
+    np.testing.assert_array_equal(ve.sets["index"], [[0, 0, 0], [1, 1, 1], [3, 2, 3], [4, 3, 4], [5, 4, 5]])
