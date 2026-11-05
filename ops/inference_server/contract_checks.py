@@ -8,8 +8,8 @@
    ``training_step`` under ``torch.no_grad`` and the DINO teacher equality check (``snerl_check`` kernel).
 These show data/forward compatibility only; they are not evidence of learning performance.
 
-    .venv/bin/python -I ops/inference_server/contract_checks.py --pipeline configs/realworld/mug_hanging_rgbd.yaml \\
-        --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000000
+    .venv/bin/python -I ops/inference_server/contract_checks.py --pipeline configs/realworld/mug_hanging.yaml \\
+        --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def main(argv=None) -> int:
     from s4d.realworld import io as rio
     from s4d.realworld.dataset import RealworldCacheDataset
     from s4d.realworld.depth_stages import configured_sets_policy, frame_sets
-    from s4d.realworld.pipeline import accepted_calibration, load_meta, read_frames
+    from s4d.realworld.pipeline import accepted_calibration, camera_views, load_meta, read_frames
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
     if args.output_root:
@@ -135,7 +135,7 @@ def main(argv=None) -> int:
         report["snerl"] = None
         if "snerl" in (cfg.get("baselines") or []):
             meta_ep = load_meta(root, ep)
-            streams = [v.stream_id for v in meta_ep.views()]
+            streams = [v.stream_id for v in camera_views(meta_ep)]
             sets = frame_sets(meta_ep, streams, **configured_sets_policy(root, ep, cfg))
             T = np.stack([accepted_calibration(root, ep, s) for s in streams])
             lookat = axes_lookat(T)

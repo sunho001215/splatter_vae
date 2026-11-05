@@ -1,11 +1,8 @@
 """CPU-only RGB-D contracts, recorder decoding, geometry, durable stages and depth-only calibration."""
 
-import importlib.util
 import io
 import json
-import sys
 from dataclasses import replace
-from pathlib import Path
 from types import SimpleNamespace
 
 import h5py
@@ -40,7 +37,6 @@ from s4d.realworld.geometry import (
     invert_T,
     make_T,
     pixel_centers,
-    resize_affine,
     rotation_angle_deg,
     warp_affine,
 )
@@ -350,48 +346,6 @@ def test_register_depth_matches_analytic_color_plane(normal):
     assert stats["frames"][0]["sensor_valid_fraction"] == pytest.approx((raw > 0).mean())
 
 
-@pytest.fixture
-def mapanything_helpers(monkeypatch):
-    path = Path(__file__).resolve().parents[1] / "s4d/realworld/workers/mapanything_worker.py"
-    # The standalone worker inserts its protocol directory; keep that import-path change local to this test.
-    monkeypatch.setattr(sys, "path", sys.path.copy())
-    spec = importlib.util.spec_from_file_location("rgbd_mapanything_helpers", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_mapanything_nearest_resize_matches_geometry_both_directions(mapanything_helpers):
-    helpers = mapanything_helpers
-    rng = np.random.default_rng(2026)
-    a = rng.integers(0, 65536, (2, 480, 640), dtype=np.uint16)
-    for hw in ((392, 518), (480, 640)):
-        aff = resize_affine(a.shape[-2:], hw)
-        expected = np.stack([warp_affine(image, aff, hw, order=0) for image in a])
-        resized = helpers.resize_nearest(a, hw)
-        np.testing.assert_array_equal(resized, expected)
-        for n_dst, n_src in zip(hw, a.shape[-2:]):
-            idx = helpers.nearest_index(n_dst, n_src)
-            np.testing.assert_array_equal(idx, np.floor((np.arange(n_dst) + 0.5) * n_src / n_dst).astype(int))
-        a = resized
-
-
-def test_mapanything_intrinsics_and_integer_pixel_rays(mapanything_helpers):
-    helpers = mapanything_helpers
-    K = np.array([[603.2, 1.3, 318.8], [0, 597.4, 241.1], [0, 0, 1]])
-    for src, dst in (((480, 640), (392, 518)), ((392, 518), (480, 640))):
-        scaled = helpers.scaled_K(K, src, dst)
-        np.testing.assert_allclose(scaled, resize_affine(src, dst).apply_K(K), rtol=0, atol=1e-12)
-        before = scaled.copy()
-        K_ma = helpers.to_mapanything_K(scaled)
-        np.testing.assert_array_equal(scaled, before)
-        ij = np.array([[0, 0], [dst[0] - 1, dst[1] - 1], [123, 245]])
-        xy1 = np.column_stack([ij[:, ::-1], np.ones(len(ij))])
-        ours = (xy1 + [0.5, 0.5, 0]) @ np.linalg.inv(scaled).T
-        upstream = xy1 @ np.linalg.inv(K_ma).T
-        np.testing.assert_allclose(upstream, ours, rtol=0, atol=1e-14)
-
-
 def test_nearest_affine_preserves_pixel_cells_and_zeroes_outside_image():
     from s4d.realworld.geometry import PixelAffine
 
@@ -506,7 +460,7 @@ def test_sensor_depth_local_runner_resumes_only_remaining_chunks(panda_file, tmp
     assert not list(directory.parent.glob(".sensor_depth.chunks.*"))
     meta = pipeline.load_meta(roots[1], ep)
     assert pipeline.default_depth_stage(meta, "calibrate") == "sensor_depth"
-    assert pipeline.default_depth_stage(meta, "lift") == "mapanything_depth"
+    assert pipeline.default_depth_stage(meta, "lift") == "foundation_stereo_depth"
     for view in meta.views():
         sid = view.stream_id
         a = load_view_depth(roots[0], ep, sid, np.arange(6), "sensor_depth")
@@ -600,7 +554,7 @@ def test_export_drops_windows_crossing_recording_gap(rgbd_meta, tmp_path):
         directory = rio.stage_dir(root, ep, stage)
         rio.atomic_write_json(directory / rio.RECORD,
                               {"build_id": stage, "summary": {cam: {"chunks": ["tracks.npz"]}},
-                               "config": {"is_mock": True}})
+                               "config": {"is_mock": True, "tracker": "TrackEverything"}})
     rio.atomic_write_json(rio.stage_dir(root, ep, "calibrate") / "rig__color.json",
                           {"status": "accepted", "T_cam_base": np.eye(4).tolist()})
     rio.atomic_write_npz(rio.stage_dir(root, ep, "lift3d") / "tracks.npz", frame_indices=np.arange(8), query_frame=0,
@@ -618,54 +572,3 @@ def test_export_drops_windows_crossing_recording_gap(rgbd_meta, tmp_path):
     assert filtered["windows_dropped_for_time_gaps"] == 6
     assert [w["canonical_indices"] for w in filtered["windows"]] == [[0, 1, 2], [1, 2, 3], [4, 5, 6], [5, 6, 7]]
     assert filtered["depth_stage"] == "sensor_depth"
-
-
-def test_rgbd_mapanything_preserves_sensor_input_and_primary_outputs(panda_file, tmp_path, monkeypatch):
-    from s4d.realworld import depth_stages as D
-    from s4d.realworld.workers import WorkerSpec
-
-    root, ep = tmp_path / "out", "panda"
-    pipeline.ingest(panda_file.adapter, ep, root)
-    meta = pipeline.load_meta(root, ep)
-    runner = LocalRunner(tmp_path / "worker")
-    D.sensor_depth(root, ep, runner)
-    poses = {v.stream_id: make_T(np.eye(3), [j * 0.1, 0, 0]) for j, v in enumerate(meta.views())}
-
-    def calibration(tmp):
-        for stream, T in poses.items():
-            rio.atomic_write_json(tmp / f"{rio.safe_name(stream)}.json", {"status": "accepted", "T_cam_base": T.tolist()})
-        return {}
-
-    rio.run_stage(rio.stage_dir(root, ep, "calibrate"), stage="calibrate", version="test", config={}, inputs={},
-                  build=calibration)
-    # The mock's depth-input echo tests this stage's contracts without a robot optimisation or upstream model.
-    monkeypatch.setattr(pipeline, "RobotGeometry", lambda _: None)
-    monkeypatch.setattr(D, "set_robot_motion", lambda m, stamps, geom: np.zeros(len(stamps)))
-    calls = []
-    worker = runner.worker
-
-    def capture(spec, task, params, arrays, **kwargs):
-        calls.append(arrays)
-        return worker(spec, task, params, arrays, **kwargs)
-
-    monkeypatch.setattr(runner, "worker", capture)
-    backend = D.MapAnythingBackend(WorkerSpec("mock", sys.executable), runner, {}, allow_mock=True)
-    rec = D.mapanything_depth(root, ep, backend)
-    streams = [v.stream_id for v in meta.views()]
-    assert rec["config"]["input_depth_stage"] == "sensor_depth"
-    assert "include_right_eyes" not in rec["config"] and "stereo_rectify" not in rec["inputs"]
-    assert rec["summary"]["views"] == streams
-    for v, stream in enumerate(streams):
-        np.testing.assert_array_equal(calls[0]["images"][:, v], pipeline.read_frames(root, ep, stream, list(range(4))))
-        np.testing.assert_array_equal(calls[0]["K"][v], meta.stream(stream).intrinsics.K())
-        np.testing.assert_array_equal(calls[0]["cam2world"][v], np.linalg.inv(poses[stream]))
-        expected, valid, K = D.load_view_depth(root, ep, stream, np.arange(6), "sensor_depth")
-        actual, actual_valid, actual_K = D.load_view_depth(root, ep, stream, np.arange(6))
-        np.testing.assert_array_equal(actual, expected)
-        np.testing.assert_array_equal(actual_valid, valid)
-        np.testing.assert_array_equal(actual_K, K)
-        with h5py.File(D.depth_file(root, ep, "mapanything_depth", stream), "r") as f:
-            assert f.attrs["grid"] == "view pinhole grid (as recorded)"
-            np.testing.assert_array_equal(f["input_depth_valid"][:], valid)
-            np.testing.assert_array_equal(f.attrs["T_cam_base"], poses[stream])
-    assert D.mapanything_depth(root, ep, backend)["skipped"]

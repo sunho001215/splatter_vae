@@ -13,9 +13,9 @@ Which baseline needs what (from s4d/baselines/*, as of this branch):
 * SinCro, ReViWo, DynaMo: RGB (+ cameras for SinCro) only.
 
 Which dataset gets which auxiliary inputs is declared per pipeline config (``baselines:``, see
-``required_baseline_stages``): only our method is pretrained on DROID, so the DROID configs declare no baselines and
-never run these stages; the real-world dataset declares the baselines that are trained on it. Our own real-world
-RGB-D calibration may additionally use ``sam3_masks`` as robot-mask evidence (``stages.calibrate.robot_mask_stage``).
+``required_baseline_stages``): the real-world dataset declares the baselines that are trained on it (only our method
+is pretrained on DROID, whose released PointWorld data never pass through these stages). Our own real-world RGB-D
+calibration may additionally use ``sam3_masks`` as robot-mask evidence (``stages.calibrate.robot_mask_stage``).
 
 Both stages consume model outputs only through isolated workers and record prompts, model identity, scores,
 instances and explicit absent detections. Neither is validated with the real models here.
@@ -153,8 +153,9 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
                mode: str = "segment_images", chunk: int = 16, score_threshold: float = 0.5,
                allow_mock: bool = False, force: bool = False, runner=None) -> dict:
     """``prompts`` maps text prompt -> SNeRL class (e.g. {"robot arm": "robot", "gripper": "robot",
-    "red mug": "object", "table": "fixture"}). Stores raw instances + the derived semantic map per camera."""
-    from s4d.realworld.pipeline import grid_frames, load_meta, read_frames, to_model_rgb
+    "red mug": "object", "table": "fixture"}). Stores raw instances + the derived semantic map per camera, on the
+    camera's recorded grid (the colour grid every other stage uses)."""
+    from s4d.realworld.pipeline import load_meta, read_frames, to_model_rgb
 
     meta = load_meta(root, episode_id)
     texts, classes = list(prompts), [prompts[t] for t in prompts]
@@ -164,10 +165,6 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
     config = {"cameras": cameras, "prompts": prompts, "mode": mode, "chunk": chunk,
               "score_threshold": score_threshold, "worker": spec.name, "worker_identity": worker_identity(spec)}
     inputs = {"ingest": rio.build_id(rio.read_record(rio.episode_dir(root, episode_id) / "normalized"))}
-    if any(cam in (g.left_stream, g.right_stream) for cam in cameras for g in meta.stereo):
-        from s4d.realworld.pipeline import _record_fp
-
-        inputs["stereo_rectify"] = _record_fp(root, episode_id, "stereo_rectify")
     store = rio.ChunkStore(directory, rio.stage_fingerprint("sam3_masks", "1", config, inputs))
     if force:
         store.clear()
@@ -186,13 +183,7 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
                 pres_ds = f.create_dataset("class_present", (n, len(SNERL_CLASSES)), bool)
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
-                    rig = [g for g in meta.stereo if cam in (g.left_stream, g.right_stream)]
-                    if rig:  # same grid as depth/tracks/export (rectified by stereo_rectify)
-                        eye = "left" if rig[0].left_stream == cam else "right"
-                        frames = grid_frames(root, episode_id, meta, rig[0], idx, eye=eye)
-                    else:
-                        frames = read_frames(root, episode_id, cam, idx)
-                    frames = to_model_rgb(frames, s)
+                    frames = to_model_rgb(read_frames(root, episode_id, cam, idx), s)
                     if frames.ndim == 3:
                         frames = np.repeat(frames[..., None], 3, -1)  # infrared: model input only, recorded
                     if runner is None:

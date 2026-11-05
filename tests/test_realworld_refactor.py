@@ -7,12 +7,11 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
-import h5py
 import numpy as np
 import pytest
 
 from ops.inference_server import command_support, run_episode
-from s4d.realworld import depth_stages, workers
+from s4d.realworld import workers
 
 
 @pytest.mark.parametrize('response,allow_mock,expected', [
@@ -67,24 +66,6 @@ def test_local_head_keeps_command_globals(tmp_path, monkeypatch):
     assert str(caught.value) == f'local checkout {tmp_path} has uncommitted changes; commit before a remote run'
 
 
-def test_prediction_helpers_keep_schema_and_indexing(tmp_path):
-    with h5py.File(tmp_path / 'prediction.h5', 'w', track_order=True) as f:
-        depth_stages._create_prediction_planes(f, 3, (4, 5))
-        depth_stages._create_prediction_pose(f, 3)
-        assert list(f) == ['depth', 'valid', 'conf', 'non_ambiguous', 'cam2world_pred', 'metric_scale']
-        for name, dtype in (('depth', np.float32), ('valid', bool), ('conf', np.float16), ('non_ambiguous', bool)):
-            ds = f[name]
-            assert (ds.shape, ds.dtype, ds.chunks, ds.compression) == ((3, 4, 5), dtype, (1, 4, 5), 'lzf')
-        for name, shape in (('cam2world_pred', (3, 4, 4)), ('metric_scale', (3,))):
-            ds = f[name]
-            assert (ds.shape, ds.dtype, ds.chunks, ds.compression) == (shape, np.float32, None, None)
-        out = {name: np.arange(2 * 2 * np.prod(ds.shape[1:] or (1,))).reshape(2, 2, *ds.shape[1:])
-               for name, ds in f.items()}
-        depth_stages._write_prediction(f, 2, out, 1, 0, tuple(out))
-        for name in f:
-            np.testing.assert_array_equal(f[name][2], out[name][1, 0].astype(f[name].dtype))
-
-
 @pytest.mark.parametrize('mask_state', ['none', 'all', 'partial'])
 def test_shared_depth_evidence_preserves_partial_mask_fallback(mask_state):
     from s4d.realworld import calibration as cal
@@ -102,7 +83,7 @@ def test_shared_depth_evidence_preserves_partial_mask_fallback(mask_state):
     np.testing.assert_array_equal(cal._depth_evidence_masks(usable, masked, cfg), expected)
 
 
-@pytest.mark.parametrize('command', ['run_episode', 'contract_checks', 'depth_report'])
+@pytest.mark.parametrize('command', ['run_episode', 'contract_checks'])
 @pytest.mark.parametrize('help_only', [False, True])
 def test_commands_keep_initialization_without_scipy(command, help_only):
     code = '''
@@ -132,13 +113,6 @@ else:
 assert sys.path.count(root) - before == (1 if command == 'run_episode' else 2)
 assert 'ops.inference_server.run_episode' in sys.modules or command == 'run_episode'
 assert 's4d.realworld.cli' in sys.modules
-assert 's4d.realworld.diagnostics' not in sys.modules
-if command == 'depth_report' and help_only == 'False':
-    assert module._med([None, 'nan', 1, 3]) == 2
-    grids = {key: module.np.ones((2, 1, 3), dtype=bool if key == 'static' else float)
-             for key in ('raw', 'ma', 'static')}
-    result = module.aggregate([], grids, ['cam'], [])
-    assert result['static_stability']['cam']['pixels'] == 3
 assert 'scipy' not in sys.modules
 '''
     result = subprocess.run([sys.executable, '-I', '-c', code, str(run_episode.REPO), command, str(help_only)],

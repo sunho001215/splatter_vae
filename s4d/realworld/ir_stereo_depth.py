@@ -1,5 +1,6 @@
-"""Stereo depth from an RGB-D device's own infrared pair (optional backend, restored 2026-11-05 for the controlled
-depth comparison): FoundationStereo on each RealSense left/right IR pair -> metric depth on the colour grid.
+"""Stereo depth from an RGB-D device's own infrared pair: FoundationStereo on each RealSense left/right IR pair ->
+metric depth on the colour grid. The standard own-rig depth for lifting and export ("B1", selected by the 2026-11-05
+depth comparison; docs/realworld_preprocessing.md section 9). The model receives the IR pair only.
 
 Conventions (``s4d.realworld.stereo``; device facts checked by the adapter and ``validate_episode``):
 
@@ -13,18 +14,15 @@ Conventions (``s4d.realworld.stereo``; device facts checked by the adapter and `
 * The left-IR frame is the native depth frame (the adapter checks ``depth_from_infrared_1`` = I): the IR depth is
   registered onto the colour grid with exactly the native-depth registration (``geometry.reproject_depth``,
   z-buffer forward warp with the same ``splat``, holes stay invalid), so B0 and B1 differ only in their source.
-  The winning IR pixel of every colour pixel is stored (``source_index``) so a filtered variant can invalidate
-  colour pixels without changing any retained value.
+  The winning IR pixel of every colour pixel is stored (``source_index``) for diagnostics on the IR grid.
 * A failed or missing model output is an error; native depth is never substituted.
 
 Stage ``foundation_stereo_depth`` (B1) writes per colour stream: ``depth``/``valid`` (colour grid), ``source_index``
-(colour grid, linear left-IR pixel or -1), ``disparity_left``/``lr_error`` (left-IR grid). Stage
-``foundation_stereo_filtered`` (E3 input) keeps B1 colour pixels whose source IR pixel passes the configured checks.
+(colour grid, linear left-IR pixel or -1), ``disparity_left``/``lr_error`` (left-IR grid).
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import h5py
@@ -136,52 +134,3 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
     store.cleanup()
     return rec
 
-
-def filter_stereo_depth(root: Path, episode_id: str, *, source_stage: str = "foundation_stereo_depth",
-                        output_stage: str = "foundation_stereo_filtered", max_lr_error_px: float = 1.0,
-                        force: bool = False) -> dict:
-    """E3 input: invalidate B1 colour pixels whose source IR pixel fails the left-right consistency check
-    (``lr_error > max_lr_error_px`` or no right match); every retained value is B1's value, unchanged. Local CPU."""
-    from s4d.realworld.pipeline import _record_fp, load_meta
-
-    meta = load_meta(root, episode_id)
-    src = rio.stage_dir(root, episode_id, source_stage)
-    config = {"source_stage": source_stage, "max_lr_error_px": max_lr_error_px,
-              "criteria": "left-right disparity consistency on the left-IR grid (flip-and-swap right reference)"}
-    inputs = {source_stage: _record_fp(root, episode_id, source_stage)}
-    directory = rio.stage_dir(root, episode_id, output_stage)
-
-    def build(tmp: Path) -> dict:
-        summary = {}
-        for g in ir_rigs(meta):
-            cam = meta.rig_rgbd(g.rig_id).color_stream
-            with h5py.File(src / f"{rio.safe_name(cam)}.h5", "r") as fs, \
-                    h5py.File(tmp / f"{rio.safe_name(cam)}.h5", "w") as f:
-                f.attrs.update({k: v for k, v in fs.attrs.items()})
-                f.attrs.update(filter=json.dumps(config), source_stage=source_stage)
-                n, H, W = fs["depth"].shape
-                dd = f.create_dataset("depth", (n, H, W), np.float32, chunks=(1, H, W), compression="lzf")
-                vv = f.create_dataset("valid", (n, H, W), bool, chunks=(1, H, W), compression="lzf")
-                kept_c, total_c, kept_ir, total_ir = 0, 0, 0, 0
-                for i in range(n):
-                    lr = fs["lr_error"][i].astype(np.float32)
-                    ir_valid = fs["ir_valid"][i]
-                    keep_ir = ir_valid & np.isfinite(lr) & (lr <= max_lr_error_px)
-                    src_idx = fs["source_index"][i]
-                    depth = fs["depth"][i]
-                    has = src_idx >= 0
-                    keep = np.zeros_like(has)
-                    keep[has] = keep_ir.ravel()[src_idx[has]]
-                    out = np.where(keep, depth, 0.0).astype(np.float32)
-                    assert np.array_equal(out[keep], depth[keep])  # retained values unchanged
-                    dd[i], vv[i] = out, out > 0
-                    kept_c += int((out > 0).sum())
-                    total_c += int((depth > 0).sum())
-                    kept_ir += int(keep_ir.sum())
-                    total_ir += int(ir_valid.sum())
-            summary[cam] = {"retained_fraction_of_b1_colour_pixels": kept_c / max(1, total_c),
-                            "retained_fraction_of_valid_b1_ir_pixels": kept_ir / max(1, total_ir)}
-        return summary
-
-    return rio.run_stage(directory, stage=output_stage, version=STAGE_VERSION, config=config, inputs=inputs,
-                         build=build, force=force)

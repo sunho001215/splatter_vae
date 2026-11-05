@@ -17,7 +17,7 @@ from s4d.realworld.adapters.synthetic_adapter import SyntheticAdapter
 from s4d.realworld.contract import RgbdGeometry
 from s4d.realworld.export import export
 from s4d.realworld.geometry import make_T, transform_points
-from s4d.realworld.pipeline import chunk_queries, ingest, load_tracks2d, track2d
+from s4d.realworld.pipeline import chunk_queries, ingest, load_meta, load_tracks2d, read_frames, to_model_rgb
 from s4d.realworld.runners import LocalRunner
 from s4d.realworld.track_motion import MotionFilterConfig, track_motion
 from s4d.realworld.trackeverything_stage import (
@@ -34,8 +34,8 @@ from s4d.realworld.workers import trackeverything_worker as te
 class ColourEpisode(SyntheticAdapter):
     """The existing synthetic ray-cast scene exposed as registered RGB-D cameras."""
 
-    def __init__(self, path, frames=20, pause=10):
-        super().__init__({"asset_dir": str(path), "frames": frames, "image_hw": (48, 64), "focal": 65})
+    def __init__(self, path, frames=20, pause=10, image_hw=(48, 64), focal=65):
+        super().__init__({"asset_dir": str(path), "frames": frames, "image_hw": image_hw, "focal": focal})
         self.pause = pause
 
     def read_meta(self, episode_id):
@@ -106,11 +106,12 @@ MOCK_SPEC = WorkerSpec("mock", sys.executable, env={"S4D_TE_MOCK": "1"})
 
 
 class SyntheticRunner(LocalRunner):
-    """Inject normalized cam0 predictions into the file-protocol mock worker, never a TE model."""
+    """Inject normalized cam0 predictions into the file-protocol mock worker, never a TE model. ``check_pose=False``
+    accepts an estimated (not the oracle) calibration: the predictions stay the oracle base-frame points."""
 
-    def __init__(self, path, adapter):
+    def __init__(self, path, adapter, check_pose=True):
         super().__init__(path)
-        self.adapter, self.calls, self.acks = adapter, [], []
+        self.adapter, self.calls, self.acks, self.check_pose = adapter, [], [], check_pose
 
     def worker(self, spec, task, params, arrays, *, chunk_id, allow_mock):
         assert task == "track_queries" and params == {"mode": "sparse", "num_iters": 3}
@@ -119,7 +120,8 @@ class SyntheticRunner(LocalRunner):
         cam = f"{rig}/{eye}"
         a = self.adapter
         assert len(arrays["video"]) == end - start <= 16
-        np.testing.assert_allclose(arrays["w2c"], np.broadcast_to(a.T_cam_base(rig, eye), arrays["w2c"].shape))
+        if self.check_pose:
+            np.testing.assert_allclose(arrays["w2c"], np.broadcast_to(a.T_cam_base(rig, eye), arrays["w2c"].shape))
         scale = np.array(arrays["video"].shape[1:3][::-1]) / np.array(a.hw[::-1])
         np.testing.assert_allclose(arrays["K"][0], np.diag([*scale, 1]) @ a.K())
         q = arrays["queries"]
@@ -168,7 +170,7 @@ def run(tmp_path_factory):
 
 def test_stage_layout_query_grid_and_base_coordinates(run):
     a, root, ep, runner, records = run
-    assert len(runner.calls) == len(runner.acks) == 6  # two cameras, three exact AllTracker query windows
+    assert len(runner.calls) == len(runner.acks) == 6  # two cameras, three query windows each
     rc = query_grid(a.hw, 4, 2)
     for cam in ("rig0/left", "rig1/left"):
         names = [f"{rio.safe_name(cam)}_q{q:05d}.npz" for q, _ in chunk_queries(a.frames, 16, 8)]
@@ -192,36 +194,22 @@ def test_stage_layout_query_grid_and_base_coordinates(run):
     assert "skipped" in records["lift3d"]["summary"]["rig2/left"]
 
 
-def test_te_inference_frames_match_alltracker_including_pause(run, tmp_path):
+def test_te_inference_frames_are_the_query_windows_including_pause(run):
+    """Every clip is exactly one ``pipeline.chunk_queries`` window of one camera's recorded frames (a recording pause
+    included), resized as the model input; nothing else is sent."""
     a, root, ep, runner, _ = run
-    # Build the real track2d stage against a CPU fake backend, capturing its exact input images.
-    shared = tmp_path / "alltracker"
-    dst = rio.episode_dir(shared, ep)
-    dst.mkdir(parents=True)
-    (dst / "normalized").symlink_to(rio.episode_dir(root, ep) / "normalized")
-    calls = []
-
-    class FakeAllTracker:
-        identity = {"name": "synthetic", "is_mock": True}
-
-        def track(self, cam, video, indices, query_frame):
-            if cam != "rig2/left":
-                calls.append(video.copy())
-            t, h, w = video.shape[:3]
-            return np.zeros((t, 2, h, w), np.float32), np.ones((t, 2, h, w), np.float32)
-
-    track2d(shared, ep, FakeAllTracker(), grid_stride=4)
-    for call, video in zip(runner.calls, calls):
+    meta = load_meta(root, ep)
+    expected = [(cam, q, idx) for cam in ("rig0/left", "rig1/left")
+                for q, idx in chunk_queries(len(meta.stream_timestamps_ns[cam]), 16, 8)]
+    assert [("/".join(c["chunk_id"].split("/")[1:3]), int(c["chunk_id"].split("/")[-1].split("-")[0]))
+            for c in runner.calls] == [(cam, q) for cam, q, _ in expected]
+    for call, (cam, q, idx) in zip(runner.calls, expected):
+        video = to_model_rgb(read_frames(root, ep, cam, idx), meta.stream(cam))
         np.testing.assert_array_equal(resize_inputs(video, np.ones(video.shape[:3]), a.K(), (32, 48))[0],
                                       call["arrays"]["video"])
-        cam = "/".join(call["chunk_id"].split("/")[1:3])
-        q, end = map(int, call["chunk_id"].split("/")[-1].split("-"))
         name = f"{rio.safe_name(cam)}_q{q:05d}.npz"
-        with np.load(rio.stage_dir(shared, ep, "track2d") / name) as at, \
-                np.load(rio.stage_dir(root, ep, "lift3d") / name) as te_out:
-            np.testing.assert_array_equal(at["frame_indices"], te_out["frame_indices"])
-            np.testing.assert_array_equal(te_out["frame_indices"], np.arange(q, end))
-    assert len(calls) == len(runner.calls)
+        with np.load(rio.stage_dir(root, ep, "lift3d") / name) as te_out:
+            np.testing.assert_array_equal(te_out["frame_indices"], np.asarray(idx))
     for q in (0, 8):
         name = f"rig0__left_q{q:05d}.npz"
         with np.load(rio.stage_dir(root, ep, "lift3d") / name) as z:

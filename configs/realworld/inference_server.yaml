@@ -1,4 +1,6 @@
-# Real-world preprocessing inference server (2026-11-04 directive). Host-specific; read by ops/inference_server.
+# Real-world inference server (RTX 5090, ssh alias irsl; 2026-11-04 directive, roles 2026-11-06). Host-specific; read by
+# ops/inference_server. ROLE: lightweight inference, rendering and visualization only - single-episode runs (e.g. a
+# validation episode, a viewer source); bulk real-world preprocessing runs on the remote host, no training here.
 # Authentication: the operator opens the SSH ControlMaster "irsl" interactively (password typed once, never stored);
 # every call below reuses it with BatchMode=yes, so a missing master fails fast instead of prompting.
 ssh: [ssh, -o, BatchMode=yes, irsl]
@@ -23,51 +25,32 @@ env:   # uid 1001 has no passwd entry in the image (USER/LOGNAME); git (s4d.thir
   GIT_OPTIONAL_LOCKS: "0"
   PATH: /opt/envs/tools/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 workers:
-  mapanything:
-    python: /opt/envs/mapanything/bin/python
-    repo_dir: /opt/upstream/map-anything
-    checkpoint: /ram/weights/map-anything-a1d87e90/model.safetensors
-    params: {hf_dir: /ram/weights/map-anything-a1d87e90}
-  alltracker:
-    python: /opt/envs/alltracker/bin/python
-    repo_dir: /opt/upstream/alltracker
-    checkpoint: /ram/weights/alltracker/alltracker.pth
   sam3:
     python: /opt/envs/sam3/bin/python
     repo_dir: /opt/upstream/sam3
     checkpoint: /ram/weights/sam3/sam3.pt
     env: {CC: /opt/envs/sam3/bin/cc-zig}  # Triton JIT (sam3 NMS) needs a C compiler
-  foundation_stereo:   # optional depth backend (controlled depth comparison, 2026-11-05)
+  foundation_stereo:   # own-rig depth (device IR pair, B1)
     python: /opt/envs/foundation_stereo/bin/python
     repo_dir: /opt/upstream/FoundationStereo
     checkpoint: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth
-  trackeverything:   # single-view TrackEverything (tracker comparison, 2026-11-05); repo dir must be named so
+  trackeverything:   # own-rig tracker (single-view TrackEverything); the repo dir must be named trackeverything
     python: /opt/envs/trackeverything/bin/python
     repo_dir: /opt/upstream/trackeverything
     checkpoint: /ram/weights/trackeverything/model.pth
   dino_snerl: {python: /opt/envs/s4d/bin/python}
   s4d_kernels: {python: /opt/envs/s4d/bin/python}
-weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart
-  - {dest: /ram/weights/map-anything-a1d87e90/config.json, hf_repo: facebook/map-anything, hf_file: config.json,
-     hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa, python: /opt/envs/mapanything/bin/python,
-     sha256: 65701d09d99ed37a21d295f0d138978b3d584ab3bccdbcb4a2853da212b676c5}
-  - {dest: /ram/weights/map-anything-a1d87e90/model.safetensors, hf_repo: facebook/map-anything,
-     hf_file: model.safetensors, hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa,
-     python: /opt/envs/mapanything/bin/python,
-     sha256: 981f060c64664dff3272b5f5a823d350abe71a2f144444db4cfc325f3ed5a3a0}
-  - {dest: /ram/weights/alltracker/alltracker.pth, local: /home/ws/ws/validation-20261031/downloads/alltracker/alltracker.pth,
-     sha256: ffd9ebcfb6d206d594b646999a150540f92c049cf9b2bf940facf7123f62aa1d}
-  - {dest: /ram/weights/sam3/sam3.pt, local: /home/ws/ws/validation-20261031/downloads/sam3/sam3.pt, sha256: 9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e}
-  - {dest: /ram/weights/foundation_stereo/23-51-11/cfg.yaml,
+weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart. A run stages only the
+           # weights of the workers its requested stages use (cli.STAGE_WORKERS); entries without ``worker``: always
+  - {worker: sam3, dest: /ram/weights/sam3/sam3.pt, local: /home/ws/ws/validation-20261031/downloads/sam3/sam3.pt, sha256: 9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e}
+  - {worker: foundation_stereo, dest: /ram/weights/foundation_stereo/23-51-11/cfg.yaml,
      local: /home/ws/ws/validation-20261031/downloads/foundation_stereo/23-51-11/cfg.yaml,
      sha256: a9d9dd2137c30edc2236194f62df14d222dad5fd3287a33c7540b543bb93853f}
-  - {dest: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth,
+  - {worker: foundation_stereo, dest: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth,
      local: /home/ws/ws/validation-20261031/downloads/foundation_stereo/23-51-11/model_best_bp2.pth,
      sha256: 60e79bde9c6a00acea551625ff814fe06e5a6806e2c0c9829baee248de87c5f1}
-  - {dest: /ram/weights/trackeverything/model.pth,
+  - {worker: trackeverything, dest: /ram/weights/trackeverything/model.pth,
      local: /home/ws/ws/validation-20261031/downloads/trackeverything/model.pth,
      sha256: 4553975d372096f8c3d7c5fc35fd7025ef8a7611355e6ada8eb251ef1f5feac1}
-  - {dest: /ram/s4d-cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth,
+  - {worker: dino_snerl, dest: /ram/s4d-cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth,
      local: /home/ws/ws/splatter4d/.cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth, sha256: 55c8b267f479b614ec20858947ce361ba804846c193e20be74263a096bb6d75e}
-ram_copies:   # pinned torch.hub code MapAnything's encoder loads (facebookresearch/dinov2 @ 7764ea0, no weights)
-  /opt/upstream/dinov2: /ram/torch/hub/facebookresearch_dinov2_main

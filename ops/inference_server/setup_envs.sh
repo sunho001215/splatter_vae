@@ -6,17 +6,18 @@
 # cached on disk (weights are placed in /ram/weights per session; see ops/inference_server/README.md).
 #
 #   docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh <env> [<env> ...]
-#   envs: mapanything alltracker sam3 s4d tools foundation_stereo trackeverything
+#   envs: sam3 s4d tools foundation_stereo trackeverything
 #
 # Versions:
-# - alltracker / sam3: the exact package sets of the environments verified on real DROID data
-#   (/home/ws/ws/validation-20261031/envs/{alltracker,sam3}, frozen into ops/inference_server/locks/*.txt).
+# - sam3: the exact package set of the environment verified on real data
+#   (/home/ws/ws/validation-20261031/envs/sam3, frozen into ops/inference_server/locks/sam3.txt).
 # - s4d: this repository's uv.lock (identical to the training .venv); gsplat and fused-ssim are copied from the
 #   local .venv build (TORCH_CUDA_ARCH_LIST 12.0, same Ubuntu 22.04 / glibc 2.35) by the operator, not built here.
-# - mapanything: torch 2.10.0+cu129 (as the other envs) + the pinned upstream checkout, non-editable.
-# - foundation_stereo (optional depth backend, restored 2026-11-05 for the controlled depth comparison): the package
-#   set of the environment verified locally (/home/ws/ws/validation-20261031/envs/foundation_stereo, frozen into
-#   locks/foundation_stereo.txt); the worker imports the pinned upstream checkout from repo_dir (not installed).
+# - foundation_stereo (own-rig depth, B1): the package set of the environment verified locally
+#   (/home/ws/ws/validation-20261031/envs/foundation_stereo, frozen into locks/foundation_stereo.txt); the worker
+#   imports the pinned upstream checkout from repo_dir (not installed).
+# - trackeverything (own-rig tracker): locks/trackeverything.txt (an inference dependency recipe, not a frozen
+#   transitive lock; see the notes in the recipe below).
 set -eu
 UV=/opt/bin/uv
 SRC=/opt/src/splatter4d
@@ -33,20 +34,13 @@ venv() {  # name python-version (the managed CPython lives under /opt/envs/pytho
 for env in "$@"; do
     echo "=== $env $(date -u +%FT%TZ)"
     case $env in
-        mapanything)
-            venv mapanything 3.12.12
-            $UV pip install -q --python /opt/envs/mapanything/bin/python --index-url $TORCH_INDEX \
-                torch==2.10.0+cu129 torchvision==0.25.0+cu129
-            # editable: the imported code is the pinned checkout whose commit the worker reports (and verifies)
-            $UV pip install -q --python /opt/envs/mapanything/bin/python -e /opt/upstream/map-anything
-            ;;
         foundation_stereo)
             venv foundation_stereo 3.11.14  # newest 3.11 the container uv offers (local verified env: 3.11.17)
             $UV pip install -q --python /opt/envs/foundation_stereo/bin/python --index-strategy unsafe-best-match \
                 --extra-index-url $TORCH_INDEX -r $LOCKS/foundation_stereo.txt
             ;;
         trackeverything)
-            # Recipe stub: deliberately NOT executed/validated as part of the adapter implementation.
+            # Inference dependency recipe (not a frozen transitive lock); freeze a working env before rebuilding elsewhere.
             # Upstream checkout must be /opt/upstream/trackeverything (the package directory itself).
             venv trackeverything 3.10.19
             $UV pip install -q --python /opt/envs/trackeverything/bin/python --index-strategy unsafe-best-match \
@@ -59,18 +53,16 @@ for env in "$@"; do
             # Record the replacement wheel sha256 and freeze the env; alternatively use a supported GPU.
             # Do not build libs/ops (training only); do not install either geometry estimator.
             ;;
-        alltracker|sam3)
-            venv $env 3.12.12
-            $UV pip install -q --python /opt/envs/$env/bin/python --index-strategy unsafe-best-match \
-                --extra-index-url $TORCH_INDEX -r $LOCKS/$env.txt
-            if [ $env = sam3 ]; then
-                $UV pip install -q --python /opt/envs/sam3/bin/python --no-deps -e /opt/upstream/sam3
-                # Triton JIT-builds a small C helper for sam3's GPU NMS; the image has no compiler, so the env carries
-                # zig cc (pinned wheel) behind a CC wrapper (the worker config sets CC).
-                $UV pip install -q --python /opt/envs/sam3/bin/python ziglang==0.13.0.post1
-                printf '#!/bin/sh\nexec /opt/envs/sam3/bin/python -I -B -m ziglang cc "$@"\n' > /opt/envs/sam3/bin/cc-zig
-                chmod +x /opt/envs/sam3/bin/cc-zig
-            fi
+        sam3)
+            venv sam3 3.12.12
+            $UV pip install -q --python /opt/envs/sam3/bin/python --index-strategy unsafe-best-match \
+                --extra-index-url $TORCH_INDEX -r $LOCKS/sam3.txt
+            $UV pip install -q --python /opt/envs/sam3/bin/python --no-deps -e /opt/upstream/sam3
+            # Triton JIT-builds a small C helper for sam3's GPU NMS; the image has no compiler, so the env carries
+            # zig cc (pinned wheel) behind a CC wrapper (the worker config sets CC).
+            $UV pip install -q --python /opt/envs/sam3/bin/python ziglang==0.13.0.post1
+            printf '#!/bin/sh\nexec /opt/envs/sam3/bin/python -I -B -m ziglang cc "$@"\n' > /opt/envs/sam3/bin/cc-zig
+            chmod +x /opt/envs/sam3/bin/cc-zig
             ;;
         tools)  # git for s4d.third_party (pinned submodule identity); conda-forge build via the static micromamba
             MAMBA_ROOT_PREFIX=/ram/mamba /opt/bin/micromamba create -y -q -p /opt/envs/tools -c conda-forge git=2.47

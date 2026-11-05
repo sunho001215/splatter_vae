@@ -4,7 +4,7 @@ Before this stage nothing filtered tracks by motion: ``track2d`` queries a regul
 per-sample validity (tracker visibility/confidence, image bounds, depth present, depth edge), so every valid grid
 track - mostly static background - reached the export. This stage classifies each lifted track (one camera, one
 query window; ids are never matched across cameras or windows) and the export can keep only the moving ones. The
-dense AllTracker inference is unchanged: filtering stored outputs does not reduce model inference cost.
+tracker inference (TrackEverything) is unchanged: filtering stored outputs does not reduce model inference cost.
 
 Per track, in this order:
 
@@ -371,7 +371,7 @@ def track_motion(root: Path, episode_id: str, *, cfg: MotionFilterConfig | None 
             for k, c in v.get("counts", {}).items():
                 totals[k] = totals.get(k, 0) + c
         return {"cameras": summary, "counts": totals,
-                "note": "dense AllTracker inference is unchanged; only the stored/exported tracks are filtered"}
+                "note": "tracker inference is unchanged; only the stored/exported tracks are filtered"}
 
     return rio.run_stage(directory, stage="track_motion", version=STAGE_VERSION, config=config, inputs=inputs,
                          build=build, force=force)

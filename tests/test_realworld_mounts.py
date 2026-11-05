@@ -163,7 +163,7 @@ def test_compose_script_coupling_geometry_needs_a_mount_config_that_defines_it(t
 def test_mug_hanging_config_is_the_panda_with_the_droid_mount():
     import yaml
 
-    cfg = yaml.safe_load((ROOT / "configs/realworld/mug_hanging_rgbd.yaml").read_text())
+    cfg = yaml.safe_load((ROOT / "configs/realworld/mug_hanging.yaml").read_text())
     robot = cfg["adapter"]["config"]["robot"]
     assert robot["base_frame"] == "panda_link0" and robot["flange_frame"] == "panda_link8"
     assert robot["joint_names"] == [f"panda_joint{i}" for i in range(1, 8)]

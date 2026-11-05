@@ -12,7 +12,6 @@ import pytest
 from s4d.realworld import io as rio
 from s4d.realworld.adapters import get_adapter
 from s4d.realworld.contract import EpisodeContractError, meta_from_json, meta_to_json, validate_episode
-from s4d.realworld.synthetic import rectified_pair
 from s4d.realworld.workers import WorkerError, WorkerSpec, call_worker
 
 REPO = Path(__file__).resolve().parents[1]
@@ -55,29 +54,20 @@ def test_contract_rejects_inconsistent_metadata(meta, mutate, message):
 
 
 def test_mock_worker_subprocess_protocol(tmp_path):
-    left, right, depth, _, K = rectified_pair()
     spec = WorkerSpec("mock", sys.executable, timeout_s=120)
-    c2w = np.stack([np.eye(4), np.eye(4)])
-    c2w[1, 0, 3] = 0.1
-    images = np.repeat(np.stack([left, right])[None, ..., None], 3, axis=-1)
-    arrays = {"images": images, "K": np.stack([K, K]), "cam2world": c2w}
+    arrays = {"flows": np.arange(24, dtype=np.float32).reshape(2, 3, 4), "visconf": np.ones((2, 3, 4), np.float32)}
     with pytest.raises(WorkerError, match="mock output refused"):
-        call_worker(spec, "infer_views", {"max_disparity": 12}, arrays, tmp_path / "w0")
-    resp, out = call_worker(spec, "infer_views", {"max_disparity": 12}, arrays, tmp_path / "w1", allow_mock=True)
-    assert resp["model"]["is_mock"] is True and out["depth"].shape == (1, 2, *left.shape)
-    m = out["valid"][0, 0]
-    assert np.median(np.abs(out["depth"][0, 0][m] - depth[m]) / depth[m]) < 0.03
-    assert set(out) == {"depth", "valid", "conf", "non_ambiguous", "cam2world_pred", "K_pred_model", "metric_scale"}
+        call_worker(spec, "echo_tracks", {}, arrays, tmp_path / "w0")
+    resp, out = call_worker(spec, "echo_tracks", {}, arrays, tmp_path / "w1", allow_mock=True)
+    assert resp["model"]["is_mock"] is True and set(out) == {"flows", "visconf"}
+    assert all(np.array_equal(out[k], arrays[k]) and out[k].dtype == arrays[k].dtype for k in arrays)
     pinned = WorkerSpec("mock", sys.executable, expected_commit="0" * 40, timeout_s=120)
     with pytest.raises(WorkerError, match="pinned"):
-        call_worker(pinned, "infer_views", {}, arrays, tmp_path / "w2", allow_mock=True)
+        call_worker(pinned, "echo_tracks", {}, arrays, tmp_path / "w2", allow_mock=True)
     with pytest.raises(WorkerError, match="unknown task"):
         call_worker(spec, "nope", {}, {"x": np.zeros(1)}, tmp_path / "w3", allow_mock=True)
-    # RGB-D/multi-view oracle returns input metric depth and matching validity on the original grid.
-    supplied = np.broadcast_to(depth, (1, 2, *depth.shape)).copy()
-    supplied[:, :, :2] = 0
-    _, echo = call_worker(spec, "infer_views", {}, {**arrays, "depth": supplied}, tmp_path / "w4", allow_mock=True)
-    assert np.array_equal(echo["depth"], supplied) and np.array_equal(echo["valid"], supplied > 0)
+    with pytest.raises(WorkerError, match="unknown task"):  # the retired MapAnything oracle task
+        call_worker(spec, "infer_views", {}, {"x": np.zeros(1)}, tmp_path / "w4", allow_mock=True)
 
 
 def test_run_stage_is_atomic_and_restartable(tmp_path):
@@ -141,11 +131,18 @@ def test_configs_parse_and_pins_are_full_shas():
     import yaml
 
     pins = yaml.safe_load((REPO / "configs/realworld/upstream_pins.yaml").read_text())
-    for name in ("map_anything", "alltracker", "sam3", "dino_snerl"):
+    for name in ("sam3", "dino_snerl", "foundation_stereo", "trackeverything"):
         sha = pins[name]["commit"]
         assert len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)
-    for name in ("pipeline_example", "template_adapter"):
+    assert not {"map_anything", "alltracker"} & set(pins)  # retired with the raw-DROID route (2026-11-06)
+    configs = sorted(p.stem for p in (REPO / "configs/realworld").glob("*.yaml"))
+    assert configs == ["inference_server", "mug_hanging", "upstream_pins"], configs
+    for name in configs:
         assert isinstance(yaml.safe_load((REPO / f"configs/realworld/{name}.yaml").read_text()), dict)
+    cfg = yaml.safe_load((REPO / "configs/realworld/mug_hanging.yaml").read_text())
+    for name, worker in cfg["workers"].items():
+        if "expected_commit" in worker:
+            assert worker["expected_commit"] == pins[name]["commit"], name
 
 
 def test_workers_is_one_package_holding_the_worker_scripts():
@@ -155,5 +152,24 @@ def test_workers_is_one_package_holding_the_worker_scripts():
     assert Path(workers.__file__).name == "__init__.py"
     assert workers.WORKER_DIR == Path(workers.__file__).resolve().parent == REPO / "s4d/realworld/workers"
     assert not (REPO / "s4d/realworld/workers.py").exists()
-    for name in ("mapanything", "alltracker", "sam3", "dino_snerl", "svo_decode", "mock"):
+    scripts = sorted(p.name for p in workers.WORKER_DIR.glob("*_worker.py"))
+    assert scripts == ["dino_snerl_worker.py", "foundation_stereo_worker.py", "mock_worker.py", "s4d_kernels_worker.py",
+                       "sam3_worker.py", "trackeverything_worker.py"], scripts
+    for name in ("foundation_stereo", "trackeverything", "sam3", "dino_snerl", "s4d_kernels", "mock"):
         assert workers.WorkerSpec(name, "python").script_path().is_file(), name
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("complete", [False, True])
+def test_shared_stage_symlink_refuses_build_even_under_force(tmp_path, force, complete):
+    """A stage directory that is a symlink (shared stages of historical comparison roots) is never rebuilt in place."""
+    from s4d.realworld import io as rio
+
+    base, shared = tmp_path / "base", tmp_path / "shared"
+    opts = dict(stage="calibrate", version="test", config={}, inputs={}, build=lambda _: {})
+    if complete:
+        rio.run_stage(base, **opts)
+    shared.symlink_to(base)
+    with pytest.raises(RuntimeError, match="refusing to build shared stage calibrate.*symlink"):
+        rio.run_stage(shared, force=force, **opts)
+    assert shared.is_symlink() and base.exists() == complete

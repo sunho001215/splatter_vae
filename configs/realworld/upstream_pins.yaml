@@ -3,24 +3,11 @@
 # `git rev-parse HEAD` of its checkout; a mismatch with `commit` is a hard error (WorkerSpec.expected_commit).
 # Checkpoints are NOT downloaded by this repository; fetch them once inside each isolated environment and
 # Known checkpoint hashes are recorded below; no worker downloads are performed by the pipeline.
-map_anything:
-  repo: https://github.com/facebookresearch/map-anything
-  commit: 3d10cf7a3016fc0f9bb13a071ee66c47b10be0d9   # v1.1.3+1, 2026-08-07
-  license: CC-BY-NC-4.0
-  environment: "isolated mapanything environment; pinned upstream checkout, local Hugging Face weights"
-  checkpoint: facebook/map-anything/model.safetensors
-  checkpoint_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa
-  checkpoint_sha256: 981f060c64664dff3272b5f5a823d350abe71a2f144444db4cfc325f3ed5a3a0
-  encoder_hub_code:
-    repo: facebookresearch/dinov2
-    commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8
-  entrypoint_reference: "MapAnything.from_pretrained + preprocess_inputs + model.infer"
-  notes: "Known intrinsics and metric camera poses; sensor depth optional; outputs depth_z on the input grid"
 trackeverything:
   repo: https://github.com/ayushjain1144/trackeverything
   commit: dfb29b505cf2ea954f8697fb612c2429668dd3a0
   license: CC-BY-NC-4.0
-  environment: "isolated trackeverything; Python 3.10, torch 2.8.0+cu129; inference recipe stub in ops/inference_server/locks"
+  environment: "isolated trackeverything; Python 3.10, torch 2.8.0+cu129; inference recipe in ops/inference_server/locks"
   checkpoint: katefgroup/TrackEverything/model.pth
   checkpoint_revision: bc7fdfa1032453aeb5e5fde12cbd257c9e5fc56a
   checkpoint_sha256: 4553975d372096f8c3d7c5fc35fd7025ef8a7611355e6ada8eb251ef1f5feac1
@@ -30,20 +17,6 @@ trackeverything:
     Caller resizes colour with Lanczos and depth with exact nearest; use_input_resolution=True. Pi3 is never loaded.
     Restore normalised cam0 predictions with inv(E0) [norm_factor * X; 1]; mask exact prebirth frames.
     torch_scatter pt28cu129 sm_120 support is unverified: see recipe fallback before server inference.
-alltracker:
-  repo: https://github.com/aharley/alltracker
-  branch: master
-  commit: e7553135e7b361590dbccd10e2b274b024f41cd6   # 2026-05-08
-  license: MIT
-  environment: >-
-    conda create -n alltracker python=3.12.8; pip install -r requirements.txt (torch is unpinned upstream, so record
-    the torch/torchvision actually installed after setup); pytorch_lightning 2.4.0
-  checkpoint: "alltracker.pth (https://huggingface.co/aharley/alltracker/resolve/main/alltracker.pth)"
-  checkpoint_sha256: ffd9ebcfb6d206d594b646999a150540f92c049cf9b2bf940facf7123f62aa1d
-  entrypoint_reference: "demo.py forward_video -> model.forward_sliding(rgbs[:, q:], iters, sw=None, is_training=False)"
-  notes: >-
-    rgbs are 1,T,3,H,W floats in 0..255 with H, W multiples of 8; visconf channel 0 is visibility, channel 1 is
-    confidence (P(err <= 12 px)); trajectories = flow + integer-centre grid
 sam3:
   repo: https://github.com/facebookresearch/sam3
   branch: main
@@ -69,9 +42,6 @@ reference_only:   # read for the method, not executed
     repo: https://github.com/Jai2500/depthworld
     commit: 6823c13ddcd96484de04604da7d52c9e12f5c86c   # 2026-10-09
     paper: https://arxiv.org/abs/2610.08780
-  dinov2:
-    repo: https://github.com/facebookresearch/dinov2
-    commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8   # MapAnything encoder hub code; distinct from the SNeRL DINO teacher
   robotiq_description:
     candidates:
       - "https://github.com/PickNikRobotics/ros2_robotiq_gripper @ a74d007d8f2f06dc6a503ad21038ba869d4999a6 (BSD-3; robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro, robotiq_2f_140_macro.urdf.xacro)"
@@ -84,7 +54,7 @@ reference_only:   # read for the method, not executed
     commit: fe4f871efe052f78a55454ba295f1beda93f147c
     note: "robotiq_mounted_on_panda.urdf.xacro: panda_link8 -> robotiq_arg2f_base_link, xyz 0 0 0, rpy 0 0 +pi/2"
 
-foundation_stereo:   # restored 2026-11-05 as an OPTIONAL backend for the controlled depth comparison (device IR pairs)
+foundation_stereo:   # own-rig depth (B1: device IR pairs), the standard since the 2026-11-05 depth comparison
   repo: https://github.com/NVlabs/FoundationStereo
   commit: 6e8806816b533e4d13ddbb95ffa907b797060a62   # 2025-12-19
   license: "NVIDIA Source Code License, non-commercial / research only (LICENSE:54-57)"

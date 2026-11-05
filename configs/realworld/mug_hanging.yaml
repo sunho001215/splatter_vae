@@ -1,12 +1,15 @@
-# Episode 000001 of the mug-hanging task (uploaded 2026-11-05 with the IR pairs): Franka Emika Panda + Robotiq 2F-85 on
-# the DROID mount (no wrist camera) + 3x RealSense D435I recording RGB (JPEG), depth (PNG z16) AND the device's
-# left/right infrared pair (PNG Y8, laser emitter on). BASE root of the controlled five-variant depth comparison
-# (ops/inference_server/run_depth_variants.py): shared stages ingest, sensor_depth (B0), foundation_stereo_depth (B1),
-# foundation_stereo_filtered (E3 input), sam3_masks, calibrate (frozen, reused by every variant), track2d.
-# Episode 000000 and its outputs (processed/v2-panda*) are kept unchanged.
-#   .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging_ep1.yaml \
+# STANDARD own-rig real-world configuration (2026-11-05): mug hanging, Franka Emika Panda + Robotiq 2F-85 on the DROID
+# mount (no wrist camera) + 3x RealSense D435I recording RGB (JPEG), native depth (PNG z16) and the device's left/right
+# infrared pair (PNG Y8, laser emitter on). Selected pipeline (docs/realworld_preprocessing.md sections 3 and 9):
+#   RGB for appearance and tracking; FoundationStereo on each device IR pair -> metric depth on the left-IR grid,
+#   registered into the RGB grid (foundation_stereo_depth, "B1"); native depth + SAM 3 robot masks as calibration
+#   evidence only; robot-grounded calibration; single-view TrackEverything per camera with B1 depth, intrinsics and the
+#   accepted pose (writes track2d + lift3d); the noise-aware track_motion filter; export of moving tracks.
+# Requires the IR pair (adapter include_ir): an episode without it fails; no other depth model or tracker is used.
+#   .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging.yaml \
 #       --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001
-output_root: /home/ws/ws/realworld-20261104/processed/ep1/base
+# Historical comparison roots (processed/ep1/{base,B0,B1,E1,E2,E3,B1-TE}, processed/v2-panda*) are kept unchanged.
+output_root: /home/ws/ws/realworld-20261104/processed/ep1-standard
 baselines: [snerl, mvp3d, sincro, reviwo, dynamo]
 adapter:
   name: panda_teleop_h5
@@ -31,26 +34,12 @@ adapter:
         meshes and joint limits; same kinematic chain as FR3; DROID Robotiq mount without wrist camera; mount offset
         nominal (Robotiq drawings), not measured
 workers:   # paths inside the inference container
-  mapanything:
-    python: /opt/envs/mapanything/bin/python
-    repo_dir: /opt/upstream/map-anything
-    expected_commit: 3d10cf7a3016fc0f9bb13a071ee66c47b10be0d9
-    checkpoint: /ram/weights/map-anything-a1d87e90/model.safetensors
-    params: {hf_dir: /ram/weights/map-anything-a1d87e90, hf_repo: facebook/map-anything,
-             hf_revision: a1d87e9086706fb9974f3be5a3e3a0ca5401c5aa, model_hw: [392, 518], use_depth: true,
-             use_pose: true, apply_mask: true, mask_edges: true, amp_dtype: bf16}
-  alltracker:
-    python: /opt/envs/alltracker/bin/python
-    repo_dir: /opt/upstream/alltracker
-    expected_commit: e7553135e7b361590dbccd10e2b274b024f41cd6
-    checkpoint: /ram/weights/alltracker/alltracker.pth
-    params: {window_len: 16, inference_iters: 4}
   foundation_stereo:
     python: /opt/envs/foundation_stereo/bin/python
     repo_dir: /opt/upstream/FoundationStereo
     expected_commit: 6e8806816b533e4d13ddbb95ffa907b797060a62
     checkpoint: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth
-  trackeverything:   # single-view only (tracker comparison); our depth/K/pose supplied, no geometry estimation
+  trackeverything:   # single-view only; our depth/K/pose supplied, no geometry estimation
     python: /opt/envs/trackeverything/bin/python
     repo_dir: /opt/upstream/trackeverything
     expected_commit: dfb29b505cf2ea954f8697fb612c2429668dd3a0
@@ -66,14 +55,14 @@ workers:   # paths inside the inference container
   s4d_kernels:   # expected_commit is set to the local HEAD at run time (server code == reviewed code)
     python: /opt/envs/s4d/bin/python
 stages:
-  sensor_depth: {chunk: 32, min_depth_m: 0.1, max_depth_m: 6.0, splat: 2}
-  # B1: FoundationStereo on each device IR pair (native 640x480, valid_iters 32), same depth range and registration
-  # (splat 2) as the native depth B0; E3 input: B1 minus colour pixels whose IR source fails the 1 px left-right check
+  sensor_depth: {chunk: 32, min_depth_m: 0.1, max_depth_m: 6.0, splat: 2}   # calibration evidence only
+  # B1: FoundationStereo on each device IR pair (native 640x480, valid_iters 32), registered to the colour grid with the
+  # native-depth registration (splat 2); the depth every later stage lifts/exports with
   foundation_stereo_depth: {chunk: 8, valid_iters: 32, hiera: 0, min_disparity: 0.5, min_depth_m: 0.1,
                             max_depth_m: 6.0, splat: 2}
-  foundation_stereo_filtered: {max_lr_error_px: 1.0}
   calibrate:   # robot-grounded, RGB-D evidence: registered sensor depth + SAM 3 "robot arm" masks + URDF at recorded joints
     evidence: rgbd
+    depth_stage: sensor_depth
     robot_mask_stage: sam3_masks
     every: 2
     max_frames: 200   # bounded calibration request (103 frames used here)
@@ -85,32 +74,29 @@ stages:
            # frames: with the Panda meshes camera 135122076054 stalled at 13 mm from the single start (2026-11-05).
       min_motion_extent_m: 0.05
       refine_starts: 13
-  # cameras are not hardware-synchronised (one runs a constant 22.9 ms behind) and one camera lacks the last frame:
-  # sets need mutual nearest frames within 30 ms (< half the 66.7 ms period); unmatched frames run single-view
-  mapanything_depth: {chunk: 4, max_set_motion_m: 0.005, max_sync_ns: 30000000, allow_unmatched: true}
-  track2d: {window: 16, step: 8, grid_stride: 16}
-  lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
+  # single-view TrackEverything on every RGB camera independently: the camera's RGB clip, B1 depth on the colour grid,
+  # its intrinsics and the accepted pose; same query windows/grid as the former track2d (window 16, step 8, stride 16)
+  track_everything: {depth_stage: foundation_stereo_depth, window: 16, step: 8, grid_stride: 16, model_hw: [384, 512],
+                     num_iters: 3}
   # dynamic-track filter (s4d/realworld/track_motion.py; intentional preprocessing change 2026-11-05): thresholds are
   # quantiles of the observed statistics of tracks >= 15 cm from the calibrated robot (image motion px; depth extent per
   # depth bin), with metric floors and temporal support; the export keeps moving tracks only
   track_motion: {min_segment_samples: 5, max_depth_hole_frames: 2, max_gap_factor: 1.5, max_speed_m_s: 1.5,
                  reference_robot_distance_m: 0.15, reference_quantile_move: 0.995, reference_quantile_static: 0.9,
                  min_move_px: 1.5, min_move_m: 0.005, min_support: 2}
-  # max_sync_ns: same 30 ms mutual-pairing tolerance as mapanything_depth (the default third of a period, 22.2 ms, is
-  # below camera 135122076054's constant 22.9 ms offset and would leave no three-camera window; < half a period keeps
-  # matches unique)
-  export: {strides: [1, 2], validation_tail_frames: 0, max_gap_factor: 1.5, aspect: center_crop,
-           track_source: track_motion, max_sync_ns: 30000000}
+  # cameras are not hardware-synchronised (one runs a constant 22.9 ms behind) and one camera lacks the last frame:
+  # mutual nearest frames within 30 ms (< half the 66.7 ms period; the default third of a period, 22.2 ms, is below
+  # camera 135122076054's offset and would leave no three-camera window); unmatched frames run single-view. The same
+  # tolerance is the frame-set policy of viewers/contract checks (depth_stages.configured_sets_policy).
+  export: {depth_stage: foundation_stereo_depth, track_source: track_motion, strides: [1, 2], validation_tail_frames: 0,
+           max_gap_factor: 1.5, aspect: center_crop, max_sync_ns: 30000000}
   sam3_masks:
     # "robotic gripper" (and gripper/black gripper/parallel gripper/two-finger gripper/gripper fingers) found nothing on
     # this black Robotiq 2F-85 (probe 2026-11-05, realworld-20261104/probes/sam3-gripper-20261105); "end effector"
     # segments the distal wrist + gripper assembly. Gripper coverage is measured against the calibrated URDF projection.
+    # Robot masks are calibration evidence; the full semantics feed the SNeRL baseline.
     prompts: {robot arm: robot, end effector: robot, white mug: object, wooden mug tree: fixture}
     mode: segment_video
     chunk: 206
     score_threshold: 0.5
   dino_snerl: {backbone: scratch}
-# Tracker comparison (activated ONLY in <variant>-TE roots by run_depth_variants --tracker trackeverything, so a default
-# run of this base root never replaces its AllTracker tracks): same query frames and grid as track2d
-tracker_comparison:
-  track_everything: {window: 16, step: 8, grid_stride: 16, model_hw: [384, 512], num_iters: 3}

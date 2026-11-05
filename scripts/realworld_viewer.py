@@ -1,8 +1,9 @@
 """PointWorld-style interactive viewer of one MEASURED/preprocessed real-world episode (not a model prediction).
 
-Shows, in the robot-base frame: per-frame RGB-coloured point clouds of the three cameras (raw RealSense depth and/or
-MapAnything depth), the Panda + Robotiq visual meshes animated from the recorded joints and gripper state (URDF forward
-kinematics; no MuJoCo), camera frustums with the current frame, and the tracks the ``track_motion`` stage classified
+Shows, in the robot-base frame: per-frame RGB-coloured point clouds of the three cameras (from any depth stage, e.g.
+the standard FoundationStereo IR depth ``foundation_stereo_depth``), the Panda + Robotiq visual meshes animated from
+the recorded joints and gripper state (URDF forward kinematics; no MuJoCo),
+camera frustums with the current frame, and the tracks the ``track_motion`` stage classified
 as moving, as trails (lines = display interpolation between measured samples, dots = measured samples; trails break at
 invalid samples, motion-segment breaks and the recording pause; cameras and query windows are never joined).
 Display-only downsampling; the processed outputs are only read. Runs on CPU, no GPU and no model.
@@ -10,11 +11,11 @@ Display-only downsampling; the processed outputs are only read. Runs on CPU, no 
 Modes (run with the viewer environment that has ``viser``; the repository is put on ``sys.path``):
 
     # portable recordings (+ the viser static client and an index page); serve the directory with any static server
-    python scripts/realworld_viewer.py record --ma-root PROCESSED/v2-panda --raw-root PROCESSED/v2-panda-raw \\
-        --episode mug-hanging-test-000000 --out OUT_DIR
+    python scripts/realworld_viewer.py record --source B1=PROCESSED/ep1-standard:foundation_stereo_depth:"B1 IR depth" \\
+        --episode mug-hanging-test-000001 --out OUT_DIR
     python -m http.server 8090 --directory OUT_DIR   # then open http://localhost:8090/
     # live viewer with every control (playback, timeline, speed, cameras, robot opacity, point size, trail length/density)
-    python scripts/realworld_viewer.py serve --ma-root ... --raw-root ... --episode ... --port 8080
+    python scripts/realworld_viewer.py serve --source ... --episode ... --port 8080
 
 In a recording every node is created once and only its points/colours/pose change per frame, so the playback
 scene-tree panel's visibility toggles and property edits (point size, robot opacity) persist while it loops.
@@ -236,16 +237,12 @@ def make_server(port: int | None = None):
 
 
 def parse_sources(args) -> tuple[dict, list]:
-    """(specs, recordings) from --source/--recording, or the episode-0 shorthand --raw-root/--ma-root."""
+    """(specs, recordings) from --source/--recording."""
     specs = {}
     for item in args.source or []:
         name, rest = item.split("=", 1)
         root, stage, label = rest.split(":", 2)
         specs[name] = {"root": root, "depth_stage": stage, "label": label}
-    if args.ma_root:
-        specs.setdefault("raw", {"root": args.raw_root, "depth_stage": "sensor_depth", "label": "RealSense raw depth"})
-        specs.setdefault("mapanything", {"root": args.ma_root, "depth_stage": "mapanything_depth",
-                                         "label": "MapAnything depth"})
     recs = []
     for item in getattr(args, "recording", None) or []:
         name, rest = item.split("=", 1)
@@ -253,10 +250,8 @@ def parse_sources(args) -> tuple[dict, list]:
         recs.append((name, srcs.split("+"), [int(c) for c in cams.split(",")] if cams else None))
     if not recs:
         recs = [(n, [n], None) for n in specs]
-        if args.ma_root and not args.source:
-            recs.append(("compare", ["raw", "mapanything"], None))
     if not specs:
-        raise SystemExit("give --source NAME=ROOT:STAGE:LABEL (repeatable) or --ma-root/--raw-root")
+        raise SystemExit("give --source NAME=ROOT:STAGE:LABEL (repeatable)")
     return specs, recs
 
 
@@ -425,8 +420,6 @@ def main(argv=None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--source", action="append", help="NAME=ROOT:DEPTH_STAGE:LABEL (repeatable): clouds from that "
                                                             "root's depth stage, trails from its moving tracks")
-        p.add_argument("--ma-root", help="episode-0 shorthand: root with mapanything_depth tracks")
-        p.add_argument("--raw-root", help="episode-0 shorthand: root whose lift3d/track_motion used sensor_depth")
         p.add_argument("--episode", required=True)
         p.add_argument("--stride", type=int, default=6, help="display pixel stride (a multiple of --roi-stride)")
         p.add_argument("--roi-stride", type=int, default=3, help="denser display stride around the mug/hook")
