@@ -20,8 +20,9 @@ import yaml
 
 from s4d.realworld import io as rio
 
-STAGES = ("ingest", "sensor_depth", "foundation_stereo_depth", "foundation_stereo_filtered", "stereo_rectify",
-          "mapanything_rig_depth", "calibrate", "mapanything_depth", "track2d", "lift3d", "track_motion", "export")
+STAGES = ("ingest", "sensor_depth", "stereo_rectify", "mapanything_rig_depth", "calibrate", "mapanything_depth",
+          "track2d", "lift3d", "track_motion", "export",
+          "foundation_stereo_depth", "foundation_stereo_filtered")  # optional stages last (dispatch order is in code)
 BASELINE_STAGES = ("sam3_masks", "dino_snerl")
 # run only when configured under ``stages``
 OPTIONAL_STAGES = ("track_motion", "foundation_stereo_depth", "foundation_stereo_filtered")
