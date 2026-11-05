@@ -49,7 +49,10 @@ EXPLAIN = {
               "whose depth fitted the calibration)"),
     "filled": ("pixels a method has where native depth is missing, moved into another camera and compared with that "
                "camera's NATIVE measurement (mm; reference line: native vs native)"),
-    "edges": "distance from depth discontinuities to the nearest colour edge (px, lower = sharper/better registered)",
+    "edges": ("distance from depth discontinuities to the nearest colour edge on pixels valid in every source "
+              "(px, lower = closer edge alignment; diagnostic, not correctness)"),
+    "thin_retention": ("thin/small-structure retention (coverage, not correctness): per-source depth coverage of "
+                       "SAM 3 object (mug) and fixture mask pixels within 3 px of their mask boundaries"),
     "flying": "share of mixed-depth pixels between neighbours (lower = cleaner boundaries), on the joint support",
     "temporal": ("per-pixel std over time on static background (mm); low = steady, but smoothing also lowers it: "
                  "steadiness is not accuracy"),
@@ -61,21 +64,78 @@ def _med(xs):
     return float(np.median(v)) if v else None
 
 
+def verify_calibration_inputs(base, episode, roots, stages):
+    """Reject saved outputs made with a previous calibration, even if current symlinked matrices agree.
+
+    MapAnything depth and every compared variant's lift3d must directly name the frozen build. Sensor/IR stereo
+    depth may be calibration-independent; follow their recorded dependencies to ensure that exception is true.
+    """
+    from s4d.realworld import io as rio
+
+    base_record = rio.read_record(rio.stage_dir(base, episode, "calibrate"))
+    if base_record is None:
+        raise SystemExit("base calibrate record is missing")
+    frozen = rio.build_id(base_record)
+
+    def require(root, stage, independent=False, seen=None):
+        seen = set() if seen is None else seen
+        if stage in seen:
+            return
+        seen.add(stage)
+        directory = (rio.episode_dir(root, episode) / "normalized" if stage == "ingest" else
+                     rio.stage_dir(root, episode, stage))
+        rec = rio.read_record(directory)
+        if rec is None:
+            raise SystemExit(f"{root}: missing {stage} record; rebuild before comparing")
+        inputs = rec.get("inputs", {})
+        if "calibrate" in inputs:
+            if inputs["calibrate"] != frozen:
+                raise SystemExit(f"{root}: stale {stage}: calibrate input is not base build {frozen}; rebuild")
+        elif not independent:
+            raise SystemExit(f"{root}: stale {stage}: missing base calibrate build {frozen} in inputs; rebuild")
+        for parent, build in inputs.items():
+            if parent == "calibrate":
+                continue
+            parent_dir = (rio.episode_dir(root, episode) / "normalized" if parent == "ingest" else
+                          rio.stage_dir(root, episode, parent))
+            parent_rec = rio.read_record(parent_dir)
+            if parent_rec is not None:
+                if rio.build_id(parent_rec) != build:
+                    raise SystemExit(f"{root}: stale {stage}: input {parent} no longer matches its record; rebuild")
+                require(root, parent, independent=True, seen=seen)
+
+    for name, root in roots.items():
+        require(root, stages[name], independent=stages[name] in {
+            "sensor_depth", "foundation_stereo_depth", "foundation_stereo_filtered"})
+        # B0/B1 depths live in the base; their corresponding tracker outputs live in B0/B1 variant roots.
+        variant_root = base.parent / name if SOURCES[name][0] == "base" and name in ("B0", "B1") else root
+        if variant_root != base:
+            require(variant_root, "lift3d")
+    return frozen
+
+
 def aggregate(rows, grids, names, pairs) -> dict:
     views = [vw for r in rows for vw in r["views"]]
     cov = {reg: {n: _med([vw["coverage"][reg][n] for vw in views if reg in vw["coverage"]]) for n in names + ["joint"]}
            for reg in REGIONS}
     cross = {}
-    for key in [f"{a}|{b}" for a, b in pairs] + ["joint"]:
-        members = key.split("|") if key != "joint" else names
-        cross[key] = {}
-        for reg in REGIONS:
-            ents = [r["pairs"][p][f"{key}|{reg}"] for r in rows for p in r["pairs"] if f"{key}|{reg}" in r["pairs"][p]]
-            ents = [e for e in ents if e["kept"] > 20]
-            cross[key][reg] = {"kept": int(sum(e["kept"] for e in ents)), **{
-                n: {"median_abs_mm": None if _med([e[n].get("median_abs") for e in ents]) is None else
-                    round(1000 * _med([e[n].get("median_abs") for e in ents]), 2),
-                    "within_10mm": _med([e[n].get("within_10mm") for e in ents])} for n in members}}
+    for split in ("all", "independent"):
+        # A set is independent only if NONE of its camera-frames contributed calibration evidence for that camera.
+        selected = rows if split == "all" else [r for r in rows if not any(vw["calib_used"] for vw in r["views"])]
+        cross[split] = {"sets": len(selected), "metrics": {}}
+        for key in [f"{a}|{b}" for a, b in pairs] + ["joint"]:
+            members = key.split("|") if key != "joint" else names
+            cross[split]["metrics"][key] = {}
+            for reg in REGIONS:
+                ents = [r["pairs"][p][f"{key}|{reg}"] for r in selected for p in r["pairs"]
+                        if f"{key}|{reg}" in r["pairs"][p]]
+                ents = [e for e in ents if e["kept"] > 20]
+                cross[split]["metrics"][key][reg] = {"kept": int(sum(e["kept"] for e in ents)), **{
+                    n: {"median_abs_mm": None if _med([e[n].get("median_abs") for e in ents]) is None else
+                        round(1000 * _med([e[n].get("median_abs") for e in ents]), 2),
+                        "within_10mm": _med([e[n].get("within_10mm") for e in ents])} for n in members}}
+    thin = {reg: {n: _med([vw["thin_retention"][reg][n] for vw in views if reg in vw["thin_retention"]])
+                  for n in names} for reg in ("mug", "fixture")}
     robot = {}
     for a, b in pairs:
         for rname in ("robot", "gripper"):
@@ -104,7 +164,7 @@ def aggregate(rows, grids, names, pairs) -> dict:
         stab[f"view{v}"] = {"pixels": int(keep.sum()),
                             **{n: (round(1000 * float(np.median(grids[n][:, v][:, keep].std(0))), 2) if keep.any()
                                    else None) for n in names}}
-    return {"coverage": cov, "crossview": cross, "robot": robot, "filled": filled, "edges_px": edges,
+    return {"coverage": cov, "crossview": cross, "thin_retention": thin, "robot": robot, "filled": filled, "edges_px": edges,
             "flying_common": flying, "temporal_static_std_mm": stab}
 
 
@@ -116,20 +176,27 @@ def markdown(rep: dict) -> str:
     for reg, c in a["coverage"].items():
         L.append(f"| {reg} | " + " | ".join("-" if c[n] is None else f"{100 * c[n]:.1f}" for n in names + ["joint"])
                  + " |")
-    L += ["", "## Pairwise cross-view consistency on common support (median |d| mm; lower = more consistent)", "",
-          "| pair | " + " | ".join(REGIONS) + " |", "|---" * (len(REGIONS) + 1) + "|"]
-    for key, regs in a["crossview"].items():
-        if key == "joint":
-            continue
-        x, y = key.split("|")
-        L.append(f"| {x} vs {y} | " + " | ".join(
-            "-" if regs[r][x]["median_abs_mm"] is None else f"{regs[r][x]['median_abs_mm']} / {regs[r][y]['median_abs_mm']}"
-            for r in REGIONS) + " |")
-    L += ["", "## Joint common support (all sources valid; median |d| mm)", "",
-          "| region | " + " | ".join(names) + " | points |", "|---" * (len(names) + 2) + "|"]
-    for reg, c in a["crossview"]["joint"].items():
-        L.append(f"| {reg} | " + " | ".join("-" if c[n]["median_abs_mm"] is None else str(c[n]["median_abs_mm"])
-                                             for n in names) + f" | {c['kept']} |")
+    L += ["", "## Thin/small-structure retention (coverage, not correctness)", "",
+          "SAM 3 mask pixels within 3 px of the object/fixture boundaries (median coverage, %).", "",
+          "| mask | " + " | ".join(names) + " |", "|---" * (len(names) + 1) + "|"]
+    for reg, c in a["thin_retention"].items():
+        L.append(f"| {reg} | " + " | ".join("-" if c[n] is None else f"{100 * c[n]:.1f}" for n in names) + " |")
+    L += ["", "Independent sets: no camera-frame in the set is among that camera's calibration evidence frames."]
+    for split, table in a["crossview"].items():
+        L += ["", f"## Pairwise cross-view consistency, {split} sets ({table['sets']} sets; median |d| mm)", "",
+              "| pair | " + " | ".join(REGIONS) + " |", "|---" * (len(REGIONS) + 1) + "|"]
+        for key, regs in table["metrics"].items():
+            if key == "joint":
+                continue
+            x, y = key.split("|")
+            L.append(f"| {x} vs {y} | " + " | ".join(
+                "-" if regs[r][x]["median_abs_mm"] is None else
+                f"{regs[r][x]['median_abs_mm']} / {regs[r][y]['median_abs_mm']}" for r in REGIONS) + " |")
+        L += ["", f"## Joint common support, {split} sets (all sources valid; median |d| mm)", "",
+              "| region | " + " | ".join(names) + " | points |", "|---" * (len(names) + 2) + "|"]
+        for reg, c in table["metrics"]["joint"].items():
+            L.append(f"| {reg} | " + " | ".join("-" if c[n]["median_abs_mm"] is None else str(c[n]["median_abs_mm"])
+                                                 for n in names) + f" | {c['kept']} |")
     L += ["", "## Robot / gripper model agreement, independent frames (median |d| mm)", ""]
     for key, v in a["robot"].items():
         if key.endswith("independent"):
@@ -169,6 +236,7 @@ def main(argv=None) -> int:
     roots = {n: (base if SOURCES[n][0] == "base" else base.parent / SOURCES[n][0]) for n in names}
     stages = {n: SOURCES[n][1] for n in names}
     pairs = [p for p in PAIRS if p[0] in names and p[1] in names]
+    frozen = verify_calibration_inputs(base, ep, roots, stages)
     server = Server.load(Path(args.server))
     out_dir = base / "reports" / ep / "depth_variants"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -199,8 +267,8 @@ def main(argv=None) -> int:
               "reference_source": "B0" if "B0" in names else None, "occlusion_m": 0.05, "boundary_px": 3,
               "front_tol_m": 0.05, "max_points": 15000, "grid_step": 8}
     inputs = {n: rio.build_id(rio.read_record(rio.stage_dir(roots[n], ep, stages[n]))) for n in names}
-    inputs["calibrate"] = rio.build_id(rio.read_record(rio.stage_dir(base, ep, "calibrate")))
-    store = rio.ChunkStore(out_dir / "sets", rio.stage_fingerprint("depth_compare_multi", "1", config, inputs))
+    inputs["calibrate"] = frozen
+    store = rio.ChunkStore(out_dir / "sets", rio.stage_fingerprint("depth_compare_multi", "2", config, inputs))
     n_sets = len(sets["index"])
     rows, grids = [], {k: [] for k in names + ["static"]}
     try:

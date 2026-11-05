@@ -441,6 +441,8 @@ def validate_episode(meta: EpisodeMeta) -> ValidationReport:
                     err(f"{tag}: transforms are not rigid")
                 elif not np.allclose(T[:3, :3], np.eye(3), atol=1e-6) or abs(T[1, 3]) + abs(T[2, 3]) > 1e-6:
                     err(f"{tag}: a rectified pair has R = I and a baseline along x")
+                elif not T[0, 3] < 0:
+                    err(f"{tag}: T_right_left[0,3] must be negative for x_left - x_right > 0")
                 elif abs(np.linalg.norm(T[:3, 3]) - g.baseline_m) > 1e-4 or not g.baseline_m > 0:
                     err(f"{tag}: baseline_m disagrees with |t| of T_right_left")
     for g in meta.rgbd:

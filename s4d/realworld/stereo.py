@@ -67,22 +67,27 @@ def visible_in_other(disparity: np.ndarray, reference: str) -> np.ndarray:
     raise ValueError(reference)
 
 
-def lr_consistency(disparity_left: np.ndarray, disparity_right: np.ndarray) -> np.ndarray:
+def lr_consistency(disparity_left: np.ndarray, disparity_right: np.ndarray,
+                   min_disparity: float = 1e-3) -> np.ndarray:
     """Left-right check on the left grid: ``|d_L(x) - d_R(x - d_L(x))|`` (pixels), with ``d_R`` linearly interpolated
     along the row at the continuous position ``x - d_L`` (pixel centres at j + 0.5); ``inf`` where that position
-    falls outside the right image or a disparity is not finite. Both disparities are positive ``x_left - x_right``."""
+    falls outside the right image or either interpolation tap (or the left disparity) is invalid. Valid disparities
+    are finite and > min_disparity. Both disparities are positive ``x_left - x_right``."""
     dl = np.asarray(disparity_left, np.float64)
     dr = np.asarray(disparity_right, np.float64)
     H, W = dl.shape
     xr = (np.arange(W)[None, :] + 0.5) - dl - 0.5  # right-grid index coordinate of the match
-    j0 = np.floor(xr).astype(np.int64)
+    j0 = np.floor(np.where(np.isfinite(xr), xr, -1)).astype(np.int64)
     a = xr - j0
     inside = np.isfinite(xr) & (j0 >= 0) & (j0 + 1 < W)
     j0c, j1c = np.clip(j0, 0, W - 1), np.clip(j0 + 1, 0, W - 1)
     rows = np.arange(H)[:, None]
-    dr_at = (1 - a) * dr[rows, j0c] + a * dr[rows, j1c]
+    d0, d1 = dr[rows, j0c], dr[rows, j1c]
+    taps_valid = np.isfinite(d0) & (d0 > min_disparity) & np.isfinite(d1) & (d1 > min_disparity)
+    dr_at = (1 - a) * d0 + a * d1
     err = np.abs(dl - dr_at)
-    return np.where(inside & np.isfinite(err), err, np.inf).astype(np.float32)
+    valid = inside & taps_valid & np.isfinite(dl) & (dl > min_disparity) & np.isfinite(err)
+    return np.where(valid, err, np.inf).astype(np.float32)
 
 
 def flip_and_swap_right_disparity(left: np.ndarray, right: np.ndarray, matcher: Matcher) -> np.ndarray:

@@ -25,46 +25,19 @@ from s4d.realworld.pipeline import (
     view_depth,
     view_frames,
 )
-from s4d.realworld.tracking import NOT_TRACKED, OCCLUDED, OUT, STATUS, VALID, query_grid
+from s4d.realworld.tracking import (
+    EDGE,
+    NO_DEPTH,
+    NOT_TRACKED,
+    OCCLUDED,
+    OUT,
+    STATUS,
+    VALID,
+    depth_support_status,
+    query_grid,
+)
 
-VERSION = "1-trackeverything"
-
-
-def recording_segments(timestamps_ns):
-    """Half-open frame intervals; no clip crosses a gap >1.5 median camera periods."""
-    stamps = np.asarray(timestamps_ns, np.int64)
-    if not len(stamps):
-        return []
-    dt = np.diff(stamps)
-    if (dt <= 0).any():
-        raise ValueError("camera timestamps must be strictly increasing")
-    cuts = np.flatnonzero(dt > 1.5 * np.median(dt)) + 1 if len(dt) else np.empty(0, int)
-    edges = [0, *cuts.tolist(), len(stamps)]
-    return list(zip(edges[:-1], edges[1:]))
-
-
-def clip_plan(timestamps_ns, window, step):
-    """Assign each *global* AllTracker query to one <=64-frame single-segment clip.
-
-    Small segments use one clip. Longer ones overlap starting at the first query
-    whose clipped window would not fit in the previous clip. Query frames never
-    restart at a pause; chunk_queries remains the single source of query identities.
-    """
-    windows = chunk_queries(len(timestamps_ns), window, step) if len(timestamps_ns) else []
-    clips = []
-    for lo, hi in recording_segments(timestamps_ns):
-        pending = [(q, idx) for q, idx in windows if lo <= q < hi]
-        start = max(lo, min(pending[0][0] + window, hi) - 64) if pending else lo
-        while pending:
-            end = min(start + 64, hi)
-            take = [(q, idx) for q, idx in pending if min(q + window, hi) <= end]
-            if not take:
-                raise ValueError("query window does not fit in a 64-frame clip")
-            clips.append((start, end, hi, take))
-            pending = pending[len(take):]
-            if pending:
-                start = pending[0][0]
-    return clips
+VERSION = "2-trackeverything"
 
 
 def resize_inputs(video, depth, K, model_hw):
@@ -118,6 +91,14 @@ def query_chunks(out, *, q, indices, clip_start, query_slice, timestamps_ns, K, 
     status[finite & ~inside] = OUT
     status[finite & inside & (visibility < 0.5)] = OCCLUDED
     status[finite & inside & (visibility >= 0.5)] = VALID
+    if "birth_status" in out:
+        support = out["birth_status"][query_slice]
+        unsupported = support != VALID
+        status[:, unsupported] = NOT_TRACKED
+        at_birth = frames[:, None] == birth[None]
+        status[at_birth & unsupported[None]] = np.broadcast_to(support, status.shape)[at_birth & unsupported[None]]
+        uv[:, unsupported] = np.nan
+        visibility[:, unsupported] = np.nan
     common = {"frame_indices": frames, "timestamps_ns": np.asarray(timestamps_ns)[frames],
               "point_ids": np.arange(n, dtype=np.int64), "query_frame": np.asarray(q),
               "visibility": visibility, "confidence": confidence, "source": np.asarray(json.dumps(source))}
@@ -143,8 +124,8 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
     swaps finish. A failure during either stage reuses those clips on retry.
     Returns {"track2d": record, "lift3d": record}.
     """
-    if not 1 <= window <= 64 or step < 1 or grid_stride < 1 or num_iters < 1:
-        raise ValueError("require window in 1..64 and positive step, grid_stride, num_iters")
+    if not 1 <= window <= 16 or step < 1 or grid_stride < 1 or num_iters < 1:
+        raise ValueError("require window in 1..16 and positive step, grid_stride, num_iters")
     model_hw = tuple(int(x) for x in model_hw)
     if len(model_hw) != 2 or any(x <= 0 or x % 16 for x in model_hw):
         raise ValueError("model_hw must contain two positive multiples of 16")
@@ -154,8 +135,10 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
     worker.pop("timeout_s", None)
     config = {"tracker": "TrackEverything", "worker": worker, "depth_stage": depth_stage,
               "window": window, "step": step, "grid_stride": grid_stride, "model_hw": list(model_hw),
-              "num_iters": num_iters, "mode": "sparse", "single_view": True, "max_clip_frames": 64,
-              "max_gap_factor": 1.5, "vis_threshold": 0.5, "allow_mock": allow_mock}
+              "num_iters": num_iters, "mode": "sparse", "single_view": True, "max_clip_frames": 16,
+              "inference_frames": "exactly pipeline.chunk_queries, including recording pauses",
+              "birth_depth_edge_rel": 0.05, "query_depth_lookup": "floor on resized grid; no depth invention",
+              "vis_threshold": 0.5, "allow_mock": allow_mock}
     inputs = {k: _record_fp(root, episode_id, k) for k in ("ingest", depth_stage, "calibrate")}
     if meta.stereo:
         inputs["stereo_rectify"] = _record_fp(root, episode_id, "stereo_rectify")
@@ -184,50 +167,69 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
             if not len(pixels):
                 raise ValueError(f"{cam}: query grid is empty")
             files, counts, models = [], dict.fromkeys(STATUS.values(), 0), []
-            for start, end, segment_end, windows in clip_plan(stamps, window, step):
+            birth_counts = {"queries": 0, "unsupported_birth_depth": 0, "unsupported_birth_edge": 0}
+            for q, idx in chunk_queries(len(stamps), window, step):
+                start, end = idx[0], idx[-1] + 1
                 cid = f"{cam}/{start:05d}-{end:05d}"
                 # Read just this camera and clip. K is from the chosen depth grid, not a model estimate.
                 got = store.get(cid)
                 if got is None:
-                    idx = list(range(start, end))
                     video = to_model_rgb(view_frames(root, episode_id, meta, cam, idx), stream)
                     depth, K = view_depth(root, episode_id, meta, cam, idx, depth_stage)
                     if video.shape[1:3] != hw or depth.shape != (len(idx), *hw):
                         raise ValueError(f"{cam}: depth and colour must share the original view grid")
+                    xy = pixels[:, ::-1] + 0.5
+                    support = depth_support_status(depth[:1], xy[None])[0]
                     video, depth, Km, scale = resize_inputs(video, depth, K, model_hw)
-                    queries = np.concatenate([np.column_stack([
-                        np.full(len(pixels), q - start), (pixels[:, ::-1] + 0.5) * scale]) for q, _ in windows])
-                    response, out, handle = runner.worker(
-                        spec, "track_queries", {"mode": "sparse", "num_iters": num_iters},
-                        {"video": video, "depth": depth, "K": np.broadcast_to(Km, (len(idx), 3, 3)).copy(),
-                         "w2c": np.broadcast_to(T, (len(idx), 4, 4)).copy(), "queries": queries.astype(np.float32)},
-                        chunk_id=f"trackeverything/{cid}", allow_mock=allow_mock)
-                    expected = (len(idx), len(queries))
-                    if (out["xyz_base"].shape != (*expected, 3) or out["vis_logit"].shape != expected
-                            or not np.array_equal(out["birth_t"], queries[:, 0])):
-                        raise ValueError("worker output shape/birth_t does not match requested queries")
-                    cmeta = {"model": response["model"], "meta": response["meta"], "K": K.tolist()}
+                    resized_support = depth_support_status(depth[:1], (xy * scale)[None])[0]
+                    # Original-grid support matches lift3d; also guard the exact resized cells TE will sample.
+                    support[support == VALID] = resized_support[support == VALID]
+                    valid = support == VALID
+                    queries = np.column_stack([np.zeros(valid.sum()), (xy * scale)[valid]]).astype(np.float32)
+                    out = {"xyz_base": np.full((len(idx), len(pixels), 3), np.nan, np.float32),
+                           "vis_logit": np.full((len(idx), len(pixels)), np.nan, np.float32),
+                           "birth_t": np.zeros(len(pixels), np.int64), "birth_status": support}
+                    cmeta = {"model": {}, "meta": {"skipped": "no supported birth depths"}, "K": K.tolist()}
+                    handle = None
+                    if valid.any():
+                        response, predicted, handle = runner.worker(
+                            spec, "track_queries", {"mode": "sparse", "num_iters": num_iters},
+                            {"video": video, "depth": depth, "K": np.broadcast_to(Km, (len(idx), 3, 3)).copy(),
+                             "w2c": np.broadcast_to(T, (len(idx), 4, 4)).copy(), "queries": queries},
+                            chunk_id=f"trackeverything/{cid}", allow_mock=allow_mock)
+                        expected = (len(idx), len(queries))
+                        if (predicted["xyz_base"].shape != (*expected, 3) or predicted["vis_logit"].shape != expected
+                                or not np.array_equal(predicted["birth_t"], queries[:, 0])):
+                            raise ValueError("worker output shape/birth_t does not match requested queries")
+                        for key in ("xyz_base", "vis_logit", "dyn_logit"):
+                            if key in predicted:
+                                if key not in out:
+                                    out[key] = np.full((len(idx), len(pixels)), np.nan, np.float32)
+                                out[key][:, valid] = predicted[key]
+                        cmeta.update(model=response["model"], meta=response["meta"])
                     store.put(cid, out, cmeta)
-                    runner.ack(handle)
+                    if handle is not None:
+                        runner.ack(handle)
                     got = out, cmeta
                 out, cmeta = got
                 model = {**cmeta["model"], "meta": cmeta["meta"]}
                 models.append(model)
-                for j, (q, idx) in enumerate(windows):
-                    source = {**model, "camera_id": cam, "clip_frames": [start, end], "segment_end": segment_end,
-                              "model_hw": list(model_hw), "num_iters": num_iters, "mode": "sparse",
-                              "query_grid": "original view grid centres, continuous resize without snapping",
-                              "geometry": "supplied metric depth/K/T_cam_base; predictions restored to base"}
-                    t2d, t3d = query_chunks(out, q=q, indices=idx, clip_start=start,
-                                          query_slice=slice(j * len(pixels), (j + 1) * len(pixels)),
-                                          timestamps_ns=stamps, K=np.asarray(cmeta["K"]), w2c=T, hw=hw, source=source)
-                    name = f"{rio.safe_name(cam)}_q{q:05d}.npz"
-                    rio.atomic_write_npz(tmp / name, **(t2d if stage == "track2d" else t3d))
-                    files.append(name)
-                    for code, label in STATUS.items():
-                        counts[label] += int((t3d["status"] == code).sum())
+                birth_counts["queries"] += len(pixels)
+                birth_counts["unsupported_birth_depth"] += int((out["birth_status"] == NO_DEPTH).sum())
+                birth_counts["unsupported_birth_edge"] += int((out["birth_status"] == EDGE).sum())
+                source = {**model, "camera_id": cam, "clip_frames": [start, end],
+                          "model_hw": list(model_hw), "num_iters": num_iters, "mode": "sparse",
+                          "query_grid": "original view grid centres, continuous resize without snapping",
+                          "geometry": "supplied metric depth/K/T_cam_base; predictions restored to base"}
+                t2d, t3d = query_chunks(out, q=q, indices=idx, clip_start=start, query_slice=slice(0, len(pixels)),
+                                      timestamps_ns=stamps, K=np.asarray(cmeta["K"]), w2c=T, hw=hw, source=source)
+                name = f"{rio.safe_name(cam)}_q{q:05d}.npz"
+                rio.atomic_write_npz(tmp / name, **(t2d if stage == "track2d" else t3d))
+                files.append(name)
+                for code, label in STATUS.items():
+                    counts[label] += int((t3d["status"] == code).sum())
             summary[cam] = {"chunks": files, "model": models[0] if models else {}, "clips": models,
-                            "status_counts": counts, "T_cam_base": T.tolist()}
+                            "status_counts": counts, **birth_counts, "T_cam_base": T.tolist()}
         return summary
 
     t2d = rio.run_stage(directory, stage="track2d", version=VERSION, config=config, inputs=inputs,

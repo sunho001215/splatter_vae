@@ -199,6 +199,9 @@ def run_stage(directory: Path, *, stage: str, version: str, config: dict, inputs
     and the record is written last, so an interrupted run leaves either the old complete stage or nothing.
     """
     directory = Path(directory)
+    if directory.is_symlink():
+        raise RuntimeError(f"refusing to build shared stage {stage}: {directory} is a symlink; "
+                           "rebuild it in the base root, never in a variant root (even with force)")
     fp = stage_fingerprint(stage, version, config, inputs)
     rec = read_record(directory)
     if rec is not None and rec.get("fingerprint") == fp and not force:

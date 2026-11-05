@@ -17,17 +17,15 @@ from s4d.realworld.adapters.synthetic_adapter import SyntheticAdapter
 from s4d.realworld.contract import RgbdGeometry
 from s4d.realworld.export import export
 from s4d.realworld.geometry import make_T, transform_points
-from s4d.realworld.pipeline import chunk_queries, ingest, load_meta, load_tracks2d
+from s4d.realworld.pipeline import chunk_queries, ingest, load_tracks2d, track2d
 from s4d.realworld.runners import LocalRunner
 from s4d.realworld.track_motion import MotionFilterConfig, track_motion
 from s4d.realworld.trackeverything_stage import (
-    clip_plan,
     query_chunks,
-    recording_segments,
     resize_inputs,
     track_everything,
 )
-from s4d.realworld.tracking import NOT_TRACKED, OCCLUDED, OUT, VALID, query_grid
+from s4d.realworld.tracking import EDGE, NO_DEPTH, NOT_TRACKED, OCCLUDED, OUT, VALID, depth_support_status, query_grid
 from s4d.realworld.viewer_data import load_camera_tracks
 from s4d.realworld.workers import WorkerError, WorkerSpec, call_worker
 from s4d.realworld.workers import trackeverything_worker as te
@@ -120,7 +118,7 @@ class SyntheticRunner(LocalRunner):
         start, end = map(int, interval.split("-"))
         cam = f"{rig}/{eye}"
         a = self.adapter
-        assert len(arrays["video"]) == end - start <= 64
+        assert len(arrays["video"]) == end - start <= 16
         np.testing.assert_allclose(arrays["w2c"], np.broadcast_to(a.T_cam_base(rig, eye), arrays["w2c"].shape))
         scale = np.array(arrays["video"].shape[1:3][::-1]) / np.array(a.hw[::-1])
         np.testing.assert_allclose(arrays["K"][0], np.diag([*scale, 1]) @ a.K())
@@ -170,7 +168,7 @@ def run(tmp_path_factory):
 
 def test_stage_layout_query_grid_and_base_coordinates(run):
     a, root, ep, runner, records = run
-    assert len(runner.calls) == len(runner.acks) == 4  # two cameras, two segments; reused across query windows
+    assert len(runner.calls) == len(runner.acks) == 6  # two cameras, three exact AllTracker query windows
     rc = query_grid(a.hw, 4, 2)
     for cam in ("rig0/left", "rig1/left"):
         names = [f"{rio.safe_name(cam)}_q{q:05d}.npz" for q, _ in chunk_queries(a.frames, 16, 8)]
@@ -188,25 +186,47 @@ def test_stage_layout_query_grid_and_base_coordinates(run):
                 assert np.isnan(z["xyz_base"][~ok]).all() and np.isnan(z["xyz_cam"][~ok]).all()
                 assert str(z["camera_id"]) == cam
             assert tr.source["name"] == "TrackEverything synthetic oracle" and tr.source["is_mock"]
-            np.testing.assert_allclose(tr.uv[0, gt_vis[0]], (rc[:, ::-1] + 0.5)[gt_vis[0]], atol=1e-4)
+            born = np.isfinite(tr.uv[0]).all(-1) & gt_vis[0]
+            np.testing.assert_allclose(tr.uv[0, born], (rc[:, ::-1] + 0.5)[born], atol=1e-4)
             assert (tr.confidence == 1).all()
     assert "skipped" in records["lift3d"]["summary"]["rig2/left"]
 
 
-def test_pause_windows_are_not_restarted_or_tracked_across_pause(run):
+def test_te_inference_frames_match_alltracker_including_pause(run, tmp_path):
     a, root, ep, runner, _ = run
-    assert recording_segments(load_meta(root, ep).stream_timestamps_ns["rig0/left"]) == [(0, 10), (10, 20)]
-    for call in runner.calls:
-        start, end = map(int, call["chunk_id"].split("/")[-1].split("-"))
-        assert end <= 10 or start >= 10
+    # Build the real track2d stage against a CPU fake backend, capturing its exact input images.
+    shared = tmp_path / "alltracker"
+    dst = rio.episode_dir(shared, ep)
+    dst.mkdir(parents=True)
+    (dst / "normalized").symlink_to(rio.episode_dir(root, ep) / "normalized")
+    calls = []
+
+    class FakeAllTracker:
+        identity = {"name": "synthetic", "is_mock": True}
+
+        def track(self, cam, video, indices, query_frame):
+            if cam != "rig2/left":
+                calls.append(video.copy())
+            t, h, w = video.shape[:3]
+            return np.zeros((t, 2, h, w), np.float32), np.ones((t, 2, h, w), np.float32)
+
+    track2d(shared, ep, FakeAllTracker(), grid_stride=4)
+    for call, video in zip(runner.calls, calls):
+        np.testing.assert_array_equal(resize_inputs(video, np.ones(video.shape[:3]), a.K(), (32, 48))[0],
+                                      call["arrays"]["video"])
+        cam = "/".join(call["chunk_id"].split("/")[1:3])
+        q, end = map(int, call["chunk_id"].split("/")[-1].split("-"))
+        name = f"{rio.safe_name(cam)}_q{q:05d}.npz"
+        with np.load(rio.stage_dir(shared, ep, "track2d") / name) as at, \
+                np.load(rio.stage_dir(root, ep, "lift3d") / name) as te_out:
+            np.testing.assert_array_equal(at["frame_indices"], te_out["frame_indices"])
+            np.testing.assert_array_equal(te_out["frame_indices"], np.arange(q, end))
+    assert len(calls) == len(runner.calls)
     for q in (0, 8):
         name = f"rig0__left_q{q:05d}.npz"
         with np.load(rio.stage_dir(root, ep, "lift3d") / name) as z:
             after = z["frame_indices"] >= a.pause
-            assert after.any() and (z["status"][after] == NOT_TRACKED).all()
-            assert np.isnan(z["visibility"][after]).all()
-        tr = load_tracks2d(rio.stage_dir(root, ep, "track2d") / name, "rig0/left")
-        assert np.isnan(tr.uv[after]).all()
+            assert after.any() and (z["status"][after] == VALID).any()
 
 
 def test_motion_export_and_viewer_consume_unmodified_contract(run, tmp_path):
@@ -272,18 +292,67 @@ def test_continuous_resize_and_original_query_rays():
     np.testing.assert_allclose(rays, rays_model, atol=1e-15)
 
 
-@pytest.mark.parametrize("window,step", [(16, 8), (64, 8), (24, 11), (1, 1), (16, 128)])
-def test_bounded_overlapping_clips_cover_each_original_query(window, step):
-    stamps = np.arange(211, dtype=np.int64) * 1000
-    stamps[139:] += 100_000
-    plan = clip_plan(stamps, window, step)
-    seen = []
-    for start, end, seg_end, windows in plan:
-        assert 0 < end - start <= 64 and (end <= 139 or start >= 139)
-        for q, idx in windows:
-            assert start <= q and min(idx[-1] + 1, seg_end) <= end
-            seen.append((q, idx))
-    assert seen == chunk_queries(len(stamps), window, step)
+@pytest.mark.parametrize("window", [17, 64])
+def test_te_refuses_multiple_inference_windows(window):
+    with pytest.raises(ValueError, match="window in 1..16"):
+        track_everything(None, "ep", None, None, depth_stage="sensor_depth", window=window)
+
+
+def test_query_depth_uses_floor_after_continuous_resize_and_never_invents():
+    # Original centre 8.5 -> resized coordinate 6.8. floor selects 6, while upstream round selected 7.
+    depth = torch.ones((1, 16, 16))
+    depth[0, 6, 6], depth[0, 7, 7] = 2.0, 9.0
+    query = np.array([[0, 6.8, 6.8]], np.float32)
+    K, E = torch.eye(3)[None], torch.eye(4)[None]
+    out = te.continuous_query_unprojection(query, depth, K, E)
+    np.testing.assert_allclose(out[0, 0], [0, 13.6, 13.6, 2.], atol=1e-6)
+    depth[0, 6, 6] = 0
+    with pytest.raises(ValueError, match="depth invention is disabled"):
+        te.continuous_query_unprojection(query, depth, K, E)
+
+
+def test_unsupported_births_are_counted_and_never_sent_to_te(tmp_path):
+    a, root, ep = episode(tmp_path)
+    # Constant depth isolates support: one centre hole, one discontinuity and one missing neighbour.
+    for cam in ("rig0/left", "rig1/left"):
+        with h5py.File(rio.stage_dir(root, ep, "sensor_depth") / f"{rio.safe_name(cam)}.h5", "r+") as h:
+            d = np.ones_like(h["depth"][:])
+            d[:, 2, 2] = 0
+            d[:, 2, 5] = 1.1
+            d[:, 2, 9] = 0
+            h["depth"][:] = d
+            h["valid"][:] = d > 0
+    runner = SyntheticRunner(tmp_path / "worker", a)
+    records = track_everything(root, ep, MOCK_SPEC, runner, depth_stage="sensor_depth", grid_stride=4, model_hw=a.hw)
+    expected = [NO_DEPTH, EDGE, EDGE]
+    rc = query_grid(a.hw, 4, 2)
+    for call in runner.calls:
+        uv = call["queries"][:, 1:]
+        assert (depth_support_status(call["arrays"]["depth"][:1], uv[None]) == VALID).all()
+        assert not any(np.array_equal(x, y) for x in uv for y in (rc[:3, ::-1] + .5))
+    for cam in ("rig0/left", "rig1/left"):
+        info = records["lift3d"]["summary"][cam]
+        assert info["queries"] == 3 * len(rc)
+        assert info["unsupported_birth_depth"] == 3 and info["unsupported_birth_edge"] == 6
+        for name in info["chunks"]:
+            with np.load(rio.stage_dir(root, ep, "lift3d") / name) as z:
+                np.testing.assert_array_equal(z["status"][0, :3], expected)
+                assert (z["status"][1:, :3] == NOT_TRACKED).all()
+                assert np.isnan(z["xyz_base"][:, :3]).all()
+
+
+def test_no_supported_births_skip_inference(tmp_path):
+    a, root, ep = episode(tmp_path)
+    for cam in ("rig0/left", "rig1/left"):
+        with h5py.File(rio.stage_dir(root, ep, "sensor_depth") / f"{rio.safe_name(cam)}.h5", "r+") as h:
+            h["depth"][:] = 0
+    runner = SyntheticRunner(tmp_path / "worker", a)
+    records = track_everything(root, ep, MOCK_SPEC, runner, depth_stage="sensor_depth", grid_stride=4, model_hw=a.hw)
+    assert not runner.calls
+    for cam in ("rig0/left", "rig1/left"):
+        info = records["lift3d"]["summary"][cam]
+        assert info["unsupported_birth_depth"] == info["queries"]
+        assert info["unsupported_birth_edge"] == 0
 
 
 def test_inference_hook_captures_dynamic_and_always_cleans_up():
@@ -352,6 +421,7 @@ def test_local_loader_uses_pinned_package_and_hashes_once(tmp_path, monkeypatch)
     assert first is second and len(calls) == len(hashes) == 1
     assert calls[0] == (str(checkpoint), {"device": "cuda", "geometry_backend": "pi3"})
     assert sys.path[0] == str(repo.parent)
+    assert demo._unproject_2d_to_3d is te.continuous_query_unprojection
     assert first[1]["commit"] == "d" * 40 and first[1]["checkpoint_sha256"] == sha(str(checkpoint))
     assert first[1]["is_mock"] is False
 
@@ -383,11 +453,11 @@ def test_resume_reuses_durably_saved_clips_after_ack_failure(tmp_path):
     assert rio.read_record(rio.stage_dir(root, ep, "track2d")) is None
     runner.ack = ack
     recs = track_everything(root, ep, MOCK_SPEC, runner, **opts)
-    assert len(runner.calls) == 4 and all(not v["skipped"] for v in recs.values())
+    assert len(runner.calls) == 6 and all(not v["skipped"] for v in recs.values())
     assert not list(rio.stage_dir(root, ep, "track2d").parent.glob(".trackeverything_clips.chunks.*"))
     calls = len(runner.calls)
     track_everything(root, ep, MOCK_SPEC, runner, force=True, **opts)
-    assert len(runner.calls) == calls + 4
+    assert len(runner.calls) == calls + 6
 
 
 def test_resume_after_track2d_swap_needs_no_new_inference(tmp_path, monkeypatch):
@@ -405,10 +475,10 @@ def test_resume_after_track2d_swap_needs_no_new_inference(tmp_path, monkeypatch)
     with pytest.raises(RuntimeError, match="before lift3d swap"):
         track_everything(root, ep, MOCK_SPEC, runner, **opts)
     assert rio.read_record(rio.stage_dir(root, ep, "track2d")) is not None
-    assert len(runner.calls) == 4
+    assert len(runner.calls) == 6
     monkeypatch.setattr(rio, "run_stage", run_stage)
     recs = track_everything(root, ep, MOCK_SPEC, runner, **opts)
-    assert recs["track2d"]["skipped"] and not recs["lift3d"]["skipped"] and len(runner.calls) == 4
+    assert recs["track2d"]["skipped"] and not recs["lift3d"]["skipped"] and len(runner.calls) == 6
 
 
 def test_worker_refuses_download_or_multiview_and_mock_without_opt_in(tmp_path):

@@ -46,13 +46,24 @@ class ViewerEpisode:
 
 
 def load_episode(root: Path, episode_id: str, *, gap_factor: float = 1.5) -> ViewerEpisode:
-    from s4d.realworld.depth_stages import frame_sets
+    from s4d.realworld.depth_stages import frame_sets, sets_policy
     from s4d.realworld.pipeline import accepted_calibration, load_meta
 
     root = Path(root)
     meta = load_meta(root, episode_id)
     streams = [v.stream_id for v in meta.views()]
-    sets = frame_sets(meta, streams)
+    if rio.read_record(rio.stage_dir(root, episode_id, "mapanything_depth")) is not None:
+        policy = sets_policy(root, episode_id)
+    else:
+        import yaml
+
+        path = root / "pipeline.yaml"
+        cfg = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
+        depth_cfg = (cfg.get("stages") or {}).get("mapanything_depth") or {}
+        policy = {k: depth_cfg[k] for k in ("max_sync_ns", "allow_unmatched") if k in depth_cfg}
+    sets = frame_sets(meta, streams, **policy)
+    if not len(sets["index"]):
+        raise ValueError(f"{episode_id}: no synchronized camera sets under policy {policy}")
     T = np.stack([accepted_calibration(root, episode_id, s) for s in streams])
     stamps = sets["stamps_ns"][:, 0].astype(np.int64)
     times = (stamps - stamps[0]) * 1e-9
@@ -283,10 +294,10 @@ def gripper_flow(geom, q: np.ndarray, g: np.ndarray, ok: np.ndarray, k: int, *, 
 def describe(ve: ViewerEpisode) -> dict:
     return {"episode": ve.episode_id, "sets": ve.n_sets, "duration_s": float(ve.times_s[-1]),
             "period_s": ve.period_s, "pauses": [{"before_set": k, "gap_s": g} for k, g in ve.gaps],
-            "cameras": ve.streams}
+            "cameras": ve.streams, "max_sync_ns": ve.sets["max_sync_ns"],
+            "unmatched_frames": ve.sets.get("unmatched", {s: [] for s in ve.streams})}
 
 
 def write_json(path: Path, doc: dict) -> None:
     Path(path).write_text(json.dumps(doc, indent=1, default=str))
-
 

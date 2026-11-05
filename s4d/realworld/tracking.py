@@ -90,6 +90,22 @@ def alltracker_to_tracks2d(flows: np.ndarray, visconf: np.ndarray, query_pixels:
                     visconf[:, 1, r, c].astype(np.float32), (H, W), dict(source))
 
 
+def depth_support_status(depths: np.ndarray, uv: np.ndarray, edge_rel: float = 0.05) -> np.ndarray:
+    """Depth support at continuous pixels: floor lookup and lift3d's 3x3 relative-spread test.
+
+    Zero padding treats image boundaries as edges. A missing centre is NO_DEPTH; a missing/nonfinite neighbour or
+    one differing by more than 5% of the centre is EDGE. Callers supply finite, in-bounds query pixels.
+    """
+    j, i = np.floor(uv[..., 0]).astype(int), np.floor(uv[..., 1]).astype(int)
+    t_idx = np.arange(len(depths))[:, None]
+    z = depths[t_idx, i, j]
+    padded = np.pad(depths, ((0, 0), (1, 1), (1, 1)))
+    neigh = np.stack([padded[t_idx, i + di, j + dj] for di in range(3) for dj in range(3)], -1)
+    edge = (~np.isfinite(neigh) | (neigh <= 0)).any(-1)
+    edge |= np.abs(neigh - z[..., None]).max(-1) > edge_rel * np.maximum(z, 1e-6)
+    return np.where(~np.isfinite(z) | (z <= 0), NO_DEPTH, np.where(edge, EDGE, VALID)).astype(np.uint8)
+
+
 def lift_tracks(tracks: Tracks2D, depths: np.ndarray, K: np.ndarray, T_cam_base: np.ndarray, *,
                 vis_threshold: float = 0.5, conf_threshold: float = 0.5, edge_rel: float = 0.05) -> Tracks3D:
     """depths (T,H,W) metric camera-z on the tracked image grid (0 invalid), K continuous-convention."""
@@ -109,12 +125,8 @@ def lift_tracks(tracks: Tracks2D, depths: np.ndarray, K: np.ndarray, T_cam_base:
     i = np.clip(np.floor(np.nan_to_num(uv[..., 1], nan=-1)).astype(int), 0, H - 1)
     t_idx = np.repeat(np.arange(T)[:, None], N, 1)
     z = depths[t_idx, i, j]
-    status[(status == VALID) & ~(np.isfinite(z) & (z > 0))] = NO_DEPTH
-    # depth edge test on the 3x3 neighbourhood (all neighbours valid and within edge_rel of the centre)
-    padded = np.pad(depths, ((0, 0), (1, 1), (1, 1)))
-    neigh = np.stack([padded[t_idx, i + di, j + dj] for di in range(3) for dj in range(3)], -1)
-    edge = (neigh <= 0).any(-1) | (np.abs(neigh - z[..., None]).max(-1) > edge_rel * np.maximum(z, 1e-6))
-    status[(status == VALID) & edge] = EDGE
+    support = depth_support_status(depths, np.stack([j + 0.5, i + 0.5], -1), edge_rel)
+    status[status == VALID] = support[status == VALID]
     ok = status == VALID
     cam = np.full((T, N, 3), np.nan, np.float32)
     cam[ok] = unproject(uv[ok], z[ok], K)
