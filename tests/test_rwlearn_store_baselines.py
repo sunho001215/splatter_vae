@@ -63,7 +63,7 @@ def test_memory_store_implements_the_protocol_and_registry():
     assert open_store(store) is store
     with pytest.raises(KeyError, match="no FrameStore opener"):
         open_store({"kind": "nope"})
-    with pytest.raises(RuntimeError, match="train_store"):  # the compact store plugs in once its branch is merged
+    with pytest.raises(ValueError, match="no training-store episodes"):  # the merged compact store refuses an empty set
         open_store({"kind": "compact", "paths": []})
 
 
