@@ -41,6 +41,7 @@ workers:
     python: /opt/envs/foundation_stereo/bin/python
     repo_dir: /opt/upstream/FoundationStereo
     checkpoint: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth
+    env: {LD_LIBRARY_PATH: /opt/envs/tools/lib}  # upstream Utils.py imports open3d, which needs GLVND libEGL.so.1
   dino_snerl: {python: /opt/envs/s4d/bin/python}
   s4d_kernels: {python: /opt/envs/s4d/bin/python}
 weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart
