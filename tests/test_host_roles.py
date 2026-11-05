@@ -150,19 +150,27 @@ def test_explicit_retry_in_place_exceptions(tmp_path):
     path = tmp_path / "role-exceptions.json"
     assert roles_mod.load_exceptions(path) == {}
     grant = {"id": DRM["id"], "host": "remote", "scope": "retry_in_place", "reason": "remote outage at 990k",
-             "granted": "2026-11-06T03:00:00+09:00"}
+             "granted": "2026-11-06T03:00:00+09:00", "attempt": 1, "job_sha256": "1" * 64}
     path.write_text(json.dumps({"exceptions": [grant, {**grant, "id": "old", "active": False}]}))
     exceptions = roles_mod.load_exceptions(path)
     assert set(exceptions) == {DRM["id"]}
-    started = {"host": "remote", "attempts": 1, "status": "crashed"}
+    started = {"host": "remote", "attempt": 1, "attempts": 1, "status": "crashed", "job_sha256": "1" * 64,
+               "attempt_containers": {"1": {"container": "c", "container_id": "f" * 64}}}
     assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, started, exceptions) is None
     assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, None, exceptions) is not None  # never launched
     assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, {**started, "host": "local"}, exceptions) is not None
+    refused_launch = {**started, "attempt_containers": {}}  # reserved but never executed (no container recorded)
+    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, refused_launch, exceptions) is not None
+    later = {**started, "attempt": 2, "attempts": 2, "attempt_containers": {"2": {"container_id": "e" * 64}}}
+    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, later, exceptions) is not None  # one granted attempt
+    changed = {**started, "job_sha256": "2" * 64}
+    assert roles_mod.refusal(DRM, "remote", ROLES, {}, CONTEXT, changed, exceptions) is not None
     assert roles_mod.refusal(EXPORT, "remote", ROLES, {}, CONTEXT, started, exceptions) is not None  # not listed
     migrating = ownership(DRM["id"], "migrating", "remote")
     assert "in progress" in roles_mod.refusal(DRM, "remote", ROLES, migrating, CONTEXT, started, exceptions)
     for bad in ({**grant, "scope": "admit"}, {**grant, "host": "inference"}, {**grant, "reason": ""},
-                {k: v for k, v in grant.items() if k != "granted"}):
+                {k: v for k, v in grant.items() if k != "granted"}, {**grant, "attempt": 0},
+                {k: v for k, v in grant.items() if k != "job_sha256"}):
         path.write_text(json.dumps({"exceptions": [bad]}))
         with pytest.raises(ValueError):
             roles_mod.load_exceptions(path)
@@ -347,13 +355,20 @@ def migration_sandbox(tmp_path, *, evaluator_launched=True, container_removed=Tr
     (run / "replay").mkdir()
     out.mkdir(parents=True)
     agent = {name: {"w": torch.zeros(2)} for name in migration.COMPONENTS["train_rl.py"]["agent"]}
-    agent.update(dormant_ratio=0.1, awaken_step=None)
+    layer = torch.nn.Linear(2, 2)
+    optimizer = torch.optim.Adam(layer.parameters())
+    layer(torch.ones(1, 2)).sum().backward()
+    optimizer.step()  # a real optimizer state: 0-dim "step" tensors
+    agent.update(dormant_ratio=0.1, awaken_step=None, actor_opt=optimizer.state_dict())
     state = {key: 0 for key in migration.COMPONENTS["train_rl.py"]["top"]}
     state.update(step=300000, agent=agent, replay_meta=[1, 2, 3], torch_rng=torch.zeros(4, dtype=torch.uint8))
     torch.save(state, run / "checkpoints/latest.pt")
     (run / "replay/ram_snapshot.npz").write_bytes(b"replay")
     (run / "train.jsonl").write_text(json.dumps({"step": 300000}) + "\n")
     (out / "eval.jsonl").write_text(json.dumps({"step": 300000}) + "\n")
+    for folder, job_id in ((run, DRM["id"]), (out, DRM_EVAL["id"])):  # the source host's campaign provenance
+        (folder / "provenance.json").write_text(json.dumps({"host": "remote", "job_id": job_id,
+                                                            "campaign_eligible": True}))
     export = tmp_path / "runs/cst75-export-seed0-hammer-200k/encoder.pt"
     export.parent.mkdir(parents=True)
     export.write_bytes(b"encoder")
@@ -364,7 +379,8 @@ def migration_sandbox(tmp_path, *, evaluator_launched=True, container_removed=Tr
             continue
         events += [{"event": "launched", "id": job_id, "host": "remote", "gpu": REMOTE_GPU, "attempt": 1,
                     "container": f"s4d-{job_id}-a1", "container_id": cid, "commit": "c" * 40,
-                    "image_digest": "sha256:" + "e" * 64, "job_sha256": "1" * 64},
+                    "image_digest": "sha256:" + "e" * 64,
+                    "job_sha256": jobs.job_fingerprint(remote_row(DRM if job_id == DRM["id"] else DRM_EVAL))},
                    {**STOP, "id": job_id, "checkpoint": f"runs/{job_id}/checkpoints/latest.pt",
                     "checkpoint_sha256": digest if job_id == DRM["id"] else None},
                    {"event": "exited", "id": job_id, "host": "remote", "attempt": 1, "code": 143,
@@ -378,8 +394,8 @@ def migration_sandbox(tmp_path, *, evaluator_launched=True, container_removed=Tr
     sandbox(tmp_path, rows, events)
     paths = migration.Paths(root=tmp_path, ownership=tmp_path / "ownership", pool_manifest=tmp_path / "pool.json",
                             admission_lock=tmp_path / "admission.lock")
-    listing = {DRM["id"]: {str(p.relative_to(run)): migration.sha256(p) for p in run.rglob("*") if p.is_file()},
-               DRM_EVAL["id"]: {"eval.jsonl": migration.sha256(out / "eval.jsonl")}}
+    listing = {i: {str(p.relative_to(folder)): migration.sha256(p) for p in folder.rglob("*") if p.is_file()}
+               for i, folder in ((DRM["id"], run), (DRM_EVAL["id"], out))}
     return paths, listing
 
 
@@ -410,6 +426,7 @@ def test_remote_to_local_migration_of_a_paused_run(tmp_path, monkeypatch):
     assert manifest["components"]["step"] == 300000
     groups = manifest["components"]["groups"]
     assert groups["optimizer"] == ["agent.actor_opt", "agent.critic_opt", "agent.predictor_opt"]
+    assert manifest["files"]["runs/cst75-drm-hammer-s2000/checkpoints/latest.pt"]["mtime_ns"] > 0
     assert groups["scheduler"] == ["agent.awaken_step", "agent.dormant_ratio"]
     assert groups["rng"] == ["camera_rng", "cuda_rng", "numpy_rng", "python_rng", "torch_rng"]
     replay = listing[DRM["id"]]["replay/ram_snapshot.npz"]
@@ -421,11 +438,19 @@ def test_remote_to_local_migration_of_a_paused_run(tmp_path, monkeypatch):
                                                        "differences": ["s4d/rl/agent.py"]})
     records = migration.switch(DRM["id"], paths, identical_scope, lambda root: ("d" * 40, "local-venv:x"))
     assert [r["state"] for r in records] == ["switched", "switched"] and records[0]["owner_host"] == "local"
+    run, out = tmp_path / "runs/cst75-drm-hammer-s2000", tmp_path / "runs/cst75-drm-hammer-s2000-eval"
+    for folder in (run, out):  # the source provenance is preserved; the local attempt writes its own
+        assert not (folder / "provenance.json").exists() and (folder / "provenance.remote-a1.json").is_file()
+    assert records[0]["provenance_transition"]["renamed"] == {
+        "runs/cst75-drm-hammer-s2000/provenance.json": "runs/cst75-drm-hammer-s2000/provenance.remote-a1.json",
+        "runs/cst75-drm-hammer-s2000-eval/provenance.json":
+            "runs/cst75-drm-hammer-s2000-eval/provenance.remote-a1.json"}
+    assert migration.switch(DRM["id"], paths, identical_scope) == records  # idempotent
     state = jobs.read_registry(paths.registry)
     for job_id in (DRM["id"], DRM_EVAL["id"]):
         assert state[job_id]["host"] == "local" and state[job_id]["status"] == "pending"
         assert state[job_id]["migrated_from"] == {"host": "remote", "attempt": 1, "checkpoint_step": 300000}
-        assert state[job_id]["job_sha256"] == "1" * 64 and state[job_id]["attempts"] == 1
+        assert state[job_id]["attempts"] == 1
     queue = {j["id"]: j for j in jobs.load_queue(paths.queue)["jobs"]}
     assert queue[DRM["id"]]["host"] == "local" and queue[DRM["id"]]["pin_host"] == "local"
     assert jobs.job_fingerprint(queue[DRM["id"]]) == jobs.job_fingerprint(remote_row(DRM))
@@ -436,16 +461,22 @@ def test_remote_to_local_migration_of_a_paused_run(tmp_path, monkeypatch):
     assert roles_mod.ownership_refusal(DRM["id"], "remote", owned).startswith("owned by local")
     with pytest.raises(migration.MigrationError, match="only a migration before its switch"):
         migration.abort(DRM["id"], "late", paths)
-    with pytest.raises(migration.MigrationError, match="no destination attempt"):
+    with pytest.raises(migration.MigrationError, match="no running or finished destination attempt"):
         migration.confirm(DRM["id"], paths)
     jobs.record({"event": "launched", "id": DRM["id"], "host": "local", "pid": 2, "gpu": LOCAL_GPU, "attempt": 2},
                 paths.registry)
-    run = tmp_path / "runs/cst75-drm-hammer-s2000"
+    with pytest.raises(migration.MigrationError, match="no running or finished destination attempt"):
+        migration.confirm(DRM["id"], paths)  # the evaluator has not started on local yet
+    jobs.record({"event": "launched", "id": DRM_EVAL["id"], "host": "local", "pid": 3, "gpu": LOCAL_GPU, "attempt": 2},
+                paths.registry)
     with pytest.raises(migration.MigrationError, match="no verified resume"):
         migration.confirm(DRM["id"], paths)
-    (run / "events.jsonl").write_text(json.dumps({"event": "resumed", "step": 300000}) + "\n")
+    (run / "events.jsonl").write_text(json.dumps({"event": "resumed", "step": 300000, "time": 1.0}) + "\n")
     with open(run / "train.jsonl", "a") as stream:
         stream.write(json.dumps({"step": 301000}) + "\n")
+    with pytest.raises(migration.MigrationError, match="no verified resume"):
+        migration.confirm(DRM["id"], paths)  # a resume record older than the destination attempt
+    (run / "events.jsonl").write_text(json.dumps({"event": "resumed", "step": 300000, "time": 4e9}) + "\n")
     records = migration.confirm(DRM["id"], paths)
     assert [r["state"] for r in records] == ["verified", "verified"] and records[0]["resumed_attempt"] == 2
     assert [h["state"] for h in records[0]["history"]] == ["migrating", "migrating", "switched"]
@@ -503,9 +534,11 @@ def test_execution_scope_compares_a_release_commit_with_the_working_tree(tmp_pat
     def git(*args):
         subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
 
-    files = {"scripts/train_rl.py": "import s4d.rl\n", "s4d/__init__.py": "", "s4d/rl.py": "import ops.x\nA = 1\n",
-             "ops/__init__.py": "", "ops/x.py": "", "configs/rl/base.yaml": "a: 1\n", "configs/droid/x.yaml": "",
-             "uv.lock": "lock\n", "pyproject.toml": "[project]\n"}
+    files = {"scripts/train_rl.py": "import _bootstrap\nimport s4d.rl\n", "scripts/_bootstrap.py": "import mujoco_setup\n",
+             "mujoco_setup.py": "", "s4d/__init__.py": "", "s4d/rl.py": "import ops.x\nimport ops.jobs.scheduler\nA = 1\n",
+             "ops/__init__.py": "", "ops/x.py": "", "ops/jobs/__init__.py": "", "ops/jobs/scheduler.py": "",
+             "configs/rl/base.yaml": "a: 1\n", "configs/droid/x.yaml": "", "uv.lock": "lock\n",
+             "pyproject.toml": "[project]\n"}
     for name, text in files.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(text)
@@ -514,12 +547,18 @@ def test_execution_scope_compares_a_release_commit_with_the_working_tree(tmp_pat
     git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "release")
     commit = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     scope = migration.execution_scope(["scripts/train_rl.py"], commit, tmp_path)
-    assert scope["identical"] and set(scope["files"]) == {"scripts/train_rl.py", "s4d/__init__.py", "s4d/rl.py",
-                                                          "configs/rl/base.yaml", "uv.lock", "pyproject.toml"}
-    (tmp_path / "ops/x.py").write_text("HOST = 'local'\n")  # the operational layer: recorded, not compared
+    assert scope["identical"] and set(scope["files"]) == {
+        "scripts/train_rl.py", "scripts/_bootstrap.py", "mujoco_setup.py", "s4d/__init__.py", "s4d/rl.py",
+        "ops/__init__.py", "ops/x.py", "ops/jobs/__init__.py", "configs/rl/base.yaml", "uv.lock", "pyproject.toml"}
+    (tmp_path / "ops/jobs/scheduler.py").write_text("ADMIT = 1\n")  # a listed operational file: recorded only
     (tmp_path / "configs/droid/x.yaml").write_text("b: 2\n")  # outside the scope
     scope = migration.execution_scope(["scripts/train_rl.py"], commit, tmp_path)
-    assert scope["identical"] and scope["operational_differences"] == ["ops/x.py"]
+    assert scope["identical"] and scope["operational_differences"] == ["ops/jobs/scheduler.py"]
+    (tmp_path / "ops/x.py").write_text("HOST = 'local'\n")  # any other imported operational file is compared
+    (tmp_path / "mujoco_setup.py").write_text("X = 1\n")  # a repository-root module imported by _bootstrap
+    scope = migration.execution_scope(["scripts/train_rl.py"], commit, tmp_path)
+    assert not scope["identical"] and scope["differences"] == ["mujoco_setup.py", "ops/x.py"]
+    git("checkout", "--", "ops/x.py", "mujoco_setup.py")
     (tmp_path / "configs/rl/base.yaml").write_text("a: 2\n")
     (tmp_path / "s4d/new.py").write_text("")
     (tmp_path / "s4d/rl.py").write_text("import ops.x\nimport s4d.new\nA = 1\n")
@@ -569,9 +608,162 @@ def test_remote_driver_offers_and_pool_moves_only_role_admitted_rows():
              and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
              and node.func.value.id == "host_roles"}
     assert calls == {"load_roles", "read_ownership", "load_exceptions", "replace_to_local", "refusal", "role_host",
-                     "job_class"}
+                     "job_class", "placement_repair_needed"}
+    assert source.count("chosen.append({**with_role(") == 2  # dispatch copies carry their class
 
 
 @pytest.mark.parametrize("name", ["stage2_local_driver.py", "baseline_local_driver.py"])
 def test_local_drivers_filter_candidates_by_the_local_role(name):
     assert "host_roles.refusal(j, 'local', _roles, _ownership, _context) is None" in driver_source(name)
+
+
+def test_an_interrupted_switch_completes_when_rerun(tmp_path, monkeypatch):
+    paths, listing = migration_sandbox(tmp_path)
+    migration.begin(DRM["id"], "local", "server roles", paths)
+    migration.verify(DRM["id"], listing, paths)
+    real = jobs.record
+
+    def killed(event, path=jobs.REGISTRY):
+        if event.get("event") == "migrated" and Path(path) == paths.registry:
+            raise OSError("process killed after the queue rewrite")
+        return real(event, path)
+
+    monkeypatch.setattr(jobs, "record", killed)
+    destination = lambda root: ("d" * 40, "local-venv:x")  # noqa: E731
+    with pytest.raises(OSError):
+        migration.switch(DRM["id"], paths, identical_scope, destination)
+    assert {j["id"]: j["host"] for j in jobs.load_queue(paths.queue)["jobs"]}[DRM["id"]] == "local"
+    owned = roles_mod.read_ownership(paths.ownership)
+    assert all("in progress" in roles_mod.ownership_refusal(i, h, owned) for i in owned for h in ("local", "remote"))
+    monkeypatch.setattr(jobs, "record", real)
+    records = migration.switch(DRM["id"], paths, identical_scope, destination)
+    assert [r["state"] for r in records] == ["switched", "switched"]
+    events = [json.loads(line) for line in paths.registry.read_text().splitlines()]
+    assert sorted(e["id"] for e in events if e["event"] == "migrated") == sorted([DRM["id"], DRM_EVAL["id"]])
+    assert len(json.loads(paths.pool_manifest.read_text())["moves"]) == 1
+    assert jobs.read_registry(paths.registry)[DRM["id"]]["host"] == "local"
+
+
+# ---------------------------------------------------------------------------------------------------- review round 1
+@pytest.mark.parametrize("job,cls", [
+    (row("s", "scripts/compute_workspace_stats.py", "--regime=metaworld", role="droid_preprocess"), "invalid"),
+    (row("s", "scripts/compute_workspace_stats.py", "--regime=droid_largescale", role="droid_preprocess"),
+     "droid_preprocess"),
+    (row("f", "scripts/train_fql.py", "--task", "drawer-open", "--dataset", "/datasets/real_world/drawer-open"),
+     "ambiguous"),
+    (row("f", "scripts/train_fql.py", "--task=drawer-open"), "ambiguous"),  # shared task name alone
+    (row("f", "scripts/train_fql.py", "--task", "mug-hanging"), "realworld_fql"),
+    (row("a", "scripts/encp_repr_diagnostics.py", "--task", "hammer", "--arm", "d=runs/droid-x/encoder.pt"),
+     "ambiguous"),
+    (row("a", "scripts/encp_repr_diagnostics.py", "--task", "hammer", "--arm", "d=runs/droid-x/encoder.pt",
+         role="metaworld"), "metaworld"),  # a declared role resolves an ambiguity it belongs to
+    (row("a", "scripts/encp_repr_diagnostics.py", "--task", "hammer", role="realworld_preprocess"), "invalid"),
+    ({**EXPORT, "role": "droid_pretrain"}, "invalid"),  # contradicts its producer's class
+])
+def test_argument_forms_shared_task_names_and_declared_roles(job, cls):
+    assert roles_mod.job_class(job, CONTEXT).cls == cls
+
+
+def test_ownership_location_must_be_a_directory(tmp_path):
+    (tmp_path / "ownership").write_text("")
+    with pytest.raises(ValueError):
+        roles_mod.read_ownership(tmp_path / "ownership")
+
+
+def test_replacement_translates_remote_gpu_selections_and_repairs_interrupted_records(tmp_path, monkeypatch):
+    rows = [remote_row(PRETRAIN, gpu=REMOTE_GPU)]
+    queue, _ = sandbox(tmp_path, rows)
+    real = roles_mod.append_pool_record
+
+    def killed(*args, **kwargs):
+        raise OSError("killed after the queue rewrite")
+
+    monkeypatch.setattr(roles_mod, "append_pool_record", killed)
+    with pytest.raises(OSError):
+        replace(tmp_path)
+    moved = jobs.load_queue(queue)["jobs"][0]
+    assert moved["host"] == "local" and moved["gpu"] == "any" and not (tmp_path / "pool-placement.json").exists()
+    assert roles_mod.placement_repair_needed([moved], tmp_path / "pool-placement.json")
+    monkeypatch.setattr(roles_mod, "append_pool_record", real)
+    result = replace(tmp_path)
+    assert result["moved"] == [] and result["repaired"] == [PRETRAIN["id"]]
+    pool = json.loads((tmp_path / "pool-placement.json").read_text())
+    assert pool["effective_jobs"] == {PRETRAIN["id"]: moved}
+    assert roles_mod.read_ownership(tmp_path / "ownership")[PRETRAIN["id"]]["state"] == "placed"
+    assert not roles_mod.placement_repair_needed([moved], tmp_path / "pool-placement.json")
+
+
+def test_migration_refuses_changed_rows_stage2_rows_and_changed_state(tmp_path):
+    paths, listing = migration_sandbox(tmp_path)
+    text = paths.queue.read_text()
+    paths.queue.write_text(text.replace("--seed\n  - '2000'", "--seed\n  - '2001'"))
+    with pytest.raises(migration.MigrationError, match="fingerprint"):
+        migration.begin(DRM["id"], "local", "x", paths)
+    paths.queue.write_text(text)
+    migration.begin(DRM["id"], "local", "x", paths)
+    migration.verify(DRM["id"], listing, paths)
+    replay = tmp_path / "runs/cst75-drm-hammer-s2000/replay/ram_snapshot.npz"
+    replay.write_bytes(b"changed")
+    with pytest.raises(migration.MigrationError, match="changed after its verification"):
+        migration.switch(DRM["id"], paths, identical_scope)
+
+    stage2 = tmp_path / "stage2"
+    paths, _ = migration_sandbox(stage2)
+    text = paths.queue.read_text()
+    paths.queue.write_text(text.replace("pin_host: remote", "pin_host: remote\n  stage: 2", 1))
+    with pytest.raises(migration.MigrationError, match="Stage 2"):
+        migration.begin(DRM["id"], "local", "x", paths)
+
+
+def test_a_switched_run_launches_only_with_its_verified_state_and_row(tmp_path):
+    paths, listing = migration_sandbox(tmp_path)
+    migration.begin(DRM["id"], "local", "x", paths)
+    migration.verify(DRM["id"], listing, paths)
+    migration.switch(DRM["id"], paths, identical_scope, lambda root: ("d" * 40, "local-venv:x"))
+    owned = roles_mod.read_ownership(paths.ownership)
+    queue = {j["id"]: j for j in jobs.load_queue(paths.queue)["jobs"]}
+    state = jobs.read_registry(paths.registry)
+
+    def check(job_id, fingerprint=None):
+        return roles_mod.migrated_state_refusal(queue[job_id], owned, state[job_id],
+                                                fingerprint or jobs.job_fingerprint(queue[job_id]), tmp_path)
+
+    assert check(DRM["id"]) is None and check(DRM_EVAL["id"]) is None
+    assert "job fingerprint" in check(DRM["id"], "0" * 64)
+    latest = tmp_path / "runs/cst75-drm-hammer-s2000/checkpoints/latest.pt"
+    data = latest.read_bytes()
+    latest.unlink()
+    assert "latest.pt is missing" in check(DRM["id"])
+    latest.write_bytes(data)
+    assert "changed after its verification" in check(DRM["id"])  # same bytes, new modification time
+    eval_jsonl = tmp_path / "runs/cst75-drm-hammer-s2000-eval/eval.jsonl"
+    eval_jsonl.write_text(eval_jsonl.read_text() + "{}\n")
+    assert "eval.jsonl changed" in check(DRM_EVAL["id"])
+    jobs.record({"event": "launched", "id": DRM["id"], "host": "local", "pid": 2, "gpu": LOCAL_GPU, "attempt": 2},
+                paths.registry)
+    state = jobs.read_registry(paths.registry)
+    assert check(DRM["id"]) is None  # after the first destination attempt the run owns its files again
+
+
+def test_pool_mover_respects_roles_ownership_and_pauses(tmp_path, monkeypatch):
+    from ops.jobs import pool_placement as pool
+
+    declared = {"required_results": ["completion.json"], "disk_gb": 30}
+    rows = [{**PRETRAIN, **declared}, {**DROID_PRETRAIN, **declared, "id": "droid-pre-a"},
+            {**DROID_PRETRAIN, **declared, "id": "droid-pre-b"}]
+    queue, registry = sandbox(tmp_path, rows)
+    real_load, real_read = jobs.load_queue, jobs.read_registry
+    monkeypatch.setattr(jobs, "QUEUE", queue)
+    monkeypatch.setattr(jobs, "REGISTRY", registry)
+    monkeypatch.setattr(jobs, "load_queue", lambda path=queue: real_load(path))  # defaults bound at definition
+    monkeypatch.setattr(jobs, "read_registry", lambda path=registry: real_read(path))
+    monkeypatch.setattr(pool, "SETUP", tmp_path)
+    monkeypatch.setattr(pool, "ADMISSION_LOCK", tmp_path / "admission.lock")
+    monkeypatch.setattr(pool, "MANIFEST", tmp_path / "pool-placement.json")
+    monkeypatch.setattr(pool, "ROOT", tmp_path)
+    monkeypatch.setattr(roles_mod, "OWNERSHIP_DIR", tmp_path / "ownership")
+    roles_mod.write_ownership({"job_id": "droid-pre-b", "state": "placed", "owner_host": "local"})
+    moved = pool.move([PRETRAIN["id"], "droid-pre-a", "droid-pre-b"], "remote", "test", blocking=True)
+    assert moved == ["droid-pre-a"]
+    hosts = {j["id"]: j.get("host", "local") for j in jobs.load_queue(queue)["jobs"]}
+    assert hosts == {PRETRAIN["id"]: "local", "droid-pre-a": "remote", "droid-pre-b": "local"}

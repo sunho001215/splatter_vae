@@ -152,6 +152,17 @@ def move(ids: list[str], host: str, reason: str, blocking: bool = False) -> list
                         wanted.add(partner(i))
             chosen = [i for i in sorted(wanted) if i in by_id and by_id[i].get('host', 'local') != host
                       and movable(by_id[i], state, by_id)]
+            # server roles (user directive 2026-11-06; ops/jobs/host_roles.py): a row moves only to a host whose role
+            # admits it, never while an ownership record holds it elsewhere or an admission pause holds it; an RL pair
+            # moves together or not at all
+            from ops.jobs import host_roles
+            from ops.jobs.admission_pause import paused
+            roles, owned = host_roles.load_roles(), host_roles.read_ownership()
+            refused = {i for i in chosen if paused(i) or host_roles.refusal(
+                {**by_id[i], 'host': host}, host, roles, owned, by_id) is not None}
+            refused |= {i for i in chosen if by_id[i]['script'] in ('scripts/train_rl.py', 'scripts/eval_rl.py')
+                        and partner(i) in refused}
+            chosen = [i for i in chosen if i not in refused]
             if not chosen:
                 return []
             stamp = datetime.now().astimezone().isoformat(timespec='seconds')

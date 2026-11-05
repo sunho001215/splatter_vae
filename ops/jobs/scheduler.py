@@ -1093,7 +1093,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 resources.pop("remote", None)
         else:
             identity = source_identity() if identity is None else identity
-            moved = host_roles.migrated_source_refusal(job["id"], ownership, identity.get("source_sha256", {}), REPO)
+            moved = (host_roles.migrated_source_refusal(job["id"], ownership, identity.get("source_sha256", {}), REPO)
+                     or host_roles.migrated_state_refusal(job, ownership, state.get(job["id"]), job_fingerprint(job), REPO))
             if moved is not None:
                 messages.append(f"{job['id']}: not admitted on local: {moved}")
                 continue

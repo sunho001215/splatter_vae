@@ -18,9 +18,9 @@ admission lock and the scheduler's registry lock and updates the unit's ownershi
            (DrM: networks, optimizers, dormant / awaken schedule state, replay counters, python / numpy / torch / CUDA /
            camera RNG; pretraining: encoder, decoder, optimizer, LR scheduler, RNG) together with the replay files;
            consumed encoder exports equal their producer's verified checksum -> transferred-state manifest recorded.
-  switch   the execution scope (the scripts' static import closure inside the repository except the operational
-           ops/ layer, configs/metaworld|rl|baselines, uv.lock, pyproject.toml, third-party pins) of the source release
-           commit equals the destination
+  switch   the execution scope (the scripts' static import closure inside the repository except three listed
+           operational files, configs/metaworld|rl|baselines, uv.lock, pyproject.toml, third-party pins) of the source
+           release commit equals the destination
            working tree (``sources_identical`` of the ``migrated`` event); the source host's paused containers are
            already removed by the scheduler cleanup -> queue rows change host fields only (recorded in
            pool-placement.json), one ``migrated`` event per launched member, state ``switched`` (owner: destination).
@@ -42,7 +42,6 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
-import copy
 import fcntl
 import hashlib
 import json
@@ -61,10 +60,12 @@ from ops.jobs import host_roles  # noqa: E402
 
 CONFIG_SCOPE = ("configs/metaworld/", "configs/rl/", "configs/baselines/")
 ENVIRONMENT_SCOPE = ("uv.lock", "pyproject.toml")
-# The operational layer differs between hosts by design (GPU guard host table, scheduler, container launch) and computes
-# nothing of the run (research code imports it only for the GPU guard and the W&B host tag; tests/test_ops_layout.py):
-# its differences are recorded with the comparison but do not make a continuation non-exact.
-OPERATIONAL = ("ops/",)
+# Operational files a run imports that may differ between the source release and the destination without making the
+# continuation non-exact, each recorded with the comparison: the scheduler and the role module (admission bookkeeping;
+# a job imports the scheduler only for the tested-source check of scripts/_bootstrap.py) and the GPU guard (approved
+# host tables and output-path authorization). Every other imported operational file (run identity / provenance,
+# evaluator registry access, remote access, ...) must be identical like the research code.
+OPERATIONAL_ALLOWED = frozenset({"ops/jobs/scheduler.py", "ops/jobs/host_roles.py", "ops/resources/gpu_guard.py"})
 IMPORT_ROOTS = ("s4d", "ops", "scripts")
 # Checkpoint components a resume restores (scripts/train_rl.py, s4d/train/checkpoint.py), by script.
 COMPONENTS = {
@@ -175,6 +176,7 @@ def _save(paths: Paths, record: dict, state: str, note: str, **changes) -> dict:
 def begin(run_id: str, to_host: str, reason: str, paths: Paths | None = None) -> list[dict]:
     paths = paths or Paths()
     roles = host_roles.load_roles(paths.roles)
+    jobs = _scheduler()
     with locked(paths):
         queue, by_id, state = _load(paths)
         unit = unit_of(run_id, by_id)
@@ -188,6 +190,8 @@ def begin(run_id: str, to_host: str, reason: str, paths: Paths | None = None) ->
             raise MigrationError(f"{run_id}: queue rows of the unit are not all on {from_host}")
         if any(host_roles.role_host(by_id[i], roles, by_id) != to_host for i in unit):
             raise MigrationError(f"{run_id}: {to_host} is not the role host of every member's job class")
+        if any(by_id[i].get("stage") == 2 for i in unit):
+            raise MigrationError(f"{run_id}: Stage 2 rows are placed by the Stage 2 driver's own overlay; not supported")
         existing = [r for r in _records(paths, unit) if r and r["state"] in ("migrating", "switched")]
         if existing:
             raise MigrationError(f"{run_id}: a migration already owns it ({existing[0]['state']})")
@@ -200,6 +204,8 @@ def begin(run_id: str, to_host: str, reason: str, paths: Paths | None = None) ->
             if current.get("host", "local") != from_host:
                 raise MigrationError(f"{i}: registry host {current.get('host')} differs from {from_host}")
             stop = _paused_stop(i, current)
+            if current.get("job_sha256") != jobs.job_fingerprint(by_id[i]):
+                raise MigrationError(f"{i}: the queue row differs from the run launched on {from_host} (fingerprint)")
             members[i] = {"launched": True, "attempt": current["attempt"], "stop": stop,
                           "commit": current.get("commit"), "image_digest": current.get("image_digest"),
                           "job_sha256": current.get("job_sha256"), "run_dir": run_dir(by_id[i]),
@@ -210,6 +216,7 @@ def begin(run_id: str, to_host: str, reason: str, paths: Paths | None = None) ->
         for i in unit:
             previous = host_roles.read_ownership(paths.ownership).get(i)
             record = {"job_id": i, "kind": "migration", "unit": unit, "state": "migrating", "owner_host": from_host,
+                      "original_row": by_id[i],
                       "from_host": from_host, "to_host": to_host, "reason": reason, "time": stamp,
                       "roles_sha256": roles["sha256"], "member": members[i],
                       "checkpoint_step": members[run_id]["stop"]["checkpoint_step"],
@@ -235,7 +242,7 @@ def canonical_digest(value) -> str:
         if torch is not None and isinstance(item, torch.Tensor):
             tensor = item.detach().cpu().contiguous()
             digest.update(f"T{tensor.dtype}{tuple(tensor.shape)}".encode())
-            digest.update(tensor.view(torch.uint8).numpy().tobytes() if tensor.numel() else b"")
+            digest.update(tensor.reshape(-1).view(torch.uint8).numpy().tobytes() if tensor.numel() else b"")
         elif isinstance(item, np.ndarray):
             digest.update(f"A{item.dtype}{item.shape}".encode())
             digest.update(np.ascontiguousarray(item).tobytes())
@@ -323,7 +330,9 @@ def verify(run_id: str, listing: dict, paths: Paths | None = None,
                     raise MigrationError(f"{i}: {relative} missing locally")
                 if sha256(local) != digest:
                     raise MigrationError(f"{i}: {relative} differs from the source checksum")
-                manifest["files"][f"{member['run_dir']}/{relative}"] = {"sha256": digest, "bytes": local.stat().st_size}
+                stat = local.stat()
+                manifest["files"][f"{member['run_dir']}/{relative}"] = {"sha256": digest, "bytes": stat.st_size,
+                                                                        "mtime_ns": stat.st_mtime_ns}
             present = {str(p.relative_to(base)) for p in base.rglob("*") if p.is_file()}
             extras = sorted(present - set(files))
             if any(Path(e).name in REFUSED_EXTRAS for e in extras):
@@ -378,7 +387,8 @@ def _module_files(name: str, importer: str) -> list[str]:
     if parts[0] in IMPORT_ROOTS:
         out = ["/".join(parts[:k]) + "/__init__.py" for k in range(1, len(parts) + 1)]
         return out + ["/".join(parts) + ".py"]
-    return [str(Path(importer).parent / (parts[0] + ".py"))]  # sibling modules on sys.path (scripts/_bootstrap.py)
+    # a sibling module on sys.path (scripts/_bootstrap.py) or a repository-root module (mujoco_mig_setup.py)
+    return [str(Path(importer).parent / (parts[0] + ".py")), parts[0] + ".py"]
 
 
 def import_closure(scripts: list[str], read: Callable[[str], bytes | None]) -> set[str]:
@@ -447,7 +457,7 @@ def execution_scope(scripts: list[str], source_commit: str, root: Path = REPO) -
     files, differences, operational = {}, [], []
     for relative in sorted(paths):
         before, after = source_read(relative), target_read(relative)
-        if relative.startswith(OPERATIONAL):  # host infrastructure (GPU guard, scheduler): recorded, not compared
+        if relative in OPERATIONAL_ALLOWED:  # recorded, not compared (OPERATIONAL_ALLOWED)
             operational += [relative] if before != after else []
             continue
         if before != after:
@@ -487,6 +497,27 @@ def _validated_events(paths: Paths, events: list[dict]) -> None:
                 raise MigrationError(f"{event['id']}: the migrated event does not move the run")
 
 
+def _provenance_transition(paths: Paths, launched: list[tuple[str, dict]], from_host: str) -> dict[str, str]:
+    """Preserve each launched member's source-host provenance.json under provenance.<host>-a<attempt>.json, so the
+    destination attempt records its own provenance (ops/jobs/run_identity.py refuses to overwrite a campaign record of
+    another host). Idempotent; returns {run-relative original: preserved name} of the moved records."""
+    renamed = {}
+    for _, member in launched:
+        source = paths.root / member["run_dir"] / "provenance.json"
+        target = source.with_name(f"provenance.{from_host}-a{member['attempt']}.json")
+        if source.is_file() and target.is_file():
+            if sha256(source) != sha256(target):
+                raise MigrationError(f"{source} and its preserved copy {target.name} differ")
+            source.unlink()
+        elif source.is_file():
+            if json.loads(source.read_text()).get("host") != from_host:
+                raise MigrationError(f"{source} is not the {from_host} provenance record")
+            source.rename(target)
+        if target.is_file():
+            renamed[f"{member['run_dir']}/provenance.json"] = f"{member['run_dir']}/{target.name}"
+    return renamed
+
+
 def switch(run_id: str, paths: Paths | None = None, scope_fn: Callable = execution_scope,
            identity_fn: Callable = destination_identity) -> list[dict]:
     paths = paths or Paths()
@@ -495,8 +526,11 @@ def switch(run_id: str, paths: Paths | None = None, scope_fn: Callable = executi
         queue, by_id, state = _load(paths)
         unit = unit_of(run_id, by_id)
         records = _records(paths, unit)
-        if any(r is None or r["state"] != "migrating" or not (r.get("manifest") or {}).get("sha256") for r in records):
+        if any(r is None or r["state"] not in ("migrating", "switched") or not (r.get("manifest") or {}).get("sha256")
+               for r in records):
             raise MigrationError(f"{run_id}: transferred state not verified (verify first)")
+        if all(r["state"] == "switched" for r in records):
+            return records
         to_host, from_host = records[0]["to_host"], records[0]["from_host"]
         if to_host != "local":
             raise MigrationError("this procedure migrates to local (local -> remote: the 2026-10-24 tool)")
@@ -505,6 +539,8 @@ def switch(run_id: str, paths: Paths | None = None, scope_fn: Callable = executi
             current = state.get(i, {})
             if current.get("attempt") != member["attempt"] or _paused_stop(i, current) != member["stop"]:
                 raise MigrationError(f"{i}: registry changed since begin")
+            if member.get("job_sha256") != jobs.job_fingerprint(by_id[i]):
+                raise MigrationError(f"{i}: the queue row differs from the run launched on {from_host} (fingerprint)")
             settled = set(current.get("containers_removed", [])) | set(current.get("containers_absent", []))
             if from_host == "remote" and member.get("container_id") and member["container_id"] not in settled:
                 raise MigrationError(f"{i}: its paused remote container is not removed yet (scheduler cleanup)")
@@ -517,77 +553,123 @@ def switch(run_id: str, paths: Paths | None = None, scope_fn: Callable = executi
         if not scope["identical"]:
             raise MigrationError(f"{run_id}: execution scope differs from release {source_commit[:7]}: "
                                  f"{scope['differences'][:10]} (a non-exact continuation needs a decision)")
+        # the verified transferred state, checked again in full right before the switch (provenance records may
+        # already be preserved under their new name by an interrupted earlier switch)
+        manifest = records[0]["manifest"]
+        for name, item in sorted(manifest["files"].items()):
+            path = paths.root / name
+            if not path.is_file() and Path(name).name == "provenance.json":
+                path = path.with_name(f"provenance.{from_host}-a" + next(
+                    str(m["attempt"]) for _, m in launched if name.startswith(m["run_dir"] + "/")) + ".json")
+            if not path.is_file() or path.stat().st_size != item["bytes"] or sha256(path) != item["sha256"]:
+                raise MigrationError(f"{name} changed after its verification; verify again")
+        for export, digest in manifest.get("inputs", {}).items():
+            if not (paths.root / export).is_file() or sha256(paths.root / export) != digest:
+                raise MigrationError(f"input {export} changed after its verification")
         commit, environment = identity_fn(paths.root)
         stamp = host_roles.now()
-        effective = {}
-        for i in unit:
-            new = copy.deepcopy(by_id[i])
-            new["host"] = to_host
-            new["placement"] = (f"migration {stamp} ({from_host} -> {to_host}; runs/setup/ownership/{i}.json; "
-                                "runs/setup/pool-placement.json)")
-            if "pin_host" in new:
-                new["pin_host"] = to_host
-            if jobs.job_fingerprint(new) != jobs.job_fingerprint(by_id[i]):
-                raise MigrationError(f"{i}: the placement would change the job fingerprint")
-            effective[i] = new
+        # Re-runnable: a switch interrupted after its queue rewrite, some registry events or some ownership records
+        # completes the remaining steps; until the trainer's record (written last) is switched it is not admitted.
+        hosts = {by_id[i].get("host", "local") for i in unit}
+        if hosts == {to_host}:
+            effective = {i: by_id[i] for i in unit}
+        elif hosts == {from_host}:
+            effective = {i: host_roles.destination_row(
+                by_id[i], to_host, f"migration {stamp} ({from_host} -> {to_host}; runs/setup/ownership/{i}.json; "
+                "runs/setup/pool-placement.json)") for i in unit}
+            if any(jobs.job_fingerprint(effective[i]) != jobs.job_fingerprint(by_id[i]) for i in unit):
+                raise MigrationError(f"{run_id}: the placement would change a job fingerprint")
+        else:
+            raise MigrationError(f"{run_id}: the unit's queue rows are on {sorted(hosts)}")
+        done = {i for i, member in launched if state.get(i, {}).get("host") == to_host
+                and (state[i].get("migrated_from") or {}).get("checkpoint_step") == member["stop"]["checkpoint_step"]}
         events = [{"event": "migrated", "id": i, "from_host": from_host, "host": to_host,
                    "checkpoint_step": member["stop"]["checkpoint_step"],
                    "checkpoint_sha256": member["stop"].get("checkpoint_sha256"), "from_commit": member["commit"],
                    "from_image_digest": member.get("image_digest"), "commit": commit, "image_digest": environment,
                    "sources_identical": True,
                    "source_comparison": (f"execution scope of {scripts} ({len(scope['files'])} files + third-party "
-                                         f"pins) equal between {source_commit[:7]} and the local working tree"),
+                                         f"pins) equal between {source_commit[:7]} and the local working tree; "
+                                         f"operational differences {scope.get('operational_differences', [])}"),
                    "ownership": f"runs/setup/ownership/{i}.json",
                    "manifest_sha256": records[unit.index(i)]["manifest"]["sha256"],
-                   "reason": records[0]["reason"]} for i, member in launched]
-        _validated_events(paths, events)
-        before, after = host_roles.write_queue(paths.queue, [effective.get(j["id"], j) for j in queue["jobs"]],
-                                               jobs.load_queue)
+                   "reason": records[0]["reason"]} for i, member in launched if i not in done]
+        if events:
+            _validated_events(paths, events)
+        renamed = _provenance_transition(paths, launched, from_host)
+        if hosts == {to_host}:
+            before = after = paths.queue.read_bytes()
+        else:
+            before, after = host_roles.write_queue(paths.queue, [effective.get(j["id"], j) for j in queue["jobs"]],
+                                                   jobs.load_queue)
         for event in events:
             jobs.record(event, paths.registry)
-        host_roles.append_pool_record(paths.pool_manifest, {
-            "time": stamp, "to": to_host, "reason": f"migration of a checkpoint-paused run ({records[0]['reason']}); "
-            "registry migrated events, resume from latest.pt", "ids": unit, "rewritten_exports": [],
-            "original": {i: by_id[i] for i in unit}, "queue_sha256_before": hashlib.sha256(before).hexdigest(),
-            "queue_sha256_after": hashlib.sha256(after).hexdigest()}, effective)
+        placed = json.loads(paths.pool_manifest.read_text()).get("effective_jobs", {}) if paths.pool_manifest.is_file() \
+            else {}
+        if any(placed.get(i) != effective[i] for i in unit):
+            host_roles.append_pool_record(paths.pool_manifest, {
+                "time": stamp, "to": to_host, "reason": f"migration of a checkpoint-paused run "
+                f"({records[0]['reason']}); registry migrated events, resume from latest.pt", "ids": unit,
+                "rewritten_exports": [], "original": {i: r["original_row"] for i, r in zip(unit, records)},
+                "queue_sha256_before": hashlib.sha256(before).hexdigest(),
+                "queue_sha256_after": hashlib.sha256(after).hexdigest()}, effective)
         destination = {"commit": commit, "image_digest": environment, "scope_files": scope["files"],
-                       "scope_third_party": scope["third_party"], "scripts": scripts, "source_commit": source_commit}
-        return [_save(paths, record, "switched", f"queue and registry moved to {to_host}", owner_host=to_host,
-                      destination=destination) for record in records]
+                       "scope_third_party": scope["third_party"], "scripts": scripts, "source_commit": source_commit,
+                       "operational_differences": scope.get("operational_differences", [])}
+        saved = {}
+        for i, record in reversed(list(zip(unit, records))):  # companions first, the run itself last
+            saved[i] = record if record["state"] == "switched" else _save(
+                paths, record, "switched", f"queue and registry moved to {to_host}", owner_host=to_host,
+                destination=destination, provenance_transition={"renamed": renamed})
+        return [saved[i] for i in unit]
 
 
 # ---------------------------------------------------------------------------------------------------- confirm / abort
-def _resumed(paths: Paths, job: dict, step: int) -> bool:
+def _jsonl(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.is_file() else []
+
+
+def _resumed(paths: Paths, job: dict, step: int, since: float) -> bool:
+    """The destination attempt (launched at ``since``) resumed at the paused step and made progress past it."""
     base = paths.root / run_dir(job)
     script = Path(job["script"]).name
     if script == "train_rl.py":
-        events = [json.loads(line) for line in (base / "events.jsonl").read_text().splitlines() if line.strip()] \
-            if (base / "events.jsonl").is_file() else []
-        train = [json.loads(line) for line in (base / "train.jsonl").read_text().splitlines() if line.strip()] \
-            if (base / "train.jsonl").is_file() else []
-        return (any(e.get("event") == "resumed" and e.get("step") == step for e in events)
-                and any(int(r.get("step", 0)) > step for r in train))
+        return (any(e.get("event") == "resumed" and e.get("step") == step and float(e.get("time", 0)) >= since - 60
+                    for e in _jsonl(base / "events.jsonl"))
+                and any(int(r.get("step", 0)) > step for r in _jsonl(base / "train.jsonl")))
     if script == "train.py":
         log = (base / "log.txt").read_text() if (base / "log.txt").is_file() else ""
-        return re.search(rf"resumed from \S+ at step {step}\b", log) is not None
+        return (re.search(rf"resumed from \S+ at step {step}\b", log) is not None
+                and any(int(r.get("step", 0)) > step for r in _jsonl(base / "metrics.jsonl")))
     raise MigrationError(f"no resume check for {script}")
 
 
 def confirm(run_id: str, paths: Paths | None = None) -> list[dict]:
+    """Every member runs (or finished) on the destination in a new attempt; the run itself resumed at the paused step
+    and progressed past it in that attempt."""
     paths = paths or Paths()
+    jobs = _scheduler()
     with locked(paths):
         queue, by_id, state = _load(paths)
         unit = unit_of(run_id, by_id)
         records = _records(paths, unit)
         if any(r is None or r["state"] != "switched" for r in records):
             raise MigrationError(f"{run_id}: not switched")
-        current, member = state.get(run_id, {}), records[0]["member"]
-        if current.get("host") != records[0]["to_host"] or current.get("attempts", 0) <= member["attempt"]:
-            raise MigrationError(f"{run_id}: no destination attempt yet")
-        if not _resumed(paths, by_id[run_id], member["stop"]["checkpoint_step"]):
-            raise MigrationError(f"{run_id}: no verified resume at step {member['stop']['checkpoint_step']}")
-        return [_save(paths, record, "verified", f"resumed on {record['to_host']} attempt {current['attempts']}",
-                      resumed_attempt=current["attempts"]) for record in records]
+        attempts = {}
+        for i, record in zip(unit, records):
+            current, member = state.get(i, {}), record["member"]
+            first = member["attempt"] + 1 if member["launched"] else 1
+            if (current.get("host") != record["to_host"] or current.get("attempts", 0) < first
+                    or current.get("status") not in jobs.ACTIVE | {jobs.DONE}):
+                raise MigrationError(f"{i}: no running or finished destination attempt yet ({current.get('status')})")
+            attempts[i] = current["attempts"]
+        trainer = records[0]["member"]
+        if not _resumed(paths, by_id[run_id], trainer["stop"]["checkpoint_step"],
+                        float(state[run_id].get("attempt_since", 0))):
+            raise MigrationError(f"{run_id}: no verified resume at step {trainer['stop']['checkpoint_step']} in "
+                                 f"attempt {attempts[run_id]}")
+        return [_save(paths, record, "verified", f"resumed on {record['to_host']} attempt {attempts[i]}",
+                      resumed_attempt=attempts[i]) for i, record in zip(unit, records)]
 
 
 def abort(run_id: str, reason: str, paths: Paths | None = None) -> list[dict]:

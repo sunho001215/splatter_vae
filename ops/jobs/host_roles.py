@@ -72,7 +72,7 @@ PREPROCESS_WORDS = frozenset({
     "foundationstereo", "depth", "track", "tracks", "tracking", "trackeverything", "extract", "manifest", "index",
     "validate", "validation", "convert", "stats", "sam", "sam3", "dino", "dinov2", "features",
 })
-HOST_FIELDS = ("host", "placement", "pin_host")  # what a role re-placement may change in a row
+HOST_FIELDS = ("host", "placement", "pin_host", "gpu")  # what a role re-placement may change in a row
 
 
 class Classification(NamedTuple):
@@ -113,8 +113,10 @@ def load_roles(path: Path | None = None) -> dict:
 def read_ownership(directory: Path | None = None) -> dict[str, dict]:
     """{job id: ownership record} (fails closed on an unreadable or inconsistent record)."""
     directory, records = Path(directory or OWNERSHIP_DIR), {}
+    if directory.exists() and not directory.is_dir():
+        raise ValueError(f"ownership location {directory} is not a directory")
     if directory.is_dir():
-        for path in sorted(Path(directory).glob("*.json")):
+        for path in sorted(p for p in directory.iterdir() if p.suffix == ".json"):
             record = json.loads(path.read_text())
             if (record.get("job_id") != path.stem or record.get("state") not in OWNERSHIP_STATES
                     or record.get("owner_host") not in SCHEDULER_HOSTS):
@@ -151,6 +153,9 @@ def _metaworld_tasks() -> frozenset[str]:
 
 
 METAWORLD_TASKS = _metaworld_tasks()
+# Real-world campaign tasks (user directive 2026-11-06 item 3); drawer-open is also a Meta-World task, so a task flag
+# alone cannot place a row that names it.
+REALWORLD_TASKS = frozenset({"drawer-open", "mug-hanging"})
 
 
 def _named_domains(text: str) -> set[str]:
@@ -169,6 +174,14 @@ def _regime_domain(value: str) -> set[str]:
     value = value.lower()
     return {"metaworld"} if value.startswith("metaworld") else {"droid"} if value.startswith("droid") else (
         {"realworld"} if re.match(r"real[-_]?world", value) else set())
+
+
+def _normalized(args: list) -> list[str]:
+    """Arguments with ``--flag=value`` split into ``--flag value`` (both spellings parse alike)."""
+    out = []
+    for arg in map(str, args):
+        out += arg.split("=", 1) if arg.startswith("--") and "=" in arg else [arg]
+    return out
 
 
 def _script_domains(script: str) -> set[str]:
@@ -196,16 +209,9 @@ def _config_domains(args: list[str]) -> set[str]:
     return found
 
 
-def _data_and_task_domains(args: list[str]) -> set[str]:
+def _task_domains(args: list[str]) -> set[str]:
+    """Task flags: Meta-World task names; a name the real-world campaign shares (drawer-open) names both domains."""
     found = set()
-    for arg in args:
-        lowered = arg.lower()
-        if "/data/metaworld" in lowered:
-            found.add("metaworld")
-        if re.search(r"/data/real[-_]?world", lowered):
-            found.add("realworld")
-        if "/data/droid" in lowered:
-            found.add("droid")
     for flag in ("--task", "--tasks"):
         if flag in args:
             values = []
@@ -217,6 +223,8 @@ def _data_and_task_domains(args: list[str]) -> set[str]:
                     break
             if values and all(value in METAWORLD_TASKS for value in values):
                 found.add("metaworld")
+            if any(value in REALWORLD_TASKS for value in values):
+                found.add("realworld")
     return found
 
 
@@ -225,7 +233,7 @@ def _tokens(job: dict) -> list[str]:
     for key in ("inputs", "baseline_export"):
         value = job.get(key)
         extra += [str(v) for v in value] if isinstance(value, list) else ([str(value)] if value else [])
-    return [str(job.get("script", ""))] + [str(a) for a in job.get("args", [])] + extra
+    return [str(job.get("script", ""))] + _normalized(job.get("args", [])) + extra
 
 
 def _activity(script: str) -> str | None:
@@ -250,38 +258,43 @@ def _domain_class(domain: str, script: str, evidence: str) -> Classification:
     return Classification("unknown", domain, f"{evidence}; no {domain} activity recognised from the script name")
 
 
-def job_class(job: dict, by_id: dict | None = None, _seen: frozenset = frozenset()) -> Classification:
-    """The row's job class (module docstring)."""
+def _derived(job: dict, by_id: dict | None, seen: frozenset) -> tuple[Classification, set[str]]:
+    """The class derived from the row's evidence (ignoring any declared role) and the domains its deciding tier names."""
     script = str(job.get("script", ""))
-    args = [str(a) for a in job.get("args", [])]
-    strong = _script_domains(script) | _config_domains(args)
+    args = _normalized(job.get("args", []))
+    tiers = (("script", _script_domains(script)), ("configuration", _config_domains(args)),
+             ("data / name / task", set().union(*map(_named_domains, _tokens(job)[1:])) | _task_domains(args)))
+    for tier, domains in tiers:
+        if len(domains) > 1:
+            return Classification("ambiguous", None, f"{tier} evidence names {sorted(domains)}; declare role:"), domains
+        if domains:
+            return _domain_class(next(iter(domains)), script, f"{tier} evidence"), domains
+    deps = [d for d in job.get("deps", []) if by_id and d in by_id and d not in seen]
+    if deps and len(deps) == len(job.get("deps", [])):
+        classes = {job_class(by_id[d], by_id, seen | {job["id"]}).cls for d in deps}
+        if len(classes) == 1 and next(iter(classes)) in DOMAIN:
+            cls = next(iter(classes))
+            return Classification(cls, DOMAIN[cls], "dependency class"), {DOMAIN[cls]} - {None}
+    return Classification("unknown", None, "no role evidence"), set()
+
+
+def job_class(job: dict, by_id: dict | None = None, _seen: frozenset = frozenset()) -> Classification:
+    """The row's job class (module docstring). A declared ``role:`` is valid only if the deciding evidence tier names
+    no domain or names the role's domain (it may resolve an ambiguity, never contradict the evidence)."""
     role = job.get("role")
     if role is not None:
         if role not in DOMAIN:
             return Classification("invalid", None, f"unknown role {role!r} (configs/hosts/roles.yaml classes)")
         if (role == "verification") != bool(job.get("verification_purpose")):
             return Classification("invalid", None, "role verification is exactly the typed verification rows")
-        if strong and strong != {DOMAIN[role]}:
-            return Classification("invalid", None, f"declared role {role} contradicts {sorted(strong)} evidence")
+        derived, domains = _derived(job, by_id, _seen)
+        if role != "verification" and domains and DOMAIN[role] not in domains:
+            return Classification("invalid", None, f"declared role {role} contradicts the {derived.evidence} "
+                                                   f"({sorted(domains)})")
         return Classification(role, DOMAIN[role], "declared role")
     if job.get("verification_purpose"):
         return Classification("verification", None, "typed verification row")
-    tiers = (("script", _script_domains(script)), ("configuration", _config_domains(args)),
-             ("data root / task flag", _data_and_task_domains(args)),
-             ("names", set().union(*map(_named_domains, _tokens(job)[1:]))))
-    for tier, domains in tiers:
-        if len(domains) > 1:
-            return Classification("ambiguous", None, f"{tier} evidence names {sorted(domains)}; declare role:")
-        if domains:
-            return _domain_class(next(iter(domains)), script, f"{tier} evidence")
-    deps = [d for d in job.get("deps", []) if by_id and d in by_id and d not in _seen]
-    if deps and len(deps) == len(job.get("deps", [])):
-        inherited = {job_class(by_id[d], by_id, _seen | {job["id"]}) for d in deps}
-        classes = {item.cls for item in inherited}
-        if len(classes) == 1 and next(iter(classes)) in DOMAIN:
-            cls = next(iter(classes))
-            return Classification(cls, DOMAIN[cls], "dependency class")
-    return Classification("unknown", None, "no role evidence")
+    return _derived(job, by_id, _seen)[0]
 
 
 # ---------------------------------------------------------------------------------------------------- admission
@@ -301,19 +314,35 @@ def load_exceptions(path: Path | None = None) -> dict[str, dict]:
     """{job id: exception} of the coordinator's explicit role exceptions (runs/setup/role-exceptions.json, outside the
     tested sources so it needs no release; absent = none). The only scope is ``retry_in_place``: a listed run that
     already launched on ``host`` may be retried there from its own checkpoint (e.g. a near-complete remote Meta-World
-    run interrupted by a remote outage), although its class is not a role of that host. It never admits a row that has
-    not launched there, never applies to another host and never overrides an ownership record. Fails closed."""
+    run interrupted by a remote outage), although its class is not a role of that host. A grant names the interrupted
+    ``attempt`` (which must have executed there: a recorded container / process) and the run's ``job_sha256``; it covers
+    the retry of exactly that attempt, never a row that has not run there, never another host, and never overrides an
+    ownership record. Fails closed."""
     path = Path(path or EXCEPTIONS_PATH)
     if not path.is_file():
         return {}
     found = {}
     for item in json.loads(path.read_text()).get("exceptions", []):
         if (not isinstance(item, dict) or item.get("scope") != "retry_in_place" or item.get("host") not in SCHEDULER_HOSTS
-                or not isinstance(item.get("id"), str) or not item.get("reason") or not item.get("granted")):
+                or not isinstance(item.get("id"), str) or not item.get("reason") or not item.get("granted")
+                or type(item.get("attempt")) is not int or item["attempt"] < 1
+                or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("job_sha256")))):
             raise ValueError(f"invalid role exception in {path.name}")
         if item.get("active", True) is True:
             found[item["id"]] = item
     return found
+
+
+def retry_in_place(job_id: str, host: str, current: dict | None, exceptions: dict | None) -> bool:
+    """The grant (load_exceptions) covers this retry: the run's latest attempt is the granted one, it executed on
+    ``host`` (a launched container or process is recorded for it) and the run identity is the granted one."""
+    grant, current = (exceptions or {}).get(job_id), current or {}
+    if grant is None or grant["host"] != host or current.get("host") != host:
+        return False
+    executed = (current.get("attempt_containers", {}).get(str(grant["attempt"])) or {}).get("container_id") \
+        if host == "remote" else current.get("pid")
+    return (current.get("attempt") == grant["attempt"] == current.get("attempts") and bool(executed)
+            and current.get("job_sha256") == grant["job_sha256"])
 
 
 def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by_id: dict | None = None,
@@ -328,13 +357,43 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
         return f"{found.cls} job class: {found.evidence}"
     allowed = found.cls in spec["admit"] or (found.cls == "unknown" and found.domain is None
                                               and spec["unknown"] == "allow")
-    exception = (exceptions or {}).get(job["id"])
-    if not allowed and exception is not None and exception["host"] == host and (current or {}).get("host") == host \
-            and int((current or {}).get("attempts", 0)) >= 1:
-        allowed = True  # an explicit retry in place of a run started here (load_exceptions)
+    if not allowed and retry_in_place(job["id"], host, current, exceptions):
+        allowed = True  # an explicit retry in place of a run that executed here (load_exceptions)
     if not allowed:
         return f"job class {found.cls} ({found.evidence}) is not a {host} role (configs/hosts/roles.yaml)"
     return ownership_refusal(job["id"], host, ownership)
+
+
+def migrated_state_refusal(job: dict, ownership: dict | None, current: dict | None, fingerprint: str,
+                           root: Path = REPO) -> str | None:
+    """A run switched here by a migration (ops/jobs/migration.py) launches only with the queue row it was launched with
+    on the source host (job fingerprint) and, until its first destination attempt, with its verified transferred state
+    unchanged (every manifest file present with its recorded size and modification time; the resume checkpoint with
+    its checksum)."""
+    record = (ownership or {}).get(job["id"])
+    if record is None or record.get("kind") != "migration" or record["state"] not in ("switched", "verified"):
+        return None
+    member = record.get("member") or {}
+    if member.get("job_sha256") and fingerprint != member["job_sha256"]:
+        return "the queue row differs from the run launched on the source host (job fingerprint)"
+    if record["state"] != "switched" or not member.get("launched") or (current or {}).get("attempts") != member.get(
+            "attempt"):
+        return None
+    prefix = f"{member['run_dir']}/"
+    renamed = (record.get("provenance_transition") or {}).get("renamed", {})
+    for name, item in sorted((record.get("manifest") or {}).get("files", {}).items()):
+        if not name.startswith(prefix):
+            continue
+        path = root / renamed.get(name, name)
+        try:
+            stat = path.stat()
+        except OSError:
+            return f"transferred state {name} is missing"
+        if stat.st_size != item["bytes"] or stat.st_mtime_ns != item.get("mtime_ns", stat.st_mtime_ns):
+            return f"transferred state {name} changed after its verification"
+        if name == f"{prefix}checkpoints/latest.pt" and hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
+            return "the resume checkpoint differs from its verified checksum"
+    return None
 
 
 def migrated_source_refusal(job_id: str, ownership: dict | None, source_sha256: dict, root: Path = REPO) -> str | None:
@@ -400,12 +459,23 @@ def replaceable(job: dict, state: dict, by_id: dict, roles: dict, root: Path) ->
     return None
 
 
-def _placed_row(job: dict, stamp: str) -> dict:
+def destination_row(job: dict, host: str, placement: str) -> dict:
+    """``job`` placed on ``host``: host fields only (host, placement, a pin superseded by the role, an explicit GPU
+    selection the destination does not authorize becomes "any"); the job fingerprint is unchanged."""
+    from ops.resources.gpu_guard import APPROVED_HOST_GPUS
+
     new = copy.deepcopy(job)
-    new["host"] = "local"
-    new["placement"] = f"role {stamp} (local; configs/hosts/roles.yaml; runs/setup/pool-placement.json)"
-    if "pin_host" in new:  # the role supersedes a remote pin (Meta-World runs only on local)
-        new["pin_host"] = "local"
+    new["host"] = host
+    new["placement"] = placement
+    if "pin_host" in new:
+        new["pin_host"] = host
+    if new.get("gpu", "any") != "any" and new["gpu"] not in APPROVED_HOST_GPUS[host]:
+        new["gpu"] = "any"
+    return new
+
+
+def _placed_row(job: dict, stamp: str) -> dict:
+    new = destination_row(job, "local", f"role {stamp} (local; configs/hosts/roles.yaml; runs/setup/pool-placement.json)")
     assert {k: v for k, v in new.items() if k not in HOST_FIELDS} == {k: v for k, v in job.items()
                                                                        if k not in HOST_FIELDS}, job["id"]
     return new
@@ -482,28 +552,50 @@ def replace_to_local(paused: Callable[[str], bool], reason: str = "server roles:
                 if partner in by_id and partner not in chosen:
                     chosen.remove(job_id)
                     kept[job_id] = f"partner {partner} stays ({kept.get(partner, 'not re-placeable')})"
-            if dry_run or not chosen:
-                return {"moved": [], "would_move": chosen if dry_run else [], "kept": kept}
+            # a re-placement interrupted after its queue rewrite (before its records) is completed here
+            placed = json.loads(Path(manifest).read_text()).get("effective_jobs", {}) if Path(manifest).is_file() else {}
+            unrecorded = [j["id"] for j in queue["jobs"] if str(j.get("placement", "")).startswith("role ")
+                          and j.get("host", "local") == "local" and placed.get(j["id"]) != j]
+            if dry_run or not (chosen or unrecorded):
+                return {"moved": [], "would_move": chosen if dry_run else [], "kept": kept, "unrecorded": unrecorded}
+
+            def records(ids, original, effective, before, after, note):
+                stamp = now()
+                append_pool_record(manifest, {
+                    "time": stamp, "to": "local", "reason": f"{note} (configs/hosts/roles.yaml sha256 {roles['sha256']})",
+                    "ids": ids, "rewritten_exports": [], "original": original,
+                    "queue_sha256_before": hashlib.sha256(before).hexdigest(),
+                    "queue_sha256_after": hashlib.sha256(after).hexdigest()}, effective)
+                for i in ids:
+                    previous = ownership.get(i)
+                    write_ownership({
+                        "job_id": i, "kind": "role_placement", "state": "placed", "owner_host": "local",
+                        "from_host": "remote", "to_host": "local", "attempts": 0, "time": stamp, "reason": note,
+                        "roles_sha256": roles["sha256"], "job_class": job_class(by_id[i], by_id).cls,
+                        "queue_sha256_after": hashlib.sha256(after).hexdigest(),
+                        "history": (previous.get("history", []) + [{k: v for k, v in previous.items() if k != "history"}]
+                                    if previous else [])}, ownership_dir)
+
+            if unrecorded:
+                current = Path(queue_path).read_bytes()
+                records(unrecorded, {i: None for i in unrecorded}, {i: by_id[i] for i in unrecorded}, current, current,
+                        f"{reason} (records completed after an interrupted re-placement; original rows not recorded)")
+            if not chosen:
+                return {"moved": [], "repaired": unrecorded, "kept": kept}
             stamp = now()
             effective = {i: _placed_row(by_id[i], stamp) for i in chosen}
             for i in chosen:
                 assert jobs.job_fingerprint(effective[i]) == jobs.job_fingerprint(by_id[i]), i
             before, after = write_queue(queue_path, [effective.get(j["id"], j) for j in queue["jobs"]], jobs.load_queue)
-            append_pool_record(manifest, {
-                "time": stamp, "to": "local", "reason": f"{reason} (configs/hosts/roles.yaml sha256 {roles['sha256']})",
-                "ids": chosen, "rewritten_exports": [], "original": {i: by_id[i] for i in chosen},
-                "queue_sha256_before": hashlib.sha256(before).hexdigest(),
-                "queue_sha256_after": hashlib.sha256(after).hexdigest()}, effective)
-            for i in chosen:
-                previous = ownership.get(i)
-                write_ownership({
-                    "job_id": i, "kind": "role_placement", "state": "placed", "owner_host": "local",
-                    "from_host": "remote", "to_host": "local", "attempts": 0, "time": stamp, "reason": reason,
-                    "roles_sha256": roles["sha256"], "job_class": job_class(by_id[i], by_id).cls,
-                    "queue_sha256_after": hashlib.sha256(after).hexdigest(),
-                    "history": (previous.get("history", []) + [{k: v for k, v in previous.items() if k != "history"}]
-                                if previous else [])}, ownership_dir)
-            return {"moved": chosen, "kept": kept}
+            records(chosen, {i: by_id[i] for i in chosen}, effective, before, after, reason)
+            return {"moved": chosen, "repaired": unrecorded, "kept": kept}
+
+
+def placement_repair_needed(rows: list[dict], manifest: Path | None = None) -> bool:
+    """A role placement of the queue has no matching pool-placement record (an interrupted re-placement)."""
+    manifest = Path(manifest or POOL_MANIFEST)
+    placed = json.loads(manifest.read_text()).get("effective_jobs", {}) if manifest.is_file() else {}
+    return any(str(j.get("placement", "")).startswith("role ") and placed.get(j["id"]) != j for j in rows)
 
 
 # ---------------------------------------------------------------------------------------------------- CLI

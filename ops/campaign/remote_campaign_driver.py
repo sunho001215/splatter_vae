@@ -195,8 +195,9 @@ GPU_HEAVY = ('ds-sac-cnn-', 'ds-sac-snerl-', 'ds-ppo-cnn-', 'ds-dreamer-', 'ds-f
 
 def load(job):
     jid = job['id']
-    if kind(jid) == 'role':  # declared per row (gpu_load), else a full unit; never above one GPU
-        return min(1.0, max(0.1, float(job.get('gpu_load', 1.0))))
+    if kind(jid) == 'role':  # declared per row (gpu_load), else an export 0.1, others a full unit; never above one GPU
+        default = 0.1 if job['script'] == 'scripts/export_encoder.py' else 1.0
+        return min(1.0, max(0.1, float(job.get('gpu_load', default))))
     if jid.startswith(GPU_HEAVY) and not jid.endswith('-eval'):
         return 1.0
     if kind(jid) in ('final_export', 'pool_export'):
@@ -244,7 +245,9 @@ messages = []
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
 if ROLE_ERROR:
     messages.append(f'ROLES unreadable ({ROLE_ERROR}); no remote admission or pool move this pass')
-elif not DRY:
+elif not DRY and (any(j.get('host') == 'remote' and j['id'] not in state and not paused(j['id'])
+                      and host_roles.role_host(j, ROLES, by_id) == 'local' for j in queue['jobs'])
+                  or host_roles.placement_repair_needed(queue['jobs'])):
     # never-launched Meta-World rows registered on the remote move to local (host fields only; paused rows stay)
     replaced = host_roles.replace_to_local(paused)
     if replaced.get('moved'):
@@ -253,6 +256,14 @@ elif not DRY:
         state = jobs.read_registry()
         by_id = {j['id']: j for j in queue['jobs']}
         remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
+
+
+def with_role(job):
+    """A dispatch copy carries its class as an explicit role: the scheduler then classifies it as here, without the
+    dependency context of the full queue (e.g. an encoder export classified by its producer)."""
+    found = host_roles.job_class(job, by_id)
+    return {**copy.deepcopy(job), 'role': found.cls} if 'role' not in job and found.cls in host_roles.DOMAIN else \
+        copy.deepcopy(job)
 
 
 def role_admits(job):
@@ -660,7 +671,7 @@ for job in candidates:
         continue
     gpu_load[gpu] += load(job)
     gpu_mem[gpu] += float(job['mem_gb'])
-    chosen.append({**copy.deepcopy(job), 'gpu': gpu})
+    chosen.append({**with_role(job), 'gpu': gpu})
     taken.add(job['id'])
     total += need
     reviwo += job['id'].startswith('s4-reviwo-')
@@ -713,7 +724,7 @@ if POOL_READY and not DRY and not held and ROLES is not None:
     for members in units:
         tentative = []
         for u in members:
-            row_load = load(u) if u['id'].startswith(GPU_HEAVY) else (
+            row_load = load(u) if u['id'].startswith(GPU_HEAVY) or kind(u['id']) == 'role' else (
                 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else (
                     0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5)))
             need = int(float(u['ram_gb']) * 2**30)
@@ -747,7 +758,7 @@ if POOL_READY and not DRY and not held and ROLES is not None:
             ok = all(i in moved for i, *_ in tentative) and all(ready(by_id[i]) for i, *_ in tentative)
             for i, g, row_load, mem, need in tentative:
                 if ok:
-                    chosen.append({**copy.deepcopy(by_id[i]), 'gpu': g})
+                    chosen.append({**with_role(by_id[i]), 'gpu': g})
                     taken.add(i)
                 else:  # placed but not startable yet (e.g. export upload pending): admitted by a later pass
                     gpu_load[g] -= row_load

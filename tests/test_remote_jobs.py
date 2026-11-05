@@ -522,13 +522,14 @@ def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exceptio
     fresh = {**meta, "id": "fresh", "args": ["--task", "hammer", "--run-dir", "runs/fresh"]}
     queued = write_queue(tmp_path, [meta, fresh])
     backend = FakeBackend(tmp_path / "runs")
-    launch_event(tmp_path, "r", script="scripts/train_rl.py", args=meta["args"])
+    launch_event(tmp_path, "r", script="scripts/train_rl.py", args=meta["args"], job_sha256=jobs.job_fingerprint(meta))
     jobs.record({"event": "exited", "id": "r", "host": "remote", "attempt": 1, "code": 137,
                  "container_id": CONTAINER_ID}, tmp_path / "registry.jsonl")
     messages = tick(tmp_path, queued, backend)
     assert backend.launches == [] and any(m.startswith("r: not admitted on remote: job class metaworld")
                                           for m in messages)
-    grant = {"scope": "retry_in_place", "host": "remote", "reason": "remote outage", "granted": "2026-11-06"}
+    grant = {"scope": "retry_in_place", "host": "remote", "reason": "remote outage", "granted": "2026-11-06",
+             "attempt": 1, "job_sha256": jobs.job_fingerprint(meta)}
     (tmp_path / "role-exceptions.json").write_text(json.dumps({"exceptions": [{**grant, "id": "r"},
                                                                               {**grant, "id": "fresh"}]}))
     tick(tmp_path, queued, backend)
@@ -1547,8 +1548,9 @@ def test_scheduler_downloads_nothing_and_cross_host_dependents_wait_for_the_back
     """2026-10-27: no live or final download inside the tick. A local dependent of a remote job (cross-host) starts only
     once the bulk worker's verified final backup completes the remote job; a remote dependent (same host) starts as soon
     as the finished run is verified in place on the remote."""
-    # "after": a local Meta-World row (server roles: without a declared class it would inherit its remote dependency's)
-    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"], role="metaworld"),
+    # "after": a local Meta-World row (server roles: without its own evidence it would inherit its remote dependency's
+    # class, and a declared role cannot contradict that class)
+    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"], args=[0, "--task", "hammer"]),
                                     job("same", deps=["active"])])
     backend = FakeBackend(tmp_path / "runs")
     launch_event(tmp_path, "active")
