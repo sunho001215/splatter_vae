@@ -1,6 +1,10 @@
-> **2026-11-05:** FoundationStereo was removed from the maintained pipeline and replaced by MapAnything
-> (`docs/realworld_preprocessing.md`). This report is the historical 2026-10-31 evidence for the implementation it
-> describes; its FoundationStereo measurements do not validate the maintained depth stage.
+> **Historical (retired route).** The raw-DROID estimation route this report validated (`droid_raw_svo` adapter, SVO
+> decoding, stereo rectification, model depth and AllTracker tracks on raw DROID, provided DROID-3D calibration, the
+> `realworld_droid_diagnostics.py` tool) was retired on 2026-11-06: DROID pretraining uses DROID RGB + PointWorld's
+> released depth/tracks + DROID-3D calibration (`s4d/data/droid/largescale/`), with no estimation on DROID. The
+> commands below no longer exist in the repository; the measurements are kept as the 2026-10-31 record. The own-rig
+> pipeline is described in [realworld_preprocessing.md](realworld_preprocessing.md) (section 10 lists the retired
+> interfaces).
 
 # Real-data validation of the real-world pipeline on a raw DROID episode (2026-10-31)
 

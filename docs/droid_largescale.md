@@ -583,7 +583,7 @@ tokens, effective masked fraction and the geometry checks.
   gating, wrist targets). In window 1394, ext1 and ext2 keep the arm, the gripper and the shelf contents in all three
   frames, and the wrist crop is motion-informed; tracks that leave the crop are marked and unsupervised.
 
-The maintained `s4d/realworld` preprocessing route uses `stereo_rectify`, optional rig-frame MapAnything depth for
-landmark calibration, and world-posed MapAnything depth for lifting/export. RGB-D recordings use registered sensor
-depth for calibration. This does not regenerate or change the released large-scale dataset's historical depth;
-see [realworld_preprocessing.md](realworld_preprocessing.md).
+DROID pretraining uses DROID RGB, PointWorld's released depth and tracks and the DROID-3D calibration only (this
+document); no depth estimation, tracking or SAM/DINO preprocessing runs on DROID. The separate `s4d/realworld` package
+preprocesses our own rig's recordings (FoundationStereo on the RealSense IR pairs + TrackEverything; its raw-DROID
+estimation route was retired 2026-11-06); see [realworld_preprocessing.md](realworld_preprocessing.md).

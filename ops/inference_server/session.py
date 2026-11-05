@@ -125,13 +125,17 @@ class Server:
                          timeout=900).stdout.decode().strip()
         return None if out == "missing" else out
 
-    def stage_weights(self, fetch: bool = True) -> dict:
+    def stage_weights(self, fetch: bool = True, workers=None) -> dict:
         """Every configured weight file present in /ram with its pinned sha256 (upload or RAM download if not;
-        ``fetch=False`` only verifies and refuses a missing or different file)."""
+        ``fetch=False`` only verifies and refuses a missing or different file). ``workers``: stage only the entries
+        of these workers (entries without ``worker`` always); ``None`` stages every entry."""
         report = {}
         self.dexec(["sh", "-c", "mkdir -p /ram/weights /ram/work /ram/tmp /ram/torch/hub /ram/s4d-cache"])
         for item in self.config["weights"]:
             dest, want = item["dest"], item["sha256"]
+            if workers is not None and item.get("worker", None) not in (None, *workers):
+                report[dest] = {"skipped": f"worker {item['worker']} is not used by this run"}
+                continue
             assert dest.startswith("/ram/"), dest
             t0 = time.time()
             have = self._remote_sha(dest)
@@ -157,10 +161,6 @@ class Server:
             if have != want:
                 raise RuntimeError(f"{dest}: sha256 {have} != pinned {want}")
             report[dest] = {"sha256": have, "action": action, "seconds": round(time.time() - t0, 1)}
-        for src, dst in self.config.get("ram_copies", {}).items():  # pinned hub code (e.g. dinov2 for MapAnything)
-            self.dexec(["sh", "-c", f"rm -rf {shlex.quote(dst)} && mkdir -p {shlex.quote(str(Path(dst).parent))} && "
-                                    f"cp -r {shlex.quote(src)} {shlex.quote(dst)} && rm -rf {shlex.quote(dst)}/.git"])
-            report[dst] = {"copied_from": src}
         return report
 
     # ---------------------------------------------------------------- persistence audit

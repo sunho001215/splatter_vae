@@ -1,7 +1,7 @@
 """FoundationStereo worker (separate ``foundation_stereo`` environment; imports the pinned upstream checkout).
 
-Restored 2026-11-05 as an optional backend for the controlled depth comparison (it had been removed at 379bca5).
-Written against NVlabs/FoundationStereo ``scripts/run_demo.py`` at the pinned commit
+Standard own-rig depth backend since 2026-11-05 (B1: the device infrared pair only; restored at that date after its
+removal at 379bca5). Written against NVlabs/FoundationStereo ``scripts/run_demo.py`` at the pinned commit
 (configs/realworld/upstream_pins.yaml): model built from the checkpoint's ``cfg.yaml``, ``InputPadder(divis_by=32)``,
 ``model.forward(img0, img1, iters=valid_iters, test_mode=True)`` (or ``run_hierachical``) under autocast, images as
 float 0..255 3-channel tensors. Pretrained inference only.
@@ -10,7 +10,7 @@ task ``ir_pair_disparity``: inputs ``left``, ``right`` (N,H,W) uint8 device-rect
 replicated to 3 channels as MODEL INPUT ONLY); outputs ``disparity_left`` (left reference, ``x_left - x_right``)
 and ``disparity_right`` (right reference by flip-and-swap: flip(right) as left input, flip(left) as right input,
 result flipped back), both (N,H,W) float32 on the given grid. No resizing (the caller passes native resolution).
-task ``stereo_disparity``: inputs ``left``, ``right`` (N,H,W,3) uint8 rectified pairs; output ``disparity``.
+The RGB-pair task ``stereo_disparity`` was retired 2026-11-05 (no caller).
 """
 
 import sys
@@ -105,16 +105,13 @@ def handle(request, inputs):
             flipped = _disparity(model, args, np.ascontiguousarray(b3[:, ::-1]), np.ascontiguousarray(a3[:, ::-1]))
             dr.append(np.ascontiguousarray(flipped[:, ::-1]))
         outputs = {"disparity_left": np.stack(dl), "disparity_right": np.stack(dr)}
-    elif task == "stereo_disparity":
-        outputs = {"disparity": np.stack([_disparity(model, args, a, b)
-                                          for a, b in zip(inputs["left"], inputs["right"])])}
     else:
         raise ValueError(task)
     if ("sha", str(ckpt)) not in _MODELS:  # hash the 3.3 GB checkpoint once per worker session
         _MODELS[("sha", str(ckpt))] = sha256(str(ckpt))
     identity = {"name": "FoundationStereo", "repo": "NVlabs/FoundationStereo", "commit": git_commit(str(repo)),
                 "checkpoint": str(ckpt), "checkpoint_sha256": _MODELS[("sha", str(ckpt))], "is_mock": False}
-    meta = {"reference": "left (+ right by flip-and-swap)" if task == "ir_pair_disparity" else "left",
+    meta = {"reference": "left (+ right by flip-and-swap)",
             "valid_iters": int(args.valid_iters), "hiera": int(args.hiera), "torch": torch.__version__,
             "input": "grayscale IR replicated to 3 channels, float 0..255, native resolution, InputPadder(32)",
             "max_memory_allocated": int(torch.cuda.max_memory_allocated())}

@@ -1,16 +1,20 @@
 # Real-world inference server (RAM-only streaming)
 
-Preprocessing and model inference for real-world episodes run on a separate GPU host; the local host only reads the raw
+Model inference for real-world episodes runs in one container on a separate GPU host; the local host only reads the raw
 episode, streams bounded chunks, saves results and assembles the training cache. Configuration:
-`configs/realworld/inference_server.yaml` (host) and `configs/realworld/<episode>.yaml` (pipeline).
+`configs/realworld/inference_server.yaml` (host) and `configs/realworld/mug_hanging.yaml` (the standard pipeline).
+
+**Role (2026-11-06):** this RTX 5090 server is for lightweight inference, rendering and visualization: single-episode
+runs (a validation episode, a viewer source, a model/data contract check). Bulk real-world preprocessing (all episodes
+of a task) runs on the remote host; no training runs here.
 
 ## Host layout (everything under `~/shkim` on the inference host)
 
 | Path | Content |
 |---|---|
 | `~/shkim/src/splatter4d.git`, `~/shkim/src/splatter4d` | bare repository receiving `git push`, and the checkout the container runs (pinned to the local commit at every run) |
-| `~/shkim/upstream/{map-anything,alltracker,sam3,dinov2}` | upstream checkouts at the commits pinned in `configs/realworld/upstream_pins.yaml` |
-| `~/shkim/envs/{mapanything,alltracker,sam3,s4d}`, `~/shkim/envs/python` | isolated environments (`setup_envs.sh`), uv-managed CPython |
+| `~/shkim/upstream/{FoundationStereo,trackeverything,sam3}` | upstream checkouts at the commits pinned in `configs/realworld/upstream_pins.yaml` (checkouts of retired backends may still exist on the host; nothing uses them) |
+| `~/shkim/envs/{foundation_stereo,trackeverything,sam3,s4d,tools}`, `~/shkim/envs/python` | isolated environments (`setup_envs.sh`), uv-managed CPython |
 | `~/shkim/assets/validation-20261031` | robot URDF + meshes, mounted read-only at the same absolute path the local configs use |
 | `~/shkim/bin/{uv,micromamba}` | uv; static micromamba (only for the `tools` env: conda-forge git, which `s4d.third_party` calls) |
 
@@ -29,7 +33,7 @@ docker run -d --name shkim_rw --restart unless-stopped \
   -e UV_CACHE_DIR=/ram/uv-cache -e UV_PYTHON_INSTALL_DIR=/opt/envs/python -e UV_LINK_MODE=copy -e PIP_NO_CACHE_DIR=1 \
   -e PYTHONDONTWRITEBYTECODE=1 -e LC_ALL=C.UTF-8 -e HF_HUB_OFFLINE=1 --label owner=shkim \
   nvidia/cuda:12.8.0-base-ubuntu22.04 sleep infinity
-docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh mapanything s4d alltracker sam3 tools
+docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh s4d sam3 tools foundation_stereo trackeverything
 ```
 
 - GPU isolation: the CDI device request names the one GPU UUID; `nvidia-smi -L` inside shows only it (checked by
@@ -56,37 +60,33 @@ every stage at its first unsaved chunk.
 ## Weights (RAM only)
 
 `session.Server.stage_weights` places each configured file in `/ram/weights` (or the DINO cache in `/ram/s4d-cache`)
-and checks its pinned sha256: local files are streamed through ssh into the tmpfs; the public MapAnything checkpoint
-is downloaded straight into RAM at its pinned Hugging Face revision. Nothing is cached on disk; a container restart
-clears them and the next run re-stages them.
+and checks its pinned sha256: local files are streamed through ssh into the tmpfs (an entry with `hf_repo` instead of
+`local` is downloaded straight into RAM at its pinned Hugging Face revision). A run stages only the weights of the
+workers its requested stages use (`cli.STAGE_WORKERS`). Nothing is cached on disk; a container restart clears them and
+the next run re-stages them.
 
 ## Running an episode (and resuming)
 
 ```
-cd <local checkout at the commit the server runs>
-.venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging_rgbd.yaml \
-    --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000000
-.venv/bin/python -I ops/inference_server/depth_report.py --pipeline configs/realworld/mug_hanging_rgbd.yaml \
-    --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000000
+cd <local checkout at the commit the server runs>   # Server.sync_source pushes a branch and fast-forwards the server
+.venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging.yaml \
+    --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001 [--output-root <new root>]
+.venv/bin/python -I ops/inference_server/contract_checks.py --pipeline configs/realworld/mug_hanging.yaml \
+    --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001 [--output-root <root>]
 ```
 
 Re-running the same command is the resume procedure (complete stages are skipped; an interrupted stage continues at
 its first unsaved chunk). `--stages` selects stages, `--force-stage NAME` rebuilds one. Each run writes
-`<output_root>/runs/<utc>/run.json`: container and source checks, weight staging, per-call timings and memory, and the
-persistence audit (`audit_end.ok`: no file below `~/shkim` changed during the run and no new `docker diff` entry).
+`<output_root>/pipeline.yaml` (the resolved config of the latest run; frame-set policy of viewers and contract checks)
+and `<output_root>/runs/<utc>/run.json`: container and source checks, weight staging, per-call timings and memory, and
+the persistence audit (`audit_end.ok`: no file below `~/shkim` changed during the run and no new `docker diff` entry).
 Do not push to the server checkout while a run is active: the source pin then refuses new sessions.
 
-Without `--stages` a run executes the config's default stages (`s4d.realworld.cli.default_stages`): every pipeline
-stage (optional ones such as `track_motion` only when configured) plus exactly the baseline stages its declared
-`baselines:` need. Only our method is pretrained on DROID, so `droid_raw_validation.yaml` declares `baselines: []` and
-never runs `sam3_masks`/`dino_snerl` (requesting them is refused). The real-world config declares the baselines trained
-on it (SNeRL -> SAM 3 + DINO teacher; 3D-MVP, SinCro, ReViWo, DynaMo -> export only); its RGB-D calibration also uses
-the SAM 3 robot masks as evidence.
-
-Both depth sources are kept as separate versioned outputs: `mug_hanging_rgbd.yaml` (MapAnything depth for lifting and
-export) and `mug_hanging_rgbd_rawdepth.yaml` (raw RealSense depth; its upstream stages are symlinked from the main
-root). `depth_compare.py` (same arguments as `depth_report.py`) writes the common-support comparison with plain-language
-metric definitions to `<output_root>/reports/<episode>/depth_v2/`.
+Without `--stages` a run executes the config's default stages (`s4d.realworld.cli.default_stages`): ingest,
+sensor_depth, calibrate, export, the configured optional stages (`foundation_stereo_depth`, `track_everything`,
+`track_motion`), plus exactly the baseline stages its declared `baselines:` need (SNeRL -> SAM 3 + DINO teacher;
+3D-MVP, SinCro, ReViWo, DynaMo -> export only); the RGB-D calibration also uses the SAM 3 robot masks as evidence.
+Stages that are not configured, unknown stage names and undeclared baseline stages are refused.
 
 ## MuJoCo in the container
 

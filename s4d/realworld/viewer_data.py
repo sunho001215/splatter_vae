@@ -3,9 +3,10 @@ only, nothing is predicted and the processed data are never modified.
 
 * timeline: the synchronized sets of all views (``depth_stages.frame_sets``), set times from the reference camera,
   recording pauses (gaps longer than ``gap_factor`` frame periods) reported explicitly;
-* point clouds: one view's depth (``sensor_depth`` = raw RealSense, or ``mapanything_depth``) unprojected with the
-  stored K and moved to the robot base with the accepted calibration, coloured by the same frame's RGB. Display-only
-  downsampling (pixel stride, optional finer stride inside a region of interest) and an optional base-frame crop;
+* point clouds: one view's depth (``foundation_stereo_depth`` = IR stereo, or ``sensor_depth`` = raw RealSense)
+  unprojected with the stored K and moved to the robot base with the accepted calibration, coloured by the same frame's
+  RGB. Display-only downsampling (pixel stride, optional finer stride inside a region of interest) and an optional
+  base-frame crop;
 * robot: link poses from the composed URDF at the recorded joints and gripper state (forward kinematics), with the
   visual meshes of the arm/gripper/coupling descriptions;
 * trails: tracks classified ``moving`` by the ``track_motion`` stage, from ONE query window per camera and frame (the
@@ -47,11 +48,11 @@ class ViewerEpisode:
 
 def load_episode(root: Path, episode_id: str, *, gap_factor: float = 1.5) -> ViewerEpisode:
     from s4d.realworld.depth_stages import configured_sets_policy, frame_sets
-    from s4d.realworld.pipeline import accepted_calibration, load_meta
+    from s4d.realworld.pipeline import accepted_calibration, camera_views, load_meta
 
     root = Path(root)
     meta = load_meta(root, episode_id)
-    streams = [v.stream_id for v in meta.views()]
+    streams = [v.stream_id for v in camera_views(meta)]
     policy = configured_sets_policy(root, episode_id)
     sets = frame_sets(meta, streams, **policy)
     if not len(sets["index"]):

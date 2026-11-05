@@ -20,7 +20,7 @@ def remote_pipeline_config(pipeline: dict, server: dict) -> dict:
     """Resolve worker locations in the container while leaving adapter and output paths on the host.
 
     Server worker fields override host-specific worker paths; model parameters merge so inference settings from
-    the episode config survive. This also supplies the kernel interpreter to older stereo episode configs.
+    the episode config survive; server-only workers (e.g. the kernel interpreter) are added.
     """
     from copy import deepcopy
 

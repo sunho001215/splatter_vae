@@ -5,10 +5,11 @@ returned chunk durably (``io.ChunkStore``) and acknowledges it, and assembles th
 functions as ``python -m s4d.realworld.cli`` with a ``RemoteRunner``; completed stages are skipped and an interrupted
 stage resumes at its first unsaved chunk (re-running this command is the resume procedure).
 
-    .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging_rgbd.yaml \\
-        --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000000 [--stages a,b] [--force-stage s]
+    .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging.yaml \\
+        --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001 [--stages a,b] [--force-stage s]
 
-Writes ``<output_root>/runs/<utc>.json``: container/source checks, weight staging, per-call timings and resources,
+Writes ``<output_root>/pipeline.yaml`` (the run's config: frame-set policy for viewers/checks) and
+``<output_root>/runs/<utc>.json``: container/source checks, weight staging, per-call timings and resources,
 the persistence audit (nothing below the host root changed; empty container diff) and each stage's record id.
 """
 
@@ -44,7 +45,7 @@ def remote_pipeline_config(pipeline: dict, server: dict) -> dict:
     """Resolve worker locations in the container while leaving adapter and output paths on the host.
 
     Server worker fields override host-specific worker paths; model parameters merge so inference settings from
-    the episode config survive. This also supplies the kernel interpreter to older stereo episode configs.
+    the episode config survive; server-only workers (e.g. the kernel interpreter) are added.
     """
     return _command_support.remote_pipeline_config(pipeline, server)
 
@@ -70,7 +71,14 @@ def main(argv=None) -> int:
 
     from s4d.realworld import io as rio
     from s4d.realworld.adapters import get_adapter
-    from s4d.realworld.cli import adapter_config, check_stage_scope, default_stages, run_stages
+    from s4d.realworld.cli import (
+        adapter_config,
+        check_stage_scope,
+        default_stages,
+        run_stages,
+        save_root_config,
+        stage_workers,
+    )
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
     wanted = wanted or default_stages(cfg)
@@ -80,6 +88,7 @@ def main(argv=None) -> int:
         ap.error(str(exc))
     if args.output_root:
         cfg["output_root"] = args.output_root
+    save_root_config(cfg, args.pipeline)
     server = Server.load(Path(args.server))
     cfg = remote_pipeline_config(cfg, server.config)
     root = Path(cfg["output_root"])
@@ -96,7 +105,7 @@ def main(argv=None) -> int:
     record["source_commit"] = head
     record["container"] = server.verify_container()
     record["server_source"] = server.verify_source(head)
-    record["weights"] = server.stage_weights(fetch=not args.skip_weights)
+    record["weights"] = server.stage_weights(fetch=not args.skip_weights, workers=stage_workers(wanted))
     record["audit_start"] = server.audit_start()
     save()
     pool_cfg = _command_support.pool_config(server.config, head)

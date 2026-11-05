@@ -124,51 +124,16 @@ def test_reference_thresholds_follow_the_observed_quantiles_and_refuse_thin_refe
 
 @pytest.fixture(scope="module")
 def filtered(tmp_path_factory):
-    from s4d.realworld.adapters import get_adapter
-    from s4d.realworld.calibration import CalibrationConfig
-    from s4d.realworld.depth_stages import mapanything_depth, mapanything_rig_depth
     from s4d.realworld.export import export
-    from s4d.realworld.geometry import project, transform_points
-    from s4d.realworld.pipeline import (
-        RobotGeometry,
-        calibrate,
-        ingest,
-        lift3d,
-        load_meta,
-        robot_state_at,
-        stereo_rectify,
-        track2d,
-    )
-    from s4d.realworld.robot import URDFModel, landmarks
     from s4d.realworld.track_motion import track_motion
-    from tests.test_realworld_pipeline import LANDMARKS, OracleTracker, mock_mapanything
+    from tests.test_realworld_pipeline import synthetic_rgbd_episode
 
     tmp = tmp_path_factory.mktemp("tm")
-    adapter = get_adapter("synthetic", {"asset_dir": str(tmp / "assets"), "frames": 10})
-    root, ep = tmp / "out", adapter.list_episodes()[0]
-    ingest(adapter, ep, root)
-    meta = load_meta(root, ep)
-    model, geom = URDFModel.from_file(meta.robot.urdf_path), RobotGeometry(meta)
-    rng = np.random.default_rng(0)
-
-    def landmark_source(cam, i, links):
-        q, g, _, _ = robot_state_at(meta, meta.stream_timestamps_ns[cam][[i]])
-        uv, _ = project(transform_points(adapter.T_cam_base(cam.split("/")[0], "left"),
-                                         landmarks(model, geom.q(q[0], g[0]), links)), adapter.K())
-        return uv + rng.normal(0, 0.5, uv.shape), np.ones(len(links))
-
-    landmark_source.identity = {"name": "synthetic oracle landmarks", "is_mock": True}
-    stereo_rectify(root, ep)
-    mapanything_rig_depth(root, ep, mock_mapanything(root))
-    calibrate(root, ep, landmark_source, landmark_links=LANDMARKS,
-              cfg=CalibrationConfig(depth_term=False, min_visible_fraction=0.05, min_motion_extent_m=0.03,
-                                    max_rot_std_deg=2.0, max_trans_std_m=0.03))
-    mapanything_depth(root, ep, mock_mapanything(root), input_depth_stage="mapanything_rig_depth")
-    track2d(root, ep, OracleTracker(adapter), window=10, step=8, grid_stride=4)
-    lift3d(root, ep)
+    run = synthetic_rgbd_episode(tmp)
+    root, ep = run["root"], run["ep"]
     cfg = MotionFilterConfig(min_bin_samples=10, min_segment_samples=4, reference_robot_distance_m=0.05)
     rec = track_motion(root, ep, cfg=cfg)
-    kw = dict(resolutions={"scratch": (144, 256)}, allow_infrared_input=True, allow_mock=True)
+    kw = dict(resolutions={"scratch": (144, 256)}, depth_stage="sensor_depth", allow_mock=True)
     export(root, ep, tmp / "all", **kw)
     export(root, ep, tmp / "moving", track_source="track_motion", **kw)
     return {"root": root, "ep": ep, "tmp": tmp, "rec": rec, "cfg": cfg}
@@ -236,35 +201,34 @@ def _cfg(name):
     return yaml.safe_load((ROOT / f"configs/realworld/{name}.yaml").read_text())
 
 
-def test_droid_config_runs_no_baseline_stages_and_refuses_them():
+def test_config_without_baselines_runs_no_baseline_stages_and_refuses_them():
     from s4d.realworld.baseline_stages import required_baseline_stages
     from s4d.realworld.cli import check_stage_scope, default_stages
 
-    cfg = _cfg("droid_raw_validation")
-    assert cfg["baselines"] == [] and required_baseline_stages(cfg) == ()
+    cfg = _cfg("mug_hanging")
+    cfg = {**cfg, "baselines": [], "stages": {k: v for k, v in cfg["stages"].items() if k != "sam3_masks"}}
+    cfg["stages"]["calibrate"] = {k: v for k, v in cfg["stages"]["calibrate"].items() if k != "robot_mask_stage"}
+    assert required_baseline_stages(cfg) == ()
     stages = default_stages(cfg)
-    assert "sam3_masks" not in stages and "dino_snerl" not in stages and "track_motion" not in stages
-    assert not {"sam3_masks", "dino_snerl"} & set(cfg["stages"]) and not {"sam3", "dino_snerl"} & set(cfg["workers"])
+    assert "sam3_masks" not in stages
     check_stage_scope(cfg, stages)
-    for extra in ("sam3_masks", "dino_snerl"):
-        with pytest.raises(ValueError, match="not needed"):
-            check_stage_scope(cfg, stages + [extra])
+    with pytest.raises(ValueError, match="not needed"):
+        check_stage_scope(cfg, stages + ["sam3_masks"])
 
 
 def test_realworld_config_generates_exactly_the_declared_baselines_inputs():
     from s4d.realworld.baseline_stages import BASELINE_AUX_STAGES, required_baseline_stages
     from s4d.realworld.cli import check_stage_scope, default_stages
 
-    cfg = _cfg("mug_hanging_rgbd")
+    cfg = _cfg("mug_hanging")
     assert set(cfg["baselines"]) <= set(BASELINE_AUX_STAGES)
-    assert required_baseline_stages(cfg) == ("sam3_masks", "dino_snerl")
+    assert required_baseline_stages(cfg) == ("sam3_masks",)  # SNeRL: semantics; its DINO targets are online
     stages = default_stages(cfg)
-    assert stages.index("track_motion") < stages.index("export") and {"sam3_masks", "dino_snerl"} <= set(stages)
+    assert stages.index("track_motion") < stages.index("train_data") and "sam3_masks" in stages
+    assert "export" not in stages and "dino_snerl" not in stages
     check_stage_scope(cfg, stages)
-    no_snerl = {**cfg, "baselines": ["mvp3d"]}  # calibration still needs the SAM 3 robot masks, never DINO
+    no_snerl = {**cfg, "baselines": ["mvp3d"]}  # calibration still needs the SAM 3 robot masks
     assert required_baseline_stages(no_snerl) == ("sam3_masks",)
-    with pytest.raises(ValueError, match="not needed"):
-        check_stage_scope(no_snerl, ["dino_snerl"])
     with pytest.raises(ValueError, match="unknown baselines"):
         required_baseline_stages({**cfg, "baselines": ["pointworld"]})
 
@@ -327,7 +291,7 @@ def test_shipped_configs_construct_the_filter_config():
 
     from s4d.realworld.track_motion import MotionFilterConfig
 
-    for name in ("mug_hanging_rgbd", "mug_hanging_rgbd_rawdepth"):
+    for name in ("mug_hanging",):
         mc = dict(_cfg(name)["stages"]["track_motion"])
         cfg = MotionFilterConfig(**mc)  # unknown keys would raise TypeError (the pipeline builds it the same way)
         assert set(mc) <= {f.name for f in dataclasses.fields(MotionFilterConfig)} and cfg.min_support >= 2

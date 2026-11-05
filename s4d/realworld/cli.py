@@ -1,12 +1,18 @@
-"""Command line for the real-world preprocessing pipeline.
+"""Command line for the real-world preprocessing pipeline (own rig: Franka Panda + Robotiq + RealSense RGB-D rigs).
 
-    python -m s4d.realworld.cli validate --config configs/realworld/pipeline_example.yaml
-    python -m s4d.realworld.cli run --config CONFIG --episode ID --stages ingest,stereo_rectify,mapanything_rig_depth
-    python -m s4d.realworld.cli run --config CONFIG --episode ID --stages calibrate,mapanything_depth,track2d,lift3d,export
+    python -m s4d.realworld.cli validate --config configs/realworld/mug_hanging.yaml
+    python -m s4d.realworld.cli run --config CONFIG --episode ID [--stages a,b]
     python -m s4d.realworld.cli status --root OUTPUT_ROOT --episode ID
-    optional baseline stages (not needed by our method): --stages sam3_masks,dino_snerl (after stereo_rectify / export)
 
-Stages are idempotent: re-running skips complete stages whose fingerprint matches (``--force`` rebuilds).
+Standard stage graph (configs/realworld/mug_hanging.yaml, dispatched by ``run_stages``): ingest, sensor_depth
+(calibration evidence), foundation_stereo_depth (device IR pair -> colour grid), sam3_masks, calibrate,
+track_everything (per camera, writes the track2d + lift3d records), track_motion, train_data (the compact training
+store, ``s4d.realworld.train_store``; output ``<output_root>/train_data/<episode>``). The former window export
+(``export``) runs only when configured; the ``dino_snerl`` cache stage is retired (SNeRL DINO targets are online).
+
+The depth model and the tracker run only when configured under ``stages`` (no default depth model or tracker; a
+failure is an error, never a switch to another backend). Stages are idempotent: re-running skips complete stages whose
+fingerprint matches (``--force`` rebuilds).
 """
 
 from __future__ import annotations
@@ -20,13 +26,35 @@ import yaml
 
 from s4d.realworld import io as rio
 
-STAGES = ("ingest", "sensor_depth", "stereo_rectify", "mapanything_rig_depth", "calibrate", "mapanything_depth",
-          "track2d", "lift3d", "track_motion", "export",
-          "foundation_stereo_depth", "foundation_stereo_filtered",
+STAGES = ("ingest", "sensor_depth", "calibrate", "track_motion", "train_data", "vis_geometry", "export",
+          "foundation_stereo_depth",
           "track_everything")  # optional stages last (dispatch order is in code)
-BASELINE_STAGES = ("sam3_masks", "dino_snerl")
-# run only when configured under ``stages``
-OPTIONAL_STAGES = ("track_motion", "foundation_stereo_depth", "foundation_stereo_filtered", "track_everything")
+BASELINE_STAGES = ("sam3_masks",)
+# run only when configured under ``stages``: the depth model, the tracker (no default backend), the motion filter, the
+# training store (it needs the task name), the viewer's native depth store and the former window export (legacy,
+# window-level copies)
+OPTIONAL_STAGES = ("track_motion", "train_data", "vis_geometry", "export", "foundation_stereo_depth",
+                   "track_everything")
+# stage directories with a completion record (track_everything writes the track2d and lift3d records)
+RECORD_STAGES = ("sensor_depth", "foundation_stereo_depth", "calibrate", "track2d", "lift3d", "track_motion")
+# model worker each stage calls (weights are staged only for the workers of the requested stages)
+STAGE_WORKERS = {"foundation_stereo_depth": "foundation_stereo", "track_everything": "trackeverything",
+                 "sam3_masks": "sam3"}
+
+
+def stage_workers(stages) -> set:
+    return {STAGE_WORKERS[s] for s in stages if s in STAGE_WORKERS}
+
+
+def save_root_config(cfg: dict, source: str) -> Path:
+    """The run's pipeline config as ``<output_root>/pipeline.yaml`` (frame-set policy for viewers and contract checks,
+    ``depth_stages.configured_sets_policy``); the latest run's config is kept."""
+    root = Path(cfg["output_root"])
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "pipeline.yaml"
+    rio.atomic_write_bytes(path, (f"# resolved pipeline config of the latest run (source: {source})\n"
+                                  + yaml.safe_dump(cfg, sort_keys=False)).encode())
+    return path
 
 
 def default_stages(cfg: dict) -> list[str]:
@@ -35,25 +63,21 @@ def default_stages(cfg: dict) -> list[str]:
     from s4d.realworld.baseline_stages import required_baseline_stages
 
     st = cfg.get("stages") or {}
-    stages = [s for s in STAGES if s not in OPTIONAL_STAGES or s in st] + list(required_baseline_stages(cfg))
-    variant = cfg.get("depth_variant")
-    if variant:
-        shared = {"ingest", *variant["shared_stages"]}
-        if variant.get("tracker") == "trackeverything":
-            shared |= {"track2d", "lift3d"}  # emitted together by track_everything
-        stages = [s for s in stages if s not in shared]
-    return stages
+    return [s for s in STAGES if s not in OPTIONAL_STAGES or s in st] + list(required_baseline_stages(cfg))
 
 
 def check_stage_scope(cfg: dict, wanted) -> None:
-    """Refuse baseline stages the config does not need (e.g. SAM 3 / DINO on DROID: only our method pretrains there)
-    and optional stages without a configuration."""
+    """Refuse configured stages this pipeline does not have, baseline stages the config does not need and optional
+    stages without a configuration."""
     from s4d.realworld.baseline_stages import required_baseline_stages
 
-    variant = cfg.get("depth_variant")
-    shared = sorted(set(wanted) & {"ingest", *variant["shared_stages"]}) if variant else []
-    if shared:
-        raise ValueError(f"stages {shared} are shared/frozen in this depth variant; run them in the base root")
+    unknown = sorted(set(cfg.get("stages") or {}) - set(STAGES + BASELINE_STAGES))
+    if unknown:
+        raise ValueError(f"configured stages {unknown} are not stages of this pipeline (known: "
+                         f"{list(STAGES + BASELINE_STAGES)})")
+    if "source" in ((cfg.get("stages") or {}).get("calibrate") or {}):
+        raise ValueError("stages.calibrate.source is not supported: the calibration is robot-grounded (externally "
+                         "provided extrinsics are not a calibration route of this pipeline)")
     extra = sorted(set(wanted) & set(BASELINE_STAGES) - set(required_baseline_stages(cfg)))
     if extra:
         raise ValueError(f"baseline stages {extra} are not needed by this config's declared baselines "
@@ -66,7 +90,7 @@ def check_stage_scope(cfg: dict, wanted) -> None:
 class AnnotationLandmarkSource:
     """2D robot-landmark observations from a JSON file (manual clicks, marker detector or render-and-match output):
     {camera_id: {frame_index: {"uv": [[u, v] | null, ...], "conf": [...]}}} in continuous pixel coordinates of the
-    rectified left image, landmarks ordered as ``landmark_links``."""
+    camera view's grid, landmarks ordered as ``landmark_links``."""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -90,16 +114,8 @@ def _spec(cfg: dict, name: str):
 
 
 def adapter_config(cfg: dict) -> dict:
-    """Adapter config plus ``calibration_source`` = ``stages.calibrate.source``, so an adapter can tie robot geometry to
-    the camera calibration actually used (e.g. DROID-3D joint offsets only with DROID-3D extrinsics). An explicit
-    adapter value must agree with the stage."""
-    acfg = dict(cfg["adapter"].get("config", {}) or {})
-    stage = ((cfg.get("stages") or {}).get("calibrate") or {}).get("source")
-    if "calibration_source" in acfg and acfg["calibration_source"] != stage:
-        raise ValueError(f"adapter calibration_source {acfg['calibration_source']!r} != stages.calibrate.source {stage!r}")
-    if stage is not None:
-        acfg["calibration_source"] = stage
-    return acfg
+    """The adapter's config section (a copy)."""
+    return dict(cfg["adapter"].get("config", {}) or {})
 
 
 def main(argv=None) -> int:
@@ -118,8 +134,9 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     if args.cmd == "status":
-        for stage in ("normalized",) + STAGES[1:-1] + BASELINE_STAGES:
+        for stage in ("normalized",) + RECORD_STAGES + ("train_data", "vis_geometry", "export") + BASELINE_STAGES:
             d = (rio.episode_dir(args.root, args.episode) / "normalized" if stage == "normalized"
+                 else Path(args.root) / stage / args.episode if stage in ("train_data", "vis_geometry", "export")
                  else rio.stage_dir(args.root, args.episode, stage))
             rec = rio.read_record(d)
             print(f"{stage:13s} {'complete ' + rec['fingerprint'][:12] if rec else 'missing'}")
@@ -141,7 +158,6 @@ def main(argv=None) -> int:
     from s4d.realworld.runners import LocalRunner
 
     root = Path(cfg["output_root"])
-    runner = LocalRunner(root / "_worker_tmp" / args.episode)
     wanted = args.stages.split(",") if args.stages else default_stages(cfg)
     unknown = set(wanted) - set(STAGES + BASELINE_STAGES)
     if unknown:
@@ -150,6 +166,8 @@ def main(argv=None) -> int:
         check_stage_scope(cfg, wanted)
     except ValueError as exc:
         ap.error(str(exc))
+    runner = LocalRunner(root / "_worker_tmp" / args.episode)
+    save_root_config(cfg, args.config)
 
     def run(name, fn):
         if name in wanted:
@@ -162,41 +180,24 @@ def main(argv=None) -> int:
 def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
     """Identical local/remote stage dispatch. ``run`` persists the caller's stage report and applies force policy."""
     from s4d.realworld import pipeline as P
-    from s4d.realworld.baseline_stages import dino_snerl, sam3_masks
+    from s4d.realworld.baseline_stages import sam3_masks
     from s4d.realworld.calibration import CalibrationConfig
-    from s4d.realworld.depth_stages import MapAnythingBackend, mapanything_depth, mapanything_rig_depth, sensor_depth
+    from s4d.realworld.depth_stages import sensor_depth
     from s4d.realworld.export import export
 
     root, st = Path(cfg["output_root"]), cfg.get("stages", {})
     spec_factory = spec_factory or (lambda name: _spec(cfg, name))
     run("ingest", lambda f: P.ingest(adapter, ep, root, force=f))
     run("sensor_depth", lambda f: sensor_depth(root, ep, runner, force=f, **st.get("sensor_depth", {})))
-    if "foundation_stereo_depth" in wanted:  # optional device-IR stereo backend (B1 of the depth comparison)
+    if "foundation_stereo_depth" in wanted:  # device-IR stereo depth (B1): the own-rig lifting/export depth
         from s4d.realworld.ir_stereo_depth import ir_stereo_depth
 
         run("foundation_stereo_depth", lambda f: ir_stereo_depth(root, ep, spec_factory("foundation_stereo"), runner,
                                                                  force=f, **st.get("foundation_stereo_depth", {})))
-    if "foundation_stereo_filtered" in wanted:
-        from s4d.realworld.ir_stereo_depth import filter_stereo_depth
-
-        run("foundation_stereo_filtered", lambda f: filter_stereo_depth(
-            root, ep, force=f, **st.get("foundation_stereo_filtered", {})))
-    has_stereo = (bool(P.load_meta(root, ep).stereo)
-                  if any(s in wanted for s in ("stereo_rectify", "mapanything_rig_depth")) else False)
-    if has_stereo:
-        run("stereo_rectify", lambda f: P.stereo_rectify(root, ep, runner=runner, force=f,
-                                                        **st.get("stereo_rectify", {})))
-    if any(stage in wanted for stage in ("mapanything_rig_depth", "mapanything_depth")):
-        ma = MapAnythingBackend(spec_factory("mapanything"), runner, cfg["workers"]["mapanything"].get("params", {}))
-        if has_stereo:
-            run("mapanything_rig_depth", lambda f: mapanything_rig_depth(root, ep, ma, force=f,
-                                                                        **st.get("mapanything_rig_depth", {})))
     cc = dict(st.get("calibrate", {}))
 
     def calibration(force):
-        if cc.get("source") == "adapter_provided":
-            return P.calibrate_provided(root, ep, adapter.provided_extrinsics(ep), force=force)
-        options = {k: v for k, v in cc.items() if k not in ("source", "evidence", "landmark_source", "cfg")}
+        options = {k: v for k, v in cc.items() if k not in ("evidence", "landmark_source", "cfg")}
         options.setdefault("landmark_links", [])
         source = AnnotationLandmarkSource(cc["landmark_source"]) if cc.get("landmark_source") else None
         return P.calibrate(root, ep, source, cfg=CalibrationConfig(**{**cc.get("cfg", {}),
@@ -209,7 +210,7 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
     def segment():
         meta = P.load_meta(root, ep)
         run("sam3_masks", lambda f: sam3_masks(root, ep, spec_factory("sam3"),
-                                               cameras=s3.get("cameras") or [v.stream_id for v in meta.views()],
+                                               cameras=s3.get("cameras") or [v.stream_id for v in P.camera_views(meta)],
                                                prompts=s3["prompts"], mode=s3.get("mode", "segment_images"),
                                                chunk=s3.get("chunk", 16), score_threshold=s3.get("score_threshold", 0.5),
                                                force=f, runner=runner))
@@ -217,17 +218,7 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
     if masks_first and "sam3_masks" in wanted:
         segment()
     run("calibrate", calibration)
-    if "mapanything_depth" in wanted:
-        run("mapanything_depth", lambda f: mapanything_depth(root, ep, ma, force=f, **st.get("mapanything_depth", {})))
-    if "track2d" in wanted:
-        tc = st.get("track2d", {})
-        tracker = P.WorkerTrackerBackend(spec_factory("alltracker"), root / "_unused",
-                                         cfg["workers"]["alltracker"].get("params"), runner=runner)
-        run("track2d", lambda f: P.track2d(root, ep, tracker, window=tc.get("window", 16), step=tc.get("step", 8),
-                                           grid_stride=tc.get("grid_stride", 8),
-                                           tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None,
-                                           force=f))
-    if "track_everything" in wanted:  # single-view TrackEverything writes track2d + lift3d in its own root
+    if "track_everything" in wanted:  # single-view TrackEverything per camera writes the track2d + lift3d records
         from s4d.realworld.trackeverything_stage import track_everything
 
         tc = dict(st.get("track_everything") or {})
@@ -240,7 +231,6 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
                     "summary": {k: r.get("summary") for k, r in recs.items()}}
 
         run("track_everything", te)
-    run("lift3d", lambda f: P.lift3d(root, ep, **st.get("lift3d", {}), force=f, runner=runner))
     if "track_motion" in wanted:
         from s4d.realworld.track_motion import MotionFilterConfig, track_motion
 
@@ -248,6 +238,20 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
         if "depth_bins_m" in mc:
             mc["depth_bins_m"] = tuple(mc["depth_bins_m"])
         run("track_motion", lambda f: track_motion(root, ep, cfg=MotionFilterConfig(**mc), force=f))
+    if "sam3_masks" in wanted and not masks_first:  # the training store carries the semantics: segment first
+        segment()
+    if "train_data" in wanted:
+        from s4d.realworld.train_store import write_episode
+
+        sc = dict(st.get("train_data") or {})
+        task = sc.pop("task", None) or cfg.get("task")  # default: the recording's dataset folder (adapter identity)
+        sc.setdefault("semantic", "snerl" in (cfg.get("baselines") or []))  # SNeRL's semantic targets
+        run("train_data", lambda f: write_episode(root, ep, root / "train_data" / ep, task=task, force=f, **sc))
+    if "vis_geometry" in wanted:  # viewer: native-resolution depth, compact (s4d.realworld.vis_store)
+        from s4d.realworld.vis_store import write_native_geometry
+
+        run("vis_geometry", lambda f: write_native_geometry(root, ep, root / "vis_geometry" / ep, force=f,
+                                                            **(st.get("vis_geometry") or {})))
     ec = st.get("export", {})
     run("export", lambda f: export(root, ep, root / "export" / ep, strides=tuple(ec.get("strides", (1, 2))),
                                    allow_infrared_input=ec.get("allow_infrared_input", False),
@@ -256,13 +260,6 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
                                    aspect=ec.get("aspect", "stretch"),
                                    track_source=ec.get("track_source", "lift3d"),
                                    depth_stage=ec.get("depth_stage"), force=f))
-    if "sam3_masks" in wanted and not masks_first:
-        segment()
-    if "dino_snerl" in wanted:
-        dc = st.get("dino_snerl", {})
-        run("dino_snerl", lambda f: dino_snerl(root / "export" / ep, rio.stage_dir(root, ep, "dino_snerl"),
-                                               spec_factory("dino_snerl"), backbone=dc.get("backbone", "scratch"),
-                                               force=f, runner=runner))
 
 
 if __name__ == "__main__":

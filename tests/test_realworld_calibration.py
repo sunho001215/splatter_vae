@@ -232,3 +232,29 @@ def test_multistart_keeps_the_best_fit_frame_solution_and_the_init_start_is_the_
     assert by_name["init"]["fit_score"] == pytest.approx(single_score, rel=1e-9)
     assert multi.diagnostics["depth_abs_median_m"] <= single.diagnostics["depth_abs_median_m"] + 1e-12
     assert rotation_angle_deg(multi.T_cam_base[:3, :3], T_TRUE[:3, :3]) < 0.3
+
+
+def test_gripper_links_follow_gripper_subtree_for_non_panda_arm_names(tmp_path):
+    """FR3-style arm link names must not be classified as gripper links (real-asset integration finding)."""
+    from s4d.realworld.contract import RobotDescription
+    from s4d.realworld.pipeline import RobotGeometry
+    from s4d.realworld.robot import RobotSurface, URDFModel
+
+    box = '<visual><geometry><box size="0.02 0.02 0.02"/></geometry></visual>'
+    links = ["base", "fr3_link0", "fr3_link8", "world", "grip_base", "finger"]
+    urdf = "<robot name='r'>" + "".join(f"<link name='{n}'>{box}</link>" for n in links)
+    for parent, child, name in (("base", "fr3_link0", "j0"), ("fr3_link0", "fr3_link8", "j8"),
+                                ("fr3_link8", "world", "mount"), ("world", "grip_base", "gb"),
+                                ("grip_base", "finger", "f")):
+        urdf += (f"<joint name='{name}' type='fixed'><parent link='{parent}'/><child link='{child}'/>"
+                 "<origin xyz='0 0 0.1' rpy='0 0 0'/></joint>")
+    urdf += "</robot>"
+    (tmp_path / "r.urdf").write_text(urdf)
+    geom = RobotGeometry.__new__(RobotGeometry)
+    geom.model = URDFModel.from_file(tmp_path / "r.urdf")
+    geom.surface = RobotSurface.build(geom.model, 10, seed=0)
+    geom.desc = RobotDescription("franka_panda", "robotiq_2f_85", str(tmp_path / "r.urdf"), None,
+                                 gripper_base_frame="world")
+    assert geom.gripper_links() == ["finger", "grip_base", "world"]
+    geom.desc = RobotDescription("franka_panda", "robotiq_2f_85", str(tmp_path / "r.urdf"), None)
+    assert "fr3_link8" in geom.gripper_links()  # the legacy rule's misclassification, kept only without the frame

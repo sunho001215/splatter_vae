@@ -1,8 +1,8 @@
-"""TrackEverything single-view tracks in the existing track2d/lift3d chunk contract.
+"""TrackEverything single-view tracks in the track2d/lift3d chunk contract (the own-rig tracker).
 
-This opt-in stage replaces both tracking and lifting in the supplied output root. It
-never invokes the multiview demo, interleaves views, or estimates geometry. Existing
-AllTracker stages and all downstream consumers keep their current behavior.
+This stage writes both the ``track2d`` and the ``lift3d`` records of an output root. It never invokes the multiview
+demo, interleaves views, or estimates geometry; downstream consumers (track_motion, export, viewer) read the same
+chunk contract.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from s4d.realworld.geometry import project, transform_points
 from s4d.realworld.pipeline import (
     _record_fp,
     accepted_calibration,
+    camera_views,
     chunk_queries,
     load_meta,
     to_model_rgb,
@@ -62,7 +63,7 @@ def resize_inputs(video, depth, K, model_hw):
 def query_chunks(out, *, q, indices, clip_start, query_slice, timestamps_ns, K, w2c, hw, source):
     """Project TE's metric 3D output; match Tracks3D's NaN/status invariant.
 
-    OUT takes precedence over OCCLUDED as in tracking.lift_tracks. Nonfinite
+    OUT takes precedence over OCCLUDED. Nonfinite
     predictions/logits and prebirth/out-of-clip samples are NOT_TRACKED; points
     behind the camera are OUT. Visibility uses sigmoid(logit), confidence is 1.
     """
@@ -140,8 +141,6 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
               "birth_depth_edge_rel": 0.05, "query_depth_lookup": "floor on resized grid; no depth invention",
               "vis_threshold": 0.5, "allow_mock": allow_mock}
     inputs = {k: _record_fp(root, episode_id, k) for k in ("ingest", depth_stage, "calibrate")}
-    if meta.stereo:
-        inputs["stereo_rectify"] = _record_fp(root, episode_id, "stereo_rectify")
     directory = rio.stage_dir(root, episode_id, "track2d")
     store = rio.ChunkStore(directory.with_name("trackeverything_clips"),
                            rio.stage_fingerprint("track2d", VERSION, config, inputs))
@@ -150,11 +149,11 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
 
     def build(tmp, stage):
         summary = {}
-        for view in meta.views():
+        for view in camera_views(meta):
             cam = view.stream_id
             stream = meta.stream(cam)
             T = accepted_calibration(root, episode_id, cam)
-            rig = meta.rig_rgbd(view.rig_id) if view.kind == "rgbd" else meta.rig_stereo(view.rig_id)
+            rig = meta.rig_rgbd(view.rig_id)
             if stream.modality != "rgb":
                 summary[cam] = {"skipped": "TrackEverything colour view required"}
                 continue

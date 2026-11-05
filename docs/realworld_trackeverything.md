@@ -1,18 +1,17 @@
 # TrackEverything single-view stage
 
-`s4d.realworld.trackeverything_stage.track_everything` is an opt-in replacement for
-both `pipeline.track2d` and `pipeline.lift3d`. It writes their ordinary stage names,
-per-camera filenames, keys, point IDs, query frames, and original colour-grid pixel
-coordinates. `track_motion`, `export` (either track source), and `viewer_data` use
-the results without changes. Use a separate output root when retaining an
-AllTracker comparison; the two stages occupy the same output locations.
+`s4d.realworld.trackeverything_stage.track_everything` is the own-rig tracker of the standard pipeline
+(`stages.track_everything` in `configs/realworld/mug_hanging.yaml`, depth `foundation_stereo_depth`). It writes the
+`track2d` and `lift3d` records (the stage names, per-camera filenames, keys, point IDs, query frames and original
+colour-grid pixel coordinates of the track chunk contract in `tracking.py`). `track_motion`, `export` (either track
+source) and `viewer_data` consume them. (Until 2026-11-05 it was an opt-in comparison tracker next to AllTracker +
+per-frame lifting, both since retired; see section 10 of [realworld_preprocessing.md](realworld_preprocessing.md).)
 
 The prerequisites in that root are normalized ingestion, our metric depth stage,
 and accepted camera calibrations. RGB views with metric rig geometry participate;
-other views get explicit skip records. There is no automatic switch in the
-existing pipeline or server campaign.
+other views get explicit skip records. A missing or failing worker is an error; no other tracker is substituted.
 
-Example wiring (recipe only; no model code was executed during implementation):
+Example wiring (the CLI and `ops/inference_server/run_episode.py` do this from the config):
 
 ```python
 from s4d.realworld.runners import LocalRunner
@@ -27,13 +26,13 @@ spec = WorkerSpec(
     checkpoint="/ram/weights/trackeverything/model.pth",  # existing local file, never a hub ID
 )
 records = track_everything(
-    root, episode_id, spec, LocalRunner(workdir), depth_stage="sensor_depth",
+    root, episode_id, spec, LocalRunner(workdir), depth_stage="foundation_stereo_depth",
     window=16, step=8, grid_stride=16, model_hw=(384, 512), num_iters=3,
 )
 ```
 
 The same runner interface supports a persistent remote worker: one request is one
-camera's query window, with exactly the frames sent to AllTracker. Workers cache the model and checkpoint hash per
+camera's query window (`pipeline.chunk_queries`). Workers cache the model and checkpoint hash per
 process/session. `LocalRunner` uses a fresh subprocess per request, like the other
 workers, so it reloads weights between clips; use a persistent runner for real runs.
 The worker validates the local checkpoint before any upstream import. Only the
@@ -57,7 +56,7 @@ Conventions, verified against TrackEverything commit
 
 Queries use exactly `pipeline.chunk_queries(n, window, step)` on each camera's
 full timeline and `query_grid(original_hw, grid_stride, grid_stride//2)`. For the
-640x480 view these are the original AllTracker query pixels. They generally become
+640x480 view these are the query pixels of the former AllTracker route. They generally become
 subpixel coordinates on the model grid; replacing them with a new integer grid
 would change the queried rays. We preserve the original rays.
 
@@ -92,13 +91,13 @@ Validation uses `synthetic.py` ray-cast geometry exposed as RGB-D, a file-protoc
 oracle returning normalized cam0 predictions, and a fake torch module to check
 the hook. It does not execute any upstream model code. It checks metric recovery,
 births, visibility/status, grid/resize rays and query-depth lookup, unsupported
-births, identical AllTracker inference frames across pauses, durable saves, resuming either stage, and motion/export/viewer
-consumers. The existing pipeline suite is also run.
+births, inference frames equal to the query windows across pauses, durable saves, resuming either stage, and
+motion/export/viewer consumers. The end-to-end pipeline suite (`tests/test_realworld_pipeline.py`) runs it after a
+real calibration stage.
 
-Open validation items:
-
-- Real checkpoint inference and target-server memory/runtime have not been tested.
-  The environment file is an inference recipe stub, not a validated transitive
-  lock. `setup_envs.sh` documents torch 2.8.0+cu129, Python 3.10, the pt28cu129
-  torch_scatter wheel, and a matching-ABI local wheel fallback if sm_120 fails.
-  No setup, downloads, or server actions were performed.
+Validation on real data: mug-hanging episode 1 and the drawer-open, pick-and-place and covering recordings on the
+inference server (`shkim_rw`, `/opt/envs/trackeverything`; B1 depth, accepted calibrations), compared with
+AllTracker + lifting on episode 1 (section 9 of [realworld_preprocessing.md](realworld_preprocessing.md)). The
+environment file remains an inference dependency recipe, not a frozen transitive lock (`setup_envs.sh` documents
+torch 2.8.0+cu129, Python 3.10, the pt28cu129 torch_scatter wheel, and a matching-ABI local wheel fallback if sm_120
+fails); freeze the working environment before rebuilding it elsewhere.

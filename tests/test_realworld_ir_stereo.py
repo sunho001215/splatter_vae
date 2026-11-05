@@ -156,9 +156,6 @@ def test_stereo_stage_preserves_float32_lr_threshold(tmp_path, monkeypatch):
     with h5py.File(src) as f:
         assert f["lr_error"].dtype == np.float32
         np.testing.assert_array_equal(f["lr_error"][:], error)
-    ir_stereo_depth.filter_stereo_depth(tmp_path, "ep")
-    with h5py.File(rio.stage_dir(tmp_path, "ep", "foundation_stereo_filtered") / "color.h5") as f:
-        np.testing.assert_array_equal(f["depth"][0, 0], [0., 1., 0.])
 
 
 def test_reproject_depth_source_index_keeps_the_default_output_and_names_the_winners():

@@ -1,6 +1,6 @@
 """Isolated upstream-model workers: a file-based subprocess protocol.
 
-Upstream models (MapAnything, AllTracker, SAM 3, DINO) are never imported into this package. Each runs as
+Upstream models (FoundationStereo, TrackEverything, SAM 3, DINO) are never imported into this package. Each runs as
 ``<python of its own pinned environment> s4d/realworld/workers/<name>_worker.py --request req.json``; inputs and
 outputs travel as ``.npz`` files next to the request. The response must name the model identity (repo commit,
 checkpoint + sha256, ``is_mock``), which every stage copies into its completion record. Commit mismatches against
@@ -34,7 +34,7 @@ class WorkerError(RuntimeError):
 
 @dataclass(frozen=True)
 class WorkerSpec:
-    name: str  # mapanything / alltracker / sam3 / dino_snerl / mock
+    name: str  # foundation_stereo / trackeverything / sam3 / dino_snerl / s4d_kernels / mock
     python: str  # interpreter of the isolated, pinned environment
     script: str | None = None  # defaults to s4d/realworld/workers/<name>_worker.py
     repo_dir: str | None = None  # upstream checkout at the pinned commit

@@ -7,7 +7,15 @@ Everything comes from the file; nothing is invented:
 - timestamps from ``t`` (colour) and ``stereo/t`` (depth): the device hardware/global-time stamp mapped onto host
   CLOCK_MONOTONIC (its frame-to-frame steps equal ``hw_timestamp_ms`` steps; arrival ``t_recv`` is ~65 ms later);
 - depth frame k is the frame the recorder paired with colour frame k (``stereo/color_index == k``, offset recorded in
-  ``stereo/color_offset_ms``);
+  ``stereo/color_offset_ms``). A colour frame without a stereo record (the recorder dropped that depth/IR record;
+  ``stereo/color_index`` skips its index) is NOT part of the normalized colour stream: colour and depth/IR streams stay
+  paired 1:1 (the contract's RGB-D/IR pairing, ``RgbdGeometry``/``IrStereoGeometry``), no depth/IR frame is invented,
+  and the dropped colour frames (recorded index and time) are listed in the colour stream notes and the provenance notes,
+  so the camera's timeline shows the gap. An index map that is not strictly increasing within the colour frames is
+  refused;
+- the task identity is the dataset folder (the episode file's parent directory), never the recorder's ``task_name``
+  attribute; a ``task_name`` that neither equals nor extends the folder name (e.g. ``drawer-opening`` in
+  ``drawer-open/`` is consistent) is reported (warning + provenance note), not refused;
 - robot joints, flange poses (``panda_link8``, the recorded EE frame) and the Robotiq position register
   (``gripper/position``, raw 0..255, its own ~60 Hz clock -> interpolated onto robot times; recorded as such).
 The file holds NO camera-to-robot extrinsics (root attribute ``camera_calibration`` is empty): those come from the
@@ -27,6 +35,7 @@ from __future__ import annotations
 
 import io
 import json
+import warnings
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,6 +86,30 @@ def _extrinsic(cal: dict, name: str, source: str, target: str) -> np.ndarray:
     T[:3, :3] = np.asarray(e["R_target_from_source"], float)
     T[:3, 3] = np.asarray(e["t_target_from_source_m"], float)
     return T
+
+
+def _paired_colour(g, serial: str) -> np.ndarray:
+    """Recorded colour frame of every stereo record (``stereo/color_index``): ``arange`` when every colour frame has
+    its record; otherwise the strictly increasing subset of colour frames that have one. Anything else is refused."""
+    n = len(g["t"])
+    ci = np.asarray(g["stereo/color_index"][()], np.int64)
+    if len(ci) == n and np.array_equal(ci, np.arange(n)):
+        return ci
+    if not (0 < len(ci) <= n and (ci >= 0).all() and (ci < n).all() and (np.diff(ci) > 0).all()):
+        raise ValueError(f"cam_{serial}: depth frames are not paired 1:1 with colour frames (stereo/color_index of "
+                         f"{len(ci)} records does not map strictly increasing onto the {n} colour frames)")
+    return ci
+
+
+def _task_mismatch(folder: str, recorded: str) -> bool:
+    """True when the recorder's task_name neither equals nor extends the dataset folder name (case and separators
+    ignored), e.g. ``drawer-opening`` in ``drawer-open/`` is consistent, ``pick-and-place`` there is not."""
+    import re
+
+    def norm(x):
+        return re.sub(r"[^a-z0-9]+", "-", str(x).lower()).strip("-")
+
+    return not norm(recorded).startswith(norm(folder))
 
 
 def _pose_matrix(p: np.ndarray) -> np.ndarray:
@@ -135,17 +168,20 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
                 src = f"librealsense {cal['device']['sdk_version']} active profile (calibration_id {cal['calibration_id']})"
                 if not (g["t_valid"][()].all() and g["stereo/t_valid"][()].all() and g["stereo/depth_ok"][()].all()):
                     raise ValueError(f"cam_{serial}: invalid timestamps or depth frames flagged by the recorder")
-                if not (g["stereo/color_index"][()] == np.arange(len(g["t"]))).all():
-                    raise ValueError(f"cam_{serial}: depth frames are not paired 1:1 with colour frames")
+                paired = _paired_colour(g, serial)
+                dropped = sorted(set(range(len(g["t"]))) - set(paired.tolist()))
                 emitter = cal.get("emitter", {})
                 common = dict(rig_id=serial, eye="mono", rectified=True, device_serial=serial,
                               timestamp_source="device global-time stamp mapped to host CLOCK_MONOTONIC (recorder t)")
                 cid, did = f"{serial}/color", f"{serial}/depth"
+                gap = (f"; recorded colour frames {dropped} have no stereo (depth/IR) record and are not part of "
+                       "this stream (timeline gap)" if dropped else "")
                 streams.append(CameraStream(
                     stream_id=cid, modality="rgb", channels=3, channel_order="RGB", dtype="uint8",
                     intrinsics=_intrinsics(color["intrinsics"], src), sensor_name=f"{cal['device']['name']} RGB",
                     notes=f"recorded {color['format']} {color['width']}x{color['height']}@{color['fps']} as JPEG; "
-                          "decoded to RGB; zero distortion coefficients (pinhole, no rectification needed)", **common))
+                          "decoded to RGB; zero distortion coefficients (pinhole, no rectification needed)" + gap,
+                    **common))
                 streams.append(CameraStream(
                     stream_id=did, modality="depth", channels=1, channel_order="DEPTH", dtype="uint16",
                     intrinsics=_intrinsics(depth["intrinsics"], src), sensor_name=f"{cal['device']['name']} depth",
@@ -157,15 +193,21 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
                 T = np.eye(4)
                 T[:3, :3] = np.asarray(e["R_target_from_source"], float)
                 T[:3, 3] = np.asarray(e["t_target_from_source_m"], float)
-                stamps[cid], stamps[did] = _ns(g["t"][()]), _ns(g["stereo/t"][()])
+                stamps[cid], stamps[did] = _ns(g["t"][()][paired]), _ns(g["stereo/t"][()])
                 offset_ns = np.abs(stamps[cid] - stamps[did])
                 rgbd.append(RgbdGeometry(
                     rig_id=serial, color_stream=cid, depth_stream=did, status="metric",
                     T_color_depth=tuple(map(tuple, T)), max_pair_offset_ns=PAIR_TOLERANCE_NS,
-                    pairing=f"recorder pairing stereo/color_index == k (max |t_color - t_depth| {int(offset_ns.max())} ns)",
+                    pairing=(f"recorder pairing stereo/color_index == k (max |t_color - t_depth| {int(offset_ns.max())} ns)"
+                             if not dropped else
+                             f"recorder pairing stereo/color_index; colour frames without a stereo record dropped "
+                             f"(recorded indices {dropped}) (max |t_color - t_depth| {int(offset_ns.max())} ns)"),
                     source=f"{src}: extrinsics color_from_depth ({cal['extrinsics_convention']})"))
                 notes[serial] = {"frames": int(len(g["t"])), "segments": np.bincount(g["segment"][()]).tolist(),
                                  "firmware": cal["device"]["firmware_version"]}
+                if dropped:
+                    notes[serial]["colour_frames_without_stereo_record"] = [
+                        {"recorded_index": int(i), "t_ns": int(_ns(g["t"][i]))} for i in dropped]
                 if self.config.get("include_ir"):
                     ir_pairs.append(self._ir_pair(g, serial, cal, src, common, emitter, stamps))
                     streams += ir_pairs[-1][1]
@@ -190,6 +232,14 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
                 "robot/t; register -> finger joint mapping linear (s4d.realworld.robot.gripper_joint_value)",
                 "robot/t is the state time on host CLOCK_MONOTONIC (file conventions_json 'time')",
             ]
+            path = self.episodes[episode_id]
+            task_note = {}
+            if _task_mismatch(path.parent.name, f.attrs.get("task_name")):
+                task_note = {"task_identity": {
+                    "dataset_folder": path.parent.name, "recorded_task_name": str(f.attrs.get("task_name")),
+                    "note": "the task is the dataset folder; the recorder's task_name attribute disagrees and is unused"}}
+                warnings.warn(f"{episode_id}: recorder task_name {f.attrs.get('task_name')!r} disagrees with the "
+                              f"dataset folder {path.parent.name!r} (the folder decides the task)", stacklevel=2)
             prov = Provenance(
                 adapter=self.name, adapter_version=self.version, source_root=str(self.episodes[episode_id].parent),
                 source_files=tuple(SourceFile(str(p), "", p.stat().st_size) for p in self.source_files(episode_id)),
@@ -202,7 +252,7 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
                                   "conventions": json.loads(f.attrs["conventions_json"]),
                                   "T_flange_controller_ee": np.asarray(f.attrs["T_flange_controller_ee"]).tolist(),
                                   "T_flange_tcp": np.asarray(f.attrs["T_flange_tcp"]).tolist(),
-                                  "camera_calibration_attr": str(f.attrs.get("camera_calibration"))}))
+                                  "camera_calibration_attr": str(f.attrs.get("camera_calibration")), **task_note}))
             if ir_pairs:
                 assumptions.append("infrared pairs: librealsense Y8 left/right streams of each D4xx, rectified on the "
                                    "device (identical K, zero distortion, R = I); IR frame k = depth frame k (same "
@@ -276,10 +326,11 @@ class PandaTeleopH5Adapter(EpisodeAdapter):
             g = f["cameras"][f"cam_{serial}"]
             data = g[{"color": "color", "depth": "stereo/depth", "ir_left": "stereo/left",
                       "ir_right": "stereo/right"}[kind]]
-            stamps = _ns(g["t"][()] if kind == "color" else g["stereo/t"][()])
+            recorded = _paired_colour(g, serial) if kind == "color" else None  # colour frames with a stereo record
+            stamps = _ns(g["t"][()][recorded] if kind == "color" else g["stereo/t"][()])
             stop = len(stamps) if stop is None else min(stop, len(stamps))
             for i in range(start, stop):
-                img = Image.open(io.BytesIO(bytes(data[i])))
+                img = Image.open(io.BytesIO(bytes(data[i if recorded is None else int(recorded[i])])))
                 if kind == "color":
                     arr = np.asarray(img.convert("RGB"))
                 elif kind in ("ir_left", "ir_right"):

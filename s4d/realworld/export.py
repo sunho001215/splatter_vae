@@ -12,7 +12,7 @@ splat_score, depth_test) so losses and methods are unchanged. Loaded by ``s4d.re
 pair whose two samples lie in different motion segments (occlusion, recording pause, implausible jump), so no
 displacement is supervised across a break. Static scene geometry stays in the exported RGB-D; track tensors keep the
 same names, shapes and padding (``track_count`` = moving tracks of that camera window). The default
-``"lift3d"`` keeps every valid lifted track (unchanged behaviour, e.g. the DROID route).
+``"lift3d"`` keeps every valid lifted track.
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from s4d.realworld.geometry import crop_affine, invert_T, resize_affine, warp_af
 from s4d.realworld.pipeline import (
     RobotGeometry,
     accepted_calibration,
+    camera_views,
     default_depth_stage,
     load_meta,
     robot_state_at,
@@ -62,6 +63,16 @@ def export_affine(src_hw: tuple, dst_hw: tuple, aspect: str = "stretch"):
     ch, cw = (H, int(round(H * target))) if W / H > target else (int(round(W / target)), W)
     top, left = (H - ch) // 2, (W - cw) // 2
     return crop_affine(top, left).then(resize_affine((ch, cw), dst_hw))
+
+
+def motion_target_source(track2d_record: dict, depth_stage: str) -> str:
+    """How the exported 3D tracks were produced, from the tracker that wrote the ``track2d`` record (TrackEverything,
+    the only tracker of this pipeline; a record of any other tracker is refused)."""
+    tracker = track2d_record.get("config", {}).get("tracker")
+    if tracker != "TrackEverything":
+        raise ValueError(f"track2d record written by {tracker!r}, not TrackEverything (the only tracker of this pipeline)")
+    return (f"per-camera single-view TrackEverything 3D tracks (inputs: the camera's RGB clip, {depth_stage} "
+            "depth, its intrinsics and the accepted calibration)")
 
 
 def segment_motion(points: np.ndarray, seg: np.ndarray) -> np.ndarray:
@@ -112,7 +123,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
     never match the same frame of another camera). ``validation_tail_frames`` puts windows lying entirely in the
     last frames of the reference timeline into the validation split; windows straddling the boundary are dropped,
     so no frame is shared between splits (same episode: not generalisation evidence). ``depth_stage`` defaults to
-    MapAnything depth for stereo and RGB-D episodes. ``max_gap_factor`` drops windows whose
+    ``default_depth_stage(meta, "lift")`` (the FoundationStereo IR depth). ``max_gap_factor`` drops windows whose
     canonical frames are further apart than ``max_gap_factor * stride * median reference period`` (recording pauses
     between segments would otherwise enter as one uniform time step). ``aspect="center_crop"`` first crops the largest
     centred region with the target aspect ratio (square pixels, e.g. 4:3 RealSense -> 16:9 targets); the default
@@ -128,14 +139,15 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                (depth_stage, "calibrate", "track2d", "lift3d") + (("track_motion",) if track_source != "lift3d" else ())}
     if any(v is None for v in records.values()):
         raise RuntimeError(f"export needs complete upstream stages: {[k for k, v in records.items() if v is None]}")
+    motion_target = motion_target_source(records["track2d"], depth_stage)  # refuses other trackers, also when cached
     # any model or landmark source flagged as mock anywhere in an upstream record (config or summary)
     mock = any('"is_mock": true' in json.dumps(r, default=str) for r in records.values())
     if mock and not allow_mock:
         raise RuntimeError("upstream stages used MOCK model outputs; refusing to export (allow_mock=False)")
     excluded, chosen = {}, []
-    for view in meta.views():
+    for view in camera_views(meta):
         cam = view.stream_id
-        status = meta.rig_stereo(view.rig_id).status if view.kind == "stereo" else meta.rig_rgbd(view.rig_id).status
+        status = meta.rig_rgbd(view.rig_id).status
         if cameras is not None and cam not in cameras:
             excluded[cam] = "not selected"
         elif accepted_calibration(root, episode_id, cam) is None:
@@ -327,12 +339,9 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
             "conventions": CONVENTIONS,
             "intrinsics_convention": "continuous pixel coordinates; K tracked through resize as a pixel affine",
             "aspect": aspect,
-            "depth_resize": ("nearest neighbour, zero invalid, metric camera-z of the rectified left image "
-                             f"({depth_stage})" if meta.stereo else
-                             f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})"),
-            "motion_target": (f"per-camera AllTracker tracks lifted with same-frame {depth_stage} depth and the "
-                              "accepted calibration; weight 1 where the source-time status is valid "
-                              "and both positions finite"
+            "depth_resize": f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})",
+            "motion_target": (motion_target
+                              + "; weight 1 where the source-time status is valid and both positions finite"
                               + ("" if track_source == "lift3d" else
                                  "; ONLY tracks classified moving by track_motion (full valid trajectories), pairs "
                                  "across motion-segment breaks weighted 0; static geometry is in images/depth only")),
