@@ -21,8 +21,32 @@ import yaml
 from s4d.realworld import io as rio
 
 STAGES = ("ingest", "sensor_depth", "stereo_rectify", "mapanything_rig_depth", "calibrate",
-          "mapanything_depth", "track2d", "lift3d", "export")
+          "mapanything_depth", "track2d", "lift3d", "track_motion", "export")
 BASELINE_STAGES = ("sam3_masks", "dino_snerl")
+OPTIONAL_STAGES = ("track_motion",)  # run only when configured under ``stages``
+
+
+def default_stages(cfg: dict) -> list[str]:
+    """Stages a config runs by default: every pipeline stage (optional ones only when configured) plus exactly the
+    baseline stages its declared baselines / calibration need (``required_baseline_stages``)."""
+    from s4d.realworld.baseline_stages import required_baseline_stages
+
+    st = cfg.get("stages") or {}
+    return [s for s in STAGES if s not in OPTIONAL_STAGES or s in st] + list(required_baseline_stages(cfg))
+
+
+def check_stage_scope(cfg: dict, wanted) -> None:
+    """Refuse baseline stages the config does not need (e.g. SAM 3 / DINO on DROID: only our method pretrains there)
+    and optional stages without a configuration."""
+    from s4d.realworld.baseline_stages import required_baseline_stages
+
+    extra = sorted(set(wanted) & set(BASELINE_STAGES) - set(required_baseline_stages(cfg)))
+    if extra:
+        raise ValueError(f"baseline stages {extra} are not needed by this config's declared baselines "
+                         f"{cfg.get('baselines') or []} (and not by its calibration); declare the baseline first")
+    missing = sorted(s for s in set(wanted) & set(OPTIONAL_STAGES + BASELINE_STAGES) if s not in (cfg.get("stages") or {}))
+    if missing:
+        raise ValueError(f"stages {missing} are requested but not configured under 'stages'")
 
 
 class AnnotationLandmarkSource:
@@ -72,7 +96,7 @@ def main(argv=None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--config", required=True)
     r.add_argument("--episode", required=True)
-    r.add_argument("--stages", default=",".join(STAGES))
+    r.add_argument("--stages", help="comma-separated; default: default_stages(config)")
     r.add_argument("--force", action="store_true")
     s = sub.add_parser("status")
     s.add_argument("--root", required=True)
@@ -104,10 +128,14 @@ def main(argv=None) -> int:
 
     root = Path(cfg["output_root"])
     runner = LocalRunner(root / "_worker_tmp" / args.episode)
-    wanted = args.stages.split(",")
+    wanted = args.stages.split(",") if args.stages else default_stages(cfg)
     unknown = set(wanted) - set(STAGES + BASELINE_STAGES)
     if unknown:
         ap.error(f"unknown stages: {sorted(unknown)}")
+    try:
+        check_stage_scope(cfg, wanted)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     def run(name, fn):
         if name in wanted:
@@ -176,12 +204,20 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
                                            tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None,
                                            force=f))
     run("lift3d", lambda f: P.lift3d(root, ep, **st.get("lift3d", {}), force=f, runner=runner))
+    if "track_motion" in wanted:
+        from s4d.realworld.track_motion import MotionFilterConfig, track_motion
+
+        mc = dict(st.get("track_motion") or {})
+        if "depth_bins_m" in mc:
+            mc["depth_bins_m"] = tuple(mc["depth_bins_m"])
+        run("track_motion", lambda f: track_motion(root, ep, cfg=MotionFilterConfig(**mc), force=f))
     ec = st.get("export", {})
     run("export", lambda f: export(root, ep, root / "export" / ep, strides=tuple(ec.get("strides", (1, 2))),
                                    allow_infrared_input=ec.get("allow_infrared_input", False),
                                    validation_tail_frames=ec.get("validation_tail_frames", 0),
                                    max_sync_ns=ec.get("max_sync_ns"), max_gap_factor=ec.get("max_gap_factor"),
-                                   aspect=ec.get("aspect", "stretch"), force=f))
+                                   aspect=ec.get("aspect", "stretch"),
+                                   track_source=ec.get("track_source", "lift3d"), force=f))
     if "sam3_masks" in wanted and not masks_first:
         segment()
     if "dino_snerl" in wanted:

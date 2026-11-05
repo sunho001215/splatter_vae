@@ -131,3 +131,52 @@ def summarize(x: np.ndarray, tols=(0.01, 0.02, 0.05), unit: str = "mm", scale: f
     for t in tols:
         out[f"within_{int(round(t * scale))}{unit}"] = float((a <= t).mean())
     return out
+
+
+# ---------------------------------------------------------------- v2: common-support comparison (2026-11-05)
+
+
+def reproject_pair(points_a: np.ndarray, T_a, T_b, K_b, depth_b, valid_b, *, occlusion_m: float = 0.05):
+    """Camera-a points (N,3) -> (signed z_b(measured) - z(reprojected) (N,), kept (N,), occluded (N,)). ``kept``: lands
+    inside b on a valid pixel and is not hidden behind b's surface by more than ``occlusion_m``."""
+    world = transform_points(np.linalg.inv(T_a), points_a)
+    uv, z = project(transform_points(T_b, world), K_b)
+    H, W = depth_b.shape
+    ok = np.isfinite(uv).all(1) & (z > 0)
+    j = np.where(ok, np.floor(np.nan_to_num(uv[:, 0])), -1).astype(int)
+    i = np.where(ok, np.floor(np.nan_to_num(uv[:, 1])), -1).astype(int)
+    inside = ok & (i >= 0) & (i < H) & (j >= 0) & (j < W)
+    zb, vb = np.zeros(len(z)), np.zeros(len(z), bool)
+    zb[inside], vb[inside] = depth_b[i[inside], j[inside]], valid_b[i[inside], j[inside]]
+    d = zb - np.where(np.isfinite(z), z, 0.0)
+    occluded = inside & vb & (d <= -occlusion_m)
+    return d.astype(np.float32), inside & vb & ~occluded, occluded
+
+
+def rgb_boundary(rgb: np.ndarray, px: int = 3) -> np.ndarray:
+    """Source-independent boundary band: pixels within ``px`` of an RGB edge."""
+    from scipy.ndimage import binary_dilation
+
+    return binary_dilation(_edges_from_gray(rgb.astype(np.float32).mean(-1)), iterations=px)
+
+
+def edge_shift_scan(depth, valid, rgb, *, radius: int = 3, max_px: int = 20) -> dict:
+    """Mean capped distance from depth discontinuities to the nearest RGB edge when the depth map is shifted by
+    (dx, dy) in [-radius, radius]^2: a registration offset shows as a minimum away from (0, 0)."""
+    from scipy.ndimage import distance_transform_edt
+
+    rgb_e = _edges_from_gray(rgb.astype(np.float32).mean(-1))
+    d_e = depth_edges(depth, valid)
+    if not d_e.any() or not rgb_e.any():
+        return {}
+    dist = np.minimum(distance_transform_edt(~rgb_e), max_px)
+    ii, jj = np.nonzero(d_e)
+    H, W = depth.shape
+    scores = {}
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            i2, j2 = ii + dy, jj + dx
+            m = (i2 >= 0) & (i2 < H) & (j2 >= 0) & (j2 < W)
+            scores[(dx, dy)] = float(dist[i2[m], j2[m]].mean()) if m.any() else float("inf")
+    best = min(scores, key=scores.get)
+    return {"best_shift_px": list(best), "at_best": scores[best], "at_zero": scores[(0, 0)]}

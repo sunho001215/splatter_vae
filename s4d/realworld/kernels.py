@@ -189,6 +189,133 @@ def depth_set_diagnostics(params: dict, arrays: dict) -> tuple[dict, dict]:
         {"sets": _finite(sets)}
 
 
+REGIONS_V2 = ("scene", "mug", "fixture", "robot", "boundary")
+
+
+@kernel("depth_compare_v2")
+def depth_compare_v2(params: dict, arrays: dict) -> tuple[dict, dict]:
+    """Raw RealSense vs MapAnything depth, v2 (2026-11-05): every direct comparison on COMMON valid support (pixels
+    and reprojected points valid in both sources), coverage and hole filling reported separately, per region.
+
+    arrays as ``depth_set_diagnostics`` plus ``conf_ma`` (S,V,H,W). Regions of a view: ``scene`` (all pixels), ``mug``
+    / ``fixture`` (SAM 3 object / fixture masks), ``robot`` (calibrated URDF z-buffer at the recorded joints),
+    ``boundary`` (within ``boundary_px`` of an RGB edge; source independent). Per set: per-view coverage, MA - raw
+    on common support, robot agreement on common support, edge alignment (+ shift scan on every ``scan_every``-th
+    set), confidence split; per ordered view pair and region: cross-view residuals of both sources on the SAME
+    points (common support in both views) and of MapAnything-filled points (raw invalid) against the other view's raw
+    and MapAnything depth. Returns per-set rows (meta) and the static-pixel grid (outputs) as v1."""
+    from scipy.ndimage import binary_dilation
+
+    from s4d.realworld import diagnostics as dg
+    from s4d.realworld.geometry import depth_to_points
+
+    imgs = arrays["images"]
+    S, V, H, W = imgs.shape[:4]
+    K, T = np.asarray(arrays["K"], float), np.asarray(arrays["T_cam_base"], float)
+    occ, step = float(params.get("occlusion_m", 0.05)), int(params.get("grid_step", 8))
+    bpx, front = int(params.get("boundary_px", 3)), float(params.get("front_tol_m", 0.05))
+    max_pts, scan_every = int(params.get("max_points", 20000)), int(params.get("scan_every", 8))
+    first_set = int(params.get("first_set", 0))
+    sem = arrays.get("semantic")
+    gi, gj = (x.ravel() for x in np.meshgrid(np.arange(step // 2, H, step), np.arange(step // 2, W, step),
+                                             indexing="ij"))
+    grid = {"raw": np.zeros((S, V, gi.size), np.float32), "ma": np.zeros((S, V, gi.size), np.float32),
+            "static": np.zeros((S, V, gi.size), bool)}
+    rng = np.random.default_rng(int(params.get("seed", 0)) + first_set)
+    sets = []
+    for s in range(S):
+        row = {"set": first_set + s, "views": [], "pairs": {}}
+        dr, vr = arrays["depth_raw"][s].astype(np.float64), arrays["valid_raw"][s].astype(bool)
+        dm, vm = arrays["depth_ma"][s].astype(np.float64), arrays["valid_ma"][s].astype(bool)
+        both = vr & vm
+        regions = []
+        for v in range(V):
+            zb = dg.robot_zbuffer(transform_points_(T[v], arrays["surface_base"][s, v]), K[v], (H, W))
+            robot = np.isfinite(zb)
+            reg = {"scene": np.ones((H, W), bool), "robot": robot, "boundary": dg.rgb_boundary(imgs[s, v], bpx),
+                   "mug": (sem[s, v] == 2) if sem is not None else np.zeros((H, W), bool),
+                   "fixture": (sem[s, v] == 3) if sem is not None else np.zeros((H, W), bool)}
+            regions.append(reg)
+            vrow = {"calib_used": bool(arrays["calib_used"][s, v]), "coverage": {}, "ma_minus_raw": {}}
+            for name in REGIONS_V2:
+                m = reg[name]
+                n = int(m.sum())
+                vrow["coverage"][name] = None if not n else {
+                    "pixels": n, "raw": float(vr[v][m].mean()), "ma": float(vm[v][m].mean()),
+                    "both": float(both[v][m].mean()), "ma_only_filled": float((vm[v] & ~vr[v])[m].mean()),
+                    "raw_only_dropped_by_ma": float((vr[v] & ~vm[v])[m].mean())}
+                c = both[v] & m
+                vrow["ma_minus_raw"][name] = dg.summarize(dm[v][c] - dr[v][c]) if c.any() else {"n": 0}
+            c = both[v] & (dr[v] > 0)
+            vrow["ma_over_raw_median"] = float(np.median(dm[v][c] / dr[v][c])) if c.any() else None
+            # robot geometry on common support: same pixels for both sources (robot front-most in both)
+            m = robot & both[v] & (dr[v] - zb > -front) & (dm[v] - zb > -front)
+            vrow["robot_common"] = {"raw": dg.summarize(dr[v][m] - zb[m]), "ma": dg.summarize(dm[v][m] - zb[m])}
+            conf = arrays["conf_ma"][s, v].astype(np.float32)
+            if both[v].any():
+                cmed = float(np.median(conf[both[v]]))
+                hi, lo = both[v] & (conf >= cmed), both[v] & (conf < cmed)
+                vrow["conf"] = {"median_on_common": cmed,
+                                "ma_minus_raw_high_conf": dg.summarize(dm[v][hi] - dr[v][hi]),
+                                "ma_minus_raw_low_conf": dg.summarize(dm[v][lo] - dr[v][lo]),
+                                "filled_median_conf": float(np.median(conf[vm[v] & ~vr[v]]))
+                                if (vm[v] & ~vr[v]).any() else None}
+            for src, d, ok in (("raw", dr[v], vr[v]), ("ma", dm[v], vm[v])):
+                vrow[src] = {"edge_to_rgb_px": dg.summarize(dg.edge_to_rgb_distance(d, ok, imgs[s, v]), tols=(1, 2, 4),
+                                                            unit="px", scale=1.0),
+                             "flying_pixel_fraction": dg.flying_pixel_fraction(d, ok)}
+                if (first_set + s) % scan_every == 0:
+                    vrow[src]["edge_shift_scan"] = dg.edge_shift_scan(d, ok, imgs[s, v])
+            static = ~binary_dilation(robot, iterations=int(params.get("dilate_px", 6))) & \
+                ~binary_dilation(reg["mug"], iterations=4)
+            grid["raw"][s, v] = np.where(vr[v], dr[v], np.nan)[gi, gj]
+            grid["ma"][s, v] = np.where(vm[v], dm[v], np.nan)[gi, gj]
+            grid["static"][s, v] = static[gi, gj]
+            row["views"].append(vrow)
+        pts = {src: [depth_to_points(np.where(ok[v], d[v], 0.0), K[v])[0] for v in range(V)]
+               for src, d, ok in (("raw", dr, vr), ("ma", dm, vm))}
+        for a in range(V):
+            for b in range(V):
+                if a == b:
+                    continue
+                entry = {}
+                for name in REGIONS_V2:
+                    idx = np.flatnonzero((both[a] & regions[a][name]).ravel())
+                    if len(idx) > max_pts:
+                        idx = rng.choice(idx, max_pts, replace=False)
+                    if not len(idx):
+                        continue
+                    res = {}
+                    for src, d_b, ok_b in (("raw", dr[b], both[b]), ("ma", dm[b], both[b])):
+                        res[src] = dg.reproject_pair(pts[src][a].reshape(-1, 3)[idx], T[a], T[b], K[b], d_b, ok_b,
+                                                     occlusion_m=occ)
+                    keep = res["raw"][1] & res["ma"][1]  # identical point set for both sources
+                    entry[name] = {"points": int(len(idx)), "kept": int(keep.sum()),
+                                   "occluded_raw": float(res["raw"][2].mean()),
+                                   "occluded_ma": float(res["ma"][2].mean()),
+                                   "raw": dg.summarize(res["raw"][0][keep]), "ma": dg.summarize(res["ma"][0][keep])}
+                filled = np.flatnonzero((vm[a] & ~vr[a]).ravel())
+                if len(filled) > max_pts:
+                    filled = rng.choice(filled, max_pts, replace=False)
+                if len(filled):
+                    P = pts["ma"][a].reshape(-1, 3)[filled]
+                    d1, k1, _ = dg.reproject_pair(P, T[a], T[b], K[b], dr[b], vr[b], occlusion_m=occ)
+                    d2, k2, _ = dg.reproject_pair(P, T[a], T[b], K[b], dm[b], vm[b], occlusion_m=occ)
+                    entry["filled"] = {"points": int(len(filled)), "vs_other_raw": dg.summarize(d1[k1]),
+                                       "vs_other_ma": dg.summarize(d2[k2])}
+                ref = np.flatnonzero(vr[a].ravel())
+                if len(ref) > max_pts:
+                    ref = rng.choice(ref, max_pts, replace=False)
+                if len(ref):  # reference: measured raw points vs the other camera's raw depth (all raw support)
+                    d3, k3, _ = dg.reproject_pair(pts["raw"][a].reshape(-1, 3)[ref], T[a], T[b], K[b], dr[b], vr[b],
+                                                  occlusion_m=occ)
+                    entry["raw_all_vs_other_raw"] = dg.summarize(d3[k3])
+                row["pairs"][f"{a}->{b}"] = entry
+        sets.append(row)
+    return {**{f"grid_{k}": v for k, v in grid.items()}, "grid_ij": np.stack([gi.ravel(), gj.ravel()], 1)}, \
+        {"sets": _finite(sets)}
+
+
 def transform_points_(T, points):
     from s4d.realworld.geometry import transform_points
 

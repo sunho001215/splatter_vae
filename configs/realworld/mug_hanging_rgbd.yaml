@@ -7,6 +7,10 @@
 # Raw input (read-only): /home/ws/data/real_world/test/episode_000000.h5. Outputs: output_root (versioned). The earlier
 # FR3-mesh outputs (processed/v1, baseline-rgbd, final-rgbd) are kept unchanged as historical validation.
 output_root: /home/ws/ws/realworld-20261104/processed/v2-panda
+# Baselines trained on this real-world dataset get exactly their auxiliary inputs (s4d/realworld/baseline_stages.py):
+# SNeRL -> SAM 3 semantics + cached DINO teacher; 3D-MVP, SinCro, ReViWo, DynaMo -> export only. SAM 3 robot masks are
+# also our calibration's robot evidence (stages.calibrate.robot_mask_stage).
+baselines: [snerl, mvp3d, sincro, reviwo, dynamo]
 adapter:
   name: panda_teleop_h5
   config:
@@ -68,7 +72,13 @@ stages:
   mapanything_depth: {chunk: 4, max_set_motion_m: 0.005}
   track2d: {window: 16, step: 8, grid_stride: 16}
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
-  export: {strides: [1, 2], validation_tail_frames: 0, max_gap_factor: 1.5, aspect: center_crop}
+  # dynamic-track filter (s4d/realworld/track_motion.py; intentional preprocessing change 2026-11-05): noise per depth
+  # bin from the data, Monte-Carlo null of the median-of-3 extent, metric floors; the export keeps moving tracks only
+  track_motion: {min_segment_samples: 5, max_depth_hole_frames: 2, max_gap_factor: 1.5, max_speed_m_s: 1.5,
+                 null_quantile_move: 0.999, null_quantile_static: 0.95, min_move_m: 0.005, static_max_m: 0.01,
+                 min_support: 2}
+  export: {strides: [1, 2], validation_tail_frames: 0, max_gap_factor: 1.5, aspect: center_crop,
+           track_source: track_motion}
   sam3_masks:
     # "robotic gripper" (and gripper/black gripper/parallel gripper/two-finger gripper/gripper fingers) found nothing on
     # this black Robotiq 2F-85 (probe 2026-11-05, realworld-20261104/probes/sam3-gripper-20261105); "end effector"

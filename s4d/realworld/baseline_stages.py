@@ -12,6 +12,11 @@ Which baseline needs what (from s4d/baselines/*, as of this branch):
   base frame must be chosen (not a preprocessing model stage).
 * SinCro, ReViWo, DynaMo: RGB (+ cameras for SinCro) only.
 
+Which dataset gets which auxiliary inputs is declared per pipeline config (``baselines:``, see
+``required_baseline_stages``): only our method is pretrained on DROID, so the DROID configs declare no baselines and
+never run these stages; the real-world dataset declares the baselines that are trained on it. Our own real-world
+RGB-D calibration may additionally use ``sam3_masks`` as robot-mask evidence (``stages.calibrate.robot_mask_stage``).
+
 Both stages consume model outputs only through isolated workers and record prompts, model identity, scores,
 instances and explicit absent detections. Neither is validated with the real models here.
 """
@@ -38,6 +43,28 @@ SNERL_DINO = {
     "consumer": "s4d.baselines.snerl.model.dino_target",
 }
 SNERL_CLASSES = ("background", "robot", "object", "fixture")
+
+# auxiliary preprocessing stages each baseline consumes (s4d/baselines/*; see the module docstring)
+BASELINE_AUX_STAGES = {
+    "snerl": ("sam3_masks", "dino_snerl"),  # semantics (required) + cached DINO teacher (optional; computed online)
+    "mvp3d": (),  # RGB-D + cameras from the export
+    "sincro": (),
+    "reviwo": (),
+    "dynamo": (),
+}
+
+
+def required_baseline_stages(cfg: dict) -> tuple[str, ...]:
+    """Baseline stages a pipeline config needs: the union over its declared ``baselines`` plus ``sam3_masks`` when our
+    own calibration uses it as robot-mask evidence. A config without ``baselines`` declares none."""
+    declared = cfg.get("baselines") or []
+    unknown = sorted(set(declared) - set(BASELINE_AUX_STAGES))
+    if unknown:
+        raise ValueError(f"unknown baselines {unknown}; known: {sorted(BASELINE_AUX_STAGES)}")
+    need = {s for b in declared for s in BASELINE_AUX_STAGES[b]}
+    if ((cfg.get("stages") or {}).get("calibrate") or {}).get("robot_mask_stage") == "sam3_masks":
+        need.add("sam3_masks")
+    return tuple(s for s in ("sam3_masks", "dino_snerl") if s in need)
 
 
 def worker_identity(spec: WorkerSpec) -> dict:

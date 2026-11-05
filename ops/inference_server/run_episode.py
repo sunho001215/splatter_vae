@@ -59,20 +59,25 @@ def main(argv=None) -> int:
     ap.add_argument("--server", required=True)
     ap.add_argument("--episode", required=True)
     ap.add_argument("--output-root", help="override the pipeline config's output_root (e.g. a fresh baseline run)")
-    ap.add_argument("--stages", default=",".join(STAGES))
+    ap.add_argument("--stages", help="comma-separated; default: the config's stages (s4d.realworld.cli.default_stages)")
     ap.add_argument("--force-stage", action="append", default=[])
     ap.add_argument("--skip-weights", action="store_true", help="weights already staged (still sha-checked)")
     args = ap.parse_args(argv)
-    wanted = args.stages.split(",")
-    unknown = (set(wanted) | set(args.force_stage)) - set(STAGES)
+    wanted = args.stages.split(",") if args.stages else None
+    unknown = (set(wanted or ()) | set(args.force_stage)) - set(STAGES)
     if unknown:
         ap.error(f"unknown stages: {sorted(unknown)}")
 
     from s4d.realworld import io as rio
     from s4d.realworld.adapters import get_adapter
-    from s4d.realworld.cli import adapter_config, run_stages
+    from s4d.realworld.cli import adapter_config, check_stage_scope, default_stages, run_stages
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
+    wanted = wanted or default_stages(cfg)
+    try:
+        check_stage_scope(cfg, wanted)
+    except ValueError as exc:
+        ap.error(str(exc))
     if args.output_root:
         cfg["output_root"] = args.output_root
     server = Server.load(Path(args.server))
@@ -82,7 +87,7 @@ def main(argv=None) -> int:
     run_dir = root / "runs" / stamp
     run_dir.mkdir(parents=True, exist_ok=True)
     record: dict = {"started_utc": stamp, "episode": args.episode, "pipeline": args.pipeline, "server": args.server,
-                    "stages": {}}
+                    "requested_stages": wanted, "baselines": cfg.get("baselines") or [], "stages": {}}
 
     def save():
         rio.atomic_write_json(run_dir / "run.json", json.loads(json.dumps(record, default=str)))

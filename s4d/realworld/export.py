@@ -6,6 +6,13 @@ images (T,V,3,H,W) uint8, depth (T,V,1,H,W) metric camera-z (0 invalid), K (V,3,
 (P,V,N), track_count (V,), gripper_points (T,G,3), gripper_weight (P,V,G), probe_state (T,7) - plus
 ``manifest.json``. The target helpers are reused verbatim from ``s4d.data.droid.pointworld`` (track_targets,
 splat_score, depth_test) so losses and methods are unchanged. Loaded by ``s4d.realworld.dataset``.
+
+``track_source="track_motion"`` (intentional preprocessing change, 2026-11-05) exports only the tracks the
+``track_motion`` stage classified as moving - each with its full valid trajectory - and zeroes the weight of every
+pair whose two samples lie in different motion segments (occlusion, recording pause, implausible jump), so no
+displacement is supervised across a break. Static scene geometry stays in the exported RGB-D; track tensors keep the
+same names, shapes and padding (``track_count`` = moving tracks of that camera window). The default
+``"lift3d"`` keeps every valid lifted track (unchanged behaviour, e.g. the DROID route).
 """
 
 from __future__ import annotations
@@ -30,6 +37,7 @@ from s4d.realworld.pipeline import (
     view_depth,
     view_frames,
 )
+from s4d.realworld.track_motion import MOVING, load_motion
 from s4d.realworld.tracking import VALID
 
 FORMAT = "splatter4d_realworld_v1_tracks"
@@ -66,7 +74,7 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
            cameras: list[str] | None = None, allow_infrared_input: bool = False, allow_mock: bool = False,
            max_sync_ns: int | None = None, gripper_points: int = 32, validation_tail_frames: int = 0,
            force: bool = False, depth_stage: str | None = None, max_gap_factor: float | None = None,
-           aspect: str = "stretch") -> dict:
+           aspect: str = "stretch", track_source: str = "lift3d") -> dict:
     """``max_sync_ns`` defaults to a third of the reference camera's median frame period (so two canonical times can
     never match the same frame of another camera). ``validation_tail_frames`` puts windows lying entirely in the
     last frames of the reference timeline into the validation split; windows straddling the boundary are dropped,
@@ -78,11 +86,13 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
     ``"stretch"`` resizes the full frame (exact K, but anisotropic pixels when the aspect ratios differ)."""
     if aspect not in ("stretch", "center_crop"):
         raise ValueError(f"aspect {aspect!r} not in ('stretch', 'center_crop')")
+    if track_source not in ("lift3d", "track_motion"):
+        raise ValueError(f"track_source {track_source!r} not in ('lift3d', 'track_motion')")
     meta = load_meta(root, episode_id)
     depth_stage = depth_stage or default_depth_stage(meta, "lift")
     resolutions = dict(resolutions or RESOLUTIONS)
     records = {k: rio.read_record(rio.stage_dir(root, episode_id, k)) for k in
-               (depth_stage, "calibrate", "track2d", "lift3d")}
+               (depth_stage, "calibrate", "track2d", "lift3d") + (("track_motion",) if track_source != "lift3d" else ())}
     if any(v is None for v in records.values()):
         raise RuntimeError(f"export needs complete upstream stages: {[k for k, v in records.items() if v is None]}")
     # any model or landmark source flagged as mock anywhere in an upstream record (config or summary)
@@ -167,7 +177,18 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
         windows = kept
     if not windows:
         raise RuntimeError("no window fits inside the tracking chunks of every camera")
-    capacity = max(len(_load_chunk(root, episode_id, ch["name"])["point_ids"]) for cam, _ in chosen for ch in chunks[cam])
+    def keep_index(name):
+        """Exported track columns of a lift3d chunk and their motion segments (None: unfiltered)."""
+        if track_source == "lift3d":
+            return None, None
+        mo = load_motion(root, episode_id, name)
+        keep = np.flatnonzero(mo["class"] == MOVING)
+        return keep, mo["segment"][:, keep]
+
+    if track_source == "lift3d":
+        capacity = max(len(_load_chunk(root, episode_id, ch["name"])["point_ids"]) for cam, _ in chosen for ch in chunks[cam])
+    else:  # at least one slot so empty windows keep valid shapes
+        capacity = max(1, max(len(keep_index(ch["name"])[0]) for cam, _ in chosen for ch in chunks[cam]))
 
     def build(tmp: Path) -> dict:
         handles = {}
@@ -189,14 +210,17 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                     pos = [list(ch["frame_indices"]).index(f) for f in info["frames"]]
                     pts = ch["xyz_base"][pos].astype(np.float32)
                     vis = ch["status"][pos] == VALID
+                    keep, seg = keep_index(info["chunk"])
+                    if keep is not None:
+                        pts, vis, seg = pts[:, keep], vis[:, keep], seg[pos]
                     depth, K = view_depth(root, episode_id, meta, cam, info["frames"], depth_stage)
                     imgs = view_frames(root, episode_id, meta, cam, info["frames"])
                     w2c = accepted_calibration(root, episode_id, cam).astype(np.float32)
-                    cams.append((cam, pts, vis, depth, K, imgs, w2c))
+                    cams.append((cam, pts, vis, seg if keep is not None else None, depth, K, imgs, w2c))
                 for name, (H, W) in resolutions.items():
                     tensors = {k: [] for k in ("images", "depth", "K", "w2c", "motion_score", "track_src", "track_disp",
                                                "track_weight", "track_count", "gripper_weight")}
-                    for cam, pts, vis, depth, K, imgs, w2c in cams:
+                    for cam, pts, vis, seg, depth, K, imgs, w2c in cams:
                         hw0 = depth.shape[1:]
                         aff = export_affine(hw0, (H, W), aspect)
                         Kr = aff.apply_K(K).astype(np.float32)
@@ -213,6 +237,10 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                         tensors["motion_score"].append(splat_score(np.concatenate([pts, grip], 1),
                                                                    np.concatenate([vis, gvis], 1), Kr, w2c, rd))
                         src, disp, weight = track_targets(pts, vis)
+                        if seg is not None:  # never supervise a displacement across a motion-segment break
+                            for pair, (a, b) in enumerate(PAIR_TIMES):
+                                cross = (seg[a] < 0) | (seg[a] != seg[b])
+                                src[pair, cross], disp[pair, cross], weight[pair, cross] = 0, 0, 0
                         pad = ((0, 0), (0, capacity - pts.shape[1]))
                         tensors["track_src"].append(np.pad(src, (*pad, (0, 0))))
                         tensors["track_disp"].append(np.pad(disp, (*pad, (0, 0))))
@@ -264,7 +292,12 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                              f"nearest neighbour, zero invalid, metric camera-z of the colour grid ({depth_stage})"),
             "motion_target": (f"per-camera AllTracker tracks lifted with same-frame {depth_stage} depth and the "
                               "accepted calibration; weight 1 where the source-time status is valid "
-                              "and both positions finite"),
+                              "and both positions finite"
+                              + ("" if track_source == "lift3d" else
+                                 "; ONLY tracks classified moving by track_motion (full valid trajectories), pairs "
+                                 "across motion-segment breaks weighted 0; static geometry is in images/depth only")),
+            "track_source": track_source,
+            **({} if track_source == "lift3d" else {"track_motion": records["track_motion"]["summary"]["counts"]}),
             "depth_stage": depth_stage,
             "windows_dropped_for_time_gaps": gap_dropped,
             "gripper_target": f"{len(pick)} surface points of the URDF gripper links ({grip_links}) via FK at the "
@@ -292,5 +325,6 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                                  "validation_tail_frames": validation_tail_frames,
                                  "depth_stage": depth_stage,
                                  **({} if max_gap_factor is None else {"max_gap_factor": max_gap_factor}),
-                                 **({} if aspect == "stretch" else {"aspect": aspect})},
+                                 **({} if aspect == "stretch" else {"aspect": aspect}),
+                                 **({} if track_source == "lift3d" else {"track_source": track_source})},
                          inputs={k: rio.build_id(v) for k, v in records.items()}, build=build, force=force)
