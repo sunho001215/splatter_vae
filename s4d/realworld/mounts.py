@@ -47,6 +47,27 @@ class StackElement:
 
 
 @dataclass(frozen=True)
+class CouplingGeometry:
+    """Shape of the coupling part itself (a link fixed to the flange), for rendering and robot-surface sampling. It
+    carries no kinematics: the gripper frame is placed by ``MountConfig.xyz/rpy`` alone. Mesh URIs are
+    ``package://`` paths resolved by the composer; ``xyz/rpy`` place the mesh frame in the flange frame."""
+
+    link: str
+    visual_mesh: str
+    collision_mesh: str
+    xyz: tuple
+    rpy: tuple
+    status: str  # "nominal" (vendor model of the documented part) | "measured" | "assumption"
+    source: str
+    caveats: tuple = ()
+
+    def manifest(self) -> dict:
+        return {"link": self.link, "visual_mesh": self.visual_mesh, "collision_mesh": self.collision_mesh,
+                "xyz": list(self.xyz), "rpy": list(self.rpy), "status": self.status, "source": self.source,
+                "caveats": list(self.caveats)}
+
+
+@dataclass(frozen=True)
 class MountConfig:
     name: str
     gripper_frame: str  # gripper-URDF link whose pose in the flange frame is given by (xyz, rpy)
@@ -59,6 +80,7 @@ class MountConfig:
     cross_checks: tuple = ()
     caveats: tuple = ()
     missing_measurement: str = ""
+    coupling_geometry: CouplingGeometry | None = None  # optional shape of the coupling (scripts/realworld_compose_robot_urdf.py --coupling-geometry)
 
     def T(self) -> np.ndarray:
         return make_T(Rotation.from_euler("xyz", self.rpy).as_matrix(), np.asarray(self.xyz, float))
@@ -128,6 +150,17 @@ MOUNTS = {
                                 "(link8) to the Robotiq 2F-85 Ø71 boss face (robotiq_85_base_link); the coupling's "
                                 "part number/revision (or its dimensioned drawing/CAD); the gripper yaw relative to "
                                 "the flange dowel-pin hole",
+            coupling_geometry=CouplingGeometry(
+                link="robotiq_iso50_coupling",
+                visual_mesh="package://robotiq_description/meshes/visual/2f_85/ur_to_robotiq_adapter.dae",
+                collision_mesh="package://robotiq_description/meshes/collision/2f_85/ur_to_robotiq_adapter.stl",
+                xyz=(0.0, 0.0, 0.0), rpy=(0.0, 0.0, np.pi / 2), status="nominal",
+                source="PickNik ros2_robotiq_gripper a74d007 ur_to_robotiq_adapter.urdf.xacro: Robotiq's ISO "
+                       "9409-1-50-4-M6 coupling mesh, mesh frame on the robot flange face (mesh z -3.0 .. +13.9 mm), "
+                       "same yaw as the gripper (the gripper sits on the coupling without extra rotation)",
+                caveats=("vendor model of the plain ISO-50 coupling; the pigtail variant seen in the DROID guide "
+                         "photos has a side cable exit and spring guard that are not modelled",
+                         "its axial placement follows the provisional stack above (not measured)")),
         ),
         MountConfig(
             name="franka_external_gripper_example",

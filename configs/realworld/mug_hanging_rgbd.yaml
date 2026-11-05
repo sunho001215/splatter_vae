@@ -1,25 +1,33 @@
-# Real-world mug-hanging episode: Franka (recorded frames panda_link0/8) + Robotiq 2F-85 + 3x RealSense D435I, each
-# recording RGB (JPEG) + depth (PNG z16) (2026-11-04 directive). Host-specific paths.
+# Real-world mug-hanging episode: Franka Emika Panda (user-confirmed 2026-11-05; recorded frames panda_link0/8) +
+# Robotiq 2F-85 on the standard DROID mount (Robotiq ISO-50 coupling, no wrist camera or bracket) + 3x RealSense D435I,
+# each recording RGB (JPEG) + depth (PNG z16) (2026-11-04 directive). Host-specific paths.
 # Run (local orchestration + I/O; all compute in the inference container, RAM-only streaming):
 #   .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging_rgbd.yaml \
 #       --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000000
-# Raw input (read-only): /home/ws/data/real_world/test/episode_000000.h5. Outputs: output_root (versioned).
-output_root: /home/ws/ws/realworld-20261104/processed/v1
+# Raw input (read-only): /home/ws/data/real_world/test/episode_000000.h5. Outputs: output_root (versioned). The earlier
+# FR3-mesh outputs (processed/v1, baseline-rgbd, final-rgbd) are kept unchanged as historical validation.
+output_root: /home/ws/ws/realworld-20261104/processed/v2-panda
 adapter:
   name: panda_teleop_h5
   config:
     episodes: {mug-hanging-test-000000: /home/ws/data/real_world/test/episode_000000.h5}
-    robot:   # official FR3 (franka_description 7aeeddc) + Robotiq 2F-85 (ros2_robotiq_gripper a74d007), composed with
-             # the PROVISIONAL Robotiq ISO-50 coupling stack (s4d/realworld/mounts.py); same kinematic chain as Panda.
-      urdf_path: /home/ws/ws/validation-20261031/droid_mount/robot_assets/fr3_robotiq_2f85_droid_iso50.urdf
+    robot:   # official Panda = franka_description 7aeeddc robots/fer (fer = Franka Emika Robot, formerly Panda; fer_*
+             # frames renamed panda_*) + Robotiq 2F-85 (ros2_robotiq_gripper a74d007), composed by
+             # scripts/realworld_compose_robot_urdf.py --mount-config droid_robotiq_2f85_iso50_coupling --coupling-geometry:
+             # DROID mount = Robotiq ISO-50 coupling, gripper frame +0.011 m along the flange z, yaw +pi/2 (NOMINAL vendor
+             # drawing stack, provisional, not measured on this rig) and the coupling's own mesh. No wrist camera/bracket
+             # (absent on this robot; it never was part of the flange->gripper stack). URDF FK = recorded flange poses and
+             # all 7 recorded joint frames (max 2e-15 m).
+      urdf_path: /home/ws/ws/validation-20261031/panda_assets/panda_robotiq_2f85_droid_iso50.urdf
       gripper_model: robotiq_2f_85
       gripper_joint: robotiq_85_left_knuckle_joint
-      base_frame: fr3_link0
-      flange_frame: fr3_link8
-      joint_names: [fr3_joint1, fr3_joint2, fr3_joint3, fr3_joint4, fr3_joint5, fr3_joint6, fr3_joint7]
+      base_frame: panda_link0
+      flange_frame: panda_link8
+      joint_names: [panda_joint1, panda_joint2, panda_joint3, panda_joint4, panda_joint5, panda_joint6, panda_joint7]
       arm_note: >-
-        arm generation (Panda/FER vs FR3) not recorded in the file; FR3 meshes used (identical kinematic chain, verified
-        against the recorded flange poses by fk_vs_recorded_ee); coupling/mount not measured on this rig
+        Franka Emika Panda (user-confirmed 2026-11-05; the file records only panda_link0/panda_link8 frames); Panda
+        meshes and joint limits; same kinematic chain as FR3; DROID Robotiq mount without wrist camera; mount offset
+        nominal (Robotiq drawings), not measured
 workers:   # paths inside the inference container
   mapanything:
     python: /opt/envs/mapanything/bin/python
@@ -62,7 +70,10 @@ stages:
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}
   export: {strides: [1, 2], validation_tail_frames: 0, max_gap_factor: 1.5, aspect: center_crop}
   sam3_masks:
-    prompts: {robot arm: robot, robotic gripper: robot, white mug: object, wooden mug tree: fixture}
+    # "robotic gripper" (and gripper/black gripper/parallel gripper/two-finger gripper/gripper fingers) found nothing on
+    # this black Robotiq 2F-85 (probe 2026-11-05, realworld-20261104/probes/sam3-gripper-20261105); "end effector"
+    # segments the distal wrist + gripper assembly. Gripper coverage is measured against the calibrated URDF projection.
+    prompts: {robot arm: robot, end effector: robot, white mug: object, wooden mug tree: fixture}
     mode: segment_video
     chunk: 206
     score_threshold: 0.5

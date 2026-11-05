@@ -9,6 +9,9 @@ collision geometry (the pipeline loads STL/OBJ only, and many visual meshes are 
 a manifest with the sha256 of every input, then loads the result with ``s4d.realworld.robot.URDFModel`` and checks
 every mesh.
 
+``--coupling-geometry`` also adds the mount's coupling part (``MountConfig.coupling_geometry``) as a link fixed to the
+parent link, so robot rendering and surface sampling include the coupling; it never changes the gripper transform.
+
     python scripts/realworld_compose_robot_urdf.py --arm fr3_arm.urdf --gripper robotiq_2f_85.urdf \
         --parent-link fr3_link8 --gripper-root world --mount-config droid_robotiq_2f85_iso50_coupling \
         --package franka_description=DIR --package robotiq_description=DIR --visual-from-collision --out robot.urdf
@@ -47,6 +50,27 @@ def resolve_packages(text: str, packages: dict) -> str:
     return text
 
 
+def coupling_link_xml(parent_link: str, geometry) -> tuple[str, str]:
+    """(<link> xml, <joint> xml) of a coupling part fixed to ``parent_link`` (``s4d.realworld.mounts.CouplingGeometry``)."""
+    xyz = " ".join(f"{v:.9g}" for v in geometry.xyz)
+    rpy = " ".join(f"{v:.12g}" for v in geometry.rpy)
+    link = (f'<link name="{geometry.link}"><visual><geometry><mesh filename="{geometry.visual_mesh}"/></geometry>'
+            f'</visual><collision><geometry><mesh filename="{geometry.collision_mesh}"/></geometry></collision></link>')
+    joint = (f'<joint name="{geometry.link}_joint" type="fixed"><parent link="{parent_link}"/>'
+             f'<child link="{geometry.link}"/><origin xyz="{xyz}" rpy="{rpy}"/></joint>')
+    return link, joint
+
+
+def add_coupling(arm_text: str, parent_link: str, geometry) -> str:
+    root = ET.fromstring(arm_text)
+    if any(e.get("name") == geometry.link for e in root if e.tag in ("link", "joint")):
+        raise ValueError(f"name clash: {geometry.link!r} already in the arm URDF")
+    link, joint = coupling_link_xml(parent_link, geometry)
+    root.append(ET.fromstring(link))
+    root.append(ET.fromstring(joint))
+    return ET.tostring(root, encoding="unicode")
+
+
 def visual_from_collision(text: str) -> str:
     root = ET.fromstring(text)
     for link in root.iter("link"):
@@ -71,6 +95,8 @@ def main(argv=None) -> int:
     ap.add_argument("--mount-source", help="where an explicit mounting transform comes from")
     ap.add_argument("--package", action="append", default=[], help="NAME=DIR for package:// URIs")
     ap.add_argument("--visual-from-collision", action="store_true")
+    ap.add_argument("--coupling-geometry", action="store_true",
+                    help="add the mount config's coupling part as a link fixed to --parent-link (shape only)")
     ap.add_argument("--provenance", default="{}", help="JSON with upstream repos/commits of the descriptions")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
@@ -80,7 +106,14 @@ def main(argv=None) -> int:
     ):
         ap.error("give either --mount-config or all of --mount-xyz/--mount-rpy/--mount-source")
     packages = dict(p.split("=", 1) for p in args.package)
-    arm, grip = (resolve_packages(Path(p).read_text(), packages) for p in (args.arm, args.gripper))
+    arm_text = Path(args.arm).read_text()
+    coupling = None
+    if args.coupling_geometry:
+        coupling = get_mount(args.mount_config).coupling_geometry if args.mount_config else None
+        if coupling is None:
+            ap.error("--coupling-geometry needs a --mount-config that defines coupling_geometry")
+        arm_text = add_coupling(arm_text, args.parent_link, coupling)
+    arm, grip = (resolve_packages(text, packages) for text in (arm_text, Path(args.gripper).read_text()))
     if args.visual_from_collision:
         arm, grip = visual_from_collision(arm), visual_from_collision(grip)
     if args.mount_config:
@@ -108,6 +141,7 @@ def main(argv=None) -> int:
         "mount": {"parent_link": args.parent_link, "gripper_root": args.gripper_root, **mount_doc,
                   "T_parent_gripper": T.tolist()},
         "packages": packages, "visual_from_collision": args.visual_from_collision,
+        **({"coupling_geometry": {"parent_link": args.parent_link, **coupling.manifest()}} if coupling else {}),
         "provenance": json.loads(args.provenance),
         "links": sorted(model.links), "sampled_links": sorted(surface.link_points),
     }
