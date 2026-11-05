@@ -149,7 +149,8 @@ def markdown(rep: dict) -> str:
          f"Episode `{rep['episode']}`, {rep['sets']} synchronized sets x {len(rep['views'])} cameras, calibration "
          f"`{rep['inputs']['calibrate'][:12]}`. No ground-truth depth exists: nothing here measures absolute accuracy.",
          "", "## Coverage (median over camera-frames, % of the region's pixels)", "",
-         "| region | RealSense valid | MapAnything valid | both | filled by MA | dropped by MA |", "|---|---|---|---|---|---|"]
+         "| region | RealSense valid | MapAnything valid | both | filled by MA | dropped by MA |",
+         "|---|---|---|---|---|---|"]
     for reg, c in a["coverage"].items():
         L.append(f"| {reg} | {_pct(c['raw'])} | {_pct(c['ma'])} | {_pct(c['both'])} | {_pct(c['ma_only_filled'])} | "
                  f"{_pct(c['raw_only_dropped_by_ma'])} |")

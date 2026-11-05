@@ -334,9 +334,9 @@ def _depth_evidence_masks(usable, masked, cfg):
 
 def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
     """Global registration of the moving URDF surface to the moving measured depth (see module doc)."""
-    from scipy.spatial import cKDTree
-
     import time
+
+    from scipy.spatial import cKDTree
 
     t_start = time.perf_counter()
     usable, masked = _depth_evidence_frames(frames)

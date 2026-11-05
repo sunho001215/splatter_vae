@@ -23,7 +23,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import h5py
 import numpy as np
 
 from s4d.realworld import io as rio
@@ -74,27 +73,29 @@ def segment_of_set(ve: ViewerEpisode) -> np.ndarray:
 # ------------------------------------------------------------------------------------------------ point clouds
 
 
-def view_rgbd(ve: ViewerEpisode, v: int, frame_index: int, source: str):
+def view_rgbd(ve: ViewerEpisode, v: int, frame_index: int, source: str, root: Path | None = None):
+    """RGB of the view and the depth of stage ``source`` read from ``root`` (default: the episode root; a depth variant
+    root links the same normalized frames)."""
     from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.pipeline import read_frames
 
     stream = ve.streams[v]
     rgb = read_frames(ve.root, ve.episode_id, stream, [frame_index])[0]
-    depth, valid, K = load_view_depth(ve.root, ve.episode_id, stream, [frame_index], source)
+    depth, valid, K = load_view_depth(root or ve.root, ve.episode_id, stream, [frame_index], source)
     if ve.meta.stream(stream).channel_order == "BGR":
         rgb = rgb[..., ::-1]
     return rgb, depth[0], valid[0], np.asarray(K, float)
 
 
 def cloud(ve: ViewerEpisode, v: int, frame_index: int, source: str, *, stride: int = 4, roi_stride: int | None = None,
-          roi_box: np.ndarray | None = None, crop_box: np.ndarray | None = None):
+          roi_box: np.ndarray | None = None, crop_box: np.ndarray | None = None, root: Path | None = None):
     """(points_base (N,3) float32, rgb (N,3) uint8) of one view; ``*_box`` = [[xmin,ymin,zmin],[xmax,ymax,zmax]] in
     the base frame. ``roi_stride`` samples pixels inside ``roi_box`` more densely (display only)."""
     from s4d.realworld.geometry import invert_T, pixel_centers, transform_points, unproject
 
     if roi_stride is not None and stride % roi_stride:
         raise ValueError(f"stride {stride} must be a multiple of roi_stride {roi_stride}")
-    rgb, depth, valid, K = view_rgbd(ve, v, frame_index, source)
+    rgb, depth, valid, K = view_rgbd(ve, v, frame_index, source, root)
     H, W = depth.shape
     fine = roi_stride or stride
     ii, jj = np.meshgrid(np.arange(0, H, fine), np.arange(0, W, fine), indexing="ij")
@@ -178,7 +179,7 @@ def load_camera_tracks(root: Path, episode_id: str, stream: str) -> CameraTracks
     chunks = []
     for name in lift["summary"][stream]["chunks"]:
         with np.load(rio.stage_dir(root, episode_id, "lift3d") / name) as z:
-            frames, xyz, status = z["frame_indices"], z["xyz_base"], z["status"]
+            frames, xyz = z["frame_indices"], z["xyz_base"]
         with np.load(rio.stage_dir(root, episode_id, "track_motion") / name) as z:
             keep = np.flatnonzero(z["class"] == MOVING)
             seg = z["segment"][:, keep]

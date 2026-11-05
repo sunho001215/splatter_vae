@@ -124,8 +124,6 @@ def test_reference_thresholds_follow_the_observed_quantiles_and_refuse_thin_refe
 
 @pytest.fixture(scope="module")
 def filtered(tmp_path_factory):
-    from tests.test_realworld_pipeline import LANDMARKS, OracleTracker, mock_mapanything
-
     from s4d.realworld.adapters import get_adapter
     from s4d.realworld.calibration import CalibrationConfig
     from s4d.realworld.depth_stages import mapanything_depth, mapanything_rig_depth
@@ -143,6 +141,7 @@ def filtered(tmp_path_factory):
     )
     from s4d.realworld.robot import URDFModel, landmarks
     from s4d.realworld.track_motion import track_motion
+    from tests.test_realworld_pipeline import LANDMARKS, OracleTracker, mock_mapanything
 
     tmp = tmp_path_factory.mktemp("tm")
     adapter = get_adapter("synthetic", {"asset_dir": str(tmp / "assets"), "frames": 10})

@@ -219,7 +219,8 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
         return keep, mo["segment"][:, keep]
 
     if track_source == "lift3d":
-        capacity = max(len(_load_chunk(root, episode_id, ch["name"])["point_ids"]) for cam, _ in chosen for ch in chunks[cam])
+        capacity = max(len(_load_chunk(root, episode_id, ch["name"])["point_ids"])
+                       for cam, _ in chosen for ch in chunks[cam])
     else:  # at least one slot so empty windows keep valid shapes
         capacity = max(1, max(len(keep_index(ch["name"])[0]) for cam, _ in chosen for ch in chunks[cam]))
 

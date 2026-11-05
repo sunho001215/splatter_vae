@@ -440,9 +440,9 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
         store.clear()
 
     def build(tmp: Path) -> dict:
-        from PIL import Image
-
         import time
+
+        from PIL import Image
 
         summary = {"fk_vs_recorded_ee": fk_vs_recorded_ee(meta, geom)}
         for view in meta.views():
@@ -450,7 +450,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
             clock = {"t": time.perf_counter()}
             timing = {}
 
-            def lap(name):
+            def lap(name, timing=timing, clock=clock):
                 now = time.perf_counter()
                 timing[name] = round(timing.get(name, 0.0) + now - clock["t"], 3)
                 clock["t"] = now

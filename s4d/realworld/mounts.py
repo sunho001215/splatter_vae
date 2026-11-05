@@ -80,7 +80,8 @@ class MountConfig:
     cross_checks: tuple = ()
     caveats: tuple = ()
     missing_measurement: str = ""
-    coupling_geometry: CouplingGeometry | None = None  # optional shape of the coupling (scripts/realworld_compose_robot_urdf.py --coupling-geometry)
+    # optional shape of the coupling part (scripts/realworld_compose_robot_urdf.py --coupling-geometry)
+    coupling_geometry: CouplingGeometry | None = None
 
     def T(self) -> np.ndarray:
         return make_T(Rotation.from_euler("xyz", self.rpy).as_matrix(), np.asarray(self.xyz, float))

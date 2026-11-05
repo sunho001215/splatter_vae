@@ -40,7 +40,6 @@ CAM_COLOURS = np.array([[230, 75, 50], [40, 120, 220], [30, 160, 90]], np.float3
 ROBOT_FLOW = np.array([255, 0, 255], np.float32)  # PointWorld's robot-flow magenta
 MIN_BRIGHTNESS = 0.35  # PointWorld-style brightness ramp: older trail segments darker
 ARM_COLOUR, GRIPPER_COLOUR, COUPLING_COLOUR = (236, 238, 242), (70, 72, 78), (35, 35, 38)
-SOURCES = {"raw": ("sensor_depth", "RealSense raw depth"), "mapanything": ("mapanything_depth", "MapAnything depth")}
 
 
 def wxyz_pos(T: np.ndarray):
@@ -84,15 +83,20 @@ def load_link_meshes(manifest: dict, max_faces: int | None = 4000) -> dict:
 
 
 class EpisodeScene:
-    """Builds/updates the viser scene for one or two depth sources (side by side, synchronized)."""
+    """Builds/updates the viser scene for one or more named sources (side by side, synchronized). A source is
+    {"label", "root", "depth_stage"}: the clouds use that root's depth stage, the trails that root's moving tracks."""
 
-    def __init__(self, server, ve, roots: dict, sources: list, *, offset_m: float = 1.6, stride: int = 6,
+    def __init__(self, server, ve, specs: dict, sources: list, *, offset_m: float = 1.6, stride: int = 6,
                  roi_stride: int = 3, roi_box=None, crop_box=None, trail_length: int = 8, max_tracks: int = 400,
                  dense_tracks: int = 1500, point_size: float = 0.006, robot_opacity: float = 0.45,
-                 frustum_images: bool = True):
+                 frustum_images: bool = True, cameras: list | None = None):
         from s4d.realworld.pipeline import RobotGeometry
 
-        self.server, self.ve, self.roots, self.sources = server, ve, roots, sources
+        self.server, self.ve, self.sources = server, ve, sources
+        self.specs = {s: specs[s] for s in sources}
+        self.roots = {s: Path(specs[s]["root"]) for s in sources}
+        self.cams = list(range(len(ve.streams))) if cameras is None else list(cameras)
+        roots = self.roots
         self.kw = dict(stride=stride, roi_stride=roi_stride, roi_box=roi_box, crop_box=crop_box)
         self.trail_length, self.max_tracks, self.dense_tracks = trail_length, max_tracks, dense_tracks
         self.offsets = {s: np.array([0.0, -offset_m * i, 0.0]) for i, s in enumerate(sources)}
@@ -100,7 +104,8 @@ class EpisodeScene:
         self.q, self.g, self.q_ok = vd.robot_state_at_sets(ve)
         manifest = json.loads(Path(ve.meta.robot.urdf_path).with_suffix(".manifest.json").read_text())
         self.meshes = load_link_meshes(manifest)
-        self.tracks = {s: [vd.load_camera_tracks(roots[s], ve.episode_id, cam) for cam in ve.streams] for s in sources}
+        self.tracks = {s: {v: vd.load_camera_tracks(roots[s], ve.episode_id, ve.streams[v]) for v in self.cams}
+                       for s in sources}
         self.break_frames = [{int(ve.sets["index"][k, v]) for k, _ in ve.gaps} for v in range(len(ve.streams))]
         self.segment = vd.segment_of_set(ve)
         sc = server.scene
@@ -109,8 +114,9 @@ class EpisodeScene:
         for s in sources:
             o = self.offsets[s]
             sc.add_frame(f"/{s}", show_axes=False, position=o)
-            sc.add_label(f"/{s}/title", SOURCES[s][1], position=(0.45, 0.0, 0.95), font_screen_scale=1.2)
-            for v, cam in enumerate(ve.streams):
+            sc.add_label(f"/{s}/title", self.specs[s]["label"], position=(0.45, 0.0, 0.95), font_screen_scale=1.2)
+            for v in self.cams:
+                cam = ve.streams[v]
                 self.h[(s, "cloud", v)] = sc.add_point_cloud(f"/{s}/clouds/cam{v}_{cam.split('/')[0]}",
                                                              np.zeros((1, 3)), np.zeros((1, 3), np.uint8),
                                                              point_size=point_size, point_shape="rounded")
@@ -131,7 +137,8 @@ class EpisodeScene:
                         f"/{s}/{variant}/{link}/mesh", V, F, color=colour, opacity=opacity, flat_shading=False,
                         cast_shadow=False, receive_shadow=False)
                     self.h[(s, variant, link)] = fr
-            for v, cam in enumerate(ve.streams):
+            for v in self.cams:
+                cam = ve.streams[v]
                 K = ve.meta.stream(cam).intrinsics
                 fov = 2 * np.arctan(K.height / 2 / K.fy)
                 wxyz, pos = wxyz_pos(np.linalg.inv(ve.T_cam_base[v]))
@@ -139,6 +146,11 @@ class EpisodeScene:
                     f"/{s}/cameras/cam{v}_{cam.split('/')[0]}", fov=float(fov), aspect=K.width / K.height, scale=0.05,
                     thickness=1.5, thickness_units="screen", color=tuple(int(c) for c in CAM_COLOURS[v]), wxyz=wxyz,
                     position=pos, image=np.zeros((60, 80, 3), np.uint8) if frustum_images else None)
+                if frustum_images:  # depth inspection layer (same frustum, turbo 0.3-2.0 m, invalid black), hidden
+                    self.h[(s, "frustum_depth", v)] = sc.add_camera_frustum(
+                        f"/{s}/cameras_depth/cam{v}_{cam.split('/')[0]}", fov=float(fov), aspect=K.width / K.height,
+                        scale=0.05, thickness=1.5, thickness_units="screen", color=tuple(int(c) for c in CAM_COLOURS[v]),
+                        wxyz=wxyz, position=pos, image=np.zeros((60, 80, 3), np.uint8), visible=False)
         self.info = sc.add_label("/info", "", position=(0.45, 0.55, 0.9), font_screen_scale=1.0)
         self.break_sets = {k for k, _ in ve.gaps}
 
@@ -166,10 +178,10 @@ class EpisodeScene:
             ok = bool(self.q_ok[k])
             fk = vd.link_poses(self.geom, self.q[k], self.g[k]) if ok else None
             for s in self.sources:
-                src = SOURCES[s][0]
-                for v in range(len(ve.streams)):
+                src, root = self.specs[s]["depth_stage"], self.roots[s]
+                for v in self.cams:
                     frame = int(ve.sets["index"][k, v])
-                    pts, rgb = vd.cloud(ve, v, frame, src, **self.kw)
+                    pts, rgb = vd.cloud(ve, v, frame, src, root=root, **self.kw)
                     h = self.h[(s, "cloud", v)]
                     h.points, h.colors = (pts, rgb) if len(pts) else (np.zeros((1, 3)), np.zeros((1, 3), np.uint8))
                     for kind, dense in (("trails", False), ("trails_dense", True)):
@@ -179,8 +191,11 @@ class EpisodeScene:
                         hs.points, hs.colors = sp, scol
                     fr = self.h[(s, "frustum", v)]
                     if fr.image is not None:
-                        rgb_full = vd.view_rgbd(ve, v, frame, "sensor_depth")[0]
+                        rgb_full, dmap, dval, _ = vd.view_rgbd(ve, v, frame, src, root)
                         fr.image = rgb_full[::8, ::8].copy()
+                        dimg = (vd.turbo((dmap[::8, ::8] - 0.3) / 1.7) * 255).astype(np.uint8)
+                        dimg[~dval[::8, ::8]] = 0
+                        self.h[(s, "frustum_depth", v)].image = dimg
                 for variant in ("robot_translucent", "robot_opaque"):
                     for link in self.meshes:
                         h = self.h[(s, variant, link)]
@@ -220,11 +235,36 @@ def make_server(port: int | None = None):
     return viser.ViserServer(port=port or 8099, verbose=False)
 
 
+def parse_sources(args) -> tuple[dict, list]:
+    """(specs, recordings) from --source/--recording, or the episode-0 shorthand --raw-root/--ma-root."""
+    specs = {}
+    for item in args.source or []:
+        name, rest = item.split("=", 1)
+        root, stage, label = rest.split(":", 2)
+        specs[name] = {"root": root, "depth_stage": stage, "label": label}
+    if args.ma_root:
+        specs.setdefault("raw", {"root": args.raw_root, "depth_stage": "sensor_depth", "label": "RealSense raw depth"})
+        specs.setdefault("mapanything", {"root": args.ma_root, "depth_stage": "mapanything_depth",
+                                         "label": "MapAnything depth"})
+    recs = []
+    for item in getattr(args, "recording", None) or []:
+        name, rest = item.split("=", 1)
+        srcs, _, cams = rest.partition("@")
+        recs.append((name, srcs.split("+"), [int(c) for c in cams.split(",")] if cams else None))
+    if not recs:
+        recs = [(n, [n], None) for n in specs]
+        if args.ma_root and not args.source:
+            recs.append(("compare", ["raw", "mapanything"], None))
+    if not specs:
+        raise SystemExit("give --source NAME=ROOT:STAGE:LABEL (repeatable) or --ma-root/--raw-root")
+    return specs, recs
+
+
 def cmd_record(args) -> int:
-    ve = vd.load_episode(Path(args.ma_root), args.episode)
+    specs, plan = parse_sources(args)
+    ve = vd.load_episode(Path(next(iter(specs.values()))["root"]), args.episode)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    roots = {"raw": Path(args.raw_root), "mapanything": Path(args.ma_root)}
     from s4d.realworld.pipeline import RobotGeometry
 
     geom = RobotGeometry(ve.meta)
@@ -235,15 +275,14 @@ def cmd_record(args) -> int:
                 "stride_px": args.stride, "roi_stride_px": args.roi_stride, "trail_length_frames": args.trail_length,
                 "tracks_per_camera_sparse": args.max_tracks, "tracks_per_camera_dense": args.dense_tracks,
                 "note": "display-only downsampling; lines between measured samples are display interpolation"}}
-    plan = [("raw", ["raw"]), ("mapanything", ["mapanything"]), ("compare", ["raw", "mapanything"])]
     if args.only:
         plan = [p for p in plan if p[0] in args.only.split(",")]
-    for name, sources in plan:
+    for name, sources, cams in plan:
         server = make_server(args.port)
         t0 = time.time()
-        scene = EpisodeScene(server, ve, roots, sources, stride=args.stride, roi_stride=args.roi_stride, roi_box=roi,
+        scene = EpisodeScene(server, ve, specs, sources, stride=args.stride, roi_stride=args.roi_stride, roi_box=roi,
                              crop_box=crop, trail_length=args.trail_length, max_tracks=args.max_tracks,
-                             dense_tracks=args.dense_tracks)
+                             dense_tracks=args.dense_tracks, cameras=cams)
         scene.show(0)
         serializer = server.get_scene_serializer()
         n_sets = min(ve.n_sets, args.max_sets or ve.n_sets)
@@ -259,9 +298,12 @@ def cmd_record(args) -> int:
         view_dir = view_dir / np.linalg.norm(view_dir)
         c, s_ = np.cos(np.radians(35)), np.sin(np.radians(35))  # oblique: 35 deg around z from the cameras' mean view
         oblique = np.array([c * view_dir[0] - s_ * view_dir[1], s_ * view_dir[0] + c * view_dir[1], view_dir[2]])
-        look = centre + (np.array([0.0, -0.8, 0.0]) if name == "compare" else 0.0)
-        cam_pos = look + oblique * (2.0 if name == "compare" else 0.75) + np.array([0, 0, 0.35])
+        wide = len(sources) > 1
+        look = centre + np.array([0.0, -0.8 * (len(sources) - 1), 0.0])
+        cam_pos = look + oblique * ((1.4 + 0.6 * len(sources)) if wide else 0.75) + np.array([0, 0, 0.35])
         meta["recordings"][name] = {"file": f"{name}.viser", "bytes": len(data), "sources": sources,
+                                    "labels": [specs[s]["label"] for s in sources], "cameras": cams,
+                                    "roots": {s: specs[s]["root"] for s in sources},
                                     "seconds_to_build": round(time.time() - t0, 1),
                                     "initial_camera": {"position": cam_pos.round(3).tolist(),
                                                        "look_at": look.round(3).tolist(), "up": [0, 0, 1]}}
@@ -299,7 +341,8 @@ button{{padding:4px 10px;border:1px solid #bbb;background:#fff;border-radius:4px
 button.on{{background:#222;color:#fff}} iframe{{width:100%;height:calc(100vh - 92px);border:0;display:block}}
 p{{margin:0 12px 6px;color:#555}}</style></head><body>
 <header><b>{meta['episode']}</b> {tabs}</header>
-<p>Measured episode, not a prediction. {meta['sets']} synchronized sets, {meta['duration_s']:.2f} s, recording pause: {pauses}.
+<p>Measured episode, not a prediction. {meta['sets']} synchronized sets, {meta['duration_s']:.2f} s,
+recording pause: {pauses}.
 Trails: tracks classified moving (lines between measured dots are display interpolation; red/blue/green = camera).
 Loops automatically; drag to orbit, right-drag to pan, scroll to zoom. Scene tree (playback bar) toggles cameras,
 clouds, trails (dense variant hidden), robot (opaque variant hidden) and edits point size / opacity.</p>
@@ -310,14 +353,14 @@ document.getElementById('v').src=x.dataset.src;}});</script></body></html>"""
 
 
 def cmd_serve(args) -> int:
-    ve = vd.load_episode(Path(args.ma_root), args.episode)
-    roots = {"raw": Path(args.raw_root), "mapanything": Path(args.ma_root)}
+    specs, _ = parse_sources(args)
+    ve = vd.load_episode(Path(next(iter(specs.values()))["root"]), args.episode)
     from s4d.realworld.pipeline import RobotGeometry
 
     q, g, ok = vd.robot_state_at_sets(ve)
     crop, roi, centre = default_boxes(ve, q, g, ok, RobotGeometry(ve.meta))
     server = make_server(args.port)
-    scene = EpisodeScene(server, ve, roots, ["raw", "mapanything"], stride=args.stride, roi_stride=args.roi_stride,
+    scene = EpisodeScene(server, ve, specs, list(specs), stride=args.stride, roi_stride=args.roi_stride,
                          roi_box=roi, crop_box=crop, trail_length=args.trail_length, max_tracks=args.max_tracks,
                          dense_tracks=args.dense_tracks)
     gui = server.gui
@@ -328,12 +371,13 @@ def cmd_serve(args) -> int:
     opacity = gui.add_slider("Robot opacity", 0.0, 1.0, 0.05, 0.45)
     trail = gui.add_slider("Trail length (frames)", 1, 15, 1, args.trail_length)
     dense = gui.add_checkbox("Dense trails", False)
-    cams = [gui.add_checkbox(f"Camera {v} ({c.split('/')[0]})", True) for v, c in enumerate(ve.streams)]
-    srcs = {s: gui.add_checkbox(SOURCES[s][1], True) for s in scene.sources}
+    cams = {v: gui.add_checkbox(f"Camera {v} ({ve.streams[v].split('/')[0]})", True) for v in scene.cams}
+    srcs = {s: gui.add_checkbox(scene.specs[s]["label"], True) for s in scene.sources}
+    depth_layer = gui.add_checkbox("Frustum shows depth (turbo 0.3-2 m)", False)
 
     def restyle(_=None):
         for s in scene.sources:
-            for v in range(len(ve.streams)):
+            for v in scene.cams:
                 on = cams[v].value and srcs[s].value
                 scene.h[(s, "cloud", v)].visible = on
                 scene.h[(s, "cloud", v)].point_size = point.value
@@ -341,14 +385,16 @@ def cmd_serve(args) -> int:
                     scene.h[(s, kind, v)].visible = on and not dense.value
                 for kind in ("trails_dense", "trails_dense_samples"):
                     scene.h[(s, kind, v)].visible = on and dense.value
-                scene.h[(s, "frustum", v)].visible = on
+                scene.h[(s, "frustum", v)].visible = on and not depth_layer.value
+                if (s, "frustum_depth", v) in scene.h:
+                    scene.h[(s, "frustum_depth", v)].visible = on and depth_layer.value
             for link in scene.meshes:
                 scene.h[(s, "robot_translucent", link)].visible = srcs[s].value and opacity.value < 0.99
                 scene.h[(s, "robot_opaque", link)].visible = srcs[s].value and opacity.value >= 0.99
             for link in scene.meshes:
                 scene.h[(s, "robot_translucent", link, "mesh")].opacity = max(opacity.value, 0.02)
 
-    for w in (point, opacity, dense, *cams, *srcs.values()):
+    for w in (point, opacity, dense, depth_layer, *cams.values(), *srcs.values()):
         w.on_update(restyle)
 
     def on_trail(_):
@@ -376,8 +422,10 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("record", "serve"):
         p = sub.add_parser(name)
-        p.add_argument("--ma-root", required=True, help="processed root with mapanything_depth tracks (selected source)")
-        p.add_argument("--raw-root", required=True, help="processed root whose lift3d/track_motion used sensor_depth")
+        p.add_argument("--source", action="append", help="NAME=ROOT:DEPTH_STAGE:LABEL (repeatable): clouds from that "
+                                                            "root's depth stage, trails from its moving tracks")
+        p.add_argument("--ma-root", help="episode-0 shorthand: root with mapanything_depth tracks")
+        p.add_argument("--raw-root", help="episode-0 shorthand: root whose lift3d/track_motion used sensor_depth")
         p.add_argument("--episode", required=True)
         p.add_argument("--stride", type=int, default=6, help="display pixel stride (a multiple of --roi-stride)")
         p.add_argument("--roi-stride", type=int, default=3, help="denser display stride around the mug/hook")
@@ -388,7 +436,9 @@ def main(argv=None) -> int:
         if name == "record":
             p.add_argument("--out", required=True)
             p.add_argument("--speed", type=float, default=1.0, help="playback speed of the recording (1 = real time)")
-            p.add_argument("--only", help="comma-separated subset of raw,mapanything,compare")
+            p.add_argument("--recording", action="append",
+                           help="NAME=SRC[+SRC...][@v0,v1] (repeatable; default one recording per source)")
+            p.add_argument("--only", help="comma-separated subset of the recording names")
             p.add_argument("--max-sets", type=int, help="first N sets only (development)")
     args = ap.parse_args(argv)
     return cmd_record(args) if args.cmd == "record" else cmd_serve(args)

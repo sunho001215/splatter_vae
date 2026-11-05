@@ -80,7 +80,8 @@ def ir_disparity_to_color(params: dict, arrays: dict) -> tuple[dict, dict]:
         out["depth"][k], out["source_index"][k] = reproject_depth(np.where(ok, z, 0.0), K_ir, T, K_c, hw,
                                                                   splat=int(params["splat"]), return_source=True)
         e = out["lr_error"][k][ok & np.isfinite(out["lr_error"][k])]
-        stats.append({"ir_valid_fraction": float(ok.mean()), "registered_valid_fraction": float((out["depth"][k] > 0).mean()),
+        stats.append({"ir_valid_fraction": float(ok.mean()),
+                      "registered_valid_fraction": float((out["depth"][k] > 0).mean()),
                       "lr_error_median_px": float(np.median(e)) if len(e) else None})
     return out, {"frames": stats}
 

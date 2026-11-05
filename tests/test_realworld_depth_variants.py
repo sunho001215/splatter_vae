@@ -5,7 +5,6 @@ import pytest
 import yaml
 
 
-
 def _two_views():
     from s4d.realworld.synthetic import look_at_T_cam_base
 
@@ -13,7 +12,7 @@ def _two_views():
     T = np.stack([look_at_T_cam_base(eye=[1.0, -0.15, 0.6], target=[0.0, 0.0, 0.0]),
                   look_at_T_cam_base(eye=[1.0, 0.15, 0.6], target=[0.0, 0.0, 0.0])])
     H, W = 60, 80
-    from s4d.realworld.geometry import pixel_centers, transform_points
+    from s4d.realworld.geometry import pixel_centers
 
     depth = []
     for v in range(2):  # ground plane z = 0 seen by each camera: exact depth by ray-plane intersection

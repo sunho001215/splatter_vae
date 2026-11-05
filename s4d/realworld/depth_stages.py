@@ -281,7 +281,7 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
         motion = set_robot_motion(meta, sets["stamps_ns"], geom)
         plans.append({"name": name, "members": members, "sets": sets, "motion": motion,
                       "joint": motion <= max_set_motion_m})
-        for j, m in enumerate(members):  # frames without a synchronized partner: single-view, never merged
+        for m in members:  # frames without a synchronized partner: single-view, never merged
             extra = sets.get("unmatched", {}).get(streams[m], [])
             if extra:
                 st = np.asarray(meta.stream_timestamps_ns[streams[m]])[extra][:, None]

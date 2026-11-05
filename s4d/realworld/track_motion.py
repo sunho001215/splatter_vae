@@ -220,7 +220,8 @@ def reference_thresholds(ref_px: np.ndarray, ref_z: np.ndarray, ref_depth: np.nd
         m = b == k
         n = int(m.sum())
         out["z_bins"].append({"z_lo": float(edges[k]), "z_hi": float(edges[k + 1]), "segments": n,
-                              "z_move_m": max(cfg.min_move_m, float(np.quantile(ref_z[m], qm))) if n >= cfg.min_bin_samples else None,
+                              "z_move_m": (max(cfg.min_move_m, float(np.quantile(ref_z[m], qm)))
+                                           if n >= cfg.min_bin_samples else None),
                               "z_static_m": float(np.quantile(ref_z[m], qs)) if n >= cfg.min_bin_samples else None,
                               "z_median_m": float(np.median(ref_z[m])) if n else None})
     if not any(r["z_move_m"] is not None for r in out["z_bins"]):

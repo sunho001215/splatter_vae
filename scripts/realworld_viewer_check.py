@@ -50,8 +50,8 @@ def main(argv=None) -> int:
     ap.add_argument("--viewport", default="1400x900")
     args = ap.parse_args(argv)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from realworld_viewer import player_url
     from playwright.sync_api import sync_playwright
+    from realworld_viewer import player_url
 
     meta = json.loads((args.out / "viewer.json").read_text())
     rec = meta["recordings"][args.recording]

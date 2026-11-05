@@ -93,7 +93,8 @@ def aggregate(rows, grids, names, pairs) -> dict:
                      "within_20mm": _med([e["vs_other_reference"].get("within_20mm") for e in ents]),
                      "points": int(sum(e["vs_other_reference"].get("n", 0) for e in ents))}
     refself = [r["pairs"][p][k] for r in rows for p in r["pairs"] for k in r["pairs"][p] if k.startswith("reference_self")]
-    filled["reference_native_vs_native_mm"] = None if not refself else round(1000 * _med([x["median_abs"] for x in refself]), 2)
+    filled["reference_native_vs_native_mm"] = (None if not refself else
+                                               round(1000 * _med([x["median_abs"] for x in refself]), 2))
     edges = {n: _med([vw["edges"][n].get("median_abs") for vw in views]) for n in names}
     flying = {n: _med([vw["flying_common"][n] for vw in views]) for n in names}
     stab = {}
