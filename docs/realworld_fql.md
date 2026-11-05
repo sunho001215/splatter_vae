@@ -72,7 +72,9 @@ The input is the frozen encoder output for a 3-step observation history plus pro
 transitions, so the viewpoint is drawn per training sample. Every index of the observation history and of its paired
 next observation lies in that one camera's timeline, which the test asserts. Single-view timelines are each camera's
 own native frames (observation, proprio and action share that camera's timestamps). Multi-view conditions use the
-synchronised reference timeline.
+synchronised steps. Each step is timestamped at its LATEST constituent frame, so no camera image is newer than the
+proprioception and the start of the action interval. Without this, a camera 6.6-22.9 ms after the reference would see
+commands already inside the labelled action (Codex review).
 
 **Features.** Frozen features are computed once per observation time with the export the policy will run, and stored
 in the FQL dataset file next to the transitions. These are regenerable per-frame vectors keyed to the export's sha256,
@@ -80,8 +82,8 @@ not window copies. The pipeline test checks that live encoding of store frames e
 
 ## Action contract (Franka Panda + Robotiq 2F-85; `s4d/rwlearn/actions.py`)
 
-Evidence: `docs/realworld_fql_action_report.json`, computed over every local recording (48 drawer-open, 29
-mug-hanging), all three camera timelines each.
+Evidence: `docs/realworld_fql_action_report.json`, computed over every local recording at 04:00 (76 drawer-open,
+29 mug-hanging; 33,402 + 20,787 valid steps), all three camera timelines each.
 
 | Item | Decision | Evidence / reason |
 |---|---|---|
@@ -89,7 +91,7 @@ mug-hanging), all three camera timelines each.
 | Point / frame | flange (`panda_link8`) origin; increments in the base frame `panda_link0` | `T_flange_tcp` is the identity in every recording, so TCP == flange (checked per episode; otherwise refused). `conventions_json`: all recorded poses are flange poses; base +x forward, +y left, +z up. Base-frame deltas are the standard OSC-delta convention and are view independent. |
 | Delta | `a = [p_goal - p_k, rotvec(R_goal R_k^T)]`, goal = the step's command, reference = the MEASURED pose at the latest robot sample <= tau_k | The pose is Markov in the policy's observation (unlike command-to-command increments, which need the unobserved previous command). Execution: `goal = exp(r) R_k, p_k + dp`. |
 | Rotation | rotation vector (axis-angle, rad) | Increments are small (median 6 deg, max 19.5 deg), so a minimal, continuous representation suffices. The 6D representation is used only for the absolute orientation input. |
-| Control interval | one policy step = one camera frame (15 Hz, 66.7 ms). The ~6.7 commands at the 100 Hz loop inside a step are aggregated by zero-order hold at the step end: the last command strictly before tau_{k+1}. | The controller tracks the latest command. The next observation is taken at tau_{k+1}. A step is invalid if any of its commands was not sent or engaged, if it spans a recording pause, or if it is longer than 1.5 periods (dropped frame). |
+| Control interval | one policy step = one camera frame (nominal 1/15 s; every camera's measured median period is checked within 1 %; measured 66.715 ms). The ~6.7 commands at the 100 Hz loop inside a step are aggregated by zero-order hold at the step end: the last command strictly before tau_{k+1}. | The controller tracks the latest command. The next observation is taken at tau_{k+1}. A step is invalid if any of its commands was not sent or engaged, if it spans a recording pause, if it is longer than 1.5 periods (dropped frame), or if either endpoint lacks a fresh state. A fresh state means a robot sample <= 15 ms old and a gripper register sample <= 100 ms old, both in the same segment. |
 | Units / normalisation | m, rad. Policy action = `[dp / 0.0700 m, r / 0.499 rad, 2c - 1]` | The scales come from the recorder's own teleop limits: lead 0.04 m + 0.3 m/s x 1.5 periods; 20 deg + 1.5 rad/s x 1.5 periods. Every recorded command maps inside [-1, 1]: the pose dimensions reach at most 0.68. A policy output can never ask for more than the teleop envelope. |
 | Gripper | command closure c in [0,1] (0 open, 1 closed), Robotiq position register = 3 + 227c (`conventions_json`) at the same row; policy g = 2c - 1, continuous | The command ramps over ~0.2 s, so it is mostly binary. Mug-hanging is closed 48 % of steps; drawer-open never closes (c <= 0.5). The measured register stalls at the object, e.g. 210 on the mug handle, which is why proprio uses the measured closure. Binarise at 0.5 for execution only if wanted (open decision). |
 | Command vs measured | Not derived from measured poses. Comparison: the commanded offset has median 4.5 cm (drawer) / 3.3 cm (mug), versus measured motion of 5.7 / 4.2 mm per step. The cosine between commanded offset and measured motion has median 0.986 / 0.979. | The commanded goal leads the robot by about the lead limit; the robot moves ~13 % of the offset per step. Replaying measured deltas as goals would drive the impedance controller far more slowly than the operator did. |
@@ -100,10 +102,12 @@ the fixture). `to_robot_command` returns:
 
 - the flange goal `[x y z qx qy qz qw]` in the base frame, the `action/flange_pose` convention;
 - the gripper closure and its Robotiq register;
-- the physical delta.
+- the physical delta;
+- `execution_flange_pose`: the goal passed through the recorder's RADIAL lead envelope (0.04 m, 20 deg around the
+  measured pose). The per-dimension normalisation box is wider; its corner has norm sqrt(3) x 0.07 m.
 
-The robot-side executor must keep the recorder's safety layer: the lead limits around the measured pose and the speed
-limits.
+Speed limits act over time and belong to the robot-side executor. That executor must keep the recorder's safety
+layer.
 
 ## Rewards, terminals, transitions (`s4d/rwlearn/transitions.py`)
 
@@ -116,8 +120,12 @@ segments with motion disabled and no command rows.
 
 - A transition is a valid policy step (see the contract above). Transitions never cross a pause or a dropped frame.
   At each segment start the frame history restarts.
-- The success state is the last reached observation of the recording. This ASSUMES every recording is a successful
-  demonstration.
+- Outcomes are explicit inputs. The builder refuses without per-episode labels (`--outcomes`) or the explicit
+  assumption `--assume-final-success`; the planned rows carry the assumption until labels exist.
+- For a successful episode, the success state is the recording's FINAL observation (last frame of the last segment).
+  The label applies only if that frame is reached by a valid transition; an unusable tail never moves the label
+  earlier, and the timeline is reported as `success_frame_unreachable`.
+- A failed episode has no success state: its last transition is a truncation (`mask` 1).
 - `r_k = success(s_{k+1}) - 1` and `mask_k = 1 - success(s_{k+1})`. This is FQL's own OGBench single-task convention
   (`ogbench/relabel_utils.py`: rewards = successes - 1, masks = 1 - successes), so the official `alpha` scale applies.
 - A segment end before a pause is a frame-stack boundary, not a terminal (`mask` 1).
@@ -164,8 +172,39 @@ segments with motion disabled and no command rows.
 | | done | pending |
 |---|---|---|
 | FQL port | exact + full-config equivalence vs official | - |
-| action contract | implemented; round trip exact on 77 recordings; fixture tests | user confirmation of `action/flange_pose` semantics |
+| action contract | implemented; round trip exact on 105 recordings; fixture tests | user confirmation of `action/flange_pose` semantics |
 | rewards / terminals | implemented (two variants) | success-label decision |
 | datasets / camera randomisation | implemented; pipeline tests on 3 encoder kinds | compact store merged (format branch) |
 | training / inference | trainer, offline validation metrics, `OfflinePolicy`, replay | GPU suite on the merged release |
 | launch | gate + plan rows, role-classified | gate passes (0/100 preprocessed per task at 03:10); encoders pretrained |
+
+## Review (Codex gpt-6.1-sol xhigh, read-only, on eeaafb2) and what changed
+
+The review found no discrepancy in the FQL mathematics (initialisation, GELU, LayerNorm eps, ensemble reductions,
+stop-gradients, Adam, clipping, pre-update Polyak). It found no camera-index mixing and no Meta-World path
+regression. Findings and how each was resolved:
+
+- **Fixed: per-episode action scales.** The scales depended on each episode's measured period, so multi-episode builds
+  failed on clock jitter. The contract now uses the nominal 1/15 s and checks each camera within 1 %.
+- **Fixed: multi-view causality.** Steps are timestamped at their latest frame.
+- **Fixed: transitions into an invalid next state.** Both endpoints now need a state.
+- **Fixed: gate scope.**
+  - The gate only checked inventory. Trainers now also require the split to be a disjoint train/validation partition
+    of exactly the gated episodes, the store's tasks to equal the target's, and no truncating data cap.
+  - `inputs --target` is enforced.
+  - The FQL trainer checks the split against the dataset.
+- **Fixed: gate predicate.**
+  - It now mirrors ING's: `exclude` / `accept` overrides, `source_missing` always blocks, and unknown flags block.
+  - It now requires a sha256 and an equal `remote_sha256`; unknown validation states fail.
+- **Fixed: DataLoader forks.** Locator-opened stores are released after indexing and reopened per process.
+- **Fixed: stage names and depth quantisation.** Stage names are now the preprocessing dispatcher's. Depth is
+  quantised exactly as the compact store does it (verified bitwise).
+- **Fixed: smaller issues.**
+  - Inference noise moves to the policy device.
+  - Validation draws from its own generator, so it never shifts training randomness.
+  - Resume refuses checkpoints whose encoder, contract, dataset, split, smoke status or agent config differ.
+  - The gripper register freshness limit is 100 ms.
+- **Adopted as design: outcomes and the execution envelope.** Outcomes are explicit inputs; the success label sits
+  only at the final frame; the execution pose applies the radial lead envelope.
+- **Kept as an open decision: SNeRL inputs.** SNeRL's 3-of-3 input views versus 2 inputs with the third held out
+  (`docs/realworld_baselines.md`).

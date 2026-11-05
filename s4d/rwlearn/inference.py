@@ -69,7 +69,7 @@ class OfflinePolicy:
     def act_from_features(self, feat: torch.Tensor, proprio: np.ndarray, measured_pose7: np.ndarray, *,
                           noise: torch.Tensor | None = None, binary_gripper: bool = False) -> dict:
         obs = {"feat": feat.to(self.device), "proprio": torch.as_tensor(proprio, device=self.device).float()[None]}
-        a = self.agent.sample_actions(obs, noise).cpu().numpy()[0]
+        a = self.agent.sample_actions(obs, None if noise is None else noise.to(self.device)).cpu().numpy()[0]
         out = A.to_robot_command(measured_pose7, a, self.contract, binary_gripper=binary_gripper)
         out["action_norm"] = a
         return out

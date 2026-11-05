@@ -38,14 +38,21 @@ SHORT_RUN_STEPS = 10_000
 
 
 # ----------------------------------------------------------------------------------------------- gate evidence
-def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, steps: int | None) -> dict:
-    """Pretraining on real-world data needs the user's full-data gate (``s4d.rwlearn.gate``): a passed report whose
-    validated episode set equals, per task, the store episodes this run sees. Runs of at most ``SHORT_RUN_STEPS``
-    (smoke / plumbing) may go without one; they are flagged ``smoke``."""
+def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, steps: int | None,
+               split: dict | None = None, target: str | None = None, caps: dict | None = None) -> dict:
+    """Pretraining on real-world data needs the user's full-data gate (``s4d.rwlearn.gate``). Beyond
+    ``SHORT_RUN_STEPS`` (smoke / plumbing runs may go without it, flagged ``smoke``) all of these must hold:
+
+    * a passed report whose validated episode set equals, per task, the store's episodes;
+    * the store's task set equals the requested ``target`` (``drawer-open``, ``mug-hanging`` or ``joint``);
+    * the run's ``split`` is a disjoint train / validation partition of exactly the store's episodes;
+    * no data cap truncates anything (``caps``: ``max_episodes`` / ``num_episodes`` None, ``max_frames_per_demo``
+      None or at least the longest camera stream)."""
     report = gate_report
     if isinstance(report, (str, Path)):
         report = json.loads(Path(report).read_text())
-    smoke = not (report and report.get("passed"))
+    store_tasks = {store.task(ep) for ep in store.episodes()}
+    smoke = not (report and all((report.get("tasks") or {}).get(t, {}).get("passed") for t in store_tasks))
     if smoke:
         if steps is None or steps > SHORT_RUN_STEPS:
             raise RuntimeError("no passed full-data gate report for this store; refusing a real-world pretraining run "
@@ -60,6 +67,23 @@ def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, step
             raise RuntimeError(f"{task}: not passed in the gate report")
         if sorted(gate["store_episodes"]) != sorted(eps):
             raise RuntimeError(f"{task}: store episodes differ from the gate's validated + preprocessed set")
+    if target is not None:
+        from s4d.rwlearn.launch import TARGET_TASKS
+
+        if sorted(by_task) != sorted(TARGET_TASKS[target]):
+            raise RuntimeError(f"store tasks {sorted(by_task)} != target {target} tasks {TARGET_TASKS[target]}")
+    if split is not None:
+        train, val = set(split.get("train", [])), set(split.get("validation", []))
+        if train & val or (train | val) != set(store.episodes()) or len(split["train"]) != len(train):
+            raise RuntimeError("the split is not a disjoint train / validation partition of the store's episodes")
+    for name, value in (caps or {}).items():
+        if value is None:
+            continue
+        if name == "max_frames_per_demo":
+            longest = max(len(store.timestamps(ep, c)) for ep in store.episodes() for c in store.cameras(ep))
+            if int(value) >= longest:
+                continue
+        raise RuntimeError(f"data cap {name}={value} would truncate the full-data set")
     return {"smoke": False, "tasks": sorted(by_task)}
 
 
@@ -84,8 +108,8 @@ class _SyncedEpisodes(Dataset):
             s = sync_index(self.store, ep, max_sync_ns)
             if max_steps_per_demo is not None:
                 cut = int(max_steps_per_demo)
-                s = SyncIndex(s.cameras, s.frames[:cut], s.times[:cut], s.segment[:cut], s.run[:cut],
-                              s.max_sync_error_ns)
+                s = SyncIndex(s.cameras, s.frames[:cut], s.times[:cut], s.latest_times[:cut], s.segment[:cut],
+                              s.run[:cut], s.max_sync_error_ns)
             if len(s.cameras) < num_views:
                 raise ValueError(f"{ep}: {len(s.cameras)} cameras < num_views {num_views}")
             self.sync[ep] = s
@@ -344,12 +368,15 @@ def _derive_per_sample_forward():
 sincro_forward_per_sample_cameras = _derive_per_sample_forward()
 
 
-def realworld_classes(interface: dict, steps: int | None, locator) -> dict:
+def realworld_classes(interface: dict, steps: int | None, locator, caps: dict | None = None) -> dict:
     """Trainer hook for ``data_interface.source: realworld`` (Meta-World runs never import this module): checks the
-    full-data gate evidence (``data_interface.gate_report``) and returns the dataset classes + SinCro's forward."""
+    full-data gate evidence (``data_interface.gate_report``) against the store, the run's split manifest, its target
+    and its data caps (``check_gate``), and returns the dataset classes + SinCro's forward."""
     if interface.get("source") != "realworld":
         raise ValueError(f"not a real-world data interface: {interface.get('source')!r}")
-    check_gate(open_store(locator), interface.get("gate_report"), steps=steps)
+    split = json.loads(Path(interface["split_manifest"]).read_text()) if interface.get("split_manifest") else None
+    check_gate(open_store(locator), interface.get("gate_report"), steps=steps, split=split,
+               target=interface.get("target"), caps=caps)
     return {"sincro": RealworldSinCroWindows, "reviwo": RealworldReViWoStates, "dynamo": RealworldDynaMoWindows,
             "mvp3d": RealworldMVPTimeSteps, "snerl": RealworldSNeRLScenes,
             "sincro_forward": sincro_forward_per_sample_cameras}

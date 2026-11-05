@@ -56,7 +56,8 @@ def fql_rows(task: str, encoder_target: str, commit: str, gate_sha: str, seeds=(
             "id": data_id, "script": "scripts/realworld_fql_dataset.py",
             "args": ["build", "--store", f"{inputs}/store.yaml", "--condition", cond,
                      "--export", f"runs/pretrain/{enc_row}/encoder.pt", "--out", data_path,
-                     "--gate-report", f"{inputs}/gate_report.json", "--device", "cuda"],
+                     "--gate-report", f"{inputs}/gate_report.json", "--device", "cuda",
+                     "--assume-final-success"],  # open decision: replace by --outcomes <labels> when provided
             "role": "realworld_fql", "host": "remote", "gpu": "any", "mem_gb": 8, "ram_gb": 16, "priority": 1,
             "deps": [enc_row], "max_restarts": 1, "oom_score_adj": 0, "realworld_target": task,
             "fql_condition": cond, "realworld_gate_sha256": gate_sha, "planned_commit": commit})

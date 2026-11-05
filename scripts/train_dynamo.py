@@ -110,7 +110,8 @@ def main() -> None:
     if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
         from s4d.rwlearn.baseline_data import realworld_classes
 
-        windows_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"])["dynamo"]
+        caps = {"max_episodes": ds_cfg.get("max_episodes")}
+        windows_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"], caps)["dynamo"]
     train_set = windows_cls(
         ds_cfg["hdf5_path"], split_episodes(manifest, "train"), window, frame_spacing, ds_cfg.get("max_episodes")
     )

@@ -191,6 +191,19 @@ def test_sincro_per_sample_cameras_equal_the_reference_for_one_rig_and_differ_ot
     assert a != b and math.isfinite(b[0])
 
 
+def test_multiview_observation_time_is_the_latest_constituent_frame():
+    from s4d.rwlearn.transitions import timelines
+
+    store = synthetic_store()
+    ep = store.episodes()[0]
+    s = sync_index(store, ep)
+    frame_t = np.stack([store.timestamps(ep, c)[s.frames[:, v]] for v, c in enumerate(CAMS)], 1)
+    np.testing.assert_array_equal(s.latest_times, frame_t.max(1))
+    assert (s.latest_times - s.times).max() == 6.6 * MS  # camera 1 is 6.6 ms after the reference
+    (tl,) = timelines(store, ep, multiview=True)
+    np.testing.assert_array_equal(tl.times, s.latest_times)
+
+
 def test_gate_evidence_required_beyond_smoke_runs():
     store = synthetic_store()
     assert BD.check_gate(store, None, steps=100)["smoke"]
@@ -198,6 +211,18 @@ def test_gate_evidence_required_beyond_smoke_runs():
         BD.check_gate(store, None, steps=300_000)
     report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
     assert not BD.check_gate(store, report, steps=None)["smoke"]
+    eps = store.episodes()
+    good = {"train": eps[:2], "validation": eps[2:]}
+    assert not BD.check_gate(store, report, steps=None, split=good, target="drawer-open",
+                             caps={"max_episodes": None, "max_frames_per_demo": 3000})["smoke"]
+    for split in ({"train": eps[:1], "validation": eps[2:]}, {"train": eps, "validation": eps[2:]}):
+        with pytest.raises(RuntimeError, match="partition"):
+            BD.check_gate(store, report, steps=None, split=split)
+    with pytest.raises(RuntimeError, match="target joint"):
+        BD.check_gate(store, report, steps=None, target="joint")
+    for caps in ({"max_episodes": 2}, {"max_frames_per_demo": 10}):
+        with pytest.raises(RuntimeError, match="truncate"):
+            BD.check_gate(store, report, steps=None, caps=caps)
     report["tasks"]["drawer-open"]["store_episodes"] = store.episodes()[:-1]
     with pytest.raises(RuntimeError, match="differ"):
         BD.check_gate(store, report, steps=None)

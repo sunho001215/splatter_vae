@@ -100,7 +100,7 @@ def test_dataset_build_sampling_and_policy_round_trip(tmp_path, exports, conditi
     ep = store.episodes()[0]
     path = tmp_path / f"{condition}.h5"
     info = FD.build_fql_dataset(store, condition, exports / f"{FD.CONDITIONS[condition].encoder_type}.pt", path,
-                                episodes=[ep])
+                                episodes=[ep], assume_final_success=True)
     assert info["transitions"] > 0
     with h5py.File(path, "r") as f:
         names = sorted(f["episodes"][ep])
@@ -175,7 +175,20 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     store = store_on_fixture(n=8)
     ep = store.episodes()[0]
     path = tmp_path / "d.h5"
-    FD.build_fql_dataset(store, "dynamo", exports / "dynamo.pt", path, episodes=[ep])
+    with pytest.raises(ValueError, match="no outcome label"):
+        FD.build_fql_dataset(store, "dynamo", exports / "dynamo.pt", path, episodes=[ep])
+    FD.build_fql_dataset(store, "dynamo", exports / "dynamo.pt", path, episodes=[ep], outcomes={ep: False})
+    with h5py.File(path, "r") as f:
+        assert all(g.attrs["label"] == "failure" and not g["success"][:].any() for g in f["episodes"][ep].values())
+    from s4d.rwlearn.gate import check_dataset_gate
+
+    assert check_dataset_gate(path, None, steps=100)["smoke"]
+    with pytest.raises(RuntimeError, match="no passed full-data gate"):
+        check_dataset_gate(path, None, steps=1_000_000)
+    report = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}}}
+    assert not check_dataset_gate(path, report, steps=None, split={"train": [ep], "validation": []})["smoke"]
+    with pytest.raises(RuntimeError, match="partition"):
+        check_dataset_gate(path, report, steps=None, split={"train": [], "validation": []})
     data = FD.OfflineTransitions(path)
     enc = data.encoder_factory(16)
     agent = FQLAgent.create(0, enc().out_dim, A.ACTION_DIM, {"actor_hidden_dims": (8,), "value_hidden_dims": (8,)},

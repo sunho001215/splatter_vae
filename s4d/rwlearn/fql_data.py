@@ -117,27 +117,32 @@ def encode_timeline(adapter, store: FrameStore, ep: str, tl, *, device, chunk: i
 
 def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path, *, episodes: list[str],
                       reward: str = "ogbench_final_success", device="cpu", max_sync_ns: int = 30_000_000,
-                      raw_paths: dict | None = None) -> dict:
-    """Write ``out`` (atomic). ``raw_paths`` optionally maps episode -> raw recording path (else the store's)."""
+                      raw_paths: dict | None = None, outcomes: dict | None = None,
+                      assume_final_success: bool = False) -> dict:
+    """Write ``out`` (atomic). ``raw_paths`` optionally maps episode -> raw recording path (else the store's).
+    Outcomes are explicit: ``outcomes[ep]`` (True = successful demonstration) for every episode, or
+    ``assume_final_success`` (every recording is a successful demonstration; the files carry no outcome marker)."""
+    missing = [ep for ep in episodes if ep not in (outcomes or {})]
+    if missing and not assume_final_success:
+        raise ValueError(f"no outcome label for {len(missing)} episode(s) (e.g. {missing[0]}); give outcomes or "
+                         "assume_final_success=True explicitly")
     c = CONDITIONS[condition]
     adapter = encoder_adapter(condition, export_path, store.image_hw[0]).to(device)
     adapter.backbone.eval()
     out = Path(out)
     tmp = out.with_name(f".{out.name}.partial")
-    contract, stats = None, {"transitions": 0, "reasons": {}}
+    contract, stats = None, {"transitions": 0, "reasons": {}, "labels": {}}
     with h5py.File(tmp, "w") as f:
         for ep in episodes:
             raw = A.load_raw((raw_paths or {}).get(ep) or store.raw_recording(ep))
             A.check_contract_preconditions(raw)
-            ep_contract = A.contract_for(raw)
+            ep_contract = A.contract_for(raw)  # nominal period; each camera's measured period checked within 1 %
             if contract is None:
                 contract = ep_contract
-            elif (abs(ep_contract.pos_scale_m - contract.pos_scale_m) > 1e-9
-                  or abs(ep_contract.rot_scale_rad - contract.rot_scale_rad) > 1e-9
-                  or abs(ep_contract.nominal_period_s - contract.nominal_period_s) > 2e-4):
-                raise ValueError(f"{ep}: teleop limits / frame period differ from the dataset contract")
+            elif ep_contract != contract:
+                raise ValueError(f"{ep}: teleop limits differ from the dataset contract")
             for tl in timelines(store, ep, c.multiview, max_sync_ns):
-                tr = episode_transitions(raw, tl, contract, reward)
+                tr = episode_transitions(raw, tl, contract, reward, success=bool((outcomes or {}).get(ep, True)))
                 g = f.create_group(f"episodes/{ep}/{tl.name}")
                 g.create_dataset("features", data=encode_timeline(adapter, store, ep, tl, device=device),
                                  compression="lzf")
@@ -146,7 +151,8 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                     g.create_dataset(k, data=tr[k])
                 g.create_dataset("measured_pose", data=tr["measured_pose"].astype(np.float64))
                 g.create_dataset("frames", data=tl.frames.astype(np.int32))
-                g.attrs.update(cameras=json.dumps(tl.cameras), task=store.task(ep))
+                g.attrs.update(cameras=json.dumps(tl.cameras), task=store.task(ep), label=tr["label"])
+                stats["labels"][tr["label"]] = stats["labels"].get(tr["label"], 0) + 1
                 stats["transitions"] += int(tr["transition_ok"].sum())
                 for r, n in tr["reasons"].items():
                     stats["reasons"][r] = stats["reasons"].get(r, 0) + int(n)
@@ -154,7 +160,9 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                        export_path=str(export_path), export_sha256=sha256_file(export_path), reward=reward,
                        contract=json.dumps(contract.to_json()), frame_stack=FRAME_STACK,
                        sequence_feature=bool(adapter.stack_feature), episodes=json.dumps(list(episodes)),
-                       image_hw=json.dumps(list(store.image_hw)), stats=json.dumps(stats))
+                       image_hw=json.dumps(list(store.image_hw)), stats=json.dumps(stats),
+                       outcomes=json.dumps({"assume_final_success": bool(assume_final_success),
+                                            "labels": {ep: bool(v) for ep, v in (outcomes or {}).items()}}))
     tmp.replace(out)
     return {"path": str(out), **stats}
 

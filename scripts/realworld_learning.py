@@ -84,7 +84,7 @@ def main() -> None:
 
         store = open_store(args.store)
         report = json.loads(args.gate_report.read_text())
-        check_gate(store, report, steps=None)  # refuses unless the store's episode sets equal the gate's
+        check_gate(store, report, steps=None, target=args.target)  # store episodes = gate's; tasks = target's
         args.out_dir.mkdir(parents=True, exist_ok=True)
         (args.out_dir / "split_seed0.json").write_text(json.dumps(split_episodes(store), indent=1) + "\n")
         (args.out_dir / "gate_report.json").write_text(json.dumps(report, indent=1) + "\n")

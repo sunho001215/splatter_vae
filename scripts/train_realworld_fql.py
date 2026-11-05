@@ -31,8 +31,8 @@ from ops.resources.gpu_guard import GPUIsolationError, validate_runtime_path  # 
 from s4d.config import dump_config, load_config  # noqa: E402
 from s4d.diag.wandb_log import init_wandb  # noqa: E402
 from s4d.rwlearn import actions as A  # noqa: E402
-from s4d.rwlearn.fql import FQLAgent  # noqa: E402
-from s4d.rwlearn.fql_data import CONDITIONS, OfflineTransitions  # noqa: E402
+from s4d.rwlearn.fql import FQLAgent, Noise  # noqa: E402
+from s4d.rwlearn.fql_data import CONDITIONS, OfflineTransitions, sha256_file  # noqa: E402
 from s4d.rwlearn.gate import check_dataset_gate  # noqa: E402
 from s4d.rwlearn.inference import checkpoint_payload  # noqa: E402
 
@@ -46,9 +46,9 @@ def offline_validation(agent: FQLAgent, val: OfflineTransitions, batches: int, b
     BC flow against the recorded commands, in physical units."""
     infos, pos, rot, grip, bc_pos = [], [], [], [], []
     c = val.contract
-    for _ in range(batches):
+    for _ in range(batches):  # every draw from ``gen``: validation never advances the training generators
         batch = val.sample(batch_size, gen)
-        infos.append(agent.evaluate_losses(batch, agent.draw_noise(batch)))
+        infos.append(agent.evaluate_losses(batch, Noise.draw(batch_size, A.ACTION_DIM, gen, agent.device)))
         noise = torch.randn(batch_size, A.ACTION_DIM, generator=gen).to(agent.device)
         pred = c.denormalise(agent.sample_actions(batch["observations"], noise).cpu().numpy())
         flow = c.denormalise(agent.compute_flow_actions(batch["observations"], noise).cpu().numpy())
@@ -82,7 +82,8 @@ def main() -> None:
     steps = int(train_cfg["offline_steps"])
     if steps > SHORT_RUN_STEPS:
         require_passed_tests()
-    gate = check_dataset_gate(data_cfg["dataset"], data_cfg.get("gate_report"), steps=steps)
+    split = json.loads(Path(data_cfg["split_manifest"]).read_text())
+    gate = check_dataset_gate(data_cfg["dataset"], data_cfg.get("gate_report"), steps=steps, split=split)
     try:
         run_dir = validate_runtime_path(Path(args.output_root) / args.name, repository=REPO)
     except GPUIsolationError as exc:
@@ -93,7 +94,6 @@ def main() -> None:
     dump_config(cfg, run_dir / "config.yaml")
 
     device = torch.device(train_cfg["device"])
-    split = json.loads(Path(data_cfg["split_manifest"]).read_text())
     train = OfflineTransitions(data_cfg["dataset"], split["train"], device)
     val = OfflineTransitions(data_cfg["dataset"], split["validation"], device) if split["validation"] else None
     if train.attrs["condition"] != condition:
@@ -106,15 +106,24 @@ def main() -> None:
     val_gen_seed = seed + 2
     latest = run_dir / "checkpoints" / "latest.pt"
     step = 0
+    identity = {"condition": condition, "export_sha256": train.attrs["export_sha256"],
+                "contract": json.loads(train.attrs["contract"]), "reward": train.attrs["reward"],
+                "dataset_sha256": sha256_file(data_cfg["dataset"]), "split": split, "smoke": bool(gate["smoke"]),
+                "agent": agent_cfg}
     if latest.is_file():
         ckpt = torch.load(latest, map_location="cpu", weights_only=False)  # own checkpoint (RNG payload)
+        if json.dumps(ckpt.get("identity"), sort_keys=True, default=list) != json.dumps(identity, sort_keys=True,
+                                                                                       default=list):
+            raise SystemExit(f"{latest} was trained on different inputs (encoder, contract, dataset, split, smoke "
+                             "status or agent config); refusing to resume")
         agent.load_state_dict(ckpt["agent"])
         sample_gen.set_state(ckpt["sample_gen"])
         step = int(ckpt["step"])
 
     def save(path: Path) -> None:
         tmp = path.with_suffix(".tmp")
-        torch.save(checkpoint_payload(agent, train, condition, step, sample_gen=sample_gen.get_state()), tmp)
+        torch.save(checkpoint_payload(agent, train, condition, step, sample_gen=sample_gen.get_state(),
+                                      identity=identity), tmp)
         tmp.replace(path)
 
     wandb_run = init_wandb(cfg, args.name, cfg["wandb"]["project"], not args.no_wandb, run_dir)

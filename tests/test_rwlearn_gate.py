@@ -4,6 +4,7 @@ the ``rw-ingest-manifest`` v2 schema of runs/setup/tools/realworld_ingest_202611
 from __future__ import annotations
 
 import copy
+import hashlib
 
 import pytest
 
@@ -13,9 +14,10 @@ STAGES = gate.REQUIRED_STAGES
 
 
 def entry(task: str, i: int, *, status="valid", transfer="verified", pre="done", stages=STAGES, sha=None):
-    sha = sha or f"{task}-{i:06d}-sha"
+    sha = sha or hashlib.sha256(f"{task}-{i}".encode()).hexdigest()
     return {"task": task, "episode_index": i, "sha256": sha, "flags": {}, "override": None,
-            "validation": {"status": status}, "transfer": {"status": transfer},
+            "source": {"present": True}, "validation": {"status": status},
+            "transfer": {"status": transfer, "remote_sha256": sha},
             "preprocessing": {"schema": "rw-preprocess", "schema_version": 1, "status": pre,
                               "stages": {s: {"status": "done", "input_sha256": sha, "code_version": "v"}
                                          for s in stages}}}
@@ -53,7 +55,18 @@ def test_both_tasks_pass_with_exactly_100_preprocessed_episodes():
      "not final"),
     (lambda m: m["episodes"].update({"drawer-open/episode_000998.h5": entry("drawer-open", 998)}), "101 episodes"),
     (lambda m: m.update(schema_version=1), "schema"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["transfer"].update(remote_sha256="0" * 64),
+     "remote content"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(sha256=None), "no valid sha256"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["validation"].update(status=None), "unknown validation"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["source"].update(present=False), "source file missing"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(
+        flags={"source_missing": 1}, override={"decision": "accept"}), "blocking flags"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"new_kind_of_flag": 1}), "blocking flags"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(override={"decision": "exclude"}), "99 episodes"),
+    (lambda m: m["counts"]["drawer-open"].update(complete="yes"), "ingestion not complete"),
 ])
+
 def test_gate_fails_closed(mutate, reason):
     m = manifest()
     mutate(m)
@@ -62,6 +75,12 @@ def test_gate_fails_closed(mutate, reason):
     text = rep.get("error", "") + " ".join(rep["tasks"].get("drawer-open", {}).get("problems", []))
     assert reason in text, text
     assert not rep["tasks"].get("drawer-open", {}).get("store_episodes")
+
+
+def test_accept_override_clears_eligible_flags():
+    m = manifest()
+    m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"index_conflict": 1}, override={"decision": "accept"})
+    assert gate.evaluate(m, ["drawer-open"])["passed"]
 
 
 def test_invalid_recordings_do_not_count_and_joint_waits_for_both():

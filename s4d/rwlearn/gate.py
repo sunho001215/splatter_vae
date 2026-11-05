@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -36,10 +37,22 @@ TARGET = 100
 # policy 2026-11-06). A name that never appears makes the gate fail closed; override with --required-stages.
 REQUIRED_STAGES = ("normalized", "calibrate", "foundation_stereo_depth", "sam3_masks", "qa", "train_store")
 NOT_FINAL = ("pending", "waiting", "incomplete", "retrying")
+VALIDATION_STATUSES = NOT_FINAL + ("invalid", "valid")
+# ING's blocking flags (runs/setup/tools/realworld_ingest_20261106/ingest_worker.py BLOCKING_FLAGS); an override
+# {"decision": "accept"} clears all but source_missing, {"decision": "exclude"} removes the episode; any flag this
+# check does not know blocks (fail closed)
+BLOCKING_FLAGS = {"duplicate_content", "index_conflict", "source_missing", "source_changed_after_transfer",
+                  "remote_conflict", "transfer_failed_repeatedly"}
+_SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 def store_episode_id(key: str) -> str:
     return key[:-3] if key.endswith(".h5") else key
+
+
+def _decision(e: dict) -> str | None:
+    o = e.get("override")
+    return o.get("decision") if isinstance(o, dict) else None
 
 
 def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: int = TARGET) -> dict:
@@ -54,28 +67,44 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
     for task in tasks:
         problems = []
         counts = (manifest.get("counts") or {}).get(task) or {}
-        if not counts.get("complete"):
-            problems.append("ingestion not complete for this task (counts.complete is false)")
-        if int(counts.get("target", -1)) != target:
+        if counts.get("complete") is not True:
+            problems.append("ingestion not complete for this task (counts.complete is not true)")
+        if counts.get("target") != target:
             problems.append(f"manifest target {counts.get('target')} != {target}")
         mine = {k: e for k, e in episodes.items() if e.get("task") == task}
         valid, indices = [], set()
         for key, e in sorted(mine.items()):
+            if _decision(e) == "exclude":
+                continue  # excluded by the coordinator's override: not part of the task's episode set
             vstatus = (e.get("validation") or {}).get("status")
+            if vstatus not in VALIDATION_STATUSES:
+                problems.append(f"{key}: unknown validation status {vstatus!r}")
+                continue
             if vstatus in NOT_FINAL:
                 problems.append(f"{key}: validation {vstatus} (episode set not final)")
                 continue
             if vstatus != "valid":
                 continue  # invalid recordings are excluded by validation, not counted
-            if e.get("flags") and not e.get("override"):
-                problems.append(f"{key}: blocking flags {sorted(e['flags'])}")
+            if not (e.get("source") or {}).get("present", True):
+                problems.append(f"{key}: source file missing")
                 continue
-            if (e.get("transfer") or {}).get("status") != "verified":
-                problems.append(f"{key}: transfer {(e.get('transfer') or {}).get('status')} (not on the remote)")
+            flags = set(e.get("flags") or {})
+            unknown = flags - BLOCKING_FLAGS
+            blocking = (flags & {"source_missing"}) if _decision(e) == "accept" else flags
+            if blocking or unknown:
+                problems.append(f"{key}: blocking flags {sorted(blocking | unknown)}")
+                continue
+            sha = e.get("sha256")
+            transfer = e.get("transfer") or {}
+            if not (isinstance(sha, str) and _SHA.match(sha)):
+                problems.append(f"{key}: no valid sha256")
+                continue
+            if transfer.get("status") != "verified" or transfer.get("remote_sha256") != sha:
+                problems.append(f"{key}: transfer {transfer.get('status')} / remote content not verified equal")
                 continue
             idx = e.get("episode_index")
-            if idx in indices:
-                problems.append(f"{key}: duplicate episode index {idx}")
+            if not isinstance(idx, int) or idx in indices:
+                problems.append(f"{key}: missing or duplicate episode index {idx!r}")
                 continue
             indices.add(idx)
             pre = e.get("preprocessing") or {}
@@ -86,7 +115,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 continue
             stages = pre.get("stages") or {}
             bad = [s for s in required_stages if (stages.get(s) or {}).get("status") != "done"
-                   or (stages.get(s) or {}).get("input_sha256") != e.get("sha256")]
+                   or (stages.get(s) or {}).get("input_sha256") != sha]
             if bad:
                 problems.append(f"{key}: required stages not done for this file: {bad}")
                 continue
@@ -110,23 +139,31 @@ def evaluate_file(path: Path = MANIFEST, tasks=("drawer-open", "mug-hanging"), *
     return report
 
 
-def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, short_run_steps: int = 10_000) -> dict:
-    """FQL trainer check: the dataset's episodes must equal, per task, a passed gate report's store episodes."""
+def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: dict | None = None,
+                       short_run_steps: int = 10_000) -> dict:
+    """FQL trainer check (beyond ``short_run_steps``): every task of the dataset passed the gate report, the dataset's
+    episodes equal, per task, the report's store episodes, and ``split`` is a disjoint train / validation partition
+    of exactly those episodes."""
     import h5py
 
     report = json.loads(Path(gate_report).read_text()) if isinstance(gate_report, (str, Path)) else gate_report
-    if not (report and report.get("passed")):
-        if steps is None or steps > short_run_steps:
-            raise RuntimeError(f"no passed full-data gate report; refusing an FQL run of {steps} steps")
-        return {"smoke": True}
     with h5py.File(dataset_path, "r") as f:
         eps = json.loads(f.attrs["episodes"])
-        tasks = {}
+        tasks: dict[str, list[str]] = {}
         for ep in eps:
             any_tl = next(iter(f["episodes"][ep].values()))
             tasks.setdefault(str(any_tl.attrs["task"]), []).append(ep)
-    for task, eps in tasks.items():
-        t = report["tasks"].get(task)
-        if not t or not t.get("passed") or sorted(t["store_episodes"]) != sorted(eps):
+    passed = bool(report) and all((report.get("tasks") or {}).get(t, {}).get("passed") for t in tasks)
+    if not passed:
+        if steps is None or steps > short_run_steps:
+            raise RuntimeError(f"no passed full-data gate report for {sorted(tasks)}; refusing an FQL run of {steps} "
+                               "steps")
+        return {"smoke": True}
+    for task, task_eps in tasks.items():
+        if sorted(report["tasks"][task]["store_episodes"]) != sorted(task_eps):
             raise RuntimeError(f"{task}: dataset episodes differ from the gate's validated + preprocessed set")
+    if split is not None:
+        train, val = set(split.get("train", [])), set(split.get("validation", []))
+        if train & val or (train | val) != set(eps) or len(split["train"]) != len(train):
+            raise RuntimeError("the split is not a disjoint train / validation partition of the dataset's episodes")
     return {"smoke": False, "tasks": sorted(tasks)}

@@ -40,6 +40,9 @@ def main() -> None:
     b.add_argument("--device", default="cuda")
     b.add_argument("--smoke", action="store_true")
     b.add_argument("--episodes", nargs="*")
+    b.add_argument("--outcomes", help="JSON {episode: true|false} (true = successful demonstration)")
+    b.add_argument("--assume-final-success", action="store_true",
+                   help="treat every recording as a successful demonstration (no outcome marker in the files)")
     args = ap.parse_args()
 
     store = open_store(args.store)
@@ -50,11 +53,14 @@ def main() -> None:
     else:
         if args.episodes:
             raise SystemExit("a full build uses every store episode (the gate covers the whole store)")
-        check_gate(store, json.loads(Path(args.gate_report).read_text()) if args.gate_report else None, steps=None)
+        check_gate(store, json.loads(Path(args.gate_report).read_text()) if args.gate_report else None, steps=None,
+                   split=None)
     out = validate_runtime_path(Path(args.out) if Path(args.out).is_absolute() else REPO / args.out, repository=REPO)
     out.parent.mkdir(parents=True, exist_ok=True)
     print(json.dumps(build_fql_dataset(store, args.condition, args.export, out, episodes=episodes,
-                                       reward=args.reward, device=args.device), indent=1))
+                                       reward=args.reward, device=args.device,
+                                       outcomes=json.loads(Path(args.outcomes).read_text()) if args.outcomes else None,
+                                       assume_final_success=args.assume_final_success), indent=1))
 
 
 if __name__ == "__main__":

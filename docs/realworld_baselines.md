@@ -39,6 +39,11 @@ The loader-side indexes are pure functions of the timestamps and segments; nothi
 - `camera_runs` gives each camera's own native frames. DynaMo uses them.
 - `history` builds 3-step histories padded at run starts.
 
+**Verified against the compact store.** The format branch's `CompactStore` was written from drawer-open-000000
+(28 MB for 179 x 3 frames). It is bitwise equal to `ProcessedEpisodeStore` in RGB, depth, semantics, K, w2c,
+timestamps and segments. Every adapter here runs on it, and a real FQL dataset slice was built from it: 533
+transitions over 3 camera timelines.
+
 `ProcessedEpisodeStore` reads the preprocessing outputs (`s4d.realworld` roots) directly. It applies exactly the
 compact store's transforms: `crop_rgb(center_box)` (PIL bilinear, antialiased) for RGB, nearest-native-pixel
 `crop_depth` for depth and semantics, 0.1 mm depth quantisation and `crop_intrinsics`. It exists for tests on real
@@ -108,7 +113,15 @@ The gate is enforced twice:
    `role: realworld_pretrain` or `role: realworld_fql` and `host: remote`. Under REL-B's `ops/jobs/host_roles.py`
    rules they classify to those roles both with and without the explicit role.
 2. Every trainer's real-world branch checks `data_interface.gate_report`. A run longer than 10k steps refuses unless
-   the report passed and its per-task `store_episodes` equal the store episodes exactly.
+   all of the following hold:
+   - every store task passed;
+   - the report's per-task `store_episodes` equal the store episodes exactly;
+   - the store's tasks equal the config's `target` tasks;
+   - the split manifest is a disjoint train/validation partition of exactly those episodes;
+   - no data cap (`max_episodes`, `num_episodes`, `max_frames_per_demo`) truncates anything.
+
+   The gate predicate mirrors the ingestion worker's: `exclude` / `accept` overrides, `source_missing` always blocks,
+   unknown flags block, `remote_sha256` must equal the sha256, and unknown validation states fail.
 
 Nothing is registered or launched by this branch.
 

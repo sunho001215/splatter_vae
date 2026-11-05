@@ -129,7 +129,9 @@ def main() -> None:
     if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
         from s4d.rwlearn.baseline_data import realworld_classes
 
-        classes = realworld_classes(interface, train_cfg.max_global_steps, ds_cfg.hdf5_path)
+        classes = realworld_classes(interface, train_cfg.max_global_steps, ds_cfg.hdf5_path,
+                                    {"max_episodes": ds_cfg.max_episodes,
+                                     "max_frames_per_demo": ds_cfg.max_frames_per_demo})
         windows_cls, forward = classes["sincro"], classes["sincro_forward"]
         # upstream sizes the decoder image tokens as num_view // 3 + 1, which must be 1 primary + 2 references = 3;
         # the three-camera rig keeps the Meta-World encoder (num_view 6), its views enter through the data only

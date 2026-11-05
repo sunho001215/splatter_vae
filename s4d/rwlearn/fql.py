@@ -245,7 +245,8 @@ class FQLAgent:
             if noises is None:
                 lead = (observations if isinstance(observations, torch.Tensor)
                         else next(iter(observations.values()))).shape[0]
-                noises = torch.randn(lead, self.action_dim, generator=self.generator).to(self.device)
+                noises = torch.randn(lead, self.action_dim, generator=self.generator)
+            noises = noises.to(self.device)
             return self.actor_onestep_flow(observations, noises).clamp(-1, 1)
 
     # ------------------------------------------------------------------------------------------------ losses

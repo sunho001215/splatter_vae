@@ -45,6 +45,9 @@ from scipy.spatial.transform import Rotation
 FORMAT = "panda_teleop_episode"
 GRIPPER_OPEN_REGISTER, GRIPPER_SPAN = 3.0, 227.0  # conventions_json: "Robotiq position 3 + 227 * closure (DROID)"
 ACTION_DIM, PROPRIO_DIM = 7, 10
+NOMINAL_PERIOD_S = 1.0 / 15.0  # configured colour frame rate (config_yaml camera.fps 15); measured 14.99 fps
+PERIOD_TOLERANCE = 0.01  # every camera's measured median frame period must lie within 1 % of the nominal one
+MAX_GRIPPER_AGE_NS = 100_000_000  # gripper register samples arrive at ~50-60 Hz; older ones are not current state
 ACTION_NAMES = ("dx", "dy", "dz", "rx", "ry", "rz", "gripper")
 
 
@@ -73,14 +76,20 @@ class ActionContract:
     proprio: str = "[flange xyz (m, base), R[:, 0], R[:, 1] (6D), measured gripper closure (register - 3) / 227]"
     version: str = "rwlearn-action-v1"
     names: tuple = ACTION_NAMES
+    lead_m: float | None = None  # recorder lead limits (execution envelope, ``execution_pose``)
+    lead_rot_deg: float | None = None
 
     @classmethod
-    def from_teleop(cls, teleop: dict, nominal_period_s: float, max_step_factor: float = 1.5) -> ActionContract:
+    def from_teleop(cls, teleop: dict, nominal_period_s: float = NOMINAL_PERIOD_S,
+                    max_step_factor: float = 1.5) -> ActionContract:
+        """Scales depend only on the teleop limits and the NOMINAL frame period (never on a measured period, so all
+        episodes of a dataset share one contract exactly)."""
         step = float(nominal_period_s) * float(max_step_factor)
         return cls(pos_scale_m=float(teleop["max_position_lead"]) + float(teleop["max_linear_speed"]) * step,
                    rot_scale_rad=float(np.deg2rad(teleop["max_rotation_lead_deg"]))
                    + float(teleop["max_angular_speed"]) * step,
-                   nominal_period_s=float(nominal_period_s), max_step_s=step)
+                   nominal_period_s=float(nominal_period_s), max_step_s=step,
+                   lead_m=float(teleop["max_position_lead"]), lead_rot_deg=float(teleop["max_rotation_lead_deg"]))
 
     def to_json(self) -> dict:
         d = asdict(self)
@@ -179,6 +188,7 @@ class RawEpisode:
     segment: np.ndarray  # (N,) int, action/segment
     gripper_t: np.ndarray  # (G,) ns
     gripper_position: np.ndarray  # (G,) raw register
+    gripper_segment: np.ndarray  # (G,) recording segment of each gripper sample
     cameras: dict  # serial -> {"t": (F,) ns colour frame time, "segment": (F,) int}
     segments: dict  # segments/* arrays (t_start/t_end in ns)
     teleop: dict  # config_yaml teleop block
@@ -218,7 +228,8 @@ def read_raw_episode(path: str | Path) -> RawEpisode:
             gripper_command=np.asarray(a["gripper"][()], np.float64), engaged=a["engaged"][()].astype(bool),
             sent=a["sent"][()].astype(bool), lead_limited=a["lead_limited"][()].astype(bool),
             segment=np.asarray(a["segment"][()], np.int64), gripper_t=ns(g["t"][()]),
-            gripper_position=np.asarray(g["position"][()], np.float64), cameras=cams,
+            gripper_position=np.asarray(g["position"][()], np.float64),
+            gripper_segment=np.asarray(g["segment"][()], np.int64), cameras=cams,
             segments={k: (ns(f["segments"][k][()]) if k in ("t_start", "t_end") else np.asarray(f["segments"][k][()]))
                       for k in f["segments"]},
             teleop=dict(cfg["teleop"]), T_flange_tcp=np.asarray(f.attrs["T_flange_tcp"], np.float64),
@@ -256,12 +267,14 @@ class StepTable:
 
 
 def step_table(raw: RawEpisode, times: np.ndarray, segment: np.ndarray, *, nominal_period_s: float,
-               max_step_factor: float = 1.5, max_state_age_ns: int = 15_000_000) -> StepTable:
+               max_step_factor: float = 1.5, max_state_age_ns: int = 15_000_000,
+               max_gripper_age_ns: int = MAX_GRIPPER_AGE_NS) -> StepTable:
     """Observations at ``times`` (a camera's frame times, ns, with that camera's segment ids) -> proprio, actions and
     validity, following the module contract. A step k -> k+1 is valid iff both frames are in one recording segment,
     tau_{k+1} - tau_k <= max_step_factor * nominal period, a measured state at most ``max_state_age_ns`` old exists at
-    tau_k in that segment, at least one command row lies in (tau_k, tau_{k+1}), and every command row in
-    [tau_k, tau_{k+1}) has sent == engaged == 1 in the same segment."""
+    tau_k in that segment (and a gripper register sample at most ``max_gripper_age_ns`` old in that segment), at
+    least one command row lies in (tau_k, tau_{k+1}), and every command row in [tau_k, tau_{k+1}) has
+    sent == engaged == 1 in the same segment."""
     times, segment = np.asarray(times, np.int64), np.asarray(segment, np.int64)
     K = len(times)
     T_meas = pose7_to_matrix(raw.measured)
@@ -271,8 +284,9 @@ def step_table(raw: RawEpisode, times: np.ndarray, segment: np.ndarray, *, nomin
     safe = np.clip(i_state, 0, None)
     state_ok &= (times - raw.robot_t[safe] <= max_state_age_ns) & (raw.segment[safe] == segment)
     gi = latest_at_or_before(raw.gripper_t, times)
-    grip_meas = closure_from_register(raw.gripper_position[np.clip(gi, 0, None)])
-    grip_ok = gi >= 0
+    gsafe = np.clip(gi, 0, None)
+    grip_meas = closure_from_register(raw.gripper_position[gsafe])
+    grip_ok = (gi >= 0) & (times - raw.gripper_t[gsafe] <= max_gripper_age_ns) & (raw.gripper_segment[gsafe] == segment)
     measured = T_meas[safe]
     proprio = np.concatenate([measured[:, :3, 3], rotation_6d(measured[:, :3, :3]), grip_meas[:, None]], 1)
     proprio = np.where((state_ok & grip_ok)[:, None], proprio, np.nan).astype(np.float32)
@@ -318,27 +332,39 @@ def nominal_period_s(raw: RawEpisode, serial: str) -> float:
     return float(np.median(d)) / 1e9
 
 
-def contract_for(raw: RawEpisode, serial: str | None = None) -> ActionContract:
-    serial = serial or raw.serials[0]
-    return ActionContract.from_teleop(raw.teleop, nominal_period_s(raw, serial))
+def contract_for(raw: RawEpisode) -> ActionContract:
+    """The contract (nominal 15 Hz period) after checking every camera's measured median period against it."""
+    for serial in raw.serials:
+        measured = nominal_period_s(raw, serial)
+        if abs(measured - NOMINAL_PERIOD_S) > PERIOD_TOLERANCE * NOMINAL_PERIOD_S:
+            raise ValueError(f"{raw.path}: camera {serial} frame period {measured:.5f} s is not the nominal "
+                             f"{NOMINAL_PERIOD_S:.5f} s")
+    return ActionContract.from_teleop(raw.teleop)
 
 
 def to_robot_command(measured_pose7: np.ndarray, action_norm: np.ndarray, contract: ActionContract, *,
                      binary_gripper: bool = False) -> dict:
     """Policy output -> the command in the recorder's convention (NO robot I/O): the flange goal pose in the base frame
-    ``[x y z qx qy qz qw]`` (what ``action/flange_pose`` records), the gripper closure and its Robotiq register.
+    ``[x y z qx qy qz qw]`` (what ``action/flange_pose`` records; the EXACT inverse of the dataset conversion), the
+    gripper closure and its Robotiq register, and ``execution_flange_pose``: that goal passed through the recorder's
+    radial lead envelope (``limit_lead``; the per-dimension normalisation box is wider than the radial lead, e.g. an
+    all-ones translation has norm sqrt(3) x pos_scale). Speed limits act over time and belong to the robot-side
+    executor, which must keep the recorder's safety layer.
 
-    ``measured_pose7`` is the measured flange pose at the observation time (``robot/flange_pose`` convention). The
-    executor on the robot side must keep the recorder's safety layer (lead limits around the measured pose, speed
-    limits); ``limit_lead`` reproduces the lead limit for offline inspection."""
+    ``measured_pose7`` is the measured flange pose at the observation time (``robot/flange_pose`` convention)."""
     phys = contract.denormalise(action_norm)
     ref = pose7_to_matrix(np.asarray(measured_pose7, np.float64))
     goal = apply_delta(ref, phys[..., :6])
     c = phys[..., 6]
     if binary_gripper:
         c = (c >= 0.5).astype(np.float64)
-    return {"flange_pose": matrix_to_pose7(goal), "gripper_closure": c, "gripper_register": register_from_closure(c),
-            "delta_phys": phys[..., :6], "frame": contract.frame, "point": contract.point}
+    out = {"flange_pose": matrix_to_pose7(goal), "gripper_closure": c, "gripper_register": register_from_closure(c),
+           "delta_phys": phys[..., :6], "frame": contract.frame, "point": contract.point}
+    if contract.lead_m is not None:  # the recorder's radial lead envelope (the normalisation box is wider)
+        out["execution_flange_pose"] = limit_lead(measured_pose7, out["flange_pose"],
+                                                  {"max_position_lead": contract.lead_m,
+                                                   "max_rotation_lead_deg": contract.lead_rot_deg})
+    return out
 
 
 def limit_lead(measured_pose7: np.ndarray, goal_pose7: np.ndarray, teleop: dict) -> np.ndarray:
@@ -361,7 +387,7 @@ def contract_json(contract: ActionContract) -> str:
 
 # ----------------------------------------------------------------------------------------------- fixtures
 _ARRAY_FIELDS = ("robot_t", "measured", "command", "target", "gripper_command", "engaged", "sent", "lead_limited",
-                 "segment", "gripper_t", "gripper_position", "T_flange_tcp")
+                 "segment", "gripper_t", "gripper_position", "gripper_segment", "T_flange_tcp")
 
 
 def raw_to_arrays(raw: RawEpisode) -> dict:

@@ -75,7 +75,8 @@ def main() -> None:
     if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
         from s4d.rwlearn.baseline_data import realworld_classes
 
-        states_cls = realworld_classes(interface, cfg_train.max_global_steps, ds_cfg["hdf5_path"])["reviwo"]
+        caps = {"num_episodes": ds_cfg.get("num_episodes"), "max_frames_per_demo": max_frames}
+        states_cls = realworld_classes(interface, cfg_train.max_global_steps, ds_cfg["hdf5_path"], caps)["reviwo"]
     train_set = states_cls(
         ds_cfg["hdf5_path"], split_episodes(manifest, "train"), num_views, ds_cfg.get("num_episodes"), max_frames
     )

@@ -77,6 +77,7 @@ class SyncIndex:
     cameras: list[str]
     frames: np.ndarray  # (S, V) native frame indices, strictly increasing per camera
     times: np.ndarray  # (S,) reference timestamps (ns)
+    latest_times: np.ndarray  # (S,) the LATEST constituent frame time of each step (causal observation time)
     segment: np.ndarray  # (S,)
     run: np.ndarray  # (S,) contiguous runs (no pause, no dropped / unsynchronised step inside a run)
     max_sync_error_ns: dict
@@ -103,7 +104,8 @@ def sync_index(store: FrameStore, ep: str, max_sync_ns: int = 30_000_000) -> Syn
     k = np.flatnonzero(keep)
     seg = seg_all[0][matched[k, 0]]
     period = float(np.median(np.diff(ref))) if len(ref) > 1 else None
-    return SyncIndex(cameras=cams, frames=matched[k], times=ref[k], segment=seg,
+    latest = np.max([stamps[c][matched[k, v]] for v, c in enumerate(cams)], axis=0) if len(k) else ref[k]
+    return SyncIndex(cameras=cams, frames=matched[k], times=ref[k], latest_times=latest, segment=seg,
                      run=runs_from(ref[k], seg, period_ns=period),
                      max_sync_error_ns={c: int(err[k, v].max()) if len(k) else None for v, c in enumerate(cams)})
 

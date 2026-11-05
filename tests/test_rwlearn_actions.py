@@ -4,6 +4,7 @@ gripper closing and opening; action/robot/gripper/camera-timestamp arrays only) 
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -123,6 +124,7 @@ def _synthetic_raw(times_cam, segment_cam, robot_t, segment_robot, sent=None):
         command=cmd, target=cmd, gripper_command=np.linspace(0, 1, n), engaged=np.ones(n, bool),
         sent=np.ones(n, bool) if sent is None else sent, lead_limited=np.zeros(n, bool),
         segment=np.asarray(segment_robot), gripper_t=np.asarray(robot_t, np.int64), gripper_position=np.full(n, 3.0),
+        gripper_segment=np.asarray(segment_robot),
         cameras={"c": {"t": np.asarray(times_cam, np.int64), "segment": np.asarray(segment_cam)}},
         segments={"t_start": np.array([0]), "t_end": np.array([robot_t[-1]])},
         teleop={"max_position_lead": 0.04, "max_linear_speed": 0.3, "max_rotation_lead_deg": 20,
@@ -141,6 +143,32 @@ def test_invalid_steps_dropped_frames_and_unsent_commands():
     # a frame before the first robot sample has no state
     tab = A.step_table(raw, np.r_[-3 * ms, cam_t[:3]], np.zeros(4, int), nominal_period_s=0.0667)
     assert not tab.state_ok[0] and tab.reasons["no_state"] == 1
+    # a stale gripper register (no sample within 100 ms) is not a current state
+    raw.gripper_t = raw.gripper_t[:1]
+    raw.gripper_position, raw.gripper_segment = raw.gripper_position[:1], raw.gripper_segment[:1]
+    tab = A.step_table(raw, cam_t, np.zeros(7, int), nominal_period_s=0.0667)
+    assert tab.state_ok.tolist() == [True, True, False, False, False, False, False]
+
+
+def test_contract_is_shared_across_episodes_despite_period_jitter(raw):
+    import copy
+
+    other = copy.deepcopy(raw)
+    for cam in other.cameras.values():
+        cam["t"] = cam["t"][0] + ((cam["t"] - cam["t"][0]) * 1.0004).astype(np.int64)  # 0.04 % slower clock
+    assert A.contract_for(other) == A.contract_for(raw)
+    for cam in other.cameras.values():
+        cam["t"] = cam["t"][0] + (cam["t"] - cam["t"][0]) * 2  # 7.5 fps: not the nominal rate
+    with pytest.raises(ValueError, match="frame period"):
+        A.contract_for(other)
+
+
+def test_execution_pose_respects_the_radial_lead(raw):
+    c = A.contract_for(raw)
+    out = A.to_robot_command(raw.measured[100], np.ones(7), c)  # the corner of the normalisation box
+    assert np.linalg.norm(out["delta_phys"][:3]) == pytest.approx(np.sqrt(3) * c.pos_scale_m)
+    lead = np.linalg.norm(out["execution_flange_pose"][:3] - raw.measured[100, :3])
+    assert lead == pytest.approx(c.lead_m)
 
 
 def test_rewards_masks_and_terminals(raw):
@@ -154,7 +182,8 @@ def test_rewards_masks_and_terminals(raw):
     tr = T.episode_transitions(raw, tl, contract)
     ok = tr["transition_ok"]
     last = np.flatnonzero(ok)[-1]
-    assert tr["success"].sum() == 1 and tr["success"][last + 1]  # the final reached observation
+    assert last + 1 == len(cam["t"]) - 1 and tr["label"] == "success"
+    assert tr["success"].sum() == 1 and tr["success"][last + 1]  # the recording's final observation
     assert tr["reward"][last] == 0.0 and tr["mask"][last] == 0.0
     assert (tr["reward"][ok][:-1] == -1).all() and (tr["mask"][ok][:-1] == 1).all()
     # the last transition before the pause bootstraps (not a success) and is a frame-stack boundary
@@ -163,6 +192,16 @@ def test_rewards_masks_and_terminals(raw):
     sparse = T.episode_transitions(raw, tl, contract, reward="sparse_final")
     assert sparse["reward"][last] == 1 and sparse["reward"][ok].sum() == 1
     np.testing.assert_array_equal(sparse["mask"], tr["mask"])
+    # a failed demonstration has no success state: its last transition is a truncation (bootstraps)
+    failed = T.episode_transitions(raw, tl, contract, success=False)
+    assert failed["label"] == "failure" and not failed["success"].any() and failed["mask"][last] == 1
+    # an unusable tail never moves the success label earlier
+    cut = T.Timeline(serial, cam["t"][:-1], cam["segment"][:-1], tl.run[:-1], tl.frames[:-1], [serial])
+    raw_tail = copy.deepcopy(raw)
+    raw_tail.sent[raw_tail.robot_t >= cam["t"][-3]] = False
+    tail = T.episode_transitions(raw_tail, tl, contract)
+    assert tail["label"] == "success_frame_unreachable" and not tail["success"].any()
+    assert T.episode_transitions(raw, cut, contract)["success"][-1]  # (a shorter store slice ends at its own end)
     # observation histories restart (pad) at the start of the second segment
     h = T.history_indices(tl.run, np.array([brk + 1, brk + 2, brk + 3]))
     assert h.tolist() == [[brk + 1] * 3, [brk + 1, brk + 1, brk + 2], [brk + 1, brk + 2, brk + 3]]

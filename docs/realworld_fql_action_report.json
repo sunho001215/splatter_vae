@@ -2,27 +2,27 @@
  "root": "/home/ws/data/real_world",
  "tasks": {
   "drawer-open": {
-   "episodes": 48,
-   "camera_timelines": 144,
-   "valid_transitions": 21146,
+   "episodes": 76,
+   "camera_timelines": 228,
+   "valid_transitions": 33402,
    "invalid_reasons": {
     "segment_break": 15,
     "long_step": 0,
-    "no_state": 26,
+    "no_state": 48,
     "no_command": 0,
     "not_sent_or_engaged": 0
    },
    "recording_segments_per_episode": {
-    "1": 44,
+    "1": 72,
     "2": 3,
     "3": 1
    },
-   "round_trip_max_abs_error": 3.3306690738754696e-16,
+   "round_trip_max_abs_error": 4.440892098500626e-16,
    "contract": {
-    "pos_scale_m": 0.0700215997,
-    "rot_scale_rad": 0.4991738488988659,
-    "nominal_period_s": 0.066714666,
-    "max_step_s": 0.10007199900000001,
+    "pos_scale_m": 0.07,
+    "rot_scale_rad": 0.4990658503988659,
+    "nominal_period_s": 0.06666666666666667,
+    "max_step_s": 0.1,
     "source": "action/flange_pose (sent command, lead-limited) at the last robot-loop row before tau_{k+1}",
     "reference": "robot/flange_pose measured at the latest robot sample <= tau_k (observation time)",
     "point": "panda_link8 (flange) origin; T_flange_tcp == identity (TCP == flange)",
@@ -41,52 +41,54 @@
      "ry",
      "rz",
      "gripper"
-    ]
+    ],
+    "lead_m": 0.04,
+    "lead_rot_deg": 20.0
    },
    "normalised_abs_max_per_dim": [
-    0.6395,
-    0.68,
-    0.6637,
-    0.6287,
-    0.4311,
-    0.2766,
+    0.6397,
+    0.6802,
+    0.6639,
+    0.6288,
+    0.4312,
+    0.2767,
     1.0
    ],
    "command_offset_m_percentiles": [
-    0.0141,
-    0.0454,
+    0.0145,
+    0.0453,
     0.0471,
     0.0481
    ],
    "measured_motion_per_step_m_percentiles": [
-    0.0014,
+    0.0013,
     0.0057,
     0.0073,
     0.0082
    ],
    "rotation_increment_deg_percentiles": [
-    5.82,
-    9.9,
+    5.81,
+    9.86,
     19.45
    ],
    "cosine_command_offset_vs_measured_motion_when_moving": {
-    "median": 0.9860453094588753,
-    "p10": 0.9546804524925719
+    "median": 0.9863800881005714,
+    "p10": 0.9568329704680559
    },
-   "lead_limited_fraction_mean": 0.5216789366687041,
+   "lead_limited_fraction_mean": 0.4937143029013006,
    "gripper_command": {
     "fraction_closed_gt_0.5": 0.0,
-    "fraction_in_transition": 0.16050316844793341
+    "fraction_in_transition": 0.12304652416022993
    }
   },
   "mug-hanging": {
    "episodes": 29,
    "camera_timelines": 87,
-   "valid_transitions": 20806,
+   "valid_transitions": 20787,
    "invalid_reasons": {
     "segment_break": 105,
     "long_step": 0,
-    "no_state": 23,
+    "no_state": 42,
     "no_command": 0,
     "not_sent_or_engaged": 0
    },
@@ -98,10 +100,10 @@
    },
    "round_trip_max_abs_error": 5.551115123125783e-16,
    "contract": {
-    "pos_scale_m": 0.0700216204,
-    "rot_scale_rad": 0.49917395239886586,
-    "nominal_period_s": 0.066714712,
-    "max_step_s": 0.10007206799999999,
+    "pos_scale_m": 0.07,
+    "rot_scale_rad": 0.4990658503988659,
+    "nominal_period_s": 0.06666666666666667,
+    "max_step_s": 0.1,
     "source": "action/flange_pose (sent command, lead-limited) at the last robot-loop row before tau_{k+1}",
     "reference": "robot/flange_pose measured at the latest robot sample <= tau_k (observation time)",
     "point": "panda_link8 (flange) origin; T_flange_tcp == identity (TCP == flange)",
@@ -120,15 +122,17 @@
      "ry",
      "rz",
      "gripper"
-    ]
+    ],
+    "lead_m": 0.04,
+    "lead_rot_deg": 20.0
    },
    "normalised_abs_max_per_dim": [
-    0.6433,
-    0.6819,
-    0.6746,
-    0.4098,
-    0.4419,
-    0.3745,
+    0.6435,
+    0.6821,
+    0.6748,
+    0.4099,
+    0.442,
+    0.3746,
     1.0
    ],
    "command_offset_m_percentiles": [
@@ -154,8 +158,8 @@
    },
    "lead_limited_fraction_mean": 0.25988307286207857,
    "gripper_command": {
-    "fraction_closed_gt_0.5": 0.48082283956551,
-    "fraction_in_transition": 0.02955878112083053
+    "fraction_closed_gt_0.5": 0.48049261557704337,
+    "fraction_in_transition": 0.029585798816568046
    }
   }
  }
