@@ -121,12 +121,19 @@ def main(argv=None) -> int:
                      if f"model.encoder.{k}" not in given] + list(args.model_override)
     else:
         overrides = list(args.model_override)
+    # the SNeRL scenes read the normalized frames, calibration and SAM 3 masks under the root's frame-set policy
+    snerl_inputs = {}
+    if "snerl" in (cfg.get("baselines") or []):
+        dirs = {"ingest": rio.episode_dir(root, ep) / "normalized", "calibrate": rio.stage_dir(root, ep, "calibrate"),
+                "sam3_masks": rio.stage_dir(root, ep, "sam3_masks")}
+        snerl_inputs = {"sets_policy": configured_sets_policy(root, ep, cfg),
+                        **{k: (rio.read_record(d) or {}).get("build_id") for k, d in dirs.items()}}
     store = rio.ChunkStore(out_dir / "calls", rio.stage_fingerprint(
         "contract_checks", "2", {"model_config": args.model_config, "model_overrides": overrides,
                                  "snerl_config": args.snerl_config, "batches": args.batches,
                                  "scenes": args.snerl_scenes, "loader": {"strides": list(strides)}
                                  if cache == compact else "export"},
-        {"manifest": rio.sha256_file(data_file), "source": head}))
+        {"manifest": rio.sha256_file(data_file), "source": head, **snerl_inputs}))
     report = {"episode": ep, "source_commit": head, "cache": str(cache), "model_config": args.model_config,
               "model_overrides": overrides}
     try:

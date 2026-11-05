@@ -45,6 +45,7 @@ targets are computed online by the trainer from the stored RGB: ``s4d.baselines.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import time
@@ -75,6 +76,7 @@ RGB_RESAMPLE = ("centred square (side min(H,W), integer offsets) resized with PI
 NEAREST_RESAMPLE = ("nearest native pixel of each output pixel centre: row/col = floor(offset + (i + 0.5) * side / S); "
                     "s4d.data.droid.largescale.crop.crop_depth rule (depth, validity, semantic masks)")
 REPO = Path(__file__).resolve().parents[2]
+_INHERITED_HANDLES: list = []  # HDF5 handles a forked worker inherited from its parent (kept alive, never closed there)
 
 
 # ------------------------------------------------------------------------------------------------ geometry
@@ -483,6 +485,7 @@ class EpisodeFile:
         self._f = None
         self._pid = None
         self._cache: dict = {}
+        self._on_open = None
         f = self.file
         if f.attrs.get("format") != FORMAT:
             raise ValueError(f"{self.path}: not a {FORMAT} file")
@@ -503,18 +506,26 @@ class EpisodeFile:
     @property
     def file(self) -> h5py.File:
         if self._f is None or self._pid != os.getpid():
+            if self._f is not None:  # inherited through fork: never closed (or garbage-collected) in the child
+                _INHERITED_HANDLES.append(self._f)
             self._f = h5py.File(self.path, "r", rdcc_nbytes=1 << 20)
             self._pid = os.getpid()
+            if self._on_open is not None:  # the owning store's LRU sees every (re)open, also of a retained reader
+                self._on_open()
         return self._f
 
     def close(self) -> None:
-        if self._f is not None and self._pid == os.getpid():
-            self._f.close()
+        if self._f is not None:
+            if self._pid == os.getpid():
+                self._f.close()
+            else:  # inherited through fork: left to the parent
+                _INHERITED_HANDLES.append(self._f)
         self._f = None
 
     def __getstate__(self):
         state = self.__dict__.copy()
         state["_f"] = state["_pid"] = None
+        state["_cache"] = {}  # a new process starts with no cached arrays (its store's LRU starts empty too)
         return state
 
     def _cam(self, cam: str) -> h5py.Group:
@@ -630,17 +641,24 @@ class CompactStore:
 
             warnings.warn("training store built from MOCK model outputs (tests only)", stacklevel=2)
         self.max_open = int(max_open)
+        if self.max_open < 1:
+            raise ValueError("max_open must be >= 1")
         self._open: OrderedDict[str, None] = OrderedDict()
+        for key, ef in self._files.items():
+            ef._on_open = functools.partial(self._touch, key)
 
-    def episode(self, ep: str) -> EpisodeFile:
-        ef = self._files[ep]
+    def _touch(self, ep: str) -> None:
+        """LRU bookkeeping: bounded open handles AND bounded cached arrays per process."""
         self._open[ep] = None
         self._open.move_to_end(ep)
-        while len(self._open) > self.max_open:  # bounded handles AND bounded cached arrays per process
+        while len(self._open) > self.max_open:
             old, _ = self._open.popitem(last=False)
             self._files[old].close()
             self._files[old].clear_cache()
-        return ef
+
+    def episode(self, ep: str) -> EpisodeFile:
+        self._touch(ep)
+        return self._files[ep]
 
     def __getstate__(self):
         state = self.__dict__.copy()

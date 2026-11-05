@@ -181,6 +181,7 @@ class RealworldWindowDataset(Dataset):
             table = table[table[:, -1] == (1 if split == "validation" else 0)]
         self.table = table
         self.capacity = capacity if max_tracks is None else int(max_tracks)
+        self.store.close()  # no open handle / cached array is inherited by DataLoader workers
         if not len(self.table):
             raise ValueError(f"empty split {split}")
 

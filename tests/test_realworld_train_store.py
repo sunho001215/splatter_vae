@@ -377,6 +377,16 @@ def test_store_lru_bounds_handles_and_cached_arrays(built):
     store.rgb(b, "rig0", [0])
     ea = store._files[a]
     assert ea._f is None and not ea._cache  # evicted: handle closed, cached arrays dropped
+    ea.rgb("rig0", [0])  # a RETAINED reader reopening goes through the LRU too: b is evicted, one handle stays open
+    assert list(store._open) == [a] and store._files[b]._f is None and not store._files[b]._cache
+    import pickle
+
+    store.episode(a).tracks("rig0")
+    clone = pickle.loads(pickle.dumps(store))  # a worker starts with no handles and no cached arrays
+    assert all(ef._f is None and not ef._cache for ef in clone._files.values()) and not clone._open
+    clone.rgb(a, "rig0", [0])
+    clone.rgb(b, "rig0", [0])
+    assert list(clone._open) == [b] and clone._files[a]._f is None
     ds = RealworldWindowDataset(store, split="all")  # the MOCK warning came with the store
     assert len(ds) == 2 * len(_dataset(built)) and ds[len(ds) - 1]["meta"]["task_name"] == "synthetic2"
 
