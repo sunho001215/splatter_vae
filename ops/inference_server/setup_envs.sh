@@ -6,7 +6,7 @@
 # cached on disk (weights are placed in /ram/weights per session; see ops/inference_server/README.md).
 #
 #   docker exec shkim_rw sh /opt/src/splatter4d/ops/inference_server/setup_envs.sh <env> [<env> ...]
-#   envs: mapanything alltracker sam3 s4d tools
+#   envs: mapanything alltracker sam3 s4d tools foundation_stereo
 #
 # Versions:
 # - alltracker / sam3: the exact package sets of the environments verified on real DROID data
@@ -14,6 +14,9 @@
 # - s4d: this repository's uv.lock (identical to the training .venv); gsplat and fused-ssim are copied from the
 #   local .venv build (TORCH_CUDA_ARCH_LIST 12.0, same Ubuntu 22.04 / glibc 2.35) by the operator, not built here.
 # - mapanything: torch 2.10.0+cu129 (as the other envs) + the pinned upstream checkout, non-editable.
+# - foundation_stereo (optional depth backend, restored 2026-11-05 for the controlled depth comparison): the package
+#   set of the environment verified locally (/home/ws/ws/validation-20261031/envs/foundation_stereo, frozen into
+#   locks/foundation_stereo.txt); the worker imports the pinned upstream checkout from repo_dir (not installed).
 set -eu
 UV=/opt/bin/uv
 SRC=/opt/src/splatter4d
@@ -35,6 +38,11 @@ for env in "$@"; do
                 torch==2.10.0+cu129 torchvision==0.25.0+cu129
             # editable: the imported code is the pinned checkout whose commit the worker reports (and verifies)
             $UV pip install -q --python /opt/envs/mapanything/bin/python -e /opt/upstream/map-anything
+            ;;
+        foundation_stereo)
+            venv foundation_stereo 3.11.17
+            $UV pip install -q --python /opt/envs/foundation_stereo/bin/python --index-strategy unsafe-best-match \
+                --extra-index-url $TORCH_INDEX -r $LOCKS/foundation_stereo.txt
             ;;
         alltracker|sam3)
             venv $env 3.12.12

@@ -301,7 +301,7 @@ def rectify_points(uv_raw: np.ndarray, K_raw: np.ndarray, dist_model: str, dist:
 
 
 def reproject_depth(depth_src: np.ndarray, K_src: np.ndarray, T_dst_src: np.ndarray, K_dst: np.ndarray,
-                    dst_hw: tuple[int, int], splat: int = 1) -> np.ndarray:
+                    dst_hw: tuple[int, int], splat: int = 1, return_source: bool = False):
     """Forward-warp metric depth from a source camera (e.g. RealSense IR-left) into another camera (e.g. the colour
     sensor) with a z-buffer: each valid source pixel is unprojected, transformed, projected and kept if nearest.
 
@@ -322,7 +322,21 @@ def reproject_depth(depth_src: np.ndarray, K_src: np.ndarray, T_dst_src: np.ndar
             m = (i >= 0) & (i < H) & (j >= 0) & (j < W)
             np.minimum.at(out, (i[m], j[m]), z[ok][m])
     out[~np.isfinite(out)] = 0
-    return out.astype(np.float32)
+    if not return_source:
+        return out.astype(np.float32)
+    # winning source pixel (linear index into depth_src) of every destination pixel; ties -> the largest index
+    src_lin = np.flatnonzero(valid.ravel())[ok]
+    winner = np.full(dst_hw, -1, np.int64)
+    for dy in range(splat):
+        for dx in range(splat):
+            off = (splat - 1) / 2
+            j = np.floor(uv[ok, 0] + dx - off).astype(int)
+            i = np.floor(uv[ok, 1] + dy - off).astype(int)
+            m = (i >= 0) & (i < H) & (j >= 0) & (j < W)
+            hit = m.copy()
+            hit[m] = z[ok][m] == out[i[m], j[m]]
+            np.maximum.at(winner, (i[hit], j[hit]), src_lin[hit])
+    return out.astype(np.float32), winner.astype(np.int32)
 
 
 def point_mask(points_cam: np.ndarray, K: np.ndarray, hw: tuple[int, int], depth: np.ndarray | None = None,

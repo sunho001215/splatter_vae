@@ -30,7 +30,18 @@ import numpy as np
 from s4d.realworld import io as rio
 
 STAGE_VERSIONS = {"sensor_depth": "1", "mapanything_depth": "1", "mapanything_rig_depth": "1"}
-DEPTH_STAGES = ("mapanything_depth", "mapanything_rig_depth", "sensor_depth")
+DEPTH_STAGES = ("mapanything_depth", "mapanything_rig_depth", "sensor_depth")  # + configured variants (same layout)
+
+
+def sets_policy(root, episode_id, stage: str = "mapanything_depth") -> dict:
+    """``frame_sets`` keyword arguments the episode's MapAnything stage used (single source of truth for reports and
+    viewers): ``max_sync_ns`` and ``allow_unmatched`` from its record, defaults when absent."""
+    rec = rio.read_record(rio.stage_dir(root, episode_id, stage))
+    cfg = (rec or {}).get("config", {})
+    out = {}
+    if cfg.get("allow_unmatched"):
+        out = {"max_sync_ns": int(cfg["max_sync_ns"]), "allow_unmatched": True}
+    return out
 
 
 def depth_file(root: Path, episode_id: str, stage: str, stream_id: str) -> Path:
@@ -137,14 +148,36 @@ def sensor_depth(root: Path, episode_id: str, runner, *, chunk: int = 32, min_de
 # ---------------------------------------------------------------- synchronized frame sets
 
 
-def frame_sets(meta, streams: list[str], max_sync_ns: int | None = None) -> dict:
+def frame_sets(meta, streams: list[str], max_sync_ns: int | None = None, allow_unmatched: bool = False) -> dict:
     """Group the views' frames into synchronized sets (reference = first stream). Raises unless every frame of every
-    view belongs to exactly one set within ``max_sync_ns`` (default: a third of the reference frame period)."""
+    view belongs to exactly one set within ``max_sync_ns`` (default: a third of the reference frame period).
+
+    ``allow_unmatched`` (recordings whose cameras are not hardware-synchronized or dropped a frame): a set is a
+    reference frame whose MUTUAL nearest frame in every other view lies within ``max_sync_ns`` (must stay below half
+    a frame period so matches are unique); every other frame is listed in ``unmatched[stream]`` and never merged."""
     from s4d.data.droid.pointworld import nearest_timestamps
 
     ref = np.asarray(meta.stream_timestamps_ns[streams[0]])
     if max_sync_ns is None:
         max_sync_ns = int(np.median(np.diff(ref)) // 3) if len(ref) > 1 else 0
+    if allow_unmatched:
+        period = float(np.median(np.diff(ref))) if len(ref) > 1 else float("inf")
+        if max_sync_ns >= period / 2:
+            raise ValueError(f"max_sync_ns {max_sync_ns} >= half the frame period: matches would not be unique")
+        keep = np.ones(len(ref), bool)
+        idx = {}
+        for s in streams:
+            stamps = np.asarray(meta.stream_timestamps_ns[s])
+            j = nearest_timestamps(stamps, ref)  # nearest stream frame for each reference frame
+            back = nearest_timestamps(ref, stamps)  # nearest reference frame for each stream frame
+            keep &= (np.abs(stamps[j] - ref) <= max_sync_ns) & (back[j] == np.arange(len(ref)))
+            idx[s] = j
+        index = np.stack([idx[s][keep] for s in streams], 1)
+        stamps = np.stack([np.asarray(meta.stream_timestamps_ns[s])[index[:, v]] for v, s in enumerate(streams)], 1)
+        unmatched = {s: sorted(set(range(len(meta.stream_timestamps_ns[s]))) - set(index[:, v].tolist()))
+                     for v, s in enumerate(streams)}
+        return {"streams": streams, "index": index, "stamps_ns": stamps, "spread_ns": stamps.max(1) - stamps.min(1),
+                "max_sync_ns": max_sync_ns, "unmatched": unmatched}
     index, offset = {}, {}
     for s in streams:
         stamps = np.asarray(meta.stream_timestamps_ns[s])
@@ -203,6 +236,7 @@ class MapAnythingBackend:
 def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, *, chunk: int = 4,
                       input_depth_stage: str | None = "auto", max_sync_ns: int | None = None,
                       max_set_motion_m: float = 0.005, include_right_eyes: bool = True, grouping: str = "all",
+                      allow_unmatched: bool = False, output_stage: str = "mapanything_depth",
                       force: bool = False) -> dict:
     """``grouping="all"``: every view of a synchronized set in one MapAnything scene (requires all cameras to be
     synchronized within ``max_sync_ns``). ``"per_rig"``: each rig's views (a stereo pair, or one RGB-D colour view)
@@ -243,10 +277,18 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
     geom = RobotGeometry(meta)
     plans = []
     for name, members in groups:
-        sets = frame_sets(meta, [streams[i] for i in members], max_sync_ns)
+        sets = frame_sets(meta, [streams[i] for i in members], max_sync_ns, allow_unmatched=allow_unmatched)
         motion = set_robot_motion(meta, sets["stamps_ns"], geom)
         plans.append({"name": name, "members": members, "sets": sets, "motion": motion,
                       "joint": motion <= max_set_motion_m})
+        for j, m in enumerate(members):  # frames without a synchronized partner: single-view, never merged
+            extra = sets.get("unmatched", {}).get(streams[m], [])
+            if extra:
+                st = np.asarray(meta.stream_timestamps_ns[streams[m]])[extra][:, None]
+                plans.append({"name": f"unmatched_{rio.safe_name(streams[m])}", "members": [m],
+                              "sets": {"streams": [streams[m]], "index": np.asarray(extra)[:, None], "stamps_ns": st,
+                                       "spread_ns": np.zeros(len(extra), np.int64), "max_sync_ns": 0},
+                              "motion": np.zeros(len(extra)), "joint": np.zeros(len(extra), bool)})
     Ks = np.stack([view_K(meta, s, root=root, episode_id=episode_id) for s in streams])
     c2w = np.stack([np.linalg.inv(poses[s]) for s in streams])
     hw = {(meta.stream(s).intrinsics.height, meta.stream(s).intrinsics.width) for s in streams}
@@ -254,7 +296,7 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
         raise NotImplementedError(f"views have different grids {hw}")
     (H, W), = hw
     n_frames = {s: len(meta.stream_timestamps_ns[s]) for s in streams}
-    directory = rio.stage_dir(root, episode_id, "mapanything_depth")
+    directory = rio.stage_dir(root, episode_id, output_stage)
     inputs = {"ingest": _record_build_id(root, episode_id, "ingest"),
               "calibrate": _record_build_id(root, episode_id, "calibrate")}
     if meta.stereo:
@@ -267,6 +309,10 @@ def mapanything_depth(root: Path, episode_id: str, backend: MapAnythingBackend, 
         config["include_right_eyes"] = include_right_eyes
     if grouping != "all":  # (absent in the default mode: earlier fingerprints stay valid)
         config["grouping"] = grouping
+    if allow_unmatched:  # likewise only recorded when used
+        config["allow_unmatched"] = True
+    if output_stage != "mapanything_depth":
+        config["output_stage"] = output_stage
     store = rio.ChunkStore(directory, rio.stage_fingerprint("mapanything_depth", STAGE_VERSIONS["mapanything_depth"],
                                                             config, inputs))
     if force:

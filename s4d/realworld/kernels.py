@@ -56,6 +56,35 @@ def register_depth(params: dict, arrays: dict) -> tuple[dict, dict]:
     return {"depth": out, "valid": out > 0}, {"frames": stats}
 
 
+@kernel("ir_disparity_to_color")
+def ir_disparity_to_color(params: dict, arrays: dict) -> tuple[dict, dict]:
+    """Left-referenced IR disparity (N,H,W) + flip-and-swap right disparity -> metric left-IR depth -> colour grid
+    (``s4d.realworld.ir_stereo_depth`` conventions). Returns colour ``depth``, ``source_index``, IR ``lr_error`` and
+    ``ir_valid``; values outside [min_depth_m, max_depth_m] are rejected before the same z-buffer forward warp."""
+    from s4d.realworld.geometry import reproject_depth
+    from s4d.realworld.stereo import disparity_to_depth, lr_consistency, visible_in_other
+
+    dl, dr = np.asarray(arrays["disparity_left"], np.float32), np.asarray(arrays["disparity_right"], np.float32)
+    K_ir, K_c = np.asarray(arrays["K_ir"], float), np.asarray(arrays["K_color"], float)
+    T = np.asarray(arrays["T_color_left"], float)
+    hw = tuple(int(x) for x in params["color_hw"])
+    lo, hi = float(params["min_depth_m"]), float(params["max_depth_m"])
+    out = {"depth": np.zeros((len(dl),) + hw, np.float32), "source_index": np.zeros((len(dl),) + hw, np.int32),
+           "lr_error": np.zeros(dl.shape, np.float32), "ir_valid": np.zeros(dl.shape, bool)}
+    stats = []
+    for k in range(len(dl)):
+        z, ok = disparity_to_depth(dl[k], K_ir[0, 0], float(params["baseline_m"]), 0.0, float(params["min_disparity"]))
+        ok &= visible_in_other(dl[k], "left") & (z >= lo) & (z <= hi)
+        out["ir_valid"][k] = ok
+        out["lr_error"][k] = lr_consistency(dl[k], dr[k])
+        out["depth"][k], out["source_index"][k] = reproject_depth(np.where(ok, z, 0.0), K_ir, T, K_c, hw,
+                                                                  splat=int(params["splat"]), return_source=True)
+        e = out["lr_error"][k][ok & np.isfinite(out["lr_error"][k])]
+        stats.append({"ir_valid_fraction": float(ok.mean()), "registered_valid_fraction": float((out["depth"][k] > 0).mean()),
+                      "lr_error_median_px": float(np.median(e)) if len(e) else None})
+    return out, {"frames": stats}
+
+
 @kernel("calibrate_camera")
 def calibrate_camera_kernel(params: dict, arrays: dict) -> tuple[dict, dict]:
     """``calibration.calibrate_camera`` on stacked frames; overlays for the requested frames."""

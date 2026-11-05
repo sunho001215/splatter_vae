@@ -166,6 +166,36 @@ class RgbdGeometry:
 
 
 @dataclass(frozen=True)
+class IrStereoGeometry:
+    """An RGB-D device's own infrared stereo pair (active stereo, e.g. RealSense D4xx): two infrared streams already
+    rectified by the device (identical K, zero distortion, identity rotation), the left-to-right extrinsic, and the
+    colour-from-left-infrared extrinsic. Attached to an RGB-D rig; NOT a camera view (tracking/lifting stay on the
+    colour views), used by stereo depth backends that write depth onto the colour grid."""
+
+    rig_id: str
+    left_stream: str
+    right_stream: str
+    status: str  # metric / unverified
+    T_right_left: tuple | None = None  # 4x4, maps left-IR points into the right-IR frame (metres)
+    baseline_m: float | None = None
+    T_color_left: tuple | None = None  # 4x4, maps left-IR points into the colour frame (metres)
+    rectified_by: str = "unspecified"
+    pairing: str = "unspecified"  # how IR frame k pairs with colour/depth frame k
+    source: str = "unspecified"
+    notes: str = ""
+
+    def T(self) -> np.ndarray:
+        if self.T_right_left is None:
+            raise EpisodeContractError(f"rig {self.rig_id}: infrared stereo extrinsic is missing")
+        return np.asarray(self.T_right_left, np.float64)
+
+    def T_color(self) -> np.ndarray:
+        if self.T_color_left is None:
+            raise EpisodeContractError(f"rig {self.rig_id}: colour-from-left-infrared extrinsic is missing")
+        return np.asarray(self.T_color_left, np.float64)
+
+
+@dataclass(frozen=True)
 class CameraView:
     """The image stream a camera contributes to downstream stages: the left eye of a stereo rig, or the colour
     sensor of an RGB-D rig (whose depth is registered onto the colour grid)."""
@@ -234,6 +264,7 @@ class EpisodeMeta:
     schema_version: str = SCHEMA_VERSION
     conventions: dict = field(default_factory=lambda: dict(CONVENTIONS))
     rgbd: tuple[RgbdGeometry, ...] = ()
+    ir_stereo: tuple[IrStereoGeometry, ...] = ()  # optional device IR pairs of RGB-D rigs (never views)
 
     def stream(self, stream_id: str) -> CameraStream:
         for item in self.streams:
@@ -249,6 +280,12 @@ class EpisodeMeta:
 
     def rig_rgbd(self, rig_id: str) -> RgbdGeometry:
         for item in self.rgbd:
+            if item.rig_id == rig_id:
+                return item
+        raise KeyError(rig_id)
+
+    def rig_ir_stereo(self, rig_id: str) -> IrStereoGeometry:
+        for item in self.ir_stereo:
             if item.rig_id == rig_id:
                 return item
         raise KeyError(rig_id)
@@ -370,6 +407,42 @@ def validate_episode(meta: EpisodeMeta) -> ValidationReport:
     rigs = [g.rig_id for g in meta.stereo] + [g.rig_id for g in meta.rgbd]
     if len(set(rigs)) != len(rigs):
         err("a rig is declared twice (stereo and/or RGB-D)")
+    rgbd_rigs = {g.rig_id for g in meta.rgbd}
+    for g in meta.ir_stereo:
+        tag = f"ir stereo {g.rig_id}"
+        if g.rig_id not in rgbd_rigs:
+            err(f"{tag}: infrared pairs belong to a declared RGB-D rig")
+        if g.status not in RGBD_STATUS:
+            err(f"{tag}: status {g.status!r} not in {RGBD_STATUS}")
+            continue
+        streams = []
+        for sid, eye in ((g.left_stream, "left"), (g.right_stream, "right")):
+            if sid not in ids:
+                err(f"{tag}: stream {sid!r} missing")
+                continue
+            s = meta.stream(sid)
+            if s.modality != "infrared" or s.eye != eye or s.rig_id != g.rig_id:
+                err(f"{tag}: stream {sid!r} is not the {eye} infrared stream of this rig")
+            if s.rectified is not True:
+                err(f"{tag}: stream {sid!r} must be declared rectified (device-rectified pair)")
+            streams.append(s)
+        if len(streams) == 2:
+            a, b = (x.intrinsics for x in streams)
+            if (a.width, a.height, a.fx, a.fy, a.cx, a.cy) != (b.width, b.height, b.fx, b.fy, b.cx, b.cy):
+                err(f"{tag}: a rectified pair needs identical intrinsics")
+            if any(abs(c) > 0 for c in a.distortion + b.distortion):
+                err(f"{tag}: a rectified pair has zero distortion")
+        if g.status == "metric":
+            if g.T_right_left is None or g.baseline_m is None or g.T_color_left is None:
+                err(f"{tag}: metric IR stereo needs T_right_left, baseline_m and T_color_left")
+            else:
+                T = g.T()
+                if not (_rigid(T) and _rigid(g.T_color())):
+                    err(f"{tag}: transforms are not rigid")
+                elif not np.allclose(T[:3, :3], np.eye(3), atol=1e-6) or abs(T[1, 3]) + abs(T[2, 3]) > 1e-6:
+                    err(f"{tag}: a rectified pair has R = I and a baseline along x")
+                elif abs(np.linalg.norm(T[:3, 3]) - g.baseline_m) > 1e-4 or not g.baseline_m > 0:
+                    err(f"{tag}: baseline_m disagrees with |t| of T_right_left")
     for g in meta.rgbd:
         tag = f"rgbd rig {g.rig_id}"
         if g.status not in RGBD_STATUS:
@@ -455,6 +528,8 @@ def _tuple4(value):
 def meta_to_json(meta: EpisodeMeta) -> tuple[dict, dict]:
     """(json document without large arrays, arrays for an npz). Round-trips through ``meta_from_json``."""
     doc = _jsonable(dataclasses.replace(meta, trajectory=None, stream_timestamps_ns={}))
+    if not meta.ir_stereo:  # episodes without device IR pairs keep their exact previous document
+        doc.pop("ir_stereo", None)
     tr = meta.trajectory
     arrays = {
         "trajectory/timestamps_ns": np.asarray(tr.timestamps_ns, np.int64),
@@ -478,6 +553,9 @@ def meta_from_json(doc: dict, arrays: dict) -> EpisodeMeta:
     streams = tuple(CameraStream(**{**s, "intrinsics": intr(s["intrinsics"])}) for s in doc["streams"])
     stereo = tuple(StereoGeometry(**{**g, "T_right_left": _tuple4(g["T_right_left"])}) for g in doc["stereo"])
     rgbd = tuple(RgbdGeometry(**{**g, "T_color_depth": _tuple4(g["T_color_depth"])}) for g in doc.get("rgbd", ()))
+    ir_stereo = tuple(IrStereoGeometry(**{**g, "T_right_left": _tuple4(g["T_right_left"]),
+                                          "T_color_left": _tuple4(g["T_color_left"])})
+                      for g in doc.get("ir_stereo", ()))
     rd = doc["robot"]
     robot = RobotDescription(**{**rd, "T_flange_gripper": _tuple4(rd["T_flange_gripper"]),
                                 "joint_names": tuple(rd["joint_names"])})
@@ -497,7 +575,7 @@ def meta_from_json(doc: dict, arrays: dict) -> EpisodeMeta:
     return EpisodeMeta(
         episode_id=doc["episode_id"], streams=streams, stereo=stereo, robot=robot, trajectory=tr,
         stream_timestamps_ns=stamps, provenance=prov, clock=doc["clock"], assumptions=tuple(doc["assumptions"]),
-        schema_version=doc["schema_version"], conventions=doc["conventions"], rgbd=rgbd,
+        schema_version=doc["schema_version"], conventions=doc["conventions"], rgbd=rgbd, ir_stereo=ir_stereo,
     )
 
 
