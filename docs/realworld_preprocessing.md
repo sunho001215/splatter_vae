@@ -547,14 +547,51 @@ remaining guard tests assumed two approved GPU UUIDs and now skip on a single-GP
 |---|---|
 | Episode contract, registered RGB-D sensor depth, timestamps, pixel affines | CPU contract and geometry tests |
 | Stereo record-only/Bouguet grids, right-from-left rectified transform, refusal to mix grids | CPU geometry and pipeline tests |
-| Rig-frame MapAnything depth; rotated-right-camera depth accuracy | flagged mock CPU oracle, not real model quality |
-| World MapAnything stereo view selection, right pose composition, optional right outputs | mock worker contract tests |
-| Calibration, URDF FK, gates, tracking/lifting, training export | synthetic tests; archived DROID evidence separately linked |
-| RGB-D recorder adapter and sensor-depth calibration path | existing CPU tests, maintained without behavior changes |
-| MapAnything on real DROID stereo rigs after this migration | awaiting real-model validation |
-| Real model workers on this change | not run; no network, GPU, SSH or container execution |
-| Exact own-rig Robotiq mount and gripper mapping | awaiting measurement/verification |
+| RGB-D calibration (Panda + Robotiq, SAM 3 masks, 13 starts) | real episodes 0 and 1: all cameras accepted (episode 1 held-out 7.8 / 7.1 / 7.2 mm) |
+| FoundationStereo on RealSense IR pairs, LR filter | real episode 1 (B1, B1f); conventions reviewed by Codex; regression tests for LR taps |
+| MapAnything RGB-D sets with unmatched frames | real episode 1 (E1-E3) |
+| Dynamic-track filter, export with moving tracks | real episodes 0 and 1 |
+| TrackEverything single-view (matched AllTracker windows, no invented query depth) | real episode 1 on B1 depth; see section 9 |
+| Viewer (viser recordings, browser check, videos) | episodes 0 and 1, headless Chromium checks pass |
+| Exact own-rig Robotiq mount | nominal DROID stack, consistency-checked; not measured |
 | Real-image landmarks or render-and-match source | annotation interface; render-and-match remains unimplemented |
 
-The supplied hashes for MapAnything, AllTracker and SAM 3 are recorded in `configs/realworld/upstream_pins.yaml`.
-Archived model evidence does not establish the new stereo MapAnything pipeline's accuracy.
+## 9. Episode 1: five depth configurations (2026-11-05)
+
+`configs/realworld/mug_hanging_ep1.yaml`, base root `processed/ep1/base` (shared stages incl. the frozen calibration),
+variant roots `processed/ep1/{B0,B1,E1,E2,E3}`; report `processed/ep1/base/reports/<episode>/depth_variants/`.
+No ground-truth depth exists: every number is consistency or diagnostic evidence; the calibration was fitted with
+native depth, which favours B0 in robot and cross-view metrics.
+
+| question | evidence (joint common support unless stated; median) | reading |
+|---|---|---|
+| B0 vs B1 | coverage 93.2 vs 98.7 % (boundaries 85.9 vs 95.4 %); cross-view mug 6.7 vs 5.0 mm, fixture 12.0 vs 4.7 mm, robot 5.3 vs 4.5 mm, scene 9.3 vs 9.4 mm; robot-model agreement 10.4 vs 10.4 mm (independent frames); static temporal std 3.7-5.5 vs 0.5-0.9 mm; B1 pixels where native depth is missing agree with other cameras' native depth at 31 mm (native vs native 10 mm) | B1 more complete and more cross-view consistent on objects, fixture and robot despite the B0-fitted calibration; its fills are less reliable than its measured-overlap pixels |
+| B0 vs E1 | coverage 93.0 %; cross-view mug 10.5, robot 7.8 mm; robot-model 13.6 mm | MapAnything with native depth does not improve on its input |
+| B1 vs E2 | E2 worse on every consistency metric (e.g. robot 8.0 vs 4.5 mm, gripper 9.1 vs 3.7 mm) | MapAnything degrades the FoundationStereo input |
+| E1 vs E2 | E2 better on scene, mug, fixture, boundaries; worse on gripper (9.1 vs 6.5 mm); fills 24.8 vs 38.5 mm | FoundationStereo is the better MapAnything input except at the gripper |
+| E2 vs E3 | small differences (fixture 6.2 vs 5.8 mm, boundary 9.2 vs 8.8 mm), similar coverage | the a-priori 1 px LR filter changes little |
+
+Selected for lifting and export (recommendation for this rig, not a global optimum): **B1**, FoundationStereo on the
+device IR pairs registered to the colour grid; native depth remains the calibration evidence. Timings (server): B1
+667 s for 3 x 208 IR pairs (156 calls), LR filter 14 s, MapAnything 202-208 s per variant, lift 33-44 s, motion filter
+14-17 s, export 200-232 s. Calibration profiling: `analysis/out/calib_profiling_ep1.md` (realworld workspace).
+
+**Trackers on the selected depth (B1), per camera** (`analysis/tracker_compare.py`; identical query frames, pixels and
+windows; tracks inferred independently by each tracker; proxy metrics, no ground-truth tracks):
+
+| camera | valid samples AT / TE | static-scene 3D spread AT / TE | robot-FK error median (p90) AT / TE | moving tracks AT / TE |
+|---|---|---|---|---|
+| 135122070988 | 0.945 / 0.938 | 1.54 / 0.13 mm | 2.7 (7.4) / 2.2 (5.3) mm | 2729 / 2645 |
+| 135122073201 | 0.942 / 0.931 | 1.14 / 0.13 mm | 3.0 (8.3) / 2.5 (5.7) mm | 1972 / 2069 |
+| 135122076054 | 0.939 / 0.925 | 1.03 / 0.11 mm | 2.4 (6.8) / 2.3 (5.3) mm | 2531 / 2325 |
+
+AT = AllTracker + per-frame lifting with B1; TE = TrackEverything single-view with B1, K and the frozen pose. The trackers
+agree to 1.5-1.9 mm (3D median; 0.24-0.27 px in 2D). TE refuses about 5 % of queries whose birth depth is missing or
+on a depth edge (no invented depth) and predicts 3D directly, so per-frame depth holes do not invalidate its samples;
+its static points are about ten times steadier and its tracks follow the forward-kinematics prediction of robot
+points slightly more closely. Runtime: TE 288 s (78 single-view clips) vs AllTracker 293 s + lifting 44 s; peak GPU
+allocation 21.3 GiB vs 5.3 GiB. The robot-FK proxy uses the shared calibration and joints (independent of both
+trackers); static steadiness can also reflect temporal smoothing. Recommended combination for this rig (not a global
+optimum): **B1 depth + TrackEverything** for 3D motion targets, with AllTracker + lifting as the cross-check; TE's
+checkpoint is CC BY-NC 4.0 (research use).
+
