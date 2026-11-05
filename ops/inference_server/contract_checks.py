@@ -82,7 +82,7 @@ def main(argv=None) -> int:
     from s4d.data.contract import collate
     from s4d.realworld import io as rio
     from s4d.realworld.dataset import RealworldCacheDataset
-    from s4d.realworld.depth_stages import frame_sets
+    from s4d.realworld.depth_stages import configured_sets_policy, frame_sets
     from s4d.realworld.pipeline import accepted_calibration, load_meta, read_frames
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
@@ -136,7 +136,7 @@ def main(argv=None) -> int:
         if "snerl" in (cfg.get("baselines") or []):
             meta_ep = load_meta(root, ep)
             streams = [v.stream_id for v in meta_ep.views()]
-            sets = frame_sets(meta_ep, streams)
+            sets = frame_sets(meta_ep, streams, **configured_sets_policy(root, ep, cfg))
             T = np.stack([accepted_calibration(root, ep, s) for s in streams])
             lookat = axes_lookat(T)
             pick = np.linspace(0, len(sets["index"]) - 1, args.snerl_scenes).round().astype(int)

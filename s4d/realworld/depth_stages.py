@@ -41,6 +41,29 @@ def sets_policy(root, episode_id, stage: str = "mapanything_depth") -> dict:
     return {k: cfg[k] for k in ("max_sync_ns", "allow_unmatched") if k in cfg}
 
 
+def configured_sets_policy(root, episode_id, cfg: dict | None = None) -> dict:
+    """Frame-set policy for any consumer of an episode root (viewer, contract checks): the MapAnything record's policy
+    when the stage exists, else the pipeline config's ``mapanything_depth`` settings, else the export's
+    ``max_sync_ns`` with mutual pairing (roots without MapAnything, e.g. sensor or stereo depth variants), else strict.
+    ``cfg`` defaults to ``<root>/pipeline.yaml`` when present."""
+    if rio.read_record(rio.stage_dir(root, episode_id, "mapanything_depth")) is not None:
+        return sets_policy(root, episode_id)
+    if cfg is None:
+        path = Path(root) / "pipeline.yaml"
+        if not path.is_file():
+            return {}
+        import yaml
+
+        cfg = yaml.safe_load(path.read_text()) or {}
+    stages = cfg.get("stages") or {}
+    depth_cfg = stages.get("mapanything_depth") or {}
+    policy = {k: depth_cfg[k] for k in ("max_sync_ns", "allow_unmatched") if k in depth_cfg}
+    export_sync = (stages.get("export") or {}).get("max_sync_ns")
+    if not policy and export_sync is not None:
+        policy = {"max_sync_ns": int(export_sync), "allow_unmatched": True}
+    return policy
+
+
 def depth_file(root: Path, episode_id: str, stage: str, stream_id: str) -> Path:
     return rio.stage_dir(root, episode_id, stage) / f"{rio.safe_name(stream_id)}.h5"
 

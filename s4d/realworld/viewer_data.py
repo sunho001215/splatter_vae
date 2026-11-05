@@ -46,26 +46,13 @@ class ViewerEpisode:
 
 
 def load_episode(root: Path, episode_id: str, *, gap_factor: float = 1.5) -> ViewerEpisode:
-    from s4d.realworld.depth_stages import frame_sets, sets_policy
+    from s4d.realworld.depth_stages import configured_sets_policy, frame_sets
     from s4d.realworld.pipeline import accepted_calibration, load_meta
 
     root = Path(root)
     meta = load_meta(root, episode_id)
     streams = [v.stream_id for v in meta.views()]
-    if rio.read_record(rio.stage_dir(root, episode_id, "mapanything_depth")) is not None:
-        policy = sets_policy(root, episode_id)
-    else:
-        import yaml
-
-        path = root / "pipeline.yaml"
-        cfg = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
-        stages = cfg.get("stages") or {}
-        depth_cfg = stages.get("mapanything_depth") or {}
-        policy = {k: depth_cfg[k] for k in ("max_sync_ns", "allow_unmatched") if k in depth_cfg}
-        export_sync = (stages.get("export") or {}).get("max_sync_ns")
-        if not policy and export_sync is not None:
-            # roots without MapAnything (sensor / stereo depth variants): the export's tolerance, mutual pairing
-            policy = {"max_sync_ns": int(export_sync), "allow_unmatched": True}
+    policy = configured_sets_policy(root, episode_id)
     sets = frame_sets(meta, streams, **policy)
     if not len(sets["index"]):
         raise ValueError(f"{episode_id}: no synchronized camera sets under policy {policy}")
