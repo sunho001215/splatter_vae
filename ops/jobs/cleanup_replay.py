@@ -76,10 +76,41 @@ def main() -> int:
         return run(args)
 
 
+def current(path: Path, loader, inputs: dict):
+    """``loader(path)``, re-read only when the file's modification time or size changed since its last read in this
+    pass (``inputs``: the pass's cache)."""
+    try:
+        stat = path.stat()
+        key = (stat.st_mtime_ns, stat.st_size)
+    except FileNotFoundError:
+        key = None
+    if path not in inputs or inputs[path][0] != key:
+        inputs[path] = (key, loader(path))
+    return inputs[path][1]
+
+
+def still_eligible(batch: list, args, inputs: dict) -> list:
+    """Re-decide the batch's rows from the current queue, registry and pauses right before deleting: a run whose state
+    changed since the plan (reset, resume, new continuation, pause) is left alone. Identical to a full re-plan
+    restricted to the batch (lifecycle.plan decides every row independently, by its id)."""
+    rows = current(args.queue, lambda path: jobs.load_queue(path).get("jobs", []), inputs)
+    state = current(args.registry, jobs.read_registry, inputs)
+    pauses = current(args.pauses, lifecycle.load_pauses, inputs)
+    by_id = {row["id"]: row for row in rows}
+    fresh = {}
+    for decision in batch:
+        row = by_id.get(decision.run_id)
+        found = lifecycle.decide(row, state, rows, pauses, args.host, args.runs.resolve()) if row else None
+        if found is not None:
+            fresh[found.run_id] = found
+    return [decision for decision in batch if fresh.get(decision.run_id) is not None
+            and fresh[decision.run_id].eligible and fresh[decision.run_id].spec == decision.spec]
+
+
 def run(args) -> int:
     pauses = lifecycle.load_pauses(args.pauses)  # fails closed: an unreadable pause file stops the pass
     rows = jobs.load_queue(args.queue).get("jobs", [])
-    state = jobs.read_registry(args.registry)
+    state = jobs.read_registry(args.registry)  # (re-read by the pre-deletion check only if the files change)
     decisions = lifecycle.plan(rows, state, pauses, args.host, args.runs.resolve())
     if args.run:
         decisions = [decision for decision in decisions if decision.run_id in args.run]
@@ -93,19 +124,29 @@ def run(args) -> int:
         eligible = [decision for decision in eligible if (args.runs / decision.run_id / "replay").is_dir()]
     recorded = lifecycle.recorded_receipts(args.ledger)
     totals = Counter()
-    reports = []
-    def still_eligible(batch):
-        """Re-plan from the current queue, registry and pauses right before deleting: a run whose state changed since
-        the plan (reset, resume, new continuation, pause) is left alone."""
-        fresh = {decision.run_id: decision for decision in lifecycle.plan(
-            jobs.load_queue(args.queue).get("jobs", []), jobs.read_registry(args.registry),
-            lifecycle.load_pauses(args.pauses), args.host, args.runs.resolve())}
-        return [decision for decision in batch if fresh.get(decision.run_id) is not None
-                and fresh[decision.run_id].eligible and fresh[decision.run_id].spec == decision.spec]
+    # 2026-11-06: each pass used to re-plan the whole queue (load_queue ~5 s + the plan) for every eligible run with a
+    # replay directory (~340 locally) and to report / ledger only after the loop, so the 2-hourly `timeout 3600` killed
+    # every local pass before it recorded anything. Now: runs with nothing to delete or close skip the re-check
+    # (replay_host.pending), the re-check re-decides only the batch's rows from inputs re-read only when their file
+    # changed (still_eligible), and every run is reported and ledgered as soon as it is done.
+    inputs = {}
+
+    def emit(decision, report):
+        print(json.dumps(summarize(report)), flush=True)
+        totals[report["status"]] += 1
+        if args.dry_run:
+            totals["would_free_bytes"] += sum(item.get("allocated_bytes", 0) for item in report.get("files") or [])
+            return
+        entries = lifecycle.ledger_entries(report, args.host, decision, recorded, time.time())
+        lifecycle.append_ledger(args.ledger, entries)
+        recorded.update(entry["receipt_id"] for entry in entries)
+        totals["ledger_entries"] += len(entries)
+        totals["freed_bytes"] += sum(entry["freed_bytes"] for entry in entries)
 
     if args.host == "local":
         for decision in eligible:
-            if not args.dry_run and not still_eligible([decision]):
+            if (not args.dry_run and host_check.pending(str(args.runs), decision.spec)
+                    and not still_eligible([decision], args, inputs)):
                 print(json.dumps({"run": decision.run_id, "status": "skipped", "reason": "state changed"}), flush=True)
                 continue
             report = host_check.clean_run(
@@ -113,13 +154,13 @@ def run(args) -> int:
                 writers=lambda run_id, run_dir, session=decision.session: lifecycle.local_writers(
                     Path(run_dir), run_id, session),
                 verify_policy=lifecycle.torch_policy_check)
-            reports.append((decision, report))
+            emit(decision, report)
     else:
         client = RemoteClient(repo=REPO)
         for start in range(0, len(eligible), args.batch):
             batch = eligible[start:start + args.batch]
             if not args.dry_run:
-                batch = still_eligible(batch)
+                batch = still_eligible(batch, args, inputs)
                 if not batch:
                     continue
             specs = [decision.spec for decision in batch]
@@ -133,17 +174,8 @@ def run(args) -> int:
             except (RemoteCommandError, ValueError) as exc:
                 print(json.dumps({"error": f"{type(exc).__name__}: {str(exc)[:300]}; pass ends"}), flush=True)
                 return 1
-            reports += list(zip(batch, found, strict=True))
-    for decision, report in reports:
-        print(json.dumps(summarize(report)), flush=True)
-        totals[report["status"]] += 1
-        if args.dry_run:
-            totals["would_free_bytes"] += sum(item.get("allocated_bytes", 0) for item in report.get("files") or [])
-            continue
-        entries = lifecycle.ledger_entries(report, args.host, decision, recorded, time.time())
-        lifecycle.append_ledger(args.ledger, entries)
-        totals["ledger_entries"] += len(entries)
-        totals["freed_bytes"] += sum(entry["freed_bytes"] for entry in entries)
+            for decision, report in zip(batch, found, strict=True):
+                emit(decision, report)
     print(json.dumps({"host": args.host, "dry_run": args.dry_run, "considered": len(decisions),
                       "eligible": len(eligible), "ineligible_by_reason": dict(refused), **totals}), flush=True)
     return 0

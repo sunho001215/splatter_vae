@@ -496,3 +496,79 @@ def test_traversal_and_noncanonical_references_are_never_harmless():
     assert jobs._run_relative("r1", "runs/r1/checkpoints/step_0170000.pt") == "checkpoints/step_0170000.pt"
     for bad in ("runs/r1//etc/passwd", "runs/r1/./checkpoints/x.pt", "runs/r1/checkpoints/../../r2/x.pt"):
         assert jobs._run_relative("r1", bad) is None
+
+
+def test_cli_local_pass_rechecks_only_runs_with_work_reads_inputs_once_and_ledgers_each_run(tmp_path, monkeypatch, capsys):
+    """2026-11-06: a local pass re-planned the whole queue for each of ~340 runs whose replay/ directory had already been
+    emptied and ledgered only after its loop, so the 2-hourly `timeout 3600` killed it before it recorded anything. Runs
+    with nothing to delete skip the pre-deletion re-check, the re-check re-reads its inputs only when they changed and
+    still sees a state change, and each run's deletion is ledgered as soon as it is done."""
+    runs = tmp_path / "runs"
+    ids = ("a", "b", "c", "emptied")
+    for run_id in ids:
+        make_run(runs, run_id)
+    for path in (runs / "emptied/replay").iterdir():  # deleted by an earlier pass: the directory stays
+        path.unlink()
+    folder = tmp_path / "experiments"
+    folder.mkdir()
+    queue, registry, ledger = folder / "queue.yaml", folder / "registry.jsonl", tmp_path / "ledger.jsonl"
+    queue.write_text(yaml.safe_dump({"jobs": [trainer_row(i, gpu="any", mem_gb=1) for i in ids]
+                                     + [eval_row(i, gpu="any", mem_gb=1) for i in ids]}))
+    gpu = APPROVED_HOST_GPUS["local"][0]
+    for run_id in ids:
+        jobs.record({"event": "launched", "id": run_id, "pid": 999_999_999, "gpu": gpu, "attempt": 1}, registry)
+        jobs.record({"event": "exited", "id": run_id, "attempt": 1, "code": 0}, registry)
+    module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli2", REPO / "ops/jobs/cleanup_replay.py")
+    cli = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(cli)
+    (tmp_path / "proc").mkdir()
+    scan = cli.lifecycle.local_writers
+    monkeypatch.setattr(cli.lifecycle, "local_writers",
+                        lambda run_dir, run_id, session=None: scan(run_dir, run_id, session, proc=tmp_path / "proc"))
+    loads, decided = [], []
+    load, decide = cli.jobs.load_queue, cli.lifecycle.decide
+    monkeypatch.setattr(cli.jobs, "load_queue", lambda path: loads.append(path) or load(path))
+    monkeypatch.setattr(cli.lifecycle, "decide", lambda row, *rest: decided.append(row["id"]) or decide(row, *rest))
+    clean = cli.host_check.clean_run
+
+    def clean_run(runs_root, spec, **kwargs):
+        if spec["run_id"] == "b":  # a state change after the plan: the run was reset meanwhile
+            jobs.record({"event": "reset", "id": "c"}, registry)
+        if spec["run_id"] == "c":
+            raise AssertionError("c was reset after the plan: it must not reach its deletion")
+        return clean(runs_root, spec, **kwargs)
+
+    monkeypatch.setattr(cli.host_check, "clean_run", clean_run)
+    monkeypatch.setattr(sys, "argv", ["cleanup_replay.py", "--host", "local", "--queue", str(queue), "--registry",
+                                      str(registry), "--runs", str(runs), "--pauses", str(tmp_path / "absent.json"),
+                                      "--ledger", str(ledger)])
+    assert cli.main() == 0
+    out = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    status = {line["run"]: line["status"] for line in out if "run" in line}
+    assert status == {"a": "deleted", "b": "deleted", "c": "skipped", "emptied": "noop"}
+    assert len(loads) == 2  # the plan, then one read for every re-check (the queue file did not change)
+    plan_calls = len(ids) * 2  # the plan decides every row once
+    assert decided[plan_calls:] == ["a", "b", "c"]  # re-checks: only the runs with replay files to delete
+    assert [json.loads(line)["run_id"] for line in ledger.read_text().splitlines()] == ["a", "b"]
+
+    # a pass killed after its first deletion has already recorded it
+    for run_id in ("a", "b"):
+        make_run(runs / "again", run_id)
+    monkeypatch.setattr(cli.host_check, "clean_run", clean)
+    calls = []
+
+    def dies_after_first(runs_root, spec, **kwargs):
+        calls.append(spec["run_id"])
+        if len(calls) == 2:
+            raise KeyboardInterrupt  # the loop's `timeout` signal
+        return clean(runs_root, spec, **kwargs)
+
+    monkeypatch.setattr(cli.host_check, "clean_run", dies_after_first)
+    second = tmp_path / "ledger2.jsonl"
+    monkeypatch.setattr(sys, "argv", ["cleanup_replay.py", "--host", "local", "--queue", str(queue), "--registry",
+                                      str(registry), "--runs", str(runs / "again"), "--pauses",
+                                      str(tmp_path / "absent.json"), "--ledger", str(second), "--run", "a",
+                                      "--run", "b"])
+    with pytest.raises(KeyboardInterrupt):
+        cli.main()
+    assert [json.loads(line)["run_id"] for line in second.read_text().splitlines()] == ["a"]
