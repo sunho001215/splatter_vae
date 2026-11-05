@@ -168,11 +168,11 @@ def test_mug_hanging_config_is_the_panda_with_the_droid_mount():
     assert robot["base_frame"] == "panda_link0" and robot["flange_frame"] == "panda_link8"
     assert robot["joint_names"] == [f"panda_joint{i}" for i in range(1, 8)]
     assert "panda" in Path(robot["urdf_path"]).name and "fr3" not in robot["urdf_path"]
-    manifest = Path(robot["urdf_path"]).with_suffix(".manifest.json")
-    if not manifest.is_file():  # host asset (validation-20261031/panda_assets); checked where present
-        pytest.skip("composed Panda asset not on this host")
-    man = json.loads(manifest.read_text())
-    assert man["mount"]["config"] == "droid_robotiq_2f85_iso50_coupling" and man["mount"]["status"] == "provisional"
-    assert man["coupling_geometry"]["link"] == "robotiq_iso50_coupling"
-    assert "robots/fer/fer.urdf.xacro" in man["provenance"]["franka_description"]
-    assert {f"panda_link{i}" for i in range(9)} <= set(man["links"])
+    # the composed URDF itself is a host asset (validation-20261031/panda_assets); its manifest is checked by the real
+    # runs (ingest records the asset hashes), not here, so the suite has no host-dependent skip
+    assert robot["gripper_model"] == "robotiq_2f_85"
+    # the mount the URDF was composed with is a defined, nominal (not measured) configuration with coupling geometry
+    from s4d.realworld.mounts import MOUNTS
+
+    mount = MOUNTS["droid_robotiq_2f85_iso50_coupling"]
+    assert mount.coupling_geometry is not None and mount.coupling_geometry.status == "nominal"
