@@ -7341,3 +7341,23 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   stage records copied into the ingest manifest via set-stage for the FQL gate). Estimated ~15-17 h of GPU time for
   200 episodes; ingestion upload (~18 h at 600 KiB/s) is the pacing item. No pretraining/FQL before a task's 100
   episodes all pass (gate).
+
+## 2026-11-06 06:45 KST — CSW4 tube ratio 50 % vs 75 % (pre-registered analysis, INTERIM) and the eight-task DrM ranking
+
+- **Data:** all cst50/cst75 pretrainings and RL trainers exited 0 and are backed up locally; every evaluation complete
+  except `cst50-drm-stick-push-s2002-eval` (launch refused 01:05, awaiting the user's reconciliation) -> cst50
+  stick-push has 2 seeds. Nothing imputed. Analysis: `/home/ws/ws/presentation-assets-tools/work/arch_compare/`
+  (report.txt sections 5, 6, 8; scripts cst_prereg.py, ranking.py; previous snapshot report.20261106-0048.txt).
+- **Pre-registered endpoints (runs/setup/cst-definition-20261104.json), cst75 - cst50, S8 (8 tasks, stick-push n=2) /
+  S7 (7 tasks):** primary training success AUC -9.4 pp [-13.5, -5.2] / -10.5 [-15.1, -5.7] (cst75 higher on 2/8 tasks;
+  primary recomputed independently by the coordinator: -9.37 / -10.52); success last-5 -14.4 [-21.2, -6.9]; training nR
+  last-5 -0.284 [-0.383, -0.178]; moving-camera success AUC -9.6 [-13.3, -5.8]; held-out last-5 -3.6 [-5.6, -1.3] (S7
+  includes 0); no gap up to ~250k steps. In-training reconstruction: cst75 lower train-view PSNR (-0.72 dB) and higher
+  moving-point EPE (+0.95 mm, 8/8 tasks); the pre-registered 22-camera render diagnostic was never run for cst (not
+  computable, not substituted). Rule: a verdict needs all 8 tasks complete, so this is INTERIM; the missing seed can
+  move the S8 primary only within [-9.9, -5.7] pp (sign fixed). No adoption implied by the registration.
+- **Eight-task ranking (DrM, our candidates; mean rank over 8 criteria):** full (original) 1st (P(best) 0.72), cst50
+  2nd (0.23), chl 3rd, csw4 4th. full vs cst50 margins all within noise; cst50 vs chl null on every RL measure (only
+  held-out AUC +1.3 [+0.1, +2.6]); cst50 vs csw4 nR +0.116 [+0.028, +0.200] -> the chl-vs-csw4 gap came from random
+  75 % masking, not the stem/width changes. With n=3 seeds and one pretraining seed per arm, {full, cst50, chl} beat
+  csw4 and the rest but cannot be ordered among themselves. End-to-end CNN still leads training nR (+0.213 over cst50).
