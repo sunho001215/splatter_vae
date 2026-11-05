@@ -4,7 +4,8 @@
 #   RGB for appearance and tracking; FoundationStereo on each device IR pair -> metric depth on the left-IR grid,
 #   registered into the RGB grid (foundation_stereo_depth, "B1"); native depth + SAM 3 robot masks as calibration
 #   evidence only; robot-grounded calibration; single-view TrackEverything per camera with B1 depth, intrinsics and the
-#   accepted pose (writes track2d + lift3d); the noise-aware track_motion filter; export of moving tracks.
+#   accepted pose (writes track2d + lift3d); the noise-aware track_motion filter; the compact training store
+#   (train_data: frames once per camera at 128x128, moving tracks only; SNeRL DINO targets are computed online).
 # Requires the IR pair (adapter include_ir): an episode without it fails; no other depth model or tracker is used.
 #   .venv/bin/python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging.yaml \
 #       --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001
@@ -80,16 +81,18 @@ stages:
                      num_iters: 3}
   # dynamic-track filter (s4d/realworld/track_motion.py; intentional preprocessing change 2026-11-05): thresholds are
   # quantiles of the observed statistics of tracks >= 15 cm from the calibrated robot (image motion px; depth extent per
-  # depth bin), with metric floors and temporal support; the export keeps moving tracks only
+  # depth bin), with metric floors and temporal support; the training store keeps moving tracks only
   track_motion: {min_segment_samples: 5, max_depth_hole_frames: 2, max_gap_factor: 1.5, max_speed_m_s: 1.5,
                  reference_robot_distance_m: 0.15, reference_quantile_move: 0.995, reference_quantile_static: 0.9,
                  min_move_px: 1.5, min_move_m: 0.005, min_support: 2}
-  # cameras are not hardware-synchronised (one runs a constant 22.9 ms behind) and one camera lacks the last frame:
-  # mutual nearest frames within 30 ms (< half the 66.7 ms period; the default third of a period, 22.2 ms, is below
-  # camera 135122076054's offset and would leave no three-camera window); unmatched frames run single-view. The same
-  # tolerance is the frame-set policy of viewers/contract checks (depth_stages.configured_sets_policy).
-  export: {depth_stage: foundation_stereo_depth, track_source: track_motion, strides: [1, 2], validation_tail_frames: 0,
-           max_gap_factor: 1.5, aspect: center_crop, max_sync_ns: 30000000}
+  # compact training store (s4d/realworld/train_store.py, data-format policy 2026-11-06): per camera 128x128 RGB/depth/
+  # semantics of the centred square, calibration, timestamps, robot state, moving 3D tracks and cross-camera sets; the
+  # loaders assemble windows/viewpoints (strides, gap factor, validation tail are loader settings). Cameras are not
+  # hardware-synchronised (one runs a constant 22.9 ms behind) and one camera lacks the last frame: mutual nearest
+  # frames within 30 ms (< half the 66.7 ms period; the default third of a period, 22.2 ms, is below camera
+  # 135122076054's offset and would leave no three-camera set); unmatched frames run single-view. The same tolerance is
+  # the frame-set policy of viewers/contract checks (depth_stages.configured_sets_policy).
+  train_data: {task: mug-hanging, depth_stage: foundation_stereo_depth, max_sync_ns: 30000000, gripper_points: 32}
   sam3_masks:
     # "robotic gripper" (and gripper/black gripper/parallel gripper/two-finger gripper/gripper fingers) found nothing on
     # this black Robotiq 2F-85 (probe 2026-11-05, realworld-20261104/probes/sam3-gripper-20261105); "end effector"
@@ -99,4 +102,3 @@ stages:
     mode: segment_video
     chunk: 206
     score_threshold: 0.5
-  dino_snerl: {backbone: scratch}

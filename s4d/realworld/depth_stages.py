@@ -29,9 +29,9 @@ STAGE_VERSIONS = {"sensor_depth": "1"}
 
 
 def configured_sets_policy(root, episode_id, cfg: dict | None = None) -> dict:
-    """Frame-set policy for any consumer of an episode root (viewer, contract checks): the export's ``max_sync_ns`` with
-    mutual pairing when the pipeline config sets one, else strict. ``cfg`` defaults to ``<root>/pipeline.yaml`` when
-    present."""
+    """Frame-set policy for any consumer of an episode root (viewer, contract checks): the training store's (else the
+    former export's) ``max_sync_ns`` with mutual pairing when the pipeline config sets one, else strict. ``cfg``
+    defaults to ``<root>/pipeline.yaml`` when present."""
     if cfg is None:
         path = Path(root) / "pipeline.yaml"
         if not path.is_file():
@@ -40,7 +40,7 @@ def configured_sets_policy(root, episode_id, cfg: dict | None = None) -> dict:
 
         cfg = yaml.safe_load(path.read_text()) or {}
     stages = cfg.get("stages") or {}
-    export_sync = (stages.get("export") or {}).get("max_sync_ns")
+    export_sync = (stages.get("train_data") or {}).get("max_sync_ns", (stages.get("export") or {}).get("max_sync_ns"))
     return {} if export_sync is None else {"max_sync_ns": int(export_sync), "allow_unmatched": True}
 
 

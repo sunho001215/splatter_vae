@@ -206,16 +206,14 @@ def test_config_without_baselines_runs_no_baseline_stages_and_refuses_them():
     from s4d.realworld.cli import check_stage_scope, default_stages
 
     cfg = _cfg("mug_hanging")
-    cfg = {**cfg, "baselines": [], "stages": {k: v for k, v in cfg["stages"].items() if k not in ("sam3_masks",
-                                                                                                 "dino_snerl")}}
+    cfg = {**cfg, "baselines": [], "stages": {k: v for k, v in cfg["stages"].items() if k != "sam3_masks"}}
     cfg["stages"]["calibrate"] = {k: v for k, v in cfg["stages"]["calibrate"].items() if k != "robot_mask_stage"}
     assert required_baseline_stages(cfg) == ()
     stages = default_stages(cfg)
-    assert "sam3_masks" not in stages and "dino_snerl" not in stages
+    assert "sam3_masks" not in stages
     check_stage_scope(cfg, stages)
-    for extra in ("sam3_masks", "dino_snerl"):
-        with pytest.raises(ValueError, match="not needed"):
-            check_stage_scope(cfg, stages + [extra])
+    with pytest.raises(ValueError, match="not needed"):
+        check_stage_scope(cfg, stages + ["sam3_masks"])
 
 
 def test_realworld_config_generates_exactly_the_declared_baselines_inputs():
@@ -224,14 +222,13 @@ def test_realworld_config_generates_exactly_the_declared_baselines_inputs():
 
     cfg = _cfg("mug_hanging")
     assert set(cfg["baselines"]) <= set(BASELINE_AUX_STAGES)
-    assert required_baseline_stages(cfg) == ("sam3_masks", "dino_snerl")
+    assert required_baseline_stages(cfg) == ("sam3_masks",)  # SNeRL: semantics; its DINO targets are online
     stages = default_stages(cfg)
-    assert stages.index("track_motion") < stages.index("export") and {"sam3_masks", "dino_snerl"} <= set(stages)
+    assert stages.index("track_motion") < stages.index("train_data") and "sam3_masks" in stages
+    assert "export" not in stages and "dino_snerl" not in stages
     check_stage_scope(cfg, stages)
-    no_snerl = {**cfg, "baselines": ["mvp3d"]}  # calibration still needs the SAM 3 robot masks, never DINO
+    no_snerl = {**cfg, "baselines": ["mvp3d"]}  # calibration still needs the SAM 3 robot masks
     assert required_baseline_stages(no_snerl) == ("sam3_masks",)
-    with pytest.raises(ValueError, match="not needed"):
-        check_stage_scope(no_snerl, ["dino_snerl"])
     with pytest.raises(ValueError, match="unknown baselines"):
         required_baseline_stages({**cfg, "baselines": ["pointworld"]})
 

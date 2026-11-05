@@ -6,8 +6,9 @@
 
 Standard stage graph (configs/realworld/mug_hanging.yaml, dispatched by ``run_stages``): ingest, sensor_depth
 (calibration evidence), foundation_stereo_depth (device IR pair -> colour grid), sam3_masks, calibrate,
-track_everything (per camera, writes the track2d + lift3d records), track_motion, export (+ dino_snerl for a declared
-SNeRL baseline).
+track_everything (per camera, writes the track2d + lift3d records), track_motion, train_data (the compact training
+store, ``s4d.realworld.train_store``; output ``<output_root>/train_data/<episode>``). The former window export
+(``export``) runs only when configured; the ``dino_snerl`` cache stage is retired (SNeRL DINO targets are online).
 
 The depth model and the tracker run only when configured under ``stages`` (no default depth model or tracker; a
 failure is an error, never a switch to another backend). Stages are idempotent: re-running skips complete stages whose
@@ -25,17 +26,20 @@ import yaml
 
 from s4d.realworld import io as rio
 
-STAGES = ("ingest", "sensor_depth", "calibrate", "track_motion", "export",
+STAGES = ("ingest", "sensor_depth", "calibrate", "track_motion", "train_data", "vis_geometry", "export",
           "foundation_stereo_depth",
           "track_everything")  # optional stages last (dispatch order is in code)
-BASELINE_STAGES = ("sam3_masks", "dino_snerl")
-# run only when configured under ``stages``: the depth model, the tracker (no default backend) and the motion filter
-OPTIONAL_STAGES = ("track_motion", "foundation_stereo_depth", "track_everything")
+BASELINE_STAGES = ("sam3_masks",)
+# run only when configured under ``stages``: the depth model, the tracker (no default backend), the motion filter, the
+# training store (it needs the task name), the viewer's native depth store and the former window export (legacy,
+# window-level copies)
+OPTIONAL_STAGES = ("track_motion", "train_data", "vis_geometry", "export", "foundation_stereo_depth",
+                   "track_everything")
 # stage directories with a completion record (track_everything writes the track2d and lift3d records)
 RECORD_STAGES = ("sensor_depth", "foundation_stereo_depth", "calibrate", "track2d", "lift3d", "track_motion")
 # model worker each stage calls (weights are staged only for the workers of the requested stages)
 STAGE_WORKERS = {"foundation_stereo_depth": "foundation_stereo", "track_everything": "trackeverything",
-                 "sam3_masks": "sam3", "dino_snerl": "dino_snerl"}
+                 "sam3_masks": "sam3"}
 
 
 def stage_workers(stages) -> set:
@@ -130,9 +134,9 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     if args.cmd == "status":
-        for stage in ("normalized",) + RECORD_STAGES + ("export",) + BASELINE_STAGES:
+        for stage in ("normalized",) + RECORD_STAGES + ("train_data", "vis_geometry", "export") + BASELINE_STAGES:
             d = (rio.episode_dir(args.root, args.episode) / "normalized" if stage == "normalized"
-                 else Path(args.root) / "export" / args.episode if stage == "export"
+                 else Path(args.root) / stage / args.episode if stage in ("train_data", "vis_geometry", "export")
                  else rio.stage_dir(args.root, args.episode, stage))
             rec = rio.read_record(d)
             print(f"{stage:13s} {'complete ' + rec['fingerprint'][:12] if rec else 'missing'}")
@@ -176,7 +180,7 @@ def main(argv=None) -> int:
 def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
     """Identical local/remote stage dispatch. ``run`` persists the caller's stage report and applies force policy."""
     from s4d.realworld import pipeline as P
-    from s4d.realworld.baseline_stages import dino_snerl, sam3_masks
+    from s4d.realworld.baseline_stages import sam3_masks
     from s4d.realworld.calibration import CalibrationConfig
     from s4d.realworld.depth_stages import sensor_depth
     from s4d.realworld.export import export
@@ -234,6 +238,22 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
         if "depth_bins_m" in mc:
             mc["depth_bins_m"] = tuple(mc["depth_bins_m"])
         run("track_motion", lambda f: track_motion(root, ep, cfg=MotionFilterConfig(**mc), force=f))
+    if "sam3_masks" in wanted and not masks_first:  # the training store carries the semantics: segment first
+        segment()
+    if "train_data" in wanted:
+        from s4d.realworld.train_store import write_episode
+
+        sc = dict(st.get("train_data") or {})
+        task = sc.pop("task", None) or cfg.get("task")
+        if not task:
+            raise ValueError("stages.train_data.task (or a top-level task) names the episode's task")
+        sc.setdefault("semantic", "snerl" in (cfg.get("baselines") or []))  # SNeRL's semantic targets
+        run("train_data", lambda f: write_episode(root, ep, root / "train_data" / ep, task=task, force=f, **sc))
+    if "vis_geometry" in wanted:  # viewer: native-resolution depth, compact (s4d.realworld.vis_store)
+        from s4d.realworld.vis_store import write_native_geometry
+
+        run("vis_geometry", lambda f: write_native_geometry(root, ep, root / "vis_geometry" / ep, force=f,
+                                                            **(st.get("vis_geometry") or {})))
     ec = st.get("export", {})
     run("export", lambda f: export(root, ep, root / "export" / ep, strides=tuple(ec.get("strides", (1, 2))),
                                    allow_infrared_input=ec.get("allow_infrared_input", False),
@@ -242,13 +262,6 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
                                    aspect=ec.get("aspect", "stretch"),
                                    track_source=ec.get("track_source", "lift3d"),
                                    depth_stage=ec.get("depth_stage"), force=f))
-    if "sam3_masks" in wanted and not masks_first:
-        segment()
-    if "dino_snerl" in wanted:
-        dc = st.get("dino_snerl", {})
-        run("dino_snerl", lambda f: dino_snerl(root / "export" / ep, rio.stage_dir(root, ep, "dino_snerl"),
-                                               spec_factory("dino_snerl"), backbone=dc.get("backbone", "scratch"),
-                                               force=f, runner=runner))
 
 
 if __name__ == "__main__":

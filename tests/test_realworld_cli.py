@@ -14,6 +14,7 @@ from s4d.realworld import ir_stereo_depth as IR
 from s4d.realworld import pipeline as P
 from s4d.realworld import track_motion as TM
 from s4d.realworld import trackeverything_stage as TE
+from s4d.realworld import train_store as TS
 from s4d.realworld.runners import LocalRunner
 
 REPO = Path(__file__).resolve().parents[1]
@@ -41,16 +42,16 @@ def test_standard_dispatch_order_runner_and_depth_routes(tmp_path, monkeypatch):
         return call
 
     for module, names in ((P, ("ingest", "calibrate")), (D, ("sensor_depth",)), (IR, ("ir_stereo_depth",)),
-                          (B, ("sam3_masks", "dino_snerl")), (TE, ("track_everything",)), (TM, ("track_motion",)),
-                          (E, ("export",))):
+                          (B, ("sam3_masks",)), (TE, ("track_everything",)), (TM, ("track_motion",)),
+                          (E, ("export",)), (TS, ("write_episode",))):
         for name in names:
             monkeypatch.setattr(module, name, stub(name))
     cfg = {**_standard(), "output_root": str(tmp_path / "out")}
     wanted = cli.default_stages(cfg)
     cli.check_stage_scope(cfg, wanted)
     assert set(wanted) == {"ingest", "sensor_depth", "foundation_stereo_depth", "sam3_masks", "calibrate",
-                           "track_everything", "track_motion", "export", "dino_snerl"}
-    assert cli.stage_workers(wanted) == {"foundation_stereo", "trackeverything", "sam3", "dino_snerl"}
+                           "track_everything", "track_motion", "train_data"}  # no window export, no DINO cache
+    assert cli.stage_workers(wanted) == {"foundation_stereo", "trackeverything", "sam3"}
 
     def run(name, fn):
         if name in wanted:
@@ -59,7 +60,7 @@ def test_standard_dispatch_order_runner_and_depth_routes(tmp_path, monkeypatch):
     cli.run_stages(cfg, None, "ep", runner, run, wanted, spec_factory=lambda name: name)
     names = [name for name, _, _ in calls]
     assert names == ["ingest", "sensor_depth", "ir_stereo_depth", "sam3_masks", "calibrate", "track_everything",
-                     "track_motion", "export", "dino_snerl"]
+                     "track_motion", "write_episode"]
     by = {name: (args, kwargs) for name, args, kwargs in calls}
     assert by["sensor_depth"][0][2] is runner and by["ir_stereo_depth"][0][2:4] == ("foundation_stereo", runner)
     assert by["calibrate"][1]["runner"] is runner and by["calibrate"][1]["cfg"].evidence == "rgbd"
@@ -67,9 +68,16 @@ def test_standard_dispatch_order_runner_and_depth_routes(tmp_path, monkeypatch):
     assert by["track_everything"][0][2:4] == ("trackeverything", runner)
     assert by["track_everything"][1]["depth_stage"] == "foundation_stereo_depth"
     assert by["track_everything"][1]["model_hw"] == (384, 512)
-    assert by["export"][1]["depth_stage"] == "foundation_stereo_depth"
-    assert by["export"][1]["track_source"] == "track_motion"
-    assert by["sam3_masks"][1]["runner"] is runner and by["dino_snerl"][1]["runner"] is runner
+    store_args, store_kw = by["write_episode"]
+    assert store_args[2] == Path(cfg["output_root"]) / "train_data" / "ep"
+    assert store_kw["task"] == "mug-hanging" and store_kw["depth_stage"] == "foundation_stereo_depth"
+    assert store_kw["max_sync_ns"] == 30_000_000 and store_kw["semantic"] is True  # SNeRL declared: semantics stored
+    assert by["sam3_masks"][1]["runner"] is runner
+    # the former window export runs only when configured explicitly; the DINO cache stage no longer exists
+    legacy = {**cfg, "stages": {**cfg["stages"], "export": {"depth_stage": "foundation_stereo_depth"}}}
+    assert "export" in cli.default_stages(legacy)
+    with pytest.raises(ValueError, match="not stages of this pipeline"):
+        cli.check_stage_scope({**cfg, "stages": {**cfg["stages"], "dino_snerl": {}}}, ["ingest"])
 
 
 def test_unconfigured_and_unknown_stages_are_refused():
@@ -94,7 +102,7 @@ def test_remote_worker_paths_override_host_paths_and_preserve_the_standard_confi
     assert resolved["adapter"] == original["adapter"]
     assert resolved["output_root"] == original["output_root"] and resolved["stages"] == original["stages"]
     assert spec(resolved, "s4d_kernels").python == "/opt/envs/s4d/bin/python"
-    for worker in ("foundation_stereo", "trackeverything", "sam3", "dino_snerl"):
+    for worker in ("foundation_stereo", "trackeverything", "sam3", "dino_snerl"):  # dino_snerl: SNeRL contract check
         assert spec(resolved, worker) == spec(original, worker)
     fs = resolved["workers"]["foundation_stereo"]
     assert fs["python"] == "/opt/envs/foundation_stereo/bin/python"

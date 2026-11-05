@@ -1,6 +1,7 @@
 """Dataset-contract and model-interface checks for one processed real-world episode (inference only, no training).
 
-1. Our model: the exported cache through the real ``RealworldCacheDataset`` (``validate_batch`` per sample) and
+1. Our model: the compact training store (``<root>/train_data/<episode>``) through ``RealworldWindowDataset`` (the
+   former window export through ``RealworldCacheDataset`` when only that exists; ``validate_batch`` per sample) and
    ``s4d.data.contract.collate``; batch checks (shapes, finite values, temporal sampling against the recorded
    timestamps, K/w2c consistency); then ``build_model`` + ``forward_losses`` under ``torch.no_grad`` on the inference
    server (``forward_check`` kernel, config ``--model-config``).
@@ -22,6 +23,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
+import h5py  # noqa: E402
 import numpy as np  # noqa: E402
 import yaml  # noqa: E402
 
@@ -43,7 +45,7 @@ def axes_lookat(T_cam_base: np.ndarray) -> np.ndarray:
     return np.linalg.solve(A, b)
 
 
-def batch_checks(batch: dict, manifest: dict) -> dict:
+def batch_checks(batch: dict) -> dict:
     import torch
 
     out = {"shapes": {k: list(v.shape) for k, v in batch.items() if torch.is_tensor(v)},
@@ -71,6 +73,9 @@ def main(argv=None) -> int:
     ap.add_argument("--episode", required=True)
     ap.add_argument("--output-root", help="override the pipeline config's output_root (e.g. a fresh baseline run)")
     ap.add_argument("--model-config", default="configs/droid/pretrain.yaml")
+    ap.add_argument("--model-override", action="append", default=[],
+                    help="config override for the forward check (the encoder image size follows the data unless given)")
+    ap.add_argument("--strides", default="1,2", help="window strides of the training-store loader")
     ap.add_argument("--snerl-config", default="configs/baselines/snerl/hammer.yaml")
     ap.add_argument("--batches", type=int, default=3)
     ap.add_argument("--snerl-scenes", type=int, default=6)
@@ -84,6 +89,8 @@ def main(argv=None) -> int:
     from s4d.realworld.dataset import RealworldCacheDataset
     from s4d.realworld.depth_stages import configured_sets_policy, frame_sets
     from s4d.realworld.pipeline import accepted_calibration, camera_views, load_meta, read_frames
+    from s4d.realworld.train_store import FILE as STORE_FILE
+    from s4d.realworld.train_windows import RealworldWindowDataset
 
     cfg = yaml.safe_load(Path(args.pipeline).read_text())
     if args.output_root:
@@ -99,18 +106,41 @@ def main(argv=None) -> int:
     pool_cfg = pool_config(server.config, head)
     pool = RemoteWorkerPool(pool_cfg, log_dir=out_dir / "worker_logs")
     runner = RemoteRunner(pool, spec(cfg, "s4d_kernels", expected_commit=head))
-    cache = root / "export" / ep
-    manifest = json.loads((cache / "manifest.json").read_text())
+    compact = root / "train_data" / ep
+    if rio.read_record(compact) is not None:  # the training store (2026-11-06 format)
+        cache, data_file = compact, compact / STORE_FILE
+    else:  # former window export
+        cache = root / "export" / ep
+        data_file = cache / "manifest.json"
+    strides = tuple(int(x) for x in args.strides.split(","))
+    if cache == compact:  # the encoder input size follows the stored image size unless overridden explicitly
+        with h5py.File(data_file, "r") as f:
+            size = int(f.attrs["image_size"])
+        given = {o.split("=", 1)[0] for o in args.model_override}
+        overrides = [f"model.encoder.{k}={size}" for k in ("image_height", "image_width")
+                     if f"model.encoder.{k}" not in given] + list(args.model_override)
+    else:
+        overrides = list(args.model_override)
     store = rio.ChunkStore(out_dir / "calls", rio.stage_fingerprint(
-        "contract_checks", "1", {"model_config": args.model_config, "snerl_config": args.snerl_config,
-                                 "batches": args.batches, "scenes": args.snerl_scenes},
-        {"manifest": rio.sha256_file(cache / "manifest.json"), "source": head}))
-    report = {"episode": ep, "source_commit": head, "cache": str(cache), "model_config": args.model_config}
+        "contract_checks", "2", {"model_config": args.model_config, "model_overrides": overrides,
+                                 "snerl_config": args.snerl_config, "batches": args.batches,
+                                 "scenes": args.snerl_scenes, "loader": {"strides": list(strides)}
+                                 if cache == compact else "export"},
+        {"manifest": rio.sha256_file(data_file), "source": head}))
+    report = {"episode": ep, "source_commit": head, "cache": str(cache), "model_config": args.model_config,
+              "model_overrides": overrides}
     try:
-        ds = RealworldCacheDataset(cache, split="train")  # validate_batch runs per sample
-        report["dataset"] = {"samples": len(ds), "windows": len(manifest["windows"]), "cameras": manifest["cameras"],
-                             "resolutions": manifest["resolutions"], "aspect": manifest.get("aspect"),
-                             "windows_dropped_for_time_gaps": manifest.get("windows_dropped_for_time_gaps")}
+        if cache == compact:
+            ds = RealworldWindowDataset([cache], split="train", strides=strides)
+            report["dataset"] = {"format": "train_data", "samples": len(ds), "cameras": ds.cams[0],
+                                 "image_size": ds.store.image_hw, **ds.counts}
+        else:
+            manifest = json.loads((cache / "manifest.json").read_text())
+            ds = RealworldCacheDataset(cache, split="train")  # validate_batch runs per sample
+            report["dataset"] = {"format": "export", "samples": len(ds), "windows": len(manifest["windows"]),
+                                 "cameras": manifest["cameras"], "resolutions": manifest["resolutions"],
+                                 "aspect": manifest.get("aspect"),
+                                 "windows_dropped_for_time_gaps": manifest.get("windows_dropped_for_time_gaps")}
         for i in range(len(ds)):  # the whole split through validate_batch, one sample at a time
             ds[i]
         report["dataset"]["validate_batch"] = f"passed for all {len(ds)} samples"
@@ -119,13 +149,14 @@ def main(argv=None) -> int:
         for b, batch in enumerate(loader):
             if b >= args.batches:
                 break
-            checks = batch_checks(batch, manifest)
+            checks = batch_checks(batch)
             arrays = {k: v.numpy() for k, v in batch.items() if torch.is_tensor(v)}
             meta = {k: [list(x) if isinstance(x, tuple) else x for x in v] for k, v in batch["meta"].items()}
             got = store.get(f"forward/{b}")
             if got is None:
                 _, kmeta, handle = runner.kernel("forward_check", {"config": args.model_config, "meta": meta,
-                                                                   "seed": 0}, arrays, chunk_id=f"forward/{b}")
+                                                                   "overrides": overrides, "seed": 0}, arrays,
+                                                 chunk_id=f"forward/{b}")
                 store.put(f"forward/{b}", {}, kmeta)
                 runner.ack(handle)
                 got = store.get(f"forward/{b}")
@@ -134,14 +165,13 @@ def main(argv=None) -> int:
         # SNeRL scenes: only when the dataset declares SNeRL (its SAM 3 semantics + DINO teacher exist only then)
         report["snerl"] = None
         if "snerl" in (cfg.get("baselines") or []):
+            report["dino_weights"] = server.stage_weights(workers={"dino_snerl"})  # SNeRL teacher (online targets)
             meta_ep = load_meta(root, ep)
             streams = [v.stream_id for v in camera_views(meta_ep)]
             sets = frame_sets(meta_ep, streams, **configured_sets_policy(root, ep, cfg))
             T = np.stack([accepted_calibration(root, ep, s) for s in streams])
             lookat = axes_lookat(T)
             pick = np.linspace(0, len(sets["index"]) - 1, args.snerl_scenes).round().astype(int)
-            import h5py
-
             images, sem = [], []
             for k in pick:
                 idx = sets["index"][k]

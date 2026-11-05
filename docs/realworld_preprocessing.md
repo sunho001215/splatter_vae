@@ -13,8 +13,9 @@ adapter (panda_teleop_h5, include_ir) -> ingest
   -> calibrate (robot-grounded, evidence: rgbd on sensor_depth + SAM 3 robot masks + URDF at the recorded joints)
   -> track_everything (single-view TrackEverything per colour camera with B1 depth, its K and the accepted pose;
                        writes the track2d + lift3d records)
-  -> track_motion (noise-aware dynamic-track filter) -> export (depth_stage B1, track_source track_motion)
-  -> dino_snerl (only when the SNeRL baseline is declared)
+  -> track_motion (noise-aware dynamic-track filter)
+  -> train_data (compact training store: frames once per camera at 128x128, moving 3D tracks; section 4.6)
+  [-> vis_geometry (viewer: native depth, compact; optional)]   [-> export (former window cache; configured only)]
 ```
 
 RGB is used for appearance and tracking; the IR pair feeds only the stereo model; native depth is calibration
@@ -38,7 +39,9 @@ Hosts (2026-11-06): bulk real-world preprocessing runs on the remote host; the R
 <root>/episodes/<episode_id>/normalized/frames/<stream>.h5    frames exactly as recorded (dtype/channels untouched)
 <root>/episodes/<episode_id>/derived/<stage>/...              stage outputs
 <root>/episodes/<episode_id>/derived/<stage>/_COMPLETE.json   completion record (fingerprint, config, inputs, model identity)
-<export_dir>/{scratch,dinov2}.h5 + manifest.json              training cache (DROID-track layout)
+<root>/train_data/<episode_id>/episode.h5 + _COMPLETE.json      training store (schema s4d.realworld.train/1.0.0)
+<root>/vis_geometry/<episode_id>/geometry.h5 + _COMPLETE.json  viewer depth store (optional)
+<export_dir>/{scratch,dinov2}.h5 + manifest.json              former window cache (configured only; superseded)
 ```
 
 The original recording is never written. Adapters only read it, and the provenance stores each source path with
@@ -298,7 +301,67 @@ per-sample noise and the counts per camera. Overlays: `analysis/track_motion_ove
 (`track_source: track_motion`) keeps only moving tracks and computes the motion score within segments; the loader
 contract is unchanged.
 
-### 4.6 `export` (`export.py`, loader `dataset.RealworldCacheDataset`)
+### 4.6 `train_data`: compact training store (`train_store.py`, loaders `train_windows.py`, `train_store.CompactStore`)
+
+Data-format policy of 2026-11-06: training frames are stored ONCE per camera and timestamp; temporal windows,
+viewpoints and every motion target are assembled in the loader. One HDF5 file per episode
+(`<output_root>/train_data/<episode>/episode.h5`, `io.run_stage`: fingerprinted record, atomic swap-in; inputs are the
+build ids of ingest, the depth stage, calibrate, track2d, lift3d, track_motion and, when SNeRL is declared, sam3_masks).
+
+- **Image geometry.** The centred square of the 640x480 colour grid (480x480 at x0 = 80, integer offsets) resized to
+  128x128. Pixel affine `u' = a (u - x0)`, `v' = a (v - y0)`, `a = 128/480` (continuous convention); the file stores
+  `K_native`, `K = A K_native`, the affine, the crop box and the accepted `w2c`. RGB: PIL BILINEAR (antialiased; the
+  DROID square-crop `crop_rgb` and the SNeRL contract check). Depth, validity, semantics: the native pixel containing
+  each output pixel centre (`crop_depth` rule; no mixing across edges). World positions are never rescaled.
+- **Per camera** (`cameras/<serial>/`): `timestamps_ns`, `segment` (recording segment per frame), `rgb` (F,128,128,3)
+  uint8, `depth` (F,128,128) float32 metres, bitwise the depth stage's sampled values (0 = invalid: the validity mask),
+  `semantic` (F,128,128) uint8 + `class_present` (SNeRL classes; only when SNeRL is declared), `robot/` (state at
+  this camera's frame times: ok/sync error, joints, gripper, probe_state, 32 gripper FK points), `tracks/` (moving
+  `track_motion` tracks only: per TrackEverything query window the frames, and per track the camera-local id, base-frame
+  xyz float32 bitwise from lift3d, status, motion segment, visibility, confidence). Frames: one per gzip chunk; every
+  array is lossless (gzip, shuffle for multi-byte types).
+- **Sync** (`sync/`): over the reference (first) camera, the mutual nearest frame of every camera within `max_sync_ns`
+  (-1 otherwise; the `frame_sets(allow_unmatched=True)` rule), the offsets, and per set the reference-time gripper points'
+  2 cm depth test against each camera's NATIVE depth (the export's gripper visibility; 32 bits per camera and set).
+  `robot/` keeps the recorded trajectory. No dense XYZ, no window copies, no DINO features.
+- **Our method** (`RealworldWindowDataset`): the former export's batch contract (validate_batch per item) at 128x128.
+  Windows `(t, t+s, t+2s)` on the reference timeline under the export's rules (robot state valid, every camera
+  synchronised, all three frames of a camera in one query window, the latest) plus one recording segment per camera and
+  window, and EVERY reference step inside the window span at most `max_gap_factor` periods (no window over a pause or a
+  dropped reference frame; the export checked only the sampled frames); strides and `validation_tail_frames` are loader
+  settings. Cameras may have different frame counts (dropped colour frames without a stereo record): the sync table
+  pairs frames by timestamp, so a gap only removes the sets that lack the frame. Track targets as the export (segment breaks unsupervised) plus the square
+  crop: a pair is supervised only if the track projects into the stored image at both endpoints (DROID square-crop
+  rule); the same for the gripper points. Optional `num_views` draws a viewpoint subset per (index, epoch) among the
+  cameras eligible for that window (a window then needs only `num_views` eligible cameras).
+- **RGB resampling is a deliberate change** from the former export (PIL's antialiased bilinear instead of
+  `warp_affine` point-sampled bilinear, which aliases at the 3.75x reduction); the SNeRL contract check and the DROID
+  square-crop profile already used PIL bilinear.
+- **Baselines / FQL** (`CompactStore`): the `FrameStore` protocol of the learning adapters (`episodes`, `task`,
+  `cameras` = serials, `timestamps`, `segments`, `rgb`, `depth` (metres), `semantic`, `intrinsics` (128 grid), `w2c`,
+  `raw_recording`, `image_hw`, `has_semantic`); `EpisodeFile` adds tracks, robot state, sync sets and native K/affine.
+- **SNeRL DINO targets** are computed online by the trainer from the stored RGB exactly as for Meta-World
+  (`uint8 / 255 -> dino_target`); `train_store.verify_snerl_teacher` checks the pinned teacher, the weights' sha256 and
+  that the online targets equal the cached-teacher path (`dino_snerl_worker`).
+- **Measured** (2026-11-06, four processed episodes, 179-228 frames x 3 cameras): 28-37 MB per episode (RGB 57 %,
+  depth 36 %, tracks 3-4 %, robot/semantic/sync the rest) vs 1.52-1.97 GB of the former export (x52-54); writer 9-11 s
+  per episode on CPU; window loader 80 windows/s in one process, 350 windows/s with 8 workers. Against the former
+  export on the same episodes: identical windows, query windows, frames, gripper/probe/pose targets and track counts;
+  source/displacement targets identical wherever supervised; the square crop drops 0-1.75 % of supervised track pairs.
+- **Ingestion**: `python -m s4d.realworld.cli run --config CFG --episode ID --stages train_data` (config
+  `stages.train_data: {task, depth_stage, max_sync_ns}`), or `train_store.write_episode(root, episode, out, task=...)`;
+  `train_store.manifest_fields(record)` gives the manifest fields (format, schema and writer version, code commit,
+  fingerprint, build id, file sha256/bytes).
+
+### 4.6a `vis_geometry` (optional; `vis_store.py`)
+
+The viewer reads high-resolution RGB/IR from the recording; the only expensive derived geometry, the native-resolution
+depth of the depth stage, is kept once per episode as uint16 0.1 mm (gzip + shuffle, ~0.19 MB per 640x480 frame, ~0.1 GB
+per episode vs ~1.9 GB of the `foundation_stereo_depth` stage directory with its diagnostics) with native K, pose and
+timestamps (`vis_store.native_depth`). Point clouds are rebuilt from depth + K + pose; viewer caches stay bounded and
+regenerable.
+
+### 4.6c `export` (former window cache; `export.py`, loader `dataset.RealworldCacheDataset`; runs only when configured)
 - **Layout.** Exactly the accepted DROID-track cache layout (`s4d/data/droid/convert.py`): `windows/{i:05d}/` with
   - `images` (T,V,3,H,W) uint8, `depth` (T,V,1,H,W) metres, `K` (continuous), `w2c`/`c2w`;
   - `motion_score`, `track_src`/`track_disp` (P,V,N,3), `track_weight`, `track_count`;
@@ -351,13 +414,10 @@ outside that scope. SAM 3 also supplies the robot masks of the RGB-D calibration
   - Normalisation is the scalar `(x-0.45)/0.225` (not ImageNet per-channel).
   - The 31x31x384 grid at 128x128 is bilinearly upsampled.
   - SNeRL computes these online (`s4d.baselines.snerl.model.dino_target`).
-- **`dino_snerl`** is an optional cache.
-  - It resizes the exported images to 128x128 (bilinear, /255).
-  - The `dino_snerl_worker` runs in the consumer's own venv. It returns the token grid computed with the first
-    lines of `dino_target` verbatim, and checks on the first image that the consumer's upsampling of the tokens
-    equals `dino_target` exactly (`verified_against_consumer`).
-  - Storage is float16 tokens.
-  - DINO on infrared requires `allow_infrared` because it is a domain shift.
+- **DINO targets are online** (2026-11-06): the trainer computes `dino_target` from the stored 128x128 RGB; the former
+  `dino_snerl` cache stage is retired. The `dino_snerl_worker` stays as the cached-teacher reference of the contract
+  check (`snerl_check`) and of `train_store.verify_snerl_teacher`: it returns the token grid computed with the first
+  lines of `dino_target` verbatim and checks that the consumer's upsampling of the tokens equals `dino_target` exactly.
 - **`sam3_masks`.** Prompts from configurable text are mapped to SNeRL classes, using the SAM 3 image API
   (`build_sam3_image_model` / `Sam3Processor.set_image` / `set_text_prompt`) or the video API
   (`build_sam3_video_predictor`, `start_session` / `add_prompt` / `propagate_in_video`). The stage stores:
@@ -539,4 +599,5 @@ ran on large-scale DROID). Historical outputs, reports and raw recordings are ke
 | Stereo camera views: stage `stereo_rectify` (`pipeline.stereo_rectify`, `rig_rectification`, `grid_frames`, `calibration_image`), kernel `rectify_stereo`, stereo branches of calibrate/export/sam3_masks/track_everything, `depth_stages.view_K`'s `root`/`episode_id` (stereo grid) arguments | RGB-D views only; `pipeline.camera_views` refuses stereo views (the contract still represents stereo rigs; `geometry.stereo_rectify` remains a tested geometry function) |
 | Provided calibration: `pipeline.calibrate_provided`, `stages.calibrate.source: adapter_provided`, `pipeline.applied_joint_correction` | robot-grounded `calibrate` (a `source` key is now an error) |
 | Mock worker task `infer_views` (MapAnything/SAD oracle) | - |
+| `dino_snerl` cache stage (`baseline_stages.dino_snerl`, `stages.dino_snerl`), the window `export` in the default stage graph (2026-11-06) | SNeRL DINO targets online from the stored RGB (`train_store.verify_snerl_teacher`); `train_data` (section 4.6); `export` still runs when configured |
 | Defaults naming retired stages: `depth_stages.load_view_depth(stage="mapanything_depth")` (stage now required), `RGBD_LIFT_DEPTH = "mapanything_depth"` | `foundation_stereo_depth` |
