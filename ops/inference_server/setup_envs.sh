@@ -41,7 +41,7 @@ for env in "$@"; do
             $UV pip install -q --python /opt/envs/mapanything/bin/python -e /opt/upstream/map-anything
             ;;
         foundation_stereo)
-            venv foundation_stereo 3.11.17
+            venv foundation_stereo 3.11.14  # newest 3.11 the container uv offers (local verified env: 3.11.17)
             $UV pip install -q --python /opt/envs/foundation_stereo/bin/python --index-strategy unsafe-best-match \
                 --extra-index-url $TORCH_INDEX -r $LOCKS/foundation_stereo.txt
             ;;
