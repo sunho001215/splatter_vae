@@ -217,7 +217,8 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
                                    validation_tail_frames=ec.get("validation_tail_frames", 0),
                                    max_sync_ns=ec.get("max_sync_ns"), max_gap_factor=ec.get("max_gap_factor"),
                                    aspect=ec.get("aspect", "stretch"),
-                                   track_source=ec.get("track_source", "lift3d"), force=f))
+                                   track_source=ec.get("track_source", "lift3d"),
+                                   depth_stage=ec.get("depth_stage"), force=f))
     if "sam3_masks" in wanted and not masks_first:
         segment()
     if "dino_snerl" in wanted:

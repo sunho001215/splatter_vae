@@ -75,3 +75,28 @@ its first unsaved chunk). `--stages` selects stages, `--force-stage NAME` rebuil
 `<output_root>/runs/<utc>/run.json`: container and source checks, weight staging, per-call timings and memory, and the
 persistence audit (`audit_end.ok`: no file below `~/shkim` changed during the run and no new `docker diff` entry).
 Do not push to the server checkout while a run is active: the source pin then refuses new sessions.
+
+Without `--stages` a run executes the config's default stages (`s4d.realworld.cli.default_stages`): every pipeline
+stage (optional ones such as `track_motion` only when configured) plus exactly the baseline stages its declared
+`baselines:` need. Only our method is pretrained on DROID, so `droid_raw_validation.yaml` declares `baselines: []` and
+never runs `sam3_masks`/`dino_snerl` (requesting them is refused). The real-world config declares the baselines trained
+on it (SNeRL -> SAM 3 + DINO teacher; 3D-MVP, SinCro, ReViWo, DynaMo -> export only); its RGB-D calibration also uses
+the SAM 3 robot masks as evidence.
+
+Both depth sources are kept as separate versioned outputs: `mug_hanging_rgbd.yaml` (MapAnything depth for lifting and
+export) and `mug_hanging_rgbd_rawdepth.yaml` (raw RealSense depth; its upstream stages are symlinked from the main
+root). `depth_compare.py` (same arguments as `depth_report.py`) writes the common-support comparison with plain-language
+metric definitions to `<output_root>/reports/<episode>/depth_v2/`.
+
+## MuJoCo in the container
+
+MuJoCo is not used by the real-world preprocessing (robot geometry is URDF forward kinematics in numpy) or by the
+episode viewer (`scripts/realworld_viewer.py`: URDF FK + browser mesh rendering). Only simulator tests and Meta-World
+rendering need it. The `nvidia/cuda:12.8.0-base-ubuntu22.04` image ships no GLVND loader (`libEGL.so.1`,
+`libOpenGL.so.0`); CDI injects only NVIDIA's vendor library, so `MUJOCO_GL=egl` fails at import
+(`mujoco_mig_setup`: `Failed to load libEGL.so.1`; plain `import mujoco`: PyOpenGL
+`'NoneType' object has no attribute 'eglQueryString'`). The `tools` env carries conda-forge's GLVND libraries; with
+`LD_LIBRARY_PATH=/opt/envs/tools/lib __EGL_VENDOR_LIBRARY_DIRS=/usr/share/glvnd/egl_vendor.d` (plus
+`S4D_HOST_CONFIG=configs/hosts/inference.yaml`, `CUDA_VISIBLE_DEVICES=<the UUID>`) the guarded EGL path renders
+(`mujoco_mig_setup` + `gpu_guard.enforce_mujoco_egl_device` + a Meta-World camera render). An `EGLError` printed at
+interpreter exit comes from MuJoCo's context destructor during teardown and does not affect results.

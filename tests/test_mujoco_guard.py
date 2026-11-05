@@ -32,6 +32,8 @@ def helper():
 
 @pytest.mark.parametrize("value", [None, "", "0", "MIG-forbidden", ",".join(ALLOWED_GPU_UUIDS[:2])])
 def test_invalid_uuid_import_refuses_before_mujoco_or_native_libraries(value):
+    if value and "," not in value and value in ALLOWED_GPU_UUIDS:  # hosts approving one GPU have no two-UUID case
+        pytest.skip("this host approves a single GPU UUID; the two-UUID rejection case needs two approved UUIDs")
     code = f"""
 import builtins, sys
 sys.path.insert(0, {str(REPO)!r})
@@ -130,6 +132,8 @@ def test_display_requires_numeric_proved_selection_before_loading_egl(helper, mo
 
 
 def test_display_rejects_unproved_or_changed_selection_before_egl(helper, monkeypatch):
+    if len(ALLOWED_GPU_UUIDS) < 2:
+        pytest.skip("needs two approved GPU UUIDs to change the selection between them (single-GPU host)")
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", ALLOWED_GPU_UUIDS[0])
     monkeypatch.setenv("MUJOCO_EGL_DEVICE_ID", "0")
     monkeypatch.setattr(helper, "_load_egl", lambda: pytest.fail("unproved selection must not initialize EGL"))

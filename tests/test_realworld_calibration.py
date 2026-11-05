@@ -185,3 +185,50 @@ def test_non_finite_residuals_never_pass_the_gates():
         f.landmarks_base = cam_center + (cam_center - f.landmarks_base)
     res = calibrate_camera("rig0/left", frames, K, CalibrationConfig(image_hw=HW, depth_term=False))
     assert res.status == "rejected", res.diagnostics.get("reproj_median_px")
+
+
+def test_refinement_starts_are_deterministic_camera_frame_perturbations():
+    from s4d.realworld.calibration import refinement_starts
+
+    cfg = CalibrationConfig(image_hw=HW, refine_starts=13, refine_start_rot_deg=3.0, refine_start_trans_m=0.03)
+    starts = refinement_starts(T_TRUE, cfg)
+    assert [n for n, _ in starts][:3] == ["init", "rot+x", "rot-x"] and len(starts) == 13
+    np.testing.assert_array_equal(starts[0][1], T_TRUE)
+    for name, T in starts[1:7]:
+        assert rotation_angle_deg(T[:3, :3], T_TRUE[:3, :3]) == pytest.approx(3.0, abs=1e-6), name
+    for name, T in starts[7:]:
+        assert np.linalg.norm(T[:3, 3] - T_TRUE[:3, 3]) == pytest.approx(0.03, abs=1e-9), name
+        np.testing.assert_allclose(T[:3, :3], T_TRUE[:3, :3])
+    assert len(refinement_starts(T_TRUE, CalibrationConfig(image_hw=HW))) == 1  # default: previous behaviour
+    assert [n for n, _ in refinement_starts(T_TRUE, CalibrationConfig(image_hw=HW, refine_starts=3))] == \
+        ["init", "rot+x", "rot-x"]
+
+
+def test_multistart_keeps_the_best_fit_frame_solution_and_the_init_start_is_the_single_refinement():
+    """A prior far enough off for one refinement to stall; the multi-start choice uses fit frames only and its
+    'init' start reproduces the single refinement exactly."""
+    from s4d.realworld import calibration as cal
+
+    frames = make_episode(T_TRUE, outlier_rate=0.0)
+    prior = T_TRUE.copy()
+    prior[:3, :3] = Rotation.from_euler("xyz", [0.03, -0.03, 0.02]).as_matrix() @ prior[:3, :3]
+    prior[:3, 3] += [0.03, -0.02, 0.03]
+    orig = cal._visual_init
+    try:
+        cal._visual_init = lambda frames, K, cfg: (None, None, None, None)
+        single = calibrate_camera("rig0/left", frames, K, CalibrationConfig(image_hw=HW), T_init=prior)
+        multi = calibrate_camera("rig0/left", frames, K, CalibrationConfig(image_hw=HW, refine_starts=13),
+                                 T_init=prior)
+    finally:
+        cal._visual_init = orig
+    ms = multi.diagnostics["multistart"]
+    assert len(ms["starts"]) == 13 and "fit frames" in ms["criterion"]
+    by_name = {s["start"]: s for s in ms["starts"]}
+    chosen = by_name[ms["chosen"]]
+    assert chosen["fit_score"] == min(s["fit_score"] for s in ms["starts"])
+    # the 'init' start is exactly the single-start solve
+    single_score = np.median([r["depth_abs_median_m"] for r in single.diagnostics["per_frame_fit"]
+                              if r.get("depth_abs_median_m") is not None])
+    assert by_name["init"]["fit_score"] == pytest.approx(single_score, rel=1e-9)
+    assert multi.diagnostics["depth_abs_median_m"] <= single.diagnostics["depth_abs_median_m"] + 1e-12
+    assert rotation_angle_deg(multi.T_cam_base[:3, :3], T_TRUE[:3, :3]) < 0.3

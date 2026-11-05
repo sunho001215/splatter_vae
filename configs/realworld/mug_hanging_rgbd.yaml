@@ -67,8 +67,11 @@ stages:
     landmark_links: []
     overlays: 4
     cfg:   # this episode's arm moves little (flange path extents ~19 x 8 x 6 cm): the whole masked robot surface carries
-           # the constraint, so the flange-path coverage gate is lowered from 8 to 5 cm; covariance gates unchanged
+           # the constraint, so the flange-path coverage gate is lowered from 8 to 5 cm; covariance gates unchanged.
+           # 13-start refinement (init + +-3 deg about / +-3 cm along the camera axes), best median depth residual on FIT
+           # frames: with the Panda meshes camera 135122076054 stalled at 13 mm from the single start (2026-11-05).
       min_motion_extent_m: 0.05
+      refine_starts: 13
   mapanything_depth: {chunk: 4, max_set_motion_m: 0.005}
   track2d: {window: 16, step: 8, grid_stride: 16}
   lift3d: {vis_threshold: 0.5, conf_threshold: 0.5}

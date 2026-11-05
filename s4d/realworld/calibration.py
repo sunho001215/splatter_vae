@@ -103,6 +103,15 @@ class CalibrationConfig:
     # surface point crossing into invalid depth switches its residual on/off); they are excluded from the conditioning
     # and covariance estimates, which they would otherwise distort (inflated largest eigenvalue, shrunken variance)
     jac_discontinuity_factor: float = 100.0
+    # multi-start refinement (2026-11-05): the robust objective has local optima near the initialisation (one real
+    # camera stalled at 13 mm while starts 3 deg / 3 cm away reached 7.6 mm). Starts: the initialisation, then
+    # rotations +-refine_start_rot_deg about the camera x, y, z axes, then translations +-refine_start_trans_m along
+    # them (deterministic order, the first ``refine_starts``). The solution with the lowest median |depth residual|
+    # over the FIT frames (reprojection error without depth) is kept; held-out frames never enter the choice.
+    # 1 = the single refinement from the initialisation (previous behaviour).
+    refine_starts: int = 1
+    refine_start_rot_deg: float = 3.0
+    refine_start_trans_m: float = 0.03
 
 
 @dataclass
@@ -561,6 +570,24 @@ def _frame_stats(T, frames, K, cfg):
     return rows
 
 
+def refinement_starts(T0: np.ndarray, cfg: CalibrationConfig) -> list[tuple[str, np.ndarray]]:
+    """Deterministic refinement starts (see ``CalibrationConfig.refine_starts``): perturbations in the camera frame."""
+    from scipy.spatial.transform import Rotation
+
+    out = [("init", np.asarray(T0, float))]
+    for kind in ("rot", "trans"):
+        for axis in range(3):
+            for sign in (1, -1):
+                D = np.eye(4)
+                if kind == "rot":
+                    D[:3, :3] = Rotation.from_rotvec(np.eye(3)[axis] * np.radians(cfg.refine_start_rot_deg) * sign
+                                                     ).as_matrix()
+                else:
+                    D[axis, 3] = sign * cfg.refine_start_trans_m
+                out.append((f"{kind}{'+' if sign > 0 else '-'}{'xyz'[axis]}", D @ np.asarray(T0, float)))
+    return out[:max(1, int(cfg.refine_starts))]
+
+
 def motion_coverage(frames) -> dict:
     P = np.stack([f.flange_base for f in frames]) if frames else np.zeros((0, 3))
     if len(P) < 2:
@@ -624,14 +651,37 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     if rgbd and not use_depth:
         return CalibrationResult(camera_id, "rejected", reasons + ["RGB-D evidence needs the depth term"], None, T0,
                                  method, diag)
-    T = T0
-    res = None
-    for _ in range(max(1, cfg.outer_iters)):
-        gates = _depth_gates(T, fit, K, cfg, rng) if use_depth else [None] * len(fit)
-        res = least_squares(_residuals, vec_from_pose(T), args=(fit, K, cfg, gates, use_depth), loss="cauchy",
-                            f_scale=1.0, method="trf", x_scale=np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01]),
-                            max_nfev=cfg.max_nfev)
-        T = pose_from_vec(res.x)
+    def refine(T, rng):
+        res = gates = None
+        for _ in range(max(1, cfg.outer_iters)):
+            gates = _depth_gates(T, fit, K, cfg, rng) if use_depth else [None] * len(fit)
+            res = least_squares(_residuals, vec_from_pose(T), args=(fit, K, cfg, gates, use_depth), loss="cauchy",
+                                f_scale=1.0, method="trf", x_scale=np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01]),
+                                max_nfev=cfg.max_nfev)
+            T = pose_from_vec(res.x)
+        return T, res, gates
+
+    starts = refinement_starts(T0, cfg)
+    if len(starts) == 1:
+        T, res, gates = refine(T0, rng)
+    else:
+        runs = []
+        for name, T_start in starts:  # each start gets the same seeded gate sampling
+            T_s, res_s, gates_s = refine(T_start, np.random.default_rng(cfg.seed))
+            key = "depth_abs_median_m" if use_depth else "reproj_median_px"
+            vals = [r[key] for r in _frame_stats(T_s, fit, K, cfg) if r.get(key) is not None]
+            score = float(np.median(vals)) if vals and np.isfinite(res_s.x).all() else float("inf")
+            runs.append((score, name, T_s, res_s, gates_s))
+        best = min(runs, key=lambda r: r[0])
+        _, _, T, res, gates = best
+        diag["multistart"] = {"criterion": ("median |depth residual| over fit frames" if use_depth else
+                                            "median reprojection error over fit frames"),
+                              "chosen": best[1],
+                              "starts": [{"start": r[1], "fit_score": r[0], "cost": float(r[3].cost),
+                                          "init_to_solution_rot_deg": float(np.degrees(np.linalg.norm(
+                                              vec_from_pose(invert_T(T0) @ r[2])[:3]))),
+                                          "init_to_solution_trans_m": float(np.linalg.norm(
+                                              vec_from_pose(invert_T(T0) @ r[2])[3:]))} for r in runs]}
     diag["optimizer"] = {"status": int(res.status), "message": str(res.message), "nfev": int(res.nfev),
                          "cost": float(res.cost), "success": bool(res.success)}
     if not res.success or not np.isfinite(res.x).all():
