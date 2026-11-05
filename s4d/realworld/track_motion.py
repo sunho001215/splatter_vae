@@ -26,9 +26,12 @@ Per track, in this order:
    still contains tracker failures and any unrelated motion, which makes the thresholds conservative. Move:
    ``extent_px`` above the ``reference_quantile_move`` quantile (at least ``min_move_px``) with ``lateral_m`` at
    least ``min_move_m``, or ``extent_z_m`` above the same quantile of its depth bin (at least ``min_move_m``). Static:
-   both statistics at most the ``reference_quantile_static`` quantile.
+   both statistics at most the ``reference_quantile_static`` quantile. A depth bin with fewer than ``min_bin_samples``
+   reference segments is uncalibrated (thresholds are never borrowed from a nearer, less noisy bin): no depth-only
+   move and no static claim there.
 4. **Temporal support.** A move also needs at least ``min_support`` smoothed samples beyond the threshold from the
-   segment's reference sample (a persistent displacement, not one excursion).
+   segment's reference sample (image motion: the earlier sample of the farthest pair; depth: the depth minimum or
+   maximum), i.e. a persistent displacement, not one excursion.
 5. **Class** = moving if any segment of ``min_segment_samples`` valid samples moves, else uncertain if any such segment
    is neither moving nor static, else static if any was judged, else invalid (not enough samples to judge). A moving
    track keeps its full valid trajectory, stationary intervals included; segment ids are stored so trails and
@@ -220,14 +223,11 @@ def reference_thresholds(ref_px: np.ndarray, ref_z: np.ndarray, ref_depth: np.nd
                               "z_move_m": max(cfg.min_move_m, float(np.quantile(ref_z[m], qm))) if n >= cfg.min_bin_samples else None,
                               "z_static_m": float(np.quantile(ref_z[m], qs)) if n >= cfg.min_bin_samples else None,
                               "z_median_m": float(np.median(ref_z[m])) if n else None})
-    filled = [r for r in out["z_bins"] if r["z_move_m"] is not None]
-    if not filled:
+    if not any(r["z_move_m"] is not None for r in out["z_bins"]):
         raise ValueError("no depth bin has enough reference segments")
-    for r in out["z_bins"]:
+    for r in out["z_bins"]:  # depth noise grows with distance: never borrow a (smaller) threshold from another bin
         if r["z_move_m"] is None:
-            mid = 0.5 * (r["z_lo"] + min(r["z_hi"], 5.0))
-            near = min(filled, key=lambda f: abs(0.5 * (f["z_lo"] + min(f["z_hi"], 5.0)) - mid))
-            r.update(z_move_m=near["z_move_m"], z_static_m=near["z_static_m"], borrowed_from=[near["z_lo"], near["z_hi"]])
+            r["uncalibrated"] = True  # depth-axis evidence unavailable here: no z-only moves, no static claim
     return out
 
 
@@ -238,13 +238,17 @@ def decide(segs: list[dict], thr: dict, cfg: MotionFilterConfig) -> tuple[int, d
     for s in segs:
         zb = thr["z_bins"][int(depth_bin(np.array([s["z_m"]]), edges)[0])]
         d_px = np.linalg.norm(s["su"] - s["su"][s["ref"]], axis=-1)
-        d_z = np.abs(s["sz"] - s["sz"][s["ref"]])
         move_px = s["extent_px"] > thr["px_move"] and s["lateral_m"] >= cfg.min_move_m and \
             int((d_px > thr["px_move"]).sum()) >= cfg.min_support
-        move_z = s["extent_z_m"] > zb["z_move_m"] and int((d_z > zb["z_move_m"]).sum()) >= cfg.min_support
+        move_z = False
+        if zb["z_move_m"] is not None:  # support measured from the depth extremes (not the image-plane reference)
+            sup_z = max(int((np.abs(s["sz"] - s["sz"].min()) > zb["z_move_m"]).sum()),
+                        int((np.abs(s["sz"] - s["sz"].max()) > zb["z_move_m"]).sum()))
+            move_z = s["extent_z_m"] > zb["z_move_m"] and sup_z >= cfg.min_support
         if move_px or move_z:
             rank = 3
-        elif s["extent_px"] <= thr["px_static"] and s["extent_z_m"] <= zb["z_static_m"]:
+        elif zb["z_static_m"] is not None and s["extent_px"] <= thr["px_static"] and \
+                s["extent_z_m"] <= zb["z_static_m"]:
             rank = 1
         else:
             rank = 2

@@ -114,7 +114,7 @@ def test_reference_thresholds_follow_the_observed_quantiles_and_refuse_thin_refe
     near = [b for b in thr["z_bins"] if b["z_lo"] == 0.6][0]
     assert near["z_move_m"] == pytest.approx(max(CFG.min_move_m, np.quantile(z[depth < 0.8], 0.995)))
     far = [b for b in thr["z_bins"] if b["z_lo"] == 2.0][0]
-    assert far["borrowed_from"] and far["z_move_m"] is not None
+    assert far.get("uncalibrated") and far["z_move_m"] is None and far["z_static_m"] is None  # never borrowed
     with pytest.raises(ValueError, match="reference"):
         reference_thresholds(px[:10], z[:10], depth[:10], CFG)
 
@@ -294,8 +294,9 @@ def test_trails_join_only_consecutive_measured_samples_of_one_segment():
 
     ct = _camera_tracks()
     segs, age, pts, page, ids = trail_segments(ct, 12, length=8)
-    # frames 4..12: track 1 has 8 links; track 0 has 4-5, 5-7 (bridges the invalid frame 6), 7-8, then 9-10..11-12
-    assert (ids == 1).sum() == 8 and (ids == 0).sum() == 3 + 3
+    # frames 4..12: track 1 has 8 links; track 0 has 4-5, 7-8 (no line across the invalid frame 6), then 9-10..11-12
+    assert (ids == 1).sum() == 8 and (ids == 0).sum() == 2 + 3
+    assert not any((s[0, 0] < 0.0605 and s[1, 0] > 0.0595) for s in segs[ids == 0])  # nothing touches frame 6
     t0 = segs[ids == 0]
     starts = np.round(t0[:, 0, 0] / 0.01).astype(int).tolist()
     assert 8 not in starts  # never across the segment break between frames 8 and 9
@@ -319,3 +320,76 @@ def test_display_cloud_stride_must_nest():
 
     with pytest.raises(ValueError, match="multiple"):
         cloud(None, 0, 0, "sensor_depth", stride=5, roi_stride=3)
+
+
+
+def test_shipped_configs_construct_the_filter_config():
+    import dataclasses
+
+    from s4d.realworld.track_motion import MotionFilterConfig
+
+    for name in ("mug_hanging_rgbd", "mug_hanging_rgbd_rawdepth"):
+        mc = dict(_cfg(name)["stages"]["track_motion"])
+        cfg = MotionFilterConfig(**mc)  # unknown keys would raise TypeError (the pipeline builds it the same way)
+        assert set(mc) <= {f.name for f in dataclasses.fields(MotionFilterConfig)} and cfg.min_support >= 2
+
+
+def test_sparse_depth_bins_never_borrow_a_less_noisy_threshold():
+    """Codex geo1 #3: near bin 1 mm noise, sparse far bin 20 mm noise -> the far bin must not inherit ~5 mm."""
+    rng = np.random.default_rng(2)
+    px = np.abs(rng.normal(0, 0.2, 1100))
+    z = np.concatenate([np.full(1000, 0.001), np.full(100, 0.020)])
+    depth = np.concatenate([rng.uniform(0.6, 0.8, 1000), rng.uniform(2.1, 2.9, 100)])
+    thr = reference_thresholds(px, z, depth, CFG)
+    uv = np.array([[320.0, 240.0]] * 16)
+    _, xyz = _track(uv, z=2.5)
+    xyz[6:, 0, 2] += 0.02  # a persistent 20 mm depth excursion of a static far point (noise there)
+    seg, _ = segment_tracks(np.full((16, 1), VALID, np.uint8), xyz, np.arange(16) / 15.0, CFG, 1 / 15.0)
+    cls, _ = decide(segment_stats(uv[:, None, :], xyz, seg, 600.0, CFG.min_segment_samples)[0], thr, CFG)
+    assert cls == UNCERTAIN  # neither moving (no calibrated depth threshold) nor claimed static
+
+
+def test_depth_axis_support_is_measured_from_the_depth_extremes():
+    """Codex geo1 #4: constant pixels, depth 1.000 -> 1.010 -> 0.990 m sustained: 20 mm extent, support from the
+    extremes (not from the first sample, from which every displacement is only 10 mm)."""
+    uv = np.array([[320.0, 240.0]] * 15)
+    _, xyz = _track(uv)
+    xyz[5:10, 0, 2] = 1.010
+    xyz[10:, 0, 2] = 0.990
+    cls, best = _classify(uv[:, None, :], xyz)
+    assert cls == MOVING and best["by"] == "z"
+
+
+def test_motion_score_ignores_displacement_across_segment_breaks():
+    from s4d.data.droid.pointworld import splat_score
+    from s4d.realworld.export import segment_motion, splat_score_given_motion
+
+    pts = np.zeros((3, 2, 3), np.float32)
+    pts[:, :, 2] = 1.0
+    pts[1:, 0, 0] = 0.06  # point 0 jumps 6 cm between t0 and t1 ...
+    seg = np.array([[0, 0], [1, 0], [1, 0]], np.int16)  # ... across a segment break
+    np.testing.assert_allclose(segment_motion(pts, seg), [0.0, 0.0])
+    seg_same = np.zeros((3, 2), np.int16)
+    np.testing.assert_allclose(segment_motion(pts, seg_same), [0.06, 0.0], atol=1e-6)
+    K = np.array([[100.0, 0, 32], [0, 100.0, 32], [0, 0, 1]], np.float32)
+    w2c = np.eye(4, dtype=np.float32)
+    depth = np.ones((3, 64, 64), np.float32)
+    vis = np.ones((3, 2), bool)
+    np.testing.assert_array_equal(splat_score_given_motion(pts, vis, segment_motion(pts, seg_same), K, w2c, depth),
+                                  splat_score(pts, vis, K, w2c, depth))  # same rules as the shared helper
+    assert splat_score_given_motion(pts, vis, segment_motion(pts, seg), K, w2c, depth).max() == 0.0
+
+
+def test_calibration_evidence_frames_include_initialisation_frames():
+    from s4d.realworld.calibration import evidence_frames
+
+    fit = [{"t_index": i} for i in range(0, 40, 2) if i % 10 != 8]
+    held = [{"t_index": i} for i in range(8, 40, 10)]
+    doc = {"diagnostics": {"per_frame_fit": fit, "per_frame_heldout": held, "init_method": "rgbd_robot_registration",
+                           "config": {"init_frames": 3}, "frames": 20, "visible_frames": 20, "rgbd_init": {}}}
+    frames, how = evidence_frames(doc)
+    # linspace over the 20 calibration frames picks frames 0, 20, 38; 38 is a held-out frame, now not independent
+    assert how == "reconstructed" and {0, 20, 38} <= frames and 28 not in frames
+    doc["diagnostics"]["rgbd_init"]["init_t_indices"] = [28]
+    frames, how = evidence_frames(doc)
+    assert how == "recorded" and 28 in frames and 38 not in frames

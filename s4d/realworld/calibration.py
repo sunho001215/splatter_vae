@@ -350,6 +350,7 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
         moving = np.linalg.norm(surf - surf.mean(0), axis=2).max(0) > cfg.moving_link_motion_m
     diag["model_points"] = int(moving.sum())
     obs, trees, cents_obs, cents_model = [], [], [], []
+    init_t = []
     hw = usable[0].depth.shape
     from s4d.realworld.geometry import pixel_centers
 
@@ -363,10 +364,12 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
         P = unproject(uv[sel], f.depth[m][sel], K)
         model = f.surface_base[moving]
         obs.append(P)
+        init_t.append(int(f.t_index))
         trees.append(cKDTree(model))
         cents_obs.append(P.mean(0))
         cents_model.append(model.mean(0))
     diag["init_frames"] = len(obs)
+    diag["init_t_indices"] = init_t  # frames whose robot evidence entered the initialisation (not independent)
     diag["moving_pixels_median"] = int(np.median(masks.reshape(len(masks), -1).sum(1)))
     if len(obs) < (1 if masked else 3) or moving.sum() < 20:
         return None, {**diag, "error": "too little robot motion visible in the measured depth"}
@@ -568,6 +571,25 @@ def _frame_stats(T, frames, K, cfg):
             row["mask_union_px"] = int(union)
         rows.append(row)
     return rows
+
+
+def evidence_frames(doc: dict) -> tuple[set, str]:
+    """Frame indices whose robot evidence entered a stored calibration (fit frames + RGB-D initialisation frames), and
+    how the initialisation frames were obtained: recorded (``rgbd_init.init_t_indices``) or, for records written
+    before that field existed, reconstructed from the deterministic schedule (``init_frames`` evenly spaced over the
+    calibration frames; a superset when a frame had too few mask pixels)."""
+    d = doc["diagnostics"]
+    fit = {int(r["t_index"]) for r in d.get("per_frame_fit", [])}
+    init = (d.get("rgbd_init") or {}).get("init_t_indices")
+    if init is not None:
+        return fit | {int(x) for x in init}, "recorded"
+    if d.get("init_method") != "rgbd_robot_registration":
+        return fit, "no RGB-D initialisation"
+    frames = sorted(fit | {int(r["t_index"]) for r in d.get("per_frame_heldout", [])})
+    n = min(int(d["config"]["init_frames"]), len(frames))
+    pick = np.linspace(0, len(frames) - 1, n).round().astype(int) if n else []
+    exact = d.get("visible_frames") == d.get("frames")
+    return fit | {frames[k] for k in pick}, "reconstructed" + ("" if exact else " (approximate: invisible frames)")
 
 
 def refinement_starts(T0: np.ndarray, cfg: CalibrationConfig) -> list[tuple[str, np.ndarray]]:

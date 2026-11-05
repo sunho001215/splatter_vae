@@ -36,8 +36,9 @@ import numpy as np  # noqa: E402
 
 from s4d.realworld import viewer_data as vd  # noqa: E402
 
-CAM_COLOURS = np.array([[230, 75, 50], [40, 120, 220], [30, 160, 90]], np.float32)  # per camera (trails)
-FADE_TO = np.array([215, 215, 215], np.float32)
+CAM_COLOURS = np.array([[230, 75, 50], [40, 120, 220], [30, 160, 90]], np.float32)  # per camera (frustums)
+ROBOT_FLOW = np.array([255, 0, 255], np.float32)  # PointWorld's robot-flow magenta
+MIN_BRIGHTNESS = 0.35  # PointWorld-style brightness ramp: older trail segments darker
 ARM_COLOUR, GRIPPER_COLOUR, COUPLING_COLOUR = (236, 238, 242), (70, 72, 78), (35, 35, 38)
 SOURCES = {"raw": ("sensor_depth", "RealSense raw depth"), "mapanything": ("mapanything_depth", "MapAnything depth")}
 
@@ -58,16 +59,11 @@ def load_link_meshes(manifest: dict, max_faces: int | None = 4000) -> dict:
     grip = Path(manifest["inputs"]["gripper"]["path"])
     visuals = {**vd.urdf_visuals(arm, pk), **vd.urdf_visuals(grip, pk)}
     cg = manifest.get("coupling_geometry")
-    if cg:
-        T = np.eye(4)
-        from scipy.spatial.transform import Rotation
-
-        T[:3, :3] = Rotation.from_euler("xyz", cg["rpy"]).as_matrix()
-        T[:3, 3] = cg["xyz"]
+    if cg:  # mesh in the coupling LINK frame: the composed URDF's fixed joint (cg xyz/rpy) is applied by FK only
         path = cg["visual_mesh"]
         for name, directory in pk.items():
             path = path.replace(f"package://{name}/", f"{directory}/")
-        visuals[cg["link"]] = [(path, T, np.ones(3))]
+        visuals[cg["link"]] = [(path, np.eye(4), np.ones(3))]
     out = {}
     for link, items in visuals.items():
         vs, fs, off = [], [], 0
@@ -92,7 +88,7 @@ class EpisodeScene:
 
     def __init__(self, server, ve, roots: dict, sources: list, *, offset_m: float = 1.6, stride: int = 6,
                  roi_stride: int = 3, roi_box=None, crop_box=None, trail_length: int = 8, max_tracks: int = 400,
-                 dense_tracks: int = 1500, point_size: float = 0.004, robot_opacity: float = 0.45,
+                 dense_tracks: int = 1500, point_size: float = 0.006, robot_opacity: float = 0.45,
                  frustum_images: bool = True):
         from s4d.realworld.pipeline import RobotGeometry
 
@@ -125,6 +121,9 @@ class EpisodeScene:
                     self.h[(s, kind + "_samples", v)] = sc.add_point_cloud(
                         f"/{s}/{kind}_measured_samples/cam{v}", np.zeros((1, 3)), np.zeros((1, 3), np.uint8),
                         point_size=0.0035, point_shape="circle", visible=visible)
+            self.h[(s, "robot_flow")] = sc.add_line_segments(f"/{s}/robot_flow_gripper", np.zeros((1, 2, 3)),
+                                                             np.zeros((1, 2, 3), np.uint8), thickness=2.0,
+                                                             thickness_units="screen")
             for variant, opacity, visible in (("robot_translucent", robot_opacity, True), ("robot_opaque", None, False)):
                 for link, (V, F, colour) in self.meshes.items():
                     fr = sc.add_frame(f"/{s}/{variant}/{link}", show_axes=False, visible=visible)
@@ -137,10 +136,11 @@ class EpisodeScene:
                 fov = 2 * np.arctan(K.height / 2 / K.fy)
                 wxyz, pos = wxyz_pos(np.linalg.inv(ve.T_cam_base[v]))
                 self.h[(s, "frustum", v)] = sc.add_camera_frustum(
-                    f"/{s}/cameras/cam{v}_{cam.split('/')[0]}", fov=float(fov), aspect=K.width / K.height, scale=0.12,
+                    f"/{s}/cameras/cam{v}_{cam.split('/')[0]}", fov=float(fov), aspect=K.width / K.height, scale=0.05,
                     thickness=1.5, thickness_units="screen", color=tuple(int(c) for c in CAM_COLOURS[v]), wxyz=wxyz,
                     position=pos, image=np.zeros((60, 80, 3), np.uint8) if frustum_images else None)
         self.info = sc.add_label("/info", "", position=(0.45, 0.55, 0.9), font_screen_scale=1.0)
+        self.break_sets = {k for k, _ in ve.gaps}
 
     def _trail_arrays(self, s, v, frame, dense: bool):
         segs, age, pts, page, _ = vd.trail_segments(self.tracks[s][v], frame, length=self.trail_length,
@@ -149,15 +149,16 @@ class EpisodeScene:
         if not len(segs):
             return np.zeros((1, 2, 3), np.float32), np.zeros((1, 2, 3), np.uint8), np.zeros((1, 3), np.float32), \
                 np.zeros((1, 3), np.uint8)
-        L = max(1, self.trail_length)
-        w_end = np.clip(age / L, 0, 1)[:, None]
-        col_end = (1 - w_end) * CAM_COLOURS[v] + w_end * FADE_TO
-        col_start = (1 - np.clip((age + 1) / L, 0, 1))[:, None] * CAM_COLOURS[v] + \
-            np.clip((age + 1) / L, 0, 1)[:, None] * FADE_TO
-        cols = np.stack([col_start, col_end], 1).astype(np.uint8)
-        pw = np.clip(page / L, 0, 1)[:, None]
-        pcol = ((1 - pw) * CAM_COLOURS[v] * 0.8 + pw * FADE_TO).astype(np.uint8)
-        return segs, cols, pts, pcol
+        cols = np.stack([self._time_colour(age + 1), self._time_colour(age)], 1)
+        return segs, cols, pts, self._time_colour(page)
+
+    def _time_colour(self, age, base=None):
+        """turbo over the trail window (oldest blue .. newest red) times a brightness ramp, as PointWorld's flows;
+        ``base`` instead scales one fixed colour (robot flow)."""
+        u = 1.0 - np.clip(np.asarray(age, float) / max(1, self.trail_length), 0, 1)
+        bright = (MIN_BRIGHTNESS + (1 - MIN_BRIGHTNESS) * u)[:, None]
+        rgb = vd.turbo(u) * 255.0 if base is None else np.broadcast_to(base, (len(u), 3))
+        return np.clip(rgb * bright, 0, 255).astype(np.uint8)
 
     def show(self, k: int) -> None:
         ve = self.ve
@@ -185,6 +186,14 @@ class EpisodeScene:
                         h = self.h[(s, variant, link)]
                         if fk is not None:
                             h.wxyz, h.position = wxyz_pos(fk[link])
+            segs, age = vd.gripper_flow(self.geom, self.q, self.g, self.q_ok, k, length=self.trail_length,
+                                        break_sets=self.break_sets)
+            if len(segs):
+                cols = np.stack([self._time_colour(age + 1, ROBOT_FLOW), self._time_colour(age, ROBOT_FLOW)], 1)
+            else:
+                segs, cols = np.zeros((1, 2, 3), np.float32), np.zeros((1, 2, 3), np.uint8)
+            for s in self.sources:
+                self.h[(s, "robot_flow")].points, self.h[(s, "robot_flow")].colors = segs, cols
             seg = int(self.segment[k])
             paused = any(kk == k + 1 for kk, _ in ve.gaps)
             self.info.text = (f"t = {ve.times_s[k]:6.2f} s   set {k + 1}/{ve.n_sets}   recording segment {seg}"
@@ -245,8 +254,13 @@ def cmd_record(args) -> int:
         data = serializer.serialize()
         (out / f"{name}.viser").write_bytes(data)
         server.stop()
-        look = centre + np.array([0.0, -0.8 if name == "compare" else 0.0, 0.0])
-        cam_pos = look + (np.array([0.9, 1.5, 0.9]) if name == "compare" else np.array([0.75, 0.55, 0.45]))
+        cam_centres = np.stack([np.linalg.inv(T)[:3, 3] for T in ve.T_cam_base])
+        view_dir = cam_centres.mean(0) - centre
+        view_dir = view_dir / np.linalg.norm(view_dir)
+        c, s_ = np.cos(np.radians(35)), np.sin(np.radians(35))  # oblique: 35 deg around z from the cameras' mean view
+        oblique = np.array([c * view_dir[0] - s_ * view_dir[1], s_ * view_dir[0] + c * view_dir[1], view_dir[2]])
+        look = centre + (np.array([0.0, -0.8, 0.0]) if name == "compare" else 0.0)
+        cam_pos = look + oblique * (2.0 if name == "compare" else 0.75) + np.array([0, 0, 0.35])
         meta["recordings"][name] = {"file": f"{name}.viser", "bytes": len(data), "sources": sources,
                                     "seconds_to_build": round(time.time() - t0, 1),
                                     "initial_camera": {"position": cam_pos.round(3).tolist(),
@@ -310,7 +324,7 @@ def cmd_serve(args) -> int:
     playing = gui.add_checkbox("Play (loops)", True)
     timeline = gui.add_slider("Set", 0, ve.n_sets - 1, 1, 0)
     speed = gui.add_dropdown("Speed", ("0.25x", "0.5x", "1x", "2x"), "1x")
-    point = gui.add_slider("Point size (m)", 0.001, 0.012, 0.0005, 0.004)
+    point = gui.add_slider("Point size (m)", 0.001, 0.015, 0.0005, 0.006)
     opacity = gui.add_slider("Robot opacity", 0.0, 1.0, 0.05, 0.45)
     trail = gui.add_slider("Trail length (frames)", 1, 15, 1, args.trail_length)
     dense = gui.add_checkbox("Dense trails", False)

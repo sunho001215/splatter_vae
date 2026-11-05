@@ -55,9 +55,12 @@ GLOSSARY = {
                             "achieves on the same camera pairs."),
     "robot": ("Robot-geometry agreement (mm; lower is better): measured depth minus the depth of the calibrated "
               "Panda + Robotiq model at the recorded joints, at pixels where the robot model is the front surface "
-              "and both sources have depth. 'Independent' frames were not used to fit the calibration; 'fit' frames "
-              "were (they favour the RealSense depth, which the calibration fitted). Limited by the model/mount "
-              "accuracy (nominal, not measured) and calibration error."),
+              "and both sources have depth. 'Independent' frames entered neither the calibration fit nor its "
+              "initialisation; 'calibration evidence' frames did (they favour the RealSense depth, which the "
+              "calibration fitted). Limited by the model/mount accuracy (nominal, not measured) and calibration "
+              "error."),
+    "flying_pixels": ("Share of depth pixels lying between their neighbours' depths and far from both (mixed-depth "
+                      "pixels at object boundaries; lower is better), computed where both sources are valid."),
     "edge_to_rgb_px": ("Distance from depth discontinuities to the nearest colour edge (pixels; lower = depth edges sit "
                        "on image edges). Limits: not every colour edge is a depth edge (texture), and missing depth "
                        "near edges hides errors."),
@@ -109,12 +112,13 @@ def aggregate(rows, grids, streams) -> dict:
             "reference_raw_vs_other_raw_median_abs_m": _med([x["median_abs"] for x in ref]),
             "reference_raw_vs_other_raw_within_20mm": _med([x["within_20mm"] for x in ref])}
     robot = {}
-    for used, key in ((False, "independent_frames"), (True, "fit_frames")):
+    for used, key in ((False, "independent_frames"), (True, "calibration_evidence_frames")):
         sel = [vw for vw in views if vw["calib_used"] == used and vw["robot_common"]["raw"].get("n")]
         robot[key] = {src: _med([vw["robot_common"][src]["median_abs"] for vw in sel]) for src in ("raw", "ma")}
         robot[key]["view_frames"] = len(sel)
     edges = {src: _med([vw[src]["edge_to_rgb_px"].get("median_abs") for vw in views]) for src in ("raw", "ma")}
-    flying = {src: _med([vw[src]["flying_pixel_fraction"] for vw in views]) for src in ("raw", "ma")}
+    flying = {src: _med([vw[src]["flying_pixel_fraction_common"] for vw in views]) for src in ("raw", "ma")}
+    flying_own = {src: _med([vw[src]["flying_pixel_fraction_own_support"] for vw in views]) for src in ("raw", "ma")}
     scans = {src: [tuple(vw[src]["edge_shift_scan"]["best_shift_px"]) for vw in views
                    if vw[src].get("edge_shift_scan", {}).get("best_shift_px") is not None] for src in ("raw", "ma")}
     shift = {src: {"frames": len(v), "best_shift_counts": {f"{k[0]},{k[1]}": v.count(k) for k in sorted(set(v))}}
@@ -135,6 +139,7 @@ def aggregate(rows, grids, streams) -> dict:
                             "ma_temporal_std_median_m": float(np.median(ma[:, keep].std(0))) if keep.any() else None}
     return {"coverage": cov, "ma_minus_raw_common": agree, "crossview_common": cross, "hole_filling": fill,
             "robot_common": robot, "edge_to_rgb_median_px": edges, "flying_pixel_fraction": flying,
+            "flying_pixel_fraction_own_support": flying_own,
             "edge_shift_scan": shift, "confidence": conf, "ma_over_raw_median": ratio, "static_stability": stab}
 
 
@@ -175,8 +180,9 @@ def markdown(rep: dict) -> str:
           f"{a['edge_to_rgb_median_px']['ma']}.",
           f"- Best registration shift (frames per shift): RealSense {a['edge_shift_scan']['raw']['best_shift_counts']}, "
           f"MapAnything {a['edge_shift_scan']['ma']['best_shift_counts']}.",
-          f"- Flying-pixel fraction: RealSense {a['flying_pixel_fraction']['raw']}, MapAnything "
-          f"{a['flying_pixel_fraction']['ma']}.",
+          f"- Flying-pixel fraction on common support: RealSense {a['flying_pixel_fraction']['raw']}, MapAnything "
+          f"{a['flying_pixel_fraction']['ma']} (each on its own support: "
+          f"{a['flying_pixel_fraction_own_support']['raw']} / {a['flying_pixel_fraction_own_support']['ma']}).",
           f"- Scale: median MA/raw ratio {a['ma_over_raw_median']}.",
           f"- Confidence: |MA - raw| high-confidence half {_mm(a['confidence']['ma_minus_raw_high_conf_median_abs_m'])}"
           f" mm, low-confidence half {_mm(a['confidence']['ma_minus_raw_low_conf_median_abs_m'])} mm; filled pixels' "
@@ -265,10 +271,12 @@ def main(argv=None) -> int:
     sets = frame_sets(meta, streams)
     T = np.stack([accepted_calibration(root, ep, s) for s in streams])
     geom = RobotGeometry(meta)
-    calib_frames = {}
-    for s in streams:
+    from s4d.realworld.calibration import evidence_frames
+
+    calib_frames, calib_frames_how = {}, {}
+    for s in streams:  # fit + initialisation frames are not independent of the calibration
         doc = json.loads((rio.stage_dir(root, ep, "calibrate") / f"{rio.safe_name(s)}.json").read_text())
-        calib_frames[s] = {r["t_index"] for r in doc["diagnostics"].get("per_frame_fit", [])}
+        calib_frames[s], calib_frames_how[s] = evidence_frames(doc)
     sam = {s: rio.stage_dir(root, ep, "sam3_masks") / f"{rio.safe_name(s)}.h5" for s in streams}
     has_sam = all(p.is_file() for p in sam.values())
     pool = RemoteWorkerPool(pool_config(server.config, head), log_dir=out_dir / "worker_logs")
@@ -339,6 +347,8 @@ def main(argv=None) -> int:
     agg = aggregate(rows, {k: np.concatenate(v, 0) for k, v in grids.items()}, streams)
     rep = {"episode": ep, "views": streams, "sets": int(n), "source_commit": head, "inputs": inputs, "config": config,
            "aggregate": agg, "convention_checks": convention_checks(root, ep, meta, streams, sets, T, geom),
+           "calibration_evidence_frames": {s: {"count": len(calib_frames[s]), "how": calib_frames_how[s]}
+                                           for s in streams},
            "glossary": GLOSSARY, "persistence_audit": audit_end, "per_set": rows,
            "caveats": ["no ground-truth depth: consistency evidence only, never absolute accuracy",
                        "MapAnything received the RealSense depth as metric input: agreement with it is partly by "

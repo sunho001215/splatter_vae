@@ -263,7 +263,10 @@ def depth_compare_v2(params: dict, arrays: dict) -> tuple[dict, dict]:
             for src, d, ok in (("raw", dr[v], vr[v]), ("ma", dm[v], vm[v])):
                 vrow[src] = {"edge_to_rgb_px": dg.summarize(dg.edge_to_rgb_distance(d, ok, imgs[s, v]), tols=(1, 2, 4),
                                                             unit="px", scale=1.0),
-                             "flying_pixel_fraction": dg.flying_pixel_fraction(d, ok)}
+                             # common support: whole neighbourhoods valid in BOTH sources (a hole in one source must
+                             # not change the other's score); own-support value kept as a separate diagnostic
+                             "flying_pixel_fraction_common": dg.flying_pixel_fraction(d, both[v]),
+                             "flying_pixel_fraction_own_support": dg.flying_pixel_fraction(d, ok)}
                 if (first_set + s) % scan_every == 0:
                     vrow[src]["edge_shift_scan"] = dg.edge_shift_scan(d, ok, imgs[s, v])
             static = ~binary_dilation(robot, iterations=int(params.get("dilate_px", 6))) & \

@@ -24,7 +24,15 @@ import h5py
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from s4d.data.droid.pointworld import PAIR_TIMES, depth_test, nearest_timestamps, splat_score, track_targets
+from s4d.data.droid.pointworld import (
+    PAIR_TIMES,
+    depth_test,
+    nearest_timestamps,
+    nearest_z_winners,
+    project,
+    splat_score,
+    track_targets,
+)
 from s4d.realworld import io as rio
 from s4d.realworld.contract import CONVENTIONS, SCHEMA_VERSION
 from s4d.realworld.geometry import crop_affine, invert_T, resize_affine, warp_affine
@@ -54,6 +62,31 @@ def export_affine(src_hw: tuple, dst_hw: tuple, aspect: str = "stretch"):
     ch, cw = (H, int(round(H * target))) if W / H > target else (int(round(W / target)), W)
     top, left = (H - ch) // 2, (W - cw) // 2
     return crop_affine(top, left).then(resize_affine((ch, cw), dst_hw))
+
+
+def segment_motion(points: np.ndarray, seg: np.ndarray) -> np.ndarray:
+    """(N,) largest displacement over ``PAIR_TIMES`` counting only pairs whose samples lie in one motion segment
+    (others contribute 0); ``points`` (3,N,3), ``seg`` (3,N) segment ids (-1 invalid)."""
+    out = np.zeros(points.shape[1], np.float64)
+    for a, b in PAIR_TIMES:
+        same = (seg[a] >= 0) & (seg[a] == seg[b])
+        d = np.linalg.norm(points[b] - points[a], axis=-1)
+        out = np.maximum(out, np.where(same & np.isfinite(d), d, 0.0))
+    return out
+
+
+def splat_score_given_motion(points, visibility, motion, K, w2c, depths) -> np.ndarray:
+    """``pointworld.splat_score`` (same visibility, depth test and nearest-z winners) with the per-point displacement
+    supplied instead of recomputed from all pairs."""
+    height, width = depths.shape[-2:]
+    score = np.zeros((3, 1, height, width), np.float32)
+    for t in range(3):
+        valid, pix, _ = depth_test(points[t], K, w2c, depths[t], continuous=True)
+        valid &= visibility[t] & np.isfinite(points).all(axis=(0, 2))
+        _, z = project(points[t], K, w2c)
+        winners = nearest_z_winners(pix, z, valid, width)
+        score[t, 0, pix[winners, 1], pix[winners, 0]] = np.minimum(motion[winners] / 0.03, 1)
+    return score
 
 
 def _chunks(root, episode_id, cam):
@@ -234,8 +267,14 @@ def export(root: Path, episode_id: str, out: Path, *, strides=(1, 2), resolution
                         gvis = np.ones((3, len(grip[0])), bool)
                         for t in range(3):
                             gvis[t] = depth_test(grip[t], K.astype(np.float32), w2c, depth[t], continuous=True)[0]
-                        tensors["motion_score"].append(splat_score(np.concatenate([pts, grip], 1),
-                                                                   np.concatenate([vis, gvis], 1), Kr, w2c, rd))
+                        if seg is None:  # default route: unchanged helper
+                            tensors["motion_score"].append(splat_score(np.concatenate([pts, grip], 1),
+                                                                       np.concatenate([vis, gvis], 1), Kr, w2c, rd))
+                        else:  # moving tracks: no displacement across a motion-segment break
+                            gmotion = segment_motion(grip, np.zeros(grip.shape[:2], np.int16))
+                            tensors["motion_score"].append(splat_score_given_motion(
+                                np.concatenate([pts, grip], 1), np.concatenate([vis, gvis], 1),
+                                np.concatenate([segment_motion(pts, seg), gmotion]), Kr, w2c, rd))
                         src, disp, weight = track_targets(pts, vis)
                         if seg is not None:  # never supervise a displacement across a motion-segment break
                             for pair, (a, b) in enumerate(PAIR_TIMES):

@@ -9,10 +9,10 @@ only, nothing is predicted and the processed data are never modified.
 * robot: link poses from the composed URDF at the recorded joints and gripper state (forward kinematics), with the
   visual meshes of the arm/gripper/coupling descriptions;
 * trails: tracks classified ``moving`` by the ``track_motion`` stage, from ONE query window per camera and frame (the
-  window in whose second half the frame lies, so every frame has up to half a window of history). Polylines connect
-  consecutive measured samples of one motion segment only: they are display interpolation between the measured
-  samples (returned separately as points) and break at invalid samples, segment breaks and recording pauses; tracks
-  of different cameras or windows are never joined.
+  window in whose second half the frame lies, so every frame has up to half a window of history). As in PointWorld's
+  flow timelines, a line joins two ADJACENT frames only when both samples are valid and in the same motion segment:
+  lines are display interpolation between measured samples (returned separately as points) and break at every invalid
+  sample, segment break and recording pause; tracks of different cameras or windows are never joined.
 """
 
 from __future__ import annotations
@@ -199,8 +199,8 @@ def load_camera_tracks(root: Path, episode_id: str, stream: str) -> CameraTracks
 def trail_segments(ct: CameraTracks, frame_index: int, *, length: int = 8, max_tracks: int | None = None,
                    seed: int = 0, break_frames: set | None = None):
     """Display trails at ``frame_index``: (segments (M,2,3), age in frames of each segment's end (M,), measured
-    samples (P,3), sample age (P,), track ids (M,)). Segments join consecutive VALID samples of one motion segment
-    within the last ``length`` frames; a frame in ``break_frames`` (first frame after a recording pause) starts over."""
+    samples (P,3), sample age (P,), track ids (M,)). Segments join ADJACENT valid samples of one motion segment within
+    the last ``length`` frames; a frame in ``break_frames`` (first frame after a recording pause) starts over."""
     i = ct.window_of_frame.get(int(frame_index))
     empty = (np.zeros((0, 2, 3), np.float32), np.zeros(0), np.zeros((0, 3), np.float32), np.zeros(0),
              np.zeros(0, np.int64))
@@ -222,19 +222,61 @@ def trail_segments(ct: CameraTracks, frame_index: int, *, length: int = 8, max_t
     xyz, seg = c["xyz"][t0:t_now + 1, cols], c["seg"][t0:t_now + 1, cols]
     valid = (seg >= 0) & np.isfinite(xyz).all(-1)
     segs, ages, ids = [], [], []
-    for a in range(len(xyz) - 1):
-        for b in range(a + 1, len(xyz)):  # next valid sample of the same track (holes bridged only within a segment)
-            m = valid[a] & valid[b] & (seg[a] == seg[b]) & ~valid[a + 1:b].any(0)
-            if m.any():
-                segs.append(np.stack([xyz[a, m], xyz[b, m]], 1))
-                ages.append(np.full(int(m.sum()), len(xyz) - 1 - b))
-                ids.append(cols[m])
+    for a in range(len(xyz) - 1):  # adjacent frames only: no line across an invalid sample
+        b = a + 1
+        m = valid[a] & valid[b] & (seg[a] == seg[b])
+        if m.any():
+            segs.append(np.stack([xyz[a, m], xyz[b, m]], 1))
+            ages.append(np.full(int(m.sum()), len(xyz) - 1 - b))
+            ids.append(cols[m])
     pts_age = np.repeat(np.arange(len(xyz) - 1, -1, -1)[:, None], len(cols), 1)
     if not segs:
         return (np.zeros((0, 2, 3), np.float32), np.zeros(0), xyz[valid].astype(np.float32), pts_age[valid],
                 np.zeros(0, np.int64))
     return (np.concatenate(segs).astype(np.float32), np.concatenate(ages), xyz[valid].astype(np.float32),
             pts_age[valid], np.concatenate(ids))
+
+
+def turbo(x: np.ndarray) -> np.ndarray:
+    """Google's polynomial approximation of the turbo colormap (PointWorld colours flows with turbo over time)."""
+    x = np.clip(np.asarray(x, np.float64), 0, 1)[..., None]
+    c = np.array([[0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943],
+                  [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604],
+                  [0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973]])
+    return np.clip(np.concatenate([x ** k for k in range(6)], -1) @ c.T, 0, 1)
+
+
+def gripper_flow(geom, q: np.ndarray, g: np.ndarray, ok: np.ndarray, k: int, *, length: int, points: int = 48,
+                 seed: int = 0, break_sets: set | None = None):
+    """Robot (gripper) flow at set ``k``: trajectories of ``points`` fixed gripper-surface samples from forward
+    kinematics of the RECORDED joints/gripper state over the last ``length`` sets (segments (M,2,3), age (M,)).
+    Breaks where the robot state is unavailable and after a recording pause, like the tracks."""
+    links = geom.gripper_links()
+    pool = np.concatenate([geom.surface.link_points[n] for n in links])
+    owner = np.concatenate([[n] * len(geom.surface.link_points[n]) for n in links])
+    pick = np.random.default_rng(seed).choice(len(pool), min(points, len(pool)), replace=False)
+    k0 = max(0, k - length)
+    if break_sets:
+        for kk in range(k0 + 1, k + 1):
+            if kk in break_sets:
+                k0 = kk
+    P = []
+    for kk in range(k0, k + 1):
+        if not ok[kk]:
+            P.append(np.full((len(pick), 3), np.nan))
+            continue
+        fk = geom.model.fk(geom.q(q[kk], g[kk]))
+        P.append(np.stack([fk[owner[i]][:3, :3] @ pool[i] + fk[owner[i]][:3, 3] for i in pick]))
+    P = np.asarray(P)
+    segs, ages = [], []
+    for a in range(len(P) - 1):
+        m = np.isfinite(P[a]).all(-1) & np.isfinite(P[a + 1]).all(-1)
+        if m.any():
+            segs.append(np.stack([P[a, m], P[a + 1, m]], 1))
+            ages.append(np.full(int(m.sum()), len(P) - 2 - a))
+    if not segs:
+        return np.zeros((0, 2, 3), np.float32), np.zeros(0)
+    return np.concatenate(segs).astype(np.float32), np.concatenate(ages)
 
 
 def describe(ve: ViewerEpisode) -> dict:

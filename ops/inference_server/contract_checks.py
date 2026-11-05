@@ -131,42 +131,44 @@ def main(argv=None) -> int:
                 got = store.get(f"forward/{b}")
             kmeta = got[1]
             report["forward"].append({"batch": b, "checks": checks, "model": kmeta})
-        # SNeRL scenes
-        meta_ep = load_meta(root, ep)
-        streams = [v.stream_id for v in meta_ep.views()]
-        sets = frame_sets(meta_ep, streams)
-        T = np.stack([accepted_calibration(root, ep, s) for s in streams])
-        lookat = axes_lookat(T)
-        pick = np.linspace(0, len(sets["index"]) - 1, args.snerl_scenes).round().astype(int)
-        import h5py
+        # SNeRL scenes: only when the dataset declares SNeRL (its SAM 3 semantics + DINO teacher exist only then)
+        report["snerl"] = None
+        if "snerl" in (cfg.get("baselines") or []):
+            meta_ep = load_meta(root, ep)
+            streams = [v.stream_id for v in meta_ep.views()]
+            sets = frame_sets(meta_ep, streams)
+            T = np.stack([accepted_calibration(root, ep, s) for s in streams])
+            lookat = axes_lookat(T)
+            pick = np.linspace(0, len(sets["index"]) - 1, args.snerl_scenes).round().astype(int)
+            import h5py
 
-        images, sem = [], []
-        for k in pick:
-            idx = sets["index"][k]
-            images.append(np.stack([read_frames(root, ep, s, [int(idx[v])])[0] for v, s in enumerate(streams)]))
-            row = []
-            for v, s in enumerate(streams):
-                with h5py.File(rio.stage_dir(root, ep, "sam3_masks") / f"{rio.safe_name(s)}.h5", "r") as f:
-                    row.append(f["semantic"][int(idx[v])])
-            sem.append(np.stack(row))
-        Ks = np.stack([meta_ep.stream(s).intrinsics.K() for s in streams])
-        got = store.get("snerl_check")
-        if got is None:
-            out, kmeta, handle = runner.kernel("snerl_check", {"config": args.snerl_config, "lookat": lookat.tolist(),
-                                                               "pose_scale": 4.0, "seed": 0},
-                                               {"images": np.stack(images), "semantic": np.stack(sem), "K": Ks,
-                                                "cam2world": np.linalg.inv(T)}, chunk_id="snerl_check")
-            store.put("snerl_check", out, kmeta)
-            runner.ack(handle)
+            images, sem = [], []
+            for k in pick:
+                idx = sets["index"][k]
+                images.append(np.stack([read_frames(root, ep, s, [int(idx[v])])[0] for v, s in enumerate(streams)]))
+                row = []
+                for v, s in enumerate(streams):
+                    with h5py.File(rio.stage_dir(root, ep, "sam3_masks") / f"{rio.safe_name(s)}.h5", "r") as f:
+                        row.append(f["semantic"][int(idx[v])])
+                sem.append(np.stack(row))
+            Ks = np.stack([meta_ep.stream(s).intrinsics.K() for s in streams])
             got = store.get("snerl_check")
-        out, kmeta = got
-        report["snerl"] = {**kmeta, "scene_sets": pick.tolist(),
-                           "camera_distance_to_lookat_m": [float(np.linalg.norm(-t[:3, :3].T @ t[:3, 3] - lookat))
-                                                           for t in T]}
-        from PIL import Image
+            if got is None:
+                out, kmeta, handle = runner.kernel("snerl_check", {"config": args.snerl_config, "lookat": lookat.tolist(),
+                                                                   "pose_scale": 4.0, "seed": 0},
+                                                   {"images": np.stack(images), "semantic": np.stack(sem), "K": Ks,
+                                                    "cam2world": np.linalg.inv(T)}, chunk_id="snerl_check")
+                store.put("snerl_check", out, kmeta)
+                runner.ack(handle)
+                got = store.get("snerl_check")
+            out, kmeta = got
+            report["snerl"] = {**kmeta, "scene_sets": pick.tolist(),
+                               "camera_distance_to_lookat_m": [float(np.linalg.norm(-t[:3, :3].T @ t[:3, 3] - lookat))
+                                                               for t in T]}
+            from PIL import Image
 
-        Image.fromarray(np.concatenate([np.concatenate(list(x), 1) for x in out["images128"]], 0)).save(
-            out_dir / "snerl_scenes_128.png")
+            Image.fromarray(np.concatenate([np.concatenate(list(x), 1) for x in out["images128"]], 0)).save(
+                out_dir / "snerl_scenes_128.png")
     finally:
         pool.close()
         report["persistence_audit"] = server.audit_end(audit)
@@ -175,8 +177,10 @@ def main(argv=None) -> int:
     print(json.dumps({"validate_batch": report["dataset"]["validate_batch"],
                       "forward_finite": [f["model"].get("finite") for f in fw],
                       "forward_total": [f["model"].get("total") for f in fw],
-                      "snerl_finite": [s["finite"] for s in report["snerl"]["scenes"]],
-                      "dino_equal": [s["dino_worker_equals_consumer"] for s in report["snerl"]["scenes"]],
+                      "snerl_finite": [s["finite"] for s in report["snerl"]["scenes"]] if report["snerl"] else
+                      "not run (SNeRL not declared for this dataset)",
+                      "dino_equal": [s["dino_worker_equals_consumer"] for s in report["snerl"]["scenes"]]
+                      if report["snerl"] else None,
                       "audit_ok": report["persistence_audit"]["ok"]}, indent=1))
     return 0
 
