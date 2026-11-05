@@ -38,10 +38,7 @@ def sets_policy(root, episode_id, stage: str = "mapanything_depth") -> dict:
     viewers): ``max_sync_ns`` and ``allow_unmatched`` from its record, defaults when absent."""
     rec = rio.read_record(rio.stage_dir(root, episode_id, stage))
     cfg = (rec or {}).get("config", {})
-    out = {}
-    if cfg.get("allow_unmatched"):
-        out = {"max_sync_ns": int(cfg["max_sync_ns"]), "allow_unmatched": True}
-    return out
+    return {k: cfg[k] for k in ("max_sync_ns", "allow_unmatched") if k in cfg}
 
 
 def depth_file(root: Path, episode_id: str, stage: str, stream_id: str) -> Path:
