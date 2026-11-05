@@ -33,7 +33,7 @@ records = track_everything(
 ```
 
 The same runner interface supports a persistent remote worker: one request is one
-camera clip, not one query window. Workers cache the model and checkpoint hash per
+camera's query window, with exactly the frames sent to AllTracker. Workers cache the model and checkpoint hash per
 process/session. `LocalRunner` uses a fresh subprocess per request, like the other
 workers, so it reloads weights between clips; use a persistent runner for real runs.
 The worker validates the local checkpoint before any upstream import. Only the
@@ -45,14 +45,15 @@ Conventions, verified against TrackEverything commit
 
 | Decision | Adapter location | Upstream reference |
 | --- | --- | --- |
-| Mandatory metric camera-z depth, continuous K, OpenCV world-to-camera pose; geometry estimation bypassed | `workers/trackeverything_worker.py:136` | `demo_hf.py:752-800` |
-| Select `geometry_backend="pi3"` for cam0/scale preprocessing; estimator stays lazy | `workers/trackeverything_worker.py:105` | `demo_hf.py:488-508`, `626-641` |
-| RGB Lanczos and depth exact nearest; 480x640 to 384x512 scales both first K rows by 0.8 | `trackeverything_stage.py:70` | `utils/common_utils.py:214-231` uses arange+0.5; `demo_hf.py:583-585` is the scaling we bypass |
-| Original query-grid centres `(col+.5,row+.5)` use the same continuous resize affine, without snapping | `trackeverything_stage.py:183`, `198` | `demo_hf.py:820-840` preserves supplied query coordinates with input resolution enabled |
-| Undo scale first, then pose: `X_base = inv(E0) [norm_factor * X_pred; 1]`, with original metric E0 | `workers/trackeverything_worker.py:55` | `demo_hf.py:190-192`, `626-641` |
-| Mask frames before the exact query birth, including earlier frames in its birth window | `workers/trackeverything_worker.py:74` | `models/track_everything.py:526-532`, `1385-1401` |
-| Visibility is sigmoid(logit), confidence is 1; OUT precedes OCCLUDED; 3D positions are NaN unless VALID | `trackeverything_stage.py:89` | `models/track_everything.py:477-479`, `1390-1401`; repository `tracking.STATUS` |
-| Temporary forward hook obtains dynamic logits without upstream edits, then removes itself even on failure | `workers/trackeverything_worker.py:112` | `training/datatypes.py:320`, `models/track_everything.py:1403-1413`, `1578-1618`; `demo_hf.py:896-900` omits them |
+| Mandatory metric camera-z depth, continuous K, OpenCV world-to-camera pose; geometry estimation bypassed | `workers/trackeverything_worker.py:handle` | `demo_hf.py:752-800` |
+| Select `geometry_backend="pi3"` for cam0/scale preprocessing; estimator stays lazy | `workers/trackeverything_worker.py:_model` | `demo_hf.py:488-508`, `626-641` |
+| RGB Lanczos and depth exact nearest; 480x640 to 384x512 scales both first K rows by 0.8 | `trackeverything_stage.py:resize_inputs` | `utils/common_utils.py:214-231` uses arange+0.5; `demo_hf.py:583-585` is the scaling we bypass |
+| Original query-grid centres `(col+.5,row+.5)` use the same continuous resize affine, without snapping | `trackeverything_stage.py:track_everything` | `demo_hf.py:820-840` preserves supplied query coordinates with input resolution enabled |
+| Query depth uses `depth[t, floor(y), floor(x)]`, preserving the continuous ray; missing depth is never invented | `workers/trackeverything_worker.py:continuous_query_unprojection` | Replaces `demo_hf.py:196-246`; upstream rounds at :223-226 and fills missing depth at :228-232 |
+| Undo scale first, then pose: `X_base = inv(E0) [norm_factor * X_pred; 1]`, with original metric E0 | `workers/trackeverything_worker.py:predictions_to_base` | `demo_hf.py:190-192`, `626-641` |
+| Mask frames before the exact query birth, including earlier frames in its birth window | `workers/trackeverything_worker.py:predictions_to_base` | `models/track_everything.py:526-532`, `1385-1401` |
+| Visibility is sigmoid(logit), confidence is 1; OUT precedes OCCLUDED; 3D positions are NaN unless VALID | `trackeverything_stage.py:query_chunks` | `models/track_everything.py:477-479`, `1390-1401`; repository `tracking.STATUS` |
+| Temporary forward hook obtains dynamic logits without upstream edits, then removes itself even on failure | `workers/trackeverything_worker.py:infer_queries` | `training/datatypes.py:320`, `models/track_everything.py:1403-1413`, `1578-1618`; `demo_hf.py:896-900` omits them |
 
 Queries use exactly `pipeline.chunk_queries(n, window, step)` on each camera's
 full timeline and `query_grid(original_hw, grid_stride, grid_stride//2)`. For the
@@ -60,12 +61,20 @@ full timeline and `query_grid(original_hw, grid_stride, grid_stride//2)`. For th
 subpixel coordinates on the model grid; replacing them with a new integer grid
 would change the queried rays. We preserve the original rays.
 
-A pause is any interval greater than 1.5 times that camera's median period. Clips
-never cross pauses or cameras. Segments up to 64 frames use one clip. Longer
-segments overlap enough to contain each entire query window in exactly one clip;
-the first query after a pause can be off the segment boundary. Query identities
-stay global. A window crossing a pause retains its original frame list, with all
-post-pause entries NOT_TRACKED. `window` must be at most 64.
+One clip is one `chunk_queries` window, at most 16 frames (one TE model window),
+including frames after a recording pause. Inference never splits at pauses. Both
+trackers use the same downstream `track_motion` pause segmentation.
+
+Queries require valid birth depth on our original grid and at their exact resized
+lookup cell. Both use lift3d's 3x3 test: every neighbour must be finite, positive
+and within 5% of the centre. Unsupported queries are excluded from worker inputs;
+their identities remain in the output with NO_DEPTH or EDGE at birth and
+NOT_TRACKED elsewhere. Each camera records `queries`, `unsupported_birth_depth`
+and `unsupported_birth_edge`. A clip with no supported queries skips inference.
+Our worker replaces upstream `_unproject_2d_to_3d` in memory, using floor lookup
+and rejecting missing depth. Upstream's boundary-depth replacement of the dense
+geometry inputs remains TE preprocessing (`demo_hf.py:619-624`,
+`datasets/data_ops.py:1244-1245`) and is disclosed in worker/record metadata.
 
 Each clip is saved through `ChunkStore.put` (arrays plus hash-checked manifest,
 fsync) before `runner.ack`. The cache survives either stage failing and is cleaned
@@ -82,8 +91,8 @@ not dynamic classification, and discards clip caches on successful completion.
 Validation uses `synthetic.py` ray-cast geometry exposed as RGB-D, a file-protocol
 oracle returning normalized cam0 predictions, and a fake torch module to check
 the hook. It does not execute any upstream model code. It checks metric recovery,
-births, visibility/status, grid/resize rays, pause boundaries, bounded overlapping
-clips, durable saves, resuming either stage, and unchanged motion/export/viewer
+births, visibility/status, grid/resize rays and query-depth lookup, unsupported
+births, identical AllTracker inference frames across pauses, durable saves, resuming either stage, and motion/export/viewer
 consumers. The existing pipeline suite is also run.
 
 Open validation items:
@@ -93,10 +102,3 @@ Open validation items:
   lock. `setup_envs.sh` documents torch 2.8.0+cu129, Python 3.10, the pt28cu129
   torch_scatter wheel, and a matching-ABI local wheel fallback if sm_120 fails.
   No setup, downloads, or server actions were performed.
-- Upstream still filters supplied depth (`demo_hf.py:618-624`,
-  `datasets/data_ops.py:1229-1252`). Its sparse query depth lookup rounds continuous
-  x/y to integer indices and substitutes neighbouring mean depth or normalized
-  depth 1 when zero (`demo_hf.py:223-232`). We preserve the required public API
-  and continuous rays. Whether to reject queries born on invalid supplied depth
-  rather than accept that upstream fallback remains a policy choice; the model's
-  finite prediction/visibility determines the present output status.

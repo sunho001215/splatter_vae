@@ -195,7 +195,10 @@ coefficients mean no distortion, whatever the model name.
 - **`foundation_stereo_filtered`** (E3 input): keeps a `foundation_stereo_depth` colour pixel only if its source IR
   pixel passes the left-right consistency check `|d_L(x) - d_R(x - d_L(x))| <= max_lr_error_px` (1.0 px). It only
   invalidates: retained values are asserted bitwise identical; no erosion/dilation (thin structures keep their
-  pixels unless they fail the check). Thresholds and retained fractions are in the record.
+  pixels unless they fail the check). Both right-disparity interpolation taps must be finite and exceed
+  `min_disparity`. LR errors are stored and thresholded as float32. The IR contract requires
+  `T_right_left[0,3] < 0` for the positive left-minus-right disparity convention.
+  Thresholds and retained fractions are in the record.
 
 All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-z metres, `valid` bool, and attrs
 `K`, `stream_id`, `rig_id`, `grid`. MapAnything also writes confidence, non-ambiguity and pose/scale diagnostics.
@@ -375,11 +378,28 @@ accepted `T_cam_base` are passed, so its geometry estimation is bypassed (`geome
 cam0 alignment and median-distance normalisation of training; Pi3 itself is never loaded). Frames are resized to the
 training resolution 512x384 (`K[:2] *= 0.8`, continuous convention, RGB Lanczos, depth nearest) with
 `use_input_resolution=True`. Queries are EXACTLY AllTracker's (`chunk_queries` frames, `query_grid` pixels mapped by
-the same affine); clips never cross a recording pause and hold at most 64 frames. Outputs go to the `track2d` and
+the same affine); each clip is one query window of at most 16 frames, including frames across recording pauses.
+Pause segmentation remains downstream in `track_motion` for both trackers. Births with missing depth or a 3x3
+depth spread above 5% are excluded from inference and counted; they remain NO_DEPTH/EDGE at birth and NOT_TRACKED
+elsewhere. Our worker uses floor query-depth lookup without filling holes. TE's own dense boundary-depth
+replacement is retained and disclosed in metadata. Outputs go to the `track2d` and
 `lift3d` stage directories of a separate root (`<variant>-TE`), with base-frame positions
 `X_base = E0^-1 [norm * X; 1]`, sigmoid visibility and the lift3d status codes, so `track_motion`, `export` and the
 viewer run unchanged. Settings live under `tracker_comparison.track_everything` so a default base run never replaces
 AllTracker tracks.
+
+Variant roots reuse shared stages through symlinks. The CLI excludes these stages from default dispatch and
+refuses explicit shared-stage requests; `run_stage` also refuses a symlinked stage directory, including with
+`force`. Calibration settings stay in the variant config for downstream readers. `depth_compare_variants` checks
+saved depth and lift3d calibration build IDs before comparing, allowing sensor/IR depth to be calibration-independent.
+Its edge-to-RGB diagnostics use pixels valid in every compared source. Thin/small-structure retention is depth
+coverage (not correctness) within 3 px of SAM 3 object/fixture mask boundaries. Pairwise and joint cross-view
+aggregates are reported for all sets and separately for independent sets: none of an independent set's camera-frames
+may be calibration evidence for that camera.
+
+The viewer uses the root's saved MapAnything synchronization policy, or `pipeline.yaml` if the stage is absent,
+and otherwise requires strict pairing. Multi-camera playback contains only synchronized sets; unmatched frame
+indices are reported by `viewer_data.describe()`.
 
 ### 4.7 Optional, baseline-only stages (`baseline_stages.py`)
 **Scope (2026-11-05): only our method is pretrained on DROID.** DROID configs run no SAM 3/DINO baseline
