@@ -35,7 +35,14 @@ def default_stages(cfg: dict) -> list[str]:
     from s4d.realworld.baseline_stages import required_baseline_stages
 
     st = cfg.get("stages") or {}
-    return [s for s in STAGES if s not in OPTIONAL_STAGES or s in st] + list(required_baseline_stages(cfg))
+    stages = [s for s in STAGES if s not in OPTIONAL_STAGES or s in st] + list(required_baseline_stages(cfg))
+    variant = cfg.get("depth_variant")
+    if variant:
+        shared = {"ingest", *variant["shared_stages"]}
+        if variant.get("tracker") == "trackeverything":
+            shared |= {"track2d", "lift3d"}  # emitted together by track_everything
+        stages = [s for s in stages if s not in shared]
+    return stages
 
 
 def check_stage_scope(cfg: dict, wanted) -> None:
@@ -43,6 +50,10 @@ def check_stage_scope(cfg: dict, wanted) -> None:
     and optional stages without a configuration."""
     from s4d.realworld.baseline_stages import required_baseline_stages
 
+    variant = cfg.get("depth_variant")
+    shared = sorted(set(wanted) & {"ingest", *variant["shared_stages"]}) if variant else []
+    if shared:
+        raise ValueError(f"stages {shared} are shared/frozen in this depth variant; run them in the base root")
     extra = sorted(set(wanted) & set(BASELINE_STAGES) - set(required_baseline_stages(cfg)))
     if extra:
         raise ValueError(f"baseline stages {extra} are not needed by this config's declared baselines "

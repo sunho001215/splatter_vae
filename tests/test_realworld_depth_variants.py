@@ -97,3 +97,97 @@ def test_trackeverything_roots_use_the_variant_depth_and_never_touch_the_base_tr
         assert te["depth_stage"] == depth and te["grid_stride"] == base["stages"]["track2d"]["grid_stride"]
         assert te["window"] == base["stages"]["track2d"]["window"] and te["step"] == base["stages"]["track2d"]["step"]
     assert "track2d" not in shared_stages("trackeverything") and set(shared_stages("alltracker")) == set(SHARED)
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("complete", [False, True])
+def test_shared_stage_symlink_refuses_build_even_under_force(tmp_path, force, complete):
+    from s4d.realworld import io as rio
+
+    base, shared = tmp_path / "base", tmp_path / "shared"
+    opts = dict(stage="calibrate", version="test", config={}, inputs={}, build=lambda _: {})
+    if complete:
+        rio.run_stage(base, **opts)
+    shared.symlink_to(base)
+    with pytest.raises(RuntimeError, match="refusing to build shared stage calibrate.*symlink"):
+        rio.run_stage(shared, force=force, **opts)
+    assert shared.is_symlink() and base.exists() == complete
+
+
+@pytest.mark.parametrize("tracker", ["alltracker", "trackeverything"])
+def test_variant_cli_excludes_and_refuses_frozen_stages(tracker):
+    from pathlib import Path
+
+    from ops.inference_server.run_depth_variants import variant_config
+    from s4d.realworld.cli import adapter_config, check_stage_scope, default_stages
+
+    base = yaml.safe_load(open("configs/realworld/mug_hanging_ep1.yaml"))
+    cfg = variant_config(base, "E2", Path(f"/tmp/x/E2-{tracker}"), tracker)
+    frozen = cfg["depth_variant"]["shared_stages"] + ["ingest"]
+    assert not set(frozen) & set(default_stages(cfg))
+    check_stage_scope(cfg, default_stages(cfg))
+    for stage in frozen:
+        with pytest.raises(ValueError, match="shared/frozen.*base root"):
+            check_stage_scope(cfg, [stage])
+    assert adapter_config(cfg) == adapter_config(base)  # retain calibration settings needed by readers
+
+
+def _record(root, stage, inputs=None, force=False):
+    from s4d.realworld import io as rio
+
+    return rio.run_stage(rio.stage_dir(root, "ep", stage), stage=stage, version="test", config={},
+                         inputs=inputs or {}, build=lambda _: {}, force=force)
+
+
+def test_comparison_rejects_stale_depth_even_when_calibration_matrices_match(tmp_path):
+    from ops.inference_server.depth_compare_variants import verify_calibration_inputs
+
+    base, variant = tmp_path / "base", tmp_path / "E1"
+    cal = _record(base, "calibrate")["build_id"]
+    depth = _record(variant, "mapanything_depth", {"calibrate": cal})["build_id"]
+    _record(variant, "lift3d", {"calibrate": cal, "mapanything_depth": depth})
+    assert verify_calibration_inputs(base, "ep", {"E1": variant}, {"E1": "mapanything_depth"}) == cal
+    # An identical calibration config/summary still has a new build id after a forced rebuild.
+    _record(base, "calibrate", force=True)
+    with pytest.raises(SystemExit, match="stale mapanything_depth.*calibrate input"):
+        verify_calibration_inputs(base, "ep", {"E1": variant}, {"E1": "mapanything_depth"})
+
+
+def test_comparison_requires_each_variants_lift_calibration_input(tmp_path):
+    from ops.inference_server.depth_compare_variants import verify_calibration_inputs
+
+    base, variant = tmp_path / "base", tmp_path / "E2"
+    cal = _record(base, "calibrate")["build_id"]
+    _record(variant, "mapanything_depth", {"calibrate": cal})
+    _record(variant, "lift3d")
+    with pytest.raises(SystemExit, match="stale lift3d.*missing base calibrate"):
+        verify_calibration_inputs(base, "ep", {"E2": variant}, {"E2": "mapanything_depth"})
+
+
+def test_sensor_and_fs_depth_can_be_calibration_independent_but_lift_cannot(tmp_path):
+    from ops.inference_server.depth_compare_variants import verify_calibration_inputs
+
+    base = tmp_path / "base"
+    cal = _record(base, "calibrate")["build_id"]
+    for name, stage in (("B0", "sensor_depth"), ("B1", "foundation_stereo_depth")):
+        _record(base, stage)
+        _record(tmp_path / name, "lift3d", {"calibrate": cal})
+        assert verify_calibration_inputs(base, "ep", {name: base}, {name: stage}) == cal
+        _record(tmp_path / name, "lift3d", {"calibrate": "old"}, force=True)
+        with pytest.raises(SystemExit, match="stale lift3d.*calibrate input"):
+            verify_calibration_inputs(base, "ep", {name: base}, {name: stage})
+
+
+def test_filtered_depth_checks_transitive_calibration_and_input_builds(tmp_path):
+    from ops.inference_server.depth_compare_variants import verify_calibration_inputs
+
+    base = tmp_path / "base"
+    cal = _record(base, "calibrate")["build_id"]
+    fs = _record(base, "foundation_stereo_depth", {"calibrate": "old"})["build_id"]
+    _record(base, "foundation_stereo_filtered", {"foundation_stereo_depth": fs})
+    with pytest.raises(SystemExit, match="stale foundation_stereo_depth.*calibrate input"):
+        verify_calibration_inputs(base, "ep", {"B1f": base}, {"B1f": "foundation_stereo_filtered"})
+    _record(base, "foundation_stereo_depth", {"calibrate": cal}, force=True)
+    with pytest.raises(SystemExit, match="stale foundation_stereo_filtered.*input foundation_stereo_depth"):
+        verify_calibration_inputs(base, "ep", {"B1f": base}, {"B1f": "foundation_stereo_filtered"})
+

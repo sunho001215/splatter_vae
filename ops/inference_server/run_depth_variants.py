@@ -60,7 +60,8 @@ def variant_config(base: dict, name: str, root: Path, tracker: str = "alltracker
             raise SystemExit("base config lacks tracker_comparison.track_everything")
         st["track_everything"] = {**te, "depth_stage": depth}
     cfg["depth_variant"] = {"name": name, "mapanything_input": ma_input, "depth_stage": depth, "tracker": tracker,
-                            "base_root": base["output_root"], "shared_stages": list(shared_stages(tracker))}
+                            "base_root": base["output_root"], "shared_stages": list(shared_stages(tracker)) +
+                            (["mapanything_depth"] if tracker == "trackeverything" and ma_input else [])}
     return cfg
 
 
