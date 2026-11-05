@@ -7285,3 +7285,59 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   estimation route; role-aware drivers (branch server-roles-20261106); real-world baselines + offline FQL design
   (branch realworld-fql-20261106); storage audit/cleanup on both hosts. Arrivals at 02:20: drawer-open 33 files,
   mug-hanging 20 files.
+
+## 2026-11-06 04:55 KST — Compact real-world training format; cleanup; integrated release candidate d0c5c19
+
+- **Correction (user ~03:00):** the remote "1 TB" is a RAM limit (the remote driver's `CAP` already sums `ram_gb`), not a
+  disk allocation; the disk margin is >= 15 % SSD free. Cleanup first; then a compact real-world training format.
+- **Cleanup (executed ~03:10-04:20, log `/home/ws/ws/realworld-ops/cleanup/executed-actions.jsonl`):** local ~416 GiB
+  (FlashSAC/SAC replay of stopped families 274 GiB, RL intermediate checkpoints 97 GiB, partial caches 14.5 GiB, 26 closed
+  DrM replay buffers 15.2 GB via `cleanup_replay --run`, pretraining intermediates 8.9 GiB, stale pytest scratch 2.7 GB,
+  uv cache 3.2 GB); remote 165.5 GiB (verification pytest scratch 53.7 GiB, RL intermediates 100.6 GiB, pretraining
+  intermediates 11.3 GiB, 61 exited campaign containers removed after archiving inspect/logs/diff). Kept: final/latest
+  and 100k-multiple checkpoints, exports, every path referenced by registry/results/reports, cst50/cst75, paused
+  families, remote W&B, unpinned releases, the old real-world processed roots (until the new format's consumers are
+  verified). Remote free 2.49 TB (33 %). No other user's file, container, volume or process touched; no prune.
+- **Compact training format `s4d.realworld.train/1.0.0`** (branch realworld-format-20261106, 07decaa): preprocessing
+  stays at 640x480; the training store is one `train_data/<ep>/episode.h5` per episode with per-camera 128x128 RGB
+  uint8 (antialiased center 480x480 crop) stored once per frame, float32 depth (lossless, nearest native pixel),
+  semantic uint8, K/K_native/crop affine/w2c, timestamps/segments, robot state, compact base-frame moving tracks, a sync
+  table with native-depth gripper-visibility bits. Windows and viewpoints are drawn in the loader
+  (`RealworldWindowDataset`); FQL reads per-camera frames through `CompactStore` (FrameStore protocol); SNeRL DINO
+  targets online (no DINO dataset); high-resolution viewer geometry is a separate optional stage (`vis_geometry`).
+  Measured on four processed episodes: 39-51 MB per episode vs 1.52-1.97 GB for the former two-resolution window export
+  (x37.7-38.9); identical window sets, camera frames, w2c, gripper points and track supervision vs the old export
+  (covering: 64/450 windows where the gripper leaves the square crop; supervised pairs kept 98.25-100 %). A uint16 depth
+  variant (x52) was rejected as lossy. Two Codex reviews addressed.
+- **Integration candidate 4fff862** (`release-20261106a`, pushed to origin/splatter4d; = d0c5c19 + REL-A b06a4a2 adapter review fixes, 592 cross-branch tests): 6a3afb3 + server roles
+  (416e4c0) + DROID far4 (2afe54e) + consolidation (2837724) + compact format (07decaa) + real-world FQL (f2ac6a4) + two
+  cross-branch test updates (isolation allowlist adds `s4d/rwlearn/`; empty compact store raises). 591 cross-branch tests
+  pass locally. Remote release chain on the accepted derived image (59082834, tag cc); a first chain started on the base
+  image c3ffea7f was stopped by the coordinator (its verify job left to finish). Main is fast-forwarded and the suite
+  evidence adopted only after the chain passes; the role-separation hold stays in place until the role-aware driver
+  runs from the merged main.
+- **Ingestion (04:46):** drawer-open received 100/100, validated 100/100, transferred 15/100; mug-hanging received 34,
+  validated 33 (1 inside the upload grace window), transferred 3/100. Upload 600 KiB/s (~4 min per episode).
+  Preprocessing waits for the release (no partial-data pretraining; the 100-episode gate per task holds).
+- **Merge 06:14:** release chain for 4fff862 on the derived image (59082834, tag cc): remote native suite 1823 passed /
+  0 failed / 0 skipped (verify-native-4fff862-cc), four one-UUID isolation checks done, acceptance manifest
+  `runs/remote/acceptance/4fff862-cc/manifest.json` ACCEPTED (93895f78). Main fast-forwarded 6a3afb3 -> 4fff862 and the
+  suite evidence adopted under both driver locks (`runs/setup/tools/merge_adopt_4fff862_20261106.py`); the
+  role-separation hold stays (remote real-world preprocessing runs in its own rwprep containers outside the scheduler,
+  so the remote driver admits nothing next to it). Remote CSW4 stick-push rows all exited 0 by 05:14; only
+  `cst50-drm-stick-push-s2002-eval` (launch refused 01:05) awaits the user's reconciliation.
+- **Remote preprocessing (agent PRE):** image `s4d-rwprep-f7e075f51c79:20261106` (built on the derived runtime image;
+  FoundationStereo / TrackEverything / SAM 3 envs = RTX 5090 freezes; weights pinned by sha256 incl. TE's hidden
+  DINOv2 ViT-S/14 hub weight), runner = `ops/inference_server/run_episode.py` with persistent local stream workers
+  (bitwise equal to LocalRunner for FS/SAM 3/calibration, 5.2x faster on FS). Validation on 4fff862: drawer-open ep0
+  (1,558 s) and mug-hanging ep1 (~1,642 s) pass every QA gate and the new-format contract checks; normalized frames and
+  sensor depth bitwise equal to the RTX 5090 run. Calibration finding: the extrinsic objective is flat (2-10 of 13
+  starts within 0.5 mm of the best cost, poses up to ~2.7 deg / 44 mm apart), so tiny mask differences move a camera by
+  ~1-1.3 deg / 12-15 mm while the reported covariance std is ~0.15 deg / 1.5 mm; identical inputs reproduce exactly; QA
+  soft flag added (method decision pending with the user). Storage ~17 MB per 3-camera frame (~663 GB for 200
+  episodes; FS diagnostic arrays 9.1 MB/frame are read by nothing that remains — compaction to be decided).
+- **Bulk preprocessing started 06:15:** dispatcher profile release-4fff862 (allow-list lifted), loop
+  `/home/ws/ws/realworld-ops/pre/tools/prep_loop.sh` (5 min; at most 2 jobs per allowlisted GPU, RAM/SSD checks;
+  stage records copied into the ingest manifest via set-stage for the FQL gate). Estimated ~15-17 h of GPU time for
+  200 episodes; ingestion upload (~18 h at 600 KiB/s) is the pacing item. No pretraining/FQL before a task's 100
+  episodes all pass (gate).

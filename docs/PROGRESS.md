@@ -47,6 +47,9 @@ diff inline.
   one RTX 5090), FoundationStereo -> MapAnything (`ops/inference_server/README.md`). DONE 2026-11-05: merged at
   cec4b00 (remote suite 1604/0, adopted 05:49). Full episode processed (`/home/ws/ws/realworld-20261104/processed/final-*`);
   refactor pass 4 reruns are bitwise equal to the c09c226 baseline (EXPERIMENT_LOG 2026-11-05 06:10).
+  SUPERSEDED 2026-11-05/06: the standard own-rig path is B1 FoundationStereo (IR pair) + TrackEverything; MapAnything,
+  AllTracker and the raw-DROID estimation route are retired (consolidation 2837724/b06a4a2, `docs/realworld_preprocessing.md`
+  section 10); the training store is the compact 128x128 format (EXPERIMENT_LOG 2026-11-06 04:55).
 - **Scheduling (2026-11-02 14:49):** local controllers own dispatch again. The remote runner was stopped via STOP and
   162 launches reconciled (EXPERIMENT_LOG 2026-11-02). The temporary validation reservation (MIG-8da55219,
   MIG-c4ec2a95, 50 GB RAM) was released at 19:21; record in `runs/setup/handback-20261102/`.
