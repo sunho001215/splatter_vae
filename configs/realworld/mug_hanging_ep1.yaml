@@ -96,8 +96,11 @@ stages:
   track_motion: {min_segment_samples: 5, max_depth_hole_frames: 2, max_gap_factor: 1.5, max_speed_m_s: 1.5,
                  reference_robot_distance_m: 0.15, reference_quantile_move: 0.995, reference_quantile_static: 0.9,
                  min_move_px: 1.5, min_move_m: 0.005, min_support: 2}
+  # max_sync_ns: same 30 ms mutual-pairing tolerance as mapanything_depth (the default third of a period, 22.2 ms, is
+  # below camera 135122076054's constant 22.9 ms offset and would leave no three-camera window; < half a period keeps
+  # matches unique)
   export: {strides: [1, 2], validation_tail_frames: 0, max_gap_factor: 1.5, aspect: center_crop,
-           track_source: track_motion}
+           track_source: track_motion, max_sync_ns: 30000000}
   sam3_masks:
     # "robotic gripper" (and gripper/black gripper/parallel gripper/two-finger gripper/gripper fingers) found nothing on
     # this black Robotiq 2F-85 (probe 2026-11-05, realworld-20261104/probes/sam3-gripper-20261105); "end effector"
