@@ -6989,3 +6989,268 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   - Its evidence was adopted (`adopt_remote_suite_evidence.py`) together with the ff-merge to 9556b0c, under both
     driver locks and a remote admission hold (06:09–06:12). The previous evidence is kept as
     `runs/setup/tests.before-adoption-20261103-061027.json`.
+
+### 2026-11-04 12:40–14:45 — Hybrid supervision, remote-capacity investigation, CSW4 tube-ratio pre-registration
+
+- **Hybrid (chlhm) progress:**
+  - All 8 pretrainings and exports are done. DrM is complete for 4 of 8 tasks (bin-picking, door-open, hammer,
+    pick-place).
+  - peg-insert-side, peg-unplug-side, stick-push and coffee-push are running. coffee-push s2002 is waiting for remote
+    capacity.
+  - A launch-refused evaluator, `chlhm-drm-peg-unplug-side-s2001-eval`, was reconciled with
+    `reconcile_unlaunched_remote.py` at 13:01: no container and no output existed. Attempt 2 is running.
+- **Stale scheduler daemon:**
+  - `chlhm-export-seed0-coffee-push-200k` exited 0 on the remote, but its verification failed with
+    `ValueError: unknown encoder mask_mode 'hybrid'` (13:21).
+  - Cause: the daemon (started 11-02 14:47) still held pre-hybrid modules. Driver passes are fresh processes.
+  - Fix: the daemon was restarted at 13:25 with the identical command, while a helper held the registry lock (no tick
+    in progress). Local jobs run in their own sessions (setsid) and were not touched.
+  - The export verified at 13:27 and its 3 DrM pairs were admitted at 13:31.
+  - Durable fix (commit 5b42a1a/f09897c): the daemon re-executes itself in place between ticks. It does so only when its
+    sources change to the suite-tested fingerprint and that fingerprint is stable over two checks; failures are logged
+    and the loaded code is kept. It also reaps launch wrappers. Codex review in `validation-20261031/codex/sf1`.
+- **Remote blockers measured (13:20; authorized GPUs 4391/6122/9e9f/ca65 only; GPUs 4-7 belong to another user):**
+  - Every ready row is blocked only by the driver's static load estimate: 4.0 / 4.0 / 3.7 / 3.9 against the 4.0
+    limit.
+  - Other limits were not binding: declared VRAM 29–48 / 90 GB, declared RAM about 300 GB / 1 TB, no hold, releases
+    accepted, dependencies met.
+  - Measured use: 9–23 GiB of 96 GiB VRAM per GPU, 86–98 % util, host RAM 1.3 TB free.
+  - No stale reservations: every reserving row has a live container.
+- **One controlled concurrency trial (user-authorized):**
+  - Setup: `chlhm-drm-stick-push-s2002` on ca65, estimate 3.9 -> 4.4, from 13:48. Tool
+    `runs/setup/tools/remote_load_trial_20261104.py`, Codex lt2. Criteria fixed beforehand
+    (`runs/setup/remote-load-trial-criteria-20261104.md`).
+  - Incumbents fell to 0.86–0.90 of baseline (control-adjusted; controls 0.997). The added job ran at 0.90 of its
+    siblings.
+  - Net useful throughput was +0.29 job-equivalents (+6 %); DrM steps/s on the GPU rose 214 -> 236. No memory
+    pressure.
+  - **Inconclusive** by the registered bands, so nothing further was admitted and the admission model is unchanged.
+    The GPU is near compute saturation. The trial row keeps running. Record:
+    `runs/setup/remote-load-trial-20261104-result.json`.
+- **Artifacts (Design page and hub):** new figure `masking_status`.
+  - Complete 8-task contrasts of chl, chlrm and CSW4.
+  - The chlhm contrasts are interim: 4/8 tasks, open markers, no verdict.
+- **CSW4 tube ratio (user directive 2026-11-04):**
+  - Arms: cst50 / cst75 = the CSW4 stack with `--set model.encoder.mask_mode=tube model.encoder.mask_ratio=0.5|0.75`.
+    The resolved diff is mask_ratio only (tests/test_cst_configs.py, plus the registration self-check over all 8
+    tasks).
+  - Motion quota = keep // 2: 16 at 0.50, 8 at 0.75.
+  - Pre-registration: `runs/setup/cst-definition-20261104.json`. Primary measure: training-camera success AUC over
+    1M, 8-task equal-task mean, task-stratified bootstrap (B = 10000). Analysis script: `src/cst_rl.py`.
+  - Release: fd5e950 (s4d = main). Rows are routed after hybrid and before everything else (commit 2bbe14e).
+  - Pairing: both arms of a task on one host (pin_host). hammer, pick-place and bin-picking run locally; the other
+    five move to the remote whole.
+  - Codex reviews cst1–cst3 (GO after fixes).
+  - Smoke (`runs/setup/cst-smoke-20261104.json`): both arms train and stop/resume. Resumed loss at step 200 equals
+    the uninterrupted run within 1e-5.
+- **Hybrid analyses as scheduler rows:**
+  - Representation runs remotely (`ana-chlhm-repr-*`, `scripts/encp_repr_diagnostics.py`): data already there,
+    89.7 MB of exports uploaded with checksums inside the transfer budget.
+  - Rendering runs locally (`ana-chlhm-render-*`). Remote would need about 1.0 GB of transfers (about 1.6 h at
+    200 KiB/s), and the metric packages (lpips, scikit-image) are not in the remote image.
+  - Release chain for 7643e9d (suite evidence + analysis release) in progress.
+- **15:16–15:20 — integration and registration:**
+  - Release chain 7643e9d accepted (`runs/remote/acceptance/7643e9d-cc/`): remote native suite 1502 passed, 0 failed,
+    0 skipped; four isolation checks passed. The first attempt failed only on a short hash.
+  - Main fast-forwarded 1e7aca1 -> 7643e9d and the suite evidence adopted, under both driver locks and the remote hold
+    (15:16:53–15:16:55; `merge_adopt_7643e9d_20261104.py`). Previous evidence: `runs/setup/tests.before-adoption-20261104.json`.
+  - Daemon restarted at 15:17 under the registry lock, so it now runs the self-refresh guard.
+  - Analysis release: `runs/setup/analysis-release-20261104.json` (7643e9d).
+  - CSW4 tube ratio: 128 rows registered (`runs/setup/cst-registration-eight-task-20261104.json`). The five remote tasks
+    were moved whole for both arms: 10 pretrainings, then 10 exports, then 60 DrM rows. hammer, pick-place and
+    bin-picking stay local (pin_host).
+  - Hybrid analyses: 16 rows registered (`runs/setup/ana-chlhm-registration-20261104.json`): 8 local rendering, 8
+    remote representation. Inputs are checksum-verified (11 already present, 13 uploaded,
+    `runs/remote/analysis-inputs/`).
+  - Render rows amended to priority 0 under the locks (backup `ana-chlhm-registration-20261104.before-priority-20261104.json`),
+    so they run before the local CSW4 pretrainings.
+- **16:03–17:06 — first launches and a scheduling-order fix:**
+  - Remote: cst50 pretrainings coffee-push (16:03) and door-open on ca65, peg-insert-side (16:48) on 4391, all on
+    fd5e950. The coffee-push config was checked on the remote: tube 0.5, patch_cnn 256/4/4, chamfer 5, seed 0, 200k.
+  - First analysis row, `ana-chlhm-repr-hammer` (7643e9d, 9e9f, 22 s), finished, verified, synced. Its chlrm and
+    chamfer_lean numbers equal the earlier local run (`encp/repr__hammer.json`) to every digit: retrieval, effective
+    rank, within-episode top-1, hard-negative cosine and ridge probes. The remote deployment reproduces the protocol.
+    The second row (pick-place) launched at 17:05.
+  - **Order fix (17:05:49, `runs/setup/tools/interleave_cst_order_20261104.py`, record
+    `runs/setup/cst-interleave-20261104.json`).**
+    - Problem: the 128 CSW4 rows were registered arm-major, and the drivers break ties by row position. Every cst50
+      pretraining would be admitted before any cst75 one, so no task got a matched pair early, and the two arms'
+      pretraining cost would be measured under different co-load.
+    - Fix: the queue and the registration record's job list (the local driver's order) are now interleaved per task
+      (cst50 t, cst75 t), keeping the within-arm order. Rows are byte-identical and asserted; only the order changed.
+    - Done under the local admission, remote-driver and registry locks. Backups:
+      `cst-interleave-20261104.queue-before.yaml`, `cst-registration-eight-task-20261104.before-interleave.json`.
+  - Local: the render rows wait on memory, not on a fault. The host is at the 140 GB admission ceiling with 15 FlashSAC
+    trainers (6 GB declared each, 300k–1M steps) plus their evaluators. The head-of-line reservation holds later
+    trainers back; evaluators of running trainers may still fill. The renders start as trainers finish over the next
+    ~1–5 h, and the local CSW4 pretrainings follow them.
+
+## 2026-11-05 01:30 KST — Hybrid masking (chlhm) final, 8/8 tasks
+- Decision (pre-registered, runs/setup/chlhm-definition-20261103.json): NOT met, not adopted. (a) held-out last-5
+  chlhm − chlrm +0.017 [−0.008, +0.040]; (b) training last-5 IQM −0.065 [−0.166, +0.059] (non-inferiority at −0.05 not
+  shown); (c) trainer-logged 200k geometry within the point tolerances (PSNR +0.04 dB [−0.37, +0.41], Chamfer −1.8 %
+  [−11.1 %, +8.2 %]).
+- Exploratory (uncorrected; one seed-0 encoder per task/arm): held-out AUC +0.017 [+0.005, +0.029] (6/8); training AUC
+  −0.032 [−0.079, +0.011]; moving cameras −0.013 [−0.086, +0.057]; versus chl lower (training AUC −0.058 [−0.101,
+  −0.013]; ratio also differs). Representation (variants/chlhm_repr.json): training retrieval −0.051 [−0.071, −0.031]
+  (0/8), within-episode −0.044 (0/8), effective rank +1.1 (8/8), probes mixed. Rendering 200k
+  (variants/chlhm_render_200k.json): PSNR −0.026 dB [−0.041, −0.010], LPIPS −0.0012 [−0.0019, −0.0007].
+- The first render-metrics run hit its 2 h timeout at task 7 (no output); src/chlhm_render_metrics.py now caches per
+  task (RNG state restored; resumed = uninterrupted, verified by Codex hf1). Codex hf1 review: decision correct, wording
+  corrected (uncertainty instead of "no difference", geometry CIs, chl contrasts as context).
+- Artifacts: design v7 (masking_status caption + bullets), hub v33 (status line).
+
+## 2026-11-05 06:10 KST — Real-world preprocessing with MapAnything: validated, refactored, merged (cec4b00)
+- Directive 2026-11-04 (real-world MapAnything). Data: the read-only mug-hanging teleop episode
+  (`/home/ws/data/real_world/test/`: Franka, Robotiq 2F-85, 3× RealSense D435I with colour + depth, 206 synchronized
+  sets). Inference server: `irsl` (RTX 5090 `GPU-9bcf38b6-…`), one read-only container `shkim_rw` with RAM tmpfs. The
+  server is not a pool host: the scheduler refuses any queue host other than local/remote.
+- **Pipeline (s4d/realworld, ops/inference_server):**
+  - Adapter `panda_teleop_h5`; contract 1.1.0 (depth streams, RGB-D geometry).
+  - Calibration: robot-grounded, RGB-D evidence (SAM 3 "robot arm" masks + registered D435 depth + URDF at the
+    recorded joints). Accepted for all 3 cameras; held-out robot-depth residual 8.8/6.9/8.5 mm.
+  - Depth: MapAnything (facebook/map-anything rev a1d87e9, code 3d10cf7). Inputs: RGB, valid metric depth,
+    intrinsics, calibrated poses. All views of a synchronized set are processed together (max in-set robot motion
+    3.8 mm).
+  - Then AllTracker → lifting, export, SAM 3 and DINO.
+  - Transport `stream/1`: frames carry sha256; a chunk is acknowledged only after a durable local save, which bounds
+    backpressure to one chunk; chunk ids make runs resumable. Weights live in RAM only.
+- **Depth evidence (consistency only, no ground truth), raw D435 vs MapAnything:**
+  - cross-view median |Δ| 13.4 vs 15.4 mm;
+  - robot geometry on frames not used by the calibration 11.7 vs 16.5 mm;
+  - static temporal std 3.2–5.1 vs 2.2–3.7 mm;
+  - depth-edge to RGB-edge distance 1.0 vs 4.0 px;
+  - MapAnything fills 43 % of raw holes.
+- **Checks:**
+  - 400 export windows pass `validate_batch`; inference-only forward/loss is finite (configs/droid/pretrain.yaml).
+  - SNeRL `training_step` is finite on 6 scenes; DINO worker tokens equal `dino_target` exactly.
+  - SAM 3 never detects "robotic gripper" (0/206 per camera).
+- **FoundationStereo:** removed (worker, stereo.py, pins). The DROID stereo route now runs MapAnything on rectified
+  ZED pairs, revalidated end to end.
+- **Refactor pass 4** (Codex rf1 plan, rf2 implementation):
+  - Codex rf3 found the module moves not invariant (s4d imported ops, legacy globals, pickling, eager SciPy). They
+    were reverted.
+  - Kept: deduplication only (command helpers, worker-response validation, HDF5 prediction helpers, robot-manifest
+    decoding, RGB-D evidence selection).
+  - Codex rf5 remaining notes (accepted): introspection-level only — helper frames in tracebacks on error paths,
+    monkeypatching of adapter globals, additive helper names. The test-fixture move was reverted (cec4b00).
+  - API/CLI/config capture in the container: CLI and configs 0 differences; no name removed or moved.
+  - Final rerun of the full episodes on ca1557a (runtime code = cec4b00): RGB-D 209/209 files identical to the
+    baseline run (c09c226), GPU stages included (volatile telemetry masked). All persistence audits OK.
+    `validation-20261031/refactor4/compare_*_final.json`.
+- **Merge:**
+  - origin/splatter4d fast-forwarded 7643e9d → cec4b00.
+  - Release chain accepted (`runs/remote/acceptance/cec4b00-cc/`): remote native suite 1604 passed, 0 failed,
+    0 skipped; 4/4 isolation checks.
+  - Main fast-forwarded and evidence adopted under both driver locks and the hold (05:49:18–05:49:20,
+    `merge_adopt_cec4b00_20261105.py`). The daemon re-executed on the tested sources at 06:03:36; drivers continue
+    normally.
+  - Clean clone: imports 201/0, configs 132/0, 57/57 CLIs, 551 tests passed.
+- Outputs: `/home/ws/ws/realworld-20261104/processed/{baseline,final}-{rgbd,droid}`; logs `…/logs/`.
+- DROID final rerun: 102/102 files identical to baseline (`compare_droid_final.json`); audit OK. DROID SAM 3 is
+  transfer-bound: about 60 s of remote compute per camera, 1262–1533 s per stage.
+- 5090 server tests on cec4b00 (`validation-20261031/refactor4/server_tests_cec4b00.json`):
+  - 259 passed, 0 failed (gpu_isolation, ops_layout, realworld_*, gpu_guard). Run from a RAM copy with pytest in a
+    RAM overlay.
+  - 3 disk-assumption RAM-guard tests were deselected (no disk tmp in the container). In their place, a live check:
+    a worker with cwd on the ext4 bind mount refuses with exit 4.
+  - The first attempt used a cache root outside the approved runtime root and wrote 17 yaml bytecode files into
+    envs/s4d (no data).
+- Artifacts: design v8 (`#realworld`: merge, cost, checks), hub v34 (status line).
+
+## 2026-11-05 18:10 KST — Real-world: Panda calibration, five depth configurations, TrackEverything (merge gate 31846a5)
+
+- Directives 2026-11-05 13:00 / 15:00. Worktree `/root/shkim/splatter4d-geo`, branch `realworld-geometry-20261105`;
+  server irsl / shkim_rw / GPU-9bcf38b6 only; RAM-only streaming; every run audited OK.
+- Robot: Franka Panda + DROID-style Robotiq 2F-85 (ISO-50 coupling, nominal; no wrist camera). Mount/gripper
+  consistency on independent frames favours the nominal stack (yaw ±90°, dz plateau 8–14 mm).
+- Episode 1 (`/home/ws/data/real_world/test/episode_000001.h5`, IR pairs): config `configs/realworld/mug_hanging_ep1.yaml`,
+  outputs `/home/ws/ws/realworld-20261104/processed/ep1/{base,B0,B1,E1,E2,E3,B1-TE}`. Calibration frozen (all three
+  cameras accepted; held-out 7.8 / 7.1 / 7.2 mm); profiling `analysis/out/calib_profiling_ep1.md` (KD-tree thread
+  storm + sequential starts; bit-identical fixes: init 679 → 143 s, multistart 109 → 14 s locally).
+- Five depth configurations (consistency evidence only): B1 = FoundationStereo on the IR pairs selected (more
+  complete; more cross-view consistent on mug/fixture/robot; equal robot-model agreement); MapAnything (E1–E3) does not
+  improve on its depth input. Report `processed/ep1/base/reports/mug-hanging-test-000001/depth_variants/`.
+- Trackers on B1 (matched queries/windows): TrackEverything vs AllTracker agree to 1.5–1.9 mm; TE static points ~10×
+  steadier, robot-FK proxy slightly better, ~5 % queries refused (no birth depth), 21 vs 5 GB GPU. Recommended:
+  B1 + TrackEverything, AllTracker cross-check. `analysis/out/tracker_compare_ep1_B1.json`.
+- Codex fs2 review (gpt-6.1-sol xhigh) → fs3 fixes (export sync, viewer sync, TE context/depth support, LR taps,
+  freeze guard, comparison metrics); 244 real-world tests pass. Viewers + videos local only
+  (`viewer/ep1-depth-variants`, `viewer/ep1-trackers`; headless-browser checks pass).
+- Merge gate: release chain `runs/setup/release-chain-31846a5-cc.log` → `merge_adopt_31846a5_20261105.py`.
+- Contract checks on both trackers' exports (8767aaf; `processed/ep1/{B1,B1-TE}/reports/.../contracts/`): loader
+  `validate_batch` passes on all 396 samples; our model's forward/loss (no training) gives finite losses for both
+  (total 3.79-3.87). With TrackEverything, three "moving-region" diagnostics are NaN (empty mask): its export motion
+  scores (max inter-frame |disp| / 3 cm) are 0.33-0.5, whereas AllTracker + per-frame lifting saturates at 1.0 in all
+  396 windows - per-frame depth noise inflates inter-frame displacements; TE's smoother tracks give realistic scores.
+  Consequence for training on real data: the motion-score weighting/thresholds were tuned in simulation and should be
+  revisited before using either export (noted, not changed).
+- Episode 0 raw vs MapAnything (depth_compare v2 on common support, `processed/v2-panda/reports/.../depth_v2/`):
+  MapAnything smoother (static std 2.2-3.7 vs 3.2-5.1 mm) but less cross-view consistent on mug/robot/boundary (14.1/
+  10.0/12.1 vs 9.6/6.7/9.6 mm; fixture better 10.6 vs 15.1), robot model 15.4 vs 11.2 mm, edges 3.0 vs 1.0 px, fills
+  33.5 mm vs 13.4 mm native-native, scale +1.6 %. Smoother is not better here; native depth for episode 0 (no IR),
+  FoundationStereo IR (B1) where IR pairs exist.
+
+## 2026-11-05 23:10 KST — Scope change: DrM is the sole downstream RL algorithm; FlashSAC / PPO / Dreamer / SAC stopped
+
+- **User directive (22:45):** stop all FlashSAC, PPO, Dreamer and standalone (SNeRL-code) SAC experiments; DrM is the
+  only downstream RL algorithm going forward, for our method and every comparison baseline (independent of the review
+  below). Keep the masking studies (CSW4 + 50 % vs 75 % tube) intact; preserve shared pretraining and everything DrM
+  needs; reallocate released capacity to ready DrM work under the existing priorities/limits.
+- **Disabled:** admission pause `non-drm-rl-stopped-20261105` in `runs/setup/admission-pauses.json` (prefixes
+  `ds-flashsac-`, `ds-ppo-`, `ds-dreamer-`, `ds-sac-`; the pause also matches each row's `-eval` evaluator). Drivers
+  (remote_campaign_driver, baseline_local_driver, stage2_local_driver) never admit, retry, relaunch or move paused rows;
+  the default queue stays held (`experiments/HOLD`). Verified on the next passes (22:50–22:58): no paused row admitted or
+  reserved; the freed local capacity went to cst75 DrM evaluators. Registrations, checkpoints, replay, logs, results kept.
+  Covered rows at the stop: FlashSAC 145 pending (73 local, 72 remote) + 24 failed + 1 running; Dreamer 2 pending
+  (3D-MVP B door-open); PPO and SAC had none active.
+- **Paused (lossless):** `ds-flashsac-mvp3d-multiview-hammer-s2002` (local, MIG-2ebd9e11, priority as registered) at its
+  800k checkpoint by `runs/setup/tools/pause_flashsac_at_checkpoint_20261031.py` (registry `checkpoint_paused`,
+  intentional_stop, processes exited; the record's `reason` string is inherited from that tool copy — the actual reason
+  is this directive). Resume procedure: deactivate the pause entry (active false + reason) and the scheduler resumes from
+  `runs/<id>/checkpoints/latest.pt` (`--resume auto`); its evaluator `-eval` has never run. Not resumed (DrM only).
+- **Kept running (not covered):** new-task baseline pretraining `ds-pre-snerl-{drawer-open-r2,soccer,sweep-into,
+  window-open}` (remote; shared pretraining resources; no DrM job currently uses the four new tasks — decision pending),
+  all DrM work incl. camera-suite v2 (`ds-cv2-*`), CSW4 tube ratio (`cst50-*`, `cst75-*`).
+- **Review of the existing results** (read-only; matched tasks, encoder exports, observations, budgets; completed runs;
+  `/home/ws/ws/presentation-assets-tools/work/review_nondrm/`): no stopped algorithm gives a consistent advantage over
+  DrM. SAC / PPO / Dreamer (1 seed) are worse than DrM for every representation (ours: −0.67 / −1.01 / −0.63 nR vs
+  DrM). FlashSAC (3 seeds; 214/288 complete, no CNN, 3D-MVP 2 seeds) raises our return +0.12 nR [+0.05, +0.20] but not
+  success (+0.01 [−0.02, +0.04]); it helps SNeRL (+0.35) and ReViWo (+0.26), hurts DynaMo and 3D-MVP (3D-MVP arms ~0:
+  likely adapter mismatch). Baselines beating ours: under FlashSAC SNeRL ties ours pooled and is significantly above on
+  bin-picking, coffee-push, door-open, peg-unplug-side (SinCro on door-open/window-open, ReViWo on door-open); under DrM
+  the augmented end-to-end CNN beats ours (−0.33 nR [−0.42, −0.24], −0.07 success), all six pretrained baselines are
+  behind ours pooled. Single-seed SAC/PPO/Dreamer rankings are inconclusive.
+
+## 2026-11-06 00:40 KST — Additional Meta-World environments stopped; eight-task DrM architecture focus; CSW4 evaluator recovered
+
+- **User directive (~00:00):** stop the additional Meta-World environment expansion (drawer-open, window-open, soccer,
+  sweep-into) — pause the four new-task SNeRL pretrainings at resumable checkpoints and disable all pending training,
+  exports, evaluations, retries and automatic launches belonging exclusively to those campaigns (completed results and
+  history kept). Focus on the best architecture within the original eight environments with DrM only: finish the
+  existing architecture/masking comparisons (CSW4 + 50 % vs + 75 % tube first), Chamfer kept in the optimised family,
+  the original encoder as reference, no new broad sweep before consolidating. Real-world preprocessing and presentation
+  assets continue (the cancellation applies to the Meta-World training expansion only).
+- **Disabled:** admission pause `additional-metaworld-tasks-stopped-20261106` (prefixes `ds-pre-`, `ds-csw4-` — both
+  exclusive to the four additional tasks, verified: 0 rows on the original tasks — plus the five unfinished
+  `ds-pre-snerl-*` ids). FlashSAC rows on these tasks were already covered by `non-drm-rl-stopped-20261105`.
+- **Paused (lossless, `runs/setup/tools/pause_snerl_remote_at_checkpoint_20261106.py`):** SNeRL copy of
+  `pause_remote_pretrain_at_checkpoint.py` (the generic tool needs our pretraining config keys; it exited before any
+  signal). Signal only after `checkpoints/latest.pt` holds global_step N (written before training step N; resume with
+  `--resume auto` restores networks, optimiser and RNG) and `encoder.pt` was re-exported. Done:
+  `ds-pre-snerl-sweep-into` at 1 900 000 (00:15), `ds-pre-snerl-window-open` at 2 030 000 (00:15) — registry
+  `checkpoint_paused`, records `runs/<id>/checkpoint_pause-additional-task-expansion-stopped-20261106.json`. Not yet:
+  `ds-pre-snerl-drawer-open-r2`, `ds-pre-snerl-soccer` — the remote host's SSH became unreachable at 00:47 (27 remote
+  rows marked unknown "SSH unavailable"); their pause is re-run when SSH returns (the admission pause already prevents
+  any relaunch). Resume procedure for all four: deactivate the pause entry; the scheduler resumes from latest.pt.
+- **Recovered:** `cst75-drm-peg-insert-side-s2002-eval` (launch refused before `docker run` at 22:27) reconciled with the
+  user's authorization by `ops/campaign/reconcile_unlaunched_remote.py` (two remote checks: no container with its
+  name, no output directory; trainer run dir exists; evidence
+  `runs/setup/reconcile-cst75-drm-peg-insert-side-s2002-eval-20261106-000131.json`); relaunched by the remote driver at
+  00:07 (attempt 2, same GPU as its trainer). The trainer was never touched.
+- **Released capacity:** the remote driver's 00:01 pass launched `cst50-/cst75-drm-peg-unplug-side-s2002` (+ evaluators);
+  local MIG capacity freed by the FlashSAC pause went to cst75 evaluators (22:50–22:56).
+- **Eight-task status 00:05 (before the outage):** cst50 RL done 17/24 (4 running, 3 pending = stick-push), evaluations
+  17/24; cst75 RL done 8/24 (+1 awaiting sync; 12 running, 3 pending = stick-push), evaluations 8/24; stick-push
+  pretraining 198 000 / 196 450 of 200 000 (both remote). Estimates (subject to the remote outage): local cst75 RL by
+  ~02:00, remote RL by ~05:40, stick-push RL (3 seeds per arm after export) ~06:30–08:00 KST.

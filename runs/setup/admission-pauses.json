@@ -112,6 +112,36 @@
     "s3spec-"
    ],
    "ids": []
+  },
+  {
+   "name": "non-drm-rl-stopped-20261105",
+   "active": true,
+   "since": "2026-11-05T22:47:58+09:00",
+   "reason": "user directive 2026-11-05 ~22:45 KST: stop all FlashSAC, PPO, Dreamer and standalone (SNeRL-code) SAC experiments; DrM is the sole downstream RL algorithm going forward for our method and all baselines. Queued rows, automatic launches, retries and their dedicated evaluators are disabled; the running trainer is paused losslessly at its next checkpoint (pause_flashsac_at_checkpoint_20261031.py); registrations, checkpoints, replay, logs and results are kept. Shared pretraining (ds-pre-*, enc-*, sr*/srv4 encoders) and everything DrM needs are NOT covered by this pause.",
+   "prefixes": [
+    "ds-flashsac-",
+    "ds-ppo-",
+    "ds-dreamer-",
+    "ds-sac-"
+   ],
+   "ids": []
+  },
+  {
+   "name": "additional-metaworld-tasks-stopped-20261106",
+   "active": true,
+   "since": "2026-11-06T00:02:20+09:00",
+   "reason": "user directive 2026-11-06 ~00:00 KST: stop the additional Meta-World environment expansion (drawer-open, window-open, soccer, sweep-into); gracefully pause the four new-task SNeRL pretrainings at resumable checkpoints (pause_remote_pretrain_at_checkpoint.py) and disable all pending training, exports, evaluations, retries and automatic launches belonging exclusively to the additional-task campaigns; completed results and history kept. Focus: best architecture within the original eight environments, DrM only. (FlashSAC rows on these tasks are already covered by non-drm-rl-stopped-20261105.)",
+   "prefixes": [
+    "ds-pre-",
+    "ds-csw4-"
+   ],
+   "ids": [
+    "ds-pre-snerl-drawer-open-r2",
+    "ds-pre-snerl-window-open",
+    "ds-pre-snerl-soccer",
+    "ds-pre-snerl-sweep-into",
+    "ds-pre-snerl-drawer-open"
+   ]
   }
  ]
 }

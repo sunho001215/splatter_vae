@@ -27,10 +27,26 @@ diff inline.
 | codex review 2026-10-19 (GPU allowlist) | review of the local GPU allowlist change (GPU 6 revoked) and the queue admission edit, plus the `gpu_parent` launch field (inline diff) | `.worktrees/gpu-allowlist` | allowlist: no code findings (one note on prompt-abbreviated UUIDs); provenance field: no findings; merged a1815c4 |
 
 ## Current phase
-- **Hybrid masking `chlhm` (user 2026-11-03, HIGH priority):** 64 rows registered (8 tasks × pretraining/export/DrM
-  ×3 + evaluators). Three pretrainings run locally (hammer, pick-place, bin-picking). Five tasks are on the remote
-  (release fd5e950), served by the head-of-line GPU reservation (9556b0c). Protocol and decision rule:
-  `runs/setup/chlhm-definition-20261103.json`.
+- **Scope (user 2026-11-05/06):** DrM is the sole downstream RL algorithm (FlashSAC, PPO, Dreamer, standalone SAC
+  stopped: admission pause `non-drm-rl-stopped-20261105`; one FlashSAC trainer checkpoint-paused at 800k). The
+  additional Meta-World environment expansion (drawer-open, window-open, soccer, sweep-into) is stopped (admission pause
+  `additional-metaworld-tasks-stopped-20261106`; the four new-task SNeRL pretrainings checkpoint-paused by
+  `runs/setup/tools/pause_snerl_remote_at_checkpoint_20261106.py`). Focus: the best architecture within the original
+  eight environments with DrM only — finish the existing architecture/masking comparisons (CSW4 + 50 % vs 75 % tube
+  first), Chamfer kept in the family, the original encoder as reference, no new broad sweep before consolidation.
+  EXPERIMENT_LOG 2026-11-05 23:10 and 2026-11-06 00:40.
+- **Hybrid masking `chlhm` (user 2026-11-03): COMPLETE 2026-11-05, not adopted.** All 8 tasks; the pre-registered
+  rule (`runs/setup/chlhm-definition-20261103.json`) is not met (held-out gain and training non-inferiority not shown;
+  geometry within tolerance). Results: `reports/results-artifact/variants/chlhm{,_repr,_render_200k}.json`; artifacts
+  design v7 / hub v33; EXPERIMENT_LOG 2026-11-05 01:30.
+- **CSW4 tube masking 50 % vs 75 % (user 2026-11-04):** 128 rows registered (`runs/setup/cst-registration-eight-task-
+  20261104.json`, analysis pre-registered in `runs/setup/cst-definition-20261104.json`); 7/8 pretrainings done per arm,
+  stick-push pretraining running on the remote (rows interleaved per task, `runs/setup/cst-interleave-20261104.json`);
+  RL/evaluation in progress on both hosts (status 2026-11-06 00:00 in EXPERIMENT_LOG). Final comparison ~11-06 morning.
+- **Real-world RGB-D preprocessing (user 2026-11-04):** separate inference server (RAM-only streaming, one container,
+  one RTX 5090), FoundationStereo -> MapAnything (`ops/inference_server/README.md`). DONE 2026-11-05: merged at
+  cec4b00 (remote suite 1604/0, adopted 05:49). Full episode processed (`/home/ws/ws/realworld-20261104/processed/final-*`);
+  refactor pass 4 reruns are bitwise equal to the c09c226 baseline (EXPERIMENT_LOG 2026-11-05 06:10).
 - **Scheduling (2026-11-02 14:49):** local controllers own dispatch again. The remote runner was stopped via STOP and
   162 launches reconciled (EXPERIMENT_LOG 2026-11-02). The temporary validation reservation (MIG-8da55219,
   MIG-c4ec2a95, 50 GB RAM) was released at 19:21; record in `runs/setup/handback-20261102/`.
