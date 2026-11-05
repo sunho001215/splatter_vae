@@ -372,6 +372,8 @@ def migration_sandbox(tmp_path, *, evaluator_launched=True, container_removed=Tr
     for folder, job_id in ((run, DRM["id"]), (out, DRM_EVAL["id"])):  # the source host's campaign provenance
         (folder / "provenance.json").write_text(json.dumps({"host": "remote", "job_id": job_id,
                                                             "campaign_eligible": True}))
+    (out / "eval_provenance").mkdir()  # scripts/eval_rl.py records its own provenance in a sub-folder
+    (out / "eval_provenance/provenance.json").write_text(json.dumps({"host": "remote", "campaign_eligible": True}))
     export = tmp_path / "runs/cst75-export-seed0-hammer-200k/encoder.pt"
     export.parent.mkdir(parents=True)
     export.write_bytes(b"encoder")
@@ -442,12 +444,14 @@ def test_remote_to_local_migration_of_a_paused_run(tmp_path, monkeypatch):
     records = migration.switch(DRM["id"], paths, identical_scope, lambda root: ("d" * 40, "local-venv:x"))
     assert [r["state"] for r in records] == ["switched", "switched"] and records[0]["owner_host"] == "local"
     run, out = tmp_path / "runs/cst75-drm-hammer-s2000", tmp_path / "runs/cst75-drm-hammer-s2000-eval"
-    for folder in (run, out):  # the source provenance is preserved; the local attempt writes its own
+    for folder in (run, out, out / "eval_provenance"):  # source provenance preserved; the local attempt writes its own
         assert not (folder / "provenance.json").exists() and (folder / "provenance.remote-a1.json").is_file()
     assert records[0]["provenance_transition"]["renamed"] == {
         "runs/cst75-drm-hammer-s2000/provenance.json": "runs/cst75-drm-hammer-s2000/provenance.remote-a1.json",
         "runs/cst75-drm-hammer-s2000-eval/provenance.json":
-            "runs/cst75-drm-hammer-s2000-eval/provenance.remote-a1.json"}
+            "runs/cst75-drm-hammer-s2000-eval/provenance.remote-a1.json",
+        "runs/cst75-drm-hammer-s2000-eval/eval_provenance/provenance.json":
+            "runs/cst75-drm-hammer-s2000-eval/eval_provenance/provenance.remote-a1.json"}
     assert migration.switch(DRM["id"], paths, identical_scope) == records  # idempotent
     state = jobs.read_registry(paths.registry)
     for job_id in (DRM["id"], DRM_EVAL["id"]):
@@ -795,3 +799,27 @@ def test_drain_exception_admits_only_evaluators_of_trainers_that_ran_on_the_remo
     assert "in progress" in roles_mod.refusal(evaluator, "remote", ROLES, migrating, CONTEXT, None, None, running)
     closed = {**ROLES, "hosts": {**ROLES["hosts"], "remote": {**ROLES["hosts"]["remote"], "drain_evaluators": False}}}
     assert roles_mod.refusal(evaluator, "remote", closed, {}, CONTEXT, None, None, running) is not None
+
+
+def test_a_switch_interrupted_between_ownership_records_holds_the_whole_unit(tmp_path, monkeypatch):
+    paths, listing = migration_sandbox(tmp_path)
+    migration.begin(DRM["id"], "local", "x", paths)
+    migration.verify(DRM["id"], listing, paths)
+    real = roles_mod.write_ownership
+
+    def killed(record, directory=None):
+        if record["job_id"] == DRM["id"] and record["state"] == "switched":
+            raise OSError("killed between the evaluator's and the run's record")
+        return real(record, directory)
+
+    monkeypatch.setattr(roles_mod, "write_ownership", killed)
+    destination = lambda root: ("d" * 40, "local-venv:x")  # noqa: E731
+    with pytest.raises(OSError):
+        migration.switch(DRM["id"], paths, identical_scope, destination)
+    owned = roles_mod.read_ownership(paths.ownership)
+    assert owned[DRM_EVAL["id"]]["state"] == "switched" and owned[DRM["id"]]["state"] == "migrating"
+    for host in ("local", "remote"):  # the evaluator stays held while its unit is not switched
+        assert "in progress" in roles_mod.ownership_refusal(DRM_EVAL["id"], host, owned)
+    monkeypatch.setattr(roles_mod, "write_ownership", real)
+    assert [r["state"] for r in migration.switch(DRM["id"], paths, identical_scope, destination)] == ["switched"] * 2
+    assert roles_mod.ownership_refusal(DRM_EVAL["id"], "local", roles_mod.read_ownership(paths.ownership)) is None

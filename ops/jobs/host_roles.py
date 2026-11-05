@@ -305,7 +305,8 @@ def ownership_refusal(job_id: str, host: str, ownership: dict | None) -> str | N
     record = (ownership or {}).get(job_id)
     if record is None:
         return None
-    if record["state"] == "migrating":
+    # a migration holds its whole unit (the run and its evaluator) until every member's record is switched
+    if any(((ownership or {}).get(member) or {}).get("state") == "migrating" for member in record.get("unit") or [job_id]):
         return (f"migration {record.get('from_host')} -> {record.get('to_host')} in progress "
                 f"(runs/setup/ownership/{job_id}.json)")
     if record["owner_host"] != host:

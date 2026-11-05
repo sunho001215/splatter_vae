@@ -498,23 +498,28 @@ def _validated_events(paths: Paths, events: list[dict]) -> None:
 
 
 def _provenance_transition(paths: Paths, launched: list[tuple[str, dict]], from_host: str) -> dict[str, str]:
-    """Preserve each launched member's source-host provenance.json under provenance.<host>-a<attempt>.json, so the
+    """Preserve every source-host provenance record of each launched member's run directory (provenance.json, and the
+    evaluators' <suite>_provenance/provenance.json) under provenance.<host>-a<attempt>.json in the same folder, so the
     destination attempt records its own provenance (ops/jobs/run_identity.py refuses to overwrite a campaign record of
-    another host). Idempotent; returns {run-relative original: preserved name} of the moved records."""
+    another host). Idempotent; returns {repository-relative original: preserved path} of the moved records."""
     renamed = {}
     for _, member in launched:
-        source = paths.root / member["run_dir"] / "provenance.json"
-        target = source.with_name(f"provenance.{from_host}-a{member['attempt']}.json")
-        if source.is_file() and target.is_file():
-            if sha256(source) != sha256(target):
-                raise MigrationError(f"{source} and its preserved copy {target.name} differ")
-            source.unlink()
-        elif source.is_file():
-            if json.loads(source.read_text()).get("host") != from_host:
-                raise MigrationError(f"{source} is not the {from_host} provenance record")
-            source.rename(target)
-        if target.is_file():
-            renamed[f"{member['run_dir']}/provenance.json"] = f"{member['run_dir']}/{target.name}"
+        base = paths.root / member["run_dir"]
+        preserved = f"provenance.{from_host}-a{member['attempt']}.json"
+        sources = {p for p in base.rglob("provenance.json") if p.is_file()} | {
+            p.with_name("provenance.json") for p in base.rglob(preserved) if p.is_file()}
+        for source in sorted(sources):
+            target = source.with_name(preserved)
+            if source.is_file() and target.is_file():
+                if sha256(source) != sha256(target):
+                    raise MigrationError(f"{source} and its preserved copy {target.name} differ")
+                source.unlink()
+            elif source.is_file():
+                if json.loads(source.read_text()).get("host") != from_host:
+                    continue  # not a record of the source host (nothing to preserve)
+                source.rename(target)
+            if target.is_file():
+                renamed[str(source.relative_to(paths.root))] = str(target.relative_to(paths.root))
     return renamed
 
 
