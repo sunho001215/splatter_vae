@@ -1,0 +1,38 @@
+# INFERENCE RECIPE STUB, NOT a server-validated transitive lock.
+# Source: ayushjain1144/trackeverything@dfb29b505cf2ea954f8697fb612c2429668dd3a0 requirements.txt.
+# Python 3.10; keep Torch/torchvision/scatter ABI pins together. No Pi3/VGGT weights or code installs.
+# This subset retains inference imports (including ipdb/line_profiler) and omits training/reporting
+# packages such as wandb, tensorboard, accelerate, grpc/opentelemetry and libs/ops deformable attention.
+# The latter is training-only per upstream README.md:63-72; inference has a pure PyTorch fallback.
+# Resolve/freeze all transitives only after validating the target server; no setup was run for this change.
+torch==2.8.0+cu129
+torchvision==0.23.0+cu129
+torch_scatter==2.1.2+pt28cu129
+numpy==2.2.6
+scipy==1.15.3
+pillow==11.3.0
+opencv-python==5.0.0.93
+omegaconf==2.3.1
+hydra-core==1.3.7
+einops==0.8.2
+opt_einsum==3.4.0
+python-box==7.4.1
+ipdb==0.13.13
+line_profiler==5.0.2
+rich==15.0.0
+transformers==5.19.0
+huggingface_hub==2.2.0
+safetensors==0.8.0
+tqdm==4.70.1
+iopath==0.1.10
+fsspec==2026.7.0
+h5py==3.16.0
+ImageIO==2.38.0
+imageio-ffmpeg==0.6.0
+matplotlib==3.10.9
+torchinfo==1.8.0
+viztracer==1.1.1
+typed-argument-parser==1.12.0
+plyfile==1.1.5
+av==17.1.0
+rerun-sdk==0.38.1

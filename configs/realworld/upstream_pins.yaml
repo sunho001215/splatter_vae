@@ -16,6 +16,20 @@ map_anything:
     commit: 7764ea0f912e53c92e82eb78a2a1631e92725fc8
   entrypoint_reference: "MapAnything.from_pretrained + preprocess_inputs + model.infer"
   notes: "Known intrinsics and metric camera poses; sensor depth optional; outputs depth_z on the input grid"
+trackeverything:
+  repo: https://github.com/ayushjain1144/trackeverything
+  commit: dfb29b505cf2ea954f8697fb612c2429668dd3a0
+  license: CC-BY-NC-4.0
+  environment: "isolated trackeverything; Python 3.10, torch 2.8.0+cu129; inference recipe stub in ops/inference_server/locks"
+  checkpoint: katefgroup/TrackEverything/model.pth
+  checkpoint_revision: bc7fdfa1032453aeb5e5fde12cbd257c9e5fc56a
+  checkpoint_sha256: 4553975d372096f8c3d7c5fc35fd7025ef8a7611355e6ada8eb251ef1f5feac1
+  entrypoint_reference: "trackeverything.demo_hf.TrackEverything.from_pretrained(local_path, geometry_backend='pi3').infer"
+  notes: >-
+    Single-view sparse queries only; supplied metric camera-z, continuous intrinsics, OpenCV world-to-camera poses.
+    Caller resizes colour with Lanczos and depth with exact nearest; use_input_resolution=True. Pi3 is never loaded.
+    Restore normalised cam0 predictions with inv(E0) [norm_factor * X; 1]; mask exact prebirth frames.
+    torch_scatter pt28cu129 sm_120 support is unverified: see recipe fallback before server inference.
 alltracker:
   repo: https://github.com/aharley/alltracker
   branch: master
