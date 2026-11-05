@@ -359,6 +359,11 @@ candidates = sorted((j for j in jobs.eligible(stage2 + plain_extra, eligible_vie
                      if j.get('host', 'local') == 'local' and admissible(j)), key=key)
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
 candidates = [j for j in candidates if not paused(j['id'])]
+# server roles (user directive 2026-11-06; configs/hosts/roles.yaml): only rows the local role admits (Meta-World), and
+# none an explicit migration holds (ownership records); the scheduler tick enforces the same at launch
+from ops.jobs import host_roles  # noqa: E402
+_roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), {j['id']: j for j in queue['jobs']}
+candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 # Planned local shutdown (user, 2026-10-15): while this file exists, admit only the listed jobs and nothing after
 # its cutoff, so no local job is started that cannot finish before the stop; closeouts continue unchanged.
 HOLD = SETUP / 'stage2-admission-hold.json'

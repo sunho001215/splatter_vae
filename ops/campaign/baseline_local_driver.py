@@ -209,6 +209,11 @@ candidates = [j for j in jobs.eligible(registered, view) if j.get('host', 'local
               and j['id'].removesuffix('-eval') not in FROZEN]
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
 candidates = [j for j in candidates if not paused(j['id'])]
+# server roles (user directive 2026-11-06; configs/hosts/roles.yaml): only rows the local role admits (Meta-World), and
+# none an explicit migration holds (ownership records); the scheduler tick enforces the same at launch
+from ops.jobs import host_roles  # noqa: E402
+_roles, _ownership, _context = host_roles.load_roles(), host_roles.read_ownership(), by_queue
+candidates = [j for j in candidates if host_roles.refusal(j, 'local', _roles, _ownership, _context) is None]
 if stage2_waiting:
     messages.append(f'YIELD to {len(stage2_waiting)} waiting Stage 2 local jobs, e.g. {stage2_waiting[:3]}')
     candidates = []

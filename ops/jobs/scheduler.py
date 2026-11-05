@@ -31,6 +31,7 @@ from ops.jobs.remote_backend import (  # noqa: E402
     validate_container,
 )
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
+from ops.jobs import host_roles  # noqa: E402
 from s4d.third_party import working_tree_identity as third_party_identity  # noqa: E402
 from ops.resources.nvidia_query import mig_query  # noqa: E402
 
@@ -985,6 +986,13 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         messages.append(f"GPU process query failed ({type(exc).__name__}); no jobs launched on local")
     if (queue_path.parent / "HOLD").exists():
         return messages
+    # Server roles (user directive 2026-11-06; configs/hosts/roles.yaml, ops/jobs/host_roles.py), read at every tick:
+    # a host admits only its role's job classes, and an explicit migration in progress blocks its run on both hosts.
+    try:
+        roles, ownership, exceptions = host_roles.load_roles(), host_roles.read_ownership(), host_roles.load_exceptions()
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        messages.append(f"server roles / ownership records unreadable ({type(exc).__name__}); no jobs admitted")
+        return messages
     now = time.time()
     for host_name, resource in resources.items():
         host = queue["hosts"].get(host_name, {})
@@ -1002,6 +1010,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         host_name = job.get("host", "local")
         host, resource = queue["hosts"][host_name], resources.get(host_name)
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
+            continue
+        refused = host_roles.refusal(job, host_name, roles, ownership, jobs, state.get(job["id"]), exceptions)
+        if refused is not None:
+            messages.append(f"{job['id']}: not admitted on {host_name}: {refused}")
             continue
         gpu = choose_gpu(job, host.get("limits", {}), running, resource["foreign"])
         if gpu is None:
@@ -1081,6 +1093,10 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 resources.pop("remote", None)
         else:
             identity = source_identity() if identity is None else identity
+            moved = host_roles.migrated_source_refusal(job["id"], ownership, identity.get("source_sha256", {}), REPO)
+            if moved is not None:
+                messages.append(f"{job['id']}: not admitted on local: {moved}")
+                continue
             pid = launch(job, gpu, attempt, runs)
             # Device provenance: the MIG instance and its parent physical GPU (CUDA reports the parent's UUID).
             record({"event": "launched", "id": job["id"], "host": "local", "pid": pid, "gpu": gpu,
