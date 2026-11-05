@@ -7254,3 +7254,10 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   17/24; cst75 RL done 8/24 (+1 awaiting sync; 12 running, 3 pending = stick-push), evaluations 8/24; stick-push
   pretraining 198 000 / 196 450 of 200 000 (both remote). Estimates (subject to the remote outage): local cst75 RL by
   ~02:00, remote RL by ~05:40, stick-push RL (3 seeds per arm after export) ~06:30–08:00 KST.
+- **00:55 addendum:** remote SSH returned at 00:51 (outage 00:47–00:51, no host reboot; containers kept running). The
+  remote watchers of `ds-pre-snerl-drawer-open-r2` and `ds-pre-snerl-soccer` had signalled at their boundaries
+  (containers exited 143 at 2 150 000 / 2 360 000; latest.pt global_step = boundary, encoder.pt exported with it, no
+  completion.json) but their results never reached this host; re-verified on the remote and recorded by the tool's new
+  `--finalize` mode (registry `checkpoint_paused`, `recorded_after_ssh_loss`). All four new-task SNeRL pretrainings are
+  now checkpoint-paused. CSW4 rows recovered from the SSH-unavailable marks; both stick-push pretrainings and exports
+  finished during the outage (result sync pending); stick-push RL admission follows.

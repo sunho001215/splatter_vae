@@ -17,6 +17,7 @@ from relaunching it. A missed boundary moves the target to the next one; the fin
 Never removes containers or files.
 
     python -I pause_snerl_remote_at_checkpoint_20261106.py --reason <reason> <job id> [...]
+    python -I pause_snerl_remote_at_checkpoint_20261106.py --reason <reason> --finalize <job id> [...]   (record only)
 """
 import fcntl
 import json
@@ -29,9 +30,10 @@ from pathlib import Path
 
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
-from ops.remote.access import RemoteClient  # noqa: E402
-from ops.jobs import scheduler as jobs  # noqa: E402
 import yaml  # noqa: E402
+
+from ops.jobs import scheduler as jobs  # noqa: E402
+from ops.remote.access import RemoteClient  # noqa: E402
 
 REGISTRY = ROOT / 'experiments/registry.jsonl'
 
@@ -132,11 +134,74 @@ def pause(job_id, reason, out):
     print(json.dumps(paused), flush=True)
 
 
+VERIFY = r'''
+set -u
+cd "$RUN" || exit 2
+st=$(docker inspect --format '{{.Id}} {{.Name}} {{.State.Running}} {{.State.ExitCode}}' "$CID" 2>&1)
+echo "STATE $st"
+python3 -I -c '
+import itertools, pickletools, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as a:
+    n = next(n for n in a.namelist() if n.endswith("/data.pkl"))
+    ops = list(itertools.islice(pickletools.genops(a.read(n)), 7))
+assert ops[-3][1] == "global_step", ops
+print("STEP latest.pt", ops[-1][1])
+' checkpoints/latest.pt
+echo "MTIME $(stat -c %Y checkpoints/latest.pt) $(stat -c %Y encoder.pt)"
+echo "AFTER $(tail -c 20000 metrics.jsonl | grep -o '^{"step": [0-9]*' | tail -n1 | awk '{print $2}')"
+[ -f completion.json ] && echo "COMPLETED" || echo "NOT_COMPLETED"
+sha256sum checkpoints/latest.pt encoder.pt | sed 's/^/SHA /'
+'''
+
+
+def finalize(job_id, reason):
+    """Record the pause of a job whose remote watcher signalled it but whose result never reached this host (SSH lost
+    after the signal): re-verify on the remote that the container exited with SIGTERM (143), not running, latest.pt
+    holds a save boundary N, encoder.pt was exported with it, the last logged step is within one i_print of N, no
+    completion.json;
+    then record `checkpoint_paused` with the verified evidence."""
+    client = RemoteClient()
+    current = jobs.read_registry()[job_id]
+    attempt, name, cid = current['attempt'], current['container'], current['container_id']
+    assert name == f's4d-{job_id}-a{attempt}' and len(cid) == 64, (name, cid)
+    cfg = yaml.safe_load((ROOT / 'runs' / job_id / 'config.yaml').read_text())['train']
+    save, print_every = int(cfg['save_every']), int(cfg['i_print'])
+    run = client.remote_path(f'runs/{job_id}')
+    env = ' '.join(f'{k}={shlex.quote(str(v))}' for k, v in dict(RUN=run, CID=cid).items())
+    lines = client.ssh(env + ' bash -c ' + shlex.quote(VERIFY), wait=True, idempotent=True, timeout=300).stdout.splitlines()
+    state = next(line for line in lines if line.startswith('STATE')).split()
+    step = int(next(line for line in lines if line.startswith('STEP')).split()[2])
+    m_ck, m_enc = (int(x) for x in next(line for line in lines if line.startswith('MTIME')).split()[1:3])
+    after = int(next(line for line in lines if line.startswith('AFTER')).split()[1])
+    shas = {line.split()[2].rsplit('/', 1)[-1]: line.split()[1] for line in lines if line.startswith('SHA')}
+    assert state[1:] == [cid, f'/{name}', 'false', '143'], state
+    assert step % save == 0 and step - print_every <= after <= step + print_every and m_enc >= m_ck \
+        and 'NOT_COMPLETED' in lines, \
+        (step, after, m_ck, m_enc, lines)
+    paused = {'event': 'checkpoint_paused', 'id': job_id, 'host': 'remote', 'attempt': attempt, 'container': name,
+              'container_id': cid, 'reason': reason, 'intentional_stop': True, 'requested_signal': 'SIGTERM',
+              'checkpoint_step': step, 'checkpoint': f'runs/{job_id}/checkpoints/latest.pt',
+              'latest_sha256': shas['latest.pt'], 'encoder_sha256': shas['encoder.pt'], 'last_logged_step': after,
+              'no_completed_steps_lost': True,
+              'resume': 'scripts/train_snerl.py --resume auto from checkpoints/latest.pt (global_step, optimiser, RNG)',
+              'container_exit_code': 143, 'processes_exited': True,
+              'recorded_after_ssh_loss': 'the remote watcher signalled at the boundary; SSH dropped before its result '
+                                         'reached this host; state re-verified on the remote by --finalize'}
+    record(paused)
+    with (ROOT / 'runs' / job_id / f'checkpoint_pause-{reason}.json').open('x') as stream:
+        stream.write(json.dumps(paused, sort_keys=True) + '\n')
+    print(json.dumps(paused), flush=True)
+
+
 def main():
     args = sys.argv[1:]
     at = args.index('--reason')
     reason = args[at + 1]
     del args[at:at + 2]
+    if args and args[0] == '--finalize':
+        for job_id in args[1:]:
+            finalize(job_id, reason)
+        return
     out = {}
     threads = [threading.Thread(target=pause, args=(j, reason, out)) for j in args]
     for t in threads:
