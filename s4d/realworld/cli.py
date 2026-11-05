@@ -20,10 +20,11 @@ import yaml
 
 from s4d.realworld import io as rio
 
-STAGES = ("ingest", "sensor_depth", "stereo_rectify", "mapanything_rig_depth", "calibrate",
-          "mapanything_depth", "track2d", "lift3d", "track_motion", "export")
+STAGES = ("ingest", "sensor_depth", "foundation_stereo_depth", "foundation_stereo_filtered", "stereo_rectify",
+          "mapanything_rig_depth", "calibrate", "mapanything_depth", "track2d", "lift3d", "track_motion", "export")
 BASELINE_STAGES = ("sam3_masks", "dino_snerl")
-OPTIONAL_STAGES = ("track_motion",)  # run only when configured under ``stages``
+# run only when configured under ``stages``
+OPTIONAL_STAGES = ("track_motion", "foundation_stereo_depth", "foundation_stereo_filtered")
 
 
 def default_stages(cfg: dict) -> list[str]:
@@ -157,6 +158,16 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
     spec_factory = spec_factory or (lambda name: _spec(cfg, name))
     run("ingest", lambda f: P.ingest(adapter, ep, root, force=f))
     run("sensor_depth", lambda f: sensor_depth(root, ep, runner, force=f, **st.get("sensor_depth", {})))
+    if "foundation_stereo_depth" in wanted:  # optional device-IR stereo backend (B1 of the depth comparison)
+        from s4d.realworld.ir_stereo_depth import ir_stereo_depth
+
+        run("foundation_stereo_depth", lambda f: ir_stereo_depth(root, ep, spec_factory("foundation_stereo"), runner,
+                                                                 force=f, **st.get("foundation_stereo_depth", {})))
+    if "foundation_stereo_filtered" in wanted:
+        from s4d.realworld.ir_stereo_depth import filter_stereo_depth
+
+        run("foundation_stereo_filtered", lambda f: filter_stereo_depth(
+            root, ep, force=f, **st.get("foundation_stereo_filtered", {})))
     has_stereo = (bool(P.load_meta(root, ep).stereo)
                   if any(s in wanted for s in ("stereo_rectify", "mapanything_rig_depth")) else False)
     if has_stereo:

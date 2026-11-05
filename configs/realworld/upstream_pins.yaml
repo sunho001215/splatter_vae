@@ -69,3 +69,15 @@ reference_only:   # read for the method, not executed
     repo: https://github.com/frankarobotics/external_gripper_example
     commit: fe4f871efe052f78a55454ba295f1beda93f147c
     note: "robotiq_mounted_on_panda.urdf.xacro: panda_link8 -> robotiq_arg2f_base_link, xyz 0 0 0, rpy 0 0 +pi/2"
+
+foundation_stereo:   # restored 2026-11-05 as an OPTIONAL backend for the controlled depth comparison (device IR pairs)
+  repo: https://github.com/NVlabs/FoundationStereo
+  commit: 6e8806816b533e4d13ddbb95ffa907b797060a62   # 2025-12-19
+  license: "NVIDIA Source Code License, non-commercial / research only (LICENSE:54-57)"
+  checkpoint: 23-51-11/model_best_bp2.pth   # ViT-L, Google Drive folder 1VhPebc_mMxWKccrv7pdQLTvXYVcLYpsf
+  checkpoint_sha256: 60e79bde9c6a00acea551625ff814fe06e5a6806e2c0c9829baee248de87c5f1
+  cfg_sha256: a9d9dd2137c30edc2236194f62df14d222dad5fd3287a33c7540b543bb93853f   # max_disp 416, valid_iters 32
+  notes: >-
+    pretrained inference only; grayscale IR replicated to 3 channels (issue #80); IR1 = left, IR2 = right (README);
+    native 640x480 (scale 1, no hiera); open upstream issues #217/#238/#239 (FlashMultiheadAttention head layout) are
+    pinned as-is (validated behaviour); EdgeNeXt constructed without the ImageNet download, then strict checkpoint load

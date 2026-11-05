@@ -442,14 +442,25 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
     def build(tmp: Path) -> dict:
         from PIL import Image
 
+        import time
+
         summary = {"fk_vs_recorded_ee": fk_vs_recorded_ee(meta, geom)}
         for view in meta.views():
             cam = view.stream_id
+            clock = {"t": time.perf_counter()}
+            timing = {}
+
+            def lap(name):
+                now = time.perf_counter()
+                timing[name] = round(timing.get(name, 0.0) + now - clock["t"], 3)
+                clock["t"] = now
+
             stamps = meta.stream_timestamps_ns[cam]
             idx = list(range(0, len(stamps), every))
             if max_frames is not None and len(idx) > max_frames:
                 idx = [idx[k] for k in np.linspace(0, len(idx) - 1, int(max_frames)).round().astype(int)]
             q, grip, ok, sync = robot_state_at(meta, stamps[idx])
+            lap("robot_state")
             intr = meta.stream(cam).intrinsics
             has_depth = depth_rec is not None and cam in depth_rec["summary"] and \
                 "skipped" not in depth_rec["summary"][cam]
@@ -463,6 +474,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                 depth, K = None, (view_K(meta, cam, root=root, episode_id=episode_id)
                                   if view.kind == "stereo" and meta.rig_stereo(view.rig_id).status == "metric"
                                   else intr.K())
+            lap("depth_load")
             local_cfg = CalibrationConfig(**{**asdict(cfg or CalibrationConfig()),
                                              "image_hw": (intr.height, intr.width)})
             rows = {k: [] for k in ("t_index", "timestamp_ns", "landmarks_base", "landmarks_uv", "landmarks_conf",
@@ -492,6 +504,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                 rows["flange_base"].append(fk[meta.robot.flange_frame][:3, 3])
                 if depth is not None:
                     rows["depth"].append(depth[k])
+            lap("fk_and_surface_sampling")
             arrays = {k: np.asarray(v) for k, v in rows.items() if k != "depth"}
             arrays["t_index"] = arrays["t_index"].astype(np.int64)
             arrays["timestamp_ns"] = arrays["timestamp_ns"].astype(np.int64)
@@ -503,6 +516,7 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                     robot_class = json.loads(f.attrs.get("class_names", '["background", "robot", "object", "fixture"]'))
                     arrays["robot_mask"] = np.stack([f["semantic"][i] == robot_class.index("robot")
                                                      for i in rows["t_index"]])
+            lap("mask_load")
             n = len(rows["t_index"])
             pick = np.linspace(0, n - 1, min(overlays, n)).astype(int) if n else np.zeros(0, int)
             if len(pick):
@@ -511,15 +525,22 @@ def calibrate(root: Path, episode_id: str, landmark_source, *, landmark_links: l
                     (calibration_image(root, episode_id, view.rig_id, cam, rows["t_index"][k]) if view.kind == "stereo"
                      else to_model_rgb(read_frames(root, episode_id, cam, [rows["t_index"][k]]), meta.stream(cam))[0])
                     for k in pick])
+            lap("overlay_images")
             got = store.get(cam)
+            cached = got is not None
             if got is None:
                 out, kmeta, handle = runner.kernel("calibrate_camera", {"camera_id": cam, "cfg": asdict(local_cfg)},
                                                    arrays, chunk_id=f"calibrate/{cam}")
+                lap("kernel_call_transfer_and_compute")
                 store.put(cam, out, kmeta)
                 runner.ack(handle)
+                lap("durable_save")
                 got = (out, kmeta)
             out, kmeta = got
             doc = kmeta["result"]
+            doc["diagnostics"]["stage_timing_s"] = {**timing, "kernel_result_from_chunk_store": cached,
+                                                    "frames": len(rows["t_index"]),
+                                                    "input_bytes": int(sum(np.asarray(v).nbytes for v in arrays.values()))}
             doc["diagnostics"]["robot_sync_max_ns"] = int(sync.max()) if len(sync) else None
             doc["diagnostics"]["frames_dropped_for_sync"] = int((~ok).sum())
             doc["diagnostics"]["depth_available"] = bool(has_depth)

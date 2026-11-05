@@ -336,6 +336,9 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
     """Global registration of the moving URDF surface to the moving measured depth (see module doc)."""
     from scipy.spatial import cKDTree
 
+    import time
+
+    t_start = time.perf_counter()
     usable, masked = _depth_evidence_frames(frames)
     diag = {"method": "rgbd_robot_registration"}
     if len(usable) < (1 if masked else 3):  # motion evidence needs a temporal median; masks work per frame
@@ -418,9 +421,11 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
             ts[b0:b0 + batch] = t
         return inl, ts
 
+    t_evidence = time.perf_counter()
     co, cm = np.mean(cents_obs, 0), np.mean(cents_model, 0)
     Rs = _rotations(cfg.init_axes, cfg.init_rolls)
     inl, ts = score_all(Rs, co[None] - np.einsum("ckl,l->ck", Rs, cm))
+    t_coarse = time.perf_counter()
     scores = [(-inl[c], Rs[c], ts[c]) for c in range(len(Rs))]
     scores.sort(key=lambda x: x[0])
     refined = []
@@ -443,6 +448,11 @@ def rgbd_initialisation(frames, K, cfg, rng) -> tuple[np.ndarray | None, dict]:
             R, t = T_new[:3, :3], T_new[:3, 3]
         refined.append((cost(R, t), R, t))
     refined.sort(key=lambda x: x[0])
+    diag["timing_s"] = {"evidence_and_kdtrees": round(t_evidence - t_start, 3),
+                        "coarse_rotation_search": round(t_coarse - t_evidence, 3),
+                        "icp_top_candidates": round(time.perf_counter() - t_coarse, 3),
+                        "candidates": int(len(Rs)), "icp_candidates": int(min(cfg.init_top, len(scores))),
+                        "icp_iters": int(cfg.icp_iters)}
     best = refined[0]
     T0 = make_T(best[1], best[2])
     distinct = [r for r in refined[1:] if np.degrees(np.arccos(np.clip((np.trace(r[1] @ best[1].T) - 1) / 2, -1, 1))) > 10
@@ -631,8 +641,13 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
     rgbd = cfg.evidence == "rgbd"
     if cfg.evidence not in ("landmarks", "rgbd"):
         raise ValueError(f"unknown calibration evidence {cfg.evidence!r}")
+    import time
+
+    timing = {}
+    t_phase = time.perf_counter()
     if rgbd:
         T0, diag["rgbd_init"] = rgbd_initialisation(frames, K, cfg, np.random.default_rng(cfg.seed))
+        timing["initialisation"] = round(time.perf_counter() - t_phase, 3)
         method = "rgbd_robot_registration" if T0 is not None else None
     else:
         method, T0, X, uv = _visual_init(frames, K, cfg)
@@ -684,22 +699,27 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         return T, res, gates
 
     starts = refinement_starts(T0, cfg)
+    t_phase = time.perf_counter()
     if len(starts) == 1:
         T, res, gates = refine(T0, rng)
+        timing["refinement"] = round(time.perf_counter() - t_phase, 3)
     else:
         runs = []
         for name, T_start in starts:  # each start gets the same seeded gate sampling
+            t_s = time.perf_counter()
             T_s, res_s, gates_s = refine(T_start, np.random.default_rng(cfg.seed))
             key = "depth_abs_median_m" if use_depth else "reproj_median_px"
             vals = [r[key] for r in _frame_stats(T_s, fit, K, cfg) if r.get(key) is not None]
             score = float(np.median(vals)) if vals and np.isfinite(res_s.x).all() else float("inf")
-            runs.append((score, name, T_s, res_s, gates_s))
+            runs.append((score, name, T_s, res_s, gates_s, round(time.perf_counter() - t_s, 3)))
+        timing["refinement_multistart"] = round(time.perf_counter() - t_phase, 3)
         best = min(runs, key=lambda r: r[0])
-        _, _, T, res, gates = best
+        _, _, T, res, gates, _ = best
         diag["multistart"] = {"criterion": ("median |depth residual| over fit frames" if use_depth else
                                             "median reprojection error over fit frames"),
                               "chosen": best[1],
                               "starts": [{"start": r[1], "fit_score": r[0], "cost": float(r[3].cost),
+                                          "nfev": int(r[3].nfev), "seconds": r[5],
                                           "init_to_solution_rot_deg": float(np.degrees(np.linalg.norm(
                                               vec_from_pose(invert_T(T0) @ r[2])[:3]))),
                                           "init_to_solution_trans_m": float(np.linalg.norm(
@@ -708,6 +728,7 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
                          "cost": float(res.cost), "success": bool(res.success)}
     if not res.success or not np.isfinite(res.x).all():
         reasons.append(f"optimisation failed: {res.message}")
+    t_phase = time.perf_counter()
     J = res.jac
     jumps = 0
     if rgbd:
@@ -746,8 +767,11 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         reasons.append(f"ill-conditioned problem (cond {cond:.3g})")
     if bad(diag["std_rot_deg"], cfg.max_rot_std_deg) or bad(diag["std_trans_m"], cfg.max_trans_std_m):
         reasons.append(f"uncertain extrinsic (std {diag['std_rot_deg']:.3f} deg, {diag['std_trans_m'] * 1000:.1f} mm)")
+    timing["uncertainty"] = round(time.perf_counter() - t_phase, 3)
+    t_phase = time.perf_counter()
     fit_rows = _frame_stats(T, fit, K, cfg)
     hold_rows = _frame_stats(T, holdout, K, cfg)
+    timing["frame_statistics"] = round(time.perf_counter() - t_phase, 3)
     diag["per_frame_fit"] = fit_rows
     diag["per_frame_heldout"] = hold_rows
 
@@ -773,8 +797,10 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
                              "trans_m": float(np.linalg.norm(delta[:3, 3]))}
     if rgbd:
         diag["landmark_gates"] = "not applicable (RGB-D evidence: no 2D landmark source)"
+        t_phase = time.perf_counter()
         diag["explained_fraction_fit"] = explained_fraction(T, fit, K, cfg)
         diag["explained_fraction_heldout"] = explained_fraction(T, holdout, K, cfg) if holdout else None
+        timing["validation_explained_fraction"] = round(time.perf_counter() - t_phase, 3)
         if holdout and bad(diag["heldout_depth_abs_median_m"], cfg.max_heldout_depth_median_m):
             reasons.append(f"held-out robot-depth residual median {diag['heldout_depth_abs_median_m']} m > "
                            f"{cfg.max_heldout_depth_median_m}")
@@ -794,6 +820,7 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
             reasons.append(f"landmark inlier fraction {diag['landmark_inlier_fraction']:.2f} too low")
     if not use_depth:
         diag["note"] = "no metric depth: reprojection-only refinement"
+    diag["timing_s"] = timing
     return CalibrationResult(camera_id, "rejected" if reasons else "accepted", reasons, T, T0, method, diag)
 
 

@@ -39,10 +39,20 @@ def _model(repo: Path, ckpt: Path, params: dict):
         cfg["valid_iters"] = key[1]
         cfg["hiera"] = key[2]
         args = OmegaConf.create(cfg)
-        model = FoundationStereo(args)
+        # Offline construction: upstream builds its EdgeNeXt stem with timm pretrained=True (an ImageNet download) and
+        # DINOv2 from the torch.hub code cache (pretrained_dino=False). Every weight is then overwritten by the official
+        # checkpoint, loaded STRICTLY below, so constructing EdgeNeXt without the download changes no final weight.
+        import timm
+
+        create = timm.create_model
+        timm.create_model = lambda name, *a, **kw: create(name, *a, **{**kw, "pretrained": False})
+        try:
+            model = FoundationStereo(args)
+        finally:
+            timm.create_model = create
         # torch >= 2.6 defaults to weights_only=True; the official checkpoint also pickles numpy scalars (global_step,
         # epoch). Its sha256 is pinned in the server config and reported in the identity below.
-        model.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=False)["model"])
+        model.load_state_dict(torch.load(ckpt, map_location="cpu", weights_only=False)["model"], strict=True)
         model.cuda().eval()
         _MODELS[key] = (model, args)
     return _MODELS[key]
