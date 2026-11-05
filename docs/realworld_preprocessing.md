@@ -528,7 +528,7 @@ python -I ops/inference_server/run_depth_variants.py --pipeline configs/realworl
 python -I ops/inference_server/depth_compare_variants.py --pipeline configs/realworld/mug_hanging_ep1.yaml --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001
 # TrackEverything single-view on a chosen variant's depth (roots <variant>-TE)
 python -I ops/inference_server/run_depth_variants.py ... --variants <V> --tracker trackeverything
-# Viewer (viewer env with viser; CPU only, no MuJoCo): recordings + static client + index, browser check, video
+# Viewer (viewer env with viser and PyYAML; CPU only, no MuJoCo): recordings + static client + index, browser check, video
 python scripts/realworld_viewer.py record --source B0=<root>:sensor_depth:"B0 native" ... --episode <id> --out <dir>
 python scripts/realworld_viewer_check.py <dir> --recording <name> --chromium <chrome>
 python scripts/realworld_viewer_video.py <dir> --recording <name> --video <out.mp4> --chromium <chrome>
