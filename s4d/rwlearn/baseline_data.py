@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import textwrap
 from pathlib import Path
 
@@ -76,7 +77,7 @@ class _SyncedEpisodes(Dataset):
     def __init__(self, locator, episodes, num_views: int, max_episodes=None, max_steps_per_demo=None,
                  max_sync_ns: int = 30_000_000):
         self.locator = locator
-        self.store = open_store(locator)
+        self.store, self._pid = open_store(locator), None
         self.episodes = _episodes(self.store, episodes, max_episodes)
         self.sync: dict[str, SyncIndex] = {}
         for ep in self.episodes:
@@ -95,16 +96,23 @@ class _SyncedEpisodes(Dataset):
                      for ep in self.episodes}
         self.c2w_cv = {ep: np.stack([np.linalg.inv(self.store.w2c(ep, c)) for c in self.sync[ep].cameras[:num_views]])
                        for ep in self.episodes}
+        self._release()
+
+    def _release(self) -> None:
+        """Drop a store opened from a locator, so DataLoader workers (forked or spawned) never share its file
+        handles; every process reopens it lazily (``_store``), like the Meta-World adapters' lazy HDF5 handles."""
+        if not isinstance(self.locator, FrameStore):
+            self.store, self._pid = None, None
 
     def __getstate__(self):
         state = dict(self.__dict__)
         if not isinstance(self.locator, FrameStore):
-            state["store"] = None
+            state["store"], state["_pid"] = None, None
         return state
 
     def _store(self) -> FrameStore:
-        if self.store is None:
-            self.store = open_store(self.locator)
+        if self.store is None or getattr(self, "_pid", None) not in (None, os.getpid()):
+            self.store, self._pid = open_store(self.locator), os.getpid()
         return self.store
 
     def rgb_step(self, ep: str, steps, views=None) -> np.ndarray:
@@ -112,10 +120,11 @@ class _SyncedEpisodes(Dataset):
         s = self.sync[ep]
         views = range(self.num_views) if views is None else views
         steps = np.atleast_1d(steps)
-        return np.stack([self._store().rgb(ep, s.cameras[v], s.frames[steps, v]) for v in views], 1)
+        store = self._store()
+        return np.stack([store.rgb(ep, s.cameras[v], s.frames[steps, v]) for v in views], 1)
 
-    def close(self) -> None:  # SNeRL trainer API (nothing held open between calls)
-        return None
+    def close(self) -> None:  # SNeRL trainer API: release handles before DataLoader workers fork
+        self._release()
 
 
 class RealworldSinCroWindows(_SyncedEpisodes):
@@ -187,7 +196,9 @@ class RealworldDynaMoWindows(Dataset):
         self.slices = official_slices([n for *_, n in self.trajectories], self.window, self.frame_step)
         if not self.slices:
             raise ValueError("no DynaMo windows: every trajectory is too short")
+        self._release()
 
+    _release = _SyncedEpisodes._release
     __getstate__ = _SyncedEpisodes.__getstate__
     _store = _SyncedEpisodes._store
 
@@ -240,7 +251,7 @@ class RealworldSNeRLScenes(_SyncedEpisodes):
         store = open_store(path)
         num_views = min(len(store.cameras(ep)) for ep in episodes)
         super().__init__(path, episodes, num_views)
-        if not self.store.has_semantic:
+        if not self._store().has_semantic:
             raise RuntimeError("SNeRL needs semantic masks in the store")
         self.seed, self.num_inputs = int(seed), int(num_inputs)
         self.lookat, self.scale = tuple(float(x) for x in lookat), float(scale)
@@ -252,7 +263,8 @@ class RealworldSNeRLScenes(_SyncedEpisodes):
         lengths = np.array([self.lengths[ep] for ep in self.episodes])
         self.offsets = np.concatenate([[0], np.cumsum(lengths)])
         self.length = int(length) if length is not None else int(self.offsets[-1])
-        self.task = ",".join(sorted({self.store.task(ep) for ep in self.episodes}))
+        self.task = ",".join(sorted({self._store().task(ep) for ep in self.episodes}))
+        self._release()
         self.semantic_classes = SEMANTIC_CLASSES
 
     def __len__(self):

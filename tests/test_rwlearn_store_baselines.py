@@ -145,8 +145,13 @@ def test_pickled_dataset_reopens_a_registered_store(tmp_path):
     store = synthetic_store()
     register_store("unit-test-memory", lambda spec: store)
     ds = BD.RealworldReViWoStates({"kind": "unit-test-memory"}, store.episodes(), 3)
+    assert ds.store is None  # released after indexing: workers never inherit handles
     clone = pickle.loads(pickle.dumps(ds))
     assert clone.store is None and torch.equal(clone[2]["images"], ds[2]["images"])
+    sn = BD.RealworldSNeRLScenes({"kind": "unit-test-memory"}, store.episodes(), seed=0)
+    assert sn.store is None and sn[0]["obs_rgb"].shape == (3, 32, 32, 3)
+    sn.close()
+    assert sn.store is None
 
 
 def test_sincro_per_sample_cameras_equal_the_reference_for_one_rig_and_differ_otherwise(tmp_path):
