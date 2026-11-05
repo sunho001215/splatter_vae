@@ -266,10 +266,12 @@ class ProcessedEpisodeStore:
         d, K = view_depth(root, e, self._meta[ep], self._sid(ep, cam), np.atleast_1d(idx), self.depth_stage)
         self._remember_K(ep, cam, K)
         box = self._box(ep, cam)
-        out = np.stack([crop_depth(x, box, self.image_hw[0]) for x in d])
-        q = np.rint(out / self.DEPTH_UNIT_M)
-        q = np.where((q > 0) & (q <= 65535), q, 0)
-        return (q * self.DEPTH_UNIT_M).astype(np.float32)
+        out = np.stack([crop_depth(x, box, self.image_hw[0]) for x in d]).astype(np.float64)
+        q = np.rint(out / self.DEPTH_UNIT_M)  # the compact store's quantize_depth: float64 rint, valid never 0
+        q = np.where(out > 0, np.maximum(q, 1), 0)
+        if q.max(initial=0) > 65535:
+            raise ValueError("depth beyond the uint16 0.1 mm range")
+        return q.astype(np.uint16).astype(np.float32) * np.float32(self.DEPTH_UNIT_M)
 
     def semantic(self, ep, cam, idx):
         import h5py
