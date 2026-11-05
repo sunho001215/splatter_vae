@@ -7261,3 +7261,27 @@ Chamfer and the simplified loss set stay. The completed baselines are reused and
   `--finalize` mode (registry `checkpoint_paused`, `recorded_after_ssh_loss`). All four new-task SNeRL pretrainings are
   now checkpoint-paused. CSW4 rows recovered from the SSH-unavailable marks; both stick-push pretrainings and exports
   finished during the outage (result sync pending); stick-push RL admission follows.
+
+## 2026-11-06 02:40 KST — Server-role separation; remote Meta-World drain; real-world ingestion campaign started
+
+- **User directive (~02:00):** persistent roles — LOCAL: Meta-World simulation, architecture/parameter selection, DrM on
+  the original eight environments; REMOTE 192.168.10.22: real-world + DROID preprocessing, representation pretraining,
+  real-world offline FQL; RTX 5090 (irsl): lightweight inference/rendering/visualization only (no training, no bulk
+  preprocessing; GPU-2-only, single shkim_rw container, ~/shkim). FlashSAC/PPO/Dreamer/standalone SAC and the additional
+  Meta-World tasks stay disabled. Real-world drawer-open and mug-hanging datasets (100 episodes each, gaps in numbering)
+  are ingested incrementally to the remote; representation pretraining per task only after all 100 episodes passed
+  validation + preprocessing (no partial-data or warm starts); baselines first, then offline FQL (official FQL as
+  reference; EE delta pose + gripper actions; per-window viewpoint randomization); our own pretraining (incl. DROID)
+  deferred until the architecture is final; careful cleanup on both hosts.
+- **Remote admissions held** (`runs/setup/remote-hold-admissions`, 02:3x): the remote driver admits nothing new and the
+  host-neutral pool no longer moves local rows to the remote. At this time no Meta-World row was admissible on the remote
+  (FlashSAC/Dreamer/s3spec rows paused or held); the running remote CSW4 rows (cst50/cst75 stick-push RL + evaluators,
+  peg-insert/unplug s2002, last ones ~06:30-08:00 KST) finish in place — migrating them (multi-GB replay at the
+  200 KiB/s download budget) would take longer than finishing. Hold stays until a role-aware driver is released.
+- **Work packages (in progress):** ingestion + transfer worker (local -> remote, completion signal = in-file
+  status/end_unix + structural/timestamp/content validation, temp + sha256 + atomic publish, per-episode manifest
+  `/home/ws/ws/realworld-ops/ingest/`); remote preprocessing environment (campaign-owned container + pinned worker
+  envs, storage plan under the 1 TB cap); consolidation release of the selected pipeline + retirement of the raw-DROID
+  estimation route; role-aware drivers (branch server-roles-20261106); real-world baselines + offline FQL design
+  (branch realworld-fql-20261106); storage audit/cleanup on both hosts. Arrivals at 02:20: drawer-open 33 files,
+  mug-hanging 20 files.

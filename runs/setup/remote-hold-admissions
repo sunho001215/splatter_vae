@@ -1,0 +1,1 @@
+server-role separation (user 2026-11-06 02:00): the remote host no longer admits Meta-World simulation; running remote CSW4 jobs finish in place (all within ~6 h); remote admissions resume only for real-world/DROID preprocessing, pretraining and FQL rows once the role-aware driver is released (see EXPERIMENT_LOG 2026-11-06).
