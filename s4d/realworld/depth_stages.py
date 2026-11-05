@@ -58,7 +58,11 @@ def load_view_depth(root, episode_id, stream_id, indices, stage: str):
 
 
 def view_K(meta, stream_id: str) -> np.ndarray:
-    """Continuous intrinsics of a stream's recorded (zero-distortion) pinhole grid."""
+    """Continuous intrinsics of a stream's recorded (zero-distortion) pinhole grid. Streams of stereo camera rigs are
+    refused (no rectified grid exists in this pipeline); device IR pairs of RGB-D rigs are not stereo views."""
+    if any(stream_id in (g.left_stream, g.right_stream) for g in meta.stereo):
+        raise NotImplementedError(f"{stream_id}: stereo camera streams are not processed by this pipeline "
+                                  "(RGB-D rigs only)")
     intr = meta.stream(stream_id).intrinsics
     if intr.distortion_model != "none" and any(abs(c) > 0 for c in intr.distortion):
         raise NotImplementedError(f"{stream_id}: distorted stream ({intr.distortion_model}); undistort in the adapter")

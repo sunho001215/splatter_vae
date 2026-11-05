@@ -80,8 +80,13 @@ def test_ingest_preserves_modality_and_views(run):
 
 
 def test_stereo_camera_views_are_refused(tmp_path):
+    import sys
+
     from s4d.realworld.adapters import get_adapter
+    from s4d.realworld.baseline_stages import sam3_masks
+    from s4d.realworld.depth_stages import view_K
     from s4d.realworld.pipeline import default_depth_stage
+    from s4d.realworld.workers import WorkerSpec
 
     adapter = get_adapter("synthetic", {"asset_dir": str(tmp_path / "assets"), "frames": 4})
     ep = adapter.list_episodes()[0]
@@ -90,6 +95,42 @@ def test_stereo_camera_views_are_refused(tmp_path):
     for call in (lambda: camera_views(meta), lambda: default_depth_stage(meta, "lift")):
         with pytest.raises(NotImplementedError, match="stereo camera views"):
             call()
+    # explicit stereo streams are refused too (never processed on the raw recorded grid)
+    with pytest.raises(NotImplementedError, match="stereo camera streams"):
+        view_K(meta, "rig0/right")
+    with pytest.raises(NotImplementedError, match="stereo camera streams"):
+        sam3_masks(tmp_path / "out", ep, WorkerSpec("mock", sys.executable), cameras=["rig0/left"],
+                   prompts={"robot arm": "robot"}, allow_mock=True)
+    assert not rio.stage_dir(tmp_path / "out", ep, "sam3_masks").exists()
+
+
+def test_landmark_calibration_without_depth_uses_the_recorded_grid(run, tmp_path):
+    """No depth record: the kernel gets the recorded colour-grid K, the landmark observations unchanged (continuous,
+    zero distortion) and no depth array."""
+    root, ep = run["root"], run["ep"]
+    captured = {}
+
+    class Capture(LocalRunner):
+        def kernel(self, task, params, arrays, *, chunk_id):
+            captured.update(task=task, params=params, arrays=arrays)
+            raise RuntimeError("captured")
+
+    seen = {}
+
+    def source(cam, i, links):
+        uv, conf = run["landmark_source"](cam, i, links)
+        seen.setdefault(cam, []).append(uv)
+        return uv, conf
+
+    source.identity = run["landmark_source"].identity
+    with pytest.raises(RuntimeError, match="captured"):
+        calibrate(root, ep, source, landmark_links=LANDMARKS, cfg=CALIBRATION, depth_stage="no_such_depth",
+                  runner=Capture(tmp_path / "w"))
+    arrays, cam = captured["arrays"], captured["params"]["camera_id"]
+    assert captured["task"] == "calibrate_camera" and cam == "rig0/left" and "depth" not in arrays
+    np.testing.assert_array_equal(arrays["K"], load_meta(root, ep).stream(cam).intrinsics.K())
+    np.testing.assert_array_equal(arrays["landmarks_uv"], np.stack(seen[cam]).reshape(len(seen[cam]), -1, 2))
+    assert rio.read_record(rio.stage_dir(root, ep, "calibrate"))["config"]["depth_stage"] == "sensor_depth"  # untouched
 
 
 def test_sensor_depth_matches_ground_truth(run):

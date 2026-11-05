@@ -90,7 +90,7 @@ def check_stage_scope(cfg: dict, wanted) -> None:
 class AnnotationLandmarkSource:
     """2D robot-landmark observations from a JSON file (manual clicks, marker detector or render-and-match output):
     {camera_id: {frame_index: {"uv": [[u, v] | null, ...], "conf": [...]}}} in continuous pixel coordinates of the
-    rectified left image, landmarks ordered as ``landmark_links``."""
+    camera view's grid, landmarks ordered as ``landmark_links``."""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -158,8 +158,6 @@ def main(argv=None) -> int:
     from s4d.realworld.runners import LocalRunner
 
     root = Path(cfg["output_root"])
-    runner = LocalRunner(root / "_worker_tmp" / args.episode)
-    save_root_config(cfg, args.config)
     wanted = args.stages.split(",") if args.stages else default_stages(cfg)
     unknown = set(wanted) - set(STAGES + BASELINE_STAGES)
     if unknown:
@@ -168,6 +166,8 @@ def main(argv=None) -> int:
         check_stage_scope(cfg, wanted)
     except ValueError as exc:
         ap.error(str(exc))
+    runner = LocalRunner(root / "_worker_tmp" / args.episode)
+    save_root_config(cfg, args.config)
 
     def run(name, fn):
         if name in wanted:

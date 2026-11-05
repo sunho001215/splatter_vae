@@ -111,6 +111,21 @@ def test_remote_worker_paths_override_host_paths_and_preserve_the_standard_confi
     assert {w["worker"] for w in server["weights"]} <= set(server["workers"])
 
 
+def test_local_run_validates_before_writing_the_root_config(tmp_path):
+    cfg = {**_standard(), "output_root": str(tmp_path / "out")}
+    path = tmp_path / "pipeline.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    for stages in ("unknown", "dino_snerl,mapanything_depth"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["run", "--config", str(path), "--episode", "mug-hanging-test-000001", "--stages", stages])
+        assert exc.value.code == 2
+    bad = {**cfg, "stages": {**cfg["stages"], "lift3d": {}}}
+    path.write_text(yaml.safe_dump(bad))
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--config", str(path), "--episode", "mug-hanging-test-000001"])
+    assert not (tmp_path / "out").exists()
+
+
 def test_remote_rejects_unknown_stages_before_reading_server_config():
     from ops.inference_server.run_episode import main
 

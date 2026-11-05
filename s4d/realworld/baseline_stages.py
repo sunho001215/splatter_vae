@@ -105,6 +105,10 @@ def sam3_masks(root: Path, episode_id: str, spec: WorkerSpec, *, cameras: list[s
     from s4d.realworld.pipeline import load_meta, read_frames, to_model_rgb
 
     meta = load_meta(root, episode_id)
+    stereo = sorted(c for c in cameras for g in meta.stereo if c in (g.left_stream, g.right_stream))
+    if stereo:
+        raise NotImplementedError(f"{episode_id}: stereo camera streams {stereo} are not processed by this pipeline "
+                                  "(RGB-D rigs only)")
     texts, classes = list(prompts), [prompts[t] for t in prompts]
     if any(c not in SNERL_CLASSES for c in classes):
         raise ValueError(f"prompt classes must be in {SNERL_CLASSES}")
