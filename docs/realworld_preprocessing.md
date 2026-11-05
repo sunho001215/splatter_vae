@@ -173,7 +173,7 @@ Image resize/crop uses explicit continuous-coordinate pixel affines; depth uses 
 Server worker settings explicitly override interpreter, repo and checkpoint paths for remote runs; adapter and output
 paths remain on the host.
 
-### 4.3 `calibrate`: per-episode, robot-grounded extrinsics (`calibration.py`)
+### 4.3 `calibrate`: per-episode, robot-grounded extrinsics (stage `calibration_stage.py`, solver `calibration.py`)
 
 The method is adapted from DepthWorld ([paper](https://arxiv.org/abs/2610.08780),
 [code](https://github.com/Jai2500/depthworld), [project page](https://jaibardhan.com/depthworld/)). Each camera
@@ -184,7 +184,8 @@ used.
 1. **Visual evidence.** 2D observations of robot landmarks (`landmark_links`, URDF link origins) per frame, in
    continuous coordinates of the camera view's grid. The 3D positions come from forward kinematics. They are
    supplied by a *landmark source*:
-   - an annotation file (`cli.AnnotationLandmarkSource`), for example manual clicks or a marker detector;
+   - an annotation file (`cli.AnnotationLandmarkSource`, config `stages.calibrate.landmark_source`), for example
+     manual clicks or a marker detector;
    - in the future, a render-and-match worker, the counterpart of DepthWorld's LoMa-G URDF-render-to-image
      matching. **Not implemented.**
    The annotation file format is

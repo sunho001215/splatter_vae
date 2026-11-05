@@ -86,7 +86,7 @@ def check_stage_scope(cfg: dict, wanted) -> None:
 class AnnotationLandmarkSource:
     """2D robot-landmark observations from a JSON file (manual clicks, marker detector or render-and-match output):
     {camera_id: {frame_index: {"uv": [[u, v] | null, ...], "conf": [...]}}} in continuous pixel coordinates of the
-    rectified left image, landmarks ordered as ``landmark_links``."""
+    camera view's grid, landmarks ordered as ``landmark_links``."""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
