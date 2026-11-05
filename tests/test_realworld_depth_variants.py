@@ -191,3 +191,59 @@ def test_filtered_depth_checks_transitive_calibration_and_input_builds(tmp_path)
     with pytest.raises(SystemExit, match="stale foundation_stereo_filtered.*input foundation_stereo_depth"):
         verify_calibration_inputs(base, "ep", {"B1f": base}, {"B1f": "foundation_stereo_filtered"})
 
+
+def test_edge_distances_use_joint_support_and_mask_bands_measure_retention():
+    from s4d.realworld import diagnostics as dg
+    from s4d.realworld.kernels import depth_compare_multi
+
+    h, w = 32, 48
+    image = np.zeros((h, w, 3), np.uint8)
+    image[:, 10:] = 255  # colour has just the first of depth's two boundaries
+    depth = np.ones((h, w), np.float32)
+    depth[:, 10:20] = 2
+    semantic = np.zeros((h, w), np.uint8)
+    semantic[2:12, 30] = 2  # a one-pixel-wide object: its entire mask belongs to the boundary band
+    semantic[14:31, 28:47] = 3  # a thick fixture with a centre farther than 3px from the boundary
+    valid_b = np.ones((h, w), bool)
+    valid_b[:, 20] = False  # source B deletes the difficult second depth edge
+    valid_b[semantic == 2] = False
+    valid_b[21:24, 36:39] = False  # centre of the fixture; outside the boundary band
+    arrays = {"images": image[None, None], "K": np.eye(3)[None], "T_cam_base": np.eye(4)[None],
+              "surface_base": np.zeros((1, 1, 1, 3)), "gripper_points": np.zeros(1, bool),
+              "calib_used": np.zeros((1, 1), bool), "semantic": semantic[None, None],
+              "depth_A": depth[None, None], "valid_A": np.ones((1, 1, h, w), bool),
+              "depth_B": np.where(valid_b, depth, 0)[None, None], "valid_B": valid_b[None, None]}
+    _, meta = depth_compare_multi({"sources": ["A", "B"], "pairs": [["A", "B"]]}, arrays)
+    view = meta["sets"][0]["views"][0]
+    assert view["edges"]["A"] == view["edges"]["B"]
+    assert view["edges"]["A"]["n"] < len(dg.edge_to_rgb_distance(depth, np.ones_like(valid_b), image))
+    assert view["thin_retention"]["mug"] == {"pixels": 10, "A": 1., "B": 0.}
+    assert view["thin_retention"]["fixture"]["A"] == view["thin_retention"]["fixture"]["B"] == 1.
+    assert view["coverage"]["fixture"]["B"] < 1.
+    assert view["thin_retention"]["fixture"]["pixels"] < (semantic == 3).sum()
+
+
+def test_crossview_reports_all_and_wholly_independent_sets():
+    from ops.inference_server.depth_compare_variants import EXPLAIN, aggregate, markdown
+
+    rows = []
+    for used, error in (([False, False, True], .1), ([False, False, False], .002), ([True, False, False], .3)):
+        evidence = {"kept": 30, "A": {"median_abs": error}, "B": {"median_abs": error}}
+        rows.append({"views": [{"calib_used": u, "coverage": {}, "robot": {}, "edges": {"A": {}, "B": {}},
+                                 "flying_common": {"A": None, "B": None}, "thin_retention": {}}
+                                for u in used],
+                     "pairs": {"0->1": {"A|B|scene": evidence, "joint|scene": evidence}}})
+    grids = {"static": np.ones((3, 3, 1), bool), "A": np.ones((3, 3, 1)), "B": np.ones((3, 3, 1))}
+    agg = aggregate(rows, grids, ["A", "B"], [("A", "B")])
+    assert agg["crossview"]["all"]["sets"] == 3
+    assert agg["crossview"]["independent"]["sets"] == 1
+    for key in ("A|B", "joint"):
+        assert agg["crossview"]["all"]["metrics"][key]["scene"]["A"]["median_abs_mm"] == 100.
+        assert agg["crossview"]["independent"]["metrics"][key]["scene"]["A"]["median_abs_mm"] == 2.
+        assert agg["crossview"]["independent"]["metrics"][key]["scene"]["kept"] == 30
+    text = markdown({"episode": "ep", "sources": ["A", "B"], "aggregate": agg, "caveats": []})
+    for split in ("all", "independent"):
+        assert f"Pairwise cross-view consistency, {split} sets" in text
+        assert f"Joint common support, {split} sets" in text
+    assert "on pixels valid in every source" in EXPLAIN["edges"]
+    assert "thin/small-structure retention (coverage, not correctness)" in EXPLAIN["thin_retention"]

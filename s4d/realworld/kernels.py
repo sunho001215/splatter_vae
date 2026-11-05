@@ -363,7 +363,10 @@ def depth_compare_multi(params: dict, arrays: dict) -> tuple[dict, dict]:
     ``params["pairs"]`` (a, b): cross-view residuals of both sources on the SAME points (valid in a and b in both views);
     the same for all sources on the joint common support; robot/gripper agreement on pairwise common support; for each
     reference-free source its pixels missing in ``params["reference_source"]`` checked against the other views'
-    reference measurement; edge alignment (own support) and flying pixels (joint common support)."""
+    reference measurement; edge alignment and flying pixels on joint support; mask-boundary depth coverage for
+    thin/small-structure retention (coverage, not correctness)."""
+    from scipy.ndimage import binary_dilation, binary_erosion, distance_transform_edt
+
     from s4d.realworld import diagnostics as dg
     from s4d.realworld.geometry import depth_to_points
 
@@ -401,12 +404,19 @@ def depth_compare_multi(params: dict, arrays: dict) -> tuple[dict, dict]:
                    "fixture": (sem[s, v] == 3) if sem is not None else np.zeros((H, W), bool)}
             regions.append((reg, zb))
             vrow = {"calib_used": bool(arrays["calib_used"][s, v]), "coverage": {}, "robot": {}, "edges": {},
-                    "flying_common": {}}
+                    "flying_common": {}, "thin_retention": {}}
             for name in REGIONS_MULTI:
                 m = reg[name]
                 if m.any():
                     vrow["coverage"][name] = {"pixels": int(m.sum()), "joint": float(joint[v][m].mean()),
                                               **{n: float(Vd[n][v][m].mean()) for n in names}}
+            for name in ("mug", "fixture"):
+                mask = reg[name]
+                if mask.any():
+                    boundary = mask & ~binary_erosion(mask, border_value=0)
+                    band = mask & (distance_transform_edt(~boundary) <= 3)
+                    vrow["thin_retention"][name] = {"pixels": int(band.sum()),
+                                                     **{n: float(Vd[n][v][band].mean()) for n in names}}
             for a, b in pairs:  # robot and gripper geometry on the pair's common support
                 both = Vd[a][v] & Vd[b][v]
                 for rname, rmask in (("robot", reg["robot"]), ("gripper", reg["gripper"])):
@@ -414,12 +424,10 @@ def depth_compare_multi(params: dict, arrays: dict) -> tuple[dict, dict]:
                     vrow["robot"][f"{a}|{b}|{rname}"] = {a: dg.summarize(D[a][v][m] - zb[m]),
                                                          b: dg.summarize(D[b][v][m] - zb[m])}
             for n in names:
-                vrow["edges"][n] = dg.summarize(dg.edge_to_rgb_distance(D[n][v], Vd[n][v], imgs[s, v]), tols=(1, 2, 4),
+                vrow["edges"][n] = dg.summarize(dg.edge_to_rgb_distance(D[n][v], joint[v], imgs[s, v]), tols=(1, 2, 4),
                                                 unit="px", scale=1.0)
                 vrow["flying_common"][n] = dg.flying_pixel_fraction(D[n][v], joint[v])
                 grid[n][s, v] = np.where(Vd[n][v], D[n][v], np.nan)[gi, gj]
-            from scipy.ndimage import binary_dilation
-
             grid["static"][s, v] = (~binary_dilation(reg["robot"], iterations=6) &
                                     ~binary_dilation(reg["mug"], iterations=4))[gi, gj]
             row["views"].append(vrow)
