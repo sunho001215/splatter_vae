@@ -29,6 +29,10 @@ hosts:
     scheduler: true
     admit: [realworld_preprocess, droid_preprocess, realworld_pretrain, droid_pretrain, realworld_fql, verification]
     unknown: deny
+    # drain exception (coordinator, 2026-11-06): while remote Meta-World work drains, the evaluator companion
+    # (<trainer>-eval, scripts/eval_rl.py) of a trainer running or completed on this host may still be admitted here
+    # (it reads the trainer's snapshots, which exist only here). Admission only: the pool never moves rows by it.
+    drain_evaluators: true
   inference:
     # RTX 5090 (irsl, container shkim_rw, one GPU): lightweight inference / rendering / visualization only, through
     # ops/inference_server; never a scheduler host (no training, no bulk preprocessing)

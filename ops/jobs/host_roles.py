@@ -103,6 +103,9 @@ def load_roles(path: Path | None = None) -> dict:
             raise ValueError(f"roles: only {SCHEDULER_HOSTS} are scheduler hosts")
         if name not in SCHEDULER_HOSTS and (spec["admit"] or spec["unknown"] != "deny"):
             raise ValueError(f"roles: {name} is not a scheduler host and admits nothing")
+        if not isinstance(spec.get("drain_evaluators", False), bool) or (spec.get("drain_evaluators")
+                                                                        and name != "remote"):
+            raise ValueError("roles: drain_evaluators is a boolean of the remote host")
     if "verification" in hosts["local"]["admit"]:
         raise ValueError("roles: typed verification executes on the remote only")
     if set(hosts["local"]["admit"]) & set(hosts["remote"]["admit"]) - {"verification"}:
@@ -345,10 +348,22 @@ def retry_in_place(job_id: str, host: str, current: dict | None, exceptions: dic
             and current.get("job_sha256") == grant["job_sha256"])
 
 
+def drain_evaluator(job: dict, host: str, roles: dict, trainer: dict | None) -> bool:
+    """The drain exception (configs/hosts/roles.yaml ``drain_evaluators``): ``job`` is the evaluator companion
+    (``<trainer>-eval`` running scripts/eval_rl.py, not a re-evaluation row) of a trainer whose registry state
+    (``trainer``) shows it running or completed on ``host``: the evaluator reads that trainer's snapshots, which exist
+    only there."""
+    return (roles["hosts"][host].get("drain_evaluators") is True and job["id"].endswith("-eval")
+            and job.get("script") == "scripts/eval_rl.py" and not job.get("reevaluates")
+            and (trainer or {}).get("host") == host
+            and (trainer or {}).get("status") in ("launching", "running", "sync_pending", "done"))
+
+
 def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by_id: dict | None = None,
-            current: dict | None = None, exceptions: dict | None = None) -> str | None:
-    """None if ``host`` may admit ``job`` under the roles, the ownership records and the explicit role exceptions
-    (``current``: the job's registry state), else the reason."""
+            current: dict | None = None, exceptions: dict | None = None, trainer: dict | None = None) -> str | None:
+    """None if ``host`` may admit ``job`` under the roles, the ownership records, the explicit role exceptions
+    (``current``: the job's registry state) and the drain exception (``trainer``: the registry state of the trainer an
+    evaluator companion belongs to; pass it for admission only, never for a placement), else the reason."""
     spec = roles["hosts"].get(host)
     if spec is None or spec.get("scheduler") is not True:
         return f"{host} is not a scheduler host (configs/hosts/roles.yaml)"
@@ -359,6 +374,8 @@ def refusal(job: dict, host: str, roles: dict, ownership: dict | None = None, by
                                               and spec["unknown"] == "allow")
     if not allowed and retry_in_place(job["id"], host, current, exceptions):
         allowed = True  # an explicit retry in place of a run that executed here (load_exceptions)
+    if not allowed and found.cls == "metaworld" and drain_evaluator(job, host, roles, trainer):
+        allowed = True  # the evaluator companion of a trainer that ran here (drain exception)
     if not allowed:
         return f"job class {found.cls} ({found.evidence}) is not a {host} role (configs/hosts/roles.yaml)"
     return ownership_refusal(job["id"], host, ownership)

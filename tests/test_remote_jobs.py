@@ -536,6 +536,24 @@ def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exceptio
     assert [(payload["id"], payload["attempt"]) for payload in backend.launches] == [("r", 2)]
 
 
+def test_drain_exception_admits_the_evaluator_of_a_meta_world_trainer_running_on_the_remote(tmp_path):
+    """Coordinator rule 2026-11-06 (live case cst50-drm-stick-push-s2002-eval): the evaluator companion of a Meta-World
+    trainer running on the remote is still admitted there; an evaluator whose trainer has not run there is not."""
+    trainer = job("t", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/t"])
+    evaluator = job("t-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/t", "--train-job", "t",
+                                                                 "--output-dir", "runs/t-eval"])
+    lonely = job("u-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/u", "--train-job", "u",
+                                                              "--output-dir", "runs/u-eval"])
+    rows = [{k: v for k, v in r.items() if k != "role"} for r in (trainer, evaluator, lonely)]
+    queued = write_queue(tmp_path, rows)
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path, "t", script="scripts/train_rl.py", args=trainer["args"])
+    backend.value.containers["s4d-t-a1"] = inspected("t", status="running")
+    messages = tick(tmp_path, queued, backend)
+    assert [payload["id"] for payload in backend.launches] == ["t-eval"]
+    assert any(m.startswith("u-eval: not admitted on remote: job class metaworld") for m in messages)
+
+
 def test_reserved_future_disk_and_ram_ramp_are_per_host(tmp_path):
     queued = write_queue(tmp_path, [job("first"), job("second")])
     backend = FakeBackend(tmp_path / "runs")

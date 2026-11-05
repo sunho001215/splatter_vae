@@ -1011,7 +1011,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         host, resource = queue["hosts"][host_name], resources.get(host_name)
         if resource is None or host.get("enabled", host_name == "local") is not True or host.get("hold", False):
             continue
-        refused = host_roles.refusal(job, host_name, roles, ownership, jobs, state.get(job["id"]), exceptions)
+        refused = host_roles.refusal(job, host_name, roles, ownership, jobs, state.get(job["id"]), exceptions,
+                                     state.get(job["id"].removesuffix("-eval")) if job["id"].endswith("-eval") else None)
         if refused is not None:
             messages.append(f"{job['id']}: not admitted on {host_name}: {refused}")
             continue

@@ -62,7 +62,8 @@ def test_shipped_role_declaration():
     assert hosts["local"]["admit"] == ["metaworld"] and hosts["local"]["unknown"] == "allow"
     assert set(hosts["remote"]["admit"]) == {"realworld_preprocess", "droid_preprocess", "realworld_pretrain",
                                              "droid_pretrain", "realworld_fql", "verification"}
-    assert hosts["remote"]["unknown"] == "deny"
+    assert hosts["remote"]["unknown"] == "deny" and hosts["remote"]["drain_evaluators"] is True
+    assert "drain_evaluators" not in hosts["local"]
     assert hosts["inference"]["scheduler"] is False and hosts["inference"]["admit"] == []
     assert roles_mod.ROLES_PATH == REPO / "configs/hosts/roles.yaml"
 
@@ -77,6 +78,8 @@ def test_shipped_role_declaration():
     lambda r: r["classes"].pop("realworld_fql"),
     lambda r: r["hosts"].pop("inference"),
     lambda r: r.update(version=2),
+    lambda r: r["hosts"]["local"].update(drain_evaluators=True),
+    lambda r: r["hosts"]["remote"].update(drain_evaluators="yes"),
 ])
 def test_inconsistent_role_declarations_fail_closed(tmp_path, edit):
     declared = yaml.safe_load(roles_mod.ROLES_PATH.read_text())
@@ -600,7 +603,6 @@ def test_remote_driver_offers_and_pool_moves_only_role_admitted_rows():
     for a row the remote may not run), guards every pool unit and the re-placement runs each non-dry pass."""
     source = driver_source("remote_campaign_driver.py")
     assert "candidates = [j for j in jobs.eligible(remote, retry_view) if role_admits(j) and ready(j)]" in source
-    assert "if not all(role_admits(u) for u in members):" in source
     assert "replaced = host_roles.replace_to_local(paused)" in source
     assert "if POOL_READY and not DRY and not held and ROLES is not None:" in source
     tree = ast.parse(source)
@@ -610,6 +612,9 @@ def test_remote_driver_offers_and_pool_moves_only_role_admitted_rows():
     assert calls == {"load_roles", "read_ownership", "load_exceptions", "replace_to_local", "refusal", "role_host",
                      "job_class", "placement_repair_needed"}
     assert source.count("chosen.append({**with_role(") == 2  # dispatch copies carry their class
+    assert "if not all(role_admits(u, drain=False) for u in members):" in source  # the pool never drains
+    assert "elif (not DRY and not (REPO / 'runs/setup/remote-hold-admissions').exists()" in source  # hold: no moves
+    assert "candidates = []" in source.split("if (REPO / 'runs/setup/remote-hold-admissions').exists():", 1)[1][:200]
 
 
 @pytest.mark.parametrize("name", ["stage2_local_driver.py", "baseline_local_driver.py"])
@@ -767,3 +772,26 @@ def test_pool_mover_respects_roles_ownership_and_pauses(tmp_path, monkeypatch):
     assert moved == ["droid-pre-a"]
     hosts = {j["id"]: j.get("host", "local") for j in jobs.load_queue(queue)["jobs"]}
     assert hosts == {PRETRAIN["id"]: "local", "droid-pre-a": "remote", "droid-pre-b": "local"}
+
+
+# ---------------------------------------------------------------------------------------------------- drain exception
+def test_drain_exception_admits_only_evaluators_of_trainers_that_ran_on_the_remote():
+    """Coordinator rule 2026-11-06: while remote Meta-World work drains, the evaluator companion of a trainer running
+    or completed on the remote may still be admitted there (it reads that trainer's snapshots); nothing else, and the
+    pool never moves rows by it (no trainer state is passed for placements)."""
+    evaluator = remote_row(DRM_EVAL)
+    for status in ("running", "launching", "sync_pending", "done"):
+        trainer = {"host": "remote", "status": status}
+        assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT, None, None, trainer) is None
+    for trainer in ({"host": "remote", "status": "crashed"}, {"host": "remote", "status": "pending"},
+                    {"host": "local", "status": "running"}, None):
+        assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT, None, None, trainer) is not None
+    running = {"host": "remote", "status": "running"}
+    assert roles_mod.refusal(remote_row(DRM), "remote", ROLES, {}, CONTEXT, None, None, running) is not None
+    assert roles_mod.refusal({**evaluator, "reevaluates": DRM["id"]}, "remote", ROLES, {}, CONTEXT, None, None,
+                             running) is not None  # a re-evaluation row is not a companion
+    assert roles_mod.refusal(evaluator, "remote", ROLES, {}, CONTEXT) is not None  # placement path: no drain
+    migrating = ownership(DRM_EVAL["id"], "migrating", "remote")
+    assert "in progress" in roles_mod.refusal(evaluator, "remote", ROLES, migrating, CONTEXT, None, None, running)
+    closed = {**ROLES, "hosts": {**ROLES["hosts"], "remote": {**ROLES["hosts"]["remote"], "drain_evaluators": False}}}
+    assert roles_mod.refusal(evaluator, "remote", closed, {}, CONTEXT, None, None, running) is not None

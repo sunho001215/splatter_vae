@@ -245,9 +245,10 @@ messages = []
 from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
 if ROLE_ERROR:
     messages.append(f'ROLES unreadable ({ROLE_ERROR}); no remote admission or pool move this pass')
-elif not DRY and (any(j.get('host') == 'remote' and j['id'] not in state and not paused(j['id'])
-                      and host_roles.role_host(j, ROLES, by_id) == 'local' for j in queue['jobs'])
-                  or host_roles.placement_repair_needed(queue['jobs'])):
+elif (not DRY and not (REPO / 'runs/setup/remote-hold-admissions').exists()  # the hold file holds this too
+      and (any(j.get('host') == 'remote' and j['id'] not in state and not paused(j['id'])
+               and host_roles.role_host(j, ROLES, by_id) == 'local' for j in queue['jobs'])
+           or host_roles.placement_repair_needed(queue['jobs']))):
     # never-launched Meta-World rows registered on the remote move to local (host fields only; paused rows stay)
     replaced = host_roles.replace_to_local(paused)
     if replaced.get('moved'):
@@ -266,11 +267,13 @@ def with_role(job):
         copy.deepcopy(job)
 
 
-def role_admits(job):
-    """The remote role admits the row (or an explicit retry-in-place exception of a run started here) and no ownership
-    record holds it elsewhere (host_roles.refusal)."""
+def role_admits(job, drain=True):
+    """The remote role admits the row (or an explicit retry-in-place exception of a run started here, or, for
+    admission only (``drain``), the drain exception for the evaluator companion of a trainer that ran here) and no
+    ownership record holds it elsewhere (host_roles.refusal). Pool moves pass drain=False."""
+    trainer = state.get(job['id'].removesuffix('-eval')) if drain and job['id'].endswith('-eval') else None
     return ROLES is not None and host_roles.refusal({**job, 'host': 'remote'}, 'remote', ROLES, OWNERSHIP, by_id,
-                                                    state.get(job['id']), EXCEPTIONS) is None
+                                                    state.get(job['id']), EXCEPTIONS, trainer) is None
 
 for job in remote:
     jid = job['id']
@@ -700,7 +703,7 @@ if POOL_READY and not DRY and not held and ROLES is not None:
         if not pool_placement.movable(job, state, by_id):
             continue
         members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
-        if not all(role_admits(u) for u in members):  # server roles: Meta-World rows never move to the remote
+        if not all(role_admits(u, drain=False) for u in members):  # server roles: Meta-World never moves there
             continue
         units.append(members)
     if not ENC_ALLOWED:
