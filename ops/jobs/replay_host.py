@@ -237,6 +237,26 @@ def _unlink(replay, item):
     return {**_public(item), "removed": True}
 
 
+def pending(runs_root, spec):
+    """False exactly when a non-dry ``clean_run`` would return its early no-op (no run or replay directory, or no
+    allowlisted replay file and no interrupted receipt to close): such a run deletes and closes nothing, so it needs no
+    pre-deletion re-check. Everything else, including what ``clean_run`` would refuse, is True."""
+    try:
+        validate_spec(spec)
+        run_dir = os.path.join(os.path.realpath(runs_root), spec["run_id"])
+        replay = os.path.join(run_dir, "replay")
+        if not os.path.lexists(run_dir) or (os.path.isdir(run_dir) and not os.path.islink(run_dir)
+                                            and os.path.realpath(run_dir) == run_dir and not os.path.lexists(replay)):
+            return False
+        if (os.path.islink(run_dir) or os.path.realpath(run_dir) != run_dir or not os.path.isdir(run_dir)
+                or os.path.islink(replay) or os.path.realpath(replay) != replay or not os.path.isdir(replay)):
+            return True
+        candidates, _ = _scan(replay, spec["patterns"])
+        return bool(candidates) or bool(_unclosed(_receipts(replay)))
+    except Exception:  # noqa: BLE001  (let clean_run report it)
+        return True
+
+
 def clean_run(runs_root, spec, dry_run=True, writers=None, verify_policy=None):
     """Re-check and (unless ``dry_run``) delete one run's allowlisted replay files. ``writers(run_id, run_dir)`` returns
     the reasons a writer may remain (empty: none); ``verify_policy(path, steps, policy_keys)`` adds a real load.

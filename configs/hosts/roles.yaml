@@ -1,0 +1,41 @@
+# Persistent server roles (user directive 2026-11-06 ~02:00 KST, items 1, 2 and 7). Read from this file at every
+# admission decision (ops/jobs/host_roles.py: scheduler tick, campaign drivers, pool placement); nothing is kept in
+# memory between passes, so the roles survive restarts. GPU allowlists, runtime roots, resource and transfer limits stay
+# where they are (configs/hosts/{local,remote,inference}.yaml, experiments/queue.yaml, ops/resources/*); this file only
+# says which job classes a host may admit.
+#
+# A queue row's class is its explicit `role:` field (one of the tags below; it must not contradict the row's script or
+# configuration) or, without one, is derived from the row (ops/jobs/host_roles.py job_class: script, config files,
+# data regime, data paths, task flags, then its dependencies). New row kinds (real-world / DROID preprocessing,
+# pretraining, offline FQL) should declare `role:` explicitly at registration.
+version: 1
+directive: "user 2026-11-06 ~02:00 KST: server-role separation (local = Meta-World; remote = real-world / DROID; RTX 5090 = inference only)"
+classes:
+  metaworld: "Meta-World simulation and everything built on Meta-World data: pretraining, exports, evaluations, DrM (and the paused RL algorithms), data collection, analysis, architecture / parameter selection"
+  realworld_preprocess: "real-world episode validation and preprocessing (calibration, FoundationStereo, depth, TrackEverything, SAM 3 / DINO features for baselines)"
+  droid_preprocess: "DROID preprocessing (PointWorld depth / tracks reuse, DROID-3D calibration, manifests, indices)"
+  realworld_pretrain: "representation pretraining and encoder export on real-world data (baselines and ours)"
+  droid_pretrain: "representation pretraining and encoder export on DROID"
+  realworld_fql: "real-world offline FQL training and offline evaluation (never commands the physical robot)"
+  verification: "typed release verification rows (ops/containers/verification.py: native suite, GPU isolation)"
+hosts:
+  local:
+    scheduler: true
+    admit: [metaworld]
+    # rows without any domain evidence (diagnostics, test workers): admitted, as before the role separation; rows with
+    # real-world / DROID evidence are never admitted here
+    unknown: allow
+  remote:
+    scheduler: true
+    admit: [realworld_preprocess, droid_preprocess, realworld_pretrain, droid_pretrain, realworld_fql, verification]
+    unknown: deny
+    # drain exception (coordinator, 2026-11-06): while remote Meta-World work drains, the evaluator companion
+    # (<trainer>-eval, scripts/eval_rl.py) of a trainer running or completed on this host may still be admitted here
+    # (it reads the trainer's snapshots, which exist only here). Admission only: the pool never moves rows by it.
+    drain_evaluators: true
+  inference:
+    # RTX 5090 (irsl, container shkim_rw, one GPU): lightweight inference / rendering / visualization only, through
+    # ops/inference_server; never a scheduler host (no training, no bulk preprocessing)
+    scheduler: false
+    admit: []
+    unknown: deny

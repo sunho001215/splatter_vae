@@ -29,9 +29,11 @@ GIB = 2**30
 
 
 def job(run_id="r", host="remote", **overrides):
+    # remote rows declare a remote role class (server roles 2026-11-06: the remote admits no unclassified rows)
     return {"id": run_id, "host": host, "script": "tests/_job_worker.py", "args": [0],
             "gpu": REMOTE if host == "remote" else LOCAL, "mem_gb": 5, "ram_gb": 10,
-            "disk_gb": 20, "required_results": ["metrics.jsonl"], **overrides}
+            "disk_gb": 20, "required_results": ["metrics.jsonl"],
+            **({"role": "realworld_pretrain"} if host == "remote" else {}), **overrides}
 
 
 def write_queue(tmp_path, job_list, **remote_overrides):
@@ -488,6 +490,68 @@ def test_remote_ram_and_fifteen_percent_disk_floor(tmp_path, available, free, la
     backend.value.available_gb, backend.value.disk_free_bytes = available, free * GIB
     tick(tmp_path, queued, backend)
     assert len(backend.launches) == launches
+
+
+def test_remote_admits_only_its_role_classes(tmp_path):
+    """Server roles (2026-11-06; configs/hosts/roles.yaml): a Meta-World row or an unclassified row is never launched on
+    the remote, whatever capacity is free; a remote-role row is (and so is the same Meta-World row on local)."""
+    meta = job("drm", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/drm"])
+    del meta["role"]
+    unclassified = job("plain")
+    del unclassified["role"]
+    queued = write_queue(tmp_path, [meta, unclassified, job("realworld"),
+                                     job("droid-pre", role=None, script="tests/_job_worker.py",
+                                         args=[0, "--config", "configs/droid/csw4_largescale.yaml"])])
+    backend = FakeBackend(tmp_path / "runs")
+    messages = tick(tmp_path, queued, backend)
+    assert [payload["id"] for payload in backend.launches] == ["realworld"]
+    assert any(m.startswith("drm: not admitted on remote: job class metaworld") for m in messages)
+    assert any(m.startswith("plain: not admitted on remote: job class unknown") for m in messages)
+    assert any(m.startswith("droid-pre: not admitted on remote: job class unknown (configuration evidence; no droid "
+                            "activity") for m in messages)  # a DROID row whose activity the script name does not say
+
+
+def test_started_remote_metaworld_run_retries_in_place_only_by_explicit_exception(tmp_path, monkeypatch):
+    """A remote Meta-World run interrupted after it started is not retried on the remote unless the coordinator lists
+    it in runs/setup/role-exceptions.json (scope retry_in_place); never-launched Meta-World rows never are."""
+    from ops.jobs import host_roles
+
+    monkeypatch.setattr(host_roles, "EXCEPTIONS_PATH", tmp_path / "role-exceptions.json")
+    meta = job("r", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/r"], max_restarts=2)
+    del meta["role"]
+    fresh = {**meta, "id": "fresh", "args": ["--task", "hammer", "--run-dir", "runs/fresh"]}
+    queued = write_queue(tmp_path, [meta, fresh])
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path, "r", script="scripts/train_rl.py", args=meta["args"], job_sha256=jobs.job_fingerprint(meta))
+    jobs.record({"event": "exited", "id": "r", "host": "remote", "attempt": 1, "code": 137,
+                 "container_id": CONTAINER_ID}, tmp_path / "registry.jsonl")
+    messages = tick(tmp_path, queued, backend)
+    assert backend.launches == [] and any(m.startswith("r: not admitted on remote: job class metaworld")
+                                          for m in messages)
+    grant = {"scope": "retry_in_place", "host": "remote", "reason": "remote outage", "granted": "2026-11-06",
+             "attempt": 1, "job_sha256": jobs.job_fingerprint(meta)}
+    (tmp_path / "role-exceptions.json").write_text(json.dumps({"exceptions": [{**grant, "id": "r"},
+                                                                              {**grant, "id": "fresh"}]}))
+    tick(tmp_path, queued, backend)
+    assert [(payload["id"], payload["attempt"]) for payload in backend.launches] == [("r", 2)]
+
+
+def test_drain_exception_admits_the_evaluator_of_a_meta_world_trainer_running_on_the_remote(tmp_path):
+    """Coordinator rule 2026-11-06 (live case cst50-drm-stick-push-s2002-eval): the evaluator companion of a Meta-World
+    trainer running on the remote is still admitted there; an evaluator whose trainer has not run there is not."""
+    trainer = job("t", script="scripts/train_rl.py", args=["--task", "hammer", "--run-dir", "runs/t"])
+    evaluator = job("t-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/t", "--train-job", "t",
+                                                                 "--output-dir", "runs/t-eval"])
+    lonely = job("u-eval", script="scripts/eval_rl.py", args=["--run-dir", "runs/u", "--train-job", "u",
+                                                              "--output-dir", "runs/u-eval"])
+    rows = [{k: v for k, v in r.items() if k != "role"} for r in (trainer, evaluator, lonely)]
+    queued = write_queue(tmp_path, rows)
+    backend = FakeBackend(tmp_path / "runs")
+    launch_event(tmp_path, "t", script="scripts/train_rl.py", args=trainer["args"])
+    backend.value.containers["s4d-t-a1"] = inspected("t", status="running")
+    messages = tick(tmp_path, queued, backend)
+    assert [payload["id"] for payload in backend.launches] == ["t-eval"]
+    assert any(m.startswith("u-eval: not admitted on remote: job class metaworld") for m in messages)
 
 
 def test_reserved_future_disk_and_ram_ramp_are_per_host(tmp_path):
@@ -1502,7 +1566,10 @@ def test_scheduler_downloads_nothing_and_cross_host_dependents_wait_for_the_back
     """2026-10-27: no live or final download inside the tick. A local dependent of a remote job (cross-host) starts only
     once the bulk worker's verified final backup completes the remote job; a remote dependent (same host) starts as soon
     as the finished run is verified in place on the remote."""
-    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"]), job("same", deps=["active"])])
+    # "after": a local Meta-World row (server roles: without its own evidence it would inherit its remote dependency's
+    # class, and a declared role cannot contradict that class)
+    queued = write_queue(tmp_path, [job("active"), job("after", "local", deps=["active"], args=[0, "--task", "hammer"]),
+                                    job("same", deps=["active"])])
     backend = FakeBackend(tmp_path / "runs")
     launch_event(tmp_path, "active")
     backend.value.containers["s4d-active-a1"] = inspected("active", status="running")

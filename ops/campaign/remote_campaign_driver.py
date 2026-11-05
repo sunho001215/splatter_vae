@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO))
 from ops.jobs import scheduler as jobs
 from ops.remote.access import RemoteClient
 from ops.jobs.remote_backend import RemoteBackend
+from ops.jobs import host_roles  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
 FROZEN_COMMIT = '226d8ae89b6f65097d372e597e0a7734d2eee3e0'  # method-frozen-v1 source (freeze manifest identity)
@@ -102,6 +103,19 @@ ANA_COMMIT = json.loads(ANA_RELEASE_FILE.read_text())['commit'] if ANA_RELEASE_F
 if ANA_COMMIT:
     RELEASES[(ANA_COMMIT, POOL_IMAGE)] = f'runs/remote/acceptance/{ANA_COMMIT[:7]}-cc/manifest.json'
 ANA_READY = bool(ANA_COMMIT) and (REPO / RELEASES[(ANA_COMMIT, POOL_IMAGE)]).is_file()
+# Server roles (user directive 2026-11-06 ~02:00 KST; configs/hosts/roles.yaml, ops/jobs/host_roles.py): the remote
+# admits only real-world / DROID preprocessing, real-world / DROID representation pretraining, real-world offline FQL
+# (and typed verification, which has its own queues). Rows of those classes ('role' kind) run on the release named in
+# runs/setup/role-release.json {"commit", "image"} once its acceptance manifest exists (absent: not offered); retries
+# keep the release of their first launch. Meta-World rows are never offered or pool-moved here; never-launched ones
+# registered here are re-placed to local each pass (host_roles.replace_to_local), started ones move only through the
+# explicit migration procedure (ops/jobs/migration.py).
+ROLE_RELEASE_FILE = REPO / 'runs/setup/role-release.json'
+ROLE_RELEASE = json.loads(ROLE_RELEASE_FILE.read_text()) if ROLE_RELEASE_FILE.is_file() else {}
+ROLE_COMMIT, ROLE_IMAGE = ROLE_RELEASE.get('commit'), ROLE_RELEASE.get('image')
+if ROLE_COMMIT and ROLE_IMAGE:
+    RELEASES[(ROLE_COMMIT, ROLE_IMAGE)] = f'runs/remote/acceptance/{ROLE_COMMIT[:7]}-cc/manifest.json'
+ROLE_READY = bool(ROLE_COMMIT and ROLE_IMAGE) and (REPO / RELEASES[(ROLE_COMMIT, ROLE_IMAGE)]).is_file()
 ROOT = '/home/compu/kaist/sunho'
 CAP = 1_000_000_000_000
 GPU_LOAD_LIMIT = float((REPO / 'runs/setup/remote-gpu-load-limit.txt').read_text()) \
@@ -140,6 +154,9 @@ S2_KINDS = {'scripts/train.py': 's2_pretrain', 'scripts/evaluate.py': 's2_eval',
 
 def kind(job_id):
     row = globals().get('by_id', {}).get(job_id)
+    if (row is not None and ROLES is not None and not row.get('verification_purpose')
+            and host_roles.role_host(row, ROLES, by_id) == 'remote'):
+        return 'role'  # a remote-role row (real-world / DROID preprocessing, pretraining, offline FQL)
     if row is not None and str(row.get('placement', '')).startswith('pool'):
         if row['script'] == 'scripts/export_encoder.py':  # 2026-10-27: exports of remote pretrainings run remotely
             return 'pool_export'
@@ -178,6 +195,9 @@ GPU_HEAVY = ('ds-sac-cnn-', 'ds-sac-snerl-', 'ds-ppo-cnn-', 'ds-dreamer-', 'ds-f
 
 def load(job):
     jid = job['id']
+    if kind(jid) == 'role':  # declared per row (gpu_load), else an export 0.1, others a full unit; never above one GPU
+        default = 0.1 if job['script'] == 'scripts/export_encoder.py' else 1.0
+        return min(1.0, max(0.1, float(job.get('gpu_load', default))))
     if jid.startswith(GPU_HEAVY) and not jid.endswith('-eval'):
         return 1.0
     if kind(jid) in ('final_export', 'pool_export'):
@@ -203,6 +223,11 @@ def pretrain_target(job):
 
 queue = jobs.load_queue()
 state = jobs.read_registry()
+try:  # fail closed: without readable roles nothing is admitted, offered or moved on the remote
+    ROLES, OWNERSHIP, EXCEPTIONS = host_roles.load_roles(), host_roles.read_ownership(), host_roles.load_exceptions()
+    ROLE_ERROR = None
+except (OSError, ValueError, yaml.YAMLError) as exc:
+    ROLES, OWNERSHIP, EXCEPTIONS, ROLE_ERROR = None, {}, {}, f'{type(exc).__name__}: {str(exc)[:200]}'
 by_id = {j['id']: j for j in queue['jobs']}
 remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
 freeze_path = REPO / 'runs/setup/method-frozen-v1.json'
@@ -217,6 +242,38 @@ if freeze:
                 assert job['args'][job['args'].index('--set') + 1:] == freeze['overrides']
 client = RemoteClient()
 messages = []
+from ops.jobs.admission_pause import paused  # noqa: E402  (intentional pauses, user 2026-10-28)
+if ROLE_ERROR:
+    messages.append(f'ROLES unreadable ({ROLE_ERROR}); no remote admission or pool move this pass')
+elif (not DRY and not (REPO / 'runs/setup/remote-hold-admissions').exists()  # the hold file holds this too
+      and (any(j.get('host') == 'remote' and j['id'] not in state and not paused(j['id'])
+               and host_roles.role_host(j, ROLES, by_id) == 'local' for j in queue['jobs'])
+           or host_roles.placement_repair_needed(queue['jobs']))):
+    # never-launched Meta-World rows registered on the remote move to local (host fields only; paused rows stay)
+    replaced = host_roles.replace_to_local(paused)
+    if replaced.get('moved'):
+        messages.append(f"ROLE re-placed to local: {replaced['moved']}")
+        queue = jobs.load_queue()
+        state = jobs.read_registry()
+        by_id = {j['id']: j for j in queue['jobs']}
+        remote = [j for j in queue['jobs'] if j.get('host') == 'remote' and kind(j['id'])]
+
+
+def with_role(job):
+    """A dispatch copy carries its class as an explicit role: the scheduler then classifies it as here, without the
+    dependency context of the full queue (e.g. an encoder export classified by its producer)."""
+    found = host_roles.job_class(job, by_id)
+    return {**copy.deepcopy(job), 'role': found.cls} if 'role' not in job and found.cls in host_roles.DOMAIN else \
+        copy.deepcopy(job)
+
+
+def role_admits(job, drain=True):
+    """The remote role admits the row (or an explicit retry-in-place exception of a run started here, or, for
+    admission only (``drain``), the drain exception for the evaluator companion of a trainer that ran here) and no
+    ownership record holds it elsewhere (host_roles.refusal). Pool moves pass drain=False."""
+    trainer = state.get(job['id'].removesuffix('-eval')) if drain and job['id'].endswith('-eval') else None
+    return ROLES is not None and host_roles.refusal({**job, 'host': 'remote'}, 'remote', ROLES, OWNERSHIP, by_id,
+                                                    state.get(job['id']), EXCEPTIONS, trainer) is None
 
 for job in remote:
     jid = job['id']
@@ -283,6 +340,13 @@ for job in remote:
         assert all(record['results'].values()), (jid, record['results'])
         (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
         messages.append(f'ANALYSIS_VERIFIED {jid}')
+        continue
+    if kind(jid) == 'role':  # 2026-11-06: a remote-role row; its required results are verified by the sync
+        record.update(results={name: state[jid]['sync']['files'].get(name) for name in job['required_results']},
+                      job_class=host_roles.job_class(job, by_id).cls)
+        assert all(record['results'].values()), (jid, record['results'])
+        (FINISHED / f'{jid}.json').write_text(json.dumps(record, indent=2) + '\n')
+        messages.append(f'ROLE_JOB_VERIFIED {jid}')
         continue
     if kind(jid) in ('proxy', 'brl', 'orl', 'nbrl', 'pool_rl'):
         if state.get(f'{jid}-eval', {}).get('status') != jobs.DONE:
@@ -418,6 +482,8 @@ def ready(job):
         return True
     if k == 'pool_export':  # inputs are the remote pretraining's files, released by the dependency on that run
         return True
+    if k == 'role':  # inputs live on the remote (ingested / preprocessed there); dependencies express data gates
+        return ROLE_READY
     if k == 'analysis':  # inputs (existing checkpoints / exports, uploaded with checksums) are listed in 'inputs'
         if not job.get('inputs'):
             return False
@@ -495,12 +561,12 @@ def ready(job):
 
 RANK = {'proxy': 0, 'final_export': 0, 'pool_export': 0, 's2_eval': 0, 'analysis': 0.4, 's2_rl': 0.5, 'baseline': 1,
         'final_pretrain': 1, 'nbaseline': 1.5, 'pool_pretrain': 1.6, 'brl': 2, 'orl': 2, 'pool_rl': 2, 'nbrl': 2.2,
-        's2_pretrain': 2.5, 'stage3': 3}
+        's2_pretrain': 2.5, 'stage3': 3, 'role': 1}
 
 
 def dispatch_key(job):
     # a camera suite v2 re-evaluation row (2026-10-29) names the completed run it reads ('reevaluates')
-    trainer = by_id[job.get('reevaluates') or job['id'].removesuffix('-eval')]
+    trainer = by_id.get(job.get('reevaluates') or job['id'].removesuffix('-eval'), job)
     is_evaluator = job['id'].endswith('-eval')
     trainer_status = state.get(trainer['id'], {}).get('status', jobs.PENDING)
     companion = is_evaluator and trainer_status in jobs.ACTIVE | {jobs.DONE}
@@ -523,10 +589,10 @@ def dispatch_key(job):
 # pretrains for retry.)
 retry_view = {i: ({**s, 'status': jobs.PENDING} if s.get('status') == 'crashed' and i in by_id
                   and s.get('failures', 0) <= int(by_id[i].get('max_restarts', 1)) else s) for i, s in state.items()}
-candidates = [j for j in jobs.eligible(remote, retry_view) if ready(j)]
+# server roles first (no export upload or other preparation for a row the remote may not run)
+candidates = [j for j in jobs.eligible(remote, retry_view) if role_admits(j) and ready(j)]
 # intentional admission pauses (user 2026-10-28; runs/setup/admission-pauses.json): never admitted, retried or moved
 sys.path.insert(0, str(REPO / 'runs/setup/tools'))
-from ops.jobs.admission_pause import paused  # noqa: E402
 candidates = [j for j in candidates if not paused(j['id'])]
 if (REPO / 'runs/setup/remote-hold-admissions').exists():
     messages.append('ADMISSIONS_HELD ' + (REPO / 'runs/setup/remote-hold-admissions').read_text().strip())
@@ -608,7 +674,7 @@ for job in candidates:
         continue
     gpu_load[gpu] += load(job)
     gpu_mem[gpu] += float(job['mem_gb'])
-    chosen.append({**copy.deepcopy(job), 'gpu': gpu})
+    chosen.append({**with_role(job), 'gpu': gpu})
     taken.add(job['id'])
     total += need
     reviwo += job['id'].startswith('s4-reviwo-')
@@ -616,7 +682,7 @@ for job in candidates:
 # now move here (runs/setup/tools/pool_placement.py: host-specific fields only) and are admitted in this pass. Pretraining
 # first (it gains most from the full GPUs), then RL trainer + evaluator pairs, each in priority / registration order.
 held = (REPO / 'runs/setup/remote-hold-admissions').exists()
-if POOL_READY and not DRY and not held:
+if POOL_READY and not DRY and not held and ROLES is not None:
     sys.path.insert(0, str(REPO / 'runs/setup/tools'))
     from ops.jobs import pool_placement  # noqa: E402
 
@@ -637,6 +703,8 @@ if POOL_READY and not DRY and not held:
         if not pool_placement.movable(job, state, by_id):
             continue
         members = [job] + ([by_id[job['id'] + '-eval']] if job['script'] == 'scripts/train_rl.py' else [])
+        if not all(role_admits(u, drain=False) for u in members):  # server roles: Meta-World never moves there
+            continue
         units.append(members)
     if not ENC_ALLOWED:
         units = [m for m in units if not m[0]['id'].startswith(ENC_PREFIXES)]
@@ -659,7 +727,7 @@ if POOL_READY and not DRY and not held:
     for members in units:
         tentative = []
         for u in members:
-            row_load = load(u) if u['id'].startswith(GPU_HEAVY) else (
+            row_load = load(u) if u['id'].startswith(GPU_HEAVY) or kind(u['id']) == 'role' else (
                 1.0 if u['script'] == 'scripts/train.py' else (0.3 if u['id'].endswith('-eval') else (
                     0.1 if u['script'] == 'scripts/export_encoder.py' else 0.5)))
             need = int(float(u['ram_gb']) * 2**30)
@@ -693,7 +761,7 @@ if POOL_READY and not DRY and not held:
             ok = all(i in moved for i, *_ in tentative) and all(ready(by_id[i]) for i, *_ in tentative)
             for i, g, row_load, mem, need in tentative:
                 if ok:
-                    chosen.append({**copy.deepcopy(by_id[i]), 'gpu': g})
+                    chosen.append({**with_role(by_id[i]), 'gpu': g})
                     taken.add(i)
                 else:  # placed but not startable yet (e.g. export upload pending): admitted by a later pass
                     gpu_load[g] -= row_load
@@ -708,6 +776,8 @@ def job_release(job):
         return SNERL_NT_COMMIT, POOL_IMAGE
     if previous.get('commit'):
         return previous['commit'], previous.get('image_digest', IMAGE)
+    if kind(job['id']) == 'role':
+        return ROLE_COMMIT, ROLE_IMAGE
     if job['id'].startswith(ENC_PREFIXES):
         return ENC_COMMIT, POOL_IMAGE
     if job['id'].startswith(SRV4_PREFIXES):
