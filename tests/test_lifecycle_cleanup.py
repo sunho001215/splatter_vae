@@ -572,3 +572,38 @@ def test_cli_local_pass_rechecks_only_runs_with_work_reads_inputs_once_and_ledge
     with pytest.raises(KeyboardInterrupt):
         cli.main()
     assert [json.loads(line)["run_id"] for line in second.read_text().splitlines()] == ["a"]
+
+
+def test_cli_files_appearing_after_the_no_op_check_still_get_the_pre_deletion_recheck(tmp_path, monkeypatch, capsys):
+    """Codex round 3: a run judged to have nothing to delete (replay_host.pending False) whose replay files appear
+    before its clean_run takes the full path: re-check first (here the run was reset meanwhile, so nothing is
+    deleted)."""
+    runs = tmp_path / "runs"
+    make_run(runs, "a")
+    folder = tmp_path / "experiments"
+    folder.mkdir()
+    queue, registry, ledger = folder / "queue.yaml", folder / "registry.jsonl", tmp_path / "ledger.jsonl"
+    queue.write_text(yaml.safe_dump({"jobs": [trainer_row("a", gpu="any", mem_gb=1), eval_row("a", gpu="any", mem_gb=1)]}))
+    gpu = APPROVED_HOST_GPUS["local"][0]
+    jobs.record({"event": "launched", "id": "a", "pid": 999_999_999, "gpu": gpu, "attempt": 1}, registry)
+    jobs.record({"event": "exited", "id": "a", "attempt": 1, "code": 0}, registry)
+    module_spec = importlib.util.spec_from_file_location("cleanup_replay_cli3", REPO / "ops/jobs/cleanup_replay.py")
+    cli = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(cli)
+    (tmp_path / "proc").mkdir()
+    scan = cli.lifecycle.local_writers
+    monkeypatch.setattr(cli.lifecycle, "local_writers",
+                        lambda run_dir, run_id, session=None: scan(run_dir, run_id, session, proc=tmp_path / "proc"))
+
+    def stale_check(runs_root, spec):  # the files "appear" right after the check; the run is reset meanwhile
+        jobs.record({"event": "reset", "id": "a"}, registry)
+        return False
+
+    monkeypatch.setattr(cli.host_check, "pending", stale_check)
+    monkeypatch.setattr(sys, "argv", ["cleanup_replay.py", "--host", "local", "--queue", str(queue), "--registry",
+                                      str(registry), "--runs", str(runs), "--pauses", str(tmp_path / "absent.json"),
+                                      "--ledger", str(ledger)])
+    assert cli.main() == 0
+    out = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [line["status"] for line in out if "run" in line] == ["skipped"]
+    assert len(memmaps(runs / "a")) == len(DRM_REPLAY) and not ledger.exists()

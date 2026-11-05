@@ -145,8 +145,17 @@ def run(args) -> int:
 
     if args.host == "local":
         for decision in eligible:
-            if (not args.dry_run and host_check.pending(str(args.runs), decision.spec)
-                    and not still_eligible([decision], args, inputs)):
+            writers = (lambda run_id, run_dir, session=decision.session: lifecycle.local_writers(
+                Path(run_dir), run_id, session))
+            if not args.dry_run and not host_check.pending(str(args.runs), decision.spec):
+                # nothing to delete or close: its dry run deletes nothing and returns a no-op at once; files that
+                # appeared since the check (would_delete) take the full path below, re-check first (Codex round 3)
+                report = host_check.clean_run(str(args.runs), decision.spec, dry_run=True, writers=writers,
+                                              verify_policy=lifecycle.torch_policy_check)
+                if report["status"] == "noop":
+                    emit(decision, report)
+                    continue
+            if not args.dry_run and not still_eligible([decision], args, inputs):
                 print(json.dumps({"run": decision.run_id, "status": "skipped", "reason": "state changed"}), flush=True)
                 continue
             report = host_check.clean_run(
