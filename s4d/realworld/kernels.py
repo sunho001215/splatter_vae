@@ -348,6 +348,125 @@ def depth_compare_v2(params: dict, arrays: dict) -> tuple[dict, dict]:
         {"sets": _finite(sets)}
 
 
+REGIONS_MULTI = ("scene", "mug", "fixture", "robot", "gripper", "boundary")
+
+
+@kernel("depth_compare_multi")
+def depth_compare_multi(params: dict, arrays: dict) -> tuple[dict, dict]:
+    """K depth sources of the same views (controlled depth comparison, 2026-11-05).
+
+    arrays: ``images`` (S,V,H,W,3); ``depth_<name>``/``valid_<name>`` (S,V,H,W) for every name in
+    ``params["sources"]``; ``K`` (V,3,3); ``T_cam_base`` (V,4,4); ``surface_base`` (S,V,N,3) URDF surface at each view's
+    frame time with ``gripper_points`` (N,) bool marking gripper-link samples; ``semantic`` (S,V,H,W) optional;
+    ``calib_used`` (S,V). Per set and view: coverage per source and region; per ordered view pair, region and
+    ``params["pairs"]`` (a, b): cross-view residuals of both sources on the SAME points (valid in a and b in both views);
+    the same for all sources on the joint common support; robot/gripper agreement on pairwise common support; for each
+    reference-free source its pixels missing in ``params["reference_source"]`` checked against the other views'
+    reference measurement; edge alignment (own support) and flying pixels (joint common support)."""
+    from s4d.realworld import diagnostics as dg
+    from s4d.realworld.geometry import depth_to_points
+
+    imgs = arrays["images"]
+    S, V, H, W = imgs.shape[:4]
+    names = list(params["sources"])
+    pairs = [tuple(p) for p in params["pairs"]]
+    ref = params.get("reference_source")
+    K, T = np.asarray(arrays["K"], float), np.asarray(arrays["T_cam_base"], float)
+    occ, bpx, front = float(params.get("occlusion_m", 0.05)), int(params.get("boundary_px", 3)), \
+        float(params.get("front_tol_m", 0.05))
+    max_pts, first_set = int(params.get("max_points", 15000)), int(params.get("first_set", 0))
+    sem = arrays.get("semantic")
+    gmask = np.asarray(arrays["gripper_points"], bool)
+    step = int(params.get("grid_step", 8))
+    gi, gj = (x.ravel() for x in np.meshgrid(np.arange(step // 2, H, step), np.arange(step // 2, W, step),
+                                             indexing="ij"))
+    grid = {n: np.zeros((S, V, gi.size), np.float32) for n in names}
+    grid["static"] = np.zeros((S, V, gi.size), bool)
+    rng = np.random.default_rng(int(params.get("seed", 0)) + first_set)
+    sets = []
+    for s in range(S):
+        D = {n: arrays[f"depth_{n}"][s].astype(np.float64) for n in names}
+        Vd = {n: arrays[f"valid_{n}"][s].astype(bool) for n in names}
+        joint = np.logical_and.reduce([Vd[n] for n in names])
+        row = {"set": first_set + s, "views": [], "pairs": {}}
+        regions = []
+        for v in range(V):
+            surf = transform_points_(T[v], arrays["surface_base"][s, v])
+            zb = dg.robot_zbuffer(surf, K[v], (H, W))
+            zg = dg.robot_zbuffer(surf[gmask], K[v], (H, W))
+            reg = {"scene": np.ones((H, W), bool), "robot": np.isfinite(zb),
+                   "gripper": np.isfinite(zg) & (zg <= zb + 1e-6), "boundary": dg.rgb_boundary(imgs[s, v], bpx),
+                   "mug": (sem[s, v] == 2) if sem is not None else np.zeros((H, W), bool),
+                   "fixture": (sem[s, v] == 3) if sem is not None else np.zeros((H, W), bool)}
+            regions.append((reg, zb))
+            vrow = {"calib_used": bool(arrays["calib_used"][s, v]), "coverage": {}, "robot": {}, "edges": {},
+                    "flying_common": {}}
+            for name in REGIONS_MULTI:
+                m = reg[name]
+                if m.any():
+                    vrow["coverage"][name] = {"pixels": int(m.sum()), "joint": float(joint[v][m].mean()),
+                                              **{n: float(Vd[n][v][m].mean()) for n in names}}
+            for a, b in pairs:  # robot and gripper geometry on the pair's common support
+                both = Vd[a][v] & Vd[b][v]
+                for rname, rmask in (("robot", reg["robot"]), ("gripper", reg["gripper"])):
+                    m = rmask & both & (D[a][v] - zb > -front) & (D[b][v] - zb > -front)
+                    vrow["robot"][f"{a}|{b}|{rname}"] = {a: dg.summarize(D[a][v][m] - zb[m]),
+                                                         b: dg.summarize(D[b][v][m] - zb[m])}
+            for n in names:
+                vrow["edges"][n] = dg.summarize(dg.edge_to_rgb_distance(D[n][v], Vd[n][v], imgs[s, v]), tols=(1, 2, 4),
+                                                unit="px", scale=1.0)
+                vrow["flying_common"][n] = dg.flying_pixel_fraction(D[n][v], joint[v])
+                grid[n][s, v] = np.where(Vd[n][v], D[n][v], np.nan)[gi, gj]
+            from scipy.ndimage import binary_dilation
+
+            grid["static"][s, v] = (~binary_dilation(reg["robot"], iterations=6) &
+                                    ~binary_dilation(reg["mug"], iterations=4))[gi, gj]
+            row["views"].append(vrow)
+        pts = {n: [depth_to_points(np.where(Vd[n][v], D[n][v], 0.0), K[v])[0].reshape(-1, 3) for v in range(V)]
+               for n in names}
+        for a_v in range(V):
+            for b_v in range(V):
+                if a_v == b_v:
+                    continue
+                entry = {}
+                reg = regions[a_v][0]
+                for name in REGIONS_MULTI:
+                    for key, members in [(f"{p[0]}|{p[1]}", list(p)) for p in pairs] + [("joint", names)]:
+                        sup = np.logical_and.reduce([Vd[n][a_v] for n in members]) & reg[name]
+                        idx = np.flatnonzero(sup.ravel())
+                        if len(idx) > max_pts:
+                            idx = rng.choice(idx, max_pts, replace=False)
+                        if not len(idx):
+                            continue
+                        land = np.logical_and.reduce([Vd[n][b_v] for n in members])
+                        res = {n: dg.reproject_pair(pts[n][a_v][idx], T[a_v], T[b_v], K[b_v], D[n][b_v], land,
+                                                    occlusion_m=occ) for n in members}
+                        keep = np.logical_and.reduce([res[n][1] for n in members])
+                        entry[f"{key}|{name}"] = {"kept": int(keep.sum()),
+                                                  **{n: dg.summarize(res[n][0][keep]) for n in members}}
+                if ref is not None:  # pixels a source fills where the reference is missing, vs the other view's reference
+                    for n in names:
+                        if n == ref:
+                            continue
+                        idx = np.flatnonzero((Vd[n][a_v] & ~Vd[ref][a_v]).ravel())
+                        if len(idx) > max_pts:
+                            idx = rng.choice(idx, max_pts, replace=False)
+                        if len(idx):
+                            d1, k1, _ = dg.reproject_pair(pts[n][a_v][idx], T[a_v], T[b_v], K[b_v], D[ref][b_v],
+                                                          Vd[ref][b_v], occlusion_m=occ)
+                            entry[f"filled|{n}"] = {"points": int(len(idx)), "vs_other_reference": dg.summarize(d1[k1])}
+                    idx = np.flatnonzero(Vd[ref][a_v].ravel())
+                    if len(idx) > max_pts:
+                        idx = rng.choice(idx, max_pts, replace=False)
+                    if len(idx):
+                        d3, k3, _ = dg.reproject_pair(pts[ref][a_v][idx], T[a_v], T[b_v], K[b_v], D[ref][b_v],
+                                                      Vd[ref][b_v], occlusion_m=occ)
+                        entry[f"reference_self|{ref}"] = dg.summarize(d3[k3])
+                row["pairs"][f"{a_v}->{b_v}"] = entry
+        sets.append(row)
+    return {**{f"grid_{k}": v for k, v in grid.items()}}, {"sets": _finite(sets)}
+
+
 def transform_points_(T, points):
     from s4d.realworld.geometry import transform_points
 
