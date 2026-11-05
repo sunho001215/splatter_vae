@@ -122,8 +122,10 @@ The supported adapters are:
   (`colour_frames_without_stereo_record`), and the camera's timeline shows the gap (downstream treats it like a
   dropped frame: timestamp matching, gap-aware windows and motion segments). An index map that does not map strictly
   increasing into the colour frames is refused ("not paired 1:1"). The task is the dataset folder; a recorder
-  `task_name` that disagrees (drawer-open episodes 7-10 say `pick-and-place`) is reported as a warning and in the
-  provenance notes (`task_identity`), never used.
+  `task_name` that disagrees (drawer-open episodes 7-10 say `pick-and-place`; every `test/` file) is reported as a
+  warning and in the provenance notes (`task_identity`), never used; that note is part of the ingest fingerprint
+  (`adapter.ingest_identity` -> ingest config `source_identity`), so a normalized episode cached without it is rebuilt,
+  while every other recording keeps its earlier fingerprint.
   `configs/realworld/mug_hanging.yaml` supplies the real robot assets and `evidence: rgbd` calibration.
   `include_ir: true` also exposes the device-rectified infrared pair of each RealSense as `<serial>/ir_left`,
   `<serial>/ir_right` with `EpisodeMeta.ir_stereo` per rig (`IrStereoGeometry`). The adapter refuses a pair unless the
