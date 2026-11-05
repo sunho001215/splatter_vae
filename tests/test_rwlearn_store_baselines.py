@@ -215,7 +215,8 @@ def test_gate_evidence_required_beyond_smoke_runs():
     good = {"train": eps[:2], "validation": eps[2:]}
     assert not BD.check_gate(store, report, steps=None, split=good, target="drawer-open",
                              caps={"max_episodes": None, "max_frames_per_demo": 3000})["smoke"]
-    for split in ({"train": eps[:1], "validation": eps[2:]}, {"train": eps, "validation": eps[2:]}):
+    for split in ({"train": eps[:1], "validation": eps[2:]}, {"train": eps, "validation": eps[2:]},
+                  {"train": eps[:2], "validation": eps[2:] * 2}):
         with pytest.raises(RuntimeError, match="partition"):
             BD.check_gate(store, report, steps=None, split=split)
     with pytest.raises(RuntimeError, match="target joint"):
@@ -223,6 +224,8 @@ def test_gate_evidence_required_beyond_smoke_runs():
     for caps in ({"max_episodes": 2}, {"max_frames_per_demo": 10}):
         with pytest.raises(RuntimeError, match="truncate"):
             BD.check_gate(store, report, steps=None, caps=caps)
+        BD.check_gate(store, report, steps=100, caps=caps)  # smoke-length runs may cap
+    BD.check_gate(store, report, steps=None, caps={"max_episodes": 3, "num_episodes": 50})  # keeps every episode
     report["tasks"]["drawer-open"]["store_episodes"] = store.episodes()[:-1]
     with pytest.raises(RuntimeError, match="differ"):
         BD.check_gate(store, report, steps=None)

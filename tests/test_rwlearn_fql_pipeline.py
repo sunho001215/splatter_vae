@@ -109,7 +109,8 @@ def test_dataset_build_sampling_and_policy_round_trip(tmp_path, exports, conditi
         ok = g["transition_ok"][:].astype(bool)
         assert g["features"].shape[0] == len(g["times"]) and g["features"].dtype == np.float16
         r, m = g["reward"][:][ok], g["mask"][:][ok]
-        assert (r[:-1] == -1).all() and r[-1] == 0 and m[-1] == 0  # the store's last reached frame = success
+        assert (r == -1).all() and (m == 1).all()  # the slice ends before the recording: no success label
+        assert g.attrs["label"] == "success_frame_unreachable"
         assert np.abs(g["action"][:][ok]).max() <= 1.0
     data = FD.OfflineTransitions(path)
     gen = torch.Generator().manual_seed(0)
@@ -177,6 +178,8 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     path = tmp_path / "d.h5"
     with pytest.raises(ValueError, match="no outcome label"):
         FD.build_fql_dataset(store, "dynamo", exports / "dynamo.pt", path, episodes=[ep])
+    with pytest.raises(ValueError, match="JSON booleans"):
+        FD.build_fql_dataset(store, "dynamo", exports / "dynamo.pt", path, episodes=[ep], outcomes={ep: "false"})
     FD.build_fql_dataset(store, "dynamo", exports / "dynamo.pt", path, episodes=[ep], outcomes={ep: False})
     with h5py.File(path, "r") as f:
         assert all(g.attrs["label"] == "failure" and not g["success"][:].any() for g in f["episodes"][ep].values())

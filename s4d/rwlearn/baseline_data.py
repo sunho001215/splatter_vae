@@ -74,16 +74,19 @@ def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, step
             raise RuntimeError(f"store tasks {sorted(by_task)} != target {target} tasks {TARGET_TASKS[target]}")
     if split is not None:
         train, val = set(split.get("train", [])), set(split.get("validation", []))
-        if train & val or (train | val) != set(store.episodes()) or len(split["train"]) != len(train):
+        if (train & val or (train | val) != set(store.episodes()) or len(split["train"]) != len(train)
+                or len(split.get("validation", [])) != len(val)):
             raise RuntimeError("the split is not a disjoint train / validation partition of the store's episodes")
-    for name, value in (caps or {}).items():
-        if value is None:
+    full_run = steps is None or steps > SHORT_RUN_STEPS
+    for name, value in (caps or {}).items():  # only full runs must see all data; a cap that keeps all is fine
+        if value is None or not full_run:
             continue
         if name == "max_frames_per_demo":
-            longest = max(len(store.timestamps(ep, c)) for ep in store.episodes() for c in store.cameras(ep))
-            if int(value) >= longest:
-                continue
-        raise RuntimeError(f"data cap {name}={value} would truncate the full-data set")
+            limit = max(len(store.timestamps(ep, c)) for ep in store.episodes() for c in store.cameras(ep))
+        else:  # episode caps
+            limit = len(store.episodes())
+        if int(value) < limit:
+            raise RuntimeError(f"data cap {name}={value} would truncate the full-data set")
     return {"smoke": False, "tasks": sorted(by_task)}
 
 

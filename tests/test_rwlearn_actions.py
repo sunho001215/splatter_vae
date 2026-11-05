@@ -201,7 +201,8 @@ def test_rewards_masks_and_terminals(raw):
     raw_tail.sent[raw_tail.robot_t >= cam["t"][-3]] = False
     tail = T.episode_transitions(raw_tail, tl, contract)
     assert tail["label"] == "success_frame_unreachable" and not tail["success"].any()
-    assert T.episode_transitions(raw, cut, contract)["success"][-1]  # (a shorter store slice ends at its own end)
+    sliced = T.episode_transitions(raw, cut, contract)  # a store / sync that dropped the recording's last frame
+    assert sliced["label"] == "success_frame_unreachable" and not sliced["success"].any()
     # observation histories restart (pad) at the start of the second segment
     h = T.history_indices(tl.run, np.array([brk + 1, brk + 2, brk + 3]))
     assert h.tolist() == [[brk + 1] * 3, [brk + 1, brk + 1, brk + 2], [brk + 1, brk + 2, brk + 3]]

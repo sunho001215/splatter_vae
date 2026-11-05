@@ -120,8 +120,12 @@ The gate is enforced twice:
    - the split manifest is a disjoint train/validation partition of exactly those episodes;
    - no data cap (`max_episodes`, `num_episodes`, `max_frames_per_demo`) truncates anything.
 
-   The gate predicate mirrors the ingestion worker's: `exclude` / `accept` overrides, `source_missing` always blocks,
-   unknown flags block, `remote_sha256` must equal the sha256, and unknown validation states fail.
+   The gate predicate mirrors the ingestion worker's counting:
+   - records it does not count are excluded and listed: `exclude` overrides, blocking flags not cleared by an
+     `accept` override (`source_missing` is never cleared), and files no longer present;
+   - unknown flags and unknown validation states fail;
+   - `remote_sha256` must equal the sha256;
+   - exactly 100 counted, preprocessed episodes are required.
 
 Nothing is registered or launched by this branch.
 

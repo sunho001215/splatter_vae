@@ -73,7 +73,11 @@ def episode_transitions(raw: A.RawEpisode, tl: Timeline, contract: A.ActionContr
     reachable[1:] = ok[:-1]
     outcome = bool(success)
     success = np.zeros(K, bool)
-    final_reached = bool(K and reachable[K - 1])
+    # the final observation must be the RECORDING's end: every constituent camera's last recorded frame (a store or
+    # synchronisation that dropped tail frames leaves the success unlabelled instead of moving it earlier)
+    at_end = bool(K) and all(int(tl.frames[K - 1, v]) == len(raw.cameras[cam]["t"]) - 1
+                             for v, cam in enumerate(tl.cameras))
+    final_reached = bool(K and reachable[K - 1] and at_end)
     if outcome and final_reached:
         success[K - 1] = True  # the recording's final observation
     nxt = np.r_[success[1:], False]

@@ -72,9 +72,10 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
         if counts.get("target") != target:
             problems.append(f"manifest target {counts.get('target')} != {target}")
         mine = {k: e for k, e in episodes.items() if e.get("task") == task}
-        valid, indices = [], set()
+        valid, indices, excluded = [], set(), []
         for key, e in sorted(mine.items()):
             if _decision(e) == "exclude":
+                excluded.append({"key": key, "blocked_by": ["excluded_by_override"]})
                 continue  # excluded by the coordinator's override: not part of the task's episode set
             vstatus = (e.get("validation") or {}).get("status")
             if vstatus not in VALIDATION_STATUSES:
@@ -86,13 +87,16 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
             if vstatus != "valid":
                 continue  # invalid recordings are excluded by validation, not counted
             if not (e.get("source") or {}).get("present", True):
-                problems.append(f"{key}: source file missing")
+                excluded.append({"key": key, "blocked_by": ["source_not_present"]})  # ING counts present files only
                 continue
             flags = set(e.get("flags") or {})
             unknown = flags - BLOCKING_FLAGS
+            if unknown:  # flags this check does not know: fail closed
+                problems.append(f"{key}: unknown flags {sorted(unknown)}")
+                continue
             blocking = (flags & {"source_missing"}) if _decision(e) == "accept" else flags
-            if blocking or unknown:
-                problems.append(f"{key}: blocking flags {sorted(blocking | unknown)}")
+            if blocking:  # ING does not count blocked recordings toward the 100 (counted() / blocked())
+                excluded.append({"key": key, "blocked_by": sorted(blocking)})
                 continue
             sha = e.get("sha256")
             transfer = e.get("transfer") or {}
@@ -124,7 +128,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
             problems.append(f"{len(valid)} episodes valid + preprocessed, need exactly {target}")
         passed = not problems
         all_ok &= passed
-        report["tasks"][task] = {"passed": passed, "valid_and_preprocessed": len(valid),
+        report["tasks"][task] = {"passed": passed, "valid_and_preprocessed": len(valid), "excluded": excluded,
                                  "problems": problems[:50], "problem_count": len(problems),
                                  "episodes": valid if passed else [],
                                  "store_episodes": [store_episode_id(k) for k in valid] if passed else []}
@@ -164,6 +168,7 @@ def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: d
             raise RuntimeError(f"{task}: dataset episodes differ from the gate's validated + preprocessed set")
     if split is not None:
         train, val = set(split.get("train", [])), set(split.get("validation", []))
-        if train & val or (train | val) != set(eps) or len(split["train"]) != len(train):
+        if (train & val or (train | val) != set(eps) or len(split["train"]) != len(train)
+                or len(split.get("validation", [])) != len(val)):
             raise RuntimeError("the split is not a disjoint train / validation partition of the dataset's episodes")
     return {"smoke": False, "tasks": sorted(tasks)}

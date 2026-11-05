@@ -50,7 +50,7 @@ def test_both_tasks_pass_with_exactly_100_preprocessed_episodes():
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["preprocessing"]["stages"]["calibrate"].update(
         input_sha256="other"), "required stages"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["transfer"].update(status="partial"), "transfer"),
-    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"duplicate_content": 1}), "flags"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"duplicate_content": 1}), "99 episodes"),
     (lambda m: m["episodes"].update({"drawer-open/episode_000999.h5": entry("drawer-open", 999, status="incomplete")}),
      "not final"),
     (lambda m: m["episodes"].update({"drawer-open/episode_000998.h5": entry("drawer-open", 998)}), "101 episodes"),
@@ -59,10 +59,10 @@ def test_both_tasks_pass_with_exactly_100_preprocessed_episodes():
      "remote content"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(sha256=None), "no valid sha256"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["validation"].update(status=None), "unknown validation"),
-    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["source"].update(present=False), "source file missing"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"]["source"].update(present=False), "99 episodes"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(
-        flags={"source_missing": 1}, override={"decision": "accept"}), "blocking flags"),
-    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"new_kind_of_flag": 1}), "blocking flags"),
+        flags={"source_missing": 1}, override={"decision": "accept"}), "99 episodes"),
+    (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(flags={"new_kind_of_flag": 1}), "unknown flags"),
     (lambda m: m["episodes"]["drawer-open/episode_000004.h5"].update(override={"decision": "exclude"}), "99 episodes"),
     (lambda m: m["counts"]["drawer-open"].update(complete="yes"), "ingestion not complete"),
 ])
@@ -75,6 +75,15 @@ def test_gate_fails_closed(mutate, reason):
     text = rep.get("error", "") + " ".join(rep["tasks"].get("drawer-open", {}).get("problems", []))
     assert reason in text, text
     assert not rep["tasks"].get("drawer-open", {}).get("store_episodes")
+
+
+def test_blocked_records_are_not_counted_like_the_ingestion_worker():
+    dup = entry("drawer-open", 4, sha=hashlib.sha256(b"x").hexdigest())
+    dup["flags"] = {"duplicate_content": "same content as another recording"}
+    m = manifest(extra={"drawer-open/episode_000901.h5": dup})
+    rep = gate.evaluate(m, ["drawer-open"])
+    assert rep["passed"] and rep["tasks"]["drawer-open"]["excluded"][0]["key"] == "drawer-open/episode_000901.h5"
+    assert "drawer-open/episode_000901" not in rep["tasks"]["drawer-open"]["store_episodes"]
 
 
 def test_accept_override_clears_eligible_flags():

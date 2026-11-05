@@ -122,9 +122,10 @@ segments with motion disabled and no command rows.
   At each segment start the frame history restarts.
 - Outcomes are explicit inputs. The builder refuses without per-episode labels (`--outcomes`) or the explicit
   assumption `--assume-final-success`; the planned rows carry the assumption until labels exist.
-- For a successful episode, the success state is the recording's FINAL observation (last frame of the last segment).
-  The label applies only if that frame is reached by a valid transition; an unusable tail never moves the label
-  earlier, and the timeline is reported as `success_frame_unreachable`.
+- For a successful episode, the success state is the recording's FINAL observation: the last recorded frame of
+  every constituent camera. The builder verifies that the store's frames are the recording's frames. The label
+  applies only if that frame is reached by a valid transition. An unusable tail, or a sync step dropped at the end,
+  never moves the label earlier; the timeline is reported as `success_frame_unreachable`.
 - A failed episode has no success state: its last transition is a truncation (`mask` 1).
 - `r_k = success(s_{k+1}) - 1` and `mask_k = 1 - success(s_{k+1})`. This is FQL's own OGBench single-task convention
   (`ogbench/relabel_utils.py`: rewards = successes - 1, masks = 1 - successes), so the official `alpha` scale applies.
@@ -206,5 +207,14 @@ regression. Findings and how each was resolved:
   - The gripper register freshness limit is 100 ms.
 - **Adopted as design: outcomes and the execution envelope.** Outcomes are explicit inputs; the success label sits
   only at the final frame; the execution pose applies the radial lead envelope.
+- **Second, targeted Codex pass on 7bc391b.** It confirmed the fixes above and found five remaining problems, all
+  fixed:
+  - success could still move earlier when synchronisation dropped tail frames; it is now anchored to the recording
+    end;
+  - non-boolean outcome labels are refused;
+  - recordings ING does not count (blocked, excluded, source not present) are excluded and listed rather than failing
+    the gate;
+  - duplicated validation episodes are refused;
+  - data caps are checked only for full runs and only when they truncate.
 - **Kept as an open decision: SNeRL inputs.** SNeRL's 3-of-3 input views versus 2 inputs with the third held out
   (`docs/realworld_baselines.md`).

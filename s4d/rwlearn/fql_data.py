@@ -122,6 +122,9 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
     """Write ``out`` (atomic). ``raw_paths`` optionally maps episode -> raw recording path (else the store's).
     Outcomes are explicit: ``outcomes[ep]`` (True = successful demonstration) for every episode, or
     ``assume_final_success`` (every recording is a successful demonstration; the files carry no outcome marker)."""
+    bad = {ep: v for ep, v in (outcomes or {}).items() if not isinstance(v, bool)}
+    if bad:
+        raise ValueError(f"outcome labels must be JSON booleans, got {dict(list(bad.items())[:3])}")
     missing = [ep for ep in episodes if ep not in (outcomes or {})]
     if missing and not assume_final_success:
         raise ValueError(f"no outcome label for {len(missing)} episode(s) (e.g. {missing[0]}); give outcomes or "
@@ -136,6 +139,10 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
         for ep in episodes:
             raw = A.load_raw((raw_paths or {}).get(ep) or store.raw_recording(ep))
             A.check_contract_preconditions(raw)
+            for cam in store.cameras(ep):  # store frames are the recording's frames (index = native frame index)
+                st, rt = np.asarray(store.timestamps(ep, cam)), raw.cameras[cam]["t"]
+                if len(st) > len(rt) or not np.array_equal(st, rt[:len(st)]):
+                    raise ValueError(f"{ep}/{cam}: store timestamps are not the recording's camera frames")
             ep_contract = A.contract_for(raw)  # nominal period; each camera's measured period checked within 1 %
             if contract is None:
                 contract = ep_contract
