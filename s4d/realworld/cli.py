@@ -22,10 +22,11 @@ from s4d.realworld import io as rio
 
 STAGES = ("ingest", "sensor_depth", "stereo_rectify", "mapanything_rig_depth", "calibrate", "mapanything_depth",
           "track2d", "lift3d", "track_motion", "export",
-          "foundation_stereo_depth", "foundation_stereo_filtered")  # optional stages last (dispatch order is in code)
+          "foundation_stereo_depth", "foundation_stereo_filtered",
+          "track_everything")  # optional stages last (dispatch order is in code)
 BASELINE_STAGES = ("sam3_masks", "dino_snerl")
 # run only when configured under ``stages``
-OPTIONAL_STAGES = ("track_motion", "foundation_stereo_depth", "foundation_stereo_filtered")
+OPTIONAL_STAGES = ("track_motion", "foundation_stereo_depth", "foundation_stereo_filtered", "track_everything")
 
 
 def default_stages(cfg: dict) -> list[str]:
@@ -215,6 +216,19 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
                                            grid_stride=tc.get("grid_stride", 8),
                                            tracker_hw=tuple(tc["tracker_hw"]) if tc.get("tracker_hw") else None,
                                            force=f))
+    if "track_everything" in wanted:  # single-view TrackEverything writes track2d + lift3d in its own root
+        from s4d.realworld.trackeverything_stage import track_everything
+
+        tc = dict(st.get("track_everything") or {})
+        if "model_hw" in tc:
+            tc["model_hw"] = tuple(tc["model_hw"])
+
+        def te(force):
+            recs = track_everything(root, ep, spec_factory("trackeverything"), runner, force=force, **tc)
+            return {"skipped": all(r.get("skipped") for r in recs.values()),
+                    "summary": {k: r.get("summary") for k, r in recs.items()}}
+
+        run("track_everything", te)
     run("lift3d", lambda f: P.lift3d(root, ep, **st.get("lift3d", {}), force=f, runner=runner))
     if "track_motion" in wanted:
         from s4d.realworld.track_motion import MotionFilterConfig, track_motion

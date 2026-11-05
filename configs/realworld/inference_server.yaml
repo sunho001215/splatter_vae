@@ -41,6 +41,10 @@ workers:
     python: /opt/envs/foundation_stereo/bin/python
     repo_dir: /opt/upstream/FoundationStereo
     checkpoint: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth
+  trackeverything:   # single-view TrackEverything (tracker comparison, 2026-11-05); repo dir must be named so
+    python: /opt/envs/trackeverything/bin/python
+    repo_dir: /opt/upstream/trackeverything
+    checkpoint: /ram/weights/trackeverything/model.pth
   dino_snerl: {python: /opt/envs/s4d/bin/python}
   s4d_kernels: {python: /opt/envs/s4d/bin/python}
 weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a container restart
@@ -60,6 +64,9 @@ weights:   # RAM only (container tmpfs); sha256 pinned; re-staged after a contai
   - {dest: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth,
      local: /home/ws/ws/validation-20261031/downloads/foundation_stereo/23-51-11/model_best_bp2.pth,
      sha256: 60e79bde9c6a00acea551625ff814fe06e5a6806e2c0c9829baee248de87c5f1}
+  - {dest: /ram/weights/trackeverything/model.pth,
+     local: /home/ws/ws/validation-20261031/downloads/trackeverything/model.pth,
+     sha256: 4553975d372096f8c3d7c5fc35fd7025ef8a7611355e6ada8eb251ef1f5feac1}
   - {dest: /ram/s4d-cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth,
      local: /home/ws/ws/splatter4d/.cache/torch/hub/checkpoints/dino_deitsmall8_pretrain.pth, sha256: 55c8b267f479b614ec20858947ce361ba804846c193e20be74263a096bb6d75e}
 ram_copies:   # pinned torch.hub code MapAnything's encoder loads (facebookresearch/dinov2 @ 7764ea0, no weights)

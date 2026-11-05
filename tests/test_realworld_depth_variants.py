@@ -82,3 +82,19 @@ def test_variant_roots_refuse_an_incomplete_base(tmp_path):
 
     with pytest.raises(SystemExit, match="lacks complete shared stages"):
         link_shared(tmp_path / "base", tmp_path / "B0", "ep")
+
+
+def test_trackeverything_roots_use_the_variant_depth_and_never_touch_the_base_tracks():
+    from pathlib import Path
+
+    from ops.inference_server.run_depth_variants import SHARED, shared_stages, variant_config
+    from s4d.realworld.cli import default_stages
+
+    base = yaml.safe_load(open("configs/realworld/mug_hanging_ep1.yaml"))
+    assert "track_everything" not in default_stages(base)  # a default base run never replaces AllTracker tracks
+    for name, depth in (("B0", "sensor_depth"), ("E2", "mapanything_depth")):
+        cfg = variant_config(base, name, Path(f"/tmp/x/{name}-TE"), "trackeverything")
+        te = cfg["stages"]["track_everything"]
+        assert te["depth_stage"] == depth and te["grid_stride"] == base["stages"]["track2d"]["grid_stride"]
+        assert te["window"] == base["stages"]["track2d"]["window"] and te["step"] == base["stages"]["track2d"]["step"]
+    assert "track2d" not in shared_stages("trackeverything") and set(shared_stages("alltracker")) == set(SHARED)

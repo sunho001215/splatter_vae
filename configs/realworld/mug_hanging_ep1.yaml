@@ -50,6 +50,11 @@ workers:   # paths inside the inference container
     repo_dir: /opt/upstream/FoundationStereo
     expected_commit: 6e8806816b533e4d13ddbb95ffa907b797060a62
     checkpoint: /ram/weights/foundation_stereo/23-51-11/model_best_bp2.pth
+  trackeverything:   # single-view only (tracker comparison); our depth/K/pose supplied, no geometry estimation
+    python: /opt/envs/trackeverything/bin/python
+    repo_dir: /opt/upstream/trackeverything
+    expected_commit: dfb29b505cf2ea954f8697fb612c2429668dd3a0
+    checkpoint: /ram/weights/trackeverything/model.pth
   sam3:
     python: /opt/envs/sam3/bin/python
     repo_dir: /opt/upstream/sam3
@@ -102,3 +107,7 @@ stages:
     chunk: 206
     score_threshold: 0.5
   dino_snerl: {backbone: scratch}
+# Tracker comparison (activated ONLY in <variant>-TE roots by run_depth_variants --tracker trackeverything, so a default
+# run of this base root never replaces its AllTracker tracks): same query frames and grid as track2d
+tracker_comparison:
+  track_everything: {window: 16, step: 8, grid_stride: 16, model_hw: [384, 512], num_iters: 3}

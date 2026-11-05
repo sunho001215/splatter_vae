@@ -41,7 +41,7 @@ VARIANTS = {  # name -> (MapAnything input depth stage or None, depth stage used
 }
 
 
-def variant_config(base: dict, name: str, root: Path) -> dict:
+def variant_config(base: dict, name: str, root: Path, tracker: str = "alltracker") -> dict:
     ma_input, depth = VARIANTS[name]
     cfg = copy.deepcopy(base)
     cfg["output_root"] = str(root)
@@ -54,20 +54,34 @@ def variant_config(base: dict, name: str, root: Path) -> dict:
         st["mapanything_depth"] = {**st["mapanything_depth"], "input_depth_stage": ma_input}
     else:
         st.pop("mapanything_depth", None)
-    cfg["depth_variant"] = {"name": name, "mapanything_input": ma_input, "depth_stage": depth,
-                            "base_root": base["output_root"], "shared_stages": list(SHARED)}
+    if tracker == "trackeverything":
+        te = (base.get("tracker_comparison") or {}).get("track_everything")
+        if te is None:
+            raise SystemExit("base config lacks tracker_comparison.track_everything")
+        st["track_everything"] = {**te, "depth_stage": depth}
+    cfg["depth_variant"] = {"name": name, "mapanything_input": ma_input, "depth_stage": depth, "tracker": tracker,
+                            "base_root": base["output_root"], "shared_stages": list(shared_stages(tracker))}
     return cfg
 
 
-def link_shared(base_root: Path, root: Path, episode: str) -> None:
+def shared_stages(tracker: str) -> tuple:
+    """Base stages a variant root links: TrackEverything roots compute their own tracks (track2d + lift3d)."""
+    return SHARED if tracker == "alltracker" else tuple(s for s in SHARED if s != "track2d")
+
+
+def link_shared(base_root: Path, root: Path, episode: str, shared: tuple = SHARED, extra: dict | None = None) -> None:
+    """Symlink the shared base stages (and ``extra`` {stage: source root}, e.g. a variant's MapAnything depth reused by
+    its TrackEverything root) into a variant root; refuses incomplete sources or foreign directories."""
     from s4d.realworld import io as rio
 
     src_ep, dst_ep = rio.episode_dir(base_root, episode), rio.episode_dir(root, episode)
     (dst_ep / "derived").mkdir(parents=True, exist_ok=True)
-    missing = [s for s in SHARED if rio.read_record(rio.stage_dir(base_root, episode, s)) is None]
+    links = [(s, base_root) for s in shared] + list((extra or {}).items())
+    missing = [s for s, r in links if rio.read_record(rio.stage_dir(r, episode, s)) is None]
     if rio.read_record(src_ep / "normalized") is None or missing:
         raise SystemExit(f"base root lacks complete shared stages: {missing or ['ingest']}")
-    for name, src in [("normalized", src_ep / "normalized")] + [(f"derived/{s}", src_ep / "derived" / s) for s in SHARED]:
+    for name, src in [("normalized", src_ep / "normalized")] + [
+            (f"derived/{s}", rio.stage_dir(r, episode, s)) for s, r in links]:
         dst = dst_ep / name
         if dst.is_symlink():
             if os.readlink(dst) != str(src):
@@ -84,6 +98,9 @@ def main(argv=None) -> int:
     ap.add_argument("--server", required=True)
     ap.add_argument("--episode", required=True)
     ap.add_argument("--variants", default=",".join(VARIANTS))
+    ap.add_argument("--tracker", choices=("alltracker", "trackeverything"), default="alltracker",
+                    help="trackeverything: roots <variant>-TE with single-view TrackEverything tracks on the variant's "
+                         "depth (MapAnything depth reused from the AllTracker variant root by symlink)")
     ap.add_argument("--skip-weights", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="create roots/configs only")
     args = ap.parse_args(argv)
@@ -94,13 +111,18 @@ def main(argv=None) -> int:
     for name in args.variants.split(","):
         if name not in VARIANTS:
             ap.error(f"unknown variant {name}; known {list(VARIANTS)}")
-        root = base_root.parent / name
-        link_shared(base_root, root, args.episode)
-        cfg = variant_config(base, name, root)
+        te = args.tracker == "trackeverything"
+        root = base_root.parent / (f"{name}-TE" if te else name)
+        extra = {"mapanything_depth": base_root.parent / name} if te and VARIANTS[name][0] else None
+        link_shared(base_root, root, args.episode, shared_stages(args.tracker), extra)
+        cfg = variant_config(base, name, root, args.tracker)
         path = root / "pipeline.yaml"
         path.write_text("# resolved by ops/inference_server/run_depth_variants.py from " + args.pipeline + "\n"
                         + yaml.safe_dump(cfg, sort_keys=False))
-        stages = (["mapanything_depth"] if VARIANTS[name][0] else []) + ["lift3d", "track_motion", "export"]
+        if te:
+            stages = ["track_everything", "track_motion", "export"]
+        else:
+            stages = (["mapanything_depth"] if VARIANTS[name][0] else []) + ["lift3d", "track_motion", "export"]
         print(json.dumps({"variant": name, "root": str(root), "stages": stages}), flush=True)
         if args.dry_run:
             continue
