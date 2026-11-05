@@ -300,7 +300,8 @@ def cmd_record(args) -> int:
         oblique = np.array([c * view_dir[0] - s_ * view_dir[1], s_ * view_dir[0] + c * view_dir[1], view_dir[2]])
         wide = len(sources) > 1
         look = centre + np.array([0.0, -0.8 * (len(sources) - 1), 0.0])
-        cam_pos = look + oblique * ((1.4 + 0.6 * len(sources)) if wide else 0.75) + np.array([0, 0, 0.35])
+        # side-by-side: just far enough to frame every copy (1.6 m apart) with the mug/hook region still large
+        cam_pos = look + oblique * ((0.6 + 0.6 * len(sources)) if wide else 0.75) + np.array([0, 0, 0.35])
         meta["recordings"][name] = {"file": f"{name}.viser", "bytes": len(data), "sources": sources,
                                     "labels": [specs[s]["label"] for s in sources], "cameras": cams,
                                     "roots": {s: specs[s]["root"] for s in sources},

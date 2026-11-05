@@ -1,17 +1,24 @@
 # Real-world preprocessing (Franka Panda + Robotiq + three RealSense rigs)
 
-FoundationStereo removed on 2026-11-05, replaced by MapAnything.
+2026-11-05: FoundationStereo, removed in the morning (379bca5), was restored the same day as an OPTIONAL depth
+backend on RealSense infrared pairs (`foundation_stereo_depth`) for a controlled five-way depth comparison
+(section 9). Robot model: Franka **Panda** (not FR3) with the DROID-style Robotiq 2F-85 installation and no wrist
+camera. Lifted tracks pass the noise-aware motion filter `track_motion` before export.
 
-Maintained package: `s4d/realworld/`, branch `realworld-fsrm-20261105`. Existing training and data modules do not
+Maintained package: `s4d/realworld/`, branch `realworld-geometry-20261105`. Existing training and data modules do not
 import it; `test_existing_code_does_not_import_realworld` enforces this boundary.
 
 ```text
 Stereo: adapter -> ingest -> stereo_rectify -> mapanything_rig_depth -> calibrate
                                                                        |
-                               export <- lift3d <- track2d <- mapanything_depth
-RGB-D:  adapter -> ingest -> sensor_depth -> calibrate (evidence: rgbd) -> mapanything_depth -> track2d -> lift3d -> export
+                  export <- track_motion <- lift3d <- track2d <- mapanything_depth
+RGB-D:  adapter -> ingest -> sensor_depth -> sam3_masks -> calibrate (evidence: rgbd) -> [depth for lifting] -> track2d
+        -> lift3d -> track_motion -> export
+        [depth for lifting] = sensor_depth (B0) | foundation_stereo_depth (B1, IR pairs) |
+                              mapanything_depth with input depth B0 / B1 / foundation_stereo_filtered (E1 / E2 / E3)
 DROID with provided poses: ingest -> stereo_rectify -> calibrate (source: adapter_provided) -> mapanything_depth -> ...
-Optional baselines: stereo_rectify / RGB-D ingest -> sam3_masks; export -> dino_snerl
+Optional comparison tracker: track_everything (TrackEverything single-view; replaces track2d + lift3d in its own root)
+Optional baselines (real-world only; DROID pretrains only our method): sam3_masks, dino_snerl
 ```
 
 Rig depth is needed by landmark calibration's depth term. Adapter-provided calibration can skip it. Stereo images,
@@ -120,6 +127,12 @@ The supported adapters are:
   the host monotonic clock are used; arrival times are not substituted. Colour/depth pairing, invalid flags and
   missing calibration are checked. Robotiq register 0..255 has its own clock and is interpolated as recorded.
   `configs/realworld/mug_hanging_rgbd.yaml` supplies the real robot assets and `evidence: rgbd` calibration.
+  `include_ir: true` (episode 1, `configs/realworld/mug_hanging_ep1.yaml`) also exposes the device-rectified infrared
+  pair of each RealSense as `<serial>/ir_left`, `<serial>/ir_right` with `EpisodeMeta.ir_stereo` per rig
+  (`IrStereoGeometry`: IR-left K, equal IR-right K, recorded IR1->IR2 extrinsic with R = I and its baseline, the
+  recorded colour<-IR-left extrinsic). The adapter refuses a pair unless the recorder's `pair_ok` flag is set, both IR
+  frames carry the SAME hardware timestamp, and the depth stream's frame IS the IR-left frame. Nothing is fabricated:
+  without recorded IR frames and extrinsics there is no `ir_stereo` and the FoundationStereo stage refuses the rig.
 - **`droid_raw_svo`** (`droid_raw.py`, `droid_svo.py`): genuine raw ZED left/right SVO pairs, factory calibration,
   isolated decoder and optional DROID-3D provided poses. Joint corrections remain tied to that calibration source.
 
@@ -164,6 +177,25 @@ coefficients mean no distortion, whatever the model name.
   left rectification rotation is applied. RGB-D views and their depth input remain unchanged. Predicted poses are
   diagnostics only. Primary-view depth drives lifting/export; right-eye outputs are optional and never consumed by
   training. Nonmetric stereo rigs are omitted, and missing/rejected metric-view calibration is an error.
+  Recordings whose cameras are not hardware-synchronised (episode 1: one camera runs a constant 22.9 ms behind, one
+  lacks the last frame) set `allow_unmatched: true`: a set is a reference frame whose MUTUAL nearest frame in every
+  other view lies within `max_sync_ns` (must be below half a period); every other frame runs as a single view and is
+  listed in the record, never merged into a set. `input_depth_stage` selects the MapAnything input depth
+  (`sensor_depth`, `foundation_stereo_depth` or `foundation_stereo_filtered`); `output_stage` names the result.
+  MapAnything's missing-depth representation is 0 (never NaN) with its validity mask; invalid input pixels are passed
+  as 0.
+- **`foundation_stereo_depth`** (optional, RGB-D rigs with a recorded IR pair; `ir_stereo_depth.py`, worker
+  `foundation_stereo_worker.py`): FoundationStereo (pinned commit and ViT-L checkpoint `23-51-11`) on the
+  device-rectified IR pair at native 640x480 (InputPadder 32, unpadded), grayscale replicated to 3 channels as model
+  input only. Left-referenced disparity `d = x_left - x_right`, right-referenced disparity by flip-and-swap; depth
+  `z = fx_ir * B / d` with the recorded baseline; invalid where `d <= min_disparity`, the match leaves the right
+  image, or `z` is outside [`min_depth_m`, `max_depth_m`]. The IR-left frame is the native-depth frame, so the IR
+  depth is registered to the colour grid with exactly the `sensor_depth` registration (z-buffer, same splat) and the
+  winning IR pixel is stored (`source_index`). A failed model output is an error; native depth is never substituted.
+- **`foundation_stereo_filtered`** (E3 input): keeps a `foundation_stereo_depth` colour pixel only if its source IR
+  pixel passes the left-right consistency check `|d_L(x) - d_R(x - d_L(x))| <= max_lr_error_px` (1.0 px). It only
+  invalidates: retained values are asserted bitwise identical; no erosion/dilation (thin structures keep their
+  pixels unless they fail the check). Thresholds and retained fractions are in the record.
 
 All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-z metres, `valid` bool, and attrs
 `K`, `stream_id`, `rig_id`, `grid`. MapAnything also writes confidence, non-ambiguity and pose/scale diagnostics.
@@ -229,6 +261,24 @@ used.
    - Overlay PNGs show the projected robot surface (green), predicted landmarks (blue) and observed landmarks (red).
    - The covariance is a lower bound when there are systematic model errors.
 
+**RGB-D evidence (`evidence: rgbd`, the mug-hanging episodes).** No 2D landmarks: the initialisation registers the
+articulated Panda + Robotiq surface (recorded joints and gripper state) to the SAM 3 "robot arm"/"end effector"-masked
+NATIVE depth of `init_frames` frames (global search over orientations x rolls with centroid-aligned translations,
+trimmed-mean score, then trimmed ICP; `init_t_indices` records those frames). The refinement is the same depth term.
+Gates: robot-depth median on fit and held-out frames, held-out explained fraction (moving measured depth within
+`explained_tol_m` of the posed robot), covariance and conditioning. Frames used by the initialisation are NOT
+independent: `calibration.evidence_frames` returns fit + initialisation frames, and independent-frame checks use only
+the remaining held-out frames. The calibration depends on the native depth (it is the evidence); depth comparisons
+reuse ONE frozen calibration (section 9).
+
+**Multi-start refinement** (`refine_starts`, 2026-11-05): the robust objective has local optima near the
+initialisation (one camera stalled at 13 mm from the single start while starts 3 deg / 3 cm away reached 7.6 mm). The
+configured 13 starts are the initialisation plus +-3 deg about and +-3 cm along each camera axis; the solution with the
+lowest median |depth residual| over the FIT frames is kept (held-out frames never enter the choice). Every start's
+nfev, seconds and fit score are in `diagnostics.multistart`; per-phase kernel time in `diagnostics.timing_s`; the
+stage's local preparation (robot state, depth/mask loading, FK + surface sampling, overlays), the kernel call with
+transfer, and the durable save are in the record's `stage_timing_s`.
+
 **Simplifications versus DepthWorld.** This is not the paper's method, and we do not claim the full multi-episode
 optimisation.
 
@@ -260,6 +310,33 @@ optimisation.
   - Point ids are local to the camera and the query; `global_id` = `camera/q<frame>/<id>`.
   - **No identity is assumed across cameras.** Cameras without an accepted calibration or without metric depth
     are skipped, and the record states why.
+  - `lift3d.depth_stage` selects the lifting depth (default `mapanything_depth`; the depth variants of section 9 set
+    it explicitly).
+
+### 4.5b `track_motion`: noise-aware dynamic-track filter (`track_motion.py`, intentional change 2026-11-05)
+
+Before this stage nothing filtered tracks by motion: every valid grid track (mostly static background) reached the
+export. `track_motion` classifies every lifted track of one camera and one query window as `invalid`, `static`,
+`moving` or `uncertain`; ids are never matched across cameras or windows. Filtering stored outputs does NOT reduce
+AllTracker inference cost (the dense grid is still tracked).
+
+1. **Segments** never connected: after an identity loss (`occluded`, `low_confidence`, `out_of_image`,
+   `not_tracked`), after more than `max_depth_hole_frames` (2) consecutive depth holes, at a recording pause
+   (> `max_gap_factor` 1.5 median periods) and at a physically implausible jump (> `max_speed_m_s` 1.5 m/s).
+2. **Statistics** on a median-of-3 smoothed copy (outputs are never smoothed): image extent `extent_px`, its metric
+   size `lateral_m = extent_px * z / f`, and the depth extent along the ray `extent_z_m`.
+3. **Thresholds from observed noise**, per camera: quantiles (`0.995` move / `0.9` static) over reference tracks that
+   stay at least 0.15 m from the calibrated articulated robot surface; depth thresholds per depth bin, and a bin with
+   fewer than `min_bin_samples` reference segments is uncalibrated (no depth-only move, no static claim; thresholds
+   are never borrowed from a nearer bin). Floors: 1.5 px and 5 mm.
+4. **Temporal support**: at least `min_support` (2) smoothed samples beyond the threshold.
+5. **Class**: moving if any segment of >= 5 valid samples moves; a moving track keeps its FULL valid trajectory,
+   stationary intervals included, with segment ids so trails and supervision never cross a break.
+
+Outputs per chunk: `class`, `segment` (T,N), per-segment statistics; the record holds thresholds, reference sizes, the
+per-sample noise and the counts per camera. Overlays: `analysis/track_motion_overlays.py`. The export
+(`track_source: track_motion`) keeps only moving tracks and computes the motion score within segments; the loader
+contract is unchanged.
 
 ### 4.6 `export` (`export.py`, loader `dataset.RealworldCacheDataset`)
 - **Layout.** Exactly the accepted DROID-track cache layout (`s4d/data/droid/convert.py`): `windows/{i:05d}/` with
@@ -290,8 +367,26 @@ optimisation.
   carries `MOCK_MODEL_OUTPUTS: true` and the loader warns.
 - **Loader.** The loader validates every item with `s4d.data.contract.validate_batch`.
 
+### 4.6b `track_everything` (optional comparison tracker; `trackeverything_stage.py`, worker `trackeverything_worker.py`)
+
+TrackEverything (pinned `ayushjain1144/trackeverything` dfb29b5, official checkpoint `katefgroup/TrackEverything`
+`model.pth`, CC BY-NC 4.0) runs SINGLE-VIEW per colour camera, never its multiview path. Our metric depth, K and the
+accepted `T_cam_base` are passed, so its geometry estimation is bypassed (`geometry_backend="pi3"` keeps the
+cam0 alignment and median-distance normalisation of training; Pi3 itself is never loaded). Frames are resized to the
+training resolution 512x384 (`K[:2] *= 0.8`, continuous convention, RGB Lanczos, depth nearest) with
+`use_input_resolution=True`. Queries are EXACTLY AllTracker's (`chunk_queries` frames, `query_grid` pixels mapped by
+the same affine); clips never cross a recording pause and hold at most 64 frames. Outputs go to the `track2d` and
+`lift3d` stage directories of a separate root (`<variant>-TE`), with base-frame positions
+`X_base = E0^-1 [norm * X; 1]`, sigmoid visibility and the lift3d status codes, so `track_motion`, `export` and the
+viewer run unchanged. Settings live under `tracker_comparison.track_everything` so a default base run never replaces
+AllTracker tracks.
+
 ### 4.7 Optional, baseline-only stages (`baseline_stages.py`)
-Found by reading `s4d/baselines/*`:
+**Scope (2026-11-05): only our method is pretrained on DROID.** DROID configs run no SAM 3/DINO baseline
+preprocessing (`configs/realworld/droid_raw_validation.yaml`: `baselines: []`); for real-world episodes
+`required_baseline_stages(cfg)` derives exactly the auxiliary stages the configured `baselines` need, and the CLI
+refuses an explicit stage outside that scope. SAM 3 also supplies the robot masks of the RGB-D calibration (prompts
+"robot arm" and "end effector"; "robotic gripper" detected nothing on this rig). Found by reading `s4d/baselines/*`:
 
 - **SNeRL** needs 4-class semantics (`background, robot, object, fixture`; in Meta-World these come from MuJoCo
   body ids via `class_table`) and DINO teacher features.
@@ -325,9 +420,16 @@ Found by reading `s4d/baselines/*`:
 ## 5. Robot assets: what must be supplied
 
 `RobotGeometry` refuses to run without these:
-1. **Panda URDF.** From `frankarobotics/franka_description` (pinned in `configs/realworld/upstream_pins.yaml`),
+1. **Panda URDF.** The robot is a Franka **Panda** (`panda_link0..8`, `panda_joint1..7`; the earlier provisional FR3
+   description is replaced). From `frankarobotics/franka_description` (pinned in `configs/realworld/upstream_pins.yaml`),
    xacro-expanded. Joint origins are checked against Franka's modified-DH parameters (`robot.panda_dh_fk`, with
-   joint8/flange at +0.107 m), and a test compares FK against them.
+   joint8/flange at +0.107 m), and a test compares FK against them. The installation is the DROID-style Robotiq
+   2F-85 on the ISO-50 coupling WITHOUT the wrist camera or its bracket; the coupling stays in the model
+   (`MountConfig.coupling_geometry`: PickNik `ur_to_robotiq_adapter` mesh, NOMINAL geometry, not measured).
+   Consistency check on episode 0 (`analysis/mount_gripper_check.py`, independent frames only; evidence, not a
+   measurement): yaw +-90 deg about `panda_link8` fits (1-cm depth inliers 0.61; yaw 0: 0.11; 180 deg is not
+   identifiable), the flange->base offset plateaus at 8-14 mm with the nominal 11.0 mm at the peak, and the DROID
+   register mapping (3..230) fits closed fingers marginally better than the linear 0..255 map (0.605 vs 0.591).
 2. **The exact Robotiq model.** The plan says "Robotiq adaptive gripper", which does not say whether it is the
    2F-85 or the 2F-140.
    - Supply its URDF and meshes, for example `PickNikRobotics/ros2_robotiq_gripper` `robotiq_description`
@@ -368,6 +470,8 @@ Found by reading `s4d/baselines/*`:
 | `alltracker_worker.py` | `conda create -n alltracker python=3.12.8`, then `pip install -r requirements.txt` at the pinned commit. Upstream leaves torch unpinned: record the installed versions. Checkpoint `alltracker.pth` (Hugging Face `aharley/alltracker`). |
 | `sam3_worker.py` | Python ≥3.12, torch 2.10 (cu128), `pip install -e .` at the pinned commit. Gated checkpoint `facebook/sam3`. |
 | `dino_snerl_worker.py` | This repository's `.venv`. It is the consumer environment, with `third_party/dino` at 7c446df. |
+| `foundation_stereo_worker.py` | Optional (restored 2026-11-05). Env `foundation_stereo` (Python 3.11, `locks/foundation_stereo.txt`), pinned `NVlabs/FoundationStereo` checkout imported from `repo_dir`; ViT-L checkpoint `23-51-11/model_best_bp2.pth` (sha256 `60e79bde...`) + its `cfg.yaml`, loaded strictly. The EdgeNeXt stem is constructed without its ImageNet download (every weight is overwritten by the strict load); upstream's visualisation-only `open3d` import is replaced by an empty placeholder module. |
+| `trackeverything_worker.py` | Optional comparison tracker. Env `trackeverything` (Python 3.10, torch 2.8.0+cu129, `torch_scatter` 2.1.2 pt28cu129; `locks/trackeverything.txt`), pinned checkout as package `trackeverything`; `model.pth` (sha256 `4553975d...`, CC BY-NC 4.0). Single-view only. |
 | `mock_worker.py` | Any Python. **Mock**: `infer_views` echoes supplied depth; without depth only an exactly two-view rectified rig is accepted by the CPU SAD oracle. Fake tokens/masks and all depth outputs are always flagged `is_mock`. |
 
 **Upstream pins** (maintained as of 2026-11-05; full list and notes in `configs/realworld/upstream_pins.yaml`):
@@ -378,6 +482,8 @@ Found by reading `s4d/baselines/*`:
 | AllTracker | `e7553135e7b361590dbccd10e2b274b024f41cd6` |
 | SAM 3 | `f1647e8d0c1d280991f4d1b7d974c2704537fe66` |
 | DINO | `7c446df5b9f45747937fb0d72314eb9f7b66930a` |
+| FoundationStereo (optional) | `6e8806816b533e4d13ddbb95ffa907b797060a62` |
+| TrackEverything (comparison) | `dfb29b505cf2ea954f8697fb612c2429668dd3a0` |
 | DepthWorld (reference only) | `6823c13ddcd96484de04604da7d52c9e12f5c86c` |
 
 ## 7. Run commands
@@ -396,7 +502,24 @@ python -m s4d.realworld.cli run --config configs/realworld/droid_raw_validation.
 python -m s4d.realworld.cli status --root <output_root> --episode <id>
 # Same stages remotely; local CLI uses LocalRunner file protocol
 python -I ops/inference_server/run_episode.py --pipeline <pipeline.yaml> --server configs/realworld/inference_server.yaml --episode <id> --stages <comma-separated-stages>
+# Episode 1 (IR pairs): shared base stages once, then the five depth variants on the frozen calibration (section 9)
+python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging_ep1.yaml --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001 --stages ingest,sensor_depth,foundation_stereo_depth,foundation_stereo_filtered,sam3_masks,calibrate,track2d
+python -I ops/inference_server/run_depth_variants.py --pipeline configs/realworld/mug_hanging_ep1.yaml --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001 [--variants B0,B1,E1,E2,E3]
+python -I ops/inference_server/depth_compare_variants.py --pipeline configs/realworld/mug_hanging_ep1.yaml --server configs/realworld/inference_server.yaml --episode mug-hanging-test-000001
+# TrackEverything single-view on a chosen variant's depth (roots <variant>-TE)
+python -I ops/inference_server/run_depth_variants.py ... --variants <V> --tracker trackeverything
+# Viewer (viewer env with viser; CPU only, no MuJoCo): recordings + static client + index, browser check, video
+python scripts/realworld_viewer.py record --source B0=<root>:sensor_depth:"B0 native" ... --episode <id> --out <dir>
+python scripts/realworld_viewer_check.py <dir> --recording <name> --chromium <chrome>
+python scripts/realworld_viewer_video.py <dir> --recording <name> --video <out.mp4> --chromium <chrome>
 ```
+
+**MuJoCo.** Neither preprocessing nor the viewer needs MuJoCo (robot meshes are posed by URDF forward kinematics).
+Only the simulation-side tests and environments use it. In `shkim_rw` (`/opt/envs/s4d`, mujoco 3.10.0) EGL
+rendering failed with `Failed to load libEGL.so.1` (or PyOpenGL's `'NoneType' object has no attribute
+'eglQueryString'`) because the container has no GLVND loader; inside our environment only, setting
+`LD_LIBRARY_PATH=/opt/envs/tools/lib` (conda-forge libglvnd in the tools env) makes it work (51/53 MuJoCo tests; the 2
+remaining guard tests assumed two approved GPU UUIDs and now skip on a single-GPU allocation).
 
 ## 8. Validated vs. awaiting real data
 
