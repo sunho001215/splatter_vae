@@ -212,7 +212,7 @@ def _camera_tracks(root, episode_id, cam, stamps) -> dict:
     return out
 
 
-def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str, depth_stage: str | None = None,
+def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | None = None, depth_stage: str | None = None,
                   semantic: bool | None = None, max_sync_ns: int | None = None, gripper_points: int = 32,
                   image_size: int = IMAGE_SIZE, chunk: int = 16, allow_mock: bool = False, force: bool = False) -> dict:
     """Write the compact training store of one processed episode root into ``out_dir`` (stage ``train_data``).
@@ -221,8 +221,9 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str, dept
     ``depth_stage`` (default: the FoundationStereo IR depth on the colour grid), ``calibrate`` (accepted T_cam_base),
     ``track2d``/``lift3d`` (TrackEverything) and ``track_motion``; ``sam3_masks`` when ``semantic`` (default: when its
     record exists). ``max_sync_ns`` bounds the stored cross-camera frame sets (default: a third of the reference period,
-    as the window export) and the robot-state sync. Cameras without an accepted calibration, metric depth or lifted
-    tracks are excluded and listed."""
+    as the window export) and the robot-state sync. ``task`` defaults to the dataset folder of the recording (the
+    adapter's task identity). Cameras without an accepted calibration, metric depth or lifted tracks are excluded and
+    listed."""
     from s4d.data.droid.pointworld import depth_test
     from s4d.realworld.depth_stages import load_view_depth
     from s4d.realworld.export import motion_target_source
@@ -240,6 +241,9 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str, dept
     root, out_dir = Path(root), Path(out_dir)
     meta = load_meta(root, episode_id)
     depth_stage = depth_stage or default_depth_stage(meta, "lift")
+    task = task or Path(meta.provenance.source_root or "").name
+    if not task:
+        raise ValueError(f"{episode_id}: no task given and the recording has no dataset folder")
     norm = rio.read_record(rio.episode_dir(root, episode_id) / "normalized")
     names = [depth_stage, "calibrate", "track2d", "lift3d", "track_motion"]
     if semantic is None:

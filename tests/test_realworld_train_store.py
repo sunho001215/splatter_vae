@@ -360,6 +360,11 @@ def test_loader_options_splits_views_and_workers(built):
 
 
 def test_store_lru_bounds_handles_and_cached_arrays(built):
+    from s4d.realworld.pipeline import load_meta
+
+    default = TS.write_episode(built["root"], built["ep"], built["tmp"] / "store_default_task",
+                               depth_stage="sensor_depth", allow_mock=True)  # task = the recording's dataset folder
+    assert default["summary"]["task"] == Path(load_meta(built["root"], built["ep"]).provenance.source_root).name
     rec2 = TS.write_episode(built["root"], built["ep"], built["tmp"] / "store2", task="synthetic2",
                             depth_stage="sensor_depth", allow_mock=True)
     assert rec2["summary"]["file_sha256"] != built["rec"]["summary"]["file_sha256"]  # task attr differs

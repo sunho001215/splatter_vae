@@ -244,9 +244,7 @@ def run_stages(cfg, adapter, ep, runner, run, wanted, spec_factory=None):
         from s4d.realworld.train_store import write_episode
 
         sc = dict(st.get("train_data") or {})
-        task = sc.pop("task", None) or cfg.get("task")
-        if not task:
-            raise ValueError("stages.train_data.task (or a top-level task) names the episode's task")
+        task = sc.pop("task", None) or cfg.get("task")  # default: the recording's dataset folder (adapter identity)
         sc.setdefault("semantic", "snerl" in (cfg.get("baselines") or []))  # SNeRL's semantic targets
         run("train_data", lambda f: write_episode(root, ep, root / "train_data" / ep, task=task, force=f, **sc))
     if "vis_geometry" in wanted:  # viewer: native-resolution depth, compact (s4d.realworld.vis_store)

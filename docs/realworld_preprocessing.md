@@ -354,11 +354,13 @@ build ids of ingest, the depth stage, calibrate, track2d, lift3d, track_motion a
 - **SNeRL DINO targets** are computed online by the trainer from the stored RGB exactly as for Meta-World
   (`uint8 / 255 -> dino_target`); `train_store.verify_snerl_teacher` checks the pinned teacher, the weights' sha256 and
   that the online targets equal the cached-teacher path (`dino_snerl_worker`).
-- **Measured** (2026-11-06, four processed episodes, 179-228 frames x 3 cameras): 28-37 MB per episode (RGB 57 %,
-  depth 36 %, tracks 3-4 %, robot/semantic/sync the rest) vs 1.52-1.97 GB of the former export (x52-54); writer 9-11 s
-  per episode on CPU; window loader 80 windows/s in one process, 350 windows/s with 8 workers. Against the former
-  export on the same episodes: identical windows, query windows, frames, gripper/probe/pose targets and track counts;
-  source/displacement targets identical wherever supervised; the square crop drops 0-1.75 % of supervised track pairs.
+- **Measured** (2026-11-06, four processed episodes, 179-228 frames x 3 cameras): 39-51 MB per episode (depth 54 %,
+  RGB 41 %, tracks 2-3 %, robot/semantic/sync the rest; 73-93 MB uncompressed) vs 1.52-1.97 GB of the former export
+  (x38-39); writer 9-11 s per episode on CPU (peak RSS 0.25 GB); window loader 79 windows/s in one process, 367 with 8
+  workers (main RSS 0.66 GB, worker <= 0.56 GB). Against the former export on the same episodes: identical windows,
+  query windows, frames, gripper/probe/pose targets and track counts; source/displacement targets identical wherever
+  supervised; the square crop drops 0-1.75 % of supervised track pairs (gripper weights differ in 64/450 windows of one
+  episode, where the gripper leaves the square). Stored RGB/depth/semantics equal an independent recomputation bitwise.
 - **Ingestion**: `python -m s4d.realworld.cli run --config CFG --episode ID --stages train_data` (config
   `stages.train_data: {task, depth_stage, max_sync_ns}`), or `train_store.write_episode(root, episode, out, task=...)`;
   `train_store.manifest_fields(record)` gives the manifest fields (format, schema and writer version, code commit,
