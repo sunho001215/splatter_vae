@@ -62,13 +62,14 @@ def validate(model, extractor, val_set: SNeRLScenes, n: int, chunk: int, out_png
     rows = []
     for k in range(n):
         ep, t, inputs, target = val_set.draw(k)
-        if target in inputs:
-            target = min(set(range(val_set.num_cams)) - set(inputs))
+        rest = set(range(val_set.num_cams)) - set(inputs)
+        if target in inputs and rest:  # a rig with exactly num_inputs cameras has no held-out view: input view kept
+            target = min(rest)
         scene = to_device_scene(val_set.scene(ep, t, inputs, target, with_depth=True), model.device)
         latent = model.encoder(scene["obs_rgb"].permute(0, 3, 1, 2), scene["obs_c2w"].reshape(-1, 16))
         H, W = scene["target_rgb"].shape[:2]
-        out = render_camera(model, latent, val_set.K_cv[target], val_set.c2w_cv[target], H, W, chunk,
-                            val_set.lookat, val_set.scale)
+        K_cv, c2w_cv = val_set.camera(ep, target)
+        out = render_camera(model, latent, K_cv, c2w_cv, H, W, chunk, val_set.lookat, val_set.scale)
         mse = torch.mean((out["rgb"] - scene["target_rgb"]) ** 2)
         metrics["psnr"].append(float(-10.0 * torch.log10(mse)))
         metrics["semantic_acc"].append(float((out["semantic"].argmax(-1) == scene["target_semantic"]).float().mean()))
@@ -139,10 +140,15 @@ def main() -> None:
     num_inputs = int(ds_cfg["num_inputs"])
 
     manifest = interface["split_manifest"]
-    train_set = SNeRLScenes(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), seed, num_inputs, max_steps,
-                            lookat, scale)
-    val_set = SNeRLScenes(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), seed + 1, num_inputs, None,
-                          lookat, scale)
+    scenes_cls = SNeRLScenes
+    if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
+        from s4d.rwlearn.baseline_data import realworld_classes
+
+        scenes_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"])["snerl"]
+    train_set = scenes_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), seed, num_inputs, max_steps,
+                           lookat, scale)
+    val_set = scenes_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), seed + 1, num_inputs, None,
+                         lookat, scale)
     latest = run_dir / "checkpoints" / "latest.pt"
     global_step = 0
     resume = args_cli.resume == "auto" and latest.is_file()

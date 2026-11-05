@@ -71,10 +71,15 @@ def main() -> None:
     num_views = int(ds_cfg.get("camera_num", 6))
     max_frames = ds_cfg.get("max_frames_per_demo")
     manifest = interface["split_manifest"]
-    train_set = ReViWoStates(
+    states_cls = ReViWoStates
+    if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
+        from s4d.rwlearn.baseline_data import realworld_classes
+
+        states_cls = realworld_classes(interface, cfg_train.max_global_steps, ds_cfg["hdf5_path"])["reviwo"]
+    train_set = states_cls(
         ds_cfg["hdf5_path"], split_episodes(manifest, "train"), num_views, ds_cfg.get("num_episodes"), max_frames
     )
-    valid_set = ReViWoStates(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), num_views, None, max_frames)
+    valid_set = states_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), num_views, None, max_frames)
     workers = int(ds_cfg.get("num_workers", 8))
     loader_args = {
         "batch_size": int(ds_cfg.get("batch_size", 128)),

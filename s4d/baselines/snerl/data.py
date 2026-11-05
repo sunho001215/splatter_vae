@@ -208,6 +208,10 @@ class SNeRLScenes(Dataset):
                 out["target_depth"] = group["depth"][t, target].astype(np.float32) * self.depth_unit()
         return out
 
+    def camera(self, ep: str, view: int) -> tuple[np.ndarray, np.ndarray]:
+        """(K, c2w) in our OpenCV convention of training camera ``view`` (one rig for every episode here)."""
+        return self.K_cv[view], self.c2w_cv[view]
+
     def depth_unit(self) -> float:
         if self._file is None:
             self._file = h5py.File(self.path, "r")

@@ -106,10 +106,15 @@ def main() -> None:
     frame_spacing, window = int(interface["frame_spacing"]), int(ds_cfg["window_size"])
     batch_size = int(ds_cfg["batch_size"])
     manifest = interface["split_manifest"]
-    train_set = DynaMoWindows(
+    windows_cls = DynaMoWindows
+    if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
+        from s4d.rwlearn.baseline_data import realworld_classes
+
+        windows_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"])["dynamo"]
+    train_set = windows_cls(
         ds_cfg["hdf5_path"], split_episodes(manifest, "train"), window, frame_spacing, ds_cfg.get("max_episodes")
     )
-    val_set = DynaMoWindows(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), window, frame_spacing)
+    val_set = windows_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), window, frame_spacing)
     image_size = int(train_set[0].shape[-1])
     modules = build_modules(cfg, device)
     kwargs = encoder_kwargs(cfg)
