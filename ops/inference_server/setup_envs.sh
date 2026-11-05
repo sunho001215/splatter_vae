@@ -25,7 +25,8 @@ TORCH_INDEX=https://download.pytorch.org/whl/cu129
 mkdir -p /ram/uv-cache /ram/tmp
 export UV_HTTP_TIMEOUT=900 UV_HTTP_RETRIES=5 UV_CACHE_DIR=/ram/uv-cache UV_PYTHON_INSTALL_DIR=/opt/envs/python UV_LINK_MODE=copy TMPDIR=/ram/tmp
 
-venv() {  # name python-version
+venv() {  # name python-version (the managed CPython lives under /opt/envs/python)
+    $UV python install -q $2
     [ -x /opt/envs/$1/bin/python ] || $UV venv -q --python $2 /opt/envs/$1
 }
 
