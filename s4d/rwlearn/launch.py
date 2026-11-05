@@ -23,12 +23,6 @@ RESUME_ARGS = {"snerl": ["--resume", "auto"], "dynamo": ["--resume", "auto"], "m
                "sincro": [], "reviwo": []}  # SinCro / ReViWo always resume from latest.pt under the same --name
 
 
-def gate_passed_for(report: dict, target: str) -> bool:
-    return bool(report.get("passed") or all((report.get("tasks") or {}).get(t, {}).get("passed")
-                                            for t in TARGET_TASKS[target])) and all(
-        (report.get("tasks") or {}).get(t, {}).get("passed") for t in TARGET_TASKS[target])
-
-
 def pretrain_rows(target: str, commit: str, gate_sha: str) -> list[dict]:
     rows = []
     for b in BASELINES:
