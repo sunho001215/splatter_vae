@@ -111,6 +111,16 @@ The supported adapters are:
   depth per RealSense, recorded intrinsics, depth scale and depth-to-colour extrinsics. Device stamps mapped onto
   the host monotonic clock are used; arrival times are not substituted. Colour/depth pairing, invalid flags and
   missing calibration are checked. Robotiq register 0..255 has its own clock and is interpolated as recorded.
+  Colour and stereo (depth/IR) records are paired through `stereo/color_index`. A colour frame whose stereo record the
+  recorder dropped (e.g. drawer-open episodes 9 and 33: one camera, one record) is left out of that camera's
+  normalized colour stream, because the contract pairs colour frame k with depth/IR frame k (`RgbdGeometry`,
+  `IrStereoGeometry`, equal counts checked by `validate_episode`) and no depth/IR frame or timestamp is invented; its
+  recorded index and time are listed in the colour stream notes, the rig's `pairing` text and the provenance notes
+  (`colour_frames_without_stereo_record`), and the camera's timeline shows the gap (downstream treats it like a
+  dropped frame: timestamp matching, gap-aware windows and motion segments). An index map that does not map strictly
+  increasing into the colour frames is refused ("not paired 1:1"). The task is the dataset folder; a recorder
+  `task_name` that disagrees (drawer-open episodes 7-10 say `pick-and-place`) is reported as a warning and in the
+  provenance notes (`task_identity`), never used.
   `configs/realworld/mug_hanging.yaml` supplies the real robot assets and `evidence: rgbd` calibration.
   `include_ir: true` also exposes the device-rectified infrared pair of each RealSense as `<serial>/ir_left`,
   `<serial>/ir_right` with `EpisodeMeta.ir_stereo` per rig (`IrStereoGeometry`). The adapter refuses a pair unless the
