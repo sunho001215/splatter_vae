@@ -1,0 +1,34 @@
+# Offline Flow Q-Learning on a FROZEN real-world baseline representation (docs/realworld_fql.md). Agent: PyTorch port
+# of the official FQL (seohongpark/fql @ e8cd16e, s4d/rwlearn/fql.py), every agent value = official get_config()
+# default. Launch only through scripts/realworld_launch.py (full-data gate; remote role host). Per-run keys
+# (data.dataset, data.split_manifest, data.gate_report, condition) come from the job row.
+condition: null            # dynamo | reviwo | sincro | snerl | mvp3d_multiview | mvp3d_single (s4d/rwlearn/fql_data.py)
+agent:
+  lr: 0.0003
+  batch_size: 256
+  actor_hidden_dims: [512, 512, 512, 512]
+  value_hidden_dims: [512, 512, 512, 512]
+  layer_norm: true
+  actor_layer_norm: false
+  discount: 0.99
+  tau: 0.005
+  q_agg: mean
+  alpha: 10.0              # official default; the paper tunes alpha per environment -> open decision (sweep proposed)
+  flow_steps: 10
+  normalize_q_loss: false
+encoder:
+  proj_dim: 256            # campaign frozen-encoder adapter width (FrameMLPStackHead / SmallPostEncoderMLPHead)
+train:
+  offline_steps: 1000000   # official default
+  log_interval: 5000       # official
+  eval_interval: 100000    # official cadence; offline validation metrics (no environment / robot)
+  save_interval: 50000     # ours: lossless resume (agent, optimiser, sampler and noise generators)
+  seed: 0
+  device: cuda
+  val_batches: 8
+data:
+  dataset: null            # rwlearn_fql_dataset_v1 file (scripts/realworld_fql.py build)
+  split_manifest: null     # {train: [...], validation: [...]} (s4d/rwlearn/store.py::split_episodes)
+  gate_report: null        # s4d/rwlearn/gate.py report; required beyond 10k steps
+wandb:
+  project: splatter4d-realworld-fql

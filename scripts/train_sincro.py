@@ -125,9 +125,20 @@ def main() -> None:
         "max_frames_per_demo": ds_cfg.max_frames_per_demo,
     }
     manifest = interface["split_manifest"]
+    windows_cls, forward = SinCroWindows, forward_sincro_batch
+    if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
+        from s4d.rwlearn.baseline_data import realworld_classes
+
+        classes = realworld_classes(interface, train_cfg.max_global_steps, ds_cfg.hdf5_path,
+                                    {"max_episodes": ds_cfg.max_episodes,
+                                     "max_frames_per_demo": ds_cfg.max_frames_per_demo})
+        windows_cls, forward = classes["sincro"], classes["sincro_forward"]
+        # upstream sizes the decoder image tokens as num_view // 3 + 1, which must be 1 primary + 2 references = 3;
+        # the three-camera rig keeps the Meta-World encoder (num_view 6), its views enter through the data only
+        model_cfg.num_views = int(interface["sincro_encoder_num_view"])
     train_episodes = split_episodes(manifest, "train")
-    train_set = SinCroWindows(ds_cfg.hdf5_path, train_episodes, max_episodes=ds_cfg.max_episodes, **window_args)
-    val_set = SinCroWindows(ds_cfg.hdf5_path, split_episodes(manifest, "validation"), **window_args)
+    train_set = windows_cls(ds_cfg.hdf5_path, train_episodes, max_episodes=ds_cfg.max_episodes, **window_args)
+    val_set = windows_cls(ds_cfg.hdf5_path, split_episodes(manifest, "validation"), **window_args)
     loader = DataLoader(
         train_set,
         batch_size=ds_cfg.batch_size,
@@ -202,7 +213,7 @@ def main() -> None:
                 break
             latent_embed.train()
             batch = {k: v.to(device, non_blocking=True) if torch.is_tensor(v) else v for k, v in batch.items()}
-            loss, stats = forward_sincro_batch(
+            loss, stats = forward(
                 batch, latent_embed, render_kwargs_train, simple_args, model_cfg, global_step=global_step
             )
             optimizer.zero_grad()

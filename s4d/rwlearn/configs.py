@@ -1,0 +1,130 @@
+"""Real-world baseline pretraining configs, DERIVED from the accepted Meta-World configs (``configs/baselines/<b>/
+drawer-open.yaml``) by an explicit list of overrides, each with its reason (docs/realworld_baselines.md). Every other
+key - architecture, optimiser, schedule, step counts, loss weights - stays the documented protocol value.
+
+``python -I scripts/realworld_baselines.py configs`` writes ``configs/realworld/baselines/<b>/<target>.yaml``; a test
+asserts the committed files equal ``derive_all()``.
+"""
+
+from __future__ import annotations
+
+import copy
+from pathlib import Path
+
+import yaml
+
+REPO = Path(__file__).resolve().parents[2]
+BASELINES = ("snerl", "mvp3d", "sincro", "reviwo", "dynamo")
+TARGETS = ("drawer-open", "mug-hanging", "joint")
+REMOTE_REALWORLD_ROOT = "/home/compu/kaist/sunho/realworld"  # remote campaign root of the real-world data (role host)
+NUM_CAMERAS = 3
+
+# Scene geometry measured on the processed episodes (s4d/rwlearn/store.py::scene_statistics, drawer-open-000000 and
+# mug-hanging-test-000001; identical fixed rig): least-squares intersection of the optical axes and camera distance.
+SNERL_LOOKAT = [0.334, -0.031, 0.353]  # metres, robot base frame
+SNERL_POSE_SCALE = 3.79  # 4 / median camera distance (1.055 m): cameras 4 official units from the origin
+MVP3D_BOUNDS = [-0.15, -0.7, 0.15, 1.05, 0.6, 1.0]  # >= 99 % of robot/object/fixture depth points of both tasks
+
+
+def run_inputs_dir(target: str) -> str:
+    """Remote directory the launch tooling (s4d/rwlearn/launch.py ``prepare``) fills for one target: the store
+    descriptor (``store.yaml``: kind + location of the compact training store + episode ids), the gate report and the
+    split manifest. Only written after the full-data gate passed."""
+    return f"{REMOTE_REALWORLD_ROOT}/learning_inputs/{target}"
+
+
+def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
+    """(dotted key, value, reason) applied to the Meta-World drawer-open config."""
+    common = [
+        ("dataset.hdf5_path", f"{run_inputs_dir(target)}/store.yaml",
+         "for source realworld this key holds the FrameStore descriptor (s4d/rwlearn/store.py; compact per-camera "
+         "training store, centre crop 128 px), not an HDF5 file; the trainers pass it through unchanged"),
+        ("data_interface.split_manifest", f"{run_inputs_dir(target)}/split_seed0.json",
+         "seeded per-task 90/10 episode split (s4d/rwlearn/store.py::split_episodes; union of both tasks for joint)"),
+        ("data_interface.gate_report", f"{run_inputs_dir(target)}/gate_report.json",
+         "full-data gate evidence (s4d/rwlearn/gate.py); runs > 10k steps refuse without a passed report whose "
+         "episode sets equal the store's"),
+        ("data_interface.source", "realworld",
+         "selects the real-world dataset classes (per-episode cameras, loader-side sync, run-bounded windows)"),
+        ("data_interface.target", target, "task(s) in the store"),
+    ]
+    spec = {
+        "snerl": [
+            ("data_interface.lookat", SNERL_LOOKAT,
+             "normalised scene origin: least-squares intersection of the three optical axes (Meta-World: rig look-at)"),
+            ("data_interface.pose_scale", SNERL_POSE_SCALE,
+             "cameras 4 official units from the origin, as official / Meta-World (median distance 1.055 m); official "
+             "near/far 2/6 -> 0.53-1.58 m camera depth, which holds the workspace (68.5 % of all valid depth of the "
+             "centre-cropped views; the rest is distant room background)"),
+            ("dataset.num_inputs", 3, "official encoder input count; the rig has exactly 3 cameras, so every "
+                                      "target view is also an input view (Meta-World: 3 of 6)"),
+        ],
+        "sincro": [
+            ("dataset.num_views", NUM_CAMERAS, "all three cameras (Meta-World: 6 training cameras)"),
+            ("data_interface.sincro_encoder_num_view", 6,
+             "the trainer builds the encoder with this num_view: upstream MaskedViTEncoder makes num_view // 3 + 1 "
+             "decoder image tokens, which must equal 1 primary + 2 reference views = 3; 6 keeps the Meta-World encoder "
+             "architecture exactly (with num_view 3 upstream asserts); the three views enter through the data"),
+            ("data_interface.frame_spacing", 1,
+             "one camera frame = one real-world policy step (Meta-World: 2 sim steps = one RL step)"),
+        ],
+        "reviwo": [
+            ("dataset.camera_num", NUM_CAMERAS, "all three cameras"),
+            ("train.camera_num", NUM_CAMERAS, "all three cameras"),
+        ],
+        "dynamo": [
+            ("data_interface.frame_spacing", 1, "one camera frame = one real-world policy step (upstream frame_step 1)"),
+            ("projector.output_dim", 14,
+             "chosen per the README rule 'approximately the underlying state dimension': 7 arm joints + gripper + "
+             "6-DoF manipulated object (Meta-World: its 39-d observation)"),
+        ],
+        "mvp3d": [
+            ("dataset.num_views", NUM_CAMERAS, "fuse all three cameras per time step (the original fused setting)"),
+            ("render.bounds", MVP3D_BOUNDS,
+             "real-world scene bounds in the robot base frame (measured, see docs/realworld_baselines.md)"),
+        ],
+    }[baseline]
+    return common + spec
+
+
+def _set(cfg: dict, dotted: str, value) -> None:
+    keys = dotted.split(".")
+    node = cfg
+    for k in keys[:-1]:
+        node = node.setdefault(k, {})
+    node[keys[-1]] = copy.deepcopy(value)
+
+
+def derive(baseline: str, target: str) -> tuple[dict, list]:
+    src = REPO / "configs" / "baselines" / baseline / "drawer-open.yaml"
+    cfg = yaml.safe_load(src.read_text())
+    ov = overrides(baseline, target)
+    for key, value, _ in ov:
+        _set(cfg, key, value)
+    return cfg, ov
+
+
+def render(baseline: str, target: str) -> str:
+    cfg, ov = derive(baseline, target)
+    lines = [f"# {baseline} pretraining on the REAL-WORLD {target} store (generated by s4d/rwlearn/configs.py; do not",
+             f"# edit by hand). Base: configs/baselines/{baseline}/drawer-open.yaml (accepted Meta-World protocol);",
+             "# every other key is the documented protocol value. Overrides and reasons:"]
+    for key, value, why in ov:
+        lines.append(f"#   {key} = {value}: {why}")
+    lines.append("# Plan rows only through scripts/realworld_learning.py plan (full-data gate); see "
+                 "docs/realworld_baselines.md.")
+    return "\n".join(lines) + "\n" + yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False, width=120)
+
+
+def derive_all() -> dict[Path, str]:
+    return {REPO / "configs" / "realworld" / "baselines" / b / f"{t}.yaml": render(b, t)
+            for b in BASELINES for t in TARGETS}
+
+
+def write_all() -> list[Path]:
+    out = []
+    for path, text in derive_all().items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        out.append(path)
+    return out
