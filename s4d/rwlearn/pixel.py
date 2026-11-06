@@ -32,6 +32,7 @@ the official 3 px), proprioception input, alpha 10 (user decision; official visu
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import h5py
@@ -169,7 +170,9 @@ def augment(batch: dict, generator: torch.Generator, p_aug: float = P_AUG, paddi
 class OfflinePixelTransitions:
     """All transitions of an ``e2e_cnn`` FQL dataset (``s4d.rwlearn.fql_data.build_fql_dataset``) with the RGB frames
     of their camera timelines loaded ONCE per camera and frame from the training store (in memory, never written);
-    observation histories and next observations are index arrays into those frames (no window copies)."""
+    observation histories and next observations are index arrays into those frames (no window copies). The frames
+    must be bit-identical to the ones pinned at dataset build (per-timeline ``rgb_sha256``), so the dataset file's
+    sha256 (the trainer's resume identity) identifies the training pixels too."""
 
     def __init__(self, path, store, episodes: list[str] | None = None, device="cpu", frames_device=None,
                  p_aug: float | None = P_AUG, action_clip_eps: float | None = ACTION_CLIP_EPS):
@@ -199,13 +202,21 @@ class OfflinePixelTransitions:
                     t_store = np.asarray(store.timestamps(ep, cams[0]), np.int64)
                     if native.max(initial=-1) >= len(t_store) or not np.array_equal(t_store[native], g["times"][:]):
                         raise ValueError(f"{ep}/{name}: store frames are not the dataset's frames")
+                    rgb = np.asarray(store.rgb(ep, cams[0], native), np.uint8)
+                    pinned = g.attrs.get("rgb_sha256")
+                    h = hashlib.sha256(json.dumps([int(len(native)), list(rgb.shape[1:3])]).encode())
+                    for s0 in range(0, len(rgb), 64):
+                        h.update(np.ascontiguousarray(rgb[s0:s0 + 64]).tobytes())
+                    if pinned is None or h.hexdigest() != (pinned.decode() if isinstance(pinned, bytes) else pinned):
+                        raise ValueError(f"{ep}/{name}: the store's RGB frames differ from the ones pinned at "
+                                         "dataset build (rgb_sha256)")
                     run, ok = g["run"][:], g["transition_ok"][:].astype(bool)
                     ks = np.flatnonzero(ok)
                     rows.append({"obs": history_indices(run, ks, FRAME_STACK) + base,
                                  "next": history_indices(run, ks + 1, FRAME_STACK) + base,
                                  "action": g["action"][:][ks], "reward": g["reward"][:][ks], "mask": g["mask"][:][ks],
                                  "obs_k": ks + base, "next_k": ks + 1 + base})
-                    frames.append(np.asarray(store.rgb(ep, cams[0], native), np.uint8))
+                    frames.append(rgb)
                     prop.append(g["proprio"][:])
                     self.timelines.append((ep, name, base, len(native)))
                     base += len(native)

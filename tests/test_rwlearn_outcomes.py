@@ -33,6 +33,7 @@ def signals(t, xyz, command=None, gobj=None, tau=None):
             "action/gripper": np.zeros(n) if command is None else command, "action/segment": np.zeros(n, int),
             "gripper/t": gt + 1000.0, "gripper/position": np.full(len(gt), 3.0),
             "gripper/object": np.full(len(gt), 3.0) if gobj is None else gobj(gt),
+            "gripper/segment": np.zeros(len(gt), int),
             "cameras": {c: np.arange(0, t[-1], 1 / 15) + 1000.0 + 0.01 * i for i, c in enumerate(CAMS)},
             "task_name": "synthetic"}
 
@@ -71,6 +72,51 @@ def test_drawer_pushed_back_at_handle_height_is_flagged_with_frames():
     assert "contact_torque_while_moving_back" in {f["code"] for f in res["flags"]}
 
 
+def test_drawer_push_back_is_found_after_later_motion_and_after_a_lift():
+    """Codex review: (a) open, push back at handle height, then move the disengaged arm beyond the original pull end
+    (lifted): the pull end is the FIRST completed pull, so the push-back is still found; (b) open, lift 5 cm, lower back
+    to the handle and push 18 cm: every handle-height interval after the pull counts."""
+    wp = [(0, START), (2.5, (0.49, -0.10, 0.52)), (3.0, (0.49, -0.10, 0.51)), (7.0, (0.46, 0.20, 0.51)),
+          (9.0, (0.46, 0.02, 0.51)), (10.0, (0.46, 0.02, 0.62)), (12.0, (0.46, 0.30, 0.62)), (13.0, (0.46, 0.30, 0.62))]
+    t, xyz = _path(wp)
+    res = O.check_drawer(signals(t, xyz))
+    f = {x["code"]: x for x in res["flags"]}["push_back_at_handle_height"]
+    assert f["evidence"]["back_at_handle_m"] > 0.15 and res["phases"]["pull_rows"][1] == pytest.approx(700, abs=15)
+    wp = [(0, START), (2.5, (0.49, -0.10, 0.52)), (3.0, (0.49, -0.10, 0.51)), (7.0, (0.46, 0.20, 0.51)),
+          (7.5, (0.46, 0.20, 0.56)), (8.0, (0.46, 0.20, 0.51)), (10.0, (0.46, 0.02, 0.51)), (11.0, (0.46, 0.02, 0.6))]
+    t, xyz = _path(wp)
+    res = O.check_drawer(signals(t, xyz))
+    f = {x["code"]: x for x in res["flags"]}["push_back_at_handle_height"]
+    assert f["evidence"]["back_at_handle_m"] > 0.15
+
+
+def test_mug_partial_release_and_regrasp_under_a_closed_command_is_split():
+    """Codex review: the command stays above 0.5 while the fingers open (gOBJ 2 -> 3), the mug is re-grasped at the
+    hook (gOBJ 2 again) and carried away: two holds, re-grasp at the release location -> suspect."""
+    grasp, hook = (0.51, 0.09, 0.58), (0.47, -0.09, 0.71)
+    wp = [(0, START), (3, grasp), (4.5, grasp), (9, hook), (11, hook), (15, grasp), (16, grasp)]
+    t, xyz = _path(wp)
+    c = (t >= 3.5).astype(float) * 0.9
+    c[t >= 15.5] = 0.0
+
+    def gobj(gt):
+        g = np.full(len(gt), 3.0)
+        g[(gt >= 4.0) & (gt < 9.5)] = 2.0  # held, released at the hook (fingers open: position drops)
+        g[(gt >= 10.5) & (gt < 15.5)] = 2.0  # held again
+        return g
+    sig = signals(t, xyz, command=c, gobj=gobj)
+    gt = sig["gripper/t"] - 1000.0
+    sig["gripper/position"] = np.where(sig["gripper/object"] == 2, 210.0, 60.0)
+    res = O.check_mug(sig)
+    assert len(res["phases"]["holding_rows"]) == 2 and len(res["phases"]["closures_rows"]) == 1
+    assert "regrasp_at_release_location" in {f["code"] for f in res["flags"]}
+    # a flicker of gOBJ without the fingers opening stays one hold
+    sig["gripper/object"] = np.where((gt >= 9.5) & (gt < 9.8), 0.0, np.where(gt < 15.5, 2.0, 3.0))
+    sig["gripper/object"][gt < 4.0] = 3.0
+    sig["gripper/position"] = np.where(gt < 4.0, 3.0, 208.0)
+    assert len(O._holds(sig)) == 1
+
+
 def test_drawer_without_a_pull_needs_review():
     t, xyz = _path([(0, START), (5, (0.45, 0.02, 0.55)), (10, START)])
     res = O.check_drawer(signals(t, xyz))
@@ -106,7 +152,7 @@ def mug(regrasp=False, end_closed=False, reclose=False, revisit=False):
 def test_mug_hang_release_and_return_is_not_a_reversal():
     res = O.check_mug(mug())
     assert {f["severity"] for f in res["flags"]} <= {"info"}
-    assert len(res["phases"]["holding_closures_rows"]) == 1
+    assert len(res["phases"]["holding_rows"]) == 1
 
 
 @pytest.mark.parametrize("kw,code,severity", [

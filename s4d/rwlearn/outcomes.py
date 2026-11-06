@@ -15,21 +15,25 @@ images). Signals: measured flange pose ``robot/flange_pose`` (100 Hz), the sent 
 closing = object held, 3 at the requested position), the external joint-torque estimate ``robot/tau_ext`` and every
 camera's frame times (frame indices of the evidence).
 
-* drawer-open: the pull is the motion from the minimum to the following maximum of the flange position along the
-  episode's drawer axis (the principal horizontal direction of motion, sign-aligned with base +y; measured within
-  18 deg of +y on every recording). A push-back has to move the flange back along the axis while it is still at the
-  handle: ``back_at_handle`` = how far the flange moves back before it first rises ``CLEARANCE_M`` above its height at
-  the pull end. Flagged (``reversal_suspected``) when that exceeds ``PUSH_BACK_M``, or when the external torque during
-  the backward motion reaches the pull's contact level (``torque_contact_fraction`` of the way from the free-motion
-  approach to the pull median) while the pull itself shows contact. The operators' usual return toward the start pose
-  after lifting off the handle is recorded as information (``return_toward_start``), not as a reversal.
-* mug-hanging: the hang release is the end of the last closure interval during which the gripper held an object
-  (gOBJ 2). Flagged (``reversal_suspected``) when the episode ends with the gripper commanded closed or still holding
-  an object, when gOBJ reports a held object after the hang release, or when an object is grasped again within
-  ``REVISIT_LEAVE_M`` of where the previous one was released (the mug taken off the hook). Several holding intervals
-  elsewhere, and a return of the flange to within ``REVISIT_M`` of the release position after leaving it (a possible
-  knock-off), cannot be decided from robot data: ``needs_image_review``. A later closure without object contact and
-  the usual return toward the start pose are information.
+* drawer-open: the pull runs from the minimum of the flange position along the episode's drawer axis (the principal
+  horizontal direction of motion, sign-aligned with base +y; measured within 18 deg of +y on every recording) to the
+  end of the FIRST completed pull (``_pull_end``: the running maximum up to the first ``PUSH_BACK_M`` step back or
+  ``CLEARANCE_M`` rise; later motion of a disengaged arm never redefines it). The handle height is the
+  ``HANDLE_HEIGHT_PERCENTILE`` percentile of the flange height while pulling forward. A push-back has to move the
+  flange back along the axis while it is at handle height: ``back_at_handle`` = the largest backward travel inside
+  ANY interval after the pull end with the flange below handle height + ``CLEARANCE_M`` (also after lifting off and
+  coming back down). Flagged (``reversal_suspected``) when that exceeds ``PUSH_BACK_M``, or when the external torque
+  during the backward motion reaches the pull's contact level (``torque_contact_fraction`` of the way from the
+  free-motion approach to the pull median) while the pull itself shows contact. The operators' usual return toward
+  the start pose above the open drawer is recorded as information (``return_toward_start``), not as a reversal.
+* mug-hanging: holds are the runs of gOBJ 2 (merged across a short flicker during which the fingers never opened,
+  ``_holds``); a release always opens the fingers, so a hang and a later re-grasp are separate holds even when the
+  command never drops below 0.5. The hang release ends the last hold. Flagged (``reversal_suspected``) when the episode
+  ends commanded closed or still holding, or when an object is grasped again within ``REVISIT_LEAVE_M`` of where the
+  previous one was released (the mug taken off the hook). Several holds elsewhere, and a return of the flange to
+  within ``REVISIT_M`` of the release position after leaving it (a possible knock-off), cannot be decided from robot
+  data: ``needs_image_review``. A later closure without object contact and the usual return toward the start pose are
+  information.
 
 ``decision`` per episode: ``no_reversal`` (robot data decide), ``reversal_suspected`` or ``needs_image_review``. Image
 evidence is used only for the latter (``review_sheet``: first / task-event / final colour frames of every camera, read
@@ -61,10 +65,12 @@ TORQUE_CONTACT_FRACTION = 0.5
 MIN_PULL_CONTACT_NM = 0.2  # the torque test applies only when the pull itself shows contact above free motion
 RETURN_FRACTION = 0.3  # information: the flange ends this fraction of the pull back toward the start
 REVISIT_LEAVE_M, REVISIT_M = 0.05, 0.03  # mug: left the release position by 5 cm, then came back within 3 cm
+HANDLE_HEIGHT_PERCENTILE = 90  # drawer: handle height = this percentile of the flange height while pulling forward
 GOBJ_HELD = 2
+MERGE_GAP_S, OPEN_MARGIN_REGISTER = 1.0, 20  # mug: a gOBJ flicker without the fingers opening is one hold
 
 _ROBOT = ("robot/t", "robot/flange_pose", "robot/tau_ext", "action/gripper", "action/segment")
-_GRIPPER = ("gripper/t", "gripper/position", "gripper/object")
+_GRIPPER = ("gripper/t", "gripper/position", "gripper/object", "gripper/segment")
 
 
 def episode_key(task: str, path) -> str:
@@ -161,6 +167,28 @@ def _return_info(sig, start_row: int, ref_row: int, extent: float) -> dict:
 
 
 # ----------------------------------------------------------------------------------------------- drawer-open
+def _intervals(mask: np.ndarray) -> list[tuple[int, int]]:
+    d = np.diff(np.r_[0, mask.astype(int), 0])
+    return list(zip(np.flatnonzero(d == 1).tolist(), (np.flatnonzero(d == -1) - 1).tolist()))
+
+
+def _pull_end(proj, z, fwd, lo) -> int:
+    """End of the FIRST completed pull from ``lo``: the running maximum along the axis up to the first sample where the
+    flange has moved ``PUSH_BACK_M`` back from it, or risen ``CLEARANCE_M`` above the pull height so far (the mean
+    height of the forward-moving samples, or the height at the running maximum if higher). Later motion beyond that
+    point (e.g. a disengaged arm) never redefines the pull."""
+    seg_p, seg_z, seg_f = proj[lo:], z[lo:], fwd[lo:]
+    runmax = np.maximum.accumulate(seg_p)
+    ar = np.arange(len(seg_p))
+    runarg = np.maximum.accumulate(np.where(seg_p >= runmax, ar, 0))
+    cnt = np.cumsum(seg_f)
+    zrun = np.where(cnt > 0, np.cumsum(np.where(seg_f, seg_z, 0.0)) / np.maximum(cnt, 1), seg_z[0])
+    ref = np.maximum(zrun, seg_z[runarg])
+    stop = np.flatnonzero((runmax - seg_p > PUSH_BACK_M) | (seg_z > ref + CLEARANCE_M))
+    end = int(stop[0]) if len(stop) else len(seg_p) - 1
+    return lo + int(np.argmax(seg_p[:end + 1]))
+
+
 def check_drawer(sig: dict) -> dict:
     t, p = sig["robot/t"], sig["robot/flange_pose"][:, :3]
     tau = np.linalg.norm(sig["robot/tau_ext"], axis=1)
@@ -172,28 +200,38 @@ def check_drawer(sig: dict) -> dict:
     axis_angle = float(np.degrees(np.arccos(np.clip(abs(axis[1]), 0, 1))))
     proj = p[:, :2] @ axis
     lo = int(proj[: max(int(0.8 * n), 1)].argmin())
-    hi = lo + int(proj[lo:].argmax())
-    span = float(proj[hi] - proj[lo])
-    z_ref = float(p[hi, 2])
-    after = np.arange(n) > hi
-    above = np.flatnonzero(after & (p[:, 2] >= z_ref + CLEARANCE_M))
-    stop = int(above[0]) if len(above) else n
-    back_at_handle = float(proj[hi] - proj[hi:stop].min()) if stop > hi else 0.0
-    behind = np.flatnonzero(after & (proj < proj[hi] - PUSH_BACK_M))
-    lift_at_push_back = float(p[behind[0], 2] - z_ref) if len(behind) else None
     v = np.gradient(_smooth(proj), t)
+    fwd = v > SPEED_M_S
+    hi = _pull_end(proj, p[:, 2], fwd, lo)
+    span = float(proj[hi] - proj[lo])
+    pull_fwd = np.arange(lo, hi + 1)[fwd[lo:hi + 1]]
+    z_handle = float(np.percentile(p[pull_fwd, 2], HANDLE_HEIGHT_PERCENTILE)) if len(pull_fwd) else float(p[hi, 2])
+    # every interval after the pull end in which the flange is at handle height (below z_handle + CLEARANCE_M) - also
+    # after lifting off and coming back down - and the largest backward travel along the axis inside one of them
+    after = np.arange(n) >= hi
+    back_at_handle, worst_rows = 0.0, [hi, hi]
+    for a, b in _intervals(after & (p[:, 2] < z_handle + CLEARANCE_M)):
+        seg = proj[a:b + 1]
+        runmax = np.maximum.accumulate(seg)
+        k = int(np.argmax(runmax - seg))
+        travel = float(runmax[k] - seg[k])
+        if travel > back_at_handle:
+            back_at_handle = travel
+            worst_rows = [a + int(np.argmax(seg[:k + 1])), a + k]
+    behind = np.flatnonzero((np.arange(n) > hi) & (proj < proj[hi] - PUSH_BACK_M))
+    lift_at_push_back = float(p[behind[0], 2] - z_handle) if len(behind) else None
     speed = np.abs(np.gradient(_smooth(np.linalg.norm(p - p[0], axis=1)), t))
     approach = np.flatnonzero((np.arange(n) < lo) & (speed > SPEED_M_S))
-    pull = np.arange(lo, hi + 1)[v[lo:hi + 1] > SPEED_M_S]
-    back = np.flatnonzero(after & (v < -SPEED_M_S))
+    back = np.flatnonzero((np.arange(n) > hi) & (v < -SPEED_M_S))
     med = lambda idx: float(np.median(tau[idx])) if len(idx) else float("nan")  # noqa: E731
-    tq = {"approach": med(approach), "pull": med(pull), "backward": med(back)}
+    tq = {"approach": med(approach), "pull": med(pull_fwd), "backward": med(back)}
     pull_contact = tq["pull"] - tq["approach"]
     torque_decides = bool(np.isfinite(pull_contact) and pull_contact >= MIN_PULL_CONTACT_NM and len(back))
     back_contact = (tq["backward"] - tq["approach"]) / pull_contact if torque_decides else None
     phases = {"drawer_axis_xy": axis.round(4).tolist(), "axis_angle_from_base_y_deg": round(axis_angle, 2),
               "pull_rows": [lo, hi], "pull_frames": _frames(sig, t[[lo, hi]]), "pull_m": round(span, 4),
-              "pull_end_z_m": round(z_ref, 4), "back_at_handle_m": round(back_at_handle, 4),
+              "handle_height_z_m": round(z_handle, 4), "back_at_handle_m": round(back_at_handle, 4),
+              "back_at_handle_rows": worst_rows,
               "lift_when_back_5cm_m": None if lift_at_push_back is None else round(lift_at_push_back, 4),
               "torque_median_nm": {k: round(x, 3) for k, x in tq.items()}, "torque_decides": torque_decides,
               "backward_contact_fraction": None if back_contact is None else round(float(back_contact), 3)}
@@ -201,11 +239,10 @@ def check_drawer(sig: dict) -> dict:
         flags.append(_flag("pull_not_found", "review", f"largest pull along the drawer axis {span:.3f} m < "
                            f"{MIN_PULL_M} m", sig, [lo, hi], pull_m=span))
     if back_at_handle > PUSH_BACK_M:
-        rows = [hi, int(np.argmin(np.where((np.arange(n) >= hi) & (np.arange(n) < stop), proj, np.inf)))]
         flags.append(_flag("push_back_at_handle_height", "suspect",
-                           f"flange moved {back_at_handle:.3f} m back along the drawer axis before rising "
-                           f"{CLEARANCE_M} m above the pull-end height", sig, rows, back_at_handle_m=back_at_handle,
-                           pull_m=span))
+                           f"after the pull the flange moved {back_at_handle:.3f} m back along the drawer axis while "
+                           f"at handle height (below {z_handle + CLEARANCE_M:.3f} m)", sig, worst_rows,
+                           back_at_handle_m=back_at_handle, pull_m=span))
     if torque_decides and back_contact >= TORQUE_CONTACT_FRACTION:
         flags.append(_flag("contact_torque_while_moving_back", "suspect",
                            f"external torque while moving back is {back_contact:.0%} of the way from free motion to "
@@ -216,16 +253,31 @@ def check_drawer(sig: dict) -> dict:
     if ret >= RETURN_FRACTION * span:
         flags.append(_flag("return_toward_start", "info",
                            f"after the pull the flange returns {ret:.3f} m ({ret / max(span, 1e-9):.0%} of the pull) "
-                           f"along the axis, lifted {lift_at_push_back if lift_at_push_back is not None else 0:.3f} m "
-                           "above the pull height before moving back", sig, [hi, n - 1],
-                           return_m=ret, pull_m=span))
+                           f"along the axis, {lift_at_push_back if lift_at_push_back is not None else 0:.3f} m above "
+                           "the handle height once 5 cm back", sig, [hi, n - 1], return_m=ret, pull_m=span))
     return {"phases": phases, "return": info, "flags": flags}
 
 
 # ----------------------------------------------------------------------------------------------- mug-hanging
-def _intervals(mask: np.ndarray) -> list[tuple[int, int]]:
-    d = np.diff(np.r_[0, mask.astype(int), 0])
-    return list(zip(np.flatnonzero(d == 1).tolist(), (np.flatnonzero(d == -1) - 1).tolist()))
+def _holds(sig: dict) -> list[tuple[int, int]]:
+    """Holding intervals (gripper-sample indices): runs of gOBJ 2, merged across a short gap (< ``MERGE_GAP_S``) in
+    the same recording segment during which the fingers never opened (register within ``OPEN_MARGIN_REGISTER`` of the
+    holding level). A real release opens the fingers, so it always separates two holds."""
+    gt, gobj, gpos = sig["gripper/t"], sig["gripper/object"], sig["gripper/position"]
+    gseg = sig.get("gripper/segment", np.zeros(len(gt), int))
+    runs = _intervals(gobj == GOBJ_HELD)
+    merged: list[list[int]] = []
+    for a, b in runs:
+        if merged:
+            a0, b0 = merged[-1]
+            between = gpos[b0 + 1:a]
+            level = float(np.min(gpos[a0:b0 + 1]))
+            if (gt[a] - gt[b0] < MERGE_GAP_S and gseg[a] == gseg[b0]
+                    and (len(between) == 0 or float(between.min()) >= level - OPEN_MARGIN_REGISTER)):
+                merged[-1][1] = b
+                continue
+        merged.append([a, b])
+    return [(a, b) for a, b in merged]
 
 
 def check_mug(sig: dict) -> dict:
@@ -234,20 +286,17 @@ def check_mug(sig: dict) -> dict:
     gt, gobj = sig["gripper/t"], sig["gripper/object"]
     n = len(t)
     flags = []
+    row = lambda tt: int(np.clip(np.searchsorted(t, tt), 0, n - 1))  # noqa: E731  (first robot row at/after)
+    holds_g = _holds(sig)
+    holds = [(row(gt[a]), row(gt[b])) for a, b in holds_g]
     closures = _intervals(c > 0.5)
-    held = gobj == GOBJ_HELD
-
-    def holds(a, b):  # an object held (gOBJ 2) at a gripper sample within robot rows [a, b]
-        m = (gt >= t[a]) & (gt <= t[b] + 0.1)  # gripper registers lag the command by up to ~0.1 s
-        return bool((held & m).any())
-
-    holding = [iv for iv in closures if holds(*iv)]
-    phases = {"closures_rows": closures, "holding_closures_rows": holding, "final_command": round(float(c[-1]), 3),
-              "final_gobj": int(gobj[-1]), "final_register": round(float(sig["gripper/position"][-1]), 1)}
-    if not holding:
-        flags.append(_flag("no_grasp", "review", "no closure interval with an object held (gOBJ 2)", sig, [0, n - 1]))
+    phases = {"holding_rows": holds, "gobj_runs": len(_intervals(gobj == GOBJ_HELD)), "closures_rows": closures,
+              "final_command": round(float(c[-1]), 3), "final_gobj": int(gobj[-1]),
+              "final_register": round(float(sig["gripper/position"][-1]), 1)}
+    if not holds:
+        flags.append(_flag("no_grasp", "review", "no interval with an object held (gOBJ 2)", sig, [0, n - 1]))
         return {"phases": phases, "return": _return_info(sig, 0, n - 1, 0.0), "flags": flags}
-    grasp, release = holding[-1][0], holding[-1][1] + 1 if holding[-1][1] + 1 < n else holding[-1][1]
+    grasp, release = holds[-1][0], min(holds[-1][1] + 1, n - 1)
     phases.update(grasp_row=grasp, release_row=release, grasp_frames=_frames(sig, t[grasp]),
                   release_frames=_frames(sig, t[release]))
     if c[-1] > 0.5:
@@ -255,33 +304,27 @@ def check_mug(sig: dict) -> dict:
                            final_command=float(c[-1])))
     if gobj[-1] == GOBJ_HELD:
         flags.append(_flag("holding_at_end", "suspect", "the gripper still holds an object at the end", sig, [n - 1]))
-    for (_, b0), (a1, _) in zip(holding[:-1], holding[1:]):  # a later grasp: the mug taken off the hook again?
+    for (_, b0), (a1, _) in zip(holds[:-1], holds[1:]):  # a later grasp: the mug taken off the hook again?
         gap = float(np.linalg.norm(p[a1] - p[min(b0 + 1, n - 1)]))
         if gap < REVISIT_LEAVE_M:
             flags.append(_flag("regrasp_at_release_location", "suspect",
                                f"an object is grasped again {gap:.3f} m from where the previous one was released",
                                sig, [b0, a1], distance_m=gap))
         else:
-            flags.append(_flag("multiple_grasps", "review", f"{len(holding)} holding intervals; robot data cannot "
+            flags.append(_flag("multiple_grasps", "review", f"{len(holds)} holding intervals; robot data cannot "
                                "tell which release is the hang", sig, [b0, a1], distance_m=gap))
-    for a, b in (iv for iv in closures if iv[0] > holding[-1][1]):  # closures after the hang release hold nothing
+    for a, b in (iv for iv in closures if iv[0] > holds[-1][1]):  # closures after the hang release hold nothing
         flags.append(_flag("reclose_without_object", "info", "closure after the hang release without object contact "
                            "(reopened)", sig, [a, b], duration_s=float(t[b] - t[a])))
-    after_release = gt > t[release] + 0.1
-    if (held & after_release).any():
-        k = int(np.flatnonzero(held & after_release)[0])
-        row = int(np.clip(np.searchsorted(t, gt[k]), 0, n - 1))
-        flags.append(_flag("object_contact_after_release", "suspect", "gOBJ reports a held object after the hang "
-                           "release", sig, [row]))
     d = np.linalg.norm(p[release:] - p[release], axis=1)
     left = np.flatnonzero(d > REVISIT_LEAVE_M)
     if len(left):
         back = np.flatnonzero(d[left[0]:] < REVISIT_M)
         if len(back):
-            row = release + int(left[0]) + int(back[0])
+            r = release + int(left[0]) + int(back[0])
             flags.append(_flag("revisit_release_location", "review",
                                f"the flange returns within {REVISIT_M} m of the release position after leaving it by "
-                               f"{REVISIT_LEAVE_M} m (possible contact with the hung mug)", sig, [release, row]))
+                               f"{REVISIT_LEAVE_M} m (possible contact with the hung mug)", sig, [release, r]))
     tau = np.linalg.norm(sig["robot/tau_ext"], axis=1)
     phases["torque_nm"] = {"pre_grasp_median": round(float(np.median(tau[:grasp])), 3) if grasp else None,
                            "post_release_median": round(float(np.median(tau[release:])), 3),
@@ -319,7 +362,9 @@ def scan(raw_root, tasks=("drawer-open", "mug-hanging"), episodes=None) -> dict:
            "thresholds": {"clearance_m": CLEARANCE_M, "push_back_m": PUSH_BACK_M, "min_pull_m": MIN_PULL_M,
                           "speed_m_s": SPEED_M_S, "torque_contact_fraction": TORQUE_CONTACT_FRACTION,
                           "min_pull_contact_nm": MIN_PULL_CONTACT_NM, "return_fraction": RETURN_FRACTION,
-                          "revisit_leave_m": REVISIT_LEAVE_M, "revisit_m": REVISIT_M},
+                          "revisit_leave_m": REVISIT_LEAVE_M, "revisit_m": REVISIT_M,
+                          "handle_height_percentile": HANDLE_HEIGHT_PERCENTILE, "merge_gap_s": MERGE_GAP_S,
+                          "open_margin_register": OPEN_MARGIN_REGISTER},
            "counts": {}, "episodes": {}}
     for task in tasks:
         files = sorted((raw_root / task).glob("episode_*.h5"))
@@ -340,9 +385,9 @@ def scan(raw_root, tasks=("drawer-open", "mug-hanging"), episodes=None) -> dict:
 
 def summary(report: dict) -> dict:
     """Compact per-episode view of an ending report (decision, flag codes, the deciding robot-data margins)."""
-    keep = {"drawer-open": ("pull_m", "back_at_handle_m", "lift_when_back_5cm_m", "backward_contact_fraction",
-                            "axis_angle_from_base_y_deg"),
-            "mug-hanging": ("final_command", "final_gobj")}
+    keep = {"drawer-open": ("pull_m", "handle_height_z_m", "back_at_handle_m", "lift_when_back_5cm_m",
+                            "backward_contact_fraction", "axis_angle_from_base_y_deg"),
+            "mug-hanging": ("final_command", "final_gobj", "gobj_runs")}
     out = {k: report[k] for k in ("schema", "schema_version", "decision", "success_state", "thresholds", "counts")}
     out["episodes"] = {}
     for ep, r in sorted(report["episodes"].items()):
@@ -350,7 +395,7 @@ def summary(report: dict) -> dict:
         rec = {"decision": r["decision"], "flags": [f"{f['code']}:{f['severity']}" for f in r["flags"]],
                **{k: r["phases"].get(k) for k in keep.get(task, ())}}
         if task == "mug-hanging":
-            rec["holding_intervals"] = len(r["phases"].get("holding_closures_rows", []))
+            rec["holding_intervals"] = len(r["phases"].get("holding_rows", []))
             rec["final_to_release_m"] = r["return"].get("final_to_release_m")
         out["episodes"][ep] = rec
     return out

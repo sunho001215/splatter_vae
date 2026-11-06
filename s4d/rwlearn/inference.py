@@ -109,23 +109,43 @@ class OfflinePolicy:
         return self.act_from_features(self.features(obs), proprio, measured_pose7, **kw)
 
 
-def replay(policy: OfflinePolicy, dataset_path: str | Path, episode: str, timeline: str, *, seed: int = 0) -> dict:
+def replay(policy: OfflinePolicy, dataset_path: str | Path, episode: str, timeline: str, *, seed: int = 0,
+           store=None) -> dict:
     """Policy vs recorded commands over every transition of one recorded timeline, using the dataset's cached frozen
-    features (identical to ``features`` on the store frames; tested). Errors in physical units."""
+    features (identical to ``features`` on the store frames; tested) or, for ``e2e_cnn``, the timeline's frames read
+    from ``store`` (checked against the dataset's pinned ``rgb_sha256``). Errors in physical units."""
     gen = torch.Generator().manual_seed(seed)
+    pixels = policy.condition == "e2e_cnn"
     with h5py.File(dataset_path, "r") as f:
         g = f["episodes"][episode][timeline]
-        feat, run, ok = g["features"][:], g["run"][:], g["transition_ok"][:].astype(bool)
+        run, ok = g["run"][:], g["transition_ok"][:].astype(bool)
         proprio, action_phys, pose = g["proprio"][:], g["action_phys"][:], g["measured_pose"][:]
+        if pixels:
+            from s4d.rwlearn.fql_data import rgb_digest
+            from s4d.rwlearn.store import open_store
+
+            if store is None:
+                raise ValueError("e2e_cnn replay needs the training store")
+            store = open_store(store)
+            cam, native = json.loads(g.attrs["cameras"])[0], g["frames"][:][:, 0]
+            pinned = g.attrs.get("rgb_sha256")
+            if rgb_digest(store, episode, cam, native) != (pinned.decode() if isinstance(pinned, bytes) else pinned):
+                raise ValueError(f"{episode}/{timeline}: store frames differ from the dataset's pinned rgb_sha256")
+        else:
+            feat = g["features"][:]
     from s4d.rwlearn.transitions import history_indices
 
     pos_err, rot_err, grip_err = [], [], []
     for k in np.flatnonzero(ok):
         h = [k] if policy.sequence else history_indices(run, np.array([k]), FRAME_STACK)[0]
-        x = torch.from_numpy(feat[h].astype(np.float32))
-        x = x if policy.sequence else x[None]
         noise = torch.randn(1, A.ACTION_DIM, generator=gen)
-        out = policy.act_from_features(x, proprio[k], A.matrix_to_pose7(pose[k]), noise=noise)
+        if pixels:
+            rgb = np.asarray(store.rgb(episode, cam, native[h]), np.uint8)[:, None]
+            out = policy.act_from_pixels(rgb, proprio[k], A.matrix_to_pose7(pose[k]), noise=noise)
+        else:
+            x = torch.from_numpy(feat[h].astype(np.float32))
+            x = x if policy.sequence else x[None]
+            out = policy.act_from_features(x, proprio[k], A.matrix_to_pose7(pose[k]), noise=noise)
         pos_err.append(float(np.linalg.norm(out["delta_phys"][:3] - action_phys[k, :3])))
         Rp = A.apply_delta(np.eye(4), out["delta_phys"])[:3, :3]
         Rr = A.apply_delta(np.eye(4), action_phys[k, :6])[:3, :3]

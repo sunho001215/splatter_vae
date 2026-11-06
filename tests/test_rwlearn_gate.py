@@ -186,6 +186,20 @@ def test_aggregate_status_must_be_explained_by_the_hold_stage():
                                                      ["problems"])
 
 
+@pytest.mark.parametrize("status", [None, "UNKNOWN", "done", "running"])
+def test_open_hold_does_not_excuse_a_missing_or_inconsistent_aggregate(status):
+    """Codex review: with calibration_validated pending, set_stage's aggregate is exactly "pending"; anything else
+    (missing, unknown, stale) fails the base gate for that episode."""
+    m = manifest(validated=True)
+    pre = m["episodes"][KEY]["preprocessing"]
+    pre["stages"][gate.CALIBRATION_STAGE]["status"] = "pending"
+    pre["status"] = status
+    rep = gate.evaluate(m, ["drawer-open"])
+    assert not rep["passed"] and any(KEY in x for x in rep["tasks"]["drawer-open"]["problems"])
+    pre["status"] = "pending"
+    assert gate.evaluate(m, ["drawer-open"])["passed"]
+
+
 def test_ingest_worker_set_stage_accepts_the_calibration_record(tmp_path):
     """ING's set_stage (the committed tool; used read-only, on a temporary manifest) takes the record CAL will write,
     and the gate reads the resulting manifest entry."""

@@ -36,7 +36,11 @@ eligibility are held until the calibration is validated). Consumers are classifi
 
 The hold stage never blocks non-geometric consumers: the aggregate "all recorded stages done" check skips
 ``HOLD_STAGES`` (``set_stage`` folds every recorded stage into ``preprocessing.status``, so a pending or failed
-``calibration_validated`` record would otherwise hold every consumer). The 100-episode requirement is unchanged.
+``calibration_validated`` record would otherwise hold every consumer); the recorded aggregate must still equal
+``set_stage``'s aggregation (``aggregate_status``). The consumer is always the calling trainer's own identity
+(``baseline_data.realworld_classes(consumer=...)``, the FQL dataset's condition), never a config value, and
+geometry-dependent short runs need the calibration too unless explicitly opted out for synthetic plumbing
+(``short_run_allowed``). The 100-episode requirement is unchanged.
 """
 
 from __future__ import annotations
@@ -101,6 +105,13 @@ CONSUMERS = {
 # offline-FQL conditions inherit the class of the encoder they are trained on (s4d/rwlearn/fql_data.py CONDITIONS)
 FQL_CONSUMER = {"dynamo": "dynamo", "reviwo": "reviwo", "sincro": "sincro", "snerl": "snerl",
                 "mvp3d_multiview": "mvp3d", "mvp3d_single": "mvp3d", "e2e_cnn": "e2e_cnn"}
+
+
+def aggregate_status(stages: dict) -> str:
+    """``preprocessing.status`` exactly as ING's ``set_stage`` aggregates the recorded stage statuses."""
+    statuses = [(r or {}).get("status") for r in stages.values()]
+    return ("failed" if "failed" in statuses else "running" if "running" in statuses else
+            "done" if statuses and all(x in ("done", "skipped") for x in statuses) else "pending")
 
 
 def consumer_info(name: str | None) -> Consumer:
@@ -204,12 +215,11 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
             pre = e.get("preprocessing") or {}
             stages = pre.get("stages") or {}
             # aggregate: every recorded stage done (or skipped) EXCEPT the hold stages, which only gate geometry-
-            # dependent consumers (set_stage's preprocessing.status folds them in)
+            # dependent consumers (set_stage's preprocessing.status folds them in). The recorded aggregate must be
+            # exactly set_stage's aggregation of the recorded stages (fail closed on a missing / unknown / stale one)
             open_stages = sorted(s for s, r in stages.items() if s not in HOLD_STAGES
                                  and (r or {}).get("status") not in ("done", "skipped"))
-            # an aggregate other than "done" must be explained by an open hold stage (fail closed otherwise)
-            explained = pre.get("status") == "done" or any(
-                (stages.get(h) or {}).get("status") not in ("done", "skipped") for h in HOLD_STAGES if h in stages)
+            explained = pre.get("status") == aggregate_status(stages)
             if (pre.get("schema"), pre.get("schema_version")) != (STAGE_SCHEMA, STAGE_SCHEMA_VERSION) \
                     or not stages or open_stages or not explained:
                 problems.append(f"{key}: preprocessing {pre.get('status')!r} (schema {pre.get('schema')!r} "
@@ -300,8 +310,17 @@ def evaluate_file(path: Path = MANIFEST, tasks=("drawer-open", "mug-hanging"), *
     return report
 
 
+def short_run_allowed(consumer: str | None, steps, short_run_steps: int, smoke_without_calibration: bool) -> bool:
+    """Short (plumbing) runs may skip the 100-episode gate; for a geometry-dependent consumer only with the explicit
+    ``smoke_without_calibration`` opt-in (synthetic test stores; never set by generated configs or plan rows), so
+    that an unvalidated calibration never reaches a geometric run by default."""
+    if steps is None or steps > short_run_steps:
+        return False
+    return not consumer_info(consumer).geometry or bool(smoke_without_calibration)
+
+
 def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: dict | None = None,
-                       short_run_steps: int = 10_000) -> dict:
+                       short_run_steps: int = 10_000, smoke_without_calibration: bool = False) -> dict:
     """FQL trainer check (beyond ``short_run_steps``): every task of the dataset passed the gate report AT THE LEVEL OF
     THE DATASET'S CONDITION (geometry-dependent conditions also need the calibration hold released, and the dataset
     must have been built from the validated calibration of every episode: its ``calibration`` attribute, recorded from
@@ -322,11 +341,11 @@ def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: d
     consumer = FQL_CONSUMER.get(condition)
     passed = bool(report) and all(task_passed(report, t, consumer) for t in tasks)
     if not passed:
-        if steps is None or steps > short_run_steps:
+        if not short_run_allowed(consumer, steps, short_run_steps, smoke_without_calibration):
             level = "with the calibration hold released " if consumer_info(consumer).geometry else ""
             raise RuntimeError(f"no passed full-data gate report {level}for {sorted(tasks)} (condition "
                                f"{condition}); refusing an FQL run of {steps} steps")
-        return {"smoke": True}
+        return {"smoke": True, "consumer": consumer, "geometry_dependent": consumer_info(consumer).geometry}
     for task, task_eps in tasks.items():
         if sorted(report["tasks"][task]["store_episodes"]) != sorted(task_eps):
             raise RuntimeError(f"{task}: dataset episodes differ from the gate's validated + preprocessed set")

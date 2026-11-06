@@ -232,7 +232,24 @@ def test_gate_evidence_required_beyond_smoke_runs():
     with pytest.raises(RuntimeError, match="differ"):
         BD.check_gate(store, report, steps=None, consumer="dynamo")
     with pytest.raises(ValueError, match="not a real-world data interface"):
-        BD.realworld_classes({"source": "metaworld"}, 10, store)
+        BD.realworld_classes({"source": "metaworld"}, 10, store, consumer="dynamo")
+
+
+def test_trainer_hook_binds_the_gate_to_the_calling_trainer():
+    """Codex review: a geometric trainer must not be downgraded by a config that declares a non-geometric consumer."""
+    store = synthetic_store()
+    for e in store._eps.values():
+        e["upstream"] = {"calibrate": "cal-1"}
+    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
+    iface = {"source": "realworld", "gate_report": report, "target": "drawer-open"}
+    assert BD.realworld_classes({**iface, "consumer": "dynamo"}, 10**6, store, consumer="dynamo")["dynamo"]
+    with pytest.raises(ValueError, match="conflicts with the trainer"):
+        BD.realworld_classes({**iface, "consumer": "dynamo"}, 10**6, store, consumer="snerl")
+    with pytest.raises(RuntimeError, match="calibration hold"):  # no declared consumer: the trainer's identity counts
+        BD.realworld_classes(iface, 10**6, store, consumer="snerl")
+    with pytest.raises(RuntimeError, match="calibration hold"):
+        BD.realworld_classes(iface, 100, store, consumer="sincro")
+    assert BD.realworld_classes({**iface, "smoke_without_calibration": True}, 100, store, consumer="sincro")["sincro"]
 
 
 def _hold(store, build="cal-1", cams=CAMS, passed=True):
@@ -250,7 +267,9 @@ def test_geometry_dependent_consumers_need_the_validated_calibration(consumer):
     base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
     with pytest.raises(RuntimeError, match="calibration hold"):  # no hold section: held
         BD.check_gate(store, base, steps=None, consumer=consumer)
-    assert BD.check_gate(store, base, steps=100, consumer=consumer)["smoke"]  # smoke runs may skip the gate
+    with pytest.raises(RuntimeError, match="calibration hold"):  # short runs too, unless explicitly opted in
+        BD.check_gate(store, base, steps=100, consumer=consumer)
+    assert BD.check_gate(store, base, steps=100, consumer=consumer, smoke_without_calibration=True)["smoke"]
     with pytest.raises(RuntimeError, match="calibration hold"):
         BD.check_gate(store, {**base, "calibration_hold": {"drawer-open": _hold(store, passed=False)}}, steps=None,
                       consumer=consumer)

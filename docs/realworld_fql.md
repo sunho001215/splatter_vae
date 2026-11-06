@@ -91,7 +91,9 @@ proprio) are recorded per condition (`fql_data.CONDITIONS[c].extra_inputs`, data
 **Camera randomisation** (`OfflineTransitions.sample`). Batches are uniform over (camera timeline, step)
 transitions, so the viewpoint is drawn per training sample. Every index of the observation history and of its paired
 next observation lies in that one camera's timeline, which the test asserts. Single-view timelines are each camera's
-own native frames (observation, proprio and action share that camera's timestamps). Multi-view conditions use the
+own native frames (observation, proprio and action share that camera's timestamps). The camera is therefore drawn
+with probability proportional to its valid transitions; measured on all 200 recordings (2026-11-06): 1/3 each to four
+decimals (drawer-open 14,743 / 14,745 / 14,743, mug-hanging 22,427 / 22,427 / 22,426 transitions per camera). Multi-view conditions use the
 synchronised steps. Each step is timestamped at its LATEST constituent frame, so no camera image is newer than the
 proprioception and the start of the action interval. Without this, a camera 6.6-22.9 ms after the reference would see
 commands already inside the labelled action (Codex review).
@@ -185,26 +187,31 @@ estimate `robot/tau_ext` and the camera frame times (every flag carries robot ro
 indices). Image evidence is reserved for episodes the robot data cannot decide (`needs_image_review`;
 `review_sheet` tiles first / event / final colour frames of every camera from the original HDF5).
 
-- **drawer-open.** The pull is the motion from the minimum to the following maximum of the flange along the drawer
-  axis (principal horizontal direction, within 18 deg of base +y on every recording). Push-back = the flange moving
-  back along the axis by more than 5 cm before rising 3 cm above its pull-end height (`back_at_handle_m`), or an
-  external torque while moving back that reaches half of the pull's contact level above free motion. Every
-  drawer-open operator returns about 60 % of the pull toward the start pose after lifting off the handle; that is
-  recorded as information (`return_toward_start`), not as a reversal.
-- **mug-hanging.** The hang release ends the last closure during which gOBJ reported a held object. Flagged: ending
-  commanded closed or still holding, gOBJ holding after the release, or a new grasp within 5 cm of where the previous
-  object was released (mug taken off the hook). Review: several holding intervals elsewhere, or the flange coming back
-  within 3 cm of the release position (possible knock-off). Information: a closure after the release without object
-  contact, the return toward the start pose.
+- **drawer-open.** The pull runs from the minimum of the flange along the drawer axis (principal horizontal
+  direction, within 18 deg of base +y on every recording) to the end of the FIRST completed pull (the running maximum
+  up to the first 5 cm step back or 3 cm rise; later motion of a disengaged arm never redefines it). Handle height =
+  the 90th percentile of the flange height while pulling forward. Push-back = more than 5 cm of backward travel along
+  the axis inside ANY interval after the pull end with the flange below handle height + 3 cm (also after lifting off
+  and coming back down; `back_at_handle_m`), or an external torque while moving back that reaches half of the pull's
+  contact level above free motion. Every drawer-open operator returns about 60 % of the pull toward the start pose
+  above the open drawer; that is recorded as information (`return_toward_start`), not as a reversal.
+- **mug-hanging.** Holds are the runs of gOBJ 2, merged across a flicker shorter than 1 s in which the fingers never
+  opened (register within 20 of the holding level); a release opens the fingers, so a hang and a later re-grasp are
+  separate holds even when the command never drops below 0.5. The hang release ends the last hold. Flagged: ending
+  commanded closed or still holding, or a new grasp within 5 cm of where the previous object was released (mug taken
+  off the hook). Review: several holds elsewhere, or the flange coming back within 3 cm of the release position
+  (possible knock-off). Information: a closure after the release without object contact, the return toward the
+  start pose.
 
 **Result on all 200 recordings** (local raw HDF5, 2026-11-06 12:01; full report
 `/home/ws/ws/realworld-ops/fql2/ending_report.json`, compact `docs/realworld_ending_flags.json`): drawer-open
 100 no_reversal, 0 suspected, 0 review; mug-hanging 100 no_reversal, 0 suspected, 0 review. Closest margins:
-drawer-open/episode_000015 moved 4.3 cm back at handle height (threshold 5 cm; the smallest lift at 5 cm back is
-3.4 cm), the largest backward contact fraction is 0.41 (threshold 0.5; torque decisive on 96 of 100). Information
+the largest backward travel at handle height is 3.6 cm (drawer-open/episode_000059; threshold 5 cm), the largest
+backward contact fraction is 0.41 (threshold 0.5; torque decisive on 96 of 100). Information
 flags: `return_toward_start` 100 drawer-open / 33 mug-hanging; mug-hanging/episode_000018 closes the open gripper for
 0.09 s after the hang release without object contact (robot rows 1240-1249, frames 184-186) and reopens. Every
-mug-hanging recording has exactly one holding interval, ends open (gOBJ 3). A visual audit of the final frame of all
+mug-hanging recording has exactly one hold (episode_000056's two gOBJ runs are a 0.32 s flicker with the fingers
+closed at 204-210) and ends open (gOBJ 3). A visual audit of the final frame of all
 200 recordings (one camera each; `/home/ws/ws/realworld-ops/fql2/{drawer,mug}_final.png`) agrees: every drawer is open,
 every mug hangs on the stand.
 
@@ -239,7 +246,9 @@ official tree; its output on uint8 inputs equals the official to 2e-5; flax max-
 calls of an official FQL agent with an `ImpalaEncoder` (4 x 4 stacks, (32,) MLP) reproduce every logged value and every
 parameter (encoders and target encoders included) to float32 round-off, plus `sample_actions` / `compute_flow_actions`.
 `tests/test_rwlearn_fql_pipeline.py::test_e2e_cnn_*` covers the dataset, camera-per-sample invariants, joint training
-(every network's encoder moves) and `OfflinePolicy.act`. `tests/test_rwlearn_trainers_gpu.py` (marker `gpu`, release
+(every network's encoder moves), `OfflinePolicy.act`, `replay` from the store, and the pixel pin: the dataset records
+each timeline's `rgb_sha256` at build time and the loader and replay refuse a store whose frames differ, so the
+dataset file's sha256 (the trainer's resume identity) also identifies the training pixels. `tests/test_rwlearn_trainers_gpu.py` (marker `gpu`, release
 chain) runs the dataset builder and the trainer as subprocesses with a lossless 2 + 2 = 4-step resume.
 
 Compute (estimate, to be measured in the GPU tests): about 7 encoder passes of a 256 x 128 x 128 x 9 batch per update
@@ -262,9 +271,14 @@ the per-episode record `calibration_validated`.
 | DynaMo (pretrain + FQL) | image | single-camera RGB |
 | e2e CNN + FQL | image | RGB + proprioception (robot kinematics) + sent commands |
 
-An unknown consumer is held like a geometric one. The aggregate "all recorded stages done" check skips the hold stage
-(ING's `set_stage` folds every stage into `preprocessing.status`, so a pending `calibration_validated` would otherwise
-hold everyone); an aggregate other than `done` must still be explained by an open hold stage. Two bindings make the
+An unknown consumer is held like a geometric one, and the consumer is the CALLING TRAINER's fixed identity
+(`realworld_classes(..., consumer=<b>)` in `scripts/train_<b>.py`; FQL: the dataset's condition): a config that
+declares another `data_interface.consumer` is refused. Short (<= 10k-step plumbing) runs of geometry-dependent
+consumers are held too, unless the explicit `smoke_without_calibration` opt-in is set (synthetic test stores only;
+never in generated configs or plan rows). The aggregate "all recorded stages done" check skips the hold stage (ING's
+`set_stage` folds every stage into `preprocessing.status`, so a pending `calibration_validated` would otherwise hold
+everyone); the recorded aggregate must equal `set_stage`'s aggregation of the recorded stages exactly (a missing,
+unknown or stale aggregate fails). Two bindings make the
 validation stick to the data actually trained on: the gate requires `metrics.calibrate_build_id` = the CURRENT
 `calibrate` record's `metrics.build_id`, and every geometry-dependent trainer requires the training store's
 `upstream.calibrate` (compact store attribute) to equal that id and every store camera to be listed as validated
@@ -323,6 +337,27 @@ the e2e build is CPU work (1 / 8). Pretraining resources are the campaign's Meta
 | training / inference | trainer (frozen + e2e), lossless resume (CPU dry run), `OfflinePolicy` (frozen + e2e) | GPU tests in the release chain |
 | gate | 100-episode gate + per-consumer calibration hold, set_stage contract tested | CAL's `calibration_validated` records; gate passes |
 | launch | 66 planned rows, role-classified, not registered | coordinator registration with the pinned release |
+
+## Review of the decisions branch (Codex gpt-6.1-sol xhigh, read-only, on e4c137f) and what changed
+
+No mismatch was found in the IMPALA layer order, initialisation, pooling, flattening, normalisation, augmentation or
+action clipping; gradient routing and target-encoder Polyak updates match the official agent; plan rows and configs
+match the documentation; no frozen-encoder or Meta-World SNeRL regression. Findings, all fixed:
+
+- **High: short runs bypassed the calibration hold** (<= 10k-step smoke exception). Geometric short runs now need the
+  hold too, except with the explicit `smoke_without_calibration` opt-in.
+- **High: the pretraining hook trusted the configured consumer.** Each trainer passes its fixed consumer; a conflicting
+  `data_interface.consumer` is refused.
+- **Medium: drawer pull end = global maximum** (a later free motion beyond the pull end hid a push-back) and **the
+  first lift ended the handle-height check** (re-lowering and pushing was missed). Now the first completed pull and
+  every handle-height interval after it.
+- **Medium: mug holds from the command threshold** could merge a hang and a re-grasp. Now gOBJ holds with an
+  explicit flicker merge rule.
+- **Medium: the e2e resume identity did not pin the pixels.** Per-timeline `rgb_sha256` at build, verified on load.
+- **Medium: `replay` failed for `e2e_cnn`.** Pixel replay from the store (pinned frames).
+- **Low: an open hold excused a missing / unknown aggregate status.** The aggregate must equal set_stage's.
+
+The real-data result is unchanged after the detector changes (200 / 200 no_reversal).
 
 ## Review (Codex gpt-6.1-sol xhigh, read-only, on eeaafb2) and what changed
 

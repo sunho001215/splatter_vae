@@ -90,6 +90,16 @@ def sha256_file(path) -> str:
     return h.hexdigest()
 
 
+def rgb_digest(store: FrameStore, ep: str, cam: str, frames, chunk: int = 64) -> str:
+    """sha256 over the uint8 RGB frames ``frames`` of one camera, in order (shape-tagged, read in chunks)."""
+    h = hashlib.sha256()
+    frames = np.asarray(frames)
+    h.update(json.dumps([int(len(frames)), list(store.image_hw)]).encode())
+    for s0 in range(0, len(frames), chunk):
+        h.update(np.ascontiguousarray(np.asarray(store.rgb(ep, cam, frames[s0:s0 + chunk]), np.uint8)).tobytes())
+    return h.hexdigest()
+
+
 def encoder_adapter(condition: str, export_path, image_size: int = 128, feature_dim: int = 256):
     """The campaign's ``VisionEncoderAdapter`` for a frozen baseline export (backbone frozen, eval mode)."""
     from s4d.rl.encoders import VisionEncoderAdapter
@@ -181,6 +191,8 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                 if adapter is not None:
                     g.create_dataset("features", data=encode_timeline(adapter, store, ep, tl, device=device),
                                      compression="lzf")
+                else:  # e2e_cnn: pin the content of the RGB frames the trainer will read from the store
+                    g.attrs["rgb_sha256"] = rgb_digest(store, ep, tl.cameras[0], tl.frames[:, 0])
                 for k in ("times", "run", "proprio", "state_ok", "transition_ok", "action", "action_phys", "reward",
                           "mask", "success", "terminal"):
                     g.create_dataset(k, data=tr[k])

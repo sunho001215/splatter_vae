@@ -87,7 +87,8 @@ def main() -> None:
     if steps > SHORT_RUN_STEPS:
         require_passed_tests()
     split = json.loads(Path(data_cfg["split_manifest"]).read_text())
-    gate = check_dataset_gate(data_cfg["dataset"], data_cfg.get("gate_report"), steps=steps, split=split)
+    gate = check_dataset_gate(data_cfg["dataset"], data_cfg.get("gate_report"), steps=steps, split=split,
+                              smoke_without_calibration=bool(data_cfg.get("smoke_without_calibration")))
     try:
         run_dir = validate_runtime_path(Path(args.output_root) / args.name, repository=REPO)
     except GPUIsolationError as exc:

@@ -107,7 +107,8 @@ def main() -> None:
         from s4d.rwlearn.baseline_data import realworld_classes
 
         caps = {"max_episodes": ds_cfg.get("max_episodes"), "max_frames_per_demo": ds_cfg.get("max_frames_per_demo")}
-        steps_cls = realworld_classes(interface, train_cfg.get("max_steps"), ds_cfg["hdf5_path"], caps)["mvp3d"]
+        steps_cls = realworld_classes(interface, train_cfg.get("max_steps"), ds_cfg["hdf5_path"], caps,
+                                      consumer="mvp3d")["mvp3d"]
     train_set = steps_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), num_views,
                           ds_cfg.get("max_episodes"), ds_cfg.get("max_frames_per_demo"))
     val_set = steps_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), num_views)

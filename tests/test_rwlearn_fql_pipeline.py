@@ -286,6 +286,17 @@ def test_e2e_cnn_dataset_pixel_sampling_joint_training_and_policy(tmp_path):
     direct = agent.sample_actions({"pixels": PX.stack_frames(torch.from_numpy(rgb[:, 0])[None]), "proprio": proprio},
                                   torch.zeros(1, A.ACTION_DIM))
     np.testing.assert_allclose(direct.numpy()[0], act["action_norm"], atol=1e-5)
+    rep = replay(policy, path, ep, cam, store=store)
+    with h5py.File(path, "r") as f:
+        assert rep["transitions"] == int(f["episodes"][ep][cam]["transition_ok"][:].sum())
+    with pytest.raises(ValueError, match="needs the training store"):
+        replay(policy, path, ep, cam)
+    # the pixels are pinned: changed RGB content behind the same store is refused (loader and replay)
+    store._eps[ep]["cameras"][cam]["rgb"][0, 0, 0, 0] ^= 1
+    with pytest.raises(ValueError, match="rgb_sha256"):
+        PX.OfflinePixelTransitions(path, store)
+    with pytest.raises(ValueError, match="rgb_sha256"):
+        replay(policy, path, ep, cam, store=store)
 
 
 def test_geometric_condition_dataset_needs_the_validated_calibration(tmp_path, exports):
@@ -311,4 +322,6 @@ def test_geometric_condition_dataset_needs_the_validated_calibration(tmp_path, e
         check_dataset_gate(path, hold("cal-0"), steps=None)
     with pytest.raises(RuntimeError, match="no validated calibration"):
         check_dataset_gate(path, hold("cal-1", sorted(store.cameras(ep))[:2]), steps=None)
-    assert check_dataset_gate(path, base, steps=100)["smoke"]
+    with pytest.raises(RuntimeError, match="calibration hold released"):  # short runs are held too (geometric)
+        check_dataset_gate(path, base, steps=100)
+    assert check_dataset_gate(path, base, steps=100, smoke_without_calibration=True)["smoke"]  # explicit opt-in only

@@ -145,7 +145,7 @@ def main() -> None:
         from s4d.rwlearn.baseline_data import realworld_classes
         from s4d.rwlearn.snerl_eval import realworld_validate
 
-        scenes_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"])["snerl"]
+        scenes_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"], consumer="snerl")["snerl"]
         validate_fn = realworld_validate  # input-view and leave-one-camera-out novel-view metrics, reported apart
     train_set = scenes_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), seed, num_inputs, max_steps,
                            lookat, scale)

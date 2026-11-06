@@ -44,5 +44,6 @@ data:
   store: null              # e2e_cnn: the training store the dataset was built from (frames read once per camera)
   frames_device: null      # e2e_cnn: where the uint8 frames live (default: train.device)
   action_clip_eps: 1.0e-5  # official make_env_and_datasets action clipping (envs/env_utils.py)
+  smoke_without_calibration: false  # synthetic plumbing tests only: lets a <= 10k-step GEOMETRIC run skip the hold
 wandb:
   project: splatter4d-realworld-fql
