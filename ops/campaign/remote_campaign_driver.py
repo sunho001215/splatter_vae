@@ -15,7 +15,7 @@ REPO = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(REPO))
 from ops.jobs import scheduler as jobs
 from ops.remote.access import RemoteClient
-from ops.jobs.remote_backend import RemoteBackend
+from ops.jobs.remote_backend import COTENANT_GPU_MARGIN_GB, RemoteBackend, cotenant_charges
 from ops.jobs import host_roles  # noqa: E402
 
 IMAGE = 'sha256:c3ffea7f7c114dd12755f9d537f760a6d5b31c96c923233185b775e0324799b7'
@@ -624,6 +624,37 @@ for i, s in active.items():
     if s.get('gpu') in gpu_load and i in by_id:
         gpu_load[s['gpu']] += load(by_id[i])
         gpu_mem[s['gpu']] += float(by_id[i]['mem_gb'])
+# Campaign-owned co-tenants (the rwprep containers outside the scheduler, 2026-11-06; remote_backend.cotenant_charges):
+# their load units, GPU memory (max of measured and declared) and declared RAM limits (campaign cap) are charged before
+# any placement; on their GPUs the measured free memory less pending reservations must also hold a row's mem_gb plus
+# COTENANT_GPU_MARGIN_GB, expressed as a floor on gpu_mem so that place(), the hybrid reservation and the pool keep
+# their single memory test. The scheduler tick and the remote launch guard re-check. Without co-tenants nothing
+# changes; co-tenant evidence unreadable, or a co-tenant without an enforced RAM limit: no remote admission or pool move.
+COTENANT = {'gpus': {}, 'ram_declared_bytes': 0, 'unbounded': []}
+if candidates or (POOL_READY and not DRY and ROLES is not None
+                  and not (REPO / 'runs/setup/remote-hold-admissions').exists()):
+    try:
+        snapshot = RemoteBackend(REPO, REPO / 'runs').snapshot()
+        if not snapshot.resources_ready:  # e.g. a co-tenant inspect failure: its reservation would be lost
+            raise RuntimeError('remote resource evidence not ready')
+        COTENANT = cotenant_charges(snapshot, [(s['gpu'], s.get('container'), float(by_id[i]['mem_gb']))
+                                               for i, s in active.items() if i in by_id])
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:  # incl. RemoteJobError/-Unreachable
+        COTENANT = {'error': f'evidence unavailable ({type(exc).__name__})'}
+if 'error' in COTENANT or COTENANT['unbounded']:
+    messages.append(f"COTENANT {COTENANT.get('error') or 'without an enforced RAM limit ' + str(COTENANT['unbounded'])}; "
+                    'no remote admission or pool move this pass')
+    candidates, COTENANT = [], None
+else:
+    for g, charge in COTENANT['gpus'].items():
+        if g in gpu_load:
+            gpu_load[g] += charge['load']
+            gpu_mem[g] = max(gpu_mem[g] + charge['mem_gb'], 90 - charge['free_gb'] + COTENANT_GPU_MARGIN_GB)
+    reserved += COTENANT['ram_declared_bytes']
+    if COTENANT['gpus']:
+        messages.append('COTENANT ' + json.dumps({g[4:8]: {k: round(charge[k], 1) for k in ('jobs', 'load', 'mem_gb',
+                                                                                            'free_gb')}
+                                                  for g, charge in sorted(COTENANT['gpus'].items())}))
 reviwo = sum(1 for i in active if i.startswith('s4-reviwo-'))
 chosen, total, taken = [], reserved, set()
 
@@ -682,7 +713,7 @@ for job in candidates:
 # now move here (runs/setup/tools/pool_placement.py: host-specific fields only) and are admitted in this pass. Pretraining
 # first (it gains most from the full GPUs), then RL trainer + evaluator pairs, each in priority / registration order.
 held = (REPO / 'runs/setup/remote-hold-admissions').exists()
-if POOL_READY and not DRY and not held and ROLES is not None:
+if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not None:
     sys.path.insert(0, str(REPO / 'runs/setup/tools'))
     from ops.jobs import pool_placement  # noqa: E402
 

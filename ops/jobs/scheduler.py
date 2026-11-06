@@ -24,10 +24,12 @@ from ops.resources.gpu_guard import APPROVED_HOST_GPUS, HOST_CONFIG_PATH, MIG_DE
 from ops.remote.access import sha256 as file_sha256  # noqa: E402
 from ops.jobs.remote_backend import ROOT as REMOTE_ROOT  # noqa: E402
 from ops.jobs.remote_backend import (  # noqa: E402
+    COTENANT_GPU_MARGIN_GB,
     ContainerRemovalRefused,
     RemoteBackend,
     RemoteJobError,
     RemoteUnreachable,
+    cotenant_charges,
     validate_container,
 )
 from ops.containers.verification import validate_report, validate_verification, verification_resources  # noqa: E402
@@ -308,7 +310,8 @@ def eligible(jobs: list[dict], state: dict[str, dict]) -> list[dict]:
     return [job for _, _, job in sorted(ready, key=lambda item: item[:2])]
 
 
-def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str]) -> str | None:
+def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str],
+               cotenant: dict | None = None) -> str | None:
     host = job.get("host", "local")
     candidates = list(limits) if job.get("gpu", "any") == "any" else [job["gpu"]]
     best = None
@@ -319,7 +322,13 @@ def choose_gpu(job: dict, limits: dict, running: list[dict], foreign: set[str]) 
             continue
         here = [item for item in running if item.get("host", "local") == host and item["gpu"] == uuid]
         memory = sum(item["mem_gb"] for item in here) + float(job["mem_gb"])
-        if len(here) < limits[uuid]["max_jobs"] and memory <= limits[uuid]["max_mem_gb"]:
+        count = len(here)
+        shared = (cotenant or {}).get(uuid)
+        if shared is not None:  # known co-tenants on this GPU (_charge_cotenants): count, memory, measured free memory
+            count, memory = count + shared["jobs"], memory + shared["mem_gb"]
+            if shared["free_gb"] - COTENANT_GPU_MARGIN_GB < float(job["mem_gb"]):
+                continue
+        if count < limits[uuid]["max_jobs"] and memory <= limits[uuid]["max_mem_gb"]:
             if best is None or memory < best[0]:
                 best = (memory, uuid)
     return None if best is None else best[1]
@@ -885,6 +894,31 @@ def _cleanup_completed_containers(backend, snapshot, state: dict, registry: Path
     return True
 
 
+def _charge_cotenants(resources: dict, state: dict, jobs: dict, messages: list[str]) -> None:
+    """Campaign-owned co-tenants on the remote (remote_backend.identify_cotenant: the real-world preprocessing
+    containers, 2026-11-06): their processes are already known (not foreign) on the GPU each is bound to; here their
+    resources are charged. Per GPU: container count and memory (max of measured and declared) against the GPU's limits,
+    and the measured free memory less every known tenant's declared but not yet allocated reservation, which must hold
+    a job's mem_gb plus COTENANT_GPU_MARGIN_GB (choose_gpu). Host RAM: the part of their RAM limits not yet in use. A
+    co-tenant without an enforced RAM limit cannot be accounted: no remote launch. Without co-tenants nothing changes."""
+    snapshot = resources["remote"].pop("snapshot", None)
+    if snapshot is None or not snapshot.cotenants:
+        return
+    own = [(current["gpu"], current.get("container"), reservation(current, jobs.get(job_id, {}), "mem_gb"))
+           for job_id, current in state.items() if current.get("host") == "remote" and current["status"] in RESERVING]
+    charges = cotenant_charges(snapshot, own)
+    if charges["unbounded"]:
+        messages.append(f"remote co-tenants without an enforced RAM limit {charges['unbounded']}; no remote jobs launched")
+        del resources["remote"]
+        return
+    resources["remote"]["available"] -= charges["ram_pending_bytes"] / GIB
+    resources["remote"]["cotenant"] = charges["gpus"]
+    messages.append(f"remote co-tenants: {len(snapshot.cotenants)} known, {charges['ram_pending_bytes'] / GIB:.0f} GB "
+                    "RAM not yet in use charged; " + ", ".join(
+                        f"{uuid[:12]} {charge['jobs']} ({charge['mem_gb']:.1f} GB charged, {charge['free_gb']:.1f} GB "
+                        "free after pending reservations)" for uuid, charge in sorted(charges["gpus"].items())))
+
+
 def tick(queue_path: Path = QUEUE, registry: Path = REGISTRY, runs: Path = RUNS, usage=None,
          available_gb: float | None = None, disk_bytes: tuple[int, int] | None = None, remote_backend=None) -> list[str]:
     registry.parent.mkdir(parents=True, exist_ok=True)
@@ -944,9 +978,12 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                 reachable = _cleanup_completed_containers(remote_backend, snapshot, read_registry(registry), registry,
                                                           messages)
             if reachable and snapshot.resources_ready:
-                foreign = {uuid for uuid, procs in snapshot.usage.items() if any(pid not in owned for pid, _ in procs)}
+                # processes of campaign-owned co-tenants (remote_backend.identify_cotenant) are known on their GPU only
+                known = {uuid: charge["pids"] for uuid, charge in cotenant_charges(snapshot)["gpus"].items()}
+                foreign = {uuid for uuid, procs in snapshot.usage.items()
+                           if any(pid not in owned and pid not in known.get(uuid, ()) for pid, _ in procs)}
                 resources["remote"] = {"available": snapshot.available_gb, "disk_total": snapshot.disk_total_bytes,
-                                       "disk_free": snapshot.disk_free_bytes, "foreign": foreign}
+                                       "disk_free": snapshot.disk_free_bytes, "foreign": foreign, "snapshot": snapshot}
             else:
                 messages.append("remote: resource evidence unavailable; no remote jobs launched")
         except RemoteUnreachable:
@@ -975,6 +1012,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
     running = [{"host": current.get("host", "local"), "gpu": current["gpu"],
                 "mem_gb": reservation(current, jobs.get(job_id, {}), "mem_gb"), "pid": current.get("pid")}
                for job_id, current in state.items() if current["status"] in RESERVING]
+    if "remote" in resources:
+        _charge_cotenants(resources, state, jobs, messages)
     try:
         usage = gpu_usage() if usage is None else usage
         sessions = {item["pid"] for item in running if item["host"] == "local"}
@@ -1016,7 +1055,7 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
         if refused is not None:
             messages.append(f"{job['id']}: not admitted on {host_name}: {refused}")
             continue
-        gpu = choose_gpu(job, host.get("limits", {}), running, resource["foreign"])
+        gpu = choose_gpu(job, host.get("limits", {}), running, resource["foreign"], resource.get("cotenant"))
         if gpu is None:
             continue
         need, reserve = float(job.get("ram_gb", 0)), float(host.get("host_ram_reserve_gb", 0))
@@ -1081,6 +1120,8 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
             resource["available"] -= need
             resource["disk_free"] -= disk_need
             running.append({"host": "remote", "gpu": gpu, "mem_gb": float(job["mem_gb"]), "pid": None})
+            if gpu in resource.get("cotenant", {}):
+                resource["cotenant"][gpu]["free_gb"] -= float(job["mem_gb"])
             try:
                 launched = remote_backend.launch(path)
                 record({"event": "launched", **event, "container_id": launched["container_id"]}, registry)

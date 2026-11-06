@@ -10,7 +10,7 @@ import re
 import shlex
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from s4d import third_party
@@ -58,6 +58,10 @@ class RemoteSnapshot:
     disk_free_bytes: int
     containers: dict[str, dict]
     resources_ready: bool = True
+    # campaign-owned co-tenants (identify_cotenant) by container name, and (memory.total, memory.used) MiB per
+    # allowlisted GPU; both empty when absent from the snapshot (co-tenant processes then stay foreign)
+    cotenants: dict[str, dict] = field(default_factory=dict)
+    gpu_memory: dict[str, tuple[int, int]] = field(default_factory=dict)
 
 
 def container_name(run_id: str, attempt: int) -> str:
@@ -78,6 +82,126 @@ OWNERSHIP_LABELS = {"s4d.project": "splatter4d", "s4d.owner": "kaist-sunho"}
 
 def container_labels(run_id: str, attempt: int, commit: str, image_digest: str) -> dict:
     return {**labels(run_id, attempt, commit, image_digest), **OWNERSHIP_LABELS}
+
+
+# Campaign-owned co-tenants (2026-11-06): the real-world preprocessing containers (realworld-ops/pre/tools rwprep_launch,
+# rwprep_maint, calibration studies) run on the allowlisted GPUs outside the scheduler (s4d.managed=false: never
+# reconciled, removed or launched here). A running container is a known co-tenant only with this project's ownership
+# labels, s4d.managed=false and one of these roles; its processes are known only on the one allowlisted GPU it is bound
+# to (a single CDI request equal to its s4d.gpu label, no other device, a declared s4d.mem_bytes). Anything else, and
+# any process not inside such a container, stays foreign.
+COTENANT_ROLES = frozenset({"rwprep", "rwprep-study", "rwprep-maint"})
+COTENANT_LABELS = {**OWNERSHIP_LABELS, "s4d.managed": "false"}
+# On a GPU with co-tenants a job needs its mem_gb plus this margin within the measured free memory less every known
+# tenant's declared but not yet allocated reservation (cotenant_charges): it covers co-tenants exceeding their
+# declaration (rwprep measured 34.4 GiB against 34 GiB declared, 2026-11-06), CUDA context / allocator growth of the
+# new process and the seconds between the snapshot and the remote launch guard.
+COTENANT_GPU_MARGIN_GB = 4.0
+# GPU load units (remote driver, runs/setup/remote-gpu-load-limit.txt) per GPU co-tenant: a full unit, as for the
+# GPU-heavy rows (FoundationStereo / SAM 3 / TrackEverything keep their GPU at 96-100 % utilization, 2026-11-06).
+COTENANT_GPU_LOAD = 1.0
+MIB = 2**20
+
+
+# The remote launch guard (ops/containers/launch.py) reads a co-tenant's checked values as one '|'-separated record;
+# a value outside these character sets (a separator, a newline) leaves the container unidentified on both sides.
+_COTENANT_NAME = re.compile(r"/?[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
+_COTENANT_VALUE = re.compile(r"[A-Za-z0-9_.-]*\Z")
+_COTENANT_DEVICE = re.compile(r"[A-Za-z0-9_.=/:-]*\Z")
+# byte counts: canonical, bounded decimals (no leading zero: the guard's shell arithmetic would read octal)
+_COTENANT_BYTES = re.compile(r"(?:[1-9][0-9]{0,14})?\Z")
+
+
+def _well_formed(item: dict, labels_: dict, requests: list) -> bool:
+    values = [labels_.get(key) or "" for key in ("s4d.role", "s4d.gpu", "s4d.mem_bytes")]
+    memory = (item.get("HostConfig") or {}).get("Memory", 0)
+    return (isinstance(item.get("Name"), str) and _COTENANT_NAME.fullmatch(item["Name"]) is not None
+            and all(isinstance(value, str) and _COTENANT_VALUE.fullmatch(value) for value in values)
+            and _COTENANT_BYTES.fullmatch(values[2]) is not None and type(memory) is int and 0 <= memory < 10**15
+            and all(isinstance(request, dict) and isinstance(request.get("Driver") or "", str)
+                    and _COTENANT_DEVICE.fullmatch(request.get("Driver") or "")
+                    and type(request.get("Count", 0)) is int
+                    and all(isinstance(device, str) and _COTENANT_DEVICE.fullmatch(device)
+                            for device in request.get("DeviceIDs") or [])
+                    for request in requests))
+
+
+def _positive(value) -> int | None:
+    if type(value) is int:
+        return value if value > 0 else None
+    return int(value) if isinstance(value, str) and value.isdigit() and int(value) > 0 else None
+
+
+def identify_cotenant(item: dict, pids: set[int], ram_used: int | None) -> dict | None:
+    """The co-tenant record of one listed container, or None unless it is positively identified as ours (see
+    COTENANT_ROLES). ``gpu`` is the allowlisted GPU it is verifiably bound to (None: CPU-only, or ``gpu_verified``
+    False: a GPU binding that cannot be verified, whose processes then stay foreign everywhere); ``ram_used`` is the
+    measured non-reclaimable usage of its cgroup (anon + shmem) or None; ``ram_limit_bytes`` is its enforced Docker
+    memory limit (None: unlimited, its RAM cannot be accounted)."""
+    try:
+        labels_ = item["Config"].get("Labels") or {}
+        name, identity, status = item["Name"].removeprefix("/"), item["Id"], item["State"].get("Status")
+        config = item.get("HostConfig") or {}
+        requests, devices = config.get("DeviceRequests") or [], config.get("Devices") or []
+    except (AttributeError, KeyError, TypeError):
+        return None
+    if (any(labels_.get(key) != value for key, value in COTENANT_LABELS.items())
+            or not isinstance(requests, list) or not _well_formed(item, labels_, requests)
+            or labels_.get("s4d.role") not in COTENANT_ROLES or not name.startswith("s4d-")
+            or not SHA256.fullmatch(str(identity)) or status not in ("running", "paused", "restarting")):
+        return None
+    gpu, declared = labels_.get("s4d.gpu"), _positive(labels_.get("s4d.mem_bytes"))
+    request = requests[0] if len(requests) == 1 and isinstance(requests[0], dict) else {}
+    verified = (not devices and request.get("Driver") == "cdi" and request.get("Count", 0) == 0
+                and not request.get("Capabilities") and not request.get("Options")
+                and gpu in APPROVED_HOST_GPUS["remote"] and request.get("DeviceIDs") == [f"nvidia.com/gpu={gpu}"]
+                and declared is not None)
+    nano = _positive(config.get("NanoCpus"))
+    return {"id": identity, "role": labels_["s4d.role"], "status": status, "gpu": gpu if verified else None,
+            "gpu_verified": verified or (not requests and not devices), "pids": set(pids),
+            "gpu_mem_declared_bytes": declared if verified else None,
+            "ram_limit_bytes": _positive(config.get("Memory")),  # enforced limit only (a label bounds nothing)
+            "ram_used_bytes": ram_used, "cpus": nano / 1e9 if nano else None}
+
+
+def cotenant_charges(snapshot: RemoteSnapshot, own=()) -> dict:
+    """Resources held by the snapshot's co-tenants. ``gpus``, per GPU with bound co-tenants: their containers and
+    processes (known there, and only there), count, load units, memory = max(measured, declared) per container, and
+    ``free_gb`` = the measured free memory less every known tenant's declared but not yet allocated reservation (the
+    co-tenants' and those of ``own``, the scheduler's reserving jobs as (gpu, container name, mem_gb)); 0 without a
+    memory reading (nothing fits). Host: the co-tenants' declared RAM limits, the part of them not yet in use (limit -
+    measured anon + shmem; the whole limit when unmeasured), containers without an enforced RAM limit (``unbounded``:
+    their RAM cannot be accounted; remote admission is then held) and declared CPUs (None: unlimited)."""
+    gpus, ram_declared, ram_pending, unbounded, cpus = {}, 0, 0, [], 0.0
+    for name, item in sorted(snapshot.cotenants.items()):
+        if item["ram_limit_bytes"] is None:
+            unbounded.append(name)
+        else:
+            ram_declared += item["ram_limit_bytes"]
+            ram_pending += max(0, item["ram_limit_bytes"] - (item["ram_used_bytes"] or 0))
+        cpus = None if cpus is None or item["cpus"] is None else cpus + item["cpus"]
+        if item["gpu"] is None:
+            continue
+        measured = sum(memory for pid, memory in snapshot.usage.get(item["gpu"], []) if pid in item["pids"]) * MIB
+        declared = item["gpu_mem_declared_bytes"]
+        charge = gpus.setdefault(item["gpu"], {"containers": [], "pids": set(), "jobs": 0, "load": 0.0,
+                                               "mem_gb": 0.0, "pending_gb": 0.0})
+        charge["containers"].append(name)
+        charge["pids"] |= item["pids"]
+        charge["jobs"] += 1
+        charge["load"] += COTENANT_GPU_LOAD
+        charge["mem_gb"] += max(measured, declared) / GIB
+        charge["pending_gb"] += max(0.0, declared - measured) / GIB
+    for gpu, container, mem_gb in own:
+        if gpu in gpus:
+            pids = (snapshot.containers.get(container) or {}).get("pids", set())
+            measured = sum(memory for pid, memory in snapshot.usage.get(gpu, []) if pid in pids) * MIB
+            gpus[gpu]["pending_gb"] += max(0.0, float(mem_gb) * GIB - measured) / GIB
+    for gpu, charge in gpus.items():
+        total, used = snapshot.gpu_memory.get(gpu, (0, 0))
+        charge["free_gb"] = ((total - used) * MIB / GIB - charge["pending_gb"]) if gpu in snapshot.gpu_memory else 0.0
+    return {"gpus": gpus, "ram_declared_bytes": ram_declared, "ram_pending_bytes": ram_pending, "unbounded": unbounded,
+            "cpus": cpus}
 
 
 _INSPECT_IDENTITY = ('{{.Id}}|{{.State.Status}}|{{.State.ExitCode}}|{{index .Config.Labels "s4d.managed"}}|'
@@ -198,6 +322,22 @@ def snapshot_command(root: str) -> str:
         "ids=$(docker ps -aq --no-trunc --filter label=s4d.managed=true --filter label=s4d.host=remote);"
         "for id in $ids; do docker inspect --format '{{json .}}' \"$id\" || true; "
         "printf '__S4D_TOP__ %s\\n' \"$id\"; docker top \"$id\" -eo pid 2>/dev/null || true; "
+        "printf '__S4D_END_TOP__\\n'; done; "
+        # campaign-owned co-tenants (identify_cotenant) and the GPUs' memory (a failed reading: nothing fits on a GPU
+        # with co-tenants)
+        "printf '__S4D_GPU_MEMORY__\\n'; "
+        "nvidia-smi --query-gpu=uuid,memory.total,memory.used --format=csv,noheader,nounits || true; "
+        "printf '__S4D_COTENANTS__\\n'; "
+        # the listing fails the whole snapshot like the managed listing above; an inspect failure other than the
+        # container's removal since the listing marks the snapshot not ready (no co-tenant reservation is lost)
+        "ids=$(docker ps -q --no-trunc --filter label=s4d.managed=false --filter label=s4d.project=splatter4d "
+        "--filter label=s4d.owner=kaist-sunho); "
+        "for id in $ids; do if out=$(docker inspect --format '{{json .}}' \"$id\" 2>&1); then printf '%s\\n' \"$out\"; "
+        "else case \"$out\" in *'No such object'*|*'No such container'*) ;; *) printf '__S4D_QUERY_ERROR__\\n';; esac; fi; "
+        "printf '__S4D_TOP__ %s\\n' \"$id\"; docker top \"$id\" -eo pid 2>/dev/null || true; "
+        "stat=\"/sys/fs/cgroup/system.slice/docker-$id.scope/memory.stat\"; "
+        "if [ -r \"$stat\" ]; then printf '__S4D_RAM_USED__ %s\\n' "
+        "\"$(awk '$1==\"anon\" || $1==\"shmem\" {s+=$2} END {printf \"%.0f\", s}' \"$stat\")\"; fi; "
         "printf '__S4D_END_TOP__\\n'; done; printf '__S4D_END__\\n'"
     )
 
@@ -205,6 +345,7 @@ def snapshot_command(root: str) -> str:
 def parse_snapshot(output: str) -> RemoteSnapshot:
     sections: dict[str, list[str]] = {}
     tops: dict[str, set[int]] = {}
+    ram_used: dict[str, int] = {}
     section, top = "", None
     for line in output.splitlines():
         if line.startswith("__S4D_TOP__ "):
@@ -214,8 +355,12 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
             tops[top] = set()
         elif line == "__S4D_END_TOP__":
             top = None
+        elif line.startswith("__S4D_RAM_USED__ ") and top is not None:
+            value = line.removeprefix("__S4D_RAM_USED__ ").strip()
+            if value.isdigit():
+                ram_used[top] = int(value)
         elif line in {"__S4D_GPUS__", "__S4D_USAGE__", "__S4D_GRAPHICS__", "__S4D_MEMORY__",
-                      "__S4D_DISK__", "__S4D_CONTAINERS__", "__S4D_END__"}:
+                      "__S4D_DISK__", "__S4D_CONTAINERS__", "__S4D_GPU_MEMORY__", "__S4D_COTENANTS__", "__S4D_END__"}:
             section = line
             sections.setdefault(section, [])
         elif top is not None:
@@ -271,7 +416,24 @@ def parse_snapshot(output: str) -> RemoteSnapshot:
             containers[name] = item
         except (KeyError, TypeError, ValueError) as exc:
             raise RemoteJobError("Invalid Docker inspect snapshot") from exc
-    return RemoteSnapshot(usage, int(memory) / 2**20, int(disk[0][0]), int(disk[0][1]), containers, ready)
+    gpu_memory = {}
+    for line in sections.get("__S4D_GPU_MEMORY__", []):
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) == 3 and parts[0] in usage and parts[1].isdigit() and parts[2].isdigit():
+            gpu_memory[parts[0]] = (int(parts[1]), int(parts[2]))
+    cotenants = {}
+    for line in sections.get("__S4D_COTENANTS__", []):
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue  # unreadable: not identified, its processes stay foreign
+        identity = item.get("Id") if isinstance(item, dict) and isinstance(item.get("Id"), str) else None
+        found = identify_cotenant(item, tops.get(identity, set()), ram_used.get(identity)) if identity else None
+        name = item["Name"].removeprefix("/") if found else None
+        if found and name not in containers and name not in cotenants:
+            cotenants[name] = found
+    return RemoteSnapshot(usage, int(memory) / 2**20, int(disk[0][0]), int(disk[0][1]), containers, ready,
+                          cotenants, gpu_memory)
 
 
 def validate_container(item: dict, run_id: str, state: dict) -> None:
@@ -500,7 +662,7 @@ class RemoteBackend:
         if snapshot is not None:
             payload.update(containers=snapshot.containers, available_gb=snapshot.available_gb,
                            disk_total_bytes=snapshot.disk_total_bytes, disk_free_bytes=snapshot.disk_free_bytes,
-                           resources_ready=snapshot.resources_ready)
+                           resources_ready=snapshot.resources_ready, cotenants=snapshot.cotenants)
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(payload, default=lambda value: sorted(value), sort_keys=True) + "\n")
         os.replace(temporary, path)
