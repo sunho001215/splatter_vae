@@ -169,11 +169,15 @@ colour grid of each rig. Depth, tracks, masks and the export all live on that gr
   `foundation_stereo_worker.py` task `ir_pair_disparity`): FoundationStereo (pinned commit and ViT-L checkpoint
   `23-51-11`) on the device-rectified IR pair at native 640x480 (InputPadder 32, unpadded), grayscale replicated to 3
   channels as model input only. Left-referenced disparity `d = x_left - x_right`, right-referenced disparity by
-  flip-and-swap (stored diagnostics: `disparity_left`, `lr_error`, `ir_valid` on the IR grid); depth
+  flip-and-swap (left-right error and IR validity summarised per stream in the stage summary); depth
   `z = fx_ir * B / d` with the recorded baseline; invalid where `d <= min_disparity`, the match leaves the right
   image, or `z` is outside [`min_depth_m`, `max_depth_m`]. The IR-left frame is the native-depth frame, so the IR
-  depth is registered to the colour grid with exactly the `sensor_depth` registration (z-buffer, same splat) and the
-  winning IR pixel is stored (`source_index`). A failed model output is an error; native depth is never substituted.
+  depth is registered to the colour grid with exactly the `sensor_depth` registration (z-buffer, same splat). A failed
+  model output is an error; native depth is never substituted. Output layout 2 (2026-11-06): only `depth` and `valid`
+  are persisted; layout 1 also stored per-pixel diagnostics (`source_index` on the colour grid; `disparity_left`,
+  `lr_error`, `ir_valid` on the IR grid; ~9 MB per three-camera frame) that no retained consumer reads. The
+  computation version (fingerprint) is unchanged, so layout-1 outputs remain valid and are compacted in place by the
+  operational repack (`output_layout` and the repack provenance in the completion record).
   The IR contract requires `T_right_left[0,3] < 0` for the positive left-minus-right disparity convention.
 
 All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-z metres, `valid` bool, and attrs
@@ -602,7 +606,7 @@ ran on large-scale DROID). Historical outputs, reports and raw recordings are ke
 | Retired | Replacement / note |
 |---|---|
 | Five-way depth comparison: `ops/inference_server/run_depth_variants.py`, `depth_compare.py`, `depth_compare_variants.py`, `depth_report.py`; `s4d/realworld/diagnostics.py`; kernels `depth_set_diagnostics`, `depth_compare_v2`, `depth_compare_multi`; config keys `depth_variant`, `tracker_comparison` | the selection is the standard config (section 9 keeps the evidence); variant roots under `processed/ep1/` are historical |
-| `foundation_stereo_filtered` stage (`ir_stereo_depth.filter_stereo_depth`, E3 input) | B1 unfiltered (its `lr_error` diagnostics stay in the B1 output) |
+| `foundation_stereo_filtered` stage (`ir_stereo_depth.filter_stereo_depth`, E3 input) | B1 unfiltered (per-pixel `lr_error` no longer persisted since output layout 2; median in the stage summary) |
 | FoundationStereo RGB `stereo_disparity` worker task | `ir_pair_disparity` (IR pair only) |
 | `template_realsense` adapter (`adapters/template.py`, `configs/realworld/template_adapter.yaml`) | `panda_teleop_h5` (section 3) |
 | Episode-0 configs `mug_hanging_rgbd.yaml`, `mug_hanging_rgbd_rawdepth.yaml`; `mug_hanging_ep1.yaml` (renamed) | `configs/realworld/mug_hanging.yaml` (standard; the episode-0 recording has no IR pair and is not run through a substitute depth) |
