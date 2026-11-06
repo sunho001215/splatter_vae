@@ -2,8 +2,8 @@
 
 The robot-only evidence leaves each camera's orientation ambiguous (near-equivalent rotations about axes 0.2-0.9 m in
 front of the camera) and biased by per-link model/depth errors; the static scene is too texture-poor for cross-camera
-correspondences. A planar ChArUco board seen by all cameras at several placements gives 2D reprojection constraints of
-known geometry that fix the RELATIVE camera poses independently of the robot model and of depth scale. The robot then
+correspondences. A planar ChArUco or marker-oriented checkerboard seen by all cameras at several placements gives
+2D reprojection constraints of known geometry that fix the RELATIVE camera poses independently of the robot model and of depth scale. The robot then
 only has to place the rigid camera triplet in the robot base frame (6 DoF, all three views jointly).
 
 Pipeline (``build_board_rig``):
@@ -32,13 +32,40 @@ from s4d.realworld.geometry import invert_T, pose_from_vec, project, transform_p
 class BoardSpec:
     """ChArUco board: ``squares_x`` x ``squares_y`` chessboard squares of ``square_m``, ArUco markers of ``marker_m``
     in the white squares (OpenCV convention). Inner-corner ids are row-major over the (squares_x-1) x (squares_y-1)
-    grid; the board frame has x along squares_x, y along squares_y, z out of the board (OpenCV)."""
+    grid; the board frame has x along squares_x, y along squares_y, z = x cross y (into the printed face for x right,
+    y down). The optional zivid_cb01 geometry uses the same inner-corner coordinates; construct it with
+    ``BoardSpec.zivid_cb01()``."""
 
     squares_x: int = 8  # realworld-ops/calib/board-capture-protocol.md: 8 x 6 squares of 45 mm on A3, 34 mm markers
     squares_y: int = 6
     square_m: float = 0.045  # replace by the MEASURED printed square size
     marker_m: float = 0.034
     dictionary: str = "DICT_5X5_100"
+    geometry: str = "charuco"
+    marker_id: int = 1
+
+    def __post_init__(self):
+        if self.geometry not in ("charuco", "zivid_cb01"):
+            raise ValueError(f"unknown board geometry {self.geometry!r}")
+        if self.geometry == "zivid_cb01" and (self.squares_x, self.squares_y) != (7, 8):
+            raise ValueError("zivid_cb01 requires 7 x 8 squares (6 x 7 inner corners); use BoardSpec.zivid_cb01()")
+        if min(self.squares_x, self.squares_y) < 3 or self.square_m <= 0:
+            raise ValueError("board dimensions and pitch must be positive")
+
+    @classmethod
+    def zivid_cb01(cls, square_m: float = 0.030) -> BoardSpec:
+        """ZVDA-CB01: 7 x 8 squares; marker used only for orientation, never as a metric constraint.
+
+        Origin: outer checker-grid corner opposite the marker in both axes. +x follows the six-corner rows
+        towards the marker edge, +y follows the seven-corner columns towards the marker end. +z = x cross y
+        (into the printed face when x is right and y down). Inner id = row * 6 + column, at
+        ((column+1)*pitch, (row+1)*pitch, 0). No plate-edge offset is assumed.
+
+        The capture decodes exactly as 4x4 ID 1, shared by DICT_4X4_50/100/250/1000. The smallest dictionary
+        is sufficient; a single shared code cannot identify which parent dictionary the manufacturer used.
+        """
+        return cls(squares_x=7, squares_y=8, square_m=square_m, marker_m=0.0,
+                   dictionary="DICT_4X4_50", geometry="zivid_cb01", marker_id=1)
 
     def object_points(self) -> np.ndarray:
         nx, ny = self.squares_x - 1, self.squares_y - 1
@@ -76,6 +103,82 @@ def detect_charuco(image: np.ndarray, spec: BoardSpec) -> tuple[np.ndarray, np.n
     if ids is None or corners is None:
         return np.zeros(0, int), np.zeros((0, 2))
     return ids.ravel().astype(int), corners.reshape(-1, 2).astype(np.float64) + 0.5
+
+
+def _zivid_corner_order(corners: np.ndarray, marker_xy: np.ndarray) -> np.ndarray | None:
+    """Order a full 6 x 7 grid by the off-grid marker. Coordinates here use zero-based INNER grid indices.
+
+    In the observed CB01 layout the marker centre is approximately (7.5, 6.17): beyond the +x edge, near
+    the +y end. Test both row and column directions: neither the checker detector's start nor image
+    top-left is a physical identity. A missing, misplaced or non-unique marker fails closed.
+    """
+    import cv2
+
+    grid = np.asarray(corners, np.float64).reshape(7, 6, 2)
+    ij = np.stack(np.meshgrid(np.arange(6), np.arange(7)), -1).reshape(-1, 2).astype(float)
+    matches = []
+    for flip_y in (False, True):
+        for flip_x in (False, True):
+            candidate = grid[::-1 if flip_y else 1, ::-1 if flip_x else 1].reshape(-1, 2).copy()
+            H, _ = cv2.findHomography(candidate, ij, 0)
+            if H is None:
+                continue
+            m = cv2.perspectiveTransform(np.asarray(marker_xy, float).reshape(1, 1, 2), H)[0, 0]
+            if np.linalg.norm(m - [7.5, 6.17]) < 0.75:
+                matches.append(candidate)
+    return matches[0] if len(matches) == 1 else None
+
+
+def detect_zivid_cb01(image: np.ndarray, spec: BoardSpec) -> tuple[np.ndarray, np.ndarray]:
+    """Full checker grid with marker-verified unique ids; empty if either observation is missing.
+
+    Input RGB or grey; output pixels use the repository's continuous convention (+0.5 from OpenCV).
+    SB accuracy performs subpixel estimation. Decode an enlarged fronto-parallel crop so the small marker
+    remains readable at oblique angles. Exact code matching avoids false decodes from other dictionaries.
+    Metric fits use checker corners only; the approximate marker location only selects corner ordering.
+    """
+    import cv2
+
+    if spec.geometry != "zivid_cb01":
+        raise ValueError("detect_zivid_cb01 requires zivid_cb01 geometry")
+    grey = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    ok, corners = cv2.findChessboardCornersSB(
+        grey, (6, 7), cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY)
+    empty = (np.zeros(0, int), np.zeros((0, 2)))
+    if not ok:
+        return empty
+    uv = corners.reshape(-1, 2).astype(float)
+    ij = np.stack(np.meshgrid(np.arange(6), np.arange(7)), -1).reshape(-1, 2).astype(float)
+    H, _ = cv2.findHomography(uv, ij, 0)
+    if H is None:
+        return empty
+    # Padding contains the marker under all four possible row/column directions.
+    crop_H = np.array([[50., 0, 200], [0, 50., 200], [0, 0, 1]]) @ H
+    crop = cv2.warpPerspective(grey, crop_H, (700, 750), borderValue=160)
+    params = cv2.aruco.DetectorParameters()
+    params.errorCorrectionRate = 0.0
+    detector = cv2.aruco.ArucoDetector(
+        cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, spec.dictionary)), params)
+    markers, ids, _ = detector.detectMarkers(crop)
+    if ids is None:
+        return empty
+    hits = np.flatnonzero(ids.ravel() == spec.marker_id)
+    if len(hits) != 1:
+        return empty
+    # Transform all four vertices (perspective does not preserve their average).
+    marker = cv2.perspectiveTransform(markers[int(hits[0])].astype(float), np.linalg.inv(crop_H))
+    # Intersection of the diagonals is the projectively correct centre.
+    a, b, c, d = np.c_[marker.reshape(4, 2), np.ones(4)]
+    centre = np.cross(np.cross(a, c), np.cross(b, d))
+    if abs(centre[2]) < 1e-12:
+        return empty
+    ordered = _zivid_corner_order(uv, centre[:2] / centre[2])
+    return empty if ordered is None else (np.arange(42), ordered + 0.5)
+
+
+def detect_board(image: np.ndarray, spec: BoardSpec) -> tuple[np.ndarray, np.ndarray]:
+    """Dispatch to the configured board geometry, preserving the ChArUco path."""
+    return detect_zivid_cb01(image, spec) if spec.geometry == "zivid_cb01" else detect_charuco(image, spec)
 
 
 def planar_pnp(obj: np.ndarray, uv: np.ndarray, K: np.ndarray) -> np.ndarray:
@@ -378,7 +481,7 @@ def detect_capture(root, episode_id: str, spec: BoardSpec, frames: int = 7) -> d
         pick = np.linspace(0, n - 1, min(frames, n)).round().astype(int)
         per = {}
         for img in to_model_rgb(read_frames(root, episode_id, cam, pick), meta.stream(cam)):
-            ids, uv = detect_charuco(np.asarray(img), spec)
+            ids, uv = detect_board(np.asarray(img), spec)
             for i, p in zip(ids, uv):
                 per.setdefault(int(i), []).append(p)
         keep = [i for i, v in per.items() if len(v) >= max(1, len(pick) // 2)]
