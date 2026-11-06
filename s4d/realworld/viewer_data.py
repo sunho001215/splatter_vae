@@ -1,7 +1,9 @@
 """Display data for the interactive episode viewer (``scripts/realworld_viewer.py``): measured/preprocessed outputs
 only, nothing is predicted and the processed data are never modified.
 
-* timeline: the synchronized sets of all views (``depth_stages.frame_sets``), set times from the reference camera,
+* timeline: the synchronized sets of all views (``depth_stages.episode_frame_sets``: the training store's M5 sets,
+  robot motion <= 5 mm across each set, when the root has a store; legacy roots: ``frame_sets``), set times from the
+  first view,
   recording pauses (gaps longer than ``gap_factor`` frame periods) reported explicitly;
 * point clouds: one view's depth (``foundation_stereo_depth`` = IR stereo, or ``sensor_depth`` = raw RealSense)
   unprojected with the stored K and moved to the robot base with the accepted calibration, coloured by the same frame's
@@ -47,16 +49,16 @@ class ViewerEpisode:
 
 
 def load_episode(root: Path, episode_id: str, *, gap_factor: float = 1.5) -> ViewerEpisode:
-    from s4d.realworld.depth_stages import configured_sets_policy, frame_sets
+    from s4d.realworld.depth_stages import configured_sets_policy, episode_frame_sets
     from s4d.realworld.pipeline import accepted_calibration, camera_views, load_meta
 
     root = Path(root)
     meta = load_meta(root, episode_id)
     streams = [v.stream_id for v in camera_views(meta)]
-    policy = configured_sets_policy(root, episode_id)
-    sets = frame_sets(meta, streams, **policy)
+    sets = episode_frame_sets(meta, root, episode_id, streams)  # the store's M5 sets when the root has a store
     if not len(sets["index"]):
-        raise ValueError(f"{episode_id}: no synchronized camera sets under policy {policy}")
+        raise ValueError(f"{episode_id}: no synchronized camera sets under policy "
+                         f"{configured_sets_policy(root, episode_id)}")
     T = np.stack([accepted_calibration(root, episode_id, s) for s in streams])
     stamps = sets["stamps_ns"][:, 0].astype(np.int64)
     times = (stamps - stamps[0]) * 1e-9
@@ -288,6 +290,7 @@ def describe(ve: ViewerEpisode) -> dict:
     return {"episode": ve.episode_id, "sets": ve.n_sets, "duration_s": float(ve.times_s[-1]),
             "period_s": ve.period_s, "pauses": [{"before_set": k, "gap_s": g} for k, g in ve.gaps],
             "cameras": ve.streams, "max_sync_ns": ve.sets["max_sync_ns"],
+            "criterion": ve.sets.get("criterion", "time"), "max_set_motion_m": ve.sets.get("max_set_motion_m"),
             "unmatched_frames": ve.sets.get("unmatched", {s: [] for s in ve.streams})}
 
 

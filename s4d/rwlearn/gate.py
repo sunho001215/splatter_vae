@@ -18,6 +18,11 @@ The report lists, per task, the episode keys and the training-store episode ids 
 ``<task>/episode_000123``), which the trainers compare with the store they read (``baseline_data.check_gate``,
 ``check_dataset_gate``). Everything fails closed: an unknown schema or missing field is a failure, not a pass.
 
+CONSUMER FAMILIES (PREP2, 2026-11-06): the per-episode QA is reported per consumer family (``QA_FAMILIES``; the qa
+record's status is the base single-view family); each consumer needs its families (``CONSUMER_FAMILIES``) on every
+episode, so an episode without an all-camera multi-view window or without a valid calibration never blocks a
+single-view, non-geometric consumer, and never passes a consumer that needs the failed family.
+
 CALIBRATION HOLD (user decision 2026-11-06 ~11:20, item 2: only geometry-dependent outputs and their training
 eligibility are held until the calibration is validated). Consumers are classified in ``CONSUMERS``:
 
@@ -71,6 +76,45 @@ BLOCKING_FLAGS = {"duplicate_content", "index_conflict", "source_missing", "sour
                   "remote_conflict", "transfer_failed_repeatedly"}
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
+# ---------------------------------------------------------------------------------------------- consumer families
+# Per-episode QA verdicts per consumer family (realworld-ops/pre/tools/rwprep/rwprep_local.py ``qa --families``, schema
+# rwprep-qa/3; the dispatcher copies them into the ``qa`` stage record as ``metrics.families[<family>].passed``):
+# singleview = the recording + each camera's own frames and robot sync (every consumer); multiview = the cross-camera M5
+# sets and the multi-view contract family; geometry = per-episode calibration, metric depth and tracks. The ``qa``
+# record's status is the base (single-view) family; a consumer additionally needs ITS families on all ``target``
+# episodes. A ``qa`` record without families is a pre-family QA (rwprep-qa/2, which required every family's gates)
+# unless it declares output_format rwprep-qa/3 or later (then: fail closed).
+QA_FAMILIES = ("singleview", "multiview", "geometry")
+CONSUMER_FAMILIES = {"ours": QA_FAMILIES, "snerl": QA_FAMILIES, "mvp3d": QA_FAMILIES, "sincro": QA_FAMILIES,
+                     "reviwo": ("singleview", "multiview"), "dynamo": ("singleview",), "e2e_cnn": ("singleview",),
+                     "fql_reviwo": ("singleview",), "fql_sincro": ("singleview", "geometry"),
+                     "mvp3d_single": ("singleview", "geometry")}
+_QA_FORMAT = re.compile(r"^rwprep-qa/(\d+)$")
+
+
+def consumer_families(name: str | None) -> tuple:
+    """The QA families a consumer needs; an unknown consumer needs every family (fail closed)."""
+    return CONSUMER_FAMILIES.get(name, QA_FAMILIES)
+
+
+def qa_families(stages: dict) -> dict | None:
+    """{family: passed} of an episode's ``qa`` record (None: a family-QA record without families, fail closed)."""
+    rec = stages.get("qa") or {}
+    metrics = rec.get("metrics") or {}
+    if not isinstance(metrics, dict):
+        return None
+    fmt = rec.get("output_format")
+    m = _QA_FORMAT.fullmatch(str(fmt or ""))
+    if fmt is not None and (m is None or int(m.group(1)) not in (1, 2, 3)):
+        return None
+    fam = metrics.get("families")
+    if fam is None:
+        return {f: True for f in QA_FAMILIES} if fmt is None or m and int(m.group(1)) in (1, 2) else None
+    if not isinstance(fam, dict):
+        return None
+    return {f: isinstance(fam.get(f), dict) and fam[f].get("passed") is True for f in QA_FAMILIES}
+
+
 # ---------------------------------------------------------------------------------------------- calibration hold
 CALIBRATION_STAGE = "calibration_validated"
 CALIBRATION_OUTPUT_FORMAT = "rw-calibration-validation/"  # + layout version, e.g. rw-calibration-validation/1
@@ -102,9 +146,12 @@ CONSUMERS = {
     "e2e_cnn": Consumer(False, "single-view RGB history + proprioception + recorded commands",
                         "pixels, the robot's own kinematics and the sent commands only"),
 }
+# FQL's single-view conditions keep the encoder's geometry class but consume each camera's own timeline.
+CONSUMERS.update({"fql_reviwo": CONSUMERS["reviwo"], "fql_sincro": CONSUMERS["sincro"],
+                  "mvp3d_single": CONSUMERS["mvp3d"]})
 # offline-FQL conditions inherit the class of the encoder they are trained on (s4d/rwlearn/fql_data.py CONDITIONS)
-FQL_CONSUMER = {"dynamo": "dynamo", "reviwo": "reviwo", "sincro": "sincro", "snerl": "snerl",
-                "mvp3d_multiview": "mvp3d", "mvp3d_single": "mvp3d", "e2e_cnn": "e2e_cnn"}
+FQL_CONSUMER = {"dynamo": "dynamo", "reviwo": "fql_reviwo", "sincro": "fql_sincro", "snerl": "snerl",
+                "mvp3d_multiview": "mvp3d", "mvp3d_single": "mvp3d_single", "e2e_cnn": "e2e_cnn"}
 
 
 def aggregate_status(stages: dict) -> str:
@@ -157,6 +204,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
     report = {"passed": False, "geometry_passed": False, "checked_at_unix": time.time(),
               "schema": manifest.get("schema"), "required_stages": list(required_stages),
               "calibration_stage": CALIBRATION_STAGE, "target": target, "tasks": {}, "calibration_hold": {},
+              "families": {}, "consumer_families": {k: list(v) for k, v in CONSUMER_FAMILIES.items()},
               "consumers": {k: {"geometry_dependent": c.geometry, "uses": c.uses, "reason": c.reason}
                             for k, c in CONSUMERS.items()}}
     if (manifest.get("schema"), manifest.get("schema_version")) != (SCHEMA, SCHEMA_VERSION):
@@ -167,6 +215,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
     all_ok = geo_ok = True
     for task in tasks:
         problems, hold_problems, hold_ok = [], [], {}
+        family_fail = {f: [] for f in QA_FAMILIES}
         counts = (manifest.get("counts") or {}).get(task) or {}
         if counts.get("complete") is not True:
             problems.append("ingestion not complete for this task (counts.complete is not true)")
@@ -231,6 +280,10 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 problems.append(f"{key}: required stages not done for this file: {bad}")
                 continue
             valid.append(key)
+            fams = qa_families(stages)
+            for f in QA_FAMILIES:
+                if fams is None or not fams[f]:
+                    family_fail[f].append(key if fams is not None else f"{key} (qa record without families)")
             why = calibration_record_problem(stages, sha)
             if why:
                 hold_problems.append(f"{key}: {why}")
@@ -246,6 +299,8 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                                  "problems": problems[:50], "problem_count": len(problems),
                                  "episodes": valid if passed else [],
                                  "store_episodes": [store_episode_id(k) for k in valid] if passed else []}
+        report["families"][task] = {f: {"passed": passed and not family_fail[f], "failed_count": len(family_fail[f]),
+                                        "failed_episodes": family_fail[f][:50]} for f in QA_FAMILIES}
         hold_passed = passed and not hold_problems and len(hold_ok) == target
         geo_ok &= hold_passed
         report["calibration_hold"][task] = {
@@ -260,6 +315,9 @@ def task_passed(report: dict, task: str, consumer: str | None) -> bool:
     """Whether ``consumer`` may train on ``task``: the 100-episode gate, plus the calibration hold for geometry-
     dependent consumers."""
     base = bool(((report or {}).get("tasks") or {}).get(task, {}).get("passed"))
+    if "families" in (report or {}):  # a report of the pre-family gate (no "families") passed only all-family QA
+        fams = report["families"].get(task) or {}
+        base = base and all((fams.get(f) or {}).get("passed") is True for f in consumer_families(consumer))
     if not consumer_info(consumer).geometry:
         return base
     return base and bool(((report or {}).get("calibration_hold") or {}).get(task, {}).get("passed"))
@@ -270,6 +328,12 @@ def task_problems(report: dict, task: str, consumer: str | None, limit: int = 5)
     if t is None:
         return ["not evaluated"]
     out = list(t.get("problems", []))
+    fams = ((report or {}).get("families") or {}).get(task) or {}
+    for f in (consumer_families(consumer) if "families" in (report or {}) else ()):
+        x = fams.get(f) or {}
+        if x.get("passed") is not True and t.get("passed"):
+            out.append(f"QA family {f}: {x.get('failed_count', 'not evaluated')} episodes failed "
+                       f"{x.get('failed_episodes', [])[:3]}")
     if consumer_info(consumer).geometry:
         out += ((report.get("calibration_hold") or {}).get(task) or {}).get("problems", ["calibration hold not "
                                                                                           "evaluated"])

@@ -378,15 +378,24 @@ denser surface sampling finds slightly larger maxima); drawer-open 14,850 of 14,
 No recording is left without windows (former caps: 12 + 16). Agreement test on mug-hanging 45, 50, 55, 1 and
 drawer-open 11, 0 (`tests/test_realworld_sync_m5.py`, local raw data only).
 
-**Contract checks (`ops/inference_server/contract_checks.py`, PREP2's file; not changed here).** Needed: check each
-consumer family under its own requirement. (1) Multi-view family: `RealworldWindowDataset(..., max_set_motion_m=0.005)`
-(default; needs the re-exported store) and the SNeRL scenes from the store's M5 sets (`CompactStore.sync_sets` +
-threshold) instead of `depth_stages.frame_sets(configured_sets_policy(...))`, which still applies the old
-`train_data.max_sync_ns` as a cross-camera cap and finds no set on mug-hanging 45-56. (2) Single-view family: per
-camera, the frame count, `robot/ok` fraction and the `rwlearn.transitions.timelines(multiview=False)` transitions. (3)
-Report both families separately (`report["multiview"]`, `report["singleview"]`) and let an empty multi-view split
-(the `ValueError("empty split train")` from `RealworldWindowDataset`) mark only the multi-view family as failed instead
-of aborting the whole check; the episode's single-view eligibility must not depend on it, and vice versa.
+**Contract checks and QA per consumer family (PREP2, branch rw-contract-20261106).** `contract_checks.py` reports
+`report["singleview"]` (per camera: frames, `robot/ok` fraction, `rwlearn.transitions.timelines(multiview=False)`
+transitions under the action contract; CPU, no cross-camera set) and `report["multiview"]`
+(`RealworldWindowDataset` with the default M5 threshold, `validate_batch`, forward check, SNeRL scenes from the
+store's M5 sets via `depth_stages.episode_frame_sets`). An empty multi-view split fails only the multi-view family; the
+process exits 0 once both families are recorded. The viewer uses the same M5 sets; `configured_sets_policy` never uses
+`train_data.max_sync_ns` as a cross-camera cap. The QA (`rwprep_local.py qa --families`, schema rwprep-qa/3) turns
+the gates into three families - `singleview` (recording, store frames, single-view contract family: every consumer),
+`multiview` (M5 sets, multi-view contract family), `geometry` (per-episode calibration, metric depth, tracks) - and
+passes the episode (the dispatcher's `done`, the `qa` record's status) iff the base single-view family passes. The
+dispatcher copies the families into the `qa` stage record (`metrics.families[<family>].passed`); `gate.py` requires
+each consumer's families (`CONSUMER_FAMILIES`: ours / SNeRL / 3D-MVP / SinCro all three, ReViWo singleview +
+multiview, DynaMo / e2e CNN singleview) on all 100 episodes. Single-view FQL conditions have their own gate identities:
+ReViWo needs singleview; SinCro and 3D-MVP single-view need singleview + geometry. They retain their encoder's
+calibration requirements without requiring cross-camera sets for their observations. These checks apply in addition
+to the base gate and, for geometric consumers, the calibration hold. A `qa` record without families counts as the
+pre-family QA (rwprep-qa/2 required every family) unless it declares rwprep-qa/3 (fail closed). Unknown QA formats and
+malformed family verdicts fail closed.
 
 ## Review of the decisions branch (Codex gpt-6.1-sol xhigh, read-only, on e4c137f) and what changed
 
@@ -422,8 +431,9 @@ could yield a 0 mm set (now `inf`, rejected); `surface_disp_m` stored as float32
 the threshold (now float64, one comparison everywhere); a diagonal lift could still advance the pull end (progress
 now counts only within 3 cm of the pull height; contact height = the lower of pull-end and pull heights); a motion
 lowered beyond the open front counted as push-back (now only travel behind the front counts). Not fixed here (other
-owners): `depth_stages.configured_sets_policy` still passes `train_data.max_sync_ns` to `frame_sets` as a
-cross-camera cap for the SNeRL contract check and the viewer (see "Contract checks" above). Real data after all fixes:
+owners at that review): `depth_stages.configured_sets_policy` passed `train_data.max_sync_ns` to `frame_sets` as a
+cross-camera cap for the SNeRL contract check and the viewer; the consumer-family change above now uses the store's
+M5 sets. Real data after all fixes:
 200 / 200 no_reversal; M5 counts unchanged.
 
 ## Review (Codex gpt-6.1-sol xhigh, read-only, on eeaafb2) and what changed

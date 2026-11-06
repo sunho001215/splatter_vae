@@ -142,8 +142,8 @@ def test_calibration_hold_only_holds_geometry_dependent_consumers():
 
 def test_consumer_classification_is_explicit():
     geo = {k for k, c in gate.CONSUMERS.items() if c.geometry}
-    assert geo == {"ours", "snerl", "mvp3d", "sincro"}
-    assert {k for k, c in gate.CONSUMERS.items() if not c.geometry} == {"reviwo", "dynamo", "e2e_cnn"}
+    assert geo == {"ours", "snerl", "mvp3d", "sincro", "fql_sincro", "mvp3d_single"}
+    assert {k for k, c in gate.CONSUMERS.items() if not c.geometry} == {"reviwo", "dynamo", "e2e_cnn", "fql_reviwo"}
     from s4d.rwlearn.fql_data import CONDITIONS
 
     assert set(gate.FQL_CONSUMER) == set(CONDITIONS)  # every FQL condition inherits its encoder's class
@@ -312,3 +312,75 @@ def test_role_classification_of_planned_rows_matches_the_declared_roles():
         else:
             assert "realworld" in script and "fql" in script
         assert not any("metaworld" in a or "configs/baselines/" in a or "configs/rl/" in a for a in r["args"])
+
+
+def _families(entry_, **passed):
+    entry_["preprocessing"]["stages"]["qa"].update(
+        output_format="rwprep-qa/3", metrics={"families": {f: {"passed": passed.get(f, True), "failed": []}
+                                                           for f in gate.QA_FAMILIES}})
+
+
+def test_qa_families_gate_each_consumer_on_its_own_families():
+    """An episode without a multi-view window (M5) or with a failed geometry family blocks only the consumers that need
+    that family; single-view non-geometric consumers keep the base gate (PREP2 2026-11-06)."""
+    m = manifest(validated=True)
+    for e in m["episodes"].values():
+        _families(e)
+    _families(m["episodes"]["mug-hanging/episode_000010.h5"], multiview=False)
+    _families(m["episodes"]["drawer-open/episode_000004.h5"], geometry=False)
+    rep = gate.evaluate(m, ["drawer-open", "mug-hanging"])
+    assert rep["passed"] and rep["geometry_passed"]
+    assert rep["families"]["mug-hanging"]["multiview"]["failed_episodes"] == ["mug-hanging/episode_000010.h5"]
+    for consumer in ("dynamo", "e2e_cnn"):
+        assert gate.task_passed(rep, "mug-hanging", consumer) and gate.task_passed(rep, "drawer-open", consumer)
+    assert not gate.task_passed(rep, "mug-hanging", "reviwo") and gate.task_passed(rep, "drawer-open", "reviwo")
+    for consumer in ("ours", "snerl", "mvp3d", "sincro", None):
+        assert not gate.task_passed(rep, "mug-hanging", consumer) and not gate.task_passed(rep, "drawer-open", consumer)
+    assert any("QA family multiview" in p for p in gate.task_problems(rep, "mug-hanging", "snerl"))
+    assert not any("QA family" in p for p in gate.task_problems(rep, "mug-hanging", "dynamo"))
+
+
+def test_family_qa_record_without_families_fails_closed_but_a_pre_family_record_does_not():
+    m = manifest(validated=True)
+    m["episodes"]["mug-hanging/episode_000010.h5"]["preprocessing"]["stages"]["qa"].update(output_format="rwprep-qa/3")
+    rep = gate.evaluate(m, ["mug-hanging"])
+    assert not gate.task_passed(rep, "mug-hanging", "dynamo") and not gate.task_passed(rep, "mug-hanging", "ours")
+    m["episodes"]["mug-hanging/episode_000010.h5"]["preprocessing"]["stages"]["qa"].update(output_format="rwprep-qa/2")
+    rep = gate.evaluate(m, ["mug-hanging"])
+    assert gate.task_passed(rep, "mug-hanging", "dynamo") and gate.task_passed(rep, "mug-hanging", "ours")
+    assert gate.consumer_families("unknown") == gate.QA_FAMILIES
+    assert set(gate.CONSUMER_FAMILIES) == set(gate.CONSUMERS)  # every classified consumer declares its families
+
+
+@pytest.mark.parametrize("families", [[], "passed", {"singleview": True}, {"singleview": {"passed": "true"}}])
+def test_malformed_qa_families_fail_closed(families):
+    m = manifest(validated=True)
+    m["episodes"][KEY]["preprocessing"]["stages"]["qa"].update(
+        output_format="rwprep-qa/3", metrics={"families": families})
+    rep = gate.evaluate(m, ["drawer-open"])
+    assert not gate.task_passed(rep, "drawer-open", "dynamo")
+
+
+@pytest.mark.parametrize("fmt", ["rwprep-qa/4", "rwprep-qa/bad", "unknown/2", ""])
+def test_unknown_qa_schema_is_never_treated_as_legacy(fmt):
+    m = manifest(validated=True)
+    m["episodes"][KEY]["preprocessing"]["stages"]["qa"].update(output_format=fmt)
+    rep = gate.evaluate(m, ["drawer-open"])
+    assert not gate.task_passed(rep, "drawer-open", "dynamo")
+
+
+def test_every_singleview_fql_condition_ignores_cross_camera_family_but_keeps_geometry():
+    from s4d.rwlearn.fql_data import CONDITIONS
+
+    m = manifest(validated=True)
+    for e in m["episodes"].values():
+        _families(e, multiview=False)
+    rep = gate.evaluate(m, ["drawer-open"])
+    for cond, spec in CONDITIONS.items():
+        consumer = gate.FQL_CONSUMER[cond]
+        assert gate.task_passed(rep, "drawer-open", consumer) is not spec.multiview
+    _families(m["episodes"][KEY], multiview=False, geometry=False)
+    rep = gate.evaluate(m, ["drawer-open"])
+    assert not gate.task_passed(rep, "drawer-open", gate.FQL_CONSUMER["mvp3d_single"])
+    assert not gate.task_passed(rep, "drawer-open", gate.FQL_CONSUMER["sincro"])
+    assert gate.task_passed(rep, "drawer-open", gate.FQL_CONSUMER["reviwo"])

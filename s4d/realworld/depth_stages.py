@@ -10,7 +10,8 @@ the same layout.
 Output layout (all depth stages): ``<stage>/<view stream>.h5`` with ``depth`` (N,H,W) float32 metric camera-z (0 invalid),
 ``valid`` (N,H,W) bool and attrs ``K`` (continuous convention of that grid), ``stream_id``, ``rig_id``, ``grid``.
 
-Synchronized sets (``frame_sets``, used by viewers and contract checks): the reference view's frames define set times;
+Multi-view consumers use ``episode_frame_sets``: the training store's M5 sets when present. Legacy synchronized
+sets (``frame_sets``): the reference view's frames define set times;
 every view contributes its nearest frame within ``max_sync_ns``, and every frame of every view must belong to exactly
 one set (otherwise it refuses - views of different instants are never merged silently), or, with ``allow_unmatched``,
 mutual nearest frames form sets and the rest is reported unmatched.
@@ -29,19 +30,78 @@ STAGE_VERSIONS = {"sensor_depth": "1"}
 
 
 def configured_sets_policy(root, episode_id, cfg: dict | None = None) -> dict:
-    """Frame-set policy for any consumer of an episode root (viewer, contract checks): the training store's (else the
-    former export's) ``max_sync_ns`` with mutual pairing when the pipeline config sets one, else strict. ``cfg``
-    defaults to ``<root>/pipeline.yaml`` when present."""
+    """Multi-view frame-set policy of an episode root for its non-training consumers (viewer, contract checks).
+
+    Criterion M5 (2026-11-06; one source of truth with the training store and its loaders): when the root has a
+    training store (``train_data/<episode>/episode.h5``) the sets are the store's mutual-nearest cross-camera sets
+    accepted by robot motion -> ``{"criterion": "M5", "max_set_motion_m": train_store.MAX_SET_MOTION_M}``
+    (``store_sets``; the loaders' default threshold, so viewer, contract checks and training select the same sets; no
+    per-config threshold). ``stages.train_data.max_sync_ns`` is ONLY the per-camera
+    robot <-> camera tolerance and is never used as a cross-camera cap. Roots without a training store: the former
+    window export's explicit cross-camera tolerance ``stages.export.max_sync_ns`` with mutual pairing (legacy roots);
+    otherwise strict 1:1 pairing within a third of a period ({}). ``cfg`` defaults to ``<root>/pipeline.yaml``."""
+    from s4d.realworld.train_store import FILE, MAX_SET_MOTION_M
+
     if cfg is None:
         path = Path(root) / "pipeline.yaml"
-        if not path.is_file():
-            return {}
-        import yaml
+        cfg = {}
+        if path.is_file():
+            import yaml
 
-        cfg = yaml.safe_load(path.read_text()) or {}
+            cfg = yaml.safe_load(path.read_text()) or {}
     stages = cfg.get("stages") or {}
-    export_sync = (stages.get("train_data") or {}).get("max_sync_ns", (stages.get("export") or {}).get("max_sync_ns"))
+    if (Path(root) / "train_data" / episode_id / FILE).is_file():
+        return {"criterion": "M5", "max_set_motion_m": float(MAX_SET_MOTION_M)}
+    export_sync = (stages.get("export") or {}).get("max_sync_ns")
     return {} if export_sync is None else {"max_sync_ns": int(export_sync), "allow_unmatched": True}
+
+
+def store_sets(root, episode_id, streams: list[str] | None = None, max_set_motion_m: float | None = None) -> dict:
+    """The training store's M5 sets in ``frame_sets`` form: a set is a reference frame whose mutual nearest frame of
+    EVERY store camera exists (no time cap) and whose robot surface moved <= ``max_set_motion_m`` across its members
+    (``sync/surface_disp_m``; default ``train_store.MAX_SET_MOTION_M``). Columns follow ``streams`` (stream ids, e.g.
+    ``<serial>/color``; default: the store's camera order); frame indices are the normalized stream frames (the store
+    keeps every frame). Frames in no accepted set are listed in ``unmatched``. Refuses stores without per-set motion
+    (schema < 1.1.0: re-export ``train_data``) and streams the store does not hold (cameras without an accepted
+    calibration are not in the store)."""
+    from s4d.realworld.train_store import FILE, MAX_SET_MOTION_M, CompactStore, sync_counts
+
+    path = Path(root) / "train_data" / episode_id / FILE
+    store = CompactStore([path])
+    try:
+        ep = store.episodes()[0]
+        sync = store.sync_sets(ep)  # includes the canonical refusal of stores without per-set robot motion
+        ef = store.episode(ep)
+        stream_of = {c: str(ef.file[f"cameras/{c}"].attrs["stream_id"]) for c in ef.cameras}
+        stamps_of = {stream_of[c]: np.asarray(ef.timestamps(c), np.int64) for c in ef.cameras}
+    finally:
+        store.close()
+    col = {stream_of[c]: v for v, c in enumerate(ef.cameras)}
+    order = list(streams) if streams is not None else [stream_of[c] for c in ef.cameras]
+    missing = [s for s in order if s not in col]
+    if missing:
+        raise ValueError(f"{episode_id}: streams {missing} are not in the training store (its cameras: "
+                         f"{list(col)}; cameras without an accepted calibration are excluded from it)")
+    thr = MAX_SET_MOTION_M if max_set_motion_m is None else float(max_set_motion_m)
+    frames, disp = np.asarray(sync["frames"]), np.asarray(sync["surface_disp_m"], np.float64)
+    accepted = (frames >= 0).all(1) & (disp <= thr)
+    index = frames[accepted][:, [col[s] for s in order]].astype(np.int64)
+    stamps = np.stack([stamps_of[s][index[:, v]] for v, s in enumerate(order)], 1).reshape(len(index), len(order))
+    return {"streams": order, "index": index, "stamps_ns": stamps,
+            "spread_ns": stamps.max(1) - stamps.min(1) if len(index) else np.zeros(0, np.int64),
+            "criterion": "M5", "max_set_motion_m": thr, "max_sync_ns": None, "surface_disp_m": disp[accepted],
+            "reference_rows": np.flatnonzero(accepted), "counts": sync_counts(frames, disp, thr), "store": str(path),
+            "unmatched": {s: sorted(set(range(len(stamps_of[s]))) - set(index[:, v].tolist()))
+                          for v, s in enumerate(order)}}
+
+
+def episode_frame_sets(meta, root, episode_id, streams: list[str], cfg: dict | None = None) -> dict:
+    """The multi-view sets every non-training consumer of an episode root uses: the store's M5 sets when the root has
+    a training store (``configured_sets_policy``), else ``frame_sets`` under the legacy/strict policy."""
+    policy = configured_sets_policy(root, episode_id, cfg)
+    if policy.get("criterion") == "M5":
+        return store_sets(root, episode_id, streams, policy["max_set_motion_m"])
+    return frame_sets(meta, streams, **policy)
 
 
 def depth_file(root: Path, episode_id: str, stage: str, stream_id: str) -> Path:
