@@ -1,0 +1,133 @@
+{
+ "recorded_at": "2026-11-06T12:50:25.115588+09:00",
+ "tool": "runs/setup/tools/arm4_eta_20261106.py",
+ "inputs_measured": {
+  "solo_s_per_it_smoke_MIG_1g24gb": {
+   "A": 0.3465,
+   "B": 0.359,
+   "C": 0.3545,
+   "D": 0.3522
+  },
+  "pretraining_load_factor_basis": "cst50 local pretrainings under campaign load: 21.0-22.5 h (median 0.345-0.405 s/it, 0.6-0.75 co-resident jobs per MIG, ~15 host jobs) vs C/D solo 0.352-0.355 s/it -> factor ~1.0-1.15; Original-like afk2 26.4-33.5 h (future objective, heavier); range 1.05-1.35",
+  "drm_trainer_h": "4.2-5.2 local MIG (cst50 / chl / chlrm / chlhm local runs, ~1.2-2 co-resident jobs per MIG); evaluator ends ~0.1-0.2 h after its trainer",
+  "export_h": 0.05,
+  "render_row_h": "0.01-0.02 (ana-chlhm-render; smoke orig 58 s, cst50 14 s)",
+  "footprints_GB": {
+   "pretraining": 10.77,
+   "drm": 3.5,
+   "evaluator": 4.5,
+   "export": 4.0,
+   "render": 12.0
+  },
+  "smoke_peak_session_pss_GB_400_steps": {
+   "A": 9.25,
+   "B": 10.09,
+   "C": 9.64,
+   "D": 9.6
+  },
+  "baseline_non_campaign_GB": "16.6-18.2 measured 2026-11-06 12:10-12:45 (budget_usage)"
+ },
+ "scenarios": {
+  "optimistic": {
+   "load_factor": 1.05,
+   "pretrain_h": {
+    "A": 20.2,
+    "B": 20.9,
+    "C": 20.7,
+    "D": 20.5
+   },
+   "drm_h": 4.2,
+   "ceiling_gb": 140,
+   "makespan_h": 80.0,
+   "all_pretraining_done_h": 75.2,
+   "arm_complete_h": {
+    "A": 78.8,
+    "B": 80.0,
+    "C": 80.0,
+    "D": 80.0
+   },
+   "first_complete_task_per_arm_h": {
+    "A": 24.7,
+    "B": 25.4,
+    "C": 25.2,
+    "D": 25.1
+   }
+  },
+  "central": {
+   "load_factor": 1.15,
+   "pretrain_h": {
+    "A": 22.1,
+    "B": 22.9,
+    "C": 22.6,
+    "D": 22.5
+   },
+   "drm_h": 4.6,
+   "ceiling_gb": 140,
+   "makespan_h": 87.6,
+   "all_pretraining_done_h": 82.4,
+   "arm_complete_h": {
+    "A": 87.1,
+    "B": 87.3,
+    "C": 87.6,
+    "D": 87.6
+   },
+   "first_complete_task_per_arm_h": {
+    "A": 27.1,
+    "B": 27.8,
+    "C": 27.6,
+    "D": 27.5
+   }
+  },
+  "pessimistic": {
+   "load_factor": 1.35,
+   "pretrain_h": {
+    "A": 26.0,
+    "B": 26.9,
+    "C": 26.6,
+    "D": 26.4
+   },
+   "drm_h": 5.2,
+   "ceiling_gb": 140,
+   "makespan_h": 101.9,
+   "all_pretraining_done_h": 96.2,
+   "arm_complete_h": {
+    "A": 100.9,
+    "B": 101.7,
+    "C": 101.8,
+    "D": 101.9
+   },
+   "first_complete_task_per_arm_h": {
+    "A": 31.5,
+    "B": 32.4,
+    "C": 32.1,
+    "D": 32.1
+   }
+  },
+  "steady_target_130GB": {
+   "load_factor": 1.15,
+   "pretrain_h": {
+    "A": 22.1,
+    "B": 22.9,
+    "C": 22.6,
+    "D": 22.5
+   },
+   "drm_h": 4.6,
+   "ceiling_gb": 130,
+   "makespan_h": 104.8,
+   "all_pretraining_done_h": 99.9,
+   "arm_complete_h": {
+    "A": 87.1,
+    "B": 90.7,
+    "C": 94.4,
+    "D": 104.8
+   },
+   "first_complete_task_per_arm_h": {
+    "A": 27.1,
+    "B": 27.8,
+    "C": 27.7,
+    "D": 27.5
+   }
+  }
+ },
+ "note": "hours after the first admission; RAM-bound (~11 concurrent pretrainings at 10.77 GB within 140 - 17 GB); assumes no other local admission, no test-suite reservation and no failures; a full-suite reservation (~50 GB, ~1-2 h) delays by about its duration; render rows priority 1 after every chain row"
+}

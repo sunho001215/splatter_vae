@@ -1,0 +1,4 @@
+2026-11-06 11:56:27 hold lifted for one admission pass: only admissible pending remote row = cst50-drm-stick-push-s2002-eval (drain exception; all others paused+role-refused); restore on launch or after 25 min
+2026-11-06 12:19:46 hold restored early (identical): driver admitted the eval at 12:17 but the scheduler refuses every allowlisted remote GPU (foreign rwprep processes); eval goes local instead
+2026-11-06 12:21:37 hold restored (identical content); eval event: 
+2026-11-06 16:32:48 hold lifted after ca9561e (co-tenant accounting) merged: the cst50 stick-push s2002 evaluator is the only admissible remote row (drain exception); real-world role rows need role-release.json; Meta-World rows role-refused. Saved as remote-hold-admissions.lifted-20261106-1633

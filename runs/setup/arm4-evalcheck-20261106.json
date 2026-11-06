@@ -1,0 +1,52 @@
+{
+ "question": "Codex arm4-a #9: is the v1 evaluation of a fixed snapshot invariant to the evaluator layout (3 x 8 vs 6 x 8)?",
+ "snapshot": "runs/cst50-drm-hammer-s2000/snapshots/step_1000000.pt (read only)",
+ "host": "local MIG-c3511b41",
+ "script": "/home/ws/ws/validation-20261031/arm4/evalcheck.sh",
+ "outputs": "outputs/arm4_smoke/evalcheck",
+ "summaries": {
+  "3x8_a": {
+   "train_success": 0.9249999999999999,
+   "heldout_success": 0.0625,
+   "moving_success": 0.925,
+   "train_return": 1837.7248652837754
+  },
+  "3x8_b": {
+   "train_success": 0.9249999999999999,
+   "heldout_success": 0.0625,
+   "moving_success": 0.95,
+   "train_return": 1837.6454441238745
+  },
+  "6x8": {
+   "train_success": 0.9500000000000002,
+   "heldout_success": 0.0375,
+   "moving_success": 0.975,
+   "train_return": 1821.8363517830949
+  },
+  "campaign_6x8_2026-11-05": {
+   "train_success": 0.9500000000000002,
+   "heldout_success": 0.05,
+   "moving_success": 0.925,
+   "train_return": 1836.8006973954036
+  }
+ },
+ "repeat_same_layout_3x8": {
+  "values_differing": 15,
+  "of": 27,
+  "max_camera_return_diff": 58.02744664460306,
+  "max_camera_success_diff": 0.050000000000000044
+ },
+ "layout_3x8_vs_6x8": {
+  "values_differing": 23,
+  "of": 27,
+  "max_camera_return_diff": 278.33911482096073,
+  "max_camera_success_diff": 0.15000000000000002
+ },
+ "repeat_6x8_vs_campaign_record": {
+  "values_differing": 16,
+  "of": 27,
+  "max_camera_return_diff": 70.92507577036486,
+  "max_camera_success_diff": 0.15000000000000002
+ },
+ "conclusion": "repeated evaluations of one snapshot are not bit-reproducible even with the same layout (renderer +/-1 intensity noise, GPU nondeterminism); in this single comparison the 3 x 8 vs 6 x 8 difference was larger than the same-layout repeat (max per-camera success difference 0.15 vs 0.05; return 278 vs 58) while the suite means stayed within 0.025-0.05 - layout invariance is NOT established, so each arm uses its reference invocation: A / B 3 x 8 as Original, C / D 6 x 8 as cst50 (Codex arm4-a #9 accepted)"
+}

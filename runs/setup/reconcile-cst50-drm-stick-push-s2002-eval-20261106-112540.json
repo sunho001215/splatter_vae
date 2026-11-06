@@ -1,0 +1,27 @@
+{
+  "recorded_local": "2026-11-06T11:25:40.921109+09:00",
+  "job_id": "cst50-drm-stick-push-s2002-eval",
+  "attempt": 1,
+  "container": "s4d-cst50-drm-stick-push-s2002-eval-a1",
+  "gpu": "GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1",
+  "reason": "container missing from confirmed snapshot",
+  "launch_attempt_age_seconds": 37254.8,
+  "remote_output_dir": "/home/compu/kaist/sunho/runs/cst50-drm-stick-push-s2002-eval",
+  "trainer_run_dir": "/home/compu/kaist/sunho/runs/cst50-drm-stick-push-s2002",
+  "checks": [
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "trainer_run_dir": "exists",
+      "remote_time_utc": "2026-11-06T02:25:35Z"
+    },
+    {
+      "containers_with_name": 0,
+      "remote_output": "absent",
+      "trainer_run_dir": "exists",
+      "remote_time_utc": "2026-11-06T02:25:40Z"
+    }
+  ],
+  "output_rule": "directory absent",
+  "conclusion": "launch refused before docker run; deterministic container never existed"
+}
