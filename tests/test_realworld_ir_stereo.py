@@ -123,7 +123,9 @@ def test_lr_consistency_rejects_either_invalid_interpolation_tap(bad):
     assert lr_consistency(dl, dr, min_disparity=0.5)[0, 10] == 0
 
 
-def test_stereo_stage_preserves_float32_lr_threshold(tmp_path, monkeypatch):
+def test_stereo_stage_persists_depth_and_valid_only(tmp_path, monkeypatch):
+    """Output layout 2: the per-pixel diagnostics (source_index, disparity_left, lr_error, ir_valid) are summarised,
+    never persisted; depth is stored bitwise, valid = depth > 0, the kernel statistics reach the stage summary."""
     from types import SimpleNamespace
 
     import h5py
@@ -145,17 +147,28 @@ def test_stereo_stage_preserves_float32_lr_threshold(tmp_path, monkeypatch):
     rio.run_stage(rio.episode_dir(tmp_path, "ep") / "normalized", stage="ingest", version="test",
                   config={}, inputs={}, build=lambda _: {})
     error = np.array([[[1.0004, 0.9998, np.inf], [0.0, 0.0, 0.0]]], np.float32)
-    out = {"depth": np.ones((1, 2, 3), np.float32), "source_index": np.arange(6).reshape(1, 2, 3),
+    depth = np.array([[[0.5, 0.0, 1.25], [np.float32(1 / 3), 2.0, 0.0]]], np.float32)
+    out = {"depth": depth, "source_index": np.arange(6).reshape(1, 2, 3),
            "lr_error": error, "ir_valid": np.ones((1, 2, 3), bool)}
     disp = {"disparity_left": np.ones((1, 2, 3), np.float32), "disparity_right": np.ones((1, 2, 3), np.float32)}
-    stats = {"frames": [{"ir_valid_fraction": 1., "registered_valid_fraction": 1., "lr_error_median_px": 0.}]}
+    stats = {"frames": [{"ir_valid_fraction": 0.75, "registered_valid_fraction": 4 / 6, "lr_error_median_px": 0.5}]}
     runner = SimpleNamespace(worker=lambda *a, **k: ({"model": {}, "meta": {}}, disp, None),
                              kernel=lambda *a, **k: (out, stats, None), ack=lambda _: None, describe=lambda: {})
-    ir_stereo_depth.ir_stereo_depth(tmp_path, "ep", WorkerSpec("mock", "python"), runner)
+    rec = ir_stereo_depth.ir_stereo_depth(tmp_path, "ep", WorkerSpec("mock", "python"), runner)
     src = rio.stage_dir(tmp_path, "ep", "foundation_stereo_depth") / "color.h5"
     with h5py.File(src) as f:
-        assert f["lr_error"].dtype == np.float32
-        np.testing.assert_array_equal(f["lr_error"][:], error)
+        assert set(f) == {"depth", "valid"}
+        assert f["depth"].dtype == np.float32 and f["valid"].dtype == bool
+        assert f["depth"][:].tobytes() == depth.tobytes()
+        np.testing.assert_array_equal(f["valid"][:], depth > 0)
+        assert f.attrs["output_layout"] == ir_stereo_depth.OUTPUT_LAYOUT == "2"
+        assert list(f.attrs["ir_hw"]) == [2, 3]
+    s = rec["summary"]
+    assert s["output_layout"] == "2" and s["persisted_datasets"] == ["depth", "valid"]
+    assert s["color"]["lr_error_median_px"] == 0.5 and s["color"]["ir_valid_fraction_mean"] == 0.75
+    assert rec["version"] == ir_stereo_depth.STAGE_VERSION == "2"  # computation version: layout-1 outputs stay valid
+    again = ir_stereo_depth.ir_stereo_depth(tmp_path, "ep", WorkerSpec("mock", "python"), runner)
+    assert again["skipped"] and again["build_id"] == rec["build_id"]
 
 
 def test_reproject_depth_source_index_keeps_the_default_output_and_names_the_winners():

@@ -8,10 +8,20 @@ H,W must be multiples of 16. Outputs: ``xyz_base`` (T,N,3), visibility/dynamic L
 References below refer to ayushjain1144/trackeverything at dfb29b505cf2ea954f8697fb612c2429668dd3a0.
 No geometry estimator is loaded: all three geometry inputs are mandatory, and backend
 ``pi3`` selects the cam0/scale preprocessing rather than the VGGT-Omega special case.
+
+Provenance (2026-11-06, user decision item 3: normal fast GPU inference, pinned and recorded): every response's
+``meta.runtime`` records the GPU (name, UUID, capability), NVIDIA driver, CUDA runtime / driver API, cuDNN, torch,
+the precision/determinism flags in effect after inference, the sha256 of every torch.hub checkpoint TE can load
+(its DINOv2 ViT-S/14 trunk is constructed from torch.hub before model.pth overwrites it) and the seed. The inference
+path draws no random numbers (upstream ``randperm`` calls are training-only: models/track_everything.py:888 and the
+drop-path blocks check ``self.training``); torch/numpy/random are still seeded with ``SEED`` before every request so
+that any hidden draw is order-independent. GPU kernels stay nondeterministic (no deterministic mode).
 """
 
 from __future__ import annotations
 
+import os
+import random
 import sys
 import time
 from pathlib import Path
@@ -23,6 +33,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _protocol import git_commit, main, sha256  # noqa: E402
 
 _CACHE = {}
+SEED = 0
+_RUNTIME = {}
+
+
+def runtime_provenance(torch) -> dict:
+    """Hardware/runtime identity of this worker process (static part cached) + the flags in effect now."""
+    if not _RUNTIME:
+        props = torch.cuda.get_device_properties(0)
+        try:
+            driver = Path("/proc/driver/nvidia/version").read_text().splitlines()[0].strip()
+        except (OSError, IndexError):
+            driver = None
+        hub = Path(torch.hub.get_dir()) / "checkpoints"
+        weights = {p.name: sha256(str(p.resolve())) for p in sorted(hub.glob("*")) if p.is_file()} if hub.is_dir() else {}
+        api = getattr(torch._C, "_cuda_getDriverVersion", None)
+        _RUNTIME.update(gpu={"name": props.name, "uuid": str(props.uuid), "capability": [props.major, props.minor],
+                             "total_memory": int(props.total_memory)},
+                        cuda_visible_devices=os.environ.get("CUDA_VISIBLE_DEVICES"), nvidia_driver=driver,
+                        cuda_driver_api=int(api()) if api else None, cuda_runtime=torch.version.cuda,
+                        cudnn=torch.backends.cudnn.version(), torch=torch.__version__, python=sys.version.split()[0],
+                        torch_hub_dir=str(hub), torch_hub_checkpoints_sha256=weights)
+    flags = {"cudnn_enabled": torch.backends.cudnn.enabled, "cudnn_benchmark": torch.backends.cudnn.benchmark,
+             "cudnn_deterministic": torch.backends.cudnn.deterministic,
+             "cudnn_allow_tf32": torch.backends.cudnn.allow_tf32,
+             "matmul_allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+             "float32_matmul_precision": torch.get_float32_matmul_precision(),
+             "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+             **{k: os.environ.get(k) for k in ("CUBLAS_WORKSPACE_CONFIG", "NVIDIA_TF32_OVERRIDE")}}
+    return {**_RUNTIME, "flags": flags, "seed": SEED, "deterministic_mode": False}
 
 
 def validate_inputs(inputs):
@@ -176,6 +215,9 @@ def handle(request, inputs):
     tracker, identity = _model(request["repo_dir"], request["checkpoint"], "cuda")
     import torch
 
+    torch.manual_seed(SEED)  # also seeds every CUDA device
+    np.random.seed(SEED)
+    random.seed(SEED)
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
     infer_started = time.monotonic()
@@ -190,7 +232,8 @@ def handle(request, inputs):
                               "query_depth_lookup": "depth[t, floor(y), floor(x)] on resized grid; no invention",
                               "geometry_preprocessing": "TE boundary-depth replacement retained: "
                                                         "demo_hf.py:619-624, datasets/data_ops.py:1244-1245",
-                              "geometry_backend": "pi3 (estimator bypassed)", "torch": torch.__version__}
+                              "geometry_backend": "pi3 (estimator bypassed)", "torch": torch.__version__,
+                              "runtime": runtime_provenance(torch)}
 
 
 if __name__ == "__main__":

@@ -14,15 +14,22 @@ Conventions (``s4d.realworld.stereo``; device facts checked by the adapter and `
 * The left-IR frame is the native depth frame (the adapter checks ``depth_from_infrared_1`` = I): the IR depth is
   registered onto the colour grid with exactly the native-depth registration (``geometry.reproject_depth``,
   z-buffer forward warp with the same ``splat``, holes stay invalid), so B0 and B1 differ only in their source.
-  The winning IR pixel of every colour pixel is stored (``source_index``) for diagnostics on the IR grid.
 * A failed or missing model output is an error; native depth is never substituted.
 
-Stage ``foundation_stereo_depth`` (B1) writes per colour stream: ``depth``/``valid`` (colour grid), ``source_index``
-(colour grid, linear left-IR pixel or -1), ``disparity_left``/``lr_error`` (left-IR grid).
+Stage ``foundation_stereo_depth`` (B1) writes per colour stream ``depth``/``valid`` (colour grid) and the stage
+summary (per-stream IR-valid / registered-valid fractions and the median left-right error from the kernel's per-frame
+statistics, model identity, runner). Output layout ``OUTPUT_LAYOUT`` "2" (2026-11-06, user decision item 4): the
+per-pixel diagnostics of layout "1" (``source_index`` colour grid; ``disparity_left``, ``lr_error``, ``ir_valid``
+left-IR grid; ~9 MB per three-camera frame) are no longer persisted: no retained consumer reads them (every reader
+goes through ``depth_stages.load_view_depth``: depth, valid, attrs). ``STAGE_VERSION`` is the COMPUTATION version and
+the fingerprint key: depth and valid are computed exactly as before, so completed layout-1 outputs stay valid inputs
+(downstream stages fingerprint the build id only) and are compacted in place by the operational repack, which records
+``output_layout`` "2" and its provenance in the completion record.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import h5py
@@ -30,7 +37,9 @@ import numpy as np
 
 from s4d.realworld import io as rio
 
-STAGE_VERSION = "2"
+STAGE_VERSION = "2"  # computation version (fingerprint key); unchanged by the layout change
+OUTPUT_LAYOUT = "2"  # persisted datasets: depth, valid (layout "1" also stored the per-pixel diagnostics)
+PERSISTED = ("depth", "valid")
 
 
 def ir_rigs(meta) -> list:
@@ -80,13 +89,13 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                                source="FoundationStereo on the device IR pair (left reference), z = fx*B/d, "
                                       "registered by z-buffer forward warp exactly as the native depth",
                                disparity_convention="left-IR grid, d = x_left - x_right (pixels), right reference by "
-                                                    "flip-and-swap; lr_error = |d_L(x) - d_R(x - d_L)|")
+                                                    "flip-and-swap; lr_error = |d_L(x) - d_R(x - d_L)|",
+                               output_layout=OUTPUT_LAYOUT, persisted_datasets=json.dumps(list(PERSISTED)),
+                               diagnostics="IR-grid disparity / left-right error / IR validity and the colour-grid "
+                                           "source pixel are summarised per stream in the stage summary only",
+                               ir_hw=list(ir_hw))
                 dd = f.create_dataset("depth", (n, *hw), np.float32, chunks=(1, *hw), compression="lzf")
                 vv = f.create_dataset("valid", (n, *hw), bool, chunks=(1, *hw), compression="lzf")
-                si = f.create_dataset("source_index", (n, *hw), np.int32, chunks=(1, *hw), compression="lzf")
-                dl = f.create_dataset("disparity_left", (n, *ir_hw), np.float32, chunks=(1, *ir_hw), compression="lzf")
-                le = f.create_dataset("lr_error", (n, *ir_hw), np.float32, chunks=(1, *ir_hw), compression="lzf")
-                iv = f.create_dataset("ir_valid", (n, *ir_hw), bool, chunks=(1, *ir_hw), compression="lzf")
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
                     cid = f"{cam}/{start:05d}-{idx[-1]:05d}"
@@ -110,14 +119,13 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                              "max_depth_m": max_depth_m, "splat": splat, "baseline_m": float(g.baseline_m)},
                             {"disparity_left": disp["disparity_left"], "disparity_right": disp["disparity_right"],
                              "K_ir": K_ir, "K_color": K_c, "T_color_left": g.T_color()}, chunk_id=f"fs2c/{cid}")
-                        out = {**out, "disparity_left": disp["disparity_left"]}
+                        out = {"depth": out["depth"]}  # only what is persisted (the stats are in kmeta)
                         store.put(cid, out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
                         runner.ack(handle2)
                         got = (out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
                     out, kmeta = got
                     sl = slice(idx[0], idx[-1] + 1)
-                    dd[sl], vv[sl], si[sl] = out["depth"], out["depth"] > 0, out["source_index"]
-                    dl[sl], le[sl], iv[sl] = out["disparity_left"], out["lr_error"].astype(np.float32), out["ir_valid"]
+                    dd[sl], vv[sl] = out["depth"], out["depth"] > 0
                     stats += kmeta["frames"]
                     identity = kmeta["model"]
             summary[cam] = {"frames": n, "ir_valid_fraction_mean": float(np.mean([s["ir_valid_fraction"] for s in stats])),
@@ -127,6 +135,7 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                             "ir_rig": g.rig_id, "baseline_m": g.baseline_m}
         summary["model"] = identity
         summary["runner"] = runner.describe()
+        summary["output_layout"], summary["persisted_datasets"] = OUTPUT_LAYOUT, list(PERSISTED)
         return summary
 
     rec = rio.run_stage(directory, stage=output_stage, version=STAGE_VERSION, config=config, inputs=inputs,
