@@ -131,7 +131,7 @@ def main() -> None:
 
         classes = realworld_classes(interface, train_cfg.max_global_steps, ds_cfg.hdf5_path,
                                     {"max_episodes": ds_cfg.max_episodes,
-                                     "max_frames_per_demo": ds_cfg.max_frames_per_demo})
+                                     "max_frames_per_demo": ds_cfg.max_frames_per_demo}, consumer="sincro")
         windows_cls, forward = classes["sincro"], classes["sincro_forward"]
         # upstream sizes the decoder image tokens as num_view // 3 + 1, which must be 1 primary + 2 references = 3;
         # the three-camera rig keeps the Meta-World encoder (num_view 6), its views enter through the data only

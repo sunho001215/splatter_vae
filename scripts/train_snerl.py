@@ -140,11 +140,13 @@ def main() -> None:
     num_inputs = int(ds_cfg["num_inputs"])
 
     manifest = interface["split_manifest"]
-    scenes_cls = SNeRLScenes
+    scenes_cls, validate_fn = SNeRLScenes, validate
     if interface.get("source", "metaworld") != "metaworld":  # real-world store (s4d/rwlearn, docs/realworld_baselines.md)
         from s4d.rwlearn.baseline_data import realworld_classes
+        from s4d.rwlearn.snerl_eval import realworld_validate
 
-        scenes_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"])["snerl"]
+        scenes_cls = realworld_classes(interface, max_steps, ds_cfg["hdf5_path"], consumer="snerl")["snerl"]
+        validate_fn = realworld_validate  # input-view and leave-one-camera-out novel-view metrics, reported apart
     train_set = scenes_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "train"), seed, num_inputs, max_steps,
                            lookat, scale)
     val_set = scenes_cls(ds_cfg["hdf5_path"], split_episodes(manifest, "validation"), seed + 1, num_inputs, None,
@@ -236,13 +238,14 @@ def main() -> None:
             window = 0
         if eval_every > 0 and global_step > 0 and global_step % eval_every == 0:
             png = run_dir / "eval" / f"step_{global_step:08d}.png"
-            log(validate(model, extractor, val_set, int(train_cfg["eval_scenes"]), int(train_cfg["render_chunk"]), png))
+            log(validate_fn(model, extractor, val_set, int(train_cfg["eval_scenes"]), int(train_cfg["render_chunk"]),
+                            png))
         global_step += 1
         if save_every > 0 and global_step % save_every == 0:
             save()
     save()
     png = run_dir / "eval" / f"step_{global_step:08d}.png"
-    log(validate(model, extractor, val_set, int(train_cfg["eval_scenes"]), int(train_cfg["render_chunk"]), png))
+    log(validate_fn(model, extractor, val_set, int(train_cfg["eval_scenes"]), int(train_cfg["render_chunk"]), png))
     (run_dir / "completion.json").write_text(json.dumps({"status": "completed", "steps": global_step}))
     metrics_file.close()
     if wandb_run is not None:

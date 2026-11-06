@@ -83,6 +83,7 @@ known-first-party = ["s4d", "ops"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["gpu: needs a CUDA device (trainer entry points); runs in the release chain on the remote GPU"]
 
 [[tool.uv.dependency-metadata]]
 name = "gsplat"
