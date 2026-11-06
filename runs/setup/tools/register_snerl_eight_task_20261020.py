@@ -30,6 +30,7 @@ import yaml
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
 from scripts import jobs  # noqa: E402
+from ops.jobs._registration_text import render_appended_jobs as _render_appended_jobs  # noqa: E402
 
 PUBLISH = '--publish' in sys.argv
 TAG = '20261020'
@@ -92,11 +93,9 @@ with jobs.REGISTRY.with_suffix('.lock').open('a') as lock:
     fcntl.flock(lock, fcntl.LOCK_EX)
     assert not proof.exists()
     before = jobs.QUEUE.read_bytes()
-    text = before.decode()
-    node = next(value for key, value in yaml.compose(text).value if key.value == 'jobs')
+    _text = _render_appended_jobs(before, new_jobs, yaml=yaml, json=json)
     staged = ROOT / f'runs/setup/baselines-snerl-eight-task-queue-candidate-{TAG}.yaml'
-    staged.write_text(text[:node.end_mark.index].rstrip() + '\n'
-                      + yaml.safe_dump(json.loads(json.dumps(new_jobs)), sort_keys=False) + '\n' + text[node.end_mark.index:])
+    staged.write_text(_text)
     assert jobs.load_queue(staged)['jobs'] == jobs.load_queue()['jobs'] + new_jobs
     (ROOT / f'runs/setup/baselines-snerl-eight-task-queue-before-{TAG}.yaml').write_bytes(before)
     tmp = jobs.QUEUE.with_suffix('.snerl8.tmp')
