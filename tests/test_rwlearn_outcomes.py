@@ -277,11 +277,12 @@ def test_scan_decisions_labels_and_report(tmp_path):
         O.load_outcomes(bad)
 
 
-@pytest.mark.skipif(not (RAW / "drawer-open" / "episode_000000.h5").is_file()
-                    or not (RAW / "mug-hanging" / "episode_000001.h5").is_file(), reason="raw recordings not here")
-def test_real_recordings_read_only_smoke():
-    d = O.check_episode(RAW / "drawer-open" / "episode_000000.h5", "drawer-open")
-    m = O.check_episode(RAW / "mug-hanging" / "episode_000001.h5", "mug-hanging")
-    assert d["decision"] == "no_reversal" and m["decision"] == "no_reversal"
-    assert d["outcome"] == m["outcome"] == "success"
-    assert 0.25 < d["phases"]["pull_m"] < 0.40 and d["phases"]["axis_angle_from_base_y_deg"] < 20
+# Runs in the main checkout with /home/ws/data, alongside the URDF used by M5 validation.
+if ((RAW / "drawer-open" / "episode_000000.h5").is_file()
+        and (RAW / "mug-hanging" / "episode_000001.h5").is_file()):
+    def test_real_recordings_read_only_smoke():
+        d = O.check_episode(RAW / "drawer-open" / "episode_000000.h5", "drawer-open")
+        m = O.check_episode(RAW / "mug-hanging" / "episode_000001.h5", "mug-hanging")
+        assert d["decision"] == "no_reversal" and m["decision"] == "no_reversal"
+        assert d["outcome"] == m["outcome"] == "success"
+        assert 0.25 < d["phases"]["pull_m"] < 0.40 and d["phases"]["axis_angle_from_base_y_deg"] < 20

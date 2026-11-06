@@ -3,7 +3,7 @@
 accepted iff the robot's URDF surface moved <= 5 mm across its member timestamps; single-view consumers never depend
 on cross-camera sync. Synthetic constant-offset data (0, 20, 30, 33 ms), the 5 mm boundary, the rwlearn multi-view
 index, single-view independence, and agreement with PREP2's per-episode counts on real recordings (local raw data and
-URDF only; skipped elsewhere)."""
+URDF only; collected where those inputs and PREP2's report exist)."""
 
 from __future__ import annotations
 
@@ -193,18 +193,25 @@ def raw_sets(path, geom):
             "disp_max_mm": float(np.nanmax(np.where(np.isfinite(disp), disp, np.nan)) * 1e3)}
 
 
-@pytest.mark.skipif(not (RAW.is_dir() and URDF.is_file() and PREP2.is_file()), reason="local raw data / URDF only")
-@pytest.mark.parametrize("task,ep", [("mug-hanging", 45), ("mug-hanging", 50), ("mug-hanging", 1),
-                                     ("mug-hanging", 55), ("drawer-open", 11), ("drawer-open", 0)])
-def test_agreement_with_prep2_on_real_recordings(task, ep):
-    from s4d.realworld.pipeline import RobotGeometry
+_REAL_RECORDING_CASES = [
+    (task, ep) for task, ep in [("mug-hanging", 45), ("mug-hanging", 50), ("mug-hanging", 1),
+                               ("mug-hanging", 55), ("drawer-open", 11), ("drawer-open", 0)]
+    if URDF.is_file() and PREP2.is_file() and (RAW / task / f"episode_{ep:06d}.h5").is_file()
+]
 
-    desc = SimpleNamespace(urdf_path=str(URDF), gripper_model="robotiq_2f_85", gripper_joint="robotiq_85_left_knuckle_joint",
-                           gripper_state_semantics="robotiq_position_register", gripper_base_frame=None, mesh_root=None,
-                           flange_frame="panda_link8", joint_names=[f"panda_joint{i}" for i in range(1, 8)])
-    geom = RobotGeometry(SimpleNamespace(robot=desc))  # the stage's surface sampling (300 points per link)
-    got = raw_sets(RAW / task / f"episode_{ep:06d}.h5", geom)
-    ref = next(r for r in json.loads(PREP2.read_text())["per_episode"] if r["task"] == task and r["ep"] == ep)
-    assert got["complete"] == ref["sets"]["any"]
-    assert abs(got["sets"] - ref["sets"]["M5"]) <= 2 and abs(got["windows"] - ref["windows"]["M5"]) <= 6, (got, ref)
-    assert got["windows"] > 0
+# Runs in the main checkout with /home/ws/data, the URDF, and PREP2's report.
+if _REAL_RECORDING_CASES:
+    @pytest.mark.parametrize("task,ep", _REAL_RECORDING_CASES)
+    def test_agreement_with_prep2_on_real_recordings(task, ep):
+        from s4d.realworld.pipeline import RobotGeometry
+
+        desc = SimpleNamespace(urdf_path=str(URDF), gripper_model="robotiq_2f_85",
+                               gripper_joint="robotiq_85_left_knuckle_joint",
+                               gripper_state_semantics="robotiq_position_register", gripper_base_frame=None, mesh_root=None,
+                               flange_frame="panda_link8", joint_names=[f"panda_joint{i}" for i in range(1, 8)])
+        geom = RobotGeometry(SimpleNamespace(robot=desc))  # the stage's surface sampling (300 points per link)
+        got = raw_sets(RAW / task / f"episode_{ep:06d}.h5", geom)
+        ref = next(r for r in json.loads(PREP2.read_text())["per_episode"] if r["task"] == task and r["ep"] == ep)
+        assert got["complete"] == ref["sets"]["any"]
+        assert abs(got["sets"] - ref["sets"]["M5"]) <= 2 and abs(got["windows"] - ref["windows"]["M5"]) <= 6, (got, ref)
+        assert got["windows"] > 0
