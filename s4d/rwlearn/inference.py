@@ -2,7 +2,8 @@
 NO robot I/O: nothing here opens a connection, publishes, or writes a command anywhere but the returned dict / files.
 
 ``OfflinePolicy`` = frozen baseline encoder (the export the dataset was built with, sha256-checked) + the trained FQL
-agent (one-step policy). ``act`` takes an observation history exactly as the training data defines it (3 frames of
+agent (one-step policy); for ``e2e_cnn`` the jointly trained CNN encoders are part of the agent. ``act`` takes an
+observation history exactly as the training data defines it (3 frames of
 one camera - or 3 synchronised multi-view steps - in the training store's 128 px centre-crop format, plus the measured
 flange pose and gripper register at the newest frame) and returns ``actions.to_robot_command``: the flange goal pose
 in the base frame (the ``action/flange_pose`` convention), the gripper closure and Robotiq register.
@@ -29,10 +30,20 @@ class OfflinePolicy:
         self.meta = ckpt["meta"]
         self.contract = A.ActionContract.from_json(self.meta["contract"])
         self.condition = self.meta["condition"]
+        self.device = torch.device(device)
+        if self.condition == "e2e_cnn":  # no frozen encoder: the jointly trained CNNs are part of the agent
+            from s4d.rwlearn.pixel import encoder_from_config
+
+            state, cfg = ckpt["agent"], self.meta["encoder_config"]
+            self.agent = FQLAgent.create(0, state["obs_dim"], state["action_dim"], state["config"],
+                                         device=self.device, encoder=lambda: encoder_from_config(cfg))
+            self.agent.load_state_dict(state)
+            self.agent.train_mode(False)
+            self.adapter, self.sequence = None, False
+            return
         export_path = export_path or self.meta["export_path"]
         if sha256_file(export_path) != self.meta["export_sha256"]:
             raise ValueError("encoder export differs from the one the policy was trained on")
-        self.device = torch.device(device)
         self.adapter = encoder_adapter(self.condition, export_path, int(self.meta["image_hw"][0])).to(self.device)
         self.adapter.backbone.eval()
         feat_dim, sequence = int(self.meta["feat_dim"]), bool(self.meta["sequence_feature"])
@@ -74,9 +85,27 @@ class OfflinePolicy:
         out["action_norm"] = a
         return out
 
+    @torch.no_grad()
+    def act_from_pixels(self, rgb: np.ndarray, proprio: np.ndarray, measured_pose7: np.ndarray, *,
+                        noise: torch.Tensor | None = None, binary_gripper: bool = False) -> dict:
+        """``e2e_cnn``: rgb (T=3, 1, H, W, 3) uint8 oldest first (one camera) -> the robot command."""
+        from s4d.rwlearn.pixel import stack_frames
+
+        x = torch.as_tensor(np.asarray(rgb), device=self.device)
+        if x.shape[0] != FRAME_STACK or x.shape[1] != 1:
+            raise ValueError(f"expected a {FRAME_STACK}-frame single-camera history (T, 1, H, W, 3)")
+        obs = {"pixels": stack_frames(x[:, 0].unsqueeze(0)),
+               "proprio": torch.as_tensor(proprio, device=self.device).float()[None]}
+        a = self.agent.sample_actions(obs, None if noise is None else noise.to(self.device)).cpu().numpy()[0]
+        out = A.to_robot_command(measured_pose7, a, self.contract, binary_gripper=binary_gripper)
+        out["action_norm"] = a
+        return out
+
     def act(self, obs: dict, measured_pose7: np.ndarray, gripper_register: float, **kw) -> dict:
         T = A.pose7_to_matrix(np.asarray(measured_pose7, np.float64))
         proprio = np.concatenate([T[:3, 3], A.rotation_6d(T[:3, :3]), [A.closure_from_register(gripper_register)]])
+        if self.condition == "e2e_cnn":
+            return self.act_from_pixels(obs["rgb"], proprio, measured_pose7, **kw)
         return self.act_from_features(self.features(obs), proprio, measured_pose7, **kw)
 
 
@@ -113,7 +142,11 @@ def checkpoint_payload(agent: FQLAgent, data, condition: str, step: int, **extra
             "export_sha256": data.attrs["export_sha256"], "contract": json.loads(data.attrs["contract"]),
             "image_hw": json.loads(data.attrs["image_hw"]), "feat_dim": data.feat_dim,
             "sequence_feature": data.sequence, "reward": data.attrs["reward"], "dataset": data.path,
-            "proj_dim": int(agent.critic.encoder.out_dim - A.PROPRIO_DIM)}
+            "inputs": data.attrs.get("inputs"), "extra_inputs": data.attrs.get("extra_inputs")}
+    if condition == "e2e_cnn":
+        meta["encoder_config"] = dict(agent.critic.encoder.config)
+    else:
+        meta["proj_dim"] = int(agent.critic.encoder.out_dim - A.PROPRIO_DIM)
     return {"agent": agent.state_dict(), "step": int(step), "meta": meta, **extra}
 
 

@@ -1,8 +1,23 @@
-# Real-world offline FQL on frozen baseline representations
+# Real-world offline FQL on frozen baseline representations and end-to-end
 
-Branch `realworld-fql-20261106` (agent FQL, 2026-11-06). This branch covers design and implementation only. No
-training was run, and nothing here talks to the robot. The encoders come from the real-world baseline pretrainings
-(`docs/realworld_baselines.md`).
+Branches `realworld-fql-20261106` (agent FQL, design and implementation) and `rwfql-decisions-20261106` (agent FQL2:
+the user's decisions of 2026-11-06 ~11:20). Design and implementation only: no training was run, nothing was
+registered or launched, and nothing here talks to the robot. The frozen encoders come from the real-world baseline
+pretrainings (`docs/realworld_baselines.md`); one condition trains its CNN end-to-end with FQL.
+
+## User decisions 2026-11-06 ~11:20 KST (implemented; not open any more)
+
+| Item | Decision | Where |
+|---|---|---|
+| Outcomes | every uploaded episode is a successful demonstration; success-state proxy = the final observation; endings with a reset / reversal of the completed task are FLAGGED, flags never change the label | `s4d/rwlearn/outcomes.py`, `outcomes.json`, `docs/realworld_ending_flags.json` |
+| `action/flange_pose` | the pose command actually SENT; keep the command-based base-frame delta-pose contract (no measured displacement) | `s4d/rwlearn/actions.py`, `tests/test_rwlearn_actions.py::test_user_decision_contract_*` |
+| Gripper | continuous closure command, 2c - 1 (no binarisation) | same |
+| FQL alpha | 10 with the reference configuration for every condition; NO alpha sweep. Later tuning follows a predefined real-robot evaluation protocol, not offline action error (the offline action errors are logged as diagnostics only, never used for selection) | `configs/realworld/fql/base.yaml`, plan rows `fql_budget` |
+| Encoders | task-specific pretraining only; the joint-task rows and configs are removed | `s4d/rwlearn/configs.py`, `launch.py` |
+| SNeRL | 3 input cameras; validation on separate episodes; input-view and novel-view reconstruction reported separately; native multi-view FQL condition kept, its extra inputs labelled | `s4d/rwlearn/snerl_eval.py`, `fql_data.CONDITIONS` |
+| New baseline | ONE end-to-end random-init CNN + FQL (trained jointly, not frozen), official FQL pixel handling, matched to the other conditions | `s4d/rwlearn/pixel.py`, condition `e2e_cnn` |
+| Single view | random camera per sample, fixed through the history and the paired next observation | `OfflineTransitions` / `OfflinePixelTransitions`, tests |
+| Calibration hold | only geometry-dependent consumers wait for `calibration_validated`; the 100-episode gate is unchanged | `s4d/rwlearn/gate.py` |
 
 ## Implementation choice: faithful PyTorch port + official-code equivalence
 
@@ -67,6 +82,11 @@ The input is the frozen encoder output for a 3-step observation history plus pro
 | `mvp3d_single` (B) | one RGB-D frame + K + c2w | same |
 | `snerl` | 3 RGB views + poses (privileged) | all 3 cameras (the rig has exactly 3; SNeRL mean-pools them) |
 | `mvp3d_multiview` (A) | 3 RGB-D views fused (privileged) | all 3 cameras (fused cloud; order irrelevant) |
+| `e2e_cnn` | one RGB frame, 3 frames channel-stacked into a jointly trained IMPALA CNN | random camera (1 of 3), fixed for history and next observation |
+
+The extra observation inputs of the multi-view / depth conditions relative to the single-view reference (1 RGB view +
+proprio) are recorded per condition (`fql_data.CONDITIONS[c].extra_inputs`, dataset attributes `inputs` /
+`extra_inputs`, policy metadata) and labelled in every plan row and report.
 
 **Camera randomisation** (`OfflineTransitions.sample`). Batches are uniform over (camera timeline, step)
 transitions, so the viewpoint is drawn per training sample. Every index of the observation history and of its paired
@@ -87,13 +107,13 @@ Evidence: `docs/realworld_fql_action_report.json`, computed over every local rec
 
 | Item | Decision | Evidence / reason |
 |---|---|---|
-| Source | recorded `action/flange_pose` = the command actually SENT (`sent`=`engaged`=1 on every used row) | `action/flange_pose` stays within `max_position_lead` = 0.040 m of the measured `robot/flange_pose` on every row. Rows flagged `lead_limited` have the raw operator target `action/flange_target` about 4 cm further. `limit_lead` reproduces the sent command from target + measured pose (median < 5 mm, tested). **Inferred; the file does not document `action/flange_pose`. Please confirm.** |
+| Source | recorded `action/flange_pose` = the command actually SENT (`sent`=`engaged`=1 on every used row) | **Confirmed by the user (2026-11-06).** `action/flange_pose` stays within `max_position_lead` = 0.040 m of the measured `robot/flange_pose` on every row. Rows flagged `lead_limited` have the raw operator target `action/flange_target` about 4 cm further. `limit_lead` reproduces the sent command from target + measured pose (median < 5 mm, tested). |
 | Point / frame | flange (`panda_link8`) origin; increments in the base frame `panda_link0` | `T_flange_tcp` is the identity in every recording, so TCP == flange (checked per episode; otherwise refused). `conventions_json`: all recorded poses are flange poses; base +x forward, +y left, +z up. Base-frame deltas are the standard OSC-delta convention and are view independent. |
 | Delta | `a = [p_goal - p_k, rotvec(R_goal R_k^T)]`, goal = the step's command, reference = the MEASURED pose at the latest robot sample <= tau_k | The pose is Markov in the policy's observation (unlike command-to-command increments, which need the unobserved previous command). Execution: `goal = exp(r) R_k, p_k + dp`. |
 | Rotation | rotation vector (axis-angle, rad) | Increments are small (median 6 deg, max 19.5 deg), so a minimal, continuous representation suffices. The 6D representation is used only for the absolute orientation input. |
 | Control interval | one policy step = one camera frame (nominal 1/15 s; every camera's measured median period is checked within 1 %; measured 66.715 ms). The ~6.7 commands at the 100 Hz loop inside a step are aggregated by zero-order hold at the step end: the last command strictly before tau_{k+1}. | The controller tracks the latest command. The next observation is taken at tau_{k+1}. A step is invalid if any of its commands was not sent or engaged, if it spans a recording pause, if it is longer than 1.5 periods (dropped frame), or if either endpoint lacks a fresh state. A fresh state means a robot sample <= 15 ms old and a gripper register sample <= 100 ms old, both in the same segment. |
 | Units / normalisation | m, rad. Policy action = `[dp / 0.0700 m, r / 0.499 rad, 2c - 1]` | The scales come from the recorder's own teleop limits: lead 0.04 m + 0.3 m/s x 1.5 periods; 20 deg + 1.5 rad/s x 1.5 periods. Every recorded command maps inside [-1, 1]: the pose dimensions reach at most 0.68. A policy output can never ask for more than the teleop envelope. |
-| Gripper | command closure c in [0,1] (0 open, 1 closed), Robotiq position register = 3 + 227c (`conventions_json`) at the same row; policy g = 2c - 1, continuous | The command ramps over ~0.2 s, so it is mostly binary. Mug-hanging is closed 48 % of steps; drawer-open never closes (c <= 0.5). The measured register stalls at the object, e.g. 210 on the mug handle, which is why proprio uses the measured closure. Binarise at 0.5 for execution only if wanted (open decision). |
+| Gripper | command closure c in [0,1] (0 open, 1 closed), Robotiq position register = 3 + 227c (`conventions_json`) at the same row; policy g = 2c - 1, **continuous (user decision; never binarised)** | The command ramps over ~0.2 s, so it is mostly binary; the intermediate values of the ramp are kept. Mug-hanging is closed 48 % of steps; drawer-open never closes (c <= 0.5). The measured register stalls at the object, e.g. 210 on the mug handle, which is why proprio uses the measured closure. `to_robot_command(binary_gripper=False)` is the default and the trained contract. |
 | Command vs measured | Not derived from measured poses. Comparison: the commanded offset has median 4.5 cm (drawer) / 3.3 cm (mug), versus measured motion of 5.7 / 4.2 mm per step. The cosine between commanded offset and measured motion has median 0.986 / 0.979. | The commanded goal leads the robot by about the lead limit; the robot moves ~13 % of the offset per step. Replaying measured deltas as goals would drive the impedance controller far more slowly than the operator did. |
 
 **Round trip.** For every valid step of every local recording,
@@ -116,12 +136,15 @@ layer.
 have 1-4 segments: drawer-open 44/48 single-segment; mug-hanging mostly 2. Pauses of about 1.5 s fall between
 segments with motion disabled and no command rows.
 
-**Proposal (implemented; `reward="ogbench_final_success"`).**
+**Definition (implemented; `reward="ogbench_final_success"`; outcomes decided by the user).**
 
 - A transition is a valid policy step (see the contract above). Transitions never cross a pause or a dropped frame.
   At each segment start the frame history restarts.
-- Outcomes are explicit inputs. The builder refuses without per-episode labels (`--outcomes`) or the explicit
-  assumption `--assume-final-success`; the planned rows carry the assumption until labels exist.
+- Outcomes are explicit inputs: the `rw-outcomes` v1 document `outcomes.json` (written by `scripts/realworld_learning.py
+  inputs` next to the gate report and split; every episode `outcome: success` per the user decision, with its ending
+  decision and flag codes for traceability). The builder refuses without it (or the explicit
+  `--assume-final-success`, kept for smoke builds) and stores the document in the dataset attributes. The plan rows
+  pass `--outcomes <inputs>/outcomes.json`.
 - For a successful episode, the success state is the recording's FINAL observation: the last recorded frame of
   every constituent camera. The builder verifies that the store's frames are the recording's frames. The label
   applies only if that frame is reached by a valid transition. An unusable tail, or a sync step dropped at the end,
@@ -144,40 +167,162 @@ segments with motion disabled and no command rows.
 - `s4d/rwlearn/inference.py::OfflinePolicy` loads `policy.pt` and checks the encoder export's sha256. `act(history,
   measured pose, gripper register)` returns the robot command; `replay` compares against a recorded episode. There is
   no robot I/O.
-- `scripts/realworld_learning.py plan` emits rows after the gate passes:
-  - `rw-<b>-<target>-pre`;
-  - `rw-fqldata-<cond>-<task>-enc<target>`, which depends on the encoder row;
-  - `rw-fql-<cond>-<task>-enc<target>-s{0,1,2}`, which depend on the dataset row.
+- `scripts/realworld_learning.py plan` emits rows for every consumer whose gate level passed ("Training plan"
+  below):
+  - `rw-<b>-<task>-pre` (task-specific only);
+  - `rw-fqldata-<cond>-<task>`, which depends on the encoder row (`e2e_cnn`: on the task's DynaMo + ReViWo rows);
+  - `rw-fql-<cond>-<task>-s{0,1,2}`, which depend on the dataset row.
 
   All are remote rows with `role: realworld_fql` or `role: realworld_pretrain`. Nothing is registered.
 
-## Open decisions for the user
+## Outcomes and ending flags (`s4d/rwlearn/outcomes.py`)
 
-1. **Success labels.** Are all 100 recordings per task successful demonstrations, with success at the final frame?
-   If not, provide per-episode outcomes (or success times), and say whether failed attempts should be included as
-   negatives.
-2. **Semantics of `action/flange_pose`.** This doc infers it is the lead-limited sent command. Please confirm with
-   the recorder code.
-3. **`alpha`.** The official default is 10. The paper tunes it per environment. Proposal: a small sweep {3, 10, 30, 100} per task on one encoder. There is no simulator, so selection
-   needs offline metrics plus a real-robot evaluation protocol, which is outside this branch.
-4. **Gripper at execution.** Continuous (default; exact round trip) or binarised at 0.5.
-5. **FQL encoder for each task.** Use the per-task encoder (default) or the jointly pretrained one
-   (`plan --fql-encoder joint`).
-6. **Random-init encoder arms** (the campaign's pretrained-vs-random check). Not planned by default; they would use each
-   trainer's `encoder_init.pt` where it writes one.
-7. **Action chunking.** None, matching official FQL: one action per 66.7 ms step. QC-FQL-style chunking would be a
-   deviation.
+Every uploaded episode is a successful demonstration (user decision): `outcome: success`, success-state proxy = the
+recording's final observation. The ending check FLAGS recordings whose ending may include a reset or reversal of the
+completed task; a flag never changes the label. It reads robot data only (h5py, read-only; 200 recordings in 0.7 s,
+45 MB RSS): measured flange pose, the sent gripper command, the Robotiq object status gOBJ, the external joint-torque
+estimate `robot/tau_ext` and the camera frame times (every flag carries robot rows, seconds and per-camera frame
+indices). Image evidence is reserved for episodes the robot data cannot decide (`needs_image_review`;
+`review_sheet` tiles first / event / final colour frames of every camera from the original HDF5).
+
+- **drawer-open.** The pull is the motion from the minimum to the following maximum of the flange along the drawer
+  axis (principal horizontal direction, within 18 deg of base +y on every recording). Push-back = the flange moving
+  back along the axis by more than 5 cm before rising 3 cm above its pull-end height (`back_at_handle_m`), or an
+  external torque while moving back that reaches half of the pull's contact level above free motion. Every
+  drawer-open operator returns about 60 % of the pull toward the start pose after lifting off the handle; that is
+  recorded as information (`return_toward_start`), not as a reversal.
+- **mug-hanging.** The hang release ends the last closure during which gOBJ reported a held object. Flagged: ending
+  commanded closed or still holding, gOBJ holding after the release, or a new grasp within 5 cm of where the previous
+  object was released (mug taken off the hook). Review: several holding intervals elsewhere, or the flange coming back
+  within 3 cm of the release position (possible knock-off). Information: a closure after the release without object
+  contact, the return toward the start pose.
+
+**Result on all 200 recordings** (local raw HDF5, 2026-11-06 12:01; full report
+`/home/ws/ws/realworld-ops/fql2/ending_report.json`, compact `docs/realworld_ending_flags.json`): drawer-open
+100 no_reversal, 0 suspected, 0 review; mug-hanging 100 no_reversal, 0 suspected, 0 review. Closest margins:
+drawer-open/episode_000015 moved 4.3 cm back at handle height (threshold 5 cm; the smallest lift at 5 cm back is
+3.4 cm), the largest backward contact fraction is 0.41 (threshold 0.5; torque decisive on 96 of 100). Information
+flags: `return_toward_start` 100 drawer-open / 33 mug-hanging; mug-hanging/episode_000018 closes the open gripper for
+0.09 s after the hang release without object contact (robot rows 1240-1249, frames 184-186) and reopens. Every
+mug-hanging recording has exactly one holding interval, ends open (gOBJ 3). A visual audit of the final frame of all
+200 recordings (one camera each; `/home/ws/ws/realworld-ops/fql2/{drawer,mug}_final.png`) agrees: every drawer is open,
+every mug hangs on the stand.
+
+## End-to-end CNN + FQL (`e2e_cnn`; `s4d/rwlearn/pixel.py`)
+
+A randomly initialised CNN trained JOINTLY with FQL from the offline data (never frozen). Reference: the official FQL
+pixel handling at `seohongpark/fql@e8cd16e` (README :44-45, :63-64, :175-184: `--agent.encoder=impala_small
+--p_aug=0.5 --frame_stack=3`).
+
+| Part | Official source (e8cd16e) | Here |
+|---|---|---|
+| Encoder | `utils/encoders.py` :103-108 `impala_small = partial(ImpalaEncoder, num_blocks=1)`; :60-100 `ImpalaEncoder` (stacks (16, 32, 32), width 1, no dropout, no layer norm, MLP (512,) `activate_final=True`); :10-57 `ResnetStack` (3x3 conv SAME Xavier-uniform, 3x3/2 max-pool SAME, residual relu-conv-relu-conv) | `ImpalaEncoder(**IMPALA_SMALL)`: identical layers, init, SAME padding (`max_pool_same`, -inf padding at the high end), flatten in H, W, C order; at 128 px the flat feature is 16 x 16 x 32 = 8192 -> 512 |
+| Normalisation | `encoders.py` :84 `x.astype(float32) / 255.0`, nothing else | same (uint8 frames from the compact store) |
+| Encoders per network | `agents/fql.py` :196-202 one per critic / BC flow / one-step flow; :226 + :241-242 target critic = copy incl. encoder; :162-163 + :230-232 BC-flow encoder shared by the BC loss and the Euler flow target | `FQLAgent.create(encoder=...)` (one instance per network, target copy, Polyak on all critic parameters); `_OFFICIAL_ENCODERS` maps the official parameter tree |
+| Gradients | `agents/fql.py` :22-80: critic loss through the critic encoder; BC loss through the BC-flow encoder; distillation + Q through the one-step encoder; critic in the Q term and the flow target stop-gradient | the port's losses (unchanged) |
+| Frame stack | `utils/datasets.py` :71-85: `[ob[t-2], ob[t-1], ob[t]]` concatenated on the channel axis, padded with the episode's first frame; next = `[ob[t-1], ob[t], next_ob[t]]` | the shared 3-step history (`FRAME_STACK` 3), padded with the first frame of the recording run; `stack_frames` = channel concatenation, oldest first |
+| Augmentation | `datasets.py` :86-89, :100-110, :15-31: one coin per batch (`p_aug` 0.5); random crop, edge padding 3, per-sample offsets in [0, 6]^2, the same offsets for observation and next observation, 4-D arrays only; `main.py` :85-88 also on the validation dataset | `augment` / `random_crop` (index clamping = edge padding, exact on uint8); validation batches augmented as official |
+| Dataset actions | `envs/env_utils.py` :138-146 clip to [-1 + 1e-5, 1 - 1e-5] | `data.action_clip_eps: 1e-5`, applied in every condition's loader |
+
+**Matched with the other FQL conditions:** task data and 90/10 episode split (`split_seed0.json`), the action
+contract and rewards (`outcomes.json`), 10-d proprioception (concatenated to the 512-d CNN output, as the frozen
+conditions concatenate it to their 256-d adapter output), the 3-step history, one random camera per sample fixed
+through the history and the paired next observation, the compact store's 128 x 128 centre-crop RGB, FQL agent
+configuration (alpha 10, 4 x 512 MLPs, batch 256, lr 3e-4), seeds 0/1/2 and 1M offline steps.
+**Differences from the official visual OGBench runs (documented):** 128 px instead of 64 px images (crop padding stays
+3 px), proprioception input, alpha 10 (official visual tasks 100-300), 1M instead of 500k steps.
+
+**Evidence.** `tests/test_rwlearn_pixel.py` against `tests/fixtures/rwlearn/fql_official_pixel.npz` produced by the
+official code (`fql_reference_jax.py pixel`): the `impala_small` parameter layout at 128 x 128 x 9 equals the
+official tree; its output on uint8 inputs equals the official to 2e-5; flax max-pool SAME (odd and even sizes) and
+`batched_random_crop` exactly; the frame stacking of `Dataset.sample(frame_stack=3)` exactly; three `agent.update`
+calls of an official FQL agent with an `ImpalaEncoder` (4 x 4 stacks, (32,) MLP) reproduce every logged value and every
+parameter (encoders and target encoders included) to float32 round-off, plus `sample_actions` / `compute_flow_actions`.
+`tests/test_rwlearn_fql_pipeline.py::test_e2e_cnn_*` covers the dataset, camera-per-sample invariants, joint training
+(every network's encoder moves) and `OfflinePolicy.act`. `tests/test_rwlearn_trainers_gpu.py` (marker `gpu`, release
+chain) runs the dataset builder and the trainer as subprocesses with a lossless 2 + 2 = 4-step resume.
+
+Compute (estimate, to be measured in the GPU tests): about 7 encoder passes of a 256 x 128 x 128 x 9 batch per update
+(3 with gradients), roughly 10-20x a frozen-feature update; frames of a task (~45k / ~80k per task across 3 cameras,
+2.2 / 3.9 GB uint8) live on the GPU. Row resources: 12 GB GPU, 24 GB RAM.
+
+## Calibration hold per consumer (`s4d/rwlearn/gate.py`)
+
+User decision 2026-11-06 item 2: hold only geometry-dependent outputs and their training eligibility until the
+calibration is validated. The 100-episode-per-task gate is unchanged; geometry-dependent consumers additionally need
+the per-episode record `calibration_validated`.
+
+| Consumer | Class | Why |
+|---|---|---|
+| ours (deferred) | geometry | base-frame dynamic 3D tracks, depth fused across cameras, camera poses |
+| SNeRL (pretrain + FQL `snerl`) | geometry | encoder input poses and every rendered ray come from the extrinsics |
+| 3D-MVP (pretrain + FQL `mvp3d_multiview`, `mvp3d_single`) | geometry | RGB-D back-projected into the base frame, base-frame bounds |
+| SinCro (pretrain + FQL `sincro`) | geometry | rendering targets along rays from K / c2w; the FQL condition uses that encoder |
+| ReViWo (pretrain + FQL) | image | synchronised multi-view RGB, timestamps only |
+| DynaMo (pretrain + FQL) | image | single-camera RGB |
+| e2e CNN + FQL | image | RGB + proprioception (robot kinematics) + sent commands |
+
+An unknown consumer is held like a geometric one. The aggregate "all recorded stages done" check skips the hold stage
+(ING's `set_stage` folds every stage into `preprocessing.status`, so a pending `calibration_validated` would otherwise
+hold everyone); an aggregate other than `done` must still be explained by an open hold stage. Two bindings make the
+validation stick to the data actually trained on: the gate requires `metrics.calibrate_build_id` = the CURRENT
+`calibrate` record's `metrics.build_id`, and every geometry-dependent trainer requires the training store's
+`upstream.calibrate` (compact store attribute) to equal that id and every store camera to be listed as validated
+(`check_store_calibration`; FQL datasets record the store's ids at build time and `check_dataset_gate` compares).
+
+**Record contract for agent CAL** (`ingest_worker.py set-stage KEY calibration_validated JSON`, one per episode):
+
+| Field | Required | Value |
+|---|---|---|
+| `status` | yes | `done` once validated and accepted; `failed` (+ `failure` {message, ...}) when rejected or ambiguous; `pending` / `running` while open (all of these hold geometric consumers only) |
+| `code_version` | yes | e.g. `calibration_validation@1` |
+| `output_format` | yes when done | `rw-calibration-validation/<n>`, e.g. `rw-calibration-validation/1` |
+| `input_sha256` | yes | the episode's raw sha256 (set_stage refuses a mismatch) |
+| `metrics.decision` | yes | `accepted` (anything else holds) |
+| `metrics.calibrate_build_id` | yes | the `build_id` of the `calibrate` stage record that was validated (= the manifest's `stages.calibrate.metrics.build_id`); after a recalibration, the NEW build id |
+| `metrics.cameras` | yes | list of the validated camera serials (store cameras outside it are refused) |
+| `metrics.*` evidence | recommended | scope (episode / session / shared), multistart spread, mask / frame sensitivity, independent robot-frame, depth-agreement, reprojection and cross-view metrics, report path |
+| `code_commit`, `config_sha256`, `outputs`, `host`, `started_at`, `finished_at`, `attempt`, `notes` | optional | as for other stages |
+
+Every field must be one of set_stage's `STAGE_FIELDS` (top-level extras are refused; everything else goes under
+`metrics`). Tested: `tests/test_rwlearn_gate.py::test_ingest_worker_set_stage_accepts_the_calibration_record` writes
+the record through the committed `set_stage` on a temporary manifest.
+
+## Training plan (rows not registered; `scripts/realworld_learning.py plan`, preview `docs/realworld_training_plan.yaml`)
+
+Host: remote 192.168.10.22 (`host: remote`, roles `realworld_pretrain` / `realworld_fql`); commit: pinned by the
+coordinator at registration (`plan --commit <release>`). Order: pretraining rows priority 1, FQL rows priority 2;
+every frozen-encoder FQL dataset row depends on its encoder's pretraining row; the `e2e_cnn` dataset row depends on
+the task's DynaMo and ReViWo pretraining rows (baselines first, without waiting on calibration-held rows). Our own
+real-world pretraining stays deferred until the architecture is final. 66 rows: 10 pretraining + 14 dataset builds +
+42 FQL runs. Under the calibration hold the plan emits only the image-level rows (4 pretraining + 6 dataset builds +
+18 FQL runs) and lists the rest as refused with the gate's reasons.
+
+| Task | FQL condition | Encoder pretraining (task-specific, documented protocol, 1 run) | Observation (extra vs single view) | FQL seeds x budget | GPU / RAM GB | Calibration-dependent |
+|---|---|---|---|---|---|---|
+| each | `dynamo` | `rw-dynamo-<task>-pre`: 40 epochs, seed 42 (12 / 32) | 1 RGB view (none) | 0,1,2 x 1M steps, batch 256, alpha 10 | 6 / 12 | no |
+| each | `reviwo` | `rw-reviwo-<task>-pre`: 100,001 steps, seed 42 (4 / 16) | 1 RGB view (none) | same | 6 / 12 | no |
+| each | `sincro` | `rw-sincro-<task>-pre`: 300k steps (50 epochs cap), seed 42 (12 / 24) | 1 RGB view (none) | same | 6 / 12 | yes |
+| each | `snerl` | `rw-snerl-<task>-pre`: 2.4M iterations (official), 3 input cameras, seed 0 (16 / 20) | +2 RGB views, +3 camera poses (native multi-view) | same | 6 / 12 | yes |
+| each | `mvp3d_multiview` | `rw-mvp3d-<task>-pre`: 15 epochs, seed 0 (12 / 24) | +2 RGB views, +depth, +K / extrinsics | same | 6 / 12 | yes |
+| each | `mvp3d_single` | same encoder as above | +depth, +K / extrinsics | same | 6 / 12 | yes |
+| each | `e2e_cnn` | none: IMPALA-small random init, trained jointly with FQL | 1 RGB view (none) | same | 12 / 24 | no |
+
+Each task is drawer-open and mug-hanging (gated separately). Frozen-condition dataset builds: 8 GB GPU / 16 GB RAM;
+the e2e build is CPU work (1 / 8). Pretraining resources are the campaign's Meta-World rows of the same trainers.
 
 ## Readiness checklist
 
 | | done | pending |
 |---|---|---|
-| FQL port | exact + full-config equivalence vs official | - |
-| action contract | implemented; round trip exact on 105 recordings; fixture tests | user confirmation of `action/flange_pose` semantics |
-| rewards / terminals | implemented (two variants) | success-label decision |
-| datasets / camera randomisation | implemented; pipeline tests on 3 encoder kinds | compact store merged (format branch) |
-| training / inference | trainer, offline validation metrics, `OfflinePolicy`, replay | GPU suite on the merged release |
-| launch | gate + plan rows, role-classified | gate passes (0/100 preprocessed per task at 03:10); encoders pretrained |
+| FQL port | exact + full-config equivalence vs official; pixel path exact vs official | - |
+| action contract | user-confirmed; round trip exact on 105 recordings; decision pinned by tests | - |
+| outcomes | user decision implemented; ending check on all 200 recordings: 0 flagged | - |
+| rewards / terminals | implemented, outcomes from `outcomes.json` | - |
+| datasets / camera randomisation | frozen + e2e, tests incl. camera-per-sample invariants | - |
+| training / inference | trainer (frozen + e2e), lossless resume (CPU dry run), `OfflinePolicy` (frozen + e2e) | GPU tests in the release chain |
+| gate | 100-episode gate + per-consumer calibration hold, set_stage contract tested | CAL's `calibration_validated` records; gate passes |
+| launch | 66 planned rows, role-classified, not registered | coordinator registration with the pinned release |
 
 ## Review (Codex gpt-6.1-sol xhigh, read-only, on eeaafb2) and what changed
 
@@ -216,5 +361,5 @@ regression. Findings and how each was resolved:
     the gate;
   - duplicated validation episodes are refused;
   - data caps are checked only for full runs and only when they truncate.
-- **Kept as an open decision: SNeRL inputs.** SNeRL's 3-of-3 input views versus 2 inputs with the third held out
-  (`docs/realworld_baselines.md`).
+- **SNeRL inputs (decided 2026-11-06):** 3 of 3 input cameras; input-view and leave-one-camera-out novel-view
+  reconstruction reported separately on the validation episodes (`docs/realworld_baselines.md`).

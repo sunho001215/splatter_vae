@@ -16,7 +16,10 @@ Contract of a ``FrameStore`` (all arrays numpy):
 * ``intrinsics(ep, cam)`` -> (3, 3) K of the STORED grid in continuous pixel coordinates (pixel i covers [i, i+1));
   ``w2c(ep, cam)`` -> (4, 4) OpenCV, world = robot base (``panda_link0``), the episode's accepted calibration;
 * ``raw_recording(ep)`` -> path of the read-only ``panda_teleop_episode`` file (actions for FQL);
-* ``image_hw`` -> (H, W) of every stored image.
+* ``image_hw`` -> (H, W) of every stored image;
+* optional ``upstream(ep)`` -> {stage: build id} of the preprocessing outputs the episode was built from (at least
+  ``calibrate``); geometry-dependent consumers need it to prove the store carries the VALIDATED calibration
+  (``s4d.rwlearn.gate.check_store_calibration``); a store without it is refused for them.
 
 Loader-side indexes (``sync_index``, ``camera_runs``) are pure functions of timestamps and segments: nothing derived
 from them is written back.
@@ -190,6 +193,9 @@ class MemoryStore:
     def raw_recording(self, ep):
         return self._eps[ep].get("raw")
 
+    def upstream(self, ep):
+        return dict(self._eps[ep].get("upstream") or {})
+
 
 class ProcessedEpisodeStore:
     """Reference implementation over the PREPROCESSING outputs (``s4d.realworld`` roots: normalized colour frames,
@@ -314,6 +320,13 @@ class ProcessedEpisodeStore:
         prov = self._meta[ep].provenance
         return str(Path(prov.source_root) / prov.source_files[0].path)
 
+    def upstream(self, ep):
+        from s4d.realworld import io as rio
+
+        _, root, e = self._eps[ep]
+        rec = rio.read_record(rio.stage_dir(root, e, "calibrate"))
+        return {"calibrate": rio.build_id(rec)} if rec else {}
+
 
 register_store("processed", lambda spec: ProcessedEpisodeStore(
     {t: (r, list(eps)) for t, (r, eps) in spec["roots"].items()},
@@ -337,7 +350,7 @@ register_store("compact", _open_compact)
 
 def split_episodes(store: FrameStore, validation_fraction: float = 0.1, seed: int = 0) -> dict:
     """Per task: a seeded permutation of its sorted episodes, the first ceil(fraction * n) are validation (none when a
-    task has a single episode). A joint (two-task) split is the union of the per-task splits."""
+    task has a single episode); a store with several tasks gets the union of the per-task splits."""
     import hashlib
 
     out = {"train": [], "validation": [], "seed": int(seed), "validation_fraction": float(validation_fraction)}

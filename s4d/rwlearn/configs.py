@@ -15,7 +15,8 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 BASELINES = ("snerl", "mvp3d", "sincro", "reviwo", "dynamo")
-TARGETS = ("drawer-open", "mug-hanging", "joint")
+# task-specific encoders only (user decision 2026-11-06 ~11:20: no joint-task pretraining by default)
+TARGETS = ("drawer-open", "mug-hanging")
 REMOTE_REALWORLD_ROOT = "/home/compu/kaist/sunho/realworld"  # remote campaign root of the real-world data (role host)
 NUM_CAMERAS = 3
 
@@ -33,6 +34,12 @@ def run_inputs_dir(target: str) -> str:
     return f"{REMOTE_REALWORLD_ROOT}/learning_inputs/{target}"
 
 
+def _geometry(baseline: str) -> bool:
+    from s4d.rwlearn.gate import consumer_info
+
+    return consumer_info(baseline).geometry
+
+
 def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
     """(dotted key, value, reason) applied to the Meta-World drawer-open config."""
     common = [
@@ -40,10 +47,16 @@ def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
          "for source realworld this key holds the FrameStore descriptor (s4d/rwlearn/store.py; compact per-camera "
          "training store, centre crop 128 px), not an HDF5 file; the trainers pass it through unchanged"),
         ("data_interface.split_manifest", f"{run_inputs_dir(target)}/split_seed0.json",
-         "seeded per-task 90/10 episode split (s4d/rwlearn/store.py::split_episodes; union of both tasks for joint)"),
+         "seeded per-task 90/10 EPISODE-level split, fixed and recorded (s4d/rwlearn/store.py::split_episodes, "
+         "seed 0); validation episodes are never trained on"),
         ("data_interface.gate_report", f"{run_inputs_dir(target)}/gate_report.json",
          "full-data gate evidence (s4d/rwlearn/gate.py); runs > 10k steps refuse without a passed report whose "
          "episode sets equal the store's"),
+        ("data_interface.consumer", baseline,
+         ("GEOMETRY-DEPENDENT consumer (s4d/rwlearn/gate.py CONSUMERS): also needs the calibration hold released "
+          "(calibration_validated per episode) and a store built from the validated calibration")
+         if _geometry(baseline) else
+         "non-geometric consumer (s4d/rwlearn/gate.py CONSUMERS): RGB / timestamps only, not held by calibration"),
         ("data_interface.source", "realworld",
          "selects the real-world dataset classes (per-episode cameras, loader-side sync, run-bounded windows)"),
         ("data_interface.target", target, "task(s) in the store"),
@@ -56,8 +69,11 @@ def overrides(baseline: str, target: str) -> list[tuple[str, object, str]]:
              "cameras 4 official units from the origin, as official / Meta-World (median distance 1.055 m); official "
              "near/far 2/6 -> 0.53-1.58 m camera depth, which holds the workspace (68.5 % of all valid depth of the "
              "centre-cropped views; the rest is distant room background)"),
-            ("dataset.num_inputs", 3, "official encoder input count; the rig has exactly 3 cameras, so every "
-                                      "target view is also an input view (Meta-World: 3 of 6)"),
+            ("dataset.num_inputs", 3, "3 input cameras (user decision 2026-11-06): the rig has exactly 3, so every "
+                                      "training target view is also an input view (Meta-World: 3 of 6). "
+                                      "Validation (separate episodes) reports input-view reconstruction and "
+                                      "leave-one-camera-out novel-view reconstruction separately "
+                                      "(s4d/rwlearn/snerl_eval.py)"),
         ],
         "sincro": [
             ("dataset.num_views", NUM_CAMERAS, "all three cameras (Meta-World: 6 training cameras)"),

@@ -1,9 +1,11 @@
 # Real-world representation baselines: data adapters and pretraining protocol
 
-Branch `realworld-fql-20261106` (agent FQL, 2026-11-06). Scope: SNeRL, 3D-MVP (one encoder; RL conditions A and B),
-SinCro, ReViWo and DynaMo pretrained on the real-world drawer-open and mug-hanging episodes, per task and jointly. Our
-own method's real-world pretraining is deferred (user directive 2026-11-06, item 5). Nothing here has been trained; no
-GPU was used. Offline FQL on top of these encoders: `docs/realworld_fql.md`.
+Branches `realworld-fql-20261106` (agent FQL) and `rwfql-decisions-20261106` (agent FQL2, user decisions of
+2026-11-06 ~11:20). Scope: SNeRL, 3D-MVP (one encoder; RL conditions A and B), SinCro, ReViWo and DynaMo pretrained on
+the real-world drawer-open and mug-hanging episodes, PER TASK only (task-specific encoders; the joint-task configs and
+rows are removed). Our own method's real-world pretraining is deferred (user directive 2026-11-06, item 5). Nothing
+here has been trained; no GPU was used. Offline FQL on top of these encoders, and the end-to-end CNN + FQL baseline:
+`docs/realworld_fql.md`.
 
 ## Principle
 
@@ -49,15 +51,16 @@ compact store's transforms: `crop_rgb(center_box)` (PIL bilinear, antialiased) f
 `crop_depth` for depth and semantics, 0.1 mm depth quantisation and `crop_intrinsics`. It exists for tests on real
 slices and as an executable specification. `MemoryStore` is the synthetic test store.
 
-**Episode split.** `split_episodes` gives a seeded 90/10 split per task (seed 0). The joint split is the union of the
-two per-task splits. It is written as `split_seed0.json` (keys `train` and `validation`, the Meta-World manifest
-format).
+**Episode split.** `split_episodes` gives a seeded 90/10 EPISODE-level split per task (seed 0), fixed and recorded as
+`split_seed0.json` (keys `train` and `validation`, the Meta-World manifest format) in the task's learning-inputs
+directory. Validation episodes are never trained on; every baseline's validation and every FQL condition's offline
+validation use them.
 
 ## Per-baseline adapters (`s4d/rwlearn/baseline_data.py`)
 
 | Baseline | Sample (unchanged contract) | Real-world specifics |
 |---|---|---|
-| SNeRL | official draws: uniform step; `num_inputs` distinct input cameras; target uniform over all cameras; per-sample `default_rng([seed, i])` | **3 inputs of the rig's 3 cameras**, so the target is always an input view (Meta-World: 3 of 6). Validation keeps the drawn target when no held-out view exists (trainer fix, behaviour-preserving on Meta-World). Semantics are the SAM 3 classes from the store. **DINO targets stay online** in the trainer: the pinned frozen ViT-S/8 teacher with the Meta-World preprocessing `dino_target(extractor, rgb128/255)`; no DINO feature dataset. Poses come from the episode's cameras through `normalise_c2w(lookat, pose_scale)`. |
+| SNeRL | official draws: uniform step; `num_inputs` distinct input cameras; target uniform over all cameras; per-sample `default_rng([seed, i])` | **3 input cameras (user decision)**: the rig has 3, so every training target is an input view (Meta-World: 3 of 6). Validation on the separate validation episodes reports `val/input_view/*` (all 3 cameras encoded, one of them rendered) and `val/novel_view_loco/*` (leave-one-camera-out at evaluation only: the rendered camera is removed from the inputs, 2 cameras encoded; the encoder mean-pools views) SEPARATELY (`s4d/rwlearn/snerl_eval.py`); the LOCO metric measures an unseen viewpoint with one fewer input view and is not comparable to Meta-World's 3-of-6 held-out views. Semantics are the SAM 3 classes from the store. **DINO targets stay online** in the trainer: the pinned frozen ViT-S/8 teacher with the Meta-World preprocessing `dino_target(extractor, rgb128/255)`; no DINO feature dataset. Poses come from the episode's cameras through `normalise_c2w(lookat, pose_scale)`. |
 | 3D-MVP | all cameras fused per synchronised step (original in-domain fused setting); RGB-D, continuous K, OpenCV c2w | 3 cameras are fused (Meta-World: 6). Scene bounds are real-world, in the base frame. RL condition A uses the 3 cameras; B uses one random camera per sequence. |
 | SinCro | 3-step windows every `temporal_stride` steps; `images` (T,H,V,W,3) in [0,1]; K with integer pixel centres; OpenGL c2w | Windows stay inside one run. Frame spacing is 1 camera frame, the real-world policy step. **Per-sample cameras**: see below. The encoder is built with `num_view` 6 (see below). |
 | ReViWo | every synchronised step, all cameras, [-1,1] | 3 cameras (`camera_num` 3) |
@@ -105,7 +108,10 @@ they hold.
   compact store's stage `train_data`. The list is configurable; a name that is never recorded makes the gate fail closed.
   DINO is not required.
 
-Joint targets need both tasks. On the live manifest at 03:10 the gate correctly fails: 0/100 preprocessed per task.
+Each task is gated alone (no joint target). GEOMETRY-DEPENDENT consumers (SNeRL, 3D-MVP, SinCro, our method)
+additionally need the per-episode `calibration_validated` record bound to the current calibration, and a store built
+from it (`docs/realworld_fql.md`, "Calibration hold per consumer"); ReViWo and DynaMo do not. Every generated config
+names its consumer (`data_interface.consumer`), which the trainers pass to the gate check.
 
 The gate is enforced twice:
 
@@ -138,10 +144,11 @@ gate matches the store.
 | | SNeRL | 3D-MVP | SinCro | ReViWo | DynaMo |
 |---|---|---|---|---|---|
 | store adapter + tests (synthetic + real-slice smoke) | done | done | done | done | done |
-| configs drawer-open / mug-hanging / joint (generated, tested) | done | done | done | done | done |
+| configs drawer-open / mug-hanging (generated, tested; task-specific only) | done | done | done | done | done |
 | encoder export for FQL (unchanged `encoder.pt`) | existing | existing | existing | existing | existing |
 | needs from the store | RGB, semantics, cameras | RGB, depth, cameras | RGB, cameras | RGB | RGB |
-| open decision | 3-of-3 inputs (no novel-view target) vs 2 inputs | bounds re-measure | none | none | latent dim 14 |
+| decided / open | 3 inputs; input-view + LOCO novel-view validation | bounds re-measure | none | none | latent dim 14 |
+| calibration-dependent (gate level) | yes | yes | yes | no | no |
 | blocked on | full-data gate; compact store merged; full GPU suite on the merged release | same | same | same | same |
 
 Trainer edits are limited to a `data_interface.source == "realworld"` branch in `scripts/train_{snerl,sincro,reviwo,

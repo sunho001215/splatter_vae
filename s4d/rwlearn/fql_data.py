@@ -1,4 +1,5 @@
-"""FQL datasets on top of frozen representation baselines (design: docs/realworld_fql.md).
+"""FQL datasets on top of frozen representation baselines, and the transitions of the end-to-end CNN condition
+(design: docs/realworld_fql.md).
 
 ``build_fql_dataset`` runs a baseline's FROZEN encoder export once over the training store and writes, per episode
 and timeline, one feature vector per observation time (per camera frame for single-view encoders, per synchronised
@@ -15,7 +16,13 @@ views and 3D-MVP fuses them, so their order is irrelevant).
 Policy input = the campaign's frozen-encoder adapter (``FrameMLPStackHead`` over the 3-frame stack, or
 ``SmallPostEncoderMLPHead`` for SinCro's fused state; 256-d, trainable) concatenated with the 10-d proprioception
 (``actions`` module docstring); one adapter instance per FQL network, as the official agent gives every network its
-own encoder.
+own encoder. The ``e2e_cnn`` condition has no frozen encoder: its dataset holds the same transitions without features
+and ``s4d.rwlearn.pixel.OfflinePixelTransitions`` reads the store's RGB frames for a jointly trained IMPALA CNN.
+
+Action contract (audited; user decision 2026-11-06 ~11:20): the recorded ``action/flange_pose`` is the pose command
+actually SENT; the action is the command-based base-frame flange delta pose (rotation vector) + the CONTINUOUS gripper
+closure command (2c - 1), never a measured displacement and never binarised (``s4d.rwlearn.actions``; pinned by
+tests/test_rwlearn_actions.py). Outcomes: every recording is a successful demonstration (``s4d.rwlearn.outcomes``).
 """
 
 from __future__ import annotations
@@ -40,24 +47,38 @@ FRAME_STACK = 3
 
 @dataclass(frozen=True)
 class Condition:
-    encoder_type: str
+    encoder_type: str | None  # None: no frozen encoder (end-to-end CNN trained jointly with FQL)
     views: int
     depth: bool
     cameras: bool
     label: str
+    extra_inputs: str = "none"  # observation inputs beyond the single-view reference (1 RGB view + proprio)
 
     @property
     def multiview(self) -> bool:
         return self.views > 1
 
+    @property
+    def inputs(self) -> str:
+        v = "3 synchronised RGB views" if self.multiview else "1 RGB view (random camera per sample)"
+        return v + (" + depth" if self.depth else "") + (" + K, c2w" if self.cameras else "") + \
+            " + 10-d proprio, 3-step history"
 
+
+SINGLE_VIEW_REFERENCE = "1 RGB view (one random camera per sample, fixed for the history and next obs) + 10-d proprio"
 CONDITIONS = {
     "dynamo": Condition("dynamo", 1, False, False, "DynaMo, single RGB"),
     "reviwo": Condition("reviwo", 1, False, False, "ReViWo, single RGB"),
     "sincro": Condition("sincro", 1, False, False, "SinCro, single RGB"),
-    "snerl": Condition("snerl", 3, False, True, "SNeRL, multi-view RGB + poses (privileged)"),
-    "mvp3d_multiview": Condition("mvp3d", 3, True, True, "3D-MVP A, multi-view RGB-D + extrinsics (privileged)"),
-    "mvp3d_single": Condition("mvp3d", 1, True, True, "3D-MVP B, single RGB-D + extrinsics (privileged)"),
+    "snerl": Condition("snerl", 3, False, True, "SNeRL, native multi-view RGB + camera poses (privileged inputs)",
+                       "+2 RGB views (all 3 synchronised cameras) and the 3 camera poses (calibrated extrinsics, "
+                       "normalised c2w): SNeRL's native multi-view condition"),
+    "mvp3d_multiview": Condition("mvp3d", 3, True, True, "3D-MVP A, multi-view RGB-D + extrinsics (privileged)",
+                                 "+2 RGB views, depth of all 3, intrinsics + extrinsics (fused point cloud)"),
+    "mvp3d_single": Condition("mvp3d", 1, True, True, "3D-MVP B, single RGB-D + extrinsics (privileged)",
+                              "+depth of the view, its intrinsics + extrinsics"),
+    "e2e_cnn": Condition(None, 1, False, False, "End-to-end IMPALA-small CNN, random init, trained jointly with FQL "
+                                                "(official FQL pixel handling), single RGB"),
 }
 
 
@@ -117,21 +138,27 @@ def encode_timeline(adapter, store: FrameStore, ep: str, tl, *, device, chunk: i
 
 def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path, *, episodes: list[str],
                       reward: str = "ogbench_final_success", device="cpu", max_sync_ns: int = 30_000_000,
-                      raw_paths: dict | None = None, outcomes: dict | None = None,
-                      assume_final_success: bool = False) -> dict:
+                      raw_paths: dict | None = None, outcomes=None, assume_final_success: bool = False) -> dict:
     """Write ``out`` (atomic). ``raw_paths`` optionally maps episode -> raw recording path (else the store's).
-    Outcomes are explicit: ``outcomes[ep]`` (True = successful demonstration) for every episode, or
-    ``assume_final_success`` (every recording is a successful demonstration; the files carry no outcome marker)."""
-    bad = {ep: v for ep, v in (outcomes or {}).items() if not isinstance(v, bool)}
-    if bad:
-        raise ValueError(f"outcome labels must be JSON booleans, got {dict(list(bad.items())[:3])}")
-    missing = [ep for ep in episodes if ep not in (outcomes or {})]
+    Outcomes are explicit: an ``rw-outcomes`` document (``s4d.rwlearn.outcomes.outcome_labels``; user decision: all
+    successful) or ``{ep: bool}`` for every episode, or ``assume_final_success``. ``export_path`` is None exactly for
+    the ``e2e_cnn`` condition (no frozen encoder: transitions and frame indices only)."""
+    from s4d.rwlearn.outcomes import load_outcomes
+
+    outcome_doc = outcomes if isinstance(outcomes, dict) and "schema" in outcomes else None
+    outcomes = load_outcomes(outcomes) if outcomes is not None else {}
+    missing = [ep for ep in episodes if ep not in outcomes]
     if missing and not assume_final_success:
         raise ValueError(f"no outcome label for {len(missing)} episode(s) (e.g. {missing[0]}); give outcomes or "
                          "assume_final_success=True explicitly")
     c = CONDITIONS[condition]
-    adapter = encoder_adapter(condition, export_path, store.image_hw[0]).to(device)
-    adapter.backbone.eval()
+    if (c.encoder_type is None) != (export_path is None):
+        raise ValueError(f"{condition}: " + ("the end-to-end condition takes no encoder export" if export_path else
+                                             "a frozen-encoder condition needs its encoder export"))
+    adapter = None
+    if c.encoder_type is not None:
+        adapter = encoder_adapter(condition, export_path, store.image_hw[0]).to(device)
+        adapter.backbone.eval()
     out = Path(out)
     tmp = out.with_name(f".{out.name}.partial")
     contract, stats = None, {"transitions": 0, "reasons": {}, "labels": {}}
@@ -149,10 +176,11 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
             elif ep_contract != contract:
                 raise ValueError(f"{ep}: teleop limits differ from the dataset contract")
             for tl in timelines(store, ep, c.multiview, max_sync_ns):
-                tr = episode_transitions(raw, tl, contract, reward, success=bool((outcomes or {}).get(ep, True)))
+                tr = episode_transitions(raw, tl, contract, reward, success=bool(outcomes.get(ep, True)))
                 g = f.create_group(f"episodes/{ep}/{tl.name}")
-                g.create_dataset("features", data=encode_timeline(adapter, store, ep, tl, device=device),
-                                 compression="lzf")
+                if adapter is not None:
+                    g.create_dataset("features", data=encode_timeline(adapter, store, ep, tl, device=device),
+                                     compression="lzf")
                 for k in ("times", "run", "proprio", "state_ok", "transition_ok", "action", "action_phys", "reward",
                           "mask", "success", "terminal"):
                     g.create_dataset(k, data=tr[k])
@@ -163,13 +191,20 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                 stats["transitions"] += int(tr["transition_ok"].sum())
                 for r, n in tr["reasons"].items():
                     stats["reasons"][r] = stats["reasons"].get(r, 0) + int(n)
-        f.attrs.update(format=FORMAT, condition=condition, label=c.label, encoder_type=c.encoder_type,
-                       export_path=str(export_path), export_sha256=sha256_file(export_path), reward=reward,
+        upstream = getattr(store, "upstream", None)
+        calibration = {ep: {"calibrate": (upstream(ep) or {}).get("calibrate") if upstream else None,
+                            "cameras": sorted(store.cameras(ep))} for ep in episodes}
+        f.attrs.update(format=FORMAT, condition=condition, label=c.label, inputs=c.inputs,
+                       extra_inputs=c.extra_inputs, single_view_reference=SINGLE_VIEW_REFERENCE,
+                       encoder_type=c.encoder_type or "none", export_path=str(export_path or ""),
+                       export_sha256=sha256_file(export_path) if export_path else "", reward=reward,
                        contract=json.dumps(contract.to_json()), frame_stack=FRAME_STACK,
-                       sequence_feature=bool(adapter.stack_feature), episodes=json.dumps(list(episodes)),
-                       image_hw=json.dumps(list(store.image_hw)), stats=json.dumps(stats),
+                       sequence_feature=bool(adapter.stack_feature) if adapter else False,
+                       episodes=json.dumps(list(episodes)), image_hw=json.dumps(list(store.image_hw)),
+                       stats=json.dumps(stats), calibration=json.dumps(calibration),
                        outcomes=json.dumps({"assume_final_success": bool(assume_final_success),
-                                            "labels": {ep: bool(v) for ep, v in (outcomes or {}).items()}}))
+                                            "labels": {ep: bool(v) for ep, v in outcomes.items()},
+                                            "document": outcome_doc}))
     tmp.replace(out)
     return {"path": str(out), **stats}
 
@@ -191,9 +226,11 @@ class ObsEncoder(nn.Module):
 
 
 class OfflineTransitions:
-    """All transitions of ``episodes`` in memory: frozen features once per observation time + index arrays."""
+    """All transitions of ``episodes`` in memory: frozen features once per observation time + index arrays. Dataset
+    actions are clipped to [-1 + eps, 1 - eps] as the official loader does (``envs/env_utils.py`` :138-146,
+    ``action_clip_eps`` 1e-5; every recorded command already lies inside [-1, 1])."""
 
-    def __init__(self, path, episodes: list[str] | None = None, device="cpu"):
+    def __init__(self, path, episodes: list[str] | None = None, device="cpu", action_clip_eps: float | None = 1e-5):
         self.path = str(path)
         feats, prop, rows = [], [], []
         base = 0
@@ -201,6 +238,9 @@ class OfflineTransitions:
             if f.attrs.get("format") != FORMAT:
                 raise ValueError(f"{path}: not a {FORMAT} file")
             self.attrs = {k: (v.decode() if isinstance(v, bytes) else v) for k, v in f.attrs.items()}
+            if self.attrs.get("condition") == "e2e_cnn":
+                raise ValueError(f"{path}: e2e_cnn datasets hold no features; use s4d.rwlearn.pixel."
+                                 "OfflinePixelTransitions")
             self.sequence = bool(self.attrs["sequence_feature"])
             self.contract = A.ActionContract.from_json(json.loads(self.attrs["contract"]))
             eps = episodes if episodes is not None else json.loads(self.attrs["episodes"])
@@ -233,7 +273,10 @@ class OfflineTransitions:
         self.next_idx = torch.from_numpy(cat["next"]).to(dev)
         self.obs_k = torch.from_numpy(cat["obs_k"]).to(dev)
         self.next_k = torch.from_numpy(cat["next_k"]).to(dev)
-        self.actions = torch.from_numpy(cat["action"]).to(dev).float()
+        actions = cat["action"]
+        if action_clip_eps is not None:
+            actions = np.clip(actions, -1 + action_clip_eps, 1 - action_clip_eps)
+        self.actions = torch.from_numpy(actions).to(dev).float()
         self.rewards = torch.from_numpy(cat["reward"]).to(dev).float()
         self.masks = torch.from_numpy(cat["mask"]).to(dev).float()
         self.size = len(self.actions)

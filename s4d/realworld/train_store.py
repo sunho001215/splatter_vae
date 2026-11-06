@@ -704,6 +704,12 @@ class CompactStore:
     def raw_recording(self, ep):
         return self._files[ep].raw_recording
 
+    def upstream(self, ep) -> dict:
+        """{stage: build id} of the preprocessing outputs this episode file was built from (attribute ``upstream``;
+        geometry-dependent consumers compare its ``calibrate`` with the validated calibration)."""
+        raw = self.episode(ep).attrs().get("upstream") or "{}"
+        return json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+
 
 def verify_snerl_teacher(device: str = "cpu", image: np.ndarray | None = None) -> dict:
     """The online SNeRL DINO target path is available and pinned: the official weights (sha256), the pinned
