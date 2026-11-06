@@ -33,12 +33,21 @@ affine are stored with them. Windows, synchronisation and viewpoints are assembl
 | `intrinsics(ep, cam)`, `w2c(ep, cam)` | K of the stored grid (continuous pixel centres); OpenCV world-to-camera, world = robot base, the episode's ACCEPTED calibration |
 | `raw_recording(ep)` | path of the read-only `panda_teleop_episode` file (FQL actions) |
 
-The loader-side indexes are pure functions of the timestamps and segments; nothing derived from them is written:
+The loader-side indexes are built from the timestamps, segments and the store's per-set robot motion; nothing
+window-level is written:
 
-- `sync_index` is used by the multi-view baselines. The reference camera's frames are kept where every other camera
-  has a frame within 30 ms (offsets measured: +6.6 ms and -12.5 ms on drawer-open, -22.9 ms on mug-hanging). Steps
-  that would share one native frame are dropped. Steps are split into runs at recording pauses and dropped frames.
-- `camera_runs` gives each camera's own native frames. DynaMo uses them.
+- `sync_index` is used by the multi-view consumers (SNeRL, 3D-MVP, SinCro, ReViWo, the multi-view FQL conditions).
+  Criterion **M5** (coordinator decision 2026-11-06, from PREP2's review
+  `/home/ws/ws/realworld-ops/pre/reviews/sync-criterion-20261106.md`): the three cameras are free-running with constant
+  per-recording phase offsets up to half a period (33.4 ms), so frames are paired as MUTUAL nearest neighbours over
+  the reference camera without a time cap, and a set is accepted iff the robot's URDF surface moved at most 5 mm
+  across its member timestamps (`sync/surface_disp_m`, computed once in the `train_data` stage; the threshold is a
+  loader argument). The former raw caps (30 ms mug-hanging, 20 ms drawer-open template) left mug-hanging 45-56 and
+  drawer-open 11, 111-114, 116-124, 126, 128 without any complete set. Steps are split into runs at recording pauses
+  and dropped frames. A compact store without the per-set motion (schema < 1.1.0) is refused; only synthetic test
+  stores fall back to a time bound.
+- `camera_runs` gives each camera's own native frames. DynaMo uses them; like every single-view consumer (FQL
+  single view, e2e CNN + FQL) it depends on no cross-camera sync, only on each camera's robot <-> camera sync.
 - `history` builds 3-step histories padded at run starts.
 
 **Verified against the compact store.** The format branch's `CompactStore` was written from drawer-open-000000

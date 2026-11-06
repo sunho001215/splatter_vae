@@ -41,14 +41,16 @@ def signals(t, xyz, command=None, gobj=None, tau=None):
 START = (0.42, 0.0, 0.57)
 
 
-def drawer(return_z=0.60, push_torque=False):
+def drawer(return_z=0.60, push_torque=None):
+    """Synthetic drawer-open: pull 0.30 m at 0.51 m, then a return at ``return_z`` (0.51 = at handle height, i.e.
+    pushing the drawer back: contact torque by default, as a real push would show)."""
     wp = [(0, START), (2.5, (0.49, -0.10, 0.52)), (3.0, (0.49, -0.10, 0.51)), (7.0, (0.46, 0.20, 0.51)),
           (8.0, (0.46, 0.20, return_z)), (11.0, (0.48, 0.02, return_z)), (12.0, (0.49, 0.01, return_z))]
     t, xyz = _path(wp)
     tau = np.full((len(t), 7), 0.35)
     tau[(t > 3.0) & (t < 7.0)] = 0.9  # contact while pulling
-    if push_torque:
-        tau[(t > 8.0) & (t < 11.0)] = 0.9
+    if push_torque if push_torque is not None else return_z < 0.53:
+        tau[(t > 7.0) & (t < 11.0)] = 0.9
     return signals(t, xyz, tau=tau)
 
 
@@ -65,11 +67,15 @@ def test_drawer_pushed_back_at_handle_height_is_flagged_with_frames():
     res = O.check_drawer(drawer(return_z=0.51))
     codes = {f["code"]: f for f in res["flags"]}
     f = codes["push_back_at_handle_height"]
-    assert f["severity"] == "suspect" and f["evidence"]["back_at_handle_m"] > 0.15
+    assert f["severity"] == "suspect" and f["evidence"]["travel_m"] > 0.15
     assert set(f["frames"]) == set(CAMS) and all(len(v) == 2 for v in f["frames"].values())
     assert f["t_s"][0] == pytest.approx(7.0, abs=0.05)  # the pull end
     res = O.check_drawer(drawer(push_torque=True))  # lifted, but pressing on something while moving back
     assert "contact_torque_while_moving_back" in {f["code"] for f in res["flags"]}
+    # at the front and at handle height, but the torque shows free motion: geometry and torque disagree -> review
+    res = O.check_drawer(drawer(return_z=0.51, push_torque=False))
+    f = {x["code"]: x for x in res["flags"]}["push_back_at_handle_height"]
+    assert f["severity"] == "review" and f["evidence"]["contact_fraction"] < 0.5
 
 
 def test_drawer_push_back_is_found_after_later_motion_and_after_a_lift():
@@ -81,13 +87,13 @@ def test_drawer_push_back_is_found_after_later_motion_and_after_a_lift():
     t, xyz = _path(wp)
     res = O.check_drawer(signals(t, xyz))
     f = {x["code"]: x for x in res["flags"]}["push_back_at_handle_height"]
-    assert f["evidence"]["back_at_handle_m"] > 0.15 and res["phases"]["pull_rows"][1] == pytest.approx(700, abs=15)
+    assert f["evidence"]["travel_m"] > 0.15 and res["phases"]["pull_rows"][1] == pytest.approx(700, abs=15)
     wp = [(0, START), (2.5, (0.49, -0.10, 0.52)), (3.0, (0.49, -0.10, 0.51)), (7.0, (0.46, 0.20, 0.51)),
           (7.5, (0.46, 0.20, 0.56)), (8.0, (0.46, 0.20, 0.51)), (10.0, (0.46, 0.02, 0.51)), (11.0, (0.46, 0.02, 0.6))]
     t, xyz = _path(wp)
     res = O.check_drawer(signals(t, xyz))
     f = {x["code"]: x for x in res["flags"]}["push_back_at_handle_height"]
-    assert f["evidence"]["back_at_handle_m"] > 0.15
+    assert f["evidence"]["travel_m"] > 0.15
 
 
 def test_mug_partial_release_and_regrasp_under_a_closed_command_is_split():
@@ -105,16 +111,63 @@ def test_mug_partial_release_and_regrasp_under_a_closed_command_is_split():
         g[(gt >= 10.5) & (gt < 15.5)] = 2.0  # held again
         return g
     sig = signals(t, xyz, command=c, gobj=gobj)
-    gt = sig["gripper/t"] - 1000.0
     sig["gripper/position"] = np.where(sig["gripper/object"] == 2, 210.0, 60.0)
     res = O.check_mug(sig)
     assert len(res["phases"]["holding_rows"]) == 2 and len(res["phases"]["closures_rows"]) == 1
     assert "regrasp_at_release_location" in {f["code"] for f in res["flags"]}
-    # a flicker of gOBJ without the fingers opening stays one hold
-    sig["gripper/object"] = np.where((gt >= 9.5) & (gt < 9.8), 0.0, np.where(gt < 15.5, 2.0, 3.0))
-    sig["gripper/object"][gt < 4.0] = 3.0
-    sig["gripper/position"] = np.where(gt < 4.0, 3.0, 208.0)
-    assert len(O._holds(sig)) == 1
+
+
+def test_mug_hold_merge_rule_on_a_subsecond_gap():
+    """A 0.3 s gap between two gOBJ-2 runs: merged when the fingers stay closed (flicker), split when they open;
+    each gap is judged against the run right before it (an accepted flicker never lowers the reference)."""
+    t, xyz = _path([(0, START), (10, START)])
+    sig = signals(t, xyz)
+    gt = sig["gripper/t"] - 1000.0
+    runs = [(2.0, 4.0), (4.3, 6.0), (6.3, 8.0)]
+    sig["gripper/object"] = np.where(np.any([(gt >= a) & (gt < b) for a, b in runs], 0), 2.0, 0.0)
+    pos = np.where(sig["gripper/object"] == 2, 210.0, 3.0)
+    gap1, gap2 = (gt >= 4.0) & (gt < 4.3), (gt >= 6.0) & (gt < 6.3)
+    pos[gap1], pos[gap2] = 208.0, 207.0  # fingers closed in both gaps: one hold
+    sig["gripper/position"] = pos
+    assert O._holds(sig) == [(int(np.flatnonzero(gt >= 2.0)[0]), int(np.flatnonzero(gt < 8.0)[-1]))]
+    pos[gap1] = 191.0  # accepted flicker (within 20 of 210) ...
+    pos[gap2] = 175.0  # ... must not lower the reference: 35 below the held 210 is an opening -> split
+    sig["gripper/position"] = pos
+    holds = O._holds(sig)
+    assert len(holds) == 2 and gt[holds[0][1]] < 6.0 <= gt[holds[1][0]] + 0.31
+    pos[gap1] = 150.0  # an opening in the first gap splits there too
+    assert len(O._holds(sig)) == 3
+
+
+def test_mug_release_row_is_the_first_sample_after_the_hold():
+    res = O.check_mug(mug())
+    t = mug()["robot/t"] - 1000.0
+    assert t[res["phases"]["release_row"]] == pytest.approx(10.0, abs=0.011)
+
+
+def test_drawer_normal_variants_are_not_flagged():
+    """Codex review: (a) a lift on a plateau then forward motion while raised (pull end stays at 7 s); (b) a pull that
+    descends 2 cm while pulling, then a return lifted 4 cm above the final contact height; (c) after lifting, moving
+    sideways away from the handle, lowering and returning 10 cm (not at the drawer front: review, not suspect)."""
+    base = [(0, START), (2.5, (0.49, -0.10, 0.53)), (3.0, (0.49, -0.10, 0.53))]
+    wp = base + [(7.0, (0.46, 0.20, 0.51)), (8.0, (0.46, 0.20, 0.60)), (9.0, (0.46, 0.25, 0.60)),
+                 (12.0, (0.48, 0.02, 0.60)), (13.0, (0.49, 0.01, 0.60))]
+    res = O.check_drawer(signals(*_path(wp)))
+    assert {f["severity"] for f in res["flags"]} == {"info"} and res["phases"]["pull_rows"][1] == pytest.approx(700, 2)
+    wp = base + [(7.0, (0.46, 0.20, 0.51)), (8.0, (0.46, 0.20, 0.55)), (11.0, (0.48, 0.02, 0.55)),
+                 (12.0, (0.49, 0.01, 0.55))]
+    res = O.check_drawer(signals(*_path(wp)))
+    assert {f["severity"] for f in res["flags"]} == {"info"}
+    wp = base + [(7.0, (0.46, 0.20, 0.51)), (8.0, (0.46, 0.20, 0.60)), (9.0, (0.60, 0.20, 0.60)),
+                 (10.0, (0.60, 0.20, 0.51)), (12.0, (0.60, 0.10, 0.51)), (13.0, (0.60, 0.10, 0.6))]
+    res = O.check_drawer(signals(*_path(wp)))
+    assert {f["code"] for f in res["flags"] if f["severity"] != "info"} == set()  # sideways: outside the corridor
+    wp = base + [(7.0, (0.46, 0.20, 0.51)), (8.0, (0.46, 0.20, 0.60)), (9.0, (0.46, 0.10, 0.60)),
+                 (10.0, (0.46, 0.10, 0.51)), (12.0, (0.46, 0.0, 0.51)), (13.0, (0.46, 0.0, 0.6))]
+    res = O.check_drawer(signals(*_path(wp)))
+    f = {x["code"]: x for x in res["flags"]}
+    assert f["low_backward_motion_away_from_front"]["severity"] == "review"
+    assert "push_back_at_handle_height" not in f
 
 
 def test_drawer_without_a_pull_needs_review():
@@ -191,7 +244,8 @@ def test_scan_decisions_labels_and_report(tmp_path):
     # flags never change the label: every episode stays a success
     doc = O.outcome_labels(sorted(rep["episodes"]), ending_report=rep)
     assert all(v["outcome"] == "success" for v in doc["episodes"].values()) and doc["flags_change_labels"] is False
-    assert doc["episodes"]["drawer-open/episode_000002"]["ending_flags"] == ["push_back_at_handle_height"]
+    assert doc["episodes"]["drawer-open/episode_000002"]["ending_flags"] == ["push_back_at_handle_height",
+                                                                         "contact_torque_while_moving_back"]
     assert O.load_outcomes(doc) == {ep: True for ep in rep["episodes"]}
     assert O.load_outcomes({"a/b": True}) == {"a/b": True}
     with pytest.raises(ValueError, match="booleans"):

@@ -403,7 +403,7 @@ def realworld_classes(interface: dict, steps: int | None, locator, caps: dict | 
     split = json.loads(Path(interface["split_manifest"]).read_text()) if interface.get("split_manifest") else None
     check_gate(open_store(locator), interface.get("gate_report"), steps=steps, split=split,
                target=interface.get("target"), caps=caps, consumer=consumer,
-               smoke_without_calibration=bool(interface.get("smoke_without_calibration")))
+               smoke_without_calibration=interface.get("smoke_without_calibration") is True)  # literal True only
     return {"sincro": RealworldSinCroWindows, "reviwo": RealworldReViWoStates, "dynamo": RealworldDynaMoWindows,
             "mvp3d": RealworldMVPTimeSteps, "snerl": RealworldSNeRLScenes,
             "sincro_forward": sincro_forward_per_sample_cameras}

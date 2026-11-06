@@ -93,8 +93,11 @@ transitions, so the viewpoint is drawn per training sample. Every index of the o
 next observation lies in that one camera's timeline, which the test asserts. Single-view timelines are each camera's
 own native frames (observation, proprio and action share that camera's timestamps). The camera is therefore drawn
 with probability proportional to its valid transitions; measured on all 200 recordings (2026-11-06): 1/3 each to four
-decimals (drawer-open 14,743 / 14,745 / 14,743, mug-hanging 22,427 / 22,427 / 22,426 transitions per camera). Multi-view conditions use the
-synchronised steps. Each step is timestamped at its LATEST constituent frame, so no camera image is newer than the
+decimals (drawer-open 14,743 / 14,745 / 14,743, mug-hanging 22,427 / 22,427 / 22,426 transitions per camera).
+Single-view conditions (and `e2e_cnn`) depend on no cross-camera sync, only on each camera's robot <-> camera sync
+(nearest robot sample <= 6.2 ms on every frame, PREP2). Multi-view conditions use the synchronised steps of criterion
+M5 (`docs/realworld_baselines.md`, "sync_index": mutual nearest frames without a time cap, robot-surface motion
+<= 5 mm). Each step is timestamped at its LATEST constituent frame, so no camera image is newer than the
 proprioception and the start of the action interval. Without this, a camera 6.6-22.9 ms after the reference would see
 commands already inside the labelled action (Codex review).
 
@@ -188,13 +191,16 @@ indices). Image evidence is reserved for episodes the robot data cannot decide (
 `review_sheet` tiles first / event / final colour frames of every camera from the original HDF5).
 
 - **drawer-open.** The pull runs from the minimum of the flange along the drawer axis (principal horizontal
-  direction, within 18 deg of base +y on every recording) to the end of the FIRST completed pull (the running maximum
-  up to the first 5 cm step back or 3 cm rise; later motion of a disengaged arm never redefines it). Handle height =
-  the 90th percentile of the flange height while pulling forward. Push-back = more than 5 cm of backward travel along
-  the axis inside ANY interval after the pull end with the flange below handle height + 3 cm (also after lifting off
-  and coming back down; `back_at_handle_m`), or an external torque while moving back that reaches half of the pull's
-  contact level above free motion. Every drawer-open operator returns about 60 % of the pull toward the start pose
-  above the open drawer; that is recorded as information (`return_toward_start`), not as a reversal.
+  direction, within 18 deg of base +y on every recording) to the end of the FIRST completed pull: the last forward
+  progress (>= 1 mm) before a 5 cm step back or a 3 cm rise above the height at that progress (the contact height); a
+  plateau or a lift never advances it, later motion never redefines it. Push-back = more than 5 cm of backward travel
+  inside the handle corridor (below contact height + 3 cm, within 5 cm laterally of the handle) starting at the
+  drawer front (within 3 cm), in ANY corridor interval after the pull (also after lifting off and coming back down):
+  `reversal_suspected`, unless the external torque during that travel shows free motion (geometry and torque
+  disagree: `needs_image_review`); corridor travel away from the front is reviewed unless the torque shows contact.
+  Also suspect: an external torque while moving back that reaches half of the pull's contact level above free motion.
+  Every drawer-open operator returns about 60 % of the pull toward the start pose above the open drawer; that is
+  information (`return_toward_start`).
 - **mug-hanging.** Holds are the runs of gOBJ 2, merged across a flicker shorter than 1 s in which the fingers never
   opened (register within 20 of the holding level); a release opens the fingers, so a hang and a later re-grasp are
   separate holds even when the command never drops below 0.5. The hang release ends the last hold. Flagged: ending
@@ -206,8 +212,9 @@ indices). Image evidence is reserved for episodes the robot data cannot decide (
 **Result on all 200 recordings** (local raw HDF5, 2026-11-06 12:01; full report
 `/home/ws/ws/realworld-ops/fql2/ending_report.json`, compact `docs/realworld_ending_flags.json`): drawer-open
 100 no_reversal, 0 suspected, 0 review; mug-hanging 100 no_reversal, 0 suspected, 0 review. Closest margins:
-the largest backward travel at handle height is 3.6 cm (drawer-open/episode_000059; threshold 5 cm), the largest
-backward contact fraction is 0.41 (threshold 0.5; torque decisive on 96 of 100). Information
+the largest backward travel from the drawer front in the handle corridor is 3.3 cm (drawer-open/episode_000015;
+threshold 5 cm), away from the front 2.3 cm (episode_000068), the largest backward contact fraction is 0.41
+(threshold 0.5; torque decisive on 96 of 100). Information
 flags: `return_toward_start` 100 drawer-open / 33 mug-hanging; mug-hanging/episode_000018 closes the open gripper for
 0.09 s after the hang release without object contact (robot rows 1240-1249, frames 184-186) and reopens. Every
 mug-hanging recording has exactly one hold (episode_000056's two gOBJ runs are a 0.32 s flicker with the fingers
@@ -338,6 +345,48 @@ the e2e build is CPU work (1 / 8). Pretraining resources are the campaign's Meta
 | gate | 100-episode gate + per-consumer calibration hold, set_stage contract tested | CAL's `calibration_validated` records; gate passes |
 | launch | 66 planned rows, role-classified, not registered | coordinator registration with the pinned release |
 
+## Cross-camera sync criterion M5 (coordinator decision 2026-11-06; PREP2's review)
+
+Evidence: `/home/ws/ws/realworld-ops/pre/reviews/sync-criterion-20261106.{md,json,analyze.py}` (PREP2). The cameras are
+free-running; per-recording offsets are constant and reach half a period; the former raw time caps were chosen on
+single recordings without motion evidence and left 12 mug-hanging and 16 drawer-open recordings without any complete
+3-camera set. Robot-surface motion within a set's time spread: p95 typically 1.8-3.9 mm, worst 7.0 mm (about 1 px at
+128 px; below the 7.8 mm held-out geometric residual).
+
+**Implemented (multi-view consumers):** `train_store.mutual_sync` pairs mutual nearest frames with no time cap;
+`set_surface_motion` stores, per set, the largest displacement of the robot's URDF surface (the stage's
+`RobotGeometry`, 300 points per link) between any two members, robot state interpolated to each member's timestamp
+(`inf` when a member has no valid robot state); `sync/surface_disp_m` + attributes (criterion, pairing, surface, default
+threshold, per-episode counts: complete / accepted / rejected for motion / rejected without robot state) and the stage
+summary `sync` (copied to the manifest by `manifest_fields`). Loaders filter with a configurable threshold, default
+5 mm: `RealworldWindowDataset(max_set_motion_m=...)` (our method) and `rwlearn.store.sync_index(max_set_motion_m=...)`
+(baselines, multi-view FQL). Stores without the motion (schema < 1.1.0) are refused unless `sync_criterion="time"` is
+asked for explicitly. `train_data` writer version 1 -> 2, schema 1.0.0 -> 1.1.0 (`train_data@2`,
+`s4d.realworld.train/1.1.0`): a new stage fingerprint, so the dispatcher re-exports `train_data` for every episode
+(depth, masks and tracks are reused; one re-export together with the calibration revision if timing allows). The
+`train_data` key `max_sync_ns` (30 ms mug-hanging config, 20 ms drawer-open template) is now ONLY the per-camera
+robot <-> camera tolerance (unchanged values; nearest robot sample <= 6.2 ms everywhere).
+
+**Single-view consumers** (FQL single view, e2e CNN + FQL, DynaMo) use each camera's own frames and robot sync; tested
+to be identical whether every set is accepted or rejected.
+
+**Accepted sets / windows (M5, 5 mm; this implementation on the raw recordings, every frame in one TrackEverything
+window as in PREP2's count, `/home/ws/ws/realworld-ops/fql2/m5_counts_raw.json`):** mug-hanging 22,429 of 22,563
+complete sets, 43,562 windows (PREP2: 22,431 / 43,566; largest per-episode difference 1 set / 4 windows, the stage's
+denser surface sampling finds slightly larger maxima); drawer-open 14,850 of 14,850 sets, 29,036 windows (identical).
+No recording is left without windows (former caps: 12 + 16). Agreement test on mug-hanging 45, 50, 55, 1 and
+drawer-open 11, 0 (`tests/test_realworld_sync_m5.py`, local raw data only).
+
+**Contract checks (`ops/inference_server/contract_checks.py`, PREP2's file; not changed here).** Needed: check each
+consumer family under its own requirement. (1) Multi-view family: `RealworldWindowDataset(..., max_set_motion_m=0.005)`
+(default; needs the re-exported store) and the SNeRL scenes from the store's M5 sets (`CompactStore.sync_sets` +
+threshold) instead of `depth_stages.frame_sets(configured_sets_policy(...))`, which still applies the old
+`train_data.max_sync_ns` as a cross-camera cap and finds no set on mug-hanging 45-56. (2) Single-view family: per
+camera, the frame count, `robot/ok` fraction and the `rwlearn.transitions.timelines(multiview=False)` transitions. (3)
+Report both families separately (`report["multiview"]`, `report["singleview"]`) and let an empty multi-view split
+(the `ValueError("empty split train")` from `RealworldWindowDataset`) mark only the multi-view family as failed instead
+of aborting the whole check; the episode's single-view eligibility must not depend on it, and vice versa.
+
 ## Review of the decisions branch (Codex gpt-6.1-sol xhigh, read-only, on e4c137f) and what changed
 
 No mismatch was found in the IMPALA layer order, initialisation, pooling, flattening, normalisation, augmentation or
@@ -358,6 +407,14 @@ match the documentation; no frozen-encoder or Meta-World SNeRL regression. Findi
 - **Low: an open hold excused a missing / unknown aggregate status.** The aggregate must equal set_stage's.
 
 The real-data result is unchanged after the detector changes (200 / 200 no_reversal).
+
+A second, targeted Codex pass on 04cd272 confirmed fixes 2, 4, 6, 7 and 8 and found the rest incomplete or new
+regressions, all fixed afterwards: the smoke opt-in accepts only a literal `True` (the string "false" was truthy); the
+pull end advances only on >= 1 mm forward progress and its contact height is the height at that progress (a plateau
+lift no longer raises it; a pull descending while pulling and then a lifted return is no longer flagged); push-back
+needs the handle corridor and the drawer front (a lowered motion elsewhere is reviewed, not suspected); the mug merge
+reference is the run right before each gap; the release row maps the first gripper sample after the hold; the merge
+test uses a sub-second gap and checks both outcomes.
 
 ## Review (Codex gpt-6.1-sol xhigh, read-only, on eeaafb2) and what changed
 

@@ -316,7 +316,7 @@ def short_run_allowed(consumer: str | None, steps, short_run_steps: int, smoke_w
     that an unvalidated calibration never reaches a geometric run by default."""
     if steps is None or steps > short_run_steps:
         return False
-    return not consumer_info(consumer).geometry or bool(smoke_without_calibration)
+    return not consumer_info(consumer).geometry or smoke_without_calibration is True  # a literal True, never "false"
 
 
 def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: dict | None = None,
