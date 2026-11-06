@@ -24,7 +24,9 @@ equivalence tests inject the official draws.
 
 The optional ``encoder`` (official: one encoder instance per network, ``config['encoder']``) is a factory returning an
 ``nn.Module`` that maps an observation (tensor or dict) to a flat vector; each of critic / BC flow / one-step flow gets
-its own instance, the target critic a copy of the critic's (as the official ModuleDict does).
+its own instance, the target critic a copy of the critic's (as the official ModuleDict does). The official
+``impala_small`` pixel encoder is ported in ``s4d.rwlearn.pixel`` (equivalence with an official pixel agent:
+tests/test_rwlearn_pixel.py).
 """
 
 from __future__ import annotations
@@ -349,10 +351,21 @@ class FQLAgent:
 # ---------------------------------------------------------------------------------------------- official parameters
 _OFFICIAL_MODULES = {"critic": "modules_critic/value_net", "target_critic": "modules_target_critic/value_net",
                      "actor_bc_flow": "modules_actor_bc_flow/mlp", "actor_onestep_flow": "modules_actor_onestep_flow/mlp"}
+# official parameter prefix of each network's encoder (agents/fql.py :196-232: the BC-flow encoder is registered once,
+# as ``actor_bc_flow_encoder``, and shared with ``actor_bc_flow``)
+_OFFICIAL_ENCODERS = {"critic": "modules_critic/encoder", "target_critic": "modules_target_critic/encoder",
+                      "actor_bc_flow": "modules_actor_bc_flow_encoder",
+                      "actor_onestep_flow": "modules_actor_onestep_flow/encoder"}
 
 
 def _official_slots(agent: FQLAgent):
-    """(official flat name, torch tensor, ensemble member or None, kind) for every official parameter."""
+    """(official flat name, torch tensor, ensemble member or None, kind) for every official parameter (encoders
+    with an ``official_slots`` layout, e.g. ``s4d.rwlearn.pixel.ImpalaEncoder``, included)."""
+    for name, prefix in _OFFICIAL_ENCODERS.items():
+        enc = getattr(getattr(agent, name), "encoder", None)
+        if enc is not None and hasattr(enc, "official_slots"):
+            for key, tensor, kind in enc.official_slots(prefix):
+                yield key, tensor, None, kind
     for name, prefix in _OFFICIAL_MODULES.items():
         module = getattr(agent, name)
         if isinstance(module, Value):
@@ -382,7 +395,7 @@ def load_official_params(agent: FQLAgent, flat: dict) -> None:
     for key, tensor, member, kind in _official_slots(agent):
         arr = torch.as_tensor(flat[key])
         arr = arr[member] if member is not None else arr
-        tensor.copy_(arr.T if kind == "kernel" else arr)
+        tensor.copy_(arr.T if kind == "kernel" else arr.permute(3, 2, 0, 1) if kind == "conv_kernel" else arr)
         used.add(key)
     extra = set(flat) - used
     if extra:
@@ -394,7 +407,8 @@ def export_official_params(agent: FQLAgent) -> dict:
     """Inverse of ``load_official_params`` (numpy arrays in the official layout)."""
     out: dict[str, list] = {}
     for key, tensor, member, kind in _official_slots(agent):
-        arr = (tensor.T if kind == "kernel" else tensor).detach().cpu().numpy()
+        arr = (tensor.T if kind == "kernel" else tensor.permute(2, 3, 1, 0) if kind == "conv_kernel"
+               else tensor).detach().cpu().numpy()
         if member is None:
             out[key] = arr
         else:

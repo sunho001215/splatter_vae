@@ -206,3 +206,34 @@ def test_rewards_masks_and_terminals(raw):
     # observation histories restart (pad) at the start of the second segment
     h = T.history_indices(tl.run, np.array([brk + 1, brk + 2, brk + 3]))
     assert h.tolist() == [[brk + 1] * 3, [brk + 1, brk + 1, brk + 2], [brk + 1, brk + 2, brk + 3]]
+
+
+def test_user_decision_contract_is_command_based_delta_pose_with_a_continuous_gripper(raw):
+    """User decision 2026-11-06 ~11:20 (do not re-ask): action/flange_pose = the pose command actually SENT; the action
+    is the command-based base-frame delta pose (NOT a measured displacement) + the CONTINUOUS gripper command (NOT
+    binarised). Pins the definition used by every FQL condition (fql_data.build_fql_dataset -> transitions)."""
+    contract = A.contract_for(raw)
+    assert "sent command" in contract.source and "action/flange_pose" in contract.source
+    assert "measured" in contract.reference and contract.version == "rwlearn-action-v1"
+    serial = raw.serials[0]
+    cam = raw.cameras[serial]
+    tab = A.step_table(raw, cam["t"], cam["segment"], nominal_period_s=contract.nominal_period_s)
+    ok = np.flatnonzero(tab.transition_ok)
+    last = np.array([np.flatnonzero(raw.robot_t < cam["t"][k + 1])[-1] for k in ok])
+    ref = np.array([np.flatnonzero(raw.robot_t <= cam["t"][k])[-1] for k in ok])
+    np.testing.assert_allclose(tab.action_phys[ok, :3], raw.command[last, :3] - raw.measured[ref, :3], atol=1e-12)
+    nxt = np.array([np.flatnonzero(raw.robot_t <= cam["t"][k + 1])[-1] for k in ok])
+    measured_disp = raw.measured[nxt, :3] - raw.measured[ref, :3]
+    assert np.median(np.linalg.norm(tab.action_phys[ok, :3] - measured_disp, axis=1)) > 0.01  # not displacement
+    g = tab.action_phys[ok, 6]
+    np.testing.assert_array_equal(g, raw.gripper_command[last])  # the recorded closure command itself
+    partial = (g > 0.02) & (g < 0.98)
+    assert partial.any()  # the ramp of the recorded command: intermediate closures exist and are kept
+    norm = contract.normalise(tab.action_phys[ok])
+    np.testing.assert_allclose(norm[:, 6], 2 * g - 1, atol=1e-12)
+    assert ((norm[:, 6] > -0.96) & (norm[:, 6] < 0.96)).any()
+    out = A.to_robot_command(A.matrix_to_pose7(tab.measured_pose[ok]), norm, contract)  # default: continuous
+    np.testing.assert_allclose(out["gripper_closure"], g, atol=1e-12)
+    tr = T.episode_transitions(raw, T.Timeline(serial, cam["t"], cam["segment"], np.zeros(len(cam["t"]), int),
+                                               np.arange(len(cam["t"]))[:, None], [serial]), contract)
+    np.testing.assert_allclose(tr["action"][ok, 6], (2 * g - 1).astype(np.float32), atol=1e-6)

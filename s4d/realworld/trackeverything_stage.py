@@ -111,6 +111,33 @@ def query_chunks(out, *, q, indices, clip_start, query_slice, timestamps_ns, K, 
     return t2d, t3d
 
 
+def te_provenance(models: list[dict], runner, spec) -> dict:
+    """What pins one camera's TrackEverything outputs (2026-11-06, user decision item 3): the s4d source (runner),
+    the upstream commit and checkpoint sha256 of every clip, the torch.hub checkpoints, the seed and the distinct
+    hardware/runtime identities (GPU, driver, CUDA, cuDNN, torch, flags) reported by the worker. The stage config (also
+    in the record and fingerprinted) holds the inference parameters. Clips served from a chunk store written before the
+    worker reported ``runtime`` are counted, never back-filled."""
+    called = [m for m in models if "skipped" not in (m.get("meta") or {})]  # no supported birth: TE never called
+    runtimes, seen, missing = [], set(), 0
+    for m in called:
+        rt = (m.get("meta") or {}).get("runtime")
+        if rt is None:
+            missing += 1
+            continue
+        key = json.dumps(rt, sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key)
+            runtimes.append(rt)
+    return {"source": runner.describe() if hasattr(runner, "describe") else None,
+            "expected_commit": spec.expected_commit, "commits": sorted({m.get("commit") for m in called} - {None}),
+            "checkpoint": spec.checkpoint,
+            "checkpoint_sha256": sorted({m.get("checkpoint_sha256") for m in called} - {None}),
+            "seeds": sorted({rt.get("seed") for rt in runtimes} - {None}), "runtime": runtimes,
+            "clips_called": len(called), "clips_without_runtime": missing,
+            "inference": "normal fast GPU inference (no deterministic mode); identical inputs reproduce up to GPU "
+                         "kernel nondeterminism (accepted <= 0.12 px / 0.17 mm, 2026-11-06)"}
+
+
 def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
                      window=16, step=8, grid_stride=16, model_hw=(384, 512), num_iters=3, force=False):
     """Write ordinary ``track2d`` and ``lift3d`` stages using single-camera TE clips.
@@ -228,7 +255,8 @@ def track_everything(root: Path, episode_id: str, spec, runner, *, depth_stage,
                 for code, label in STATUS.items():
                     counts[label] += int((t3d["status"] == code).sum())
             summary[cam] = {"chunks": files, "model": models[0] if models else {}, "clips": models,
-                            "status_counts": counts, **birth_counts, "T_cam_base": T.tolist()}
+                            "status_counts": counts, **birth_counts, "T_cam_base": T.tolist(),
+                            "provenance": te_provenance(models, runner, spec)}
         return summary
 
     t2d = rio.run_stage(directory, stage="track2d", version=VERSION, config=config, inputs=inputs,

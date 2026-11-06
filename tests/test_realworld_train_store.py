@@ -508,3 +508,48 @@ def test_visualization_geometry_store_is_compact_native_depth(built):
     np.testing.assert_array_equal(K2, K)
     with h5py.File(built["tmp"] / "vis" / FILE, "r") as f:
         assert f["cameras/rig1/depth"].dtype == np.uint16 and "w2c" in f["cameras/rig1"]
+
+
+def test_store_records_m5_sets_and_the_loader_filters_by_robot_motion(built, tmp_path):
+    """Criterion M5 (coordinator decision 2026-11-06): mutual nearest sets without a time cap, the per-set robot-surface
+    motion stored once, the loader's configurable threshold (default 5 mm), counts recorded in the store and the stage
+    summary; the train_data version is bumped so every episode is re-exported."""
+    import shutil
+
+    assert TS.WRITER_VERSION == "2" and TS.SCHEMA_VERSION == "1.1.0" and TS.MAX_SET_MOTION_M == 0.005
+    s = built["rec"]["summary"]
+    assert s["sync"]["criterion"] == "M5" and s["sync"]["max_set_motion_m"] == 0.005
+    assert TS.manifest_fields(built["rec"])["sync"] == s["sync"]
+    path = built["tmp"] / "store" / TS.FILE
+    with h5py.File(path, "r") as f:
+        sg = f["sync"]
+        disp, frames = sg["surface_disp_m"][:], sg["frames"][:]
+        assert disp.dtype == np.float64 and disp.shape == (len(frames),)  # counts and loaders compare the same values
+        assert sg.attrs["criterion"] == "M5" and sg.attrs["cross_camera_cap_ns"] == -1
+        assert json.loads(sg.attrs["counts"]) == {k: v for k, v in s["sync"].items() if k != "criterion"}
+        assert int(f.attrs["max_sync_ns"]) == int(sg.attrs["robot_sync_max_ns"])  # robot <-> camera tolerance only
+    complete = (frames >= 0).all(1)
+    assert s["sync"]["complete_sets"] == int(complete.sum())
+    assert s["sync"]["accepted"] == int((complete & (disp <= 0.005)).sum())
+    full = _dataset(built)
+    assert full.counts["sync_criterion"] == "M5" and full.counts["accepted_sets"] <= full.counts["complete_sets"]
+    moving = disp[complete & np.isfinite(disp)]
+    assert (moving > 0).any()  # the synthetic robot moves
+    try:  # a threshold below the smallest moving set keeps only the still sets (possibly none: no window at all)
+        strict = _dataset(built, max_set_motion_m=float(moving[moving > 0].min()) / 2)
+        assert strict.counts["accepted_sets"] < full.counts["accepted_sets"] and len(strict) < len(full)
+    except ValueError as exc:
+        assert "empty split" in str(exc)
+    with pytest.raises(ValueError, match="only for stores without"):
+        _dataset(built, sync_criterion="time")
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    shutil.copy(path, legacy / TS.FILE)
+    with h5py.File(legacy / TS.FILE, "a") as f:
+        del f["sync/surface_disp_m"]
+    with pytest.raises(ValueError, match="re-export"):
+        with pytest.warns(UserWarning):
+            RealworldWindowDataset([legacy / TS.FILE], split="all")
+    with pytest.warns(UserWarning):
+        old = RealworldWindowDataset([legacy / TS.FILE], split="all", sync_criterion="time")
+    assert len(old) > 0 and old.counts["sync_criterion"] == "time"

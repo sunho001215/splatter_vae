@@ -169,11 +169,15 @@ colour grid of each rig. Depth, tracks, masks and the export all live on that gr
   `foundation_stereo_worker.py` task `ir_pair_disparity`): FoundationStereo (pinned commit and ViT-L checkpoint
   `23-51-11`) on the device-rectified IR pair at native 640x480 (InputPadder 32, unpadded), grayscale replicated to 3
   channels as model input only. Left-referenced disparity `d = x_left - x_right`, right-referenced disparity by
-  flip-and-swap (stored diagnostics: `disparity_left`, `lr_error`, `ir_valid` on the IR grid); depth
+  flip-and-swap (left-right error and IR validity summarised per stream in the stage summary); depth
   `z = fx_ir * B / d` with the recorded baseline; invalid where `d <= min_disparity`, the match leaves the right
   image, or `z` is outside [`min_depth_m`, `max_depth_m`]. The IR-left frame is the native-depth frame, so the IR
-  depth is registered to the colour grid with exactly the `sensor_depth` registration (z-buffer, same splat) and the
-  winning IR pixel is stored (`source_index`). A failed model output is an error; native depth is never substituted.
+  depth is registered to the colour grid with exactly the `sensor_depth` registration (z-buffer, same splat). A failed
+  model output is an error; native depth is never substituted. Output layout 2 (2026-11-06): only `depth` and `valid`
+  are persisted; layout 1 also stored per-pixel diagnostics (`source_index` on the colour grid; `disparity_left`,
+  `lr_error`, `ir_valid` on the IR grid; ~9 MB per three-camera frame) that no retained consumer reads. The
+  computation version (fingerprint) is unchanged, so layout-1 outputs remain valid and are compacted in place by the
+  operational repack (`output_layout` and the repack provenance in the completion record).
   The IR contract requires `T_right_left[0,3] < 0` for the positive left-minus-right disparity convention.
 
 All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-z metres, `valid` bool, and attrs
@@ -181,9 +185,12 @@ All depth stages use `<stage>/<safe stream>.h5`: `depth` (N,H,W) float32 camera-
 `default_depth_stage(meta, "lift")` is `foundation_stereo_depth`; the standard config also names both explicitly
 (`calibrate.depth_stage`, `track_everything.depth_stage`, `export.depth_stage`).
 
-Synchronized frame sets (`depth_stages.frame_sets`; viewer and contract checks) pair every frame exactly once within
-the tolerance, or, with mutual pairing (`allow_unmatched`), list unmatched frames. The policy of a root comes from its
-`pipeline.yaml`: the export's `max_sync_ns` with mutual pairing, otherwise strict (`configured_sets_policy`).
+Multi-view frame sets of the viewer and the contract checks (`depth_stages.episode_frame_sets`) are the training
+store's M5 sets whenever the root has a store (`store_sets`: mutual nearest frames of every camera, no time cap,
+accepted iff the robot surface moved <= `train_store.MAX_SET_MOTION_M`, default 5 mm; one source of truth with
+the loaders). `stages.train_data.max_sync_ns` is only the robot <-> camera tolerance, never a cross-camera cap. Roots
+without a store (legacy window-export roots) keep the export's explicit `max_sync_ns` with mutual pairing
+(`frame_sets(allow_unmatched=True)`), otherwise strict 1:1 pairing (`configured_sets_policy`).
 Image resize/crop uses explicit continuous-coordinate pixel affines; depth uses nearest-neighbour sampling.
 Server worker settings explicitly override interpreter, repo and checkpoint paths for remote runs; adapter and output
 paths remain on the host.
@@ -333,13 +340,17 @@ build ids of ingest, the depth stage, calibrate, track2d, lift3d, track_motion a
   `track_motion` tracks only: per TrackEverything query window the frames, and per track the camera-local id, base-frame
   xyz float32 bitwise from lift3d, status, motion segment, visibility, confidence). Frames: one per gzip chunk; every
   array is lossless (gzip, shuffle for multi-byte types).
-- **Sync** (`sync/`): over the reference (first) camera, the mutual nearest frame of every camera within `max_sync_ns`
-  (-1 otherwise; the `frame_sets(allow_unmatched=True)` rule), the offsets, and per set the reference-time gripper points'
-  2 cm depth test against each camera's NATIVE depth (the export's gripper visibility; 32 bits per camera and set).
-  `robot/` keeps the recorded trajectory. No dense XYZ, no window copies, no DINO features.
+- **Sync** (`sync/`, `train_data@2`, schema >= 1.1.0): over the reference (first) camera, the mutual nearest frame of
+  every camera with no cross-camera time cap (-1 when no mutual match exists), the timestamp offsets, and
+  `surface_disp_m` (maximum robot-surface motion across the set; infinity when robot state is unavailable).
+  Consumers accept M5 sets iff that motion is <= 5 mm (`train_store.MAX_SET_MOTION_M`). `max_sync_ns` bounds only
+  per-camera robot-state synchronization. Per set, reference-time gripper points undergo the 2 cm depth test against
+  each camera's NATIVE depth (the export's gripper visibility; 32 bits per camera and set). `robot/` keeps the recorded
+  trajectory. Old stores without `surface_disp_m` are refused by M5 consumers; the window loader supports their
+  former time criterion only with explicit `sync_criterion="time"`. No dense XYZ, window copies or DINO features.
 - **Our method** (`RealworldWindowDataset`): the former export's batch contract (validate_batch per item) at 128x128.
   Windows `(t, t+s, t+2s)` on the reference timeline under the export's rules (robot state valid, every camera
-  synchronised, all three frames of a camera in one query window, the latest) plus one recording segment per camera and
+  in accepted M5 sets, all three frames of a camera in one query window, the latest) plus one recording segment per camera and
   window, and EVERY reference step inside the window span at most `max_gap_factor` periods (no window over a pause or a
   dropped reference frame; the export checked only the sampled frames); strides and `validation_tail_frames` are loader
   settings. Cameras may have different frame counts (dropped colour frames without a stereo record): the sync table
@@ -409,8 +420,9 @@ regenerable.
 
 ### 4.6b Viewer (`viewer_data.py`, `scripts/realworld_viewer*.py`)
 
-The viewer uses the root's `pipeline.yaml` frame-set policy (the export's `max_sync_ns` with mutual pairing), and
-otherwise requires strict pairing. Multi-camera playback contains only synchronized sets; unmatched frame indices are
+The viewer uses the root's multi-view sets (`episode_frame_sets`: the training store's M5 sets; legacy roots: the
+export's `max_sync_ns` with mutual pairing, otherwise strict pairing). Multi-camera playback contains only
+synchronized sets; unmatched frame indices are
 reported by `viewer_data.describe()`. Point clouds come from a named depth source (`--source NAME=ROOT:STAGE:LABEL`,
 e.g. `foundation_stereo_depth`); trails show `track_motion`-moving tracks only.
 
@@ -524,7 +536,8 @@ python -m s4d.realworld.cli run --config configs/realworld/mug_hanging.yaml --ep
 python -m s4d.realworld.cli status --root <output_root> --episode <id>
 # Same stages with every compute call in the inference container (single episode; re-running resumes)
 python -I ops/inference_server/run_episode.py --pipeline configs/realworld/mug_hanging.yaml --server configs/realworld/inference_server.yaml --episode <id> [--output-root <new root>] [--stages a,b] [--force-stage s]
-# Data/model contract checks on the export (inference only)
+# Data/model contract checks per consumer family (inference only): report["singleview"] (per-camera frames, robot
+# sync, rwlearn single-view transitions; CPU) and report["multiview"] (M5 windows, forward, SNeRL scenes from M5 sets)
 python -I ops/inference_server/contract_checks.py --pipeline configs/realworld/mug_hanging.yaml --server configs/realworld/inference_server.yaml --episode <id> [--output-root <root>]
 # Viewer (viewer env with viser and PyYAML; CPU only, no MuJoCo): recordings + static client + index, browser check, video
 python scripts/realworld_viewer.py record --source B1=<root>:foundation_stereo_depth:"B1 IR depth" ... --episode <id> --out <dir>
@@ -602,7 +615,7 @@ ran on large-scale DROID). Historical outputs, reports and raw recordings are ke
 | Retired | Replacement / note |
 |---|---|
 | Five-way depth comparison: `ops/inference_server/run_depth_variants.py`, `depth_compare.py`, `depth_compare_variants.py`, `depth_report.py`; `s4d/realworld/diagnostics.py`; kernels `depth_set_diagnostics`, `depth_compare_v2`, `depth_compare_multi`; config keys `depth_variant`, `tracker_comparison` | the selection is the standard config (section 9 keeps the evidence); variant roots under `processed/ep1/` are historical |
-| `foundation_stereo_filtered` stage (`ir_stereo_depth.filter_stereo_depth`, E3 input) | B1 unfiltered (its `lr_error` diagnostics stay in the B1 output) |
+| `foundation_stereo_filtered` stage (`ir_stereo_depth.filter_stereo_depth`, E3 input) | B1 unfiltered (per-pixel `lr_error` no longer persisted since output layout 2; median in the stage summary) |
 | FoundationStereo RGB `stereo_disparity` worker task | `ir_pair_disparity` (IR pair only) |
 | `template_realsense` adapter (`adapters/template.py`, `configs/realworld/template_adapter.yaml`) | `panda_teleop_h5` (section 3) |
 | Episode-0 configs `mug_hanging_rgbd.yaml`, `mug_hanging_rgbd_rawdepth.yaml`; `mug_hanging_ep1.yaml` (renamed) | `configs/realworld/mug_hanging.yaml` (standard; the episode-0 recording has no IR pair and is not run through a substitute depth) |

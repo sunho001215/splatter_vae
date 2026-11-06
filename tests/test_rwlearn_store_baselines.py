@@ -206,31 +206,95 @@ def test_multiview_observation_time_is_the_latest_constituent_frame():
 
 def test_gate_evidence_required_beyond_smoke_runs():
     store = synthetic_store()
-    assert BD.check_gate(store, None, steps=100)["smoke"]
+    assert BD.check_gate(store, None, steps=100, consumer="dynamo")["smoke"]
     with pytest.raises(RuntimeError, match="no passed full-data gate"):
-        BD.check_gate(store, None, steps=300_000)
+        BD.check_gate(store, None, steps=300_000, consumer="dynamo")
     report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
-    assert not BD.check_gate(store, report, steps=None)["smoke"]
+    assert not BD.check_gate(store, report, steps=None, consumer="dynamo")["smoke"]
     eps = store.episodes()
     good = {"train": eps[:2], "validation": eps[2:]}
-    assert not BD.check_gate(store, report, steps=None, split=good, target="drawer-open",
+    assert not BD.check_gate(store, report, steps=None, split=good, target="drawer-open", consumer="dynamo",
                              caps={"max_episodes": None, "max_frames_per_demo": 3000})["smoke"]
     for split in ({"train": eps[:1], "validation": eps[2:]}, {"train": eps, "validation": eps[2:]},
                   {"train": eps[:2], "validation": eps[2:] * 2}):
         with pytest.raises(RuntimeError, match="partition"):
-            BD.check_gate(store, report, steps=None, split=split)
-    with pytest.raises(RuntimeError, match="target joint"):
-        BD.check_gate(store, report, steps=None, target="joint")
+            BD.check_gate(store, report, steps=None, split=split, consumer="dynamo")
+    with pytest.raises(RuntimeError, match="target mug-hanging"):
+        BD.check_gate(store, report, steps=None, target="mug-hanging", consumer="dynamo")
+    with pytest.raises(RuntimeError, match="unknown target"):  # task-specific encoders only: no joint target
+        BD.check_gate(store, report, steps=None, target="joint", consumer="dynamo")
     for caps in ({"max_episodes": 2}, {"max_frames_per_demo": 10}):
         with pytest.raises(RuntimeError, match="truncate"):
-            BD.check_gate(store, report, steps=None, caps=caps)
-        BD.check_gate(store, report, steps=100, caps=caps)  # smoke-length runs may cap
-    BD.check_gate(store, report, steps=None, caps={"max_episodes": 3, "num_episodes": 50})  # keeps every episode
+            BD.check_gate(store, report, steps=None, caps=caps, consumer="dynamo")
+        BD.check_gate(store, report, steps=100, caps=caps, consumer="dynamo")  # smoke-length runs may cap
+    BD.check_gate(store, report, steps=None, caps={"max_episodes": 3, "num_episodes": 50}, consumer="dynamo")
     report["tasks"]["drawer-open"]["store_episodes"] = store.episodes()[:-1]
     with pytest.raises(RuntimeError, match="differ"):
-        BD.check_gate(store, report, steps=None)
+        BD.check_gate(store, report, steps=None, consumer="dynamo")
     with pytest.raises(ValueError, match="not a real-world data interface"):
-        BD.realworld_classes({"source": "metaworld"}, 10, store)
+        BD.realworld_classes({"source": "metaworld"}, 10, store, consumer="dynamo")
+
+
+def test_trainer_hook_binds_the_gate_to_the_calling_trainer():
+    """Codex review: a geometric trainer must not be downgraded by a config that declares a non-geometric consumer."""
+    store = synthetic_store()
+    for e in store._eps.values():
+        e["upstream"] = {"calibrate": "cal-1"}
+    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
+    iface = {"source": "realworld", "gate_report": report, "target": "drawer-open"}
+    assert BD.realworld_classes({**iface, "consumer": "dynamo"}, 10**6, store, consumer="dynamo")["dynamo"]
+    with pytest.raises(ValueError, match="conflicts with the trainer"):
+        BD.realworld_classes({**iface, "consumer": "dynamo"}, 10**6, store, consumer="snerl")
+    with pytest.raises(RuntimeError, match="calibration hold"):  # no declared consumer: the trainer's identity counts
+        BD.realworld_classes(iface, 10**6, store, consumer="snerl")
+    with pytest.raises(RuntimeError, match="calibration hold"):
+        BD.realworld_classes(iface, 100, store, consumer="sincro")
+    assert BD.realworld_classes({**iface, "smoke_without_calibration": True}, 100, store, consumer="sincro")["sincro"]
+
+
+def _hold(store, build="cal-1", cams=CAMS, passed=True):
+    return {"passed": passed, "episodes": {ep: {"calibrate_build_id": build, "cameras": sorted(cams)}
+                                           for ep in store.episodes()} if passed else {}}
+
+
+@pytest.mark.parametrize("consumer", ["snerl", "mvp3d", "sincro", None, "unknown-consumer"])
+def test_geometry_dependent_consumers_need_the_validated_calibration(consumer):
+    """Calibration hold (user decision 2026-11-06, item 2): geometry-dependent (and unclassified) consumers need the
+    released hold AND a store built from each episode's validated calibrate build with only validated cameras."""
+    store = synthetic_store()
+    for e in store._eps.values():
+        e["upstream"] = {"calibrate": "cal-1"}
+    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
+    with pytest.raises(RuntimeError, match="calibration hold"):  # no hold section: held
+        BD.check_gate(store, base, steps=None, consumer=consumer)
+    with pytest.raises(RuntimeError, match="calibration hold"):  # short runs too, unless explicitly opted in
+        BD.check_gate(store, base, steps=100, consumer=consumer)
+    assert BD.check_gate(store, base, steps=100, consumer=consumer, smoke_without_calibration=True)["smoke"]
+    with pytest.raises(RuntimeError, match="calibration hold"):
+        BD.check_gate(store, {**base, "calibration_hold": {"drawer-open": _hold(store, passed=False)}}, steps=None,
+                      consumer=consumer)
+    ok = {**base, "calibration_hold": {"drawer-open": _hold(store)}}
+    res = BD.check_gate(store, ok, steps=None, consumer=consumer)
+    assert not res["smoke"] and res["geometry_dependent"]
+    with pytest.raises(RuntimeError, match="store built from calibrate"):
+        BD.check_gate(store, {**base, "calibration_hold": {"drawer-open": _hold(store, build="cal-2")}}, steps=None,
+                      consumer=consumer)
+    with pytest.raises(RuntimeError, match="no validated calibration"):
+        BD.check_gate(store, {**base, "calibration_hold": {"drawer-open": _hold(store, cams=CAMS[:2])}}, steps=None,
+                      consumer=consumer)
+    for e in store._eps.values():
+        e.pop("upstream")
+    with pytest.raises(RuntimeError, match="store built from calibrate None"):
+        BD.check_gate(store, ok, steps=None, consumer=consumer)
+
+
+@pytest.mark.parametrize("consumer", ["dynamo", "reviwo", "e2e_cnn"])
+def test_non_geometric_consumers_are_not_held_by_the_calibration(consumer):
+    store = synthetic_store()
+    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+            "calibration_hold": {"drawer-open": {"passed": False, "episodes": {}}}}
+    res = BD.check_gate(store, base, steps=None, consumer=consumer)
+    assert not res["smoke"] and not res["geometry_dependent"]
 
 
 def test_split_is_per_task_seeded_and_disjoint():

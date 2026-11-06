@@ -1,8 +1,16 @@
-# Offline Flow Q-Learning on a FROZEN real-world baseline representation (docs/realworld_fql.md). Agent: PyTorch port
-# of the official FQL (seohongpark/fql @ e8cd16e, s4d/rwlearn/fql.py), every agent value = official get_config()
-# default. Launch only through scripts/realworld_launch.py (full-data gate; remote role host). Per-run keys
-# (data.dataset, data.split_manifest, data.gate_report, condition) come from the job row.
-condition: null            # dynamo | reviwo | sincro | snerl | mvp3d_multiview | mvp3d_single (s4d/rwlearn/fql_data.py)
+# Offline Flow Q-Learning on a FROZEN real-world baseline representation, or end-to-end (e2e_cnn: random-init IMPALA
+# CNN trained jointly with FQL) (docs/realworld_fql.md). Agent: PyTorch port of the official FQL (seohongpark/fql @
+# e8cd16e, s4d/rwlearn/fql.py), every agent value = official get_config() default. Rows come only from
+# scripts/realworld_learning.py plan (full-data gate + calibration hold per consumer; remote role host). Per-run keys
+# (data.dataset, data.split_manifest, data.gate_report, condition, train.seed; data.store for e2e_cnn) come from the row.
+#
+# ACTION CONTRACT (audited, user decision 2026-11-06 ~11:20; s4d/rwlearn/actions.py, pinned by
+# tests/test_rwlearn_actions.py): a = [p_goal - p_k, rotvec(R_goal R_k^T)] / (0.07 m, 0.499 rad) with goal = the
+# recorded action/flange_pose = the pose command actually SENT (never a measured displacement), base frame
+# panda_link0, flange point; gripper = the recorded closure command c in [0, 1] mapped to 2c - 1, CONTINUOUS (never
+# binarised). One action per camera frame (1/15 s). Reward r = success(s') - 1 with success at the final observation
+# (every recording is a successful demonstration; outcomes.json).
+condition: null            # dynamo | reviwo | sincro | snerl | mvp3d_multiview | mvp3d_single | e2e_cnn
 agent:
   lr: 0.0003
   batch_size: 256
@@ -13,11 +21,14 @@ agent:
   discount: 0.99
   tau: 0.005
   q_agg: mean
-  alpha: 10.0              # official default; the paper tunes alpha per environment -> open decision (sweep proposed)
+  alpha: 10.0              # FIXED (user decision 2026-11-06): no sweep; later tuning = predefined real-robot protocol
   flow_steps: 10
   normalize_q_loss: false
 encoder:
   proj_dim: 256            # campaign frozen-encoder adapter width (FrameMLPStackHead / SmallPostEncoderMLPHead)
+pixel:                     # e2e_cnn only: the official pixel handling (README: --agent.encoder=impala_small --p_aug=0.5
+  encoder: impala_small    #   --frame_stack=3; s4d/rwlearn/pixel.py); frame stack = the shared 3-step history
+  p_aug: 0.5               # one coin per batch; random crop, edge padding 3 px, same offsets for obs and next obs
 train:
   offline_steps: 1000000   # official default
   log_interval: 5000       # official
@@ -29,6 +40,10 @@ train:
 data:
   dataset: null            # rwlearn_fql_dataset_v1 file (scripts/realworld_fql.py build)
   split_manifest: null     # {train: [...], validation: [...]} (s4d/rwlearn/store.py::split_episodes)
-  gate_report: null        # s4d/rwlearn/gate.py report; required beyond 10k steps
+  gate_report: null        # s4d/rwlearn/gate.py report; required beyond 10k steps (+ calibration hold if geometric)
+  store: null              # e2e_cnn: the training store the dataset was built from (frames read once per camera)
+  frames_device: null      # e2e_cnn: where the uint8 frames live (default: train.device)
+  action_clip_eps: 1.0e-5  # official make_env_and_datasets action clipping (envs/env_utils.py)
+  smoke_without_calibration: false  # synthetic plumbing tests only: lets a <= 10k-step GEOMETRIC run skip the hold
 wandb:
   project: splatter4d-realworld-fql

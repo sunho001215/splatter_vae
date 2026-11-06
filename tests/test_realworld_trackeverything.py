@@ -194,6 +194,48 @@ def test_stage_layout_query_grid_and_base_coordinates(run):
     assert "skipped" in records["lift3d"]["summary"]["rig2/left"]
 
 
+def test_stage_records_te_provenance_per_camera(run):
+    """Each camera entry pins the s4d source, upstream commit, checkpoint, seed and the worker's runtime identities;
+    clips whose worker reported no runtime (here: the mock) are counted, never back-filled."""
+    _, _, _, runner, records = run
+    for stage in ("track2d", "lift3d"):
+        for cam in ("rig0/left", "rig1/left"):
+            p = records[stage]["summary"][cam]["provenance"]
+            assert p["source"] == runner.describe() and p["expected_commit"] == MOCK_SPEC.expected_commit
+            assert p["clips_called"] == 3 and p["clips_without_runtime"] == 3 and p["runtime"] == []
+            assert "no deterministic mode" in p["inference"]
+        assert "provenance" not in records[stage]["summary"]["rig2/left"]  # skipped camera
+
+
+def test_worker_runtime_provenance_records_hardware_flags_hub_weights_and_seed(tmp_path, monkeypatch):
+    import hashlib
+
+    hub = tmp_path / "hub"
+    (hub / "checkpoints").mkdir(parents=True)
+    (hub / "checkpoints" / "dinov2_vits14_pretrain.pth").write_bytes(b"weights")
+    props = SimpleNamespace(name="GPU X", uuid="GPU-abc", major=9, minor=0, total_memory=80)
+    cudnn = SimpleNamespace(version=lambda: 91002, enabled=True, benchmark=False, deterministic=False, allow_tf32=True)
+    backends = SimpleNamespace(cudnn=cudnn, cuda=SimpleNamespace(matmul=SimpleNamespace(allow_tf32=False)))
+    fake = SimpleNamespace(cuda=SimpleNamespace(get_device_properties=lambda i: props),
+                           hub=SimpleNamespace(get_dir=lambda: str(hub)),
+                           _C=SimpleNamespace(_cuda_getDriverVersion=lambda: 12090),
+                           version=SimpleNamespace(cuda="12.9"), __version__="2.8.0", backends=backends,
+                           get_float32_matmul_precision=lambda: "highest",
+                           are_deterministic_algorithms_enabled=lambda: False)
+    monkeypatch.setattr(te, "_RUNTIME", {})
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-abc")
+    rt = te.runtime_provenance(fake)
+    assert rt["gpu"] == {"name": "GPU X", "uuid": "GPU-abc", "capability": [9, 0], "total_memory": 80}
+    assert rt["cuda_visible_devices"] == "GPU-abc" and rt["cuda_driver_api"] == 12090 and rt["cudnn"] == 91002
+    assert rt["torch"] == "2.8.0" and rt["cuda_runtime"] == "12.9"
+    assert rt["torch_hub_checkpoints_sha256"] == {"dinov2_vits14_pretrain.pth": hashlib.sha256(b"weights").hexdigest()}
+    assert rt["seed"] == te.SEED == 0 and rt["deterministic_mode"] is False
+    assert rt["flags"]["cudnn_benchmark"] is False and rt["flags"]["cudnn_allow_tf32"] is True
+    assert rt["flags"]["float32_matmul_precision"] == "highest" and rt["flags"]["deterministic_algorithms"] is False
+    cudnn.benchmark = True  # flags are re-read on every response, the static identity is cached
+    assert te.runtime_provenance(fake)["flags"]["cudnn_benchmark"] is True
+
+
 def test_te_inference_frames_are_the_query_windows_including_pause(run):
     """Every clip is exactly one ``pipeline.chunk_queries`` window of one camera's recorded frames (a recording pause
     included), resized as the model input; nothing else is sent."""
