@@ -262,6 +262,30 @@ def test_metaworld_command_is_byte_identical_to_before_realworld_mounts(gpu_back
     assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
 
 
+@pytest.mark.parametrize("gpu_backend,script,original_sha256", [
+    # Full commands captured from 447be17 before sharing the real-world mount rule with reconciliation.
+    ("cdi", "train.py", "3c71fb0d84db7bffe6dbbf2ea25b1b375c8d178cfbcb2e3330fdb9777c1e949e"),
+    ("cdi", "train_reviwo.py", "6c8b725b8cabfc55fa5a6785c37606be4af8c0b49378ba0b35923322928e51ac"),
+    ("cdi", "train_dynamo.py", "fb8ca7327e5f5ab8ca45eb68b145adb007b0e49a552b7d35627d9ab98753fde7"),
+    ("cdi", "realworld_fql_dataset.py", "1251451ece0d79ce46fdbdc60b0fed3cec540d4fde45d15f85dc6883e15f82ac"),
+    ("cdi", "train_realworld_fql.py", "46b6eb73c0047cac86c4f23e36d25b1ea19a2d7e5f2063a202374e550ea6d9f8"),
+    ("cdi", "realworld_preprocess.py", "685b029a307ef5b9d516322d3bf01f1798b54cf865942b84f946b19636883891"),
+    ("legacy", "train.py", "ed7238db84c45359c0d6926f3e6a3fa05dc7a11cd8f644a64e98c9739c13328f"),
+    ("legacy", "train_reviwo.py", "9f4f7b318aa2af088126b64c5e873f83be09ea9b66746e335e3873799fc7b98b"),
+    ("legacy", "train_dynamo.py", "46b87a32db95ec97161bb7593afdc59a9af0d4b155994881301ee2d5fd9b1830"),
+    ("legacy", "realworld_fql_dataset.py", "642085cae0365067d601acf32c76d5bb3ba13f682da37860d3f7f651c4aa522a"),
+    ("legacy", "train_realworld_fql.py", "cdc2a3cd622ef26b8bbd1b150153b66c97919c0f0ae08d98f79d0dff08f734cb"),
+    ("legacy", "realworld_preprocess.py", "60f79f3ae2a0cb73622ffca37b27bf36e04d268e3204abce9177a15c2e7c670a"),
+])
+def test_realworld_command_is_byte_identical_before_mount_refactor(gpu_backend, script, original_sha256):
+    spec = job_spec()
+    spec.update(gpu_backend=gpu_backend, script="scripts/" + script)
+    spec["args"] += ["--config", "configs/realworld/baselines/reviwo/drawer-open.yaml"]
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
+
+
 @pytest.mark.parametrize("script", ["train.py", "export_encoder.py", "train_reviwo.py", "train_dynamo.py",
                                    "train_sincro.py", "train_snerl.py", "train_mvp3d.py",
                                    "realworld_fql_dataset.py", "train_realworld_fql.py", "realworld_preprocess.py"])

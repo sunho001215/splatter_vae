@@ -11,17 +11,13 @@ from pathlib import Path, PurePosixPath
 
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import REMOTE_ROOT, RemoteClient, RemoteCommandError, RemoteUnreachable, sha256
-from ops.jobs.host_roles import DOMAIN, job_class
+from ops.jobs.host_roles import job_class
 from ops.jobs.remote_backend import (COTENANT_GPU_MARGIN_GB, COTENANT_LABELS, COTENANT_ROLES, OWNERSHIP_LABELS,
                                      commit_source_sha256)
 from ops.containers.verification import validate_verification, verification_artifacts, verification_output
-from s4d.rwlearn.configs import REMOTE_REALWORLD_ROOT
+from ops.containers.mounts import REALWORLD_READ_ROOTS, realworld_mounts
 
 CONTAINER_REPO = "/workspace/splatter4d"
-# Configs/store locators carry absolute paths; keep them identical inside the container. FQL dataset builds also
-# read the raw robot/action signals (fql_data.build_fql_dataset -> actions.load_raw), not just compact RGB stores.
-REALWORLD_READ_ROOTS = (f"{REMOTE_REALWORLD_ROOT}/learning_inputs", f"{REMOTE_REALWORLD_ROOT}/processed",
-                        f"{REMOTE_ROOT}/data/real_world")
 RAM_RESERVE_BYTES = 120 * 1024**3
 SHM_SIZE_BYTES = 8 * 1024**3
 DEFAULT_CPU_THREADS = 8  # per container; overridable per job with `cpu_threads`
@@ -291,8 +287,7 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               (cache, f"{CONTAINER_REPO}/.cache", False), (runtime, runtime, False),
               (acceptance, acceptance, True), (proof, proof, True),
               (data, "/home/ws/data/metaworld/splatter4d_v1", True)]
-    if DOMAIN.get(job_class(spec).cls) == "realworld":
-        mounts += [(path, path, True) for path in REALWORLD_READ_ROOTS]
+    mounts += realworld_mounts(spec)
     docker = ["docker", "run", "-d", "--name", name, "--read-only", "--pid=host", "--user", "1000:1000",
               "--oom-score-adj", str(spec["oom_score_adj"]),
               "--workdir", CONTAINER_REPO, "--init", "--shm-size", "8g"]

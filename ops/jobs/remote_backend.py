@@ -17,6 +17,7 @@ from s4d import third_party
 from ops.jobs.host_roles import DOMAIN, job_class
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import RemoteClient, RemoteUnreachable
+from ops.containers.mounts import realworld_mounts
 from ops.containers.verification import (
     POLICIES,
     canonical_arguments,
@@ -517,6 +518,11 @@ def validate_container(item: dict, run_id: str, state: dict) -> None:
         proof: (proof, False),
         "/home/ws/data/metaworld/splatter4d_v1": (f"{ROOT}/data/metaworld/splatter4d_v1", False),
     }
+    try:
+        expected_mounts.update({target: (source, not readonly)
+                                for source, target, readonly in realworld_mounts(state)})
+    except ValueError as exc:
+        raise RemoteJobError("Remote container mount role mismatch") from exc
     mounts = item.get("Mounts", [])
     if (len(mounts) != len(expected_mounts)
             or {mount.get("Destination") for mount in mounts} != set(expected_mounts)):

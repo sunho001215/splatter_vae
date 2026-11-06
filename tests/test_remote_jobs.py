@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from ops.remote import artifact_check as remote_artifact_check
+from ops.containers.mounts import REALWORLD_READ_ROOTS
 from ops.jobs import remote_backend as remote
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS
 from ops.resources.nvidia_query import QueryUnavailable
@@ -49,7 +50,7 @@ def write_queue(tmp_path, job_list, **remote_overrides):
     return path
 
 
-def inspected(run_id="r", attempt=1, status="running", code=0, gpu=REMOTE, gpu_backend="cdi"):
+def inspected(run_id="r", attempt=1, status="running", code=0, gpu=REMOTE, gpu_backend="cdi", realworld=False):
     device = f"nvidia.com/gpu={gpu}" if gpu_backend == "cdi" else gpu
     visible = "void" if gpu_backend == "cdi" else gpu
     return {"Name": f"/s4d-{run_id}-a{attempt}", "Id": CONTAINER_ID, "Image": IMAGE,
@@ -74,7 +75,8 @@ def inspected(run_id="r", attempt=1, status="running", code=0, gpu=REMOTE, gpu_b
                             f"{remote.ROOT}/releases/{COMMIT}/provenance.json", False),
                            (f"{remote.ROOT}/data/metaworld/splatter4d_v1",
                             "/home/ws/data/metaworld/splatter4d_v1", False),
-                       ]], "pids": {123}}
+                       ] + ([(root, root, False) for root in REALWORLD_READ_ROOTS] if realworld else [])],
+            "pids": {123}}
 
 
 class FakeClient:
@@ -114,7 +116,8 @@ class FakeBackend:
         current = jobs.read_registry(self.registry)[payload["id"]]
         assert current["status"] == "launching" and current["attempts"] == payload["attempt"]
         self.launches.append(payload)
-        item = inspected(payload["id"], payload["attempt"], gpu_backend=payload["gpu_backend"])
+        item = inspected(payload["id"], payload["attempt"], gpu_backend=payload["gpu_backend"],
+                         realworld=payload.get("role", "").startswith("realworld_"))
         self.value.containers[payload["container"]] = item
         if self.launch_error:
             raise self.launch_error
@@ -228,9 +231,95 @@ def test_launch_response_loss_reconciles_same_container_once(tmp_path):
     assert state["r"]["status"] == "running" and not state["r"]["unknown"]
     assert state["r"]["attempts"] == 1 and len(backend.launches) == 1
     assert state["r"]["gpu_backend"] == backend.launches[0]["gpu_backend"] == "cdi"
+    assert state["r"]["role"] == backend.launches[0]["role"] == "realworld_pretrain"
     events = [json.loads(line) for line in (tmp_path / "registry.jsonl").read_text().splitlines()]
     reconnected = [event for event in events if event["event"] == "host_reconnected"]
     assert len(reconnected) == 1 and reconnected[0]["duration_seconds"] >= 0
+
+
+def test_input_only_realworld_role_survives_launch_event_and_reconciliation(tmp_path):
+    queued = write_queue(tmp_path, [job(role=None, script="scripts/train.py",
+                                      args=["--name", "r", "--output-root", "runs"],
+                                      inputs=[remote.ROOT + "/realworld/learning_inputs/drawer-open/store.yaml"])])
+    backend = FakeBackend(tmp_path / "runs")
+    backend.launch_error = remote.RemoteUnreachable("response lost")
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert current["role"] == "realworld_pretrain" and current["unknown"]
+    assert "inputs" not in current  # the spec's role carries the classification evidence
+    backend.launch_error = None
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    assert current["status"] == "running" and not current["unknown"]
+    assert current["attempts"] == 1 and len(backend.launches) == 1
+
+
+@pytest.mark.parametrize("persisted_role", [False, True])
+@pytest.mark.parametrize("run_id,script,task,status", [
+    ("rwng-20261107-dynamo-drawer-open-pre", "train_dynamo.py", "drawer-open", "exited"),
+    ("rwng-20261107-dynamo-mug-hanging-pre", "train_dynamo.py", "mug-hanging", "exited"),
+    ("rwng-20261107-reviwo-drawer-open-pre", "train_reviwo.py", "drawer-open", "running"),
+])
+def test_realworld_mount_mismatch_unknown_recovers_same_attempt(tmp_path, monkeypatch, persisted_role,
+                                                               run_id, script, task, status):
+    baseline = "dynamo" if script == "train_dynamo.py" else "reviwo"
+    args = ["--config", f"configs/realworld/baselines/{baseline}/{task}.yaml",
+            "--name", run_id, "--output-root", "runs"]
+    queued = write_queue(tmp_path, [job(run_id, script="scripts/" + script, args=args)])
+    registry = tmp_path / "registry.jsonl"
+    launch_event(tmp_path, run_id, script="scripts/" + script, args=args,
+                 **({"role": "realworld_pretrain"} if persisted_role else {}))
+    jobs.record({"event": "unknown", "id": run_id, "host": "remote",
+                 "reason": "container identity/isolation mismatch"}, registry)
+    before = jobs.read_registry(registry)[run_id]
+    assert before["status"] == "running" and before["unknown"]
+    assert before["reason"] == "container identity/isolation mismatch"
+    backend = FakeBackend(tmp_path / "runs")
+    backend.value.containers[before["container"]] = inspected(run_id, status=status, code=0, realworld=True)
+    backend.backup_ready = False
+    original_sync = backend.sync_results
+    numeric = {"train": {"seed": 0, "steps": 10}}
+    digest = hashlib.sha256(json.dumps(numeric, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def trained(run_id, final=False, **kwargs):
+        result = original_sync(run_id, final, **kwargs)
+        path = backend.runs / run_id / "provenance.json"
+        report = json.loads(path.read_text())
+        report.update(numeric_config=numeric, config_sha256=digest)
+        data = json.dumps(report).encode()
+        path.write_bytes(data)
+        result["files"]["provenance.json"] = hashlib.sha256(data).hexdigest()
+        return result
+
+    monkeypatch.setattr(backend, "sync_results", trained)
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(registry)[run_id]
+    assert not current["unknown"] and not backend.launches
+    assert current["status"] == ("running" if status == "running" else "sync_pending")
+    if status == "running":
+        assert not backend.inspections and not backend.syncs
+    else:
+        assert current["code"] == 0 and current["remote_verified"]["attempt"] == before["attempt"]
+        assert backend.inspections == [run_id]
+        assert jobs.dependency_ready({"host": "remote"}, current)
+        assert not jobs.dependency_ready({"host": "local"}, current)
+    backend.backup_ready = True
+    tick(tmp_path, queued, backend)
+    current = jobs.read_registry(registry)[run_id]
+    assert not current["unknown"] and not backend.launches
+    assert current["status"] == ("running" if status == "running" else "done")
+    assert current["attempt"] == current["attempts"] == before["attempt"] == 1
+    assert current["attempt_since"] == before["attempt_since"] and current["failures"] == 0
+    assert current["attempt_containers"] == before["attempt_containers"]
+    assert current["container_id"] == CONTAINER_ID
+    events = [json.loads(line) for line in registry.read_text().splitlines()]
+    assert not any(event["event"] == "launching" for event in events)
+    assert sum(event["event"] == "launched" for event in events) == (2 if status == "running" else 1)
+    if status == "exited":
+        assert current["sync"]["final"] and current["sync"]["verified"]
+        assert jobs.dependency_ready({"host": "local"}, current)
+        assert {"remote_exited", "remote_verified", "results_synced", "exited"} <= {
+            event["event"] for event in events}
 
 
 @pytest.mark.parametrize("status", ["running", "exited"])
@@ -705,6 +794,67 @@ def test_container_identity_and_isolation_fail_closed(field):
     else:
         item["HostConfig"]["DeviceRequests"][0]["Options"] = {"device": "all"}
     with pytest.raises(remote.RemoteJobError, match="mismatch|outside"):
+        remote.validate_container(item, "r", state)
+
+
+@pytest.mark.parametrize("role,script,args,realworld", [
+    ("realworld_pretrain", "train_reviwo.py", [], True),
+    ("realworld_fql", "train_fql.py", [], True),
+    ("realworld_preprocess", "preprocess.py", [], True),
+    (None, "train_dynamo.py", ["--config", "configs/realworld/base.yaml"], True),
+    (None, "realworld_fql_dataset.py", ["build"], True),
+    ("metaworld", "train_dynamo.py", ["--config", "configs/metaworld/base.yaml"], False),
+    (None, "train.py", ["--config", "configs/metaworld/base.yaml"], False),
+    ("droid_pretrain", "train_dynamo.py", ["--config", "configs/droid/base.yaml"], False),
+    (None, "realworld_viewer.py", [], False),
+    (None, "train.py", [], False),
+])
+def test_container_realworld_mounts_match_launcher_role_rule(tmp_path, role, script, args, realworld):
+    launch_event(tmp_path, role=role, script="scripts/" + script, args=args)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    remote.validate_container(inspected(realworld=realworld), "r", state)
+    with pytest.raises(remote.RemoteJobError, match="mount mapping mismatch"):
+        remote.validate_container(inspected(realworld=not realworld), "r", state)
+
+
+@pytest.mark.parametrize("realworld", [False, True])
+@pytest.mark.parametrize("role,script,args", [
+    (None, "train_dynamo.py", ["--config", "configs/realworld/base.yaml", "configs/droid/base.yaml"]),
+    ("realworld_pretrain", "train_dynamo.py", ["--config", "configs/metaworld/base.yaml"]),
+    ("realworld_fql", "train_rl.py", []),
+    ("realworld_typo", "train_dynamo.py", []),
+])
+def test_container_mount_role_fails_closed(tmp_path, realworld, role, script, args):
+    launch_event(tmp_path, role=role, script="scripts/" + script, args=args)
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    with pytest.raises(remote.RemoteJobError, match="mount role mismatch"):
+        remote.validate_container(inspected(realworld=realworld), "r", state)
+
+
+@pytest.mark.parametrize("root", REALWORLD_READ_ROOTS)
+@pytest.mark.parametrize("fault", ["missing", "duplicate", "source", "destination", "writable", "volume",
+                                   "missing_permissions"])
+def test_container_realworld_mount_identity_and_permissions_fail_closed(tmp_path, root, fault):
+    launch_event(tmp_path, role="realworld_pretrain")
+    state = jobs.read_registry(tmp_path / "registry.jsonl")["r"]
+    item = inspected(realworld=True)
+    remote.validate_container(item, "r", state)
+    mount = next(mount for mount in item["Mounts"] if mount["Destination"] == root)
+    if fault == "missing":
+        item["Mounts"].remove(mount)
+    elif fault == "duplicate":
+        item["Mounts"].append(dict(mount))
+    elif fault == "source":
+        mount["Source"] += "/other"
+    elif fault == "destination":
+        mount["Destination"] += "/other"
+    elif fault == "writable":
+        mount["RW"] = True
+    elif fault == "volume":
+        mount["Type"] = "volume"
+    else:
+        mount.pop("RW")
+    with pytest.raises(remote.RemoteJobError, match="mount .* mismatch"):
         remote.validate_container(item, "r", state)
 
 

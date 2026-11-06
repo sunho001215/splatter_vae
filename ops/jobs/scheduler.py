@@ -1112,6 +1112,9 @@ def _tick(queue_path: Path, registry: Path, runs: Path, usage, available_gb, dis
                      "script": job["script"], "args": list(map(str, job.get("args", []))),
                      "job_sha256": job_fingerprint(job), "expected_config_sha256": job.get("expected_config_sha256"),
                      "mem_gb": float(job["mem_gb"]), "ram_gb": need, "disk_gb": float(job.get("disk_gb", 0))}
+            if "role" in spec:
+                # The launcher preserves input-only role evidence here; reconciliation must use the same decision.
+                event["role"] = spec["role"]
             if purpose is not None:
                 event.update(verification_purpose=purpose, campaign_eligible=False, args=spec["args"],
                              verification_timeout_seconds=spec["verification_timeout_seconds"],
