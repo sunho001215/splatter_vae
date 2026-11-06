@@ -1,11 +1,13 @@
 """Full-data gate (s4d/rwlearn/gate.py), the per-consumer calibration hold, and launch plans (s4d/rwlearn/launch.py) on
 synthetic ingestion manifests in the ``rw-ingest-manifest`` v2 schema of runs/setup/tools/realworld_ingest_20261106
-(the live manifest is not read; ingest_worker.set_stage is exercised on a temporary copy of the schema)."""
+(the live manifest is not read; ingest_worker.set_stage or its validation contract uses a temporary manifest)."""
 
 from __future__ import annotations
 
 import copy
 import hashlib
+import json
+import re
 from pathlib import Path
 
 import pytest
@@ -200,24 +202,61 @@ def test_open_hold_does_not_excuse_a_missing_or_inconsistent_aggregate(status):
     assert gate.evaluate(m, ["drawer-open"])["passed"]
 
 
+def _set_stage_contract(state_dir, key, stage, record):
+    """Validation and aggregation from runs/setup/tools/realworld_ingest_20261106/ingest_worker.py::set_stage
+    (rw-ingest-worker/2). Minimal v2-manifest adapter for checkouts without that tool."""
+    fields = {"status", "code_version", "stage_schema_version", "code_commit", "config_sha256", "input_sha256",
+              "output_format", "outputs", "started_at", "finished_at", "host", "failure", "attempt", "notes", "metrics"}
+    statuses = ("pending", "running", "done", "failed", "skipped")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,63}", stage):
+        raise ValueError("stage names are lowercase [a-z0-9_.-]")
+    unknown = set(record) - fields
+    if unknown:
+        raise ValueError(f"unknown stage fields {sorted(unknown)} (allowed {sorted(fields)})")
+    missing = [k for k in ("status", "code_version") if not record.get(k)]
+    if missing:
+        raise ValueError(f"stage record needs {missing}")
+    if record["status"] not in statuses:
+        raise ValueError(f"status must be one of {statuses}")
+    if record["status"] == "done" and not record.get("output_format"):
+        raise ValueError("a done stage must name its output_format (format name/version)")
+    if record["status"] == "failed" and not record.get("failure"):
+        raise ValueError("a failed stage must describe its failure")
+    manifest_path = state_dir / "manifest.json"
+    doc = json.loads(manifest_path.read_text())
+    entry = doc["episodes"][key]
+    if record.get("input_sha256") and record["input_sha256"] != entry.get("sha256"):
+        raise ValueError("input_sha256 does not match the episode's sha256")
+    pre = entry.setdefault("preprocessing", {"schema": "rw-preprocess", "schema_version": 1,
+                                           "status": "pending", "stages": {}})
+    rec = {"stage": stage, "stage_schema_version": int(record.get("stage_schema_version", 1)), "failure": None, **record}
+    pre["stages"][stage] = rec
+    statuses = [x.get("status") for x in pre["stages"].values()]
+    pre["status"] = ("failed" if "failed" in statuses else "running" if "running" in statuses else
+                     "done" if statuses and all(x in ("done", "skipped") for x in statuses) else "pending")
+    manifest_path.write_text(json.dumps(doc))
+    return rec
+
+
 def test_ingest_worker_set_stage_accepts_the_calibration_record(tmp_path):
-    """ING's set_stage (the committed tool; used read-only, on a temporary manifest) takes the record CAL will write,
-    and the gate reads the resulting manifest entry."""
-    import importlib.util
-    import json
+    """The real worker or its copied validation contract accepts CAL's record, and the gate reads the result."""
 
     tool = Path(__file__).resolve().parents[1] / "runs/setup/tools/realworld_ingest_20261106/ingest_worker.py"
-    if not tool.is_file():
-        pytest.skip("ingest worker tool not present in this checkout")
-    import sys
+    # Real-worker integration runs in the main checkout with /home/ws/data and the URDF.
+    if tool.is_file():
+        import importlib.util
+        import sys
 
-    sys.path.insert(0, str(tool.parent))
-    try:
-        spec = importlib.util.spec_from_file_location("ingest_worker_under_test", tool)
-        iw = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(iw)
-    finally:
-        sys.path.remove(str(tool.parent))
+        sys.path.insert(0, str(tool.parent))
+        try:
+            spec = importlib.util.spec_from_file_location("ingest_worker_under_test", tool)
+            iw = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(iw)
+        finally:
+            sys.path.remove(str(tool.parent))
+        set_stage = iw.set_stage
+    else:
+        set_stage = _set_stage_contract
     m = manifest(n_drawer=100, n_mug=0)
     m["counts"] = {"drawer-open": {"complete": True, "target": 100}}
     (tmp_path / "manifest.json").write_text(json.dumps(m))
@@ -226,19 +265,19 @@ def test_ingest_worker_set_stage_accepts_the_calibration_record(tmp_path):
     rec.update(code_commit="0" * 40, host="192.168.10.22", outputs="/remote/calibration_validation/report.json",
                started_at="2026-11-06T12:00:00Z", finished_at="2026-11-06T12:30:00Z", notes="multistart + mask "
                "sensitivity + independent robot frames")
-    iw.set_stage(tmp_path, KEY, gate.CALIBRATION_STAGE, rec)
+    set_stage(tmp_path, KEY, gate.CALIBRATION_STAGE, rec)
     doc = json.loads((tmp_path / "manifest.json").read_text())
     stored = doc["episodes"][KEY]["preprocessing"]["stages"][gate.CALIBRATION_STAGE]
     assert stored["status"] == "done" and stored["stage"] == gate.CALIBRATION_STAGE
     rep = gate.evaluate(doc, ["drawer-open"])
     assert rep["calibration_hold"]["drawer-open"]["validated"] == 1
-    iw.set_stage(tmp_path, KEY, gate.CALIBRATION_STAGE, {**rec, "status": "pending"})  # flips the aggregate
+    set_stage(tmp_path, KEY, gate.CALIBRATION_STAGE, {**rec, "status": "pending"})  # flips the aggregate
     doc = json.loads((tmp_path / "manifest.json").read_text())
     assert doc["episodes"][KEY]["preprocessing"]["status"] == "pending"
     rep = gate.evaluate(doc, ["drawer-open"])
     assert rep["passed"] and gate.task_passed(rep, "drawer-open", "dynamo")  # not held by the pending record
     with pytest.raises(ValueError, match="unknown stage fields"):
-        iw.set_stage(tmp_path, KEY, gate.CALIBRATION_STAGE, {**rec, "calibrate_build_id": "x"})  # top level: refused
+        set_stage(tmp_path, KEY, gate.CALIBRATION_STAGE, {**rec, "calibrate_build_id": "x"})  # top level: refused
 
 
 # ---------------------------------------------------------------------------------------------- plans
