@@ -259,9 +259,14 @@ each timeline's `rgb_sha256` at build time and the loader and replay refuse a st
 dataset file's sha256 (the trainer's resume identity) also identifies the training pixels. `tests/test_rwlearn_trainers_gpu.py` (marker `gpu`, release
 chain) runs the dataset builder and the trainer as subprocesses with a lossless 2 + 2 = 4-step resume.
 
-Compute (estimate, to be measured in the GPU tests): about 7 encoder passes of a 256 x 128 x 128 x 9 batch per update
-(3 with gradients), roughly 10-20x a frozen-feature update; frames of a task (~45k / ~80k per task across 3 cameras,
-2.2 / 3.9 GB uint8) live on the GPU. Row resources: 12 GB GPU, 24 GB RAM.
+Compute (measured 2026-11-06 on a local MIG 1g.24gb slice, official configuration, batch 256, 128 px): 281 ms per
+update with the default kernels, peak 6.8 GiB (1M steps = 78 h on such a slice; a full GPU is several times faster);
+frames of a task (~45k / ~80k per task across 3 cameras, 2.2 / 3.9 GB uint8) live on the GPU. Row resources: 12 GB
+GPU, 24 GB RAM. Determinism: with the default (fast) cuDNN kernels two uninterrupted GPU runs already differ (126 of
+132 tensors after 4 steps, up to 2 % relative: convolution / max-pool backward are nondeterministic), so a resumed run
+can only match "as well as two uninterrupted runs". `train.deterministic: true` makes runs bitwise reproducible
+(2 + 2 steps == 4 steps in every parameter, Adam moment and generator; `tests/test_rwlearn_trainers_gpu.py` proves
+resume losslessness this way) at +12 % time per update (314 ms) and is off for real runs.
 
 ## Calibration hold per consumer (`s4d/rwlearn/gate.py`)
 

@@ -37,6 +37,8 @@ train:
   seed: 0
   device: cuda
   val_batches: 8
+  deterministic: false     # true: bitwise-reproducible cuDNN/cuBLAS kernels (tests, audits); measured +12 % time per
+                           # e2e_cnn update (314 vs 281 ms, batch 256, 128 px, MIG 1g.24gb), so real runs keep false
 data:
   dataset: null            # rwlearn_fql_dataset_v1 file (scripts/realworld_fql.py build)
   split_manifest: null     # {train: [...], validation: [...]} (s4d/rwlearn/store.py::split_episodes)
