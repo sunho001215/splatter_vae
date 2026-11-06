@@ -29,7 +29,7 @@ from s4d.realworld.robot import (
 )
 from s4d.realworld.tracking import Tracks2D
 
-STAGE_VERSIONS = {"ingest": "1", "calibrate": "1", "export": "1"}
+STAGE_VERSIONS = {"ingest": "1", "calibrate": "2", "export": "1"}
 # calibrate runs on the registered sensor depth; lifting/export use FoundationStereo depth from the device IR pair (B1)
 RGBD_CALIBRATION_DEPTH, RGBD_LIFT_DEPTH = "sensor_depth", "foundation_stereo_depth"
 

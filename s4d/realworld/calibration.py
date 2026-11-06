@@ -161,6 +161,13 @@ class CalibrationConfig:
     refine_starts: int = 1
     refine_start_rot_deg: float = 3.0
     refine_start_trans_m: float = 0.03
+    # empirical ambiguity (calibration study 2026-11-06): the starts whose fit score is within ``near_best_tol_m`` of
+    # the best are equally supported by the robot evidence; their pairwise pose spread (rotation, camera centre) is the
+    # empirical uncertainty, reported next to the local covariance (which underestimates it ~10x on real episodes:
+    # 0.12-0.21 deg / 1-2 mm vs 0.5-2 deg / 2-22 mm). Gate when the thresholds are set (None = report only).
+    near_best_tol_m: float = 5e-4
+    max_near_best_rot_deg: float | None = None
+    max_near_best_centre_m: float | None = None
 
 
 @dataclass
@@ -670,6 +677,28 @@ def refinement_starts(T0: np.ndarray, cfg: CalibrationConfig) -> list[tuple[str,
     return out[:max(1, int(cfg.refine_starts))]
 
 
+def pose_distance(Ta: np.ndarray, Tb: np.ndarray) -> tuple[float, float]:
+    """(rotation angle deg, camera-centre distance m) between two T_cam_base."""
+    Ta, Tb = np.asarray(Ta, float), np.asarray(Tb, float)
+    c = (np.trace(Ta[:3, :3].T @ Tb[:3, :3]) - 1) / 2
+    ca, cb = -Ta[:3, :3].T @ Ta[:3, 3], -Tb[:3, :3].T @ Tb[:3, 3]
+    return float(np.degrees(np.arccos(np.clip(c, -1, 1)))), float(np.linalg.norm(ca - cb))
+
+
+def near_best_spread(scored: list, tol: float) -> dict:
+    """Empirical ambiguity of a multi-start solve: ``scored`` = [(fit score, T)]; the near-best set is every solution
+    within ``tol`` of the best finite score; returns its size and maximum pairwise rotation / camera-centre distance."""
+    finite = [(s, T) for s, T in scored if s is not None and np.isfinite(s)]
+    if not finite:
+        return {"near_best_starts": 0, "tolerance": tol, "max_pair_rot_deg": None, "max_pair_centre_m": None}
+    best = min(s for s, _ in finite)
+    near = [T for s, T in finite if s <= best + tol]
+    d = [pose_distance(a, b) for i, a in enumerate(near) for b in near[i + 1:]]
+    return {"near_best_starts": len(near), "starts": len(scored), "tolerance": tol,
+            "max_pair_rot_deg": max((x[0] for x in d), default=0.0),
+            "max_pair_centre_m": max((x[1] for x in d), default=0.0)}
+
+
 def motion_coverage(frames) -> dict:
     P = np.stack([f.flange_base for f in frames]) if frames else np.zeros((0, 3))
     if len(P) < 2:
@@ -776,7 +805,11 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
                                           "init_to_solution_rot_deg": float(np.degrees(np.linalg.norm(
                                               vec_from_pose(invert_T(T0) @ r[2])[:3]))),
                                           "init_to_solution_trans_m": float(np.linalg.norm(
-                                              vec_from_pose(invert_T(T0) @ r[2])[3:]))} for r in runs]}
+                                              vec_from_pose(invert_T(T0) @ r[2])[3:])),
+                                          "to_chosen_rot_deg": pose_distance(r[2], T)[0],
+                                          "to_chosen_centre_m": pose_distance(r[2], T)[1],
+                                          "T_cam_base": np.asarray(r[2]).tolist()} for r in runs]}
+        diag["empirical_spread"] = near_best_spread([(r[0], r[2]) for r in runs], cfg.near_best_tol_m)
     diag["optimizer"] = {"status": int(res.status), "message": str(res.message), "nfev": int(res.nfev),
                          "cost": float(res.cost), "success": bool(res.success)}
     if not res.success or not np.isfinite(res.x).all():
@@ -820,6 +853,16 @@ def calibrate_camera(camera_id: str, frames: list[CalibrationFrame], K: np.ndarr
         reasons.append(f"ill-conditioned problem (cond {cond:.3g})")
     if bad(diag["std_rot_deg"], cfg.max_rot_std_deg) or bad(diag["std_trans_m"], cfg.max_trans_std_m):
         reasons.append(f"uncertain extrinsic (std {diag['std_rot_deg']:.3f} deg, {diag['std_trans_m'] * 1000:.1f} mm)")
+    es = diag.get("empirical_spread")
+    gated = cfg.max_near_best_rot_deg is not None or cfg.max_near_best_centre_m is not None
+    if gated and (es is None or es["max_pair_rot_deg"] is None or es["max_pair_centre_m"] is None):
+        reasons.append("ambiguity gate set but no empirical spread available (needs refine_starts > 1 with finite fits)")
+    elif gated and ((cfg.max_near_best_rot_deg is not None and bad(es["max_pair_rot_deg"], cfg.max_near_best_rot_deg))
+                    or (cfg.max_near_best_centre_m is not None
+                        and bad(es["max_pair_centre_m"], cfg.max_near_best_centre_m))):
+        reasons.append(f"ambiguous extrinsic: {es['near_best_starts']} starts within {es['tolerance'] * 1000:.1f} mm "
+                       f"of the best fit differ by up to {es['max_pair_rot_deg']:.2f} deg / "
+                       f"{es['max_pair_centre_m'] * 1000:.1f} mm")
     timing["uncertainty"] = round(time.perf_counter() - t_phase, 3)
     t_phase = time.perf_counter()
     fit_rows = _frame_stats(T, fit, K, cfg)
