@@ -33,7 +33,7 @@ Read in this order to follow one pretraining step: data contract -> dataset -> m
 | Training | `s4d/train/` | `loop.py` (model bundle, `forward_losses`, the training loop), `augment.py` (camera jitter, synthetic and self-render views), `perframe.py` + `perframe_eval.py` (per-frame pilots; they reuse `loop.py`'s helpers), `evaluate.py`, `checkpoint.py`, `ddp.py`, `workers.py`. |
 | Downstream RL | `s4d/rl/` | `protocol.py` (run configuration), `env.py` + `vecenv.py` (Meta-World environments), `encoders.py` (frozen/CNN policy encoders), the algorithms (`agent.py` DrM, `snerl_sac.py`, `sb3_ppo.py`, `dreamer_v1.py`, `flashsac.py`; `algorithms.py` maps a run's `algorithm` to its evaluation policy), `replay.py`, `evaluate.py`, `camera_suites.py` + `visibility.py` (evaluation camera suites), `run_io.py` (checkpoint/metrics files of the trainers). |
 | Baselines | `s4d/baselines/{sincro,reviwo,snerl,dynamo,mvp3d}/`, `data.py`, `representation.py` | Ports or adapters around the pinned upstream code (`s4d/third_party.py`); see docs/BASELINES.md. |
-| Diagnostics | `s4d/diag/` | W&B and local logging, panels, probes, point clouds, tracks, held-out diagnostics. |
+| Diagnostics | `s4d/diag/` | W&B and local logging, panels, probes, point clouds, tracks, held-out diagnostics. Private `_encp_repr.py` shares encoder-pilot calculations; both `scripts/encp_repr_diagnostics.py` and `runs/setup/tools/encp_repr_diagnostics.py` retain their bootstrap, public forwarders, `Arm` and CLI. |
 | Shared | `s4d/config.py`, `s4d/geometry.py` | Layered YAML configuration; torch pinhole geometry. |
 
 ## Command-line entry points (`scripts/`) by purpose
