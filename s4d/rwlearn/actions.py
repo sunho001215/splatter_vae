@@ -189,7 +189,7 @@ class RawEpisode:
     gripper_t: np.ndarray  # (G,) ns
     gripper_position: np.ndarray  # (G,) raw register
     gripper_segment: np.ndarray  # (G,) recording segment of each gripper sample
-    cameras: dict  # serial -> {"t": (F,) ns colour frame time, "segment": (F,) int}
+    cameras: dict  # serial -> {"t": (F,) ns colour t, "segment": (F,), "paired_colour": stereo/color_index}
     segments: dict  # segments/* arrays (t_start/t_end in ns)
     teleop: dict  # config_yaml teleop block
     T_flange_tcp: np.ndarray
@@ -205,6 +205,8 @@ def read_raw_episode(path: str | Path) -> RawEpisode:
     import h5py
     import yaml
 
+    from s4d.realworld.adapters.panda_teleop import _paired_colour
+
     with h5py.File(path, "r") as f:
         if f.attrs.get("format") != FORMAT or int(f.attrs.get("format_version", 0)) != 2:
             raise ValueError(f"{path}: not a {FORMAT} v2 recording")
@@ -217,7 +219,8 @@ def read_raw_episode(path: str | Path) -> RawEpisode:
         for name in f["cameras"]:
             if name.startswith("cam_"):
                 c = f["cameras"][name]
-                cams[name[4:]] = {"t": ns(c["t"][()]), "segment": np.asarray(c["segment"][()], np.int64)}
+                cams[name[4:]] = {"t": ns(c["t"][()]), "segment": np.asarray(c["segment"][()], np.int64),
+                                  "paired_colour": _paired_colour(c, name[4:])}
         cfg = yaml.safe_load(str(f.attrs["config_yaml"]))
         events = [(float(t), x.decode() if isinstance(x, bytes) else str(x))
                   for t, x in zip(f["events/t"][()], f["events/text"][()])] if "events" in f else []
@@ -234,6 +237,35 @@ def read_raw_episode(path: str | Path) -> RawEpisode:
                       for k in f["segments"]},
             teleop=dict(cfg["teleop"]), T_flange_tcp=np.asarray(f.attrs["T_flange_tcp"], np.float64),
             status=str(f.attrs.get("status")), events=events)
+
+
+def camera_frame_indices(raw: RawEpisode, serial: str, times, segment) -> np.ndarray:
+    """Store -> raw colour indices, matched EXACTLY on recorder ``cameras/cam_<serial>/t`` rounded to ns.
+
+    The panda adapter retains precisely ``stereo/color_index`` (its own validator is used at read time). Refuse
+    other omissions, duplicate/nonmonotonic times and segment disagreement. Old array fixtures without pairing
+    metadata retain only the previously supported raw prefix; they cannot justify interior gaps.
+    """
+    if serial not in raw.cameras:
+        raise ValueError(f"{raw.path}/{serial}: store camera is missing in raw recording")
+    cam = raw.cameras[serial]
+    st, rt = np.asarray(times), np.asarray(cam["t"])
+    for label, t in (("store", st), ("raw", rt)):
+        if t.ndim != 1 or t.dtype.kind not in "iu" or (t[1:] <= t[:-1]).any():
+            raise ValueError(f"{raw.path}/{serial}: {label} timestamps must be integer ns, strictly increasing "
+                             "(no duplicates or out-of-order frames)")
+    indices = np.searchsorted(rt, st)
+    if (indices >= len(rt)).any() or not np.array_equal(rt[indices], st):
+        raise ValueError(f"{raw.path}/{serial}: store frame has no exact raw timestamp match")
+    expected = cam.get("paired_colour")
+    if expected is None:
+        expected = np.arange(len(st))  # legacy fixtures: bounded prefix only, no unexplained gaps
+    if not np.array_equal(indices, expected):
+        raise ValueError(f"{raw.path}/{serial}: store omissions are not explained by stereo/color_index "
+                         "(only a raw prefix is allowed without pairing metadata)")
+    if not np.array_equal(np.asarray(segment), cam["segment"][indices]):
+        raise ValueError(f"{raw.path}/{serial}: store segments differ from mapped raw camera frames")
+    return indices.astype(np.int64)
 
 
 def check_contract_preconditions(raw: RawEpisode) -> None:
@@ -395,6 +427,8 @@ def raw_to_arrays(raw: RawEpisode) -> dict:
     out = {k: getattr(raw, k) for k in _ARRAY_FIELDS}
     for serial, cam in raw.cameras.items():
         out[f"camera/{serial}/t"], out[f"camera/{serial}/segment"] = cam["t"], cam["segment"]
+        if "paired_colour" in cam:
+            out[f"camera/{serial}/paired_colour"] = cam["paired_colour"]
     out["segments/t_start"], out["segments/t_end"] = raw.segments["t_start"], raw.segments["t_end"]
     out["meta"] = np.frombuffer(json.dumps({"path": raw.path, "task_name": raw.task_name, "status": raw.status,
                                             "episode_index": raw.episode_index, "teleop": raw.teleop}).encode(),
@@ -409,6 +443,8 @@ def raw_from_arrays(z) -> RawEpisode:
         if k.startswith("camera/") and k.endswith("/t"):
             serial = k.split("/")[1]
             cams[serial] = {"t": np.asarray(z[k]), "segment": np.asarray(z[f"camera/{serial}/segment"])}
+            if f"camera/{serial}/paired_colour" in z:
+                cams[serial]["paired_colour"] = np.asarray(z[f"camera/{serial}/paired_colour"])
     return RawEpisode(path=meta["path"], task_name=meta["task_name"], episode_index=int(meta["episode_index"]),
                       cameras=cams, segments={"t_start": np.asarray(z["segments/t_start"]),
                                               "t_end": np.asarray(z["segments/t_end"])},

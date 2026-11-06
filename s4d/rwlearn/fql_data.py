@@ -178,21 +178,25 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
         adapter.backbone.eval()
     out = Path(out)
     tmp = out.with_name(f".{out.name}.partial")
+    frame_mapping = {}
     contract, stats = None, {"transitions": 0, "reasons": {}, "labels": {}}
     with h5py.File(tmp, "w") as f:
         for ep in episodes:
             raw = A.load_raw((raw_paths or {}).get(ep) or store.raw_recording(ep))
             A.check_contract_preconditions(raw)
-            for cam in store.cameras(ep):  # store frames are the recording's frames (index = native frame index)
-                st, rt = np.asarray(store.timestamps(ep, cam)), raw.cameras[cam]["t"]
-                if len(st) > len(rt) or not np.array_equal(st, rt[:len(st)]):
-                    raise ValueError(f"{ep}/{cam}: store timestamps are not the recording's camera frames")
+            raw_frames = {cam: A.camera_frame_indices(raw, cam, store.timestamps(ep, cam), store.segments(ep, cam))
+                          for cam in store.cameras(ep)}
+            frame_mapping[ep] = {
+                cam: {"raw_count": len(raw.cameras[cam]["t"]), "store_count": len(indices),
+                      "rule": "stereo/color_index" if "paired_colour" in raw.cameras[cam] else "legacy_raw_prefix",
+                      "dropped_raw_indices": np.setdiff1d(np.arange(len(raw.cameras[cam]["t"])), indices).tolist()}
+                for cam, indices in raw_frames.items()}
             ep_contract = A.contract_for(raw)  # nominal period; each camera's measured period checked within 1 %
             if contract is None:
                 contract = ep_contract
             elif ep_contract != contract:
                 raise ValueError(f"{ep}: teleop limits differ from the dataset contract")
-            for tl in timelines(store, ep, c.multiview, max_sync_ns):
+            for tl in timelines(store, ep, c.multiview, max_sync_ns, raw_frames=raw_frames):
                 tr = episode_transitions(raw, tl, contract, reward, success=bool(outcomes.get(ep, True)))
                 g = f.create_group(f"episodes/{ep}/{tl.name}")
                 if adapter is not None:
@@ -204,7 +208,8 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                           "mask", "success", "terminal"):
                     g.create_dataset(k, data=tr[k])
                 g.create_dataset("measured_pose", data=tr["measured_pose"].astype(np.float64))
-                g.create_dataset("frames", data=tl.frames.astype(np.int32))
+                g.create_dataset("frames", data=tl.frames.astype(np.int32))  # store RGB/depth indices
+                g.create_dataset("raw_frames", data=tl.raw_frames)  # exact recorder colour indices
                 g.attrs.update(cameras=json.dumps(tl.cameras), task=store.task(ep), label=tr["label"])
                 stats["labels"][tr["label"]] = stats["labels"].get(tr["label"], 0) + 1
                 stats["transitions"] += int(tr["transition_ok"].sum())
@@ -220,7 +225,7 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                        contract=json.dumps(contract.to_json()), frame_stack=FRAME_STACK,
                        sequence_feature=bool(adapter.stack_feature) if adapter else False,
                        episodes=json.dumps(list(episodes)), image_hw=json.dumps(list(store.image_hw)),
-                       raw_identities=json.dumps(identities),
+                       raw_identities=json.dumps(identities), frame_mapping=json.dumps(frame_mapping),
                        stats=json.dumps(stats), calibration=json.dumps(calibration),
                        outcomes=json.dumps({"assume_final_success": bool(assume_final_success),
                                             "labels": {ep: bool(v) for ep, v in outcomes.items()},

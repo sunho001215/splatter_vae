@@ -100,7 +100,9 @@ def singleview_family(store, ep: str, raw=None, expected_cameras=None) -> dict:
         if missing:
             out["problems"].append(f"recording cameras missing from the training store: {missing}")
     episode = getattr(store, "episode", None)  # CompactStore: per-camera robot state of the store
-    lines = {tl.name: tl for tl in timelines(store, ep, multiview=False)}
+    raw_frames = ({cam: A.camera_frame_indices(raw, cam, store.timestamps(ep, cam), store.segments(ep, cam))
+                   for cam in store.cameras(ep)} if contract is not None else None)
+    lines = {tl.name: tl for tl in timelines(store, ep, multiview=False, raw_frames=raw_frames)}
     for cam in store.cameras(ep):
         n = len(store.timestamps(ep, cam))
         row = {"frames": int(n)}

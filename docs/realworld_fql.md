@@ -151,7 +151,13 @@ segments with motion disabled and no command rows.
   `--assume-final-success`, kept for smoke builds) and stores the document in the dataset attributes. The plan rows
   pass `--outcomes <inputs>/outcomes.json`.
 - For a successful episode, the success state is the recording's FINAL observation: the last recorded frame of
-  every constituent camera. The builder verifies that the store's frames are the recording's frames. The label
+  every constituent camera. The builder maps store frames to raw colour indices by exact timestamp equality
+  (`cameras/cam_<serial>/t`, rounded with `rint(t * 1e9)`, as in the panda adapter; never `t_recv` or `stereo/t`).
+  The retained indices must equal the adapter's validated `stereo/color_index`: only colour frames without a
+  stereo record may be absent. Missing matches, duplicates, reordered frames and segment mismatches fail closed.
+  Legacy array fixtures without pairing metadata retain the previous raw-prefix restriction. Dataset `frames`
+  remain compact-store indices, `raw_frames` record the corresponding recorder indices, and the `frame_mapping`
+  provenance attribute records per-camera counts, the rule and every omitted raw index. The label
   applies only if that frame is reached by a valid transition. An unusable tail, or a sync step dropped at the end,
   never moves the label earlier; the timeline is reported as `success_frame_unreachable`.
 - A failed episode has no success state: its last transition is a truncation (`mask` 1).
@@ -159,6 +165,12 @@ segments with motion disabled and no command rows.
   (`ogbench/relabel_utils.py`: rewards = successes - 1, masks = 1 - successes), so the official `alpha` scale applies.
 - A segment end before a pause is a frame-stack boundary, not a terminal (`mask` 1).
 - The alternative `"sparse_final"` (r = 1 at the success transition, 0 otherwise, same masks) is implemented.
+
+The builder and the other `actions.load_raw` consumer (`contract_checks.singleview_family`) share this mapping.
+Actions and proprioception still use the same robot-time queries at the exactly matched colour timestamps and
+segments; multi-view timelines map each camera independently and keep the latest constituent time. Outcomes and
+ending-review evidence already use raw recording frames. Frozen encoders, pixel loading/replay and
+`train_realworld_fql` use the dataset's compact-store `frames`, so image reads keep their original index space.
 
 ## Pipeline and tooling
 

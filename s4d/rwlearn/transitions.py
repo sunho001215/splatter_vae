@@ -42,19 +42,26 @@ class Timeline:
     times: np.ndarray  # (K,) ns
     segment: np.ndarray  # (K,)
     run: np.ndarray  # (K,)
-    frames: np.ndarray  # (K, V) native frame index per camera used (V = 1 for a camera timeline)
+    frames: np.ndarray  # (K, V) STORE frame index per camera used (V = 1 for a camera timeline)
     cameras: list
+    raw_frames: np.ndarray | None = None  # (K, V) raw colour indices, when frames refer to a store
 
 
-def timelines(store: FrameStore, ep: str, multiview: bool, max_sync_ns: int = 30_000_000) -> list[Timeline]:
+def timelines(store: FrameStore, ep: str, multiview: bool, max_sync_ns: int = 30_000_000, *,
+              raw_frames: dict | None = None) -> list[Timeline]:
+    def mapped(cameras, frames):
+        return (np.stack([raw_frames[c][frames[:, v]] for v, c in enumerate(cameras)], 1)
+                if raw_frames is not None else None)
+
     if multiview:
         s = sync_index(store, ep, max_sync_ns)
         # runs from the reference times (pauses, dropped steps); step_table re-checks step lengths on these times
-        return [Timeline(MULTIVIEW, s.latest_times, s.segment, s.run, s.frames, s.cameras)]
+        return [Timeline(MULTIVIEW, s.latest_times, s.segment, s.run, s.frames, s.cameras, mapped(s.cameras, s.frames))]
     out = []
     for cam in store.cameras(ep):
         t, seg = store.timestamps(ep, cam), store.segments(ep, cam)
-        out.append(Timeline(cam, t, seg, runs_from(t, seg), np.arange(len(t))[:, None], [cam]))
+        frames = np.arange(len(t))[:, None]
+        out.append(Timeline(cam, t, seg, runs_from(t, seg), frames, [cam], mapped([cam], frames)))
     return out
 
 
@@ -75,7 +82,8 @@ def episode_transitions(raw: A.RawEpisode, tl: Timeline, contract: A.ActionContr
     success = np.zeros(K, bool)
     # the final observation must be the RECORDING's end: every constituent camera's last recorded frame (a store or
     # synchronisation that dropped tail frames leaves the success unlabelled instead of moving it earlier)
-    at_end = bool(K) and all(int(tl.frames[K - 1, v]) == len(raw.cameras[cam]["t"]) - 1
+    raw_frames = tl.raw_frames if tl.raw_frames is not None else tl.frames
+    at_end = bool(K) and all(int(raw_frames[K - 1, v]) == len(raw.cameras[cam]["t"]) - 1
                              for v, cam in enumerate(tl.cameras))
     final_reached = bool(K and reachable[K - 1] and at_end)
     if outcome and final_reached:

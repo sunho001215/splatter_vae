@@ -9,6 +9,7 @@ Contract of a ``FrameStore`` (all arrays numpy):
 
 * ``episodes()`` -> episode ids; ``task(ep)`` -> task name; ``cameras(ep)`` -> camera ids (sorted serials);
 * ``timestamps(ep, cam)`` -> (F,) int64 ns (recorder host CLOCK_MONOTONIC, the raw ``cameras/cam_<serial>/t``);
+  adapter normalization can omit colour frames without stereo records, so store indices need not equal raw indices;
   ``segments(ep, cam)`` -> (F,) int recording segment of each frame (pauses between segments);
 * ``rgb(ep, cam, idx)`` -> (n, H, W, 3) uint8 RGB; ``depth(ep, cam, idx)`` -> (n, H, W) float32 metres, 0 invalid
   (camera z on the colour grid); ``semantic(ep, cam, idx)`` -> (n, H, W) uint8 SNeRL classes (0 background,
