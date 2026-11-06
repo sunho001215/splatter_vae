@@ -1,9 +1,15 @@
 """GPU entry-point tests of the real-world offline FQL tooling (marker ``gpu``): ``scripts/realworld_fql_dataset.py``
 and ``scripts/train_realworld_fql.py`` as subprocesses on a compact training store written from the action fixture's
 real camera timeline (mug-hanging episode_000003), for the end-to-end CNN condition (``e2e_cnn``) and a frozen-encoder
-condition (``dynamo``): a short run, a lossless resume (2 + 2 steps == 4 steps, bit-identical agent) and the exported
-``policy.pt`` through ``OfflinePolicy``. These need a CUDA device and run in the coordinator's release chain on the
-remote GPU (never on the local MIG devices); without CUDA they are skipped."""
+condition (``dynamo``): a short run, a lossless resume and the exported ``policy.pt`` through ``OfflinePolicy``. These
+need a CUDA device and run in the coordinator's release chain on the GPU; without CUDA they are skipped.
+
+Lossless resume is proven with ``train.deterministic=true`` (bitwise-reproducible kernels): 2 + 2 steps must equal 4
+uninterrupted steps bit for bit in every parameter, target network, Adam moment and generator (sampling and
+augmentation), so any state the checkpoint failed to restore would show. Under the default fast kernels two
+UNINTERRUPTED GPU runs of the CNN condition already differ (cuDNN convolution / max-pool backward are
+nondeterministic; measured: 126 of 132 tensors differ after 4 steps, up to 2 % relative), so the default-kernel run
+checks only what the hardware can give: the restored step and generator states, finite values."""
 
 from __future__ import annotations
 
@@ -104,18 +110,32 @@ def test_dataset_build_training_lossless_resume_and_policy(tmp_path, condition):
     if condition == "e2e_cnn":
         sets.append(f"data.store={locator}")
     common = ["--config", "configs/realworld/fql/base.yaml", "--output-root", str(root), "--no-wandb"]
-    run("scripts/train_realworld_fql.py", *common, "--name", "straight", "--set", *sets, "train.offline_steps=4")
-    run("scripts/train_realworld_fql.py", *common, "--name", "resumed", "--set", *sets, "train.offline_steps=2")
-    run("scripts/train_realworld_fql.py", *common, "--name", "resumed", "--set", *sets, "train.offline_steps=4")
+    det = [*sets, "train.deterministic=true"]
+    run("scripts/train_realworld_fql.py", *common, "--name", "straight", "--set", *det, "train.offline_steps=4")
+    run("scripts/train_realworld_fql.py", *common, "--name", "resumed", "--set", *det, "train.offline_steps=2")
+    run("scripts/train_realworld_fql.py", *common, "--name", "resumed", "--set", *det, "train.offline_steps=4")
     a, b = (torch.load(root / r / "checkpoints/latest.pt", map_location="cpu", weights_only=False)
             for r in ("straight", "resumed"))
     assert a["step"] == b["step"] == 4
-    for name, mod in a["agent"]["modules"].items():
+    for name, mod in a["agent"]["modules"].items():  # parameters incl. encoders and target networks
         for k, v in mod.items():
             assert torch.equal(v, b["agent"]["modules"][name][k]), (name, k)
+    for p_id, st in a["agent"]["optimizer"]["state"].items():  # Adam moments and step counts
+        for k, v in st.items():
+            assert torch.equal(torch.as_tensor(v), torch.as_tensor(b["agent"]["optimizer"]["state"][p_id][k])), (p_id, k)
+    for key in ("sample_gen", "aug_gen"):  # data cursor (sampling RNG) and augmentation RNG
+        assert torch.equal(a[key], b[key]), key
+    assert torch.equal(a["agent"]["generator"], b["agent"]["generator"])  # the agent's noise generator
     rows = lambda r: [json.loads(x) for x in (root / r / "metrics.jsonl").read_text().splitlines()]  # noqa: E731
     loss = lambda rs: {x["step"]: x["training/critic/critic_loss"] for x in rs if "training/critic/critic_loss" in x}  # noqa: E731
     assert loss(rows("straight")) == loss(rows("resumed")) and set(loss(rows("straight"))) == {1, 2, 3, 4}
+    # default (fast, nondeterministic) kernels: the resume restores step and generators; values stay finite
+    run("scripts/train_realworld_fql.py", *common, "--name", "fast", "--set", *sets, "train.offline_steps=2")
+    run("scripts/train_realworld_fql.py", *common, "--name", "fast", "--set", *sets, "train.offline_steps=4")
+    fast = torch.load(root / "fast" / "checkpoints/latest.pt", map_location="cpu", weights_only=False)
+    assert fast["step"] == 4 and all(torch.equal(fast[k], a[k]) for k in ("sample_gen", "aug_gen"))
+    assert all(torch.isfinite(v).all() for m in fast["agent"]["modules"].values() for v in m.values()
+               if v.is_floating_point())
     val = [x for x in rows("straight") if "validation/onestep_pos_err_mm" in x]
     assert val and all(np.isfinite(x["validation/critic/critic_loss"]) for x in val)
     assert a["agent"]["config"]["alpha"] == 10.0
