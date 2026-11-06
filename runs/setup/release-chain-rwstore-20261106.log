@@ -1,0 +1,83 @@
+=== 2026-11-06 19:57:43 rw-store-gate: verify tests, commit, push, release chain
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 44%]
+...................................................ss................... [ 52%]
+........................................................................ [ 61%]
+........................................................................ [ 70%]
+........................................................................ [ 79%]
+........................................................................ [ 88%]
+........................................................................ [ 96%]
+.........................                                                [100%]
+=============================== warnings summary ===============================
+tests/test_realworld_rgbd.py::test_panda_metadata_uses_recorded_calibration_and_timestamps
+  /home/ws/ws/splatter4d/.worktrees/rwstore/tests/test_realworld_rgbd.py:259: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_metadata_uses_recor0' (the folder decides the task)
+    meta = p.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/rwstore/tests/test_realworld_rgbd.py:340: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = panda_file.adapter.read_meta("panda")
+
+tests/test_realworld_rgbd.py::test_panda_drops_colour_frames_without_a_stereo_record
+  /home/ws/ws/splatter4d/.worktrees/rwstore/s4d/realworld/pipeline.py:81: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_panda_drops_colour_frames0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_realworld_rgbd.py::test_sensor_depth_local_runner_resumes_only_remaining_chunks
+  /home/ws/ws/splatter4d/.worktrees/rwstore/s4d/realworld/pipeline.py:81: UserWarning: panda: recorder task_name 'test' disagrees with the dataset folder 'test_sensor_depth_local_runner0' (the folder decides the task)
+    meta = adapter.read_meta(episode_id)
+
+tests/test_rwlearn_snerl_eval.py::test_realworld_validation_reports_input_and_novel_view_separately
+  /home/ws/ws/splatter4d/.venv/lib/python3.10/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4381.)
+    return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [2] tests/test_rwlearn_trainers_gpu.py:87: GPU test: runs in the release chain
+815 passed, 2 skipped, 5 warnings in 207.38s (0:03:27)
+commit c9fc448ac0926ea7c40f5cf53f960c6c7828547f
+origin/splatter4d c9fc448
+20:01:16 /home/ws/ws/splatter4d/.worktrees/rwstore/s4d/remote_access.py sync-code c9fc448ac0926ea7c40f5cf53f960c6c7828547f -> 1  Refusing to release code with dirty sources
+chain exit 1
+=== 2026-11-06 20:01:31 rerun after moving Codex report files out of the worktree
+20:01:58 /home/ws/ws/splatter4d/.worktrees/rwstore/s4d/remote_access.py sync-code c9fc448ac0926ea7c40f5cf53f960c6c7828547f -> 0 /home/compu/kaist/sunho/releases/c9fc448ac0926ea7c40f5cf53f960c6c7828547f/code 
+20:01:58 /home/compu/kaist/sunho/releases/c9fc448ac0926ea7c40f5cf53f960c6c7828547f/code
+20:02:05 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/native-c9fc448-cc-queue.yaml 
+20:02:44 remote co-tenants: 2 known, 82 GB RAM not yet in use charged; GPU-4391fcee 2 (68.0 GB charged, 27.0 GB free after pending reservations)
+20:02:44 launched verify-native-c9fc448-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-native-c9fc448-cc-a1, attempt 1)
+20:02:45 wait {'verify-native-c9fc448-cc': 'running'}
+20:03:54 remote co-tenants: 2 known, 82 GB RAM not yet in use charged; GPU-4391fcee 2 (68.0 GB charged, 27.5 GB free after pending reservations)
+20:03:55 wait {'verify-native-c9fc448-cc': 'running'}
+20:05:04 remote co-tenants: 2 known, 82 GB RAM not yet in use charged; GPU-4391fcee 2 (68.0 GB charged, 27.5 GB free after pending reservations)
+20:05:04 wait {'verify-native-c9fc448-cc': 'running'}
+20:06:14 remote co-tenants: 6 known, 273 GB RAM not yet in use charged; GPU-4391fcee 2 (68.0 GB charged, 27.5 GB free after pending reservations), GPU-6122c7a9 2 (68.0 GB charged, 27.6 GB free after pending reservations), GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations), GPU-ca65e1b7 1 (34.0 GB charged, 49.6 GB free after pending reservations)
+20:06:15 wait {'verify-native-c9fc448-cc': 'running'}
+20:07:24 verify-native-c9fc448-cc: live result sync unavailable; job remains running
+20:07:24 remote co-tenants: 2 known, 81 GB RAM not yet in use charged; GPU-4391fcee 2 (68.0 GB charged, 27.5 GB free after pending reservations)
+20:07:25 wait {'verify-native-c9fc448-cc': 'running'}
+20:08:33 verify-native-c9fc448-cc: live result sync unavailable; job remains running
+20:08:33 remote co-tenants: 1 known, 41 GB RAM not yet in use charged; GPU-4391fcee 1 (34.0 GB charged, 61.6 GB free after pending reservations)
+20:08:34 wait {'verify-native-c9fc448-cc': 'running'}
+20:09:42 verify-native-c9fc448-cc: live result sync unavailable; job remains running
+20:09:43 wait {'verify-native-c9fc448-cc': 'running'}
+20:10:52 wait {'verify-native-c9fc448-cc': 'running'}
+20:12:01 verify-native-c9fc448-cc: live result sync unavailable; job remains running
+20:12:01 remote co-tenants: 6 known, 284 GB RAM not yet in use charged; GPU-4391fcee 2 (68.0 GB charged, 27.1 GB free after pending reservations), GPU-6122c7a9 2 (68.0 GB charged, 26.8 GB free after pending reservations), GPU-9e9f1e97 1 (34.0 GB charged, 61.6 GB free after pending reservations), GPU-ca65e1b7 1 (34.0 GB charged, 49.6 GB free after pending reservations)
+20:12:02 wait {'verify-native-c9fc448-cc': 'running'}
+20:13:10 wait {'verify-native-c9fc448-cc': 'running'}
+20:14:20 wait {'verify-native-c9fc448-cc': 'running'}
+20:15:29 wait {'verify-native-c9fc448-cc': 'running'}
+20:16:42 verify-native-c9fc448-cc exited with 0 on remote; results checksum verified
+20:16:43 done {'verify-native-c9fc448-cc': 'done'}
+20:16:43 {"exit_code": 0, "counts": {"passed": 2013, "error": 0, "failed": 0, "skipped": 0}, "full_suite_passed": true}
+20:16:49 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 /home/ws/ws/splatter4d/runs/remote/verification/isolation-c9fc448-cc-queue.yaml 
+20:19:03 launched verify-isolation-0-c9fc448-cc on remote/GPU-4391fcee-537f-d408-d138-10d8a3866eea (s4d-verify-isolation-0-c9fc448-cc-a1, attempt 1)
+20:19:03 launched verify-isolation-1-c9fc448-cc on remote/GPU-6122c7a9-eaa6-b539-6005-f20e339da4ea (s4d-verify-isolation-1-c9fc448-cc-a1, attempt 1)
+20:19:03 launched verify-isolation-2-c9fc448-cc on remote/GPU-9e9f1e97-b2ca-04e0-eb2a-8035398daa79 (s4d-verify-isolation-2-c9fc448-cc-a1, attempt 1)
+20:19:03 launched verify-isolation-3-c9fc448-cc on remote/GPU-ca65e1b7-c0ac-6757-7d3f-816c3119a4c1 (s4d-verify-isolation-3-c9fc448-cc-a1, attempt 1)
+20:19:03 wait {'verify-isolation-0-c9fc448-cc': 'running', 'verify-isolation-1-c9fc448-cc': 'running', 'verify-isolation-2-c9fc448-cc': 'running', 'verify-isolation-3-c9fc448-cc': 'running'}
+20:20:20 done {'verify-isolation-0-c9fc448-cc': 'done', 'verify-isolation-1-c9fc448-cc': 'done', 'verify-isolation-2-c9fc448-cc': 'done', 'verify-isolation-3-c9fc448-cc': 'done'}
+20:20:21 sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a --tag cc -> 0 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/c9fc448-cc/manifest.json a5dd448abcd00927e0ac98ae39f64122143d19a65252fc3e88ddefb4242853e1 56bd8ce9c59e 
+20:20:21 ACCEPTED /home/ws/ws/splatter4d/runs/remote/acceptance/c9fc448-cc/manifest.json a5dd448abcd00927e0ac98ae39f64122143d19a65252fc3e88ddefb4242853e1 56bd8ce9c59e
+chain exit 0
