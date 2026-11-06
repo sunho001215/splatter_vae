@@ -608,7 +608,8 @@ def test_remote_driver_offers_and_pool_moves_only_role_admitted_rows():
     source = driver_source("remote_campaign_driver.py")
     assert "candidates = [j for j in jobs.eligible(remote, retry_view) if role_admits(j) and ready(j)]" in source
     assert "replaced = host_roles.replace_to_local(paused)" in source
-    assert "if POOL_READY and not DRY and not held and ROLES is not None:" in source
+    # 2026-11-06: no pool move either while the co-tenant evidence is unreadable (COTENANT None)
+    assert "if POOL_READY and not DRY and not held and ROLES is not None and COTENANT is not None:" in source
     tree = ast.parse(source)
     calls = {node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call)
              and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)

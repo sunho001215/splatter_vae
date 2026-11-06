@@ -648,3 +648,121 @@ def test_verification_child_timeout_terminates_its_process_group(monkeypatch):
     monkeypatch.setattr(entry.os, "killpg", lambda pid, signum: signals.append((pid, signum)))
     assert entry.run_child(Path("scripts/run_tests.py"), [], None, timeout_seconds=1, environment={}) == 124
     assert waits == [1, 10] and signals == [(123, signal.SIGTERM)]
+
+
+# ---- campaign-owned co-tenants in the remote launch guard (2026-11-06) ----
+GIB = 2**30
+CO_ID = "e" * 64
+
+
+def _guard(tmp_path, *, apps, cotenant=None, inspect_fails=None, memory_stat=None, gpu_used_mib=40000,
+           available_gib=1000):
+    """Runs the generated admission section (from the GPU queries to the last capacity test) against stubbed docker,
+    nvidia-smi, df, /proc/meminfo and cgroup files: one scheduler job (s4d-own-a1, pid 11, 5 GiB declared, 4 GiB
+    used) is running on the selected GPU; ``cotenant`` is the co-tenant's inspect line (or None)."""
+    spec = job_spec()
+    gpu = spec["gpu"]
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    lines = command.splitlines()
+    head = lines[:next(i for i, line in enumerate(lines) if line.startswith('test ! -L "$root"'))]
+    start = next(i for i, line in enumerate(lines) if line.startswith('apps="$(nvidia-smi'))
+    end = next(i for i, line in enumerate(lines) if i > start and line.startswith("bounded "))
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text(f"MemTotal: 1 kB\nMemAvailable: {available_gib * 1024 * 1024} kB\n")
+    cgroup = tmp_path / "cgroup"
+    if memory_stat is not None:
+        (cgroup / f"docker-{CO_ID}.scope").mkdir(parents=True)
+        (cgroup / f"docker-{CO_ID}.scope/memory.stat").write_text(
+            f"anon {memory_stat[0]}\nfile 999999999999\nkernel 5\nshmem {memory_stat[1]}\n")
+    body = "\n".join(lines[start:end]).replace("/proc/meminfo", str(meminfo)).replace(
+        "/sys/fs/cgroup/system.slice", str(cgroup))
+    q = shlex.quote
+    own = {"s4d.disk_bytes": str(GIB), "s4d.gpu": gpu, "s4d.mem_bytes": str(5 * GIB), "s4d.ram_bytes": str(GIB)}
+    listing = "printf '%s\\n' " + CO_ID if cotenant is not None else "true"
+    stubs = ("docker() {\ncase \"$1\" in\n"
+             "ps) case \"$*\" in *s4d.managed=true*) printf '%s\\n' s4d-own-a1;; "
+             "*s4d.managed=false*) " + listing + ";; "
+             "*) return 97;; esac;;\n"
+             "top) case \"$2\" in s4d-own-a1) printf 'PID\\n11\\n';; " + CO_ID + ") printf 'PID\\n777\\n778\\n';; "
+             "*) return 97;; esac;;\n"
+             "inspect) case \"$4\" in s4d-own-a1) case \"$3\" in "
+             + " ".join(f"*{q(key)}*) printf '%s\\n' {q(value)};;" for key, value in own.items())
+             + " *StartedAt*) printf '%s\\n' 2020-01-01T00:00:00Z;; *) return 97;; esac;; "
+             + CO_ID + {None: f") printf '%s\\n' {q(cotenant or '')};; ",
+                        "gone": ") printf 'Error: No such object: %s\\n' \"$4\" >&2; return 1;; ",
+                        "daemon": ") printf 'Error response from daemon: busy\\n' >&2; return 1;; "}[inspect_fails]
+             + "*) return 97;; esac;;\n*) return 97;; esac\n}\n"
+             "nvidia-smi() {\ncase \"$*\" in\n"
+             f"*query-compute-apps*) printf '%s\\n' {' '.join(q(row) for row in apps)};;\n"
+             f"*index,uuid*) printf '%s\\n' {q('0, ' + gpu)} {q('1, ' + APPROVED_HOST_GPUS['remote'][1])};;\n"
+             f"*memory.total*) printf '%s\\n' {q(f'{gpu}, 97887, {gpu_used_mib}')};;\n"
+             "'') printf '%s\\n' 'no graphics';;\n*) return 97;; esac\n}\n"
+             "df() { printf '1B-blocks Avail\\n%s %s\\n' 6900000000000 2200000000000; }\n")
+    script = "\n".join(["set -eu", *head[1:], stubs, body, "printf 'ADMITTED\\n'"])
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+def _co_line(name="/s4d-rwprep-x-a1", role="rwprep", limit=48 * GIB, gpu=None, declared=34 * GIB, devices=0,
+             request=None):
+    gpu = gpu or APPROVED_HOST_GPUS["remote"][0]
+    request = f"cdi,0,0,0,nvidia.com/gpu={gpu};/" if request is None else request
+    return "|".join(map(str, (name, role, limit, gpu, declared, devices, request)))
+
+
+def _apps(cotenant_mib=(15000, 15000)):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    return [f"{gpu}, 11, 4096", *(f"{gpu}, {pid}, {mib}" for pid, mib in zip((777, 778), cotenant_mib))]
+
+
+def test_launch_guard_admits_next_to_a_verified_cotenant_only():
+    import tempfile
+
+    other = APPROVED_HOST_GPUS["remote"][1]
+    needed = (34 * 1024 - 30000) + 1024 + 4 * 1024 + 6 * 1024  # MiB
+    cases = {  # name -> (keyword arguments, expected stderr marker or None for admitted)
+        "no_cotenant": (dict(apps=_apps(())), None),
+        "unlisted_process": (dict(apps=_apps()), "Foreign process"),
+        "cotenant": (dict(apps=_apps(), cotenant=_co_line(), memory_stat=(10 * GIB, GIB)), None),
+        "cpu_only_cotenant": (dict(apps=_apps(()), cotenant=_co_line(role="rwprep-maint", gpu="none", request="",
+                                                                     declared="")), None),
+        "role": (dict(apps=_apps(), cotenant=_co_line(role="rwprep-fetch")), "Foreign process"),
+        "name": (dict(apps=_apps(), cotenant=_co_line(name="/kimi")), "Foreign process"),
+        "other_gpu": (dict(apps=_apps(), cotenant=_co_line(gpu=other)), "Foreign process"),
+        "label_differs": (dict(apps=_apps(), cotenant=_co_line(
+            request=f"cdi,0,0,0,nvidia.com/gpu={other};/")), "Foreign process"),
+        "legacy_request": (dict(apps=_apps(), cotenant=_co_line(
+            request=f"nvidia,0,1,0,{APPROVED_HOST_GPUS['remote'][0]};/")), "Foreign process"),
+        "devices": (dict(apps=_apps(), cotenant=_co_line(devices=1)), "Foreign process"),
+        "undeclared": (dict(apps=_apps(), cotenant=_co_line(declared="")), "Foreign process"),
+        "vanished": (dict(apps=_apps(()), cotenant=_co_line(), inspect_fails="gone"), None),
+        "vanished_process_left": (dict(apps=_apps(), cotenant=_co_line(), inspect_fails="gone"), "Foreign process"),
+        "inspect_error": (dict(apps=_apps(()), cotenant=_co_line(), inspect_fails="daemon"), "inspect failed"),
+        "unbounded": (dict(apps=_apps(), cotenant=_co_line(limit=0)), "without a RAM limit"),
+        # Codex review: label values carrying separators or newlines must not forge the binding fields
+        "forged_newline": (dict(apps=_apps(), cotenant=_co_line(gpu=other) + "\n" + _co_line()), "Foreign process"),
+        "forged_separator": (dict(apps=_apps(), cotenant=_co_line(role="rwprep|x")), "Foreign process"),
+        # Codex review round 2: no octal / unbounded byte counts reach the shell arithmetic
+        "octal_declared": (dict(apps=_apps(), cotenant=_co_line(declared="085899345920")), "Foreign process"),
+        "zero_declared": (dict(apps=_apps(), cotenant=_co_line(declared="00")), "Foreign process"),
+        "huge_limit": (dict(apps=_apps(), cotenant=_co_line(limit=10**15)), "Foreign process"),
+        "octal_limit": (dict(apps=_apps(), cotenant=_co_line(limit="0123")), "Foreign process"),
+        "forged_request": (dict(apps=_apps(), cotenant=_co_line(
+            request=f"cdi,0,0,0,nvidia.com/gpu={APPROVED_HOST_GPUS['remote'][0]};/|")), "Foreign process"),
+        "static_cap": (dict(apps=_apps(), cotenant=_co_line(declared=80 * GIB)), ""),  # 80 + 5 + 6 > 90
+        "measured_cap": (dict(apps=_apps((60000, 25000)), cotenant=_co_line(), gpu_used_mib=90000), ""),
+        # free memory needed: co-tenant pending 34 GiB - 30000 MiB, own job pending 1 GiB, 4 GiB margin, 6 GiB job
+        "free": (dict(apps=_apps(), cotenant=_co_line(), gpu_used_mib=97887 - needed + 1), "Co-tenant GPU memory"),
+        "free_exact": (dict(apps=_apps(), cotenant=_co_line(), gpu_used_mib=97887 - needed), None),
+        "ram": (dict(apps=_apps(), cotenant=_co_line(limit=900 * GIB)), ""),  # 1000 - 900 - 13 < 120
+        "ram_in_use": (dict(apps=_apps(), cotenant=_co_line(limit=900 * GIB), memory_stat=(880 * GIB, 10 * GIB)),
+                       None),
+    }
+    for name, (kwargs, marker) in cases.items():
+        with tempfile.TemporaryDirectory() as directory:
+            result = _guard(Path(directory), **kwargs)
+        if marker is None:
+            assert result.returncode == 0 and result.stdout == "ADMITTED\n", (name, result.stderr)
+        else:
+            assert result.returncode != 0 and "ADMITTED" not in result.stdout, (name, result.stdout)
+            assert marker in result.stderr, (name, result.stderr)
