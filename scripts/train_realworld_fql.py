@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -99,6 +100,12 @@ def main() -> None:
     dump_config(cfg, run_dir / "config.yaml")
 
     device = torch.device(train_cfg["device"])
+    deterministic = train_cfg.get("deterministic") is True
+    if deterministic:  # bitwise-reproducible kernels (tests / audits); real runs keep the fast default kernels
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
     clip = data_cfg.get("action_clip_eps")
     pixel_cfg = dict(cfg.get("pixel") or {})
     end_to_end = CONDITIONS[condition].encoder_type is None
@@ -123,7 +130,7 @@ def main() -> None:
     seed = int(train_cfg["seed"])
     agent_cfg = {k: (tuple(v) if isinstance(v, list) else v) for k, v in dict(cfg["agent"]).items()}
     agent = FQLAgent.create(seed, enc().out_dim, A.ACTION_DIM, agent_cfg, device=device, encoder=enc)
-    if device.type == "cuda" and end_to_end:
+    if device.type == "cuda" and end_to_end and not deterministic:
         torch.backends.cudnn.benchmark = True
     sample_gen = torch.Generator().manual_seed(seed + 1)
     aug_gen = torch.Generator().manual_seed(seed + 3)
