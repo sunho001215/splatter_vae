@@ -16,6 +16,7 @@ from s4d.rwlearn import baseline_data as BD
 from s4d.rwlearn import configs as C
 from s4d.rwlearn.gate import QA_FAMILIES
 from s4d.rwlearn.store import FrameStore, MemoryStore, history, open_store, split_episodes, sync_index
+from tests.test_rwlearn_gate import gate_identities
 
 MS = 1_000_000
 OFFSETS_MS = (0.0, 6.6, -22.9)
@@ -54,7 +55,8 @@ def synthetic_store(episodes=3, frames=24, hw=(32, 32), pause_at=12, drop=(2, 7)
                          "depth": rng.uniform(0.6, 2.5, (frames, *hw)).astype(np.float32)[keep],
                          "semantic": rng.integers(0, 4, (frames, *hw), dtype=np.uint8)[keep],
                          "K": K, "w2c": look_at_w2c(centre)}
-        eps[f"drawer-open/episode_{e:06d}"] = {"task": "drawer-open", "raw": raw, "cameras": cams}
+        eps[f"drawer-open/episode_{e:06d}"] = {"task": "drawer-open", "raw": raw or f"episode_{e:06d}.h5",
+                                              "cameras": cams}
     return MemoryStore(eps, hw)
 
 
@@ -210,7 +212,7 @@ def test_gate_evidence_required_beyond_smoke_runs():
     assert BD.check_gate(store, None, steps=100, consumer="dynamo")["smoke"]
     with pytest.raises(RuntimeError, match="no passed full-data gate"):
         BD.check_gate(store, None, steps=300_000, consumer="dynamo")
-    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, **gate_identities(store)}},
               "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
     assert not BD.check_gate(store, report, steps=None, consumer="dynamo")["smoke"]
     eps = store.episodes()
@@ -242,7 +244,7 @@ def test_trainer_hook_binds_the_gate_to_the_calling_trainer():
     store = synthetic_store()
     for e in store._eps.values():
         e["upstream"] = {"calibrate": "cal-1"}
-    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, **gate_identities(store)}},
               "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
     iface = {"source": "realworld", "gate_report": report, "target": "drawer-open"}
     assert BD.realworld_classes({**iface, "consumer": "dynamo"}, 10**6, store, consumer="dynamo")["dynamo"]
@@ -267,7 +269,7 @@ def test_geometry_dependent_consumers_need_the_validated_calibration(consumer):
     store = synthetic_store()
     for e in store._eps.values():
         e["upstream"] = {"calibrate": "cal-1"}
-    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, **gate_identities(store)}},
             "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
     with pytest.raises(RuntimeError, match="calibration hold"):  # no hold section: held
         BD.check_gate(store, base, steps=None, consumer=consumer)
@@ -295,7 +297,7 @@ def test_geometry_dependent_consumers_need_the_validated_calibration(consumer):
 @pytest.mark.parametrize("consumer", ["dynamo", "reviwo", "e2e_cnn"])
 def test_non_geometric_consumers_are_not_held_by_the_calibration(consumer):
     store = synthetic_store()
-    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, **gate_identities(store)}},
             "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}},
             "calibration_hold": {"drawer-open": {"passed": False, "episodes": {}}}}
     res = BD.check_gate(store, base, steps=None, consumer=consumer)
@@ -308,6 +310,26 @@ def test_split_is_per_task_seeded_and_disjoint():
     assert len(s["validation"]) == 2 and len(s["train"]) == 18
     assert not set(s["train"]) & set(s["validation"]) and split_episodes(store, 0.1, 0) == s
     assert split_episodes(store, 0.1, 1)["validation"] != s["validation"]
+
+
+@pytest.mark.parametrize("raw", [None, "episode_000000.h5"])
+def test_gate_and_split_reject_missing_or_duplicate_raw_identity(raw):
+    store = synthetic_store()
+    report = {"tasks": {"drawer-open": {"passed": True, **gate_identities(store)}},
+              "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
+    store._eps[store.episodes()[1]]["raw"] = raw
+    for check in (lambda: split_episodes(store),
+                  lambda: BD.check_gate(store, report, steps=None, consumer="dynamo")):
+        with pytest.raises(RuntimeError, match="raw identity"):
+            check()
+
+
+def test_gate_rejects_old_reports_without_raw_provenance():
+    store = synthetic_store()
+    report = {"tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+              "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
+    with pytest.raises(RuntimeError, match="missing raw identity"):
+        BD.check_gate(store, report, steps=None, consumer="dynamo")
 
 
 def test_committed_configs_are_the_derived_ones_and_change_only_the_documented_keys():

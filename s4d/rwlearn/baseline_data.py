@@ -73,6 +73,9 @@ def check_gate(store: FrameStore, gate_report: str | Path | dict | None, *, step
     by_task: dict[str, list[str]] = {}
     for ep in store.episodes():
         by_task.setdefault(store.task(ep), []).append(ep)
+    from s4d.rwlearn.identity import store_identities
+
+    report = G.bind_store_episodes(report, by_task, store_identities(store))
     for task, eps in by_task.items():
         gate = report["tasks"].get(task)
         if gate is None or not gate.get("passed"):

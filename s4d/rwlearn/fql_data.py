@@ -153,6 +153,7 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
     Outcomes are explicit: an ``rw-outcomes`` document (``s4d.rwlearn.outcomes.outcome_labels``; user decision: all
     successful) or ``{ep: bool}`` for every episode, or ``assume_final_success``. ``export_path`` is None exactly for
     the ``e2e_cnn`` condition (no frozen encoder: transitions and frame indices only)."""
+    from s4d.rwlearn.identity import match_recordings, store_identities
     from s4d.rwlearn.outcomes import load_outcomes
 
     outcome_doc = outcomes if isinstance(outcomes, dict) and "schema" in outcomes else None
@@ -165,6 +166,12 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
     if (c.encoder_type is None) != (export_path is None):
         raise ValueError(f"{condition}: " + ("the end-to-end condition takes no encoder export" if export_path else
                                              "a frozen-encoder condition needs its encoder export"))
+    identities = store_identities(store, episodes)
+    match_recordings(identities, identities)
+    if raw_paths:
+        actual = {ep: {**rec, "raw_recording": str(raw_paths.get(ep) or rec["raw_recording"])}
+                  for ep, rec in identities.items()}
+        match_recordings(identities, actual)
     adapter = None
     if c.encoder_type is not None:
         adapter = encoder_adapter(condition, export_path, store.image_hw[0]).to(device)
@@ -213,6 +220,7 @@ def build_fql_dataset(store: FrameStore, condition: str, export_path, out: Path,
                        contract=json.dumps(contract.to_json()), frame_stack=FRAME_STACK,
                        sequence_feature=bool(adapter.stack_feature) if adapter else False,
                        episodes=json.dumps(list(episodes)), image_hw=json.dumps(list(store.image_hw)),
+                       raw_identities=json.dumps(identities),
                        stats=json.dumps(stats), calibration=json.dumps(calibration),
                        outcomes=json.dumps({"assume_final_success": bool(assume_final_success),
                                             "labels": {ep: bool(v) for ep, v in outcomes.items()},

@@ -20,6 +20,15 @@ STAGES = gate.REQUIRED_STAGES
 CAMS = ["135122070988", "135122073201", "135122076054"]
 
 
+def gate_identities(store):
+    """Identity section of an already bound synthetic gate report."""
+    from s4d.rwlearn.identity import store_identities
+
+    identities = store_identities(store)
+    return {"episodes": store.episodes(), "store_episodes": store.episodes(),
+            "episode_identities": {ep: {**rec, "store_episode": ep} for ep, rec in identities.items()}}
+
+
 def calibration_record(sha, build="cal-build-1", status="done", **metrics):
     """The record agent CAL writes through ingest_worker.set_stage (contract: docs/realworld_fql.md)."""
     return {"status": status, "code_version": "calibration_validation@1", "input_sha256": sha,
@@ -60,7 +69,24 @@ def test_both_tasks_pass_with_exactly_100_preprocessed_episodes():
     rep = gate.evaluate(manifest(), ["drawer-open", "mug-hanging"])
     assert rep["passed"]
     t = rep["tasks"]["drawer-open"]
-    assert t["valid_and_preprocessed"] == 100 and t["store_episodes"][0] == "drawer-open/episode_000000"
+    assert t["valid_and_preprocessed"] == 100 and t["store_episodes"] == []  # bound only when a store is read
+    identity = t["episode_identities"]["drawer-open/episode_000000.h5"]
+    assert identity["raw_recording"] == "drawer-open/episode_000000.h5" and identity["store_episode"] is None
+
+
+@pytest.mark.parametrize("duplicate", ["filename", "sha256"])
+def test_gate_rejects_duplicate_raw_identity(duplicate):
+    m = manifest()
+    a, b = (m["episodes"][f"drawer-open/episode_{i:06d}.h5"] for i in (0, 2))
+    if duplicate == "filename":
+        # An opaque manifest key is valid when the record carries an explicit raw filename.
+        m["episodes"]["drawer-open/alias"] = m["episodes"].pop("drawer-open/episode_000002.h5")
+        a["filename"] = b["filename"] = "episode_000000.h5"
+    else:
+        m["episodes"]["drawer-open/episode_000002.h5"] = entry("drawer-open", 2, sha=a["sha256"])
+    report = gate.evaluate(m, ["drawer-open"])
+    assert not report["passed"]
+    assert "duplicate raw identity" in " ".join(report["tasks"]["drawer-open"]["problems"])
 
 
 @pytest.mark.parametrize("mutate,reason", [
@@ -144,7 +170,7 @@ def test_calibration_hold_only_holds_geometry_dependent_consumers():
     assert rep["passed"] and rep["geometry_passed"]
     hold = rep["calibration_hold"]["drawer-open"]
     assert hold["validated"] == 100
-    assert hold["episodes"]["drawer-open/episode_000000"] == {"calibrate_build_id": "cal-build-1", "cameras": CAMS}
+    assert hold["episodes"]["drawer-open/episode_000000.h5"] == {"calibrate_build_id": "cal-build-1", "cameras": CAMS}
 
 
 def test_consumer_classification_is_explicit():

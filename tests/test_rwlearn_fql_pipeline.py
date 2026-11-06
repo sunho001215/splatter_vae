@@ -21,6 +21,7 @@ from s4d.rwlearn.fql import FQLAgent
 from s4d.rwlearn.gate import QA_FAMILIES
 from s4d.rwlearn.inference import OfflinePolicy, checkpoint_payload, replay
 from s4d.rwlearn.store import MemoryStore
+from tests.test_rwlearn_gate import gate_identities
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = Path(__file__).parent / "fixtures" / "rwlearn" / "raw_mug_hanging_ep3_actions.npz"
@@ -189,7 +190,7 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     assert check_dataset_gate(path, None, steps=100)["smoke"]
     with pytest.raises(RuntimeError, match="no passed full-data gate"):
         check_dataset_gate(path, None, steps=1_000_000)
-    report = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}},
+    report = {"tasks": {"mug-hanging": {"passed": True, **gate_identities(store)}},
               "families": {"mug-hanging": {f: {"passed": True} for f in QA_FAMILIES}}}
     assert not check_dataset_gate(path, report, steps=None, split={"train": [ep], "validation": []})["smoke"]
     with pytest.raises(RuntimeError, match="partition"):
@@ -201,6 +202,40 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     torch.save(checkpoint_payload(agent, data, "dynamo", 0), tmp_path / "p.pt")
     with pytest.raises(ValueError, match="differs"):
         OfflinePolicy(tmp_path / "p.pt", export_path=exports / "snerl.pt")
+
+
+def test_fql_build_preserves_raw_identity_across_pipeline_names(tmp_path):
+    import json
+
+    from s4d.rwlearn import gate, outcomes
+    from s4d.rwlearn.store import split_episodes
+    from tests.test_rwlearn_gate import entry
+
+    store = store_on_fixture(n=8, hw=32)
+    old = store.episodes()[0]
+    ep = "mug-hanging/mug-hanging-000003"
+    store._eps[ep] = store._eps.pop(old)
+    raw_sha = FD.sha256_file(FIXTURE)
+    store._eps[ep]["raw_sha256"] = raw_sha
+    rec = entry("mug-hanging", 3, sha=raw_sha)
+    rec["filename"] = FIXTURE.name
+    manifest = {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION,
+                "episodes": {"mug-hanging/ingest-record-3": rec},
+                "counts": {"mug-hanging": {"complete": True, "target": 1}}}
+    report = gate.evaluate(manifest, ["mug-hanging"], target=1)
+    assert report["passed"]
+    path = tmp_path / "e2e_identity.h5"
+    FD.build_fql_dataset(store, "e2e_cnn", None, path, episodes=[ep], outcomes=outcomes.outcome_labels([ep]))
+    with h5py.File(path, "r") as f:
+        identity = json.loads(f.attrs["raw_identities"])[ep]
+        assert identity["raw_recording"] == str(FIXTURE) and identity["raw_sha256"] == raw_sha
+    assert not gate.check_dataset_gate(path, report, steps=None, split=split_episodes(store))["smoke"]
+    for value in ({}, {ep: {**identity, "raw_recording": "other.npz"}},
+                  {ep: {**identity, "raw_sha256": "f" * 64}}):
+        with h5py.File(path, "r+") as f:
+            f.attrs["raw_identities"] = json.dumps(value)
+        with pytest.raises(RuntimeError, match="raw identity"):
+            gate.check_dataset_gate(path, report, steps=None)
 
 
 # ---------------------------------------------------------------------------------------------- end-to-end CNN + FQL
@@ -313,7 +348,7 @@ def test_geometric_condition_dataset_needs_the_validated_calibration(tmp_path, e
         cal = __import__("json").loads(f.attrs["calibration"])
         assert cal[ep] == {"calibrate": "cal-1", "cameras": sorted(store.cameras(ep))}
         assert "camera poses" in f.attrs["extra_inputs"] and "+2 RGB views" in f.attrs["extra_inputs"]
-    base = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}},
+    base = {"tasks": {"mug-hanging": {"passed": True, **gate_identities(store)}},
             "families": {"mug-hanging": {f: {"passed": True} for f in QA_FAMILIES}}}
     with pytest.raises(RuntimeError, match="calibration hold released"):
         check_dataset_gate(path, base, steps=None)

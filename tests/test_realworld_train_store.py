@@ -177,6 +177,137 @@ def _dataset(built, **kw):
         return RealworldWindowDataset([built["tmp"] / "store"], split="all", **kw)
 
 
+@pytest.fixture
+def pipeline_named_store(built, tmp_path):
+    """The REAL writer, with dispatcher episode ids and recorded raw filenames (no HDF5 attribute patching)."""
+    import hashlib
+    import shutil
+
+    from s4d.rwlearn import gate
+    from tests.test_rwlearn_gate import entry
+
+    root, paths, episodes = tmp_path / "processed", [], {}
+    for i in range(2):
+        eid, filename = f"drawer-open-{i:06d}", f"episode_{i:06d}.h5"
+        shutil.copytree(rio.episode_dir(built["root"], built["ep"]), rio.episode_dir(root, eid))
+        meta_path = rio.episode_dir(root, eid) / "normalized" / "episode.json"
+        meta = json.loads(meta_path.read_text())
+        sha = hashlib.sha256(f"synthetic raw {i}".encode()).hexdigest()
+        meta["episode_id"] = eid
+        meta["provenance"]["source_files"] = [{"path": filename, "sha256": sha, "bytes": 15}]
+        meta_path.write_text(json.dumps(meta))
+        out = tmp_path / "compact" / eid
+        TS.write_episode(root, eid, out, task="drawer-open", depth_stage="sensor_depth", allow_mock=True)
+        paths.append(out / TS.FILE)
+        rec = entry("drawer-open", i, sha=sha, validated=True)
+        rec["filename"] = filename
+        stages = rec["preprocessing"]["stages"]
+        build = rio.build_id(rio.read_record(rio.stage_dir(root, eid, "calibrate")))
+        stages["calibrate"]["metrics"]["build_id"] = build
+        stages[gate.CALIBRATION_STAGE]["metrics"].update(calibrate_build_id=build, cameras=["rig0", "rig1"])
+        episodes[f"drawer-open/{filename}"] = rec
+    manifest = {"schema": gate.SCHEMA, "schema_version": gate.SCHEMA_VERSION, "episodes": episodes,
+                "counts": {"drawer-open": {"target": 2, "complete": True}}}
+    with pytest.warns(UserWarning, match="MOCK"):
+        store = TS.CompactStore(paths)
+    yield store, gate.evaluate(manifest, ["drawer-open"], target=2), paths
+    store.close()
+
+
+def test_pipeline_names_pass_inputs_outcomes_split_and_both_gates(pipeline_named_store, tmp_path):
+    import subprocess
+
+    import yaml
+
+    from s4d.rwlearn import gate, outcomes
+    from s4d.rwlearn.baseline_data import check_gate
+    from s4d.rwlearn.identity import store_identities
+    from s4d.rwlearn.store import split_episodes
+
+    store, report, paths = pipeline_named_store
+    eps = store.episodes()
+    assert eps == [f"drawer-open/drawer-open-{i:06d}" for i in range(2)]
+    assert [store.raw_recording(ep) for ep in eps] == [f"episode_{i:06d}.h5" for i in range(2)]
+    split = split_episodes(store)
+    assert set(split["train"]) | set(split["validation"]) == set(eps)
+    assert len(split["validation"]) == 1 and not set(split["train"]) & set(split["validation"])
+    assert not check_gate(store, report, steps=None, split=split, target="drawer-open", consumer="snerl")["smoke"]
+    bound = gate.bind_store_episodes(report, {"drawer-open": eps}, store_identities(store))
+    assert bound["tasks"]["drawer-open"]["store_episodes"] == eps
+    assert set(bound["calibration_hold"]["drawer-open"]["episodes"]) == set(eps)
+    ending = {"schema": outcomes.REPORT_SCHEMA, "episodes": {
+        f"drawer-open/episode_{i:06d}": {"path": f"/relocated/drawer-open/episode_{i:06d}.h5",
+            "decision": "needs_image_review", "flags": [{"code": f"review_{i}", "severity": "review"}]}
+        for i in range(2)}}
+    labels = outcomes.outcome_labels(eps, ending_report=ending, store=store)
+    assert outcomes.load_outcomes(labels) == dict.fromkeys(eps, True)
+    assert [labels["episodes"][ep]["ending_flags"] for ep in eps] == [["review_0"], ["review_1"]]
+    locator, gate_path, ending_path = (tmp_path / name for name in ("store.yaml", "gate.json", "ending.json"))
+    locator.write_text(yaml.safe_dump({"kind": "compact", "paths": list(map(str, paths))}))
+    gate_path.write_text(json.dumps(report))
+    ending_path.write_text(json.dumps(ending))
+    out = tmp_path / "inputs"
+    result = subprocess.run([sys.executable, "-I", str(REPO / "scripts/realworld_learning.py"), "inputs",
+                             "--store", str(locator), "--gate-report", str(gate_path), "--task", "drawer-open",
+                             "--out-dir", str(out), "--ending-report", str(ending_path)],
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads((out / "outcomes.json").read_text()) == labels
+    assert json.loads((out / "split_seed0.json").read_text()) == split
+    saved = json.loads((out / "gate_report.json").read_text())
+    assert saved == bound
+    assert not check_gate(store, saved, steps=None, consumer="snerl")["smoke"]
+    # FQL's trainer gate uses the same provenance and store keys, including geometric calibration evidence.
+    dataset = tmp_path / "gated_dataset.h5"
+    with h5py.File(dataset, "w") as f:
+        f.attrs.update(episodes=json.dumps(eps), condition="snerl", raw_identities=json.dumps(store_identities(store)),
+                       calibration=json.dumps({ep: {"calibrate": store.upstream(ep)["calibrate"],
+                                                     "cameras": store.cameras(ep)} for ep in eps}))
+        for ep in eps:
+            f.create_group(f"episodes/{ep}/sync").attrs["task"] = store.task(ep)
+    for evidence in (report, saved):
+        assert not gate.check_dataset_gate(dataset, evidence, steps=None, split=split)["smoke"]
+
+
+@pytest.mark.parametrize("attribute,value", [("raw_recording", "episode_999999.h5"),
+                                             ("raw_recording", ""), ("raw_sha256", "f" * 64)])
+def test_pipeline_names_cannot_hide_wrong_raw_identity(pipeline_named_store, attribute, value):
+    from s4d.rwlearn.baseline_data import check_gate
+
+    store, report, paths = pipeline_named_store
+    store.close()
+    with h5py.File(paths[0], "r+") as f:
+        f.attrs[attribute] = value
+    with pytest.warns(UserWarning, match="MOCK"):
+        changed = TS.CompactStore(paths)
+    try:
+        with pytest.raises(RuntimeError, match="raw identity"):
+            check_gate(changed, report, steps=None, consumer="e2e_cnn")
+    finally:
+        changed.close()
+
+
+@pytest.mark.parametrize("problem", ["missing", "mismatch", "duplicate", "sha256", "missing_path"])
+def test_pipeline_outcome_flags_require_unambiguous_raw_identity(pipeline_named_store, problem):
+    from s4d.rwlearn import outcomes
+
+    store, _, _ = pipeline_named_store
+    records = {f"drawer-open/raw_{i}": {"path": f"episode_{i:06d}.h5", "decision": "needs_image_review",
+                                       "flags": []} for i in range(2)}
+    if problem == "missing":
+        records.pop("drawer-open/raw_0")
+    elif problem == "mismatch":
+        records["drawer-open/raw_0"]["path"] = "episode_999999.h5"
+    elif problem == "missing_path":
+        records["drawer-open/raw_0"].pop("path")
+    elif problem == "duplicate":
+        records["drawer-open/alias"] = dict(records["drawer-open/raw_0"])
+    else:
+        records["drawer-open/raw_0"]["sha256"] = "f" * 64
+    with pytest.raises(RuntimeError, match="raw identity"):
+        outcomes.outcome_labels(store.episodes(), ending_report={"episodes": records}, store=store)
+
+
 def test_store_layout_versions_and_idempotence(built):
     rec = built["rec"]
     s = rec["summary"]

@@ -613,6 +613,7 @@ class EpisodeFile:
         self.max_sync_ns = int(f.attrs["max_sync_ns"])
         self.has_semantic = all("semantic" in f[f"cameras/{c}"] for c in self.cameras)
         self.raw_recording = str(f.attrs["raw_recording"])
+        self.raw_sha256 = str(f.attrs.get("raw_sha256") or "")
         self.mock = bool(f.attrs.get("MOCK_MODEL_OUTPUTS", False))
         self.close()
 
@@ -838,6 +839,9 @@ class CompactStore:
 
     def raw_recording(self, ep):
         return self._files[ep].raw_recording
+
+    def raw_sha256(self, ep):
+        return self._files[ep].raw_sha256
 
     def sync_sets(self, ep) -> dict:
         """The stored cross-camera sets of an episode: ``cameras`` (store order), ``frames`` (F_ref,V), ``times`` of the

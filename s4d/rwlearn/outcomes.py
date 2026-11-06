@@ -80,21 +80,39 @@ _GRIPPER = ("gripper/t", "gripper/position", "gripper/object", "gripper/segment"
 
 
 def episode_key(task: str, path) -> str:
-    """Store / gate episode id ``<task>/episode_NNNNNN`` of a raw recording."""
+    """Raw-recording report key; processed store episode ids may differ."""
     return f"{task}/{Path(path).stem}"
 
 
 # ----------------------------------------------------------------------------------------------- labels
-def outcome_labels(episodes, *, ending_report: dict | None = None) -> dict:
+def outcome_labels(episodes, *, ending_report: dict | None = None, store=None) -> dict:
     """The ``rw-outcomes`` v1 document: outcome ``success`` for every episode (user decision), with its ending flags
     (codes only; evidence in the ending report) for traceability."""
     flags = (ending_report or {}).get("episodes", {})
+    episodes = list(episodes)
+    if len(episodes) != len(set(episodes)):
+        raise RuntimeError("duplicate episode in outcome labels")
+    keys = {ep: ep for ep in episodes}
+    if store is not None:
+        from s4d.rwlearn.identity import match_recordings, raw_identity, store_identities
+
+        identities = store_identities(store, episodes)
+        match_recordings(identities, identities)
+    if ending_report is not None:
+        if store is not None:
+            tasks = {r["task"] for r in identities.values()}
+            expected = {key: raw_identity(key.split("/")[0], rec.get("path") or rec.get("raw_recording"),
+                                          rec.get("raw_sha256") or rec.get("sha256"))
+                        for key, rec in flags.items() if key.split("/")[0] in tasks}
+            keys = match_recordings(expected, identities, complete=False)
+        elif any(ep not in flags for ep in episodes):
+            raise RuntimeError("missing raw identity in ending report; supply the store to join processed episode keys")
     out = {"schema": OUTCOME_SCHEMA, "schema_version": OUTCOME_VERSION, "decision": DECISION,
            "success_state": SUCCESS_STATE, "flags_change_labels": False, "episodes": {}}
     if ending_report is not None:
         out["ending_report"] = {"schema": ending_report.get("schema"), "sha256": _sha(ending_report)}
     for ep in sorted(episodes):
-        rec = flags.get(ep) or {}
+        rec = flags.get(keys[ep]) or {}
         out["episodes"][ep] = {"outcome": "success",
                                "ending_decision": rec.get("decision"),
                                "ending_flags": [f["code"] for f in rec.get("flags", []) if f["severity"] != "info"]}

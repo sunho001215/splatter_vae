@@ -130,7 +130,9 @@ The gate is enforced twice:
 2. Every trainer's real-world branch checks `data_interface.gate_report`. A run longer than 10k steps refuses unless
    all of the following hold:
    - every store task passed;
-   - the report's per-task `store_episodes` equal the store episodes exactly;
+   - manifest records match store episodes uniquely by task and recorded raw filename, with equal SHA256 when
+     the store records it; `inputs` saves both manifest and store keys in `episode_identities`, and its bound report's
+     `store_episodes` equal the actual store keys (for example `drawer-open/drawer-open-000000`);
    - the store's tasks equal the config's `target` tasks;
    - the split manifest is a disjoint train/validation partition of exactly those episodes;
    - no data cap (`max_episodes`, `num_episodes`, `max_frames_per_demo`) truncates anything.

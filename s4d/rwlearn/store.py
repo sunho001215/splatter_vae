@@ -16,6 +16,7 @@ Contract of a ``FrameStore`` (all arrays numpy):
 * ``intrinsics(ep, cam)`` -> (3, 3) K of the STORED grid in continuous pixel coordinates (pixel i covers [i, i+1));
   ``w2c(ep, cam)`` -> (4, 4) OpenCV, world = robot base (``panda_link0``), the episode's accepted calibration;
 * ``raw_recording(ep)`` -> path of the read-only ``panda_teleop_episode`` file (actions for FQL);
+* optional ``raw_sha256(ep)`` -> the recorded source hash (checked against the manifest when present);
 * ``image_hw`` -> (H, W) of every stored image;
 * optional ``upstream(ep)`` -> {stage: build id} of the preprocessing outputs the episode was built from (at least
   ``calibrate``); geometry-dependent consumers need it to prove the store carries the VALIDATED calibration
@@ -222,6 +223,9 @@ class MemoryStore:
     def raw_recording(self, ep):
         return self._eps[ep].get("raw")
 
+    def raw_sha256(self, ep):
+        return self._eps[ep].get("raw_sha256", "")
+
     def upstream(self, ep):
         return dict(self._eps[ep].get("upstream") or {})
 
@@ -353,7 +357,11 @@ class ProcessedEpisodeStore:
 
     def raw_recording(self, ep):
         prov = self._meta[ep].provenance
-        return str(Path(prov.source_root) / prov.source_files[0].path)
+        return str(Path(prov.source_root) / prov.source_files[0].path) if prov.source_files else ""
+
+    def raw_sha256(self, ep):
+        prov = self._meta[ep].provenance
+        return str(prov.source_files[0].sha256 or "") if prov.source_files else ""
 
     def upstream(self, ep):
         from s4d.realworld import io as rio
@@ -385,8 +393,14 @@ register_store("compact", _open_compact)
 
 def split_episodes(store: FrameStore, validation_fraction: float = 0.1, seed: int = 0) -> dict:
     """Per task: a seeded permutation of its sorted episodes, the first ceil(fraction * n) are validation (none when a
-    task has a single episode); a store with several tasks gets the union of the per-task splits."""
+    task has a single episode); a store with several tasks gets the union of the per-task splits. Preserve actual
+    store keys and refuse missing/duplicate raw provenance so one recording cannot enter both partitions."""
     import hashlib
+
+    from s4d.rwlearn.identity import match_recordings, store_identities
+
+    identities = store_identities(store)
+    match_recordings(identities, identities)
 
     out = {"train": [], "validation": [], "seed": int(seed), "validation_fraction": float(validation_fraction)}
     by_task: dict[str, list[str]] = {}

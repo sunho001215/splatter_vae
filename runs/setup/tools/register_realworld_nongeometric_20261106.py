@@ -58,7 +58,7 @@ CONDITIONS = ("dynamo", "reviwo", "e2e_cnn")
 # allowances (20/10 GB); existing shared inputs are not charged again.
 DISK_GB = {"pretrain": 20, "dataset": 20, "fql": 10}
 SOURCE_PATHS = (
-    "s4d/rwlearn/gate.py", "s4d/rwlearn/launch.py", "s4d/rwlearn/configs.py",
+    "s4d/rwlearn/gate.py", "s4d/rwlearn/identity.py", "s4d/rwlearn/launch.py", "s4d/rwlearn/configs.py",
     "s4d/rwlearn/actions.py", "s4d/rwlearn/fql_data.py",
     "scripts/train_reviwo.py", "scripts/train_dynamo.py",
     "scripts/train_realworld_fql.py", "scripts/realworld_fql_dataset.py",
@@ -413,8 +413,9 @@ def recover():
         report = gate.evaluate_file(gate.MANIFEST, record["tasks"])
         check_rows(rows, report, current)
         for task in {row["realworld_target"] for row in rows}:
-            require(report["tasks"][task]["store_episodes"] == original["tasks"][task]["store_episodes"],
-                    f"recovery task episode set changed: {task}")
+            identities = report["tasks"][task].get("episode_identities")
+            require(identities and identities == original["tasks"][task].get("episode_identities"),
+                    f"recovery task raw episode identities changed or missing: {task}")
         require(sha(QUEUE.read_bytes()) == sha(before), "queue changed during recovery")
         if proof.exists():
             saved = json.loads(proof.read_text())

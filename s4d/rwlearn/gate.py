@@ -18,9 +18,9 @@ Every episode also needs ``train_data.output_format`` >= ``s4d.realworld.train/1
 from ``qa.output_format == "rwprep-qa/3"``. Stage-name overrides cannot waive these evidence requirements; old
 train_data@1 / qa@2 records and reports without families never release a consumer.
 
-The report lists, per task, the episode keys and the training-store episode ids (manifest key without ``.h5``:
-``<task>/episode_000123``), which the trainers compare with the store they read (``baseline_data.check_gate``,
-``check_dataset_gate``). Everything fails closed: an unknown schema or missing field is a failure, not a pass.
+The report lists manifest episode keys and their raw-recording identities. ``bind_store_episodes`` joins those
+identities to the actual store keys (which need not resemble the manifest keys), records both keys and rekeys the
+calibration evidence. Only bound reports list ``store_episodes``. Everything fails closed.
 
 CONSUMER FAMILIES (PREP2, 2026-11-06): the per-episode QA is reported per consumer family (``QA_FAMILIES``; the qa
 record's status is the base single-view family); each consumer needs its families (``CONSUMER_FAMILIES``) on every
@@ -54,12 +54,15 @@ geometry-dependent short runs need the calibration too unless explicitly opted o
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from s4d.rwlearn.identity import match_recordings, raw_identity
 
 MANIFEST = Path("/home/ws/ws/realworld-ops/ingest/manifest.json")
 SCHEMA, SCHEMA_VERSION = "rw-ingest-manifest", 2
@@ -191,10 +194,6 @@ def calibration_record_problem(stages: dict, sha: str) -> str | None:
     return None
 
 
-def store_episode_id(key: str) -> str:
-    return key[:-3] if key.endswith(".h5") else key
-
-
 def _decision(e: dict) -> str | None:
     o = e.get("override")
     return o.get("decision") if isinstance(o, dict) else None
@@ -214,7 +213,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
     episodes = manifest.get("episodes") or {}
     all_ok = geo_ok = True
     for task in tasks:
-        problems, hold_problems, hold_ok = [], [], {}
+        problems, hold_problems, hold_ok, identities = [], [], {}, {}
         family_fail = {f: [] for f in QA_FAMILIES}
         counts = (manifest.get("counts") or {}).get(task) or {}
         if counts.get("complete") is not True:
@@ -285,6 +284,17 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
             if match is None or tuple(map(int, match.groups())) < MIN_TRAIN_VERSION:
                 problems.append(f"{key}: train_data output_format {fmt!r}; requires s4d.realworld.train/1.1.0 or later")
                 continue
+            try:
+                recordings = [p for p in (e.get("filename"), (e.get("source") or {}).get("path"),
+                                          key if key.endswith(".h5") else None) if p]
+                if not recordings or len({Path(p).name for p in recordings}) != 1:
+                    raise RuntimeError("missing or conflicting raw identity in manifest")
+                recording = recordings[0]
+                identity = raw_identity(task, recording, sha)
+            except RuntimeError as exc:
+                problems.append(f"{key}: {exc}")
+                continue
+            identities[key] = {**identity, "store_episode": None}
             valid.append(key)
             fams = qa_families(stages)
             for f in QA_FAMILIES:
@@ -295,8 +305,11 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 hold_problems.append(f"{key}: {why}")
             else:
                 m = stages[CALIBRATION_STAGE]["metrics"]
-                hold_ok[store_episode_id(key)] = {"calibrate_build_id": m["calibrate_build_id"],
-                                                  "cameras": sorted(m["cameras"])}
+                hold_ok[key] = {"calibrate_build_id": m["calibrate_build_id"], "cameras": sorted(m["cameras"])}
+        try:
+            match_recordings(identities, identities)
+        except RuntimeError as exc:
+            problems.append(str(exc))
         if len(valid) != target:
             problems.append(f"{len(valid)} episodes valid + preprocessed, need exactly {target}")
         passed = not problems
@@ -304,7 +317,7 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
         report["tasks"][task] = {"passed": passed, "valid_and_preprocessed": len(valid), "excluded": excluded,
                                  "problems": problems[:50], "problem_count": len(problems),
                                  "episodes": valid if passed else [],
-                                 "store_episodes": [store_episode_id(k) for k in valid] if passed else []}
+                                 "episode_identities": identities if passed else {}, "store_episodes": []}
         report["families"][task] = {f: {"passed": passed and not family_fail[f], "failed_count": len(family_fail[f]),
                                         "failed_episodes": family_fail[f][:50]} for f in QA_FAMILIES}
         hold_passed = passed and not hold_problems and len(hold_ok) == target
@@ -315,6 +328,42 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
     report["passed"] = bool(all_ok and tasks)
     report["geometry_passed"] = bool(report["passed"] and geo_ok)
     return report
+
+
+def bind_store_episodes(report: dict, task_episodes: dict, identities: dict) -> dict:
+    """Return a report bound to actual store (or FQL dataset) keys using a bijection of recorded raw identities.
+    An unbound gate can plan runs; every data consumer must bind it before comparing episode sets/calibration."""
+    bound = copy.deepcopy(report)
+    for task, eps in task_episodes.items():
+        rec = bound["tasks"][task]
+        expected = rec.get("episode_identities")
+        if not expected or set(expected) != set(rec.get("episodes", [])):
+            raise RuntimeError(f"{task}: gate report missing raw identity; regenerate the gate report")
+        if len(eps) != len(set(eps)) or any(ep not in identities for ep in eps):
+            raise RuntimeError(f"{task}: duplicate episode or missing raw identity")
+        actual = {ep: identities[ep] for ep in eps}
+        if any(r.get("task") != task for r in actual.values()) or any(r.get("task") != task for r in expected.values()):
+            raise RuntimeError(f"{task}: raw identity task differs from the episode task")
+        mapping = match_recordings(expected, actual)
+        recorded = [r.get("store_episode") for r in expected.values()]
+        if rec.get("store_episodes") or any(ep is not None for ep in recorded):
+            if (sorted(rec.get("store_episodes", [])) != sorted(eps)
+                    or any(expected[key].get("store_episode") != ep for ep, key in mapping.items())):
+                raise RuntimeError(f"{task}: store episodes differ from the gate's recorded store keys")
+        hold = (bound.get("calibration_hold") or {}).get(task) or {}
+        if hold.get("passed"):
+            previous = hold.get("episodes") or {}
+            rekeyed = {}
+            for ep, key in mapping.items():
+                old = expected[key].get("store_episode") or key
+                if old not in previous:
+                    raise RuntimeError(f"{key}: no validated calibration in the gate report")
+                rekeyed[ep] = previous[old]
+            hold["episodes"] = rekeyed
+        rec["store_episodes"] = sorted(eps)
+        for ep, key in mapping.items():
+            expected[key]["store_episode"] = ep
+    return bound
 
 
 def task_passed(report: dict, task: str, consumer: str | None) -> bool:
@@ -400,9 +449,12 @@ def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: d
     report = json.loads(Path(gate_report).read_text()) if isinstance(gate_report, (str, Path)) else gate_report
     with h5py.File(dataset_path, "r") as f:
         eps = json.loads(f.attrs["episodes"])
+        if not eps or len(eps) != len(set(eps)):
+            raise RuntimeError("FQL dataset has missing or duplicate episode keys")
         condition = f.attrs.get("condition")
         condition = condition.decode() if isinstance(condition, bytes) else condition
         built_cal = json.loads(f.attrs.get("calibration", "{}"))
+        identities = json.loads(f.attrs.get("raw_identities", "{}"))
         tasks: dict[str, list[str]] = {}
         for ep in eps:
             any_tl = next(iter(f["episodes"][ep].values()))
@@ -415,6 +467,7 @@ def check_dataset_gate(dataset_path, gate_report, *, steps: int | None, split: d
             raise RuntimeError(f"no passed full-data gate report {level}for {sorted(tasks)} (condition "
                                f"{condition}); refusing an FQL run of {steps} steps")
         return {"smoke": True, "consumer": consumer, "geometry_dependent": consumer_info(consumer).geometry}
+    report = bind_store_episodes(report, tasks, identities)
     for task, task_eps in tasks.items():
         if sorted(report["tasks"][task]["store_episodes"]) != sorted(task_eps):
             raise RuntimeError(f"{task}: dataset episodes differ from the gate's validated + preprocessed set")

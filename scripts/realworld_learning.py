@@ -102,17 +102,20 @@ def main() -> None:
     elif args.cmd == "inputs":
         from s4d.baselines import data as _  # noqa: F401  (fail early if the training environment is incomplete)
         from s4d.rwlearn.baseline_data import check_gate
+        from s4d.rwlearn.identity import store_identities
         from s4d.rwlearn.store import open_store, split_episodes
 
         store = open_store(args.store)
         report = json.loads(args.gate_report.read_text())
         # store episodes = gate's; tasks = the task's (the 100-episode level: every consumer re-checks its own level)
         check_gate(store, report, steps=None, target=args.task, consumer="e2e_cnn")
+        report = gate.bind_store_episodes(report, {args.task: store.episodes()}, store_identities(store))
         ending = json.loads(args.ending_report.read_text()) if args.ending_report else None
+        labels = outcomes.outcome_labels(store.episodes(), ending_report=ending, store=store)
         args.out_dir.mkdir(parents=True, exist_ok=True)
         (args.out_dir / "split_seed0.json").write_text(json.dumps(split_episodes(store), indent=1) + "\n")
         (args.out_dir / "outcomes.json").write_text(
-            json.dumps(outcomes.outcome_labels(store.episodes(), ending_report=ending), indent=1) + "\n")
+            json.dumps(labels, indent=1) + "\n")
         (args.out_dir / "gate_report.json").write_text(json.dumps(report, indent=1) + "\n")
         locator = Path(args.store)
         (args.out_dir / "store.yaml").write_text(locator.read_text())

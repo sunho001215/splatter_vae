@@ -45,10 +45,12 @@ def write_compact_store(root: Path, episodes=("episode_000003", "episode_000903"
     for eid in episodes:
         d = root / eid
         d.mkdir(parents=True)
+        raw_path = d / f"{eid}.npz"
+        raw_path.write_bytes(FIXTURE.read_bytes())
         with h5py.File(d / TS.FILE, "w") as f:
             f.attrs.update(format=TS.FORMAT, schema_version=TS.SCHEMA_VERSION, episode_id=eid, task="mug-hanging",
                            cameras=json.dumps(raw.serials), reference_camera=raw.serials[0], image_size=HW,
-                           max_sync_ns=22_000_000, raw_recording=str(FIXTURE), MOCK_MODEL_OUTPUTS=True,
+                           max_sync_ns=22_000_000, raw_recording=str(raw_path), MOCK_MODEL_OUTPUTS=True,
                            upstream=json.dumps({"calibrate": "cal-test"}))
             for serial in raw.serials:
                 g = f.create_group(f"cameras/{serial}")
