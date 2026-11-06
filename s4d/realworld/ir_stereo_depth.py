@@ -99,7 +99,9 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                 for start in range(0, n, chunk):
                     idx = list(range(start, min(n, start + chunk)))
                     cid = f"{cam}/{start:05d}-{idx[-1]:05d}"
-                    got = store.get(cid)
+                    # layout-2 chunks carry depth only, under their own id: a layout-1 writer resuming the same build
+                    # (same fingerprint) never reads them, and vice versa; both reuse the unchanged model-output chunk
+                    got = store.get(f"{cid}/depth")
                     if got is None:
                         dgot = store.get(f"{cid}/disparity")
                         if dgot is None:  # model output saved durably before its ack (resumable)
@@ -120,7 +122,7 @@ def ir_stereo_depth(root: Path, episode_id: str, spec, runner, *, chunk: int = 8
                             {"disparity_left": disp["disparity_left"], "disparity_right": disp["disparity_right"],
                              "K_ir": K_ir, "K_color": K_c, "T_color_left": g.T_color()}, chunk_id=f"fs2c/{cid}")
                         out = {"depth": out["depth"]}  # only what is persisted (the stats are in kmeta)
-                        store.put(cid, out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
+                        store.put(f"{cid}/depth", out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
                         runner.ack(handle2)
                         got = (out, {**kmeta, "model": resp["model"], "worker_meta": resp["meta"]})
                     out, kmeta = got
