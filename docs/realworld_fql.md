@@ -191,11 +191,12 @@ indices). Image evidence is reserved for episodes the robot data cannot decide (
 `review_sheet` tiles first / event / final colour frames of every camera from the original HDF5).
 
 - **drawer-open.** The pull runs from the minimum of the flange along the drawer axis (principal horizontal
-  direction, within 18 deg of base +y on every recording) to the end of the FIRST completed pull: the last forward
-  progress (>= 1 mm) before a 5 cm step back or a 3 cm rise above the height at that progress (the contact height); a
-  plateau or a lift never advances it, later motion never redefines it. Push-back = more than 5 cm of backward travel
-  inside the handle corridor (below contact height + 3 cm, within 5 cm laterally of the handle) starting at the
-  drawer front (within 3 cm), in ANY corridor interval after the pull (also after lifting off and coming back down):
+  direction, within 18 deg of base +y on every recording) to the end of the FIRST completed pull: forward progress
+  (>= 1 mm) advances it only within 3 cm of the pull height (median height of the progress so far), so no plateau
+  or lift (also a diagonal one) does; it ends at a 5 cm step back or a 3 cm rise; contact height = the lower of the
+  pull-end and pull heights. Push-back = more than 5 cm of travel BEHIND the drawer front inside the handle corridor
+  (below contact height + 3 cm, within 5 cm laterally of the handle) after having been at the front (within 3 cm or
+  beyond it), in ANY corridor interval after the pull (also after lifting off and coming back down):
   `reversal_suspected`, unless the external torque during that travel shows free motion (geometry and torque
   disagree: `needs_image_review`); corridor travel away from the front is reviewed unless the torque shows contact.
   Also suspect: an external torque while moving back that reaches half of the pull's contact level above free motion.
@@ -212,8 +213,8 @@ indices). Image evidence is reserved for episodes the robot data cannot decide (
 **Result on all 200 recordings** (local raw HDF5, 2026-11-06 12:01; full report
 `/home/ws/ws/realworld-ops/fql2/ending_report.json`, compact `docs/realworld_ending_flags.json`): drawer-open
 100 no_reversal, 0 suspected, 0 review; mug-hanging 100 no_reversal, 0 suspected, 0 review. Closest margins:
-the largest backward travel from the drawer front in the handle corridor is 3.3 cm (drawer-open/episode_000015;
-threshold 5 cm), away from the front 2.3 cm (episode_000068), the largest backward contact fraction is 0.41
+the largest backward travel behind the drawer front in the handle corridor is 1.9 cm (drawer-open/episode_000010;
+threshold 5 cm), away from the front 0.5 cm (episode_000121), the largest backward contact fraction is 0.41
 (threshold 0.5; torque decisive on 96 of 100). Information
 flags: `return_toward_start` 100 drawer-open / 33 mug-hanging; mug-hanging/episode_000018 closes the open gripper for
 0.09 s after the hang release without object contact (robot rows 1240-1249, frames 184-186) and reopens. Every
@@ -415,6 +416,15 @@ lift no longer raises it; a pull descending while pulling and then a lifted retu
 needs the handle corridor and the drawer front (a lowered motion elsewhere is reviewed, not suspected); the mug merge
 reference is the run right before each gap; the release row maps the first gripper sample after the hold; the merge
 test uses a sub-second gap and checks both outcomes.
+
+A third Codex pass (on 14fd240: M5 + these fixes) found, and this branch fixed: a non-finite interpolated robot state
+could yield a 0 mm set (now `inf`, rejected); `surface_disp_m` stored as float32 made counts and loaders disagree at
+the threshold (now float64, one comparison everywhere); a diagonal lift could still advance the pull end (progress
+now counts only within 3 cm of the pull height; contact height = the lower of pull-end and pull heights); a motion
+lowered beyond the open front counted as push-back (now only travel behind the front counts). Not fixed here (other
+owners): `depth_stages.configured_sets_policy` still passes `train_data.max_sync_ns` to `frame_sets` as a
+cross-camera cap for the SNeRL contract check and the viewer (see "Contract checks" above). Real data after all fixes:
+200 / 200 no_reversal; M5 counts unchanged.
 
 ## Review (Codex gpt-6.1-sol xhigh, read-only, on eeaafb2) and what changed
 

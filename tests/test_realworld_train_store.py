@@ -524,7 +524,7 @@ def test_store_records_m5_sets_and_the_loader_filters_by_robot_motion(built, tmp
     with h5py.File(path, "r") as f:
         sg = f["sync"]
         disp, frames = sg["surface_disp_m"][:], sg["frames"][:]
-        assert disp.dtype == np.float32 and disp.shape == (len(frames),)
+        assert disp.dtype == np.float64 and disp.shape == (len(frames),)  # counts and loaders compare the same values
         assert sg.attrs["criterion"] == "M5" and sg.attrs["cross_camera_cap_ns"] == -1
         assert json.loads(sg.attrs["counts"]) == {k: v for k, v in s["sync"].items() if k != "criterion"}
         assert int(f.attrs["max_sync_ns"]) == int(sg.attrs["robot_sync_max_ns"])  # robot <-> camera tolerance only

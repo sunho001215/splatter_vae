@@ -17,11 +17,13 @@ camera's frame times (frame indices of the evidence).
 
 * drawer-open: the pull runs from the minimum of the flange position along the episode's drawer axis (the principal
   horizontal direction of motion, sign-aligned with base +y; measured within 18 deg of +y on every recording) to the
-  end of the FIRST completed pull (``_pull_end``: the last forward progress before a ``PUSH_BACK_M`` step back or a
-  ``CLEARANCE_M`` rise above the height at that progress, the contact height; later motion never redefines it). A
-  push-back moves the flange back along the axis inside the handle corridor (below the contact height +
-  ``CLEARANCE_M``, within ``LATERAL_M`` of the handle's lateral position), starting at the drawer front (within
-  ``PROXIMITY_M``) - in every corridor interval after the pull, also after lifting off and coming back down. Such a
+  end of the FIRST completed pull (``_pull_end``: forward progress advances it only within ``CLEARANCE_M`` of the
+  pull height, so no plateau or lift does; the pull ends at a ``PUSH_BACK_M`` step back or a ``CLEARANCE_M`` rise;
+  contact height = the lower of the pull-end and pull heights; later motion never redefines it). A push-back moves the
+  flange BEHIND the drawer front along the axis inside the handle corridor (below the contact height +
+  ``CLEARANCE_M``, within ``LATERAL_M`` of the handle's lateral position) after having been at the front (within
+  ``PROXIMITY_M`` or beyond it) - in every corridor interval after the pull, also after lifting off and coming back
+  down. Such a
   travel above ``PUSH_BACK_M`` is ``reversal_suspected``, unless the external torque shows free motion during it
   (geometry and torque disagree: ``needs_image_review``); corridor travel away from the front is reviewed unless the
   torque shows contact. Flagged too: the external torque during the backward motion after the pull reaching
@@ -176,18 +178,22 @@ def _intervals(mask: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(np.flatnonzero(d == 1).tolist(), (np.flatnonzero(d == -1) - 1).tolist()))
 
 
-def _pull_end(proj, z, lo) -> int:
-    """End of the FIRST completed pull from ``lo``: the last sample of forward progress (at least ``PROGRESS_M`` beyond
-    the previous maximum along the axis) before the flange either moves ``PUSH_BACK_M`` back from that maximum or rises
-    ``CLEARANCE_M`` above its height at that last progress (the contact height). A plateau or a lift without forward
-    progress never advances it; later motion of a disengaged arm never redefines it."""
-    runmax, arg = proj[lo], lo
+def _pull_end(proj, z, lo) -> tuple[int, float]:
+    """End of the FIRST completed pull from ``lo`` and its contact height. Forward progress (at least ``PROGRESS_M``
+    beyond the previous maximum along the axis) advances the pull end only while the flange stays within
+    ``CLEARANCE_M`` of the pull height (the median height of the progress samples so far), so neither a plateau nor a
+    lift - also a diagonal one moving forward - advances it; the pull ends at the first ``PUSH_BACK_M`` step back from
+    the maximum or ``CLEARANCE_M`` rise above that height. Contact height = the lower of the height at the pull end and
+    the pull height. Later motion of a disengaged arm never redefines the pull."""
+    runmax, arg, zs = proj[lo], lo, [z[lo]]
     for i in range(lo + 1, len(proj)):
+        ref = float(np.median(zs))
+        if runmax - proj[i] > PUSH_BACK_M or z[i] > ref + CLEARANCE_M:
+            break
         if proj[i] > runmax + PROGRESS_M:
             runmax, arg = proj[i], i
-        if runmax - proj[i] > PUSH_BACK_M or z[i] > z[arg] + CLEARANCE_M:
-            return arg
-    return arg
+            zs.append(z[i])
+    return arg, min(float(z[arg]), float(np.median(zs)))
 
 
 def check_drawer(sig: dict) -> dict:
@@ -202,9 +208,9 @@ def check_drawer(sig: dict) -> dict:
     proj, lateral = p[:, :2] @ axis, p[:, :2] @ np.array([-axis[1], axis[0]])
     lo = int(proj[: max(int(0.8 * n), 1)].argmin())
     v = np.gradient(_smooth(proj), t)
-    hi = _pull_end(proj, p[:, 2], lo)
+    hi, z_contact = _pull_end(proj, p[:, 2], lo)
     span = float(proj[hi] - proj[lo])
-    z_contact, front = float(p[hi, 2]), float(proj[hi])
+    front = float(proj[hi])
     speed = np.abs(np.gradient(_smooth(np.linalg.norm(p - p[0], axis=1)), t))
     approach = np.flatnonzero((np.arange(n) < lo) & (speed > SPEED_M_S))
     pull_fwd = np.arange(lo, hi + 1)[v[lo:hi + 1] > SPEED_M_S]
@@ -224,12 +230,14 @@ def check_drawer(sig: dict) -> dict:
     for a, b in _intervals(corridor):
         seg = proj[a:b + 1]
         runmax = np.maximum.accumulate(seg)
-        k = int(np.argmax(runmax - seg))
-        travel = float(runmax[k] - seg[k])
-        k0 = a + int(np.argmax(seg[:k + 1]))
-        where = "near_front" if proj[k0] >= front - PROXIMITY_M else "away_from_front"
-        if travel > worst[where][0]:
-            worst[where] = (travel, [k0, a + k])
+        near = runmax >= front - PROXIMITY_M  # the flange has been at (or beyond) the drawer front in this interval
+        # at the front: only travel BEHIND the front counts (a motion that stays beyond the open front pushes nothing)
+        travel_near = np.where(near, np.minimum(runmax, front) - seg, -np.inf)
+        travel_away = np.where(near, -np.inf, runmax - seg)
+        for where, tr in (("near_front", travel_near), ("away_from_front", travel_away)):
+            k = int(np.argmax(tr))
+            if np.isfinite(tr[k]) and tr[k] > worst[where][0]:
+                worst[where] = (float(tr[k]), [a + int(np.argmax(seg[:k + 1])), a + k])
     behind = np.flatnonzero((np.arange(n) > hi) & (proj < proj[hi] - PUSH_BACK_M))
     lift_at_push_back = float(p[behind[0], 2] - z_contact) if len(behind) else None
     phases = {"drawer_axis_xy": axis.round(4).tolist(), "axis_angle_from_base_y_deg": round(axis_angle, 2),

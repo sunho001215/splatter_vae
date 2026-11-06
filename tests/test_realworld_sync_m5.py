@@ -83,6 +83,12 @@ def test_set_surface_motion_and_the_5mm_boundary():
     assert disp[0] == pytest.approx(0.005, abs=1e-12)  # exactly 5 mm: accepted (<=)
     assert disp[1] == pytest.approx(0.005, abs=1e-12)  # camera 2 missing: the pair (0, 1) only
     assert disp[2] == pytest.approx(0.0050001, abs=1e-9) and np.isinf(disp[3])  # invalid robot state: never accepted
+    nan_states = [list(x) for x in states]
+    nan_states[2][0] = (np.nan, 0, 0)  # a non-finite interpolated state in any camera: never accepted
+    for v in range(3):
+        st = [list(x) for x in states]
+        st[v][0] = (np.nan, 0, 0)
+        assert np.isinf(TS.set_surface_motion(surface, frames[:1], st, ok)[0])
     c = TS.sync_counts(frames, disp, 0.005)
     assert c == {"reference_frames": 4, "complete_sets": 3, "accepted": 1, "rejected_motion": 1,
                  "rejected_no_robot_state": 1, "max_set_motion_m": 0.005}

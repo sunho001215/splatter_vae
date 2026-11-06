@@ -170,6 +170,28 @@ def test_drawer_normal_variants_are_not_flagged():
     assert "push_back_at_handle_height" not in f
 
 
+def test_drawer_diagonal_lift_and_motion_beyond_the_front_are_not_push_backs():
+    """Codex review 3: (a) the lift also advances 2 cm (diagonal): the pull end stays at the last level progress;
+    (b) after lifting, lowering 12 cm BEYOND the open front and moving back 6 cm (never reaching the front)."""
+    base = [(0, START), (2.5, (0.49, -0.10, 0.52)), (3.0, (0.49, -0.10, 0.51)), (7.0, (0.46, 0.20, 0.51))]
+    wp = base + [(8.0, (0.46, 0.22, 0.60)), (11.0, (0.48, 0.02, 0.60)), (12.0, (0.49, 0.01, 0.60))]
+    res = O.check_drawer(signals(*_path(wp)))
+    assert {f["severity"] for f in res["flags"]} == {"info"}
+    assert res["phases"]["pull_rows"][1] <= 740  # at most the part of the lift within the 3 cm clearance
+    assert res["phases"]["contact_height_z_m"] == pytest.approx(0.51, abs=0.005)
+    wp = base + [(8.0, (0.46, 0.20, 0.60)), (9.0, (0.46, 0.32, 0.60)), (10.0, (0.46, 0.32, 0.51)),
+                 (11.0, (0.46, 0.26, 0.51)), (12.0, (0.46, 0.26, 0.60))]
+    res = O.check_drawer(signals(*_path(wp)))
+    assert {f["severity"] for f in res["flags"]} <= {"info"}
+    # the same lowering, but moving back 6 cm PAST the front at handle height: a push of 6 - 12 + ... = from 0.32 to
+    # 0.14 is 6 cm behind the front -> suspect
+    wp = base + [(8.0, (0.46, 0.20, 0.60)), (9.0, (0.46, 0.32, 0.60)), (10.0, (0.46, 0.32, 0.51)),
+                 (12.0, (0.46, 0.14, 0.51)), (13.0, (0.46, 0.14, 0.60))]
+    res = O.check_drawer(signals(*_path(wp)))
+    f = {x["code"]: x for x in res["flags"]}["push_back_at_handle_height"]
+    assert f["severity"] == "suspect" and f["evidence"]["travel_m"] == pytest.approx(0.06, abs=0.003)
+
+
 def test_drawer_without_a_pull_needs_review():
     t, xyz = _path([(0, START), (5, (0.45, 0.02, 0.55)), (10, START)])
     res = O.check_drawer(signals(t, xyz))

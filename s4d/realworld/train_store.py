@@ -37,7 +37,7 @@ array is stored LOSSLESSLY: the values are exactly the resampled preprocessing o
     sync/   frames (F_ref,V) int32: the MUTUAL nearest frame of every camera to each reference frame, no time cap
             (-1: none; unique for any constant phase offset below half a period: the cameras are free-running),
             error_ns (F_ref,V) int64 (|time offset| to the reference frame),
-            surface_disp_m (F_ref,) float32: the largest displacement of the robot's URDF surface between any two members
+            surface_disp_m (F_ref,) float64: the largest displacement of the robot's URDF surface between any two members
             of the set (robot state interpolated to each member's timestamp; inf when a member has no valid robot
             state); the loaders accept a set iff it is <= a configurable threshold (criterion M5, default 5 mm,
             ``MAX_SET_MOTION_M``),
@@ -172,7 +172,10 @@ def set_surface_motion(surface_points, frames: np.ndarray, states: list, ok: lis
         if not all(ok[v][f] for v, f in members):
             out[k] = np.inf
             continue
-        pts = [surface_points(states[v][f]) for v, f in members]
+        pts = [np.asarray(surface_points(states[v][f]), np.float64) for v, f in members]
+        if not all(np.isfinite(x).all() for x in pts):  # a non-finite interpolated state is no valid state
+            out[k] = np.inf
+            continue
         out[k] = max((float(np.linalg.norm(pts[a] - pts[b], axis=1).max())
                       for a in range(len(pts)) for b in range(a + 1, len(pts))), default=0.0)
     return out
@@ -458,7 +461,7 @@ def write_episode(root: Path, episode_id: str, out_dir: Path, *, task: str | Non
             sg = f.create_group("sync")
             sg.create_dataset("frames", data=frames_sync)
             sg.create_dataset("error_ns", data=err_sync)
-            sg.create_dataset("surface_disp_m", data=disp.astype(np.float32))
+            sg.create_dataset("surface_disp_m", data=disp.astype(np.float64))  # float64: counts == loaders exactly
             # gripper FK points at the reference frame times, depth-tested (2 cm) against each camera's NATIVE-resolution
             # depth of its synchronised frame: the window export's gripper visibility, kept exactly (G bits per set)
             ref_grip = f[f"cameras/{chosen[0].rig_id}/robot/gripper_points"][:]
