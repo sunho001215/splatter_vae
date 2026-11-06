@@ -3,7 +3,7 @@ their reference configurations by exactly the intended keys, the combinations ru
 intended loss terms, initialisation is matched, and the local driver reads the registration.
 
   A ocsw4  Original (method-frozen-v1 row arguments) + CSW4 encoder (enc_cs.yaml + enc_w4.yaml)
-  B ocham  Original + the Chamfer loss at the chamfer_lean settings (hard depth, depth gradient, visibility kept)
+  B ochf   Original + the Chamfer loss at the chamfer_lean settings (hard depth, depth gradient, visibility kept)
   C c50dg  cst50 + Original's depth-gradient coefficient (hard depth, visibility off)
   D c50vis cst50 + Original's visibility coefficient (hard depth, depth gradient off)
 The comparison against the reference runs' STORED configurations, the cross-commit fingerprints and the RL configs is
