@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -13,6 +14,8 @@ from ops.remote.access import REMOTE_ROOT, RemoteCommandError, RemoteUnreachable
 from ops.containers.launch import (
     RAM_RESERVE_BYTES,
     SHM_SIZE_BYTES,
+    REALWORLD_READ_ROOTS,
+    _bound_path,
     build_remote_command,
     evidence_artifacts,
     launch,
@@ -241,6 +244,96 @@ def test_generated_shell_has_detachment_single_uuid_rooted_mounts_and_syntax(gpu
     assert "flock -x 9" in command and "native" not in spec["args"]
 
 
+@pytest.mark.parametrize("gpu_backend,script,original_sha256", [
+    # Full command fingerprints captured from e9338cb before adding real-world mounts (including all shell guards).
+    ("cdi", "train.py", "5da26a0e5191d58318971603400e1f2f53953a632f6496daf4d01076dbcefcfb"),
+    ("cdi", "train_reviwo.py", "6d074b20f7103cf18bdbcdb4d2274e00efe025583c09272428d55b0d0a566b23"),
+    ("cdi", "train_dynamo.py", "27c9eabac474ba58de42875069eaf87f94f867e56e5c34373ba9a275688f9af9"),
+    ("legacy", "train.py", "2aacdb661f56e7b306bc005153cfc4aeea0eb3fc577a0bab995bcc45706d64be"),
+    ("legacy", "train_reviwo.py", "96024f15d4349ef6d4787151b1f82dbaa1ca26e10359006391777f0f853c4c95"),
+    ("legacy", "train_dynamo.py", "97d5bad8a907f478c8682e2220f2a684ae2683701817165fd074e4cf9678bbc7"),
+])
+def test_metaworld_command_is_byte_identical_to_before_realworld_mounts(gpu_backend, script, original_sha256):
+    spec = job_spec()
+    spec.update(role="metaworld", gpu_backend=gpu_backend, script="scripts/" + script)
+    spec["args"] += ["--config", "configs/metaworld/tasks/hammer.yaml"]
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/metaworld/splatter4d_v1/hammer.hdf5", "d" * 64)])
+    assert hashlib.sha256(command.encode()).hexdigest() == original_sha256
+
+
+@pytest.mark.parametrize("script", ["train.py", "export_encoder.py", "train_reviwo.py", "train_dynamo.py",
+                                   "train_sincro.py", "train_snerl.py", "train_mvp3d.py",
+                                   "realworld_fql_dataset.py", "train_realworld_fql.py", "realworld_preprocess.py"])
+@pytest.mark.parametrize("explicit_role", [False, True])
+def test_realworld_roles_mount_input_roots_readonly_at_identical_paths(script, explicit_role):
+    spec = job_spec()
+    spec["script"] = "scripts/" + script
+    spec["args"] += ["--config", "configs/realworld/baselines/reviwo/drawer-open.yaml"]
+    if explicit_role:
+        spec["role"] = ("realworld_fql" if "fql" in script else
+                        "realworld_preprocess" if "preprocess" in script else "realworld_pretrain")
+    assert validate_spec(spec)["script"] == spec["script"]  # Also the scheduler's local-side launcher validation.
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True).returncode == 0
+    docker_line = next(line for line in command.splitlines() if line.startswith("cid=$(docker run "))
+    docker_args = shlex.split(docker_line[len("cid=$("):-1])
+    mounts = [docker_args[i + 1] for i, arg in enumerate(docker_args) if arg == "--mount"]
+    assert REALWORLD_READ_ROOTS == (REMOTE_ROOT + "/realworld/learning_inputs", REMOTE_ROOT + "/realworld/processed",
+                                    REMOTE_ROOT + "/data/real_world")
+    for path in REALWORLD_READ_ROOTS:
+        assert mounts.count(f"type=bind,src={path},dst={path},readonly") == 1
+        assert f"bind|{path}|{path}|false" in command  # existing-attempt inspection enforces read-only, too
+        assert "bounded " + shlex.quote(path) in command
+    assert len(mounts) == 11
+
+
+@pytest.mark.parametrize("role,script,args", [
+    (None, "train.py", []),
+    (None, "realworld_viewer.py", []),  # a real-world name without a recognized role class grants no inputs
+    ("metaworld", "train_reviwo.py", ["--config", "configs/metaworld/tasks/hammer.yaml"]),
+    ("droid_pretrain", "train_dynamo.py", ["--config", "configs/droid/base.yaml"]),
+    ("droid_preprocess", "droid_preprocess.py", []),
+])
+def test_non_realworld_roles_do_not_gain_input_mounts(role, script, args):
+    spec = job_spec()
+    spec.update(script="scripts/" + script)
+    spec["args"] += args
+    if role is not None:
+        spec["role"] = role
+    command = build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert all(path not in command for path in REALWORLD_READ_ROOTS)
+
+
+@pytest.mark.parametrize("role,script,configs", [
+    (None, "train_dynamo.py", ["configs/realworld/base.yaml", "configs/droid/base.yaml"]),
+    ("realworld_pretrain", "train_dynamo.py", ["configs/metaworld/base.yaml"]),
+    ("realworld_fql", "train_rl.py", []),
+    ("realworld_typo", "train_dynamo.py", []),
+])
+def test_realworld_mounts_fail_closed_on_ambiguous_or_invalid_roles(role, script, configs):
+    spec = job_spec()
+    spec["script"] = "scripts/" + script
+    spec["args"] += ["--config", *configs] if configs else []
+    if role is not None:
+        spec["role"] = role
+    with pytest.raises(ValueError, match="remote job role"):
+        build_remote_command(spec, DATA_ID, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                             [(REMOTE_ROOT + "/data/hammer.hdf5", "d" * 64)])
+
+
+@pytest.mark.parametrize("root", REALWORLD_READ_ROOTS)
+def test_realworld_input_paths_keep_bind_source_bounds(root):
+    assert _bound_path(root) == root
+    assert _bound_path(root + "/drawer-open/episode.h5") == root + "/drawer-open/episode.h5"
+    for path in (root + "/../outside", root.lstrip("/"), "/home/compu/kaist/sunho-other/realworld/processed",
+                 "/home/compu/kaist", REMOTE_ROOT):
+        with pytest.raises(ValueError, match="authorized root"):
+            _bound_path(path)
+
+
 def test_remote_rl_evaluation_writes_only_into_its_own_run_directory():
     spec = job_spec()
     spec.update(id="cnn-hammer-s2000-eval", container="s4d-cnn-hammer-s2000-eval-a1", script="scripts/eval_rl.py",
@@ -286,11 +379,14 @@ def test_generated_shell_quotes_arguments_without_evaluation():
         "privileged", "writable_root", "pid_namespace", "writable_code", "writable_data", "missing_mount",
     )],
 ])
+@pytest.mark.parametrize("realworld", [False, True])
 def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
-    tmp_path, gpu_backend, mutation, foreign_label, shm_size,
+    tmp_path, gpu_backend, mutation, foreign_label, shm_size, realworld,
 ):
     spec = job_spec()
     spec["gpu_backend"] = gpu_backend
+    if realworld:
+        spec["role"] = "realworld_pretrain"
     acceptance = f"{REMOTE_ROOT}/runtime/acceptance/{COMMIT}-{IMAGE[7:]}"
     code = f"{REMOTE_ROOT}/releases/{COMMIT}/code"
     proof = f"{REMOTE_ROOT}/releases/{COMMIT}/provenance.json"
@@ -301,6 +397,8 @@ def test_existing_attempt_is_returned_without_second_launch_or_foreign_changes(
               (cache, "/workspace/splatter4d/.cache", True), (runtime, runtime, True),
               (acceptance, acceptance, False), (proof, proof, False),
               (REMOTE_ROOT + "/data/metaworld/splatter4d_v1", "/home/ws/data/metaworld/splatter4d_v1", False)]
+    if realworld:
+        mounts += [(path, path, False) for path in REALWORLD_READ_ROOTS]
     if mutation == "writable_code":
         mounts[0] = (mounts[0][0], mounts[0][1], True)
     if mutation == "writable_data":

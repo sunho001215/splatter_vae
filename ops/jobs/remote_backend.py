@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from s4d import third_party
+from ops.jobs.host_roles import DOMAIN, job_class
 from ops.resources.gpu_guard import APPROVED_HOST_GPUS, LOCAL_MIG_PARENTS
 from ops.remote.access import RemoteClient, RemoteUnreachable
 from ops.containers.verification import (
@@ -752,6 +753,12 @@ class RemoteBackend:
                 "host_ram_reserve_gb": float(host.get("host_ram_reserve_gb", 0)),
                 "host_ram_ramp_minutes": float(host.get("host_ram_ramp_minutes", 10)),
                 "evidence": evidence, "labels": container_labels(job["id"], attempt, host["commit"], host["image_digest"])}
+        classification = job_class(job)
+        if classification.cls in ("invalid", "ambiguous"):
+            raise ValueError(f"Invalid or ambiguous remote job role: {classification.evidence}")
+        if DOMAIN.get(classification.cls) == "realworld":
+            # Preserve the scheduler's role decision when serializing the row (inputs/dependencies are not in specs).
+            spec["role"] = classification.cls
         if "cpu_threads" in job:
             spec["cpu_threads"] = job["cpu_threads"]
         if purpose is not None:

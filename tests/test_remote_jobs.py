@@ -861,6 +861,44 @@ def test_launch_spec_is_safe_immutable_and_exact_uuid(tmp_path):
         remote.container_name("../escape", 1)
 
 
+@pytest.mark.parametrize("role,script,extra", [
+    ("realworld_pretrain", "train_reviwo.py", []),
+    ("realworld_pretrain", "train_dynamo.py", []),
+    (None, "train_snerl.py", ["--config", "configs/realworld/baselines/snerl/drawer-open.yaml"]),
+    ("realworld_fql", "realworld_fql_dataset.py", ["build"]),
+    ("realworld_fql", "train_realworld_fql.py", []),
+    (None, "train.py", []),  # classification evidence only in inputs must survive serialization
+])
+def test_prepare_preserves_realworld_role_and_local_launcher_accepts_spec(tmp_path, role, script, extra):
+    from ops.containers.launch import REALWORLD_READ_ROOTS, build_remote_command, validate_spec
+
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", FakeClient())
+    host = {"commit": COMMIT, "image_digest": IMAGE, "host_ram_reserve_gb": 120,
+            "limits": {REMOTE: {"max_jobs": 2, "max_mem_gb": 40}}}
+    queued = job(role=role, script="scripts/" + script,
+                 args=["--name", "r", "--output-root", "runs", *extra],
+                 inputs=[remote.ROOT + "/realworld/learning_inputs/drawer-open/store.yaml"])
+    path, spec = backend.prepare(queued, REMOTE, 1, host, {})
+    assert spec["role"] == (role or "realworld_pretrain")
+    validated = validate_spec(json.loads(path.read_text()))
+    command = build_remote_command(validated, DATA, "e" * 40, "f" * 64, {"tests.json": "1" * 64},
+                                   [(remote.ROOT + "/data/hammer.hdf5", "d" * 64)])
+    assert all(f"src={root},dst={root},readonly" in command for root in REALWORLD_READ_ROOTS)
+
+
+@pytest.mark.parametrize("role,configs", [
+    (None, ["configs/realworld/base.yaml", "configs/droid/base.yaml"]),
+    ("realworld_pretrain", ["configs/metaworld/base.yaml"]),
+])
+def test_prepare_rejects_ambiguous_or_contradictory_realworld_role(tmp_path, role, configs):
+    backend = remote.RemoteBackend(REPO, tmp_path / "runs", FakeClient())
+    host = {"commit": COMMIT, "image_digest": IMAGE, "limits": {REMOTE: {"max_jobs": 2, "max_mem_gb": 40}}}
+    with pytest.raises(ValueError, match="remote job role"):
+        backend.prepare(job(role=role, script="scripts/train_dynamo.py", args=["--config", *configs]),
+                        REMOTE, 1, host, {})
+    assert not (tmp_path / "runs/remote/jobs").exists()
+
+
 def test_backend_snapshot_persists_reachability_without_discarding_last_state(tmp_path):
     class Client(FakeClient):
         error = False
