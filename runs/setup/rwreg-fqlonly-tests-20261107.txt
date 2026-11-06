@@ -1,0 +1,30 @@
+test_appending_preserves_existing_jobs_and_queue_metadata (__main__.RegistrationTests) ... ok
+test_consumer_family_blocks_only_affected_chains (__main__.RegistrationTests) ... ok
+test_crash_after_queue_recovers_original_gate_evidence (__main__.RegistrationTests) ... ok
+test_crash_before_queue_is_aborted_without_registration (__main__.RegistrationTests) ... ok
+test_default_cli_is_dry_and_does_not_acquire_publication_locks (__main__.RegistrationTests) ... ok
+test_different_active_role_release_refuses_publish (__main__.RegistrationTests) ... ok
+test_fql_only_acceptance_verifies_new_pin_hashes_and_pinned_source (__main__.RegistrationTests) ... ok
+test_fql_only_checks_done_status_and_local_encoder_hash (__main__.RegistrationTests) ... ok
+test_fql_only_different_or_missing_active_pin_refuses_publication (__main__.RegistrationTests) ... ok
+test_fql_only_missing_acceptance_dry_run_lists_exact_rows_and_refuses_publish (__main__.RegistrationTests) ... ok
+test_fql_only_preserves_consumer_gates_with_existing_done_pretraining (__main__.RegistrationTests) ... ok
+test_fql_only_publish_and_recovery_retain_source_and_supersession_evidence (__main__.RegistrationTests) ... ok
+test_fql_only_unproved_new_prefix_and_registry_collisions_refuse (__main__.RegistrationTests) ... ok
+test_fql_only_uses_done_sources_and_supersedes_only_existing_fql_rows (__main__.RegistrationTests) ... ok
+test_gate_refusal_does_not_mutate_queue (__main__.RegistrationTests) ... ok
+test_later_multiview_pass_adds_remaining_chains (__main__.RegistrationTests) ... ok
+test_manifest_change_during_staging_refuses_queue_replace (__main__.RegistrationTests) ... ok
+test_no_geometry_even_after_calibration_passes (__main__.RegistrationTests) ... ok
+test_paths_dependencies_seeds_budgets_and_roles (__main__.RegistrationTests) ... ok
+test_per_task_gate_and_remote_schema (__main__.RegistrationTests) ... ok
+test_publish_lock_order_and_no_registry_write (__main__.RegistrationTests) ... ok
+test_recovery_refuses_gate_regression_or_changed_tail (__main__.RegistrationTests) ... ok
+test_second_task_can_be_registered_later_without_duplicates (__main__.RegistrationTests) ... ok
+test_unproved_queue_and_registry_collisions_refuse (__main__.RegistrationTests) ... ok
+test_wrong_manifest_schema_refuses_all_consumers (__main__.RegistrationTests) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 17.981s
+
+OK

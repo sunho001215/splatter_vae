@@ -10,6 +10,11 @@ os.replace before writing the proof. --recover verifies the saved transaction an
 current gates before completing its proof; it never reconstructs evidence from a
 new plan. Neither path appends registry events or activates role-release.json.
 The proposed release is written only to role-release.proposed.json.
+
+--fql-only explicitly selects rwng-20261107b-* dataset/FQL rows at ee07b2e,
+reusing only proved, DONE rwng-20261107-* pretraining rows and encoder exports.
+Its dry run records exact rows even when acceptance/role-release checks refuse
+publication; its proposal and previews use separate fqlonly filenames.
 """
 from __future__ import annotations
 
@@ -40,6 +45,11 @@ COMMIT = "782f14080a25d0d62fbd8594662cdfdb512b5a7a"
 IMAGE = "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a"
 RELEASE = {"commit": COMMIT, "image": IMAGE}
 PREFIX = "rwng-20261107-"  # 2026-11-07: rows pinned to 782f140 (raw-provenance episode joins); rwng-20261106-* superseded (paused)
+FQL_SOURCE_PREFIX = PREFIX
+FQL_ONLY_PREFIX = "rwng-20261107b-"
+FQL_ONLY_COMMIT = "ee07b2e7c6cc33061eb1f15123e5eb333ec8ba97"
+# The ee07b2e-cc/binding-data.json binds this commit to the existing runtime image.
+FQL_ONLY_IMAGE = "sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a"
 STEM = "rw-registration-nongeometric-20261106"
 PLAN = ROOT / "docs/realworld_training_plan.yaml"
 ACCEPTANCE = ROOT / f"runs/remote/acceptance/{COMMIT[:7]}-cc/manifest.json"
@@ -113,34 +123,44 @@ def sync_directory(directory):
         os.close(fd)
 
 
-def release_evidence():
-    raw = ACCEPTANCE.read_bytes()
+def release_pin(fql_only=False):
+    if fql_only:
+        return (FQL_ONLY_COMMIT, FQL_ONLY_IMAGE,
+                ROOT / f"runs/remote/acceptance/{FQL_ONLY_COMMIT[:7]}-cc/manifest.json")
+    return COMMIT, IMAGE, ACCEPTANCE
+
+
+def release_evidence(*, fql_only=False):
+    commit, image, acceptance = release_pin(fql_only)
+    if fql_only:
+        require(acceptance.is_file(), f"missing acceptance manifest: {acceptance.relative_to(ROOT)}")
+    raw = acceptance.read_bytes()
     manifest = json.loads(raw)
-    require(manifest.get("commit") == COMMIT and manifest.get("image_digest") == IMAGE,
+    require(manifest.get("commit") == commit and manifest.get("image_digest") == image,
             "acceptance manifest does not match the pinned commit/image")
     for section in ("cross_host", "data", "full_suite"):
         rec = manifest.get(section) or {}
         path = ROOT / rec.get("path", "")
-        require(path.resolve().is_relative_to(ACCEPTANCE.parent.resolve()) and path.is_file(),
+        require(path.resolve().is_relative_to(acceptance.parent.resolve()) and path.is_file(),
                 f"missing acceptance evidence: {section}")
         require(sha(path.read_bytes()) == rec.get("sha256"), f"acceptance hash mismatch: {section}")
     isolation = manifest.get("gpu_isolation") or {}
     require(set(isolation) == set(jobs.APPROVED_HOST_GPUS["remote"]), "acceptance GPU coverage differs")
     for gpu, rec in isolation.items():
         path = ROOT / rec.get("path", "")
-        require(path.resolve().is_relative_to(ACCEPTANCE.parent.resolve()) and path.is_file()
+        require(path.resolve().is_relative_to(acceptance.parent.resolve()) and path.is_file()
                 and sha(path.read_bytes()) == rec.get("sha256"), f"acceptance GPU hash mismatch: {gpu}")
     source = {}
     for name in SOURCE_PATHS:
         raw_source = (ROOT / name).read_bytes()
-        pinned = subprocess.run(["git", "-C", str(ROOT), "show", f"{COMMIT}:{name}"],
+        pinned = subprocess.run(["git", "-C", str(ROOT), "show", f"{commit}:{name}"],
                                 check=True, capture_output=True).stdout
         require(raw_source == pinned, f"working source differs from the pinned release: {name}")
         source[name] = sha(raw_source)
     active = json.loads(ACTIVE_RELEASE.read_text()) if ACTIVE_RELEASE.is_file() else None
-    return {"commit": COMMIT, "image": IMAGE, "acceptance_manifest": str(ACCEPTANCE.relative_to(ROOT)),
+    return {"commit": commit, "image": image, "acceptance_manifest": str(acceptance.relative_to(ROOT)),
             "acceptance_manifest_sha256": sha(raw), "source_sha256": source,
-            "active_role_release": active, "activation_required": active != RELEASE}
+            "active_role_release": active, "activation_required": active != {"commit": commit, "image": image}}
 
 
 def template_rows(tasks):
@@ -171,9 +191,11 @@ def template_rows(tasks):
     return out
 
 
-def adapt_rows(templates, report):
+def adapt_rows(templates, report, *, fql_only=False):
     """Use the scheduler's runs/<id>/ artifact layout; retain all plan compute resources/budgets."""
-    mapping = {r["id"]: PREFIX + r["id"][3:] for r in templates}
+    commit, image, acceptance = release_pin(fql_only)
+    mapping = {r["id"]: ((FQL_SOURCE_PREFIX if kind(r) == "pretrain" else FQL_ONLY_PREFIX)
+                         if fql_only else PREFIX) + r["id"][3:] for r in templates}
     paths = {}
     for row in templates:
         old, new = row["id"], mapping[row["id"]]
@@ -185,6 +207,8 @@ def adapt_rows(templates, report):
     gate_sha = hashlib.sha256(json.dumps(report, sort_keys=True).encode()).hexdigest()
     out = []
     for template in templates:
+        if fql_only and kind(template) == "pretrain":
+            continue
         row = copy.deepcopy(template)
         row["id"] = mapping[template["id"]]
         row["deps"] = [mapping[d] for d in row["deps"]]
@@ -199,8 +223,8 @@ def adapt_rows(templates, report):
         if "--output-root" in a:
             a[a.index("--output-root") + 1] = "runs"
         k = kind(row)
-        row.update(pin_host="remote", planned_commit=COMMIT, planned_image=IMAGE,
-                   evidence_manifest=str(ACCEPTANCE.relative_to(ROOT)), disk_gb=DISK_GB[k],
+        row.update(pin_host="remote", planned_commit=commit, planned_image=image,
+                   evidence_manifest=str(acceptance.relative_to(ROOT)), disk_gb=DISK_GB[k],
                    realworld_gate_sha256=gate_sha, realworld_manifest_sha256=report["manifest"]["sha256"],
                    registration_tool=f"runs/setup/tools/{Path(__file__).name}",
                    plan_row_id=template["id"],
@@ -236,15 +260,19 @@ def published_rows():
     return known
 
 
-def select_rows(potential, report, current, known):
+def select_rows(potential, report, current, known, *, fql_only=False, reusable_pretraining=None):
     by_id = {r["id"]: r for r in current["jobs"]}
     for rid, row in known.items():
         require(by_id.get(rid) == row, f"published row missing or changed in queue: {rid}")
     for row in current["jobs"]:
-        if row["id"].startswith(PREFIX):
+        if row["id"].startswith(FQL_ONLY_PREFIX if fql_only else PREFIX):
             require(row["id"] in known, f"unproved ID collision: {row['id']} (use --recover for a pending transaction)")
     accepted, refused = [], {}
     available = set(known)
+    if fql_only:
+        available.difference_update(rid for rid, row in known.items()
+                                    if rid.startswith(FQL_SOURCE_PREFIX) and kind(row) == "pretrain")
+        available.update(rid for rid, rec in reusable_pretraining.items() if rec["available"])
     for row in potential:
         rid, task, consumer = row["id"], row["realworld_target"], row["realworld_consumer"]
         if rid in by_id:
@@ -264,7 +292,8 @@ def select_rows(potential, report, current, known):
     return accepted, refused
 
 
-def check_rows(rows, report, current):
+def check_rows(rows, report, current, *, fql_only=False):
+    commit, image, _ = release_pin(fql_only)
     roles = host_roles.load_roles()
     by_id = {r["id"]: r for r in current["jobs"] + rows}
     for row in rows:
@@ -274,8 +303,8 @@ def check_rows(rows, report, current):
                 f"gate refused: {row['id']}")
         require(host_roles.role_host(row, roles, by_id) == "remote", f"not a remote role: {row['id']}")
         require(host_roles.refusal(row, "remote", roles, {}, by_id) is None, f"remote role refused: {row['id']}")
-        require(row["host"] == row["pin_host"] == "remote" and row["planned_commit"] == COMMIT
-                and row["planned_image"] == IMAGE, f"row release/placement mismatch: {row['id']}")
+        require(row["host"] == row["pin_host"] == "remote" and row["planned_commit"] == commit
+                and row["planned_image"] == image, f"row release/placement mismatch: {row['id']}")
     return roles["sha256"]
 
 
@@ -304,20 +333,81 @@ def counts(rows):
     return dict(Counter(kind(r) for r in rows))
 
 
-def prepare(tasks):
-    evidence = release_evidence()
+def fql_release_evidence(*, preview=False):
+    """An unaccepted release can describe a dry run, but can never authorize publication."""
+    commit, image, acceptance = release_pin(True)
+    pin = {"commit": commit, "image": image}
+    blockers = []
+    try:
+        evidence = release_evidence(fql_only=True)
+    except (Refused, OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+        if not preview:
+            raise
+        blockers.append(str(exc))
+        evidence = {**pin, "acceptance_manifest": str(acceptance.relative_to(ROOT)),
+                    "acceptance_verified": False}
+    active = json.loads(ACTIVE_RELEASE.read_text()) if ACTIVE_RELEASE.is_file() else None
+    evidence.update(active_role_release=active, activation_required=active != pin)
+    if active != pin:
+        blockers.append("active role-release.json differs from the proposed pin; role rows would launch the wrong release")
+    if not preview:
+        require(not blockers, "; ".join(blockers))
+    return evidence, blockers
+
+
+def pretraining_evidence(potential, current, known, state):
+    """Reuse only proved, DONE source rows with a verified local encoder backup."""
+    by_id = {r["id"]: r for r in current["jobs"]}
+    needed = {dep: row["realworld_target"] for row in potential if kind(row) == "dataset" for dep in row["deps"]}
+    evidence = {}
+    for rid, task in sorted(needed.items()):
+        rec = {"available": False, "encoder_export": f"runs/{rid}/encoder.pt"}
+        evidence[rid] = rec
+        try:
+            row = known.get(rid)
+            require(row is not None and by_id.get(rid) == row, f"pretraining row is missing or unproved: {rid}")
+            require(rid.startswith(FQL_SOURCE_PREFIX) and kind(row) == "pretrain"
+                    and row["realworld_target"] == task and row["planned_commit"] == COMMIT
+                    and row["planned_image"] == IMAGE, f"pretraining source pin/task differs: {rid}")
+            status = state.get(rid, {})
+            sync = status.get("sync", {})
+            rec.update(status=status.get("status"), code=status.get("code"),
+                       sync_final=sync.get("final"), sync_verified=sync.get("verified"))
+            require(status.get("status") == jobs.DONE and status.get("code") == 0
+                    and sync.get("final") is True and sync.get("verified") is True,
+                    f"pretraining is not DONE with exit 0 and verified final backup: {rid}")
+            expected_sha = sync.get("files", {}).get("encoder.pt")
+            encoder = ROOT / rec["encoder_export"]
+            require(expected_sha and encoder.is_file() and sha(encoder.read_bytes()) == expected_sha,
+                    f"pretraining encoder backup missing or hash differs: {rid}")
+            rec.update(available=True, encoder_sha256=expected_sha)
+        except (Refused, OSError) as exc:
+            rec["reason"] = str(exc)
+    return evidence
+
+
+def prepare(tasks, *, fql_only=False, preview=False):
+    if fql_only:
+        evidence, blockers = fql_release_evidence(preview=preview)
+    else:
+        evidence = release_evidence()
     templates = template_rows(tasks)
     # Only the authoritative, read-only manifest; no target/stage/manifest override.
     report = gate.evaluate_file(gate.MANIFEST, tasks)
-    potential = adapt_rows(templates, report)
+    potential = adapt_rows(templates, report, fql_only=fql_only)
     current = jobs.load_queue(QUEUE)
-    selected, refused = select_rows(potential, report, current, published_rows())
-    roles_sha = check_rows(selected, report, current)
-    state = jobs.read_registry(REGISTRY)
+    known = published_rows()
+    state = jobs.read_registry(REGISTRY) if fql_only else None
+    reusable = pretraining_evidence(potential, current, known, state) if fql_only else None
+    selected, refused = select_rows(potential, report, current, known,
+                                    fql_only=fql_only, reusable_pretraining=reusable)
+    roles_sha = check_rows(selected, report, current, fql_only=fql_only)
+    if not fql_only:
+        state = jobs.read_registry(REGISTRY)
     for row in selected:
         require(row["id"] not in state, f"ID already exists in registry: {row['id']}")
         require(not (ROOT / "runs" / row["id"]).exists(), f"run directory exists: {row['id']}")
-    return {"schema": "rw-registration/v1", "status": "dry-run", "prepared_at": now(), "tasks": list(tasks),
+    record = {"schema": "rw-registration/v1", "status": "dry-run", "prepared_at": now(), "tasks": list(tasks),
             "release": evidence, "plan_sha256": sha(PLAN.read_bytes()), "roles_sha256": roles_sha,
             "queue_sha256_at_evaluation": sha(QUEUE.read_bytes()),
             "registry_sha256_at_evaluation": sha(REGISTRY.read_bytes()),
@@ -331,6 +421,13 @@ def prepare(tasks):
             "decisions": {"alpha": 10, "gripper": "continuous", "encoders": "task-specific",
                           "fql_seeds": list(launch.SEEDS), "e2e": "random-init CNN trained jointly with FQL",
                           "pretraining_budgets": "unchanged release configs (seed 42)", "fql_budget": launch.FQL_BUDGET}}
+    if fql_only:
+        superseded = {r["id"]: FQL_SOURCE_PREFIX + r["id"][len(FQL_ONLY_PREFIX):] for r in selected}
+        record.update(registration_mode="fql-only", source_prefix=FQL_SOURCE_PREFIX,
+                      id_prefix=FQL_ONLY_PREFIX, publish_blockers=blockers, reused_pretraining=reusable,
+                      supersedes={rid: old for rid, old in superseded.items() if old in known},
+                      supersession_note="Records replacements only; old queue rows and registry events are untouched")
+    return record
 
 
 def proof_path(record):
@@ -347,13 +444,14 @@ def locks():
             yield
 
 
-def publish(tasks):
+def publish(tasks, *, fql_only=False):
     with locks():
         require(not PENDING.exists(), "pending transaction exists; use --recover first")
-        record = prepare(tasks)  # gate + collision checks under both locks
+        record = prepare(tasks, fql_only=True) if fql_only else prepare(tasks)  # checks under both locks
         summarize(record, "PUBLISH CHECK")
         active = record["release"]["active_role_release"]
-        require(active is None or active == RELEASE,
+        commit, image, _ = release_pin(fql_only)
+        require(active is None or active == {"commit": commit, "image": image},
                 "active role-release.json differs from the proposed pin; role rows would launch the wrong release")
         if not record["jobs"]:
             return 2 if record["refused"] else 0
@@ -377,15 +475,18 @@ def publish(tasks):
         return 0
 
 
-def recover():
+def recover(*, fql_only=False):
     with locks():
         require(PENDING.is_file(), "no pending transaction to recover")
         record = json.loads(PENDING.read_text())
         require(record.get("schema") == "rw-registration/v1" and record.get("status") == "pending",
                 "invalid recovery journal")
+        require(record.get("registration_mode", "all") == ("fql-only" if fql_only else "all"),
+                "recovery mode differs; use --fql-only for an FQL-only transaction")
         rows = record["jobs"]
         require(rows and json_sha(rows) == record.get("jobs_sha256"), "recovery journal rows changed")
-        require(record.get("release", {}).get("commit") == COMMIT and record["release"]["image"] == IMAGE,
+        commit, image, _ = release_pin(fql_only)
+        require(record.get("release", {}).get("commit") == commit and record["release"]["image"] == image,
                 "recovery release differs")
         proof = proof_path(record)
         require(record.get("proof_file") == proof.name, "recovery proof path differs")
@@ -401,17 +502,24 @@ def recover():
             return 0
         require(current["jobs"][-len(rows):] == rows, "queue tail is not exactly the saved registration")
         # Current gates must still pass; original gate evidence is retained in the proof.
-        release_evidence()
+        if fql_only:
+            fql_release_evidence()
+            reused = pretraining_evidence(rows, current, published_rows(), jobs.read_registry(REGISTRY))
+            require(all(rec["available"] and rec["encoder_sha256"] ==
+                        record["reused_pretraining"].get(rid, {}).get("encoder_sha256")
+                        for rid, rec in reused.items()), "recovery pretraining evidence differs or is no longer DONE")
+        else:
+            release_evidence()
         original = record["gate_evaluation"]
-        expected = {r["id"]: r for r in adapt_rows(template_rows(record["tasks"]), original)}
+        expected = {r["id"]: r for r in adapt_rows(template_rows(record["tasks"]), original, fql_only=fql_only)}
         require(all(expected.get(row["id"]) == row for row in rows),
                 "saved rows differ from this registrar's pinned plan")
         for row in rows:
             require(row["realworld_gate_sha256"] == hashlib.sha256(json.dumps(original, sort_keys=True).encode()).hexdigest()
                     and row["realworld_manifest_sha256"] == original["manifest"]["sha256"], "saved gate hashes differ")
-        check_rows(rows, original, current)
+        check_rows(rows, original, current, fql_only=fql_only)
         report = gate.evaluate_file(gate.MANIFEST, record["tasks"])
-        check_rows(rows, report, current)
+        check_rows(rows, report, current, fql_only=fql_only)
         for task in {row["realworld_target"] for row in rows}:
             identities = report["tasks"][task].get("episode_identities")
             require(identities and identities == original["tasks"][task].get("episode_identities"),
@@ -435,7 +543,7 @@ def recover():
 def summarize(record, mode):
     print("Evaluated " + datetime.now(ZoneInfo("Asia/Seoul")).isoformat())
     print(f"{mode}: {len(record['jobs'])} new rows; {len(record['refused'])} refused rows")
-    print(f"Pinned commit {COMMIT}; image {IMAGE}")
+    print(f"Pinned commit {record['release']['commit']}; image {record['release']['image']}")
     report = record["gate_evaluation"]
     print("Manifest sha256 " + report["manifest"]["sha256"])
     if report.get("error"):
@@ -454,8 +562,39 @@ def summarize(record, mode):
               + "; once all non-geometric gates pass: "
               + json.dumps(record["potential_counts_per_task"][task], sort_keys=True))
     print("Geometry consumers are excluded from this registrar regardless of calibration status.")
-    print("Proposed release: " + str(PROPOSED) + "; activation_required="
+    proposed = SETUP / "role-release.fqlonly.proposed.json" if record.get("registration_mode") == "fql-only" else PROPOSED
+    print("Proposed release: " + str(proposed) + "; activation_required="
           + str(record["release"]["activation_required"]).lower())
+
+
+def dry_run_fql_only(tasks):
+    require(not PENDING.exists(), "pending transaction exists; use --recover before another registration")
+    record = prepare(tasks, fql_only=True, preview=True)
+    proof = SETUP / "rwreg-fqlonly-dry-run-20261107.json"
+    preview = SETUP / "rwreg-fqlonly-plan-preview-20261107.yaml"
+    commit, image, _ = release_pin(True)
+    atomic_json(SETUP / "role-release.fqlonly.proposed.json", {"commit": commit, "image": image})
+    atomic_json(proof, record)
+    temp = preview.with_suffix(".yaml.tmp")
+    temp.write_text(yaml.safe_dump({"registrable": False,
+        "note": "Preview only; publish reevaluates acceptance, active release, DONE sources and gates",
+        "hosts": {"local": {}, "remote": {}}, "jobs": record["potential_jobs_not_registrable"]}, sort_keys=False))
+    jobs.load_queue(temp)
+    os.replace(temp, preview)
+    summarize(record, "FQL-ONLY DRY-RUN")
+    print("Rows below would register only after all publication checks pass:")
+    for row in record["jobs"]:
+        print("WOULD REGISTER " + json.dumps(row, sort_keys=True))
+    print("Supersedes (new ID -> existing old ID): " + json.dumps(record["supersedes"], sort_keys=True))
+    for rid, rec in record["reused_pretraining"].items():
+        print("PRETRAIN " + rid + " " + json.dumps(rec, sort_keys=True))
+    for rid, reasons in record["refused"].items():
+        print("ROW REFUSED " + rid + ": " + "; ".join(reasons))
+    for blocker in record["publish_blockers"]:
+        print("PUBLICATION REFUSED: " + blocker)
+    print(f"DRY-RUN proof: {proof}; ungated preview: {preview}")
+    print("Queue/registry unchanged. role-release.json was not created or modified.")
+    return 2 if record["publish_blockers"] or (not record["jobs"] and record["refused"]) else 0
 
 
 def main():
@@ -464,9 +603,17 @@ def main():
     mode.add_argument("--publish", action="store_true", help="explicitly replace the real queue (future operator action)")
     mode.add_argument("--recover", action="store_true", help="recover the exact journaled transaction under both locks")
     mode.add_argument("--dry-run", action="store_true", help="default; write only proposal/evidence inside runs/setup")
+    ap.add_argument("--fql-only", action="store_true",
+                    help="only new rwng-20261107b-* dataset/FQL rows pinned to ee07b2e; reuse DONE old pretraining")
     ap.add_argument("--tasks", nargs="+", choices=launch.TASKS, default=list(launch.TASKS))
     args = ap.parse_args()
     require(len(args.tasks) == len(set(args.tasks)), "duplicate task selection")
+    if args.fql_only:
+        if args.recover:
+            return recover(fql_only=True)
+        if args.publish:
+            return publish(args.tasks, fql_only=True)
+        return dry_run_fql_only(args.tasks)
     if args.recover:
         return recover()
     if args.publish:

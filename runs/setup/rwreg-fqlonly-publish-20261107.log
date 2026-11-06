@@ -1,0 +1,19 @@
+REFUSED: ingest manifest changed during staging; rerun --recover, then --publish
+Evaluated 2026-11-07T07:52:39.177895+09:00
+PUBLISH CHECK: 16 new rows; 8 refused rows
+Pinned commit ee07b2e7c6cc33061eb1f15123e5eb333ec8ba97; image sha256:59082834c2c2c0d688be50a0b3b362bc46bdd2b1923d8ab712a473a0bd51870a
+Manifest sha256 717461b6705088fc435a6aa6d57a0a709e5302c2d882e18baa4067d6c8a9b9ce
+drawer-open: 100/100 ready; singleview=PASS, multiview=PASS, geometry=PASS; calibration_validated=0
+  reviwo: PASS
+  dynamo: PASS
+  fql_reviwo: PASS
+  e2e_cnn: PASS
+  New rows: {"dataset": 3, "fql": 9}; once all non-geometric gates pass: {"dataset": 3, "fql": 9}
+mug-hanging: 100/100 ready; singleview=PASS, multiview=REFUSED, geometry=REFUSED; calibration_validated=0
+  reviwo: REFUSED: QA family multiview: 3 episodes failed ['mug-hanging/episode_000062.h5', 'mug-hanging/episode_000075.h5', 'mug-hanging/episode_000110.h5']
+  dynamo: PASS
+  fql_reviwo: PASS
+  e2e_cnn: PASS
+  New rows: {"dataset": 1, "fql": 3}; once all non-geometric gates pass: {"dataset": 3, "fql": 9}
+Geometry consumers are excluded from this registrar regardless of calibration status.
+Proposed release: /home/ws/ws/splatter4d/runs/setup/role-release.fqlonly.proposed.json; activation_required=false

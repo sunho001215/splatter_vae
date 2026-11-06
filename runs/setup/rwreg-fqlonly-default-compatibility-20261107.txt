@@ -1,0 +1,3 @@
+all-pass: default stdout, exit code, proof JSON, proposal and preview YAML byte-identical
+partial-task: default stdout, exit code, proof JSON, proposal and preview YAML byte-identical
+singleview-only: default stdout, exit code, proof JSON, proposal and preview YAML byte-identical
