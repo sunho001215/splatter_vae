@@ -10,6 +10,7 @@ intentional_stop: true, so the following non-zero exit is identifiable as an int
 """
 import fcntl
 import hashlib
+import importlib.util as _importlib_util
 import itertools
 import json
 import os
@@ -23,33 +24,27 @@ from pathlib import Path
 
 import yaml
 
+# Resolve support beside this command, including isolated/legacy execution, without changing sys.path.
+_spec = _importlib_util.spec_from_file_location(
+    'ops.jobs._checkpoint_support', Path(__file__).resolve().parents[1] / 'jobs/_checkpoint_support.py')
+_checkpoint_support = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_checkpoint_support)
+
 ROOT = Path('/home/ws/ws/splatter4d')
 REGISTRY = ROOT / 'experiments/registry.jsonl'
 BOOT = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
 
 def identity(pid):
-    fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
-    return {'pid': pid, 'group': int(fields[2]), 'session': int(fields[3]), 'start_ticks': int(fields[19]),
-            'state': fields[0]}
+    return _checkpoint_support.identity(pid, Path=Path)
 
 
 def record(event):
-    with REGISTRY.with_suffix('.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        with REGISTRY.open('a') as stream:
-            stream.write(json.dumps({**event, 'time': time.time()}) + '\n')
-            stream.flush()
-            os.fsync(stream.fileno())
+    return _checkpoint_support.record(event, registry=REGISTRY, fcntl=fcntl, json=json, time=time, os=os)
 
 
 def checkpoint_step(path):
-    with zipfile.ZipFile(path) as archive:
-        name = next(n for n in archive.namelist() if n.endswith('/data.pkl'))
-        ops = list(itertools.islice(pickletools.genops(archive.read(name)), 7))
-    if ops[-3][1] != 'step' or ops[-1][0].name not in {'BININT', 'BININT1', 'BININT2'}:
-        raise RuntimeError('unexpected checkpoint step metadata')
-    return ops[-1][1]
+    return _checkpoint_support.checkpoint_step(path, zipfile=zipfile, itertools=itertools, pickletools=pickletools)
 
 
 def logged_step(run):
@@ -77,15 +72,7 @@ def validated(run, step):
 
 
 def session_alive(pid):
-    for entry in Path('/proc').iterdir():
-        if entry.name.isdigit():
-            try:
-                status = identity(int(entry.name))
-            except (FileNotFoundError, ProcessLookupError, IndexError):
-                continue
-            if status['session'] == pid and status['state'] not in {'Z', 'X'}:
-                return True
-    return False
+    return _checkpoint_support.session_alive(pid, Path=Path, identity=identity)
 
 
 ARGS = sys.argv[1:]

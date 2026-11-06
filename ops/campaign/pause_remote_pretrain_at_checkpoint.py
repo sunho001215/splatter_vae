@@ -15,6 +15,7 @@ pause target (the run would simply complete). Never removes containers or files.
     python -I pause_remote_pretrain_at_checkpoint.py --reason <reason> <job id> [...]
 """
 import fcntl
+import importlib.util as _importlib_util
 import json
 import os
 import shlex
@@ -22,6 +23,12 @@ import sys
 import threading
 import time
 from pathlib import Path
+
+# Resolve support beside this command, including isolated/legacy execution, without changing sys.path.
+_spec = _importlib_util.spec_from_file_location(
+    'ops.jobs._checkpoint_support', Path(__file__).resolve().parents[1] / 'jobs/_checkpoint_support.py')
+_checkpoint_support = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_checkpoint_support)
 
 ROOT = Path('/home/ws/ws/splatter4d')
 sys.path.insert(0, str(ROOT))
@@ -73,12 +80,7 @@ done
 
 
 def record(event):
-    with REGISTRY.with_suffix('.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        with REGISTRY.open('a') as stream:
-            stream.write(json.dumps({**event, 'time': time.time()}) + '\n')
-            stream.flush()
-            os.fsync(stream.fileno())
+    return _checkpoint_support.record(event, registry=REGISTRY, fcntl=fcntl, json=json, time=time, os=os)
 
 
 def pause(job_id, reason, out):
