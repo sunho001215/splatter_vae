@@ -18,6 +18,7 @@ import yaml
 from s4d.rwlearn import actions as A
 from s4d.rwlearn import fql_data as FD
 from s4d.rwlearn.fql import FQLAgent
+from s4d.rwlearn.gate import QA_FAMILIES
 from s4d.rwlearn.inference import OfflinePolicy, checkpoint_payload, replay
 from s4d.rwlearn.store import MemoryStore
 
@@ -188,7 +189,8 @@ def test_export_mismatch_is_refused(tmp_path, exports):
     assert check_dataset_gate(path, None, steps=100)["smoke"]
     with pytest.raises(RuntimeError, match="no passed full-data gate"):
         check_dataset_gate(path, None, steps=1_000_000)
-    report = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}}}
+    report = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}},
+              "families": {"mug-hanging": {f: {"passed": True} for f in QA_FAMILIES}}}
     assert not check_dataset_gate(path, report, steps=None, split={"train": [ep], "validation": []})["smoke"]
     with pytest.raises(RuntimeError, match="partition"):
         check_dataset_gate(path, report, steps=None, split={"train": [], "validation": []})
@@ -311,7 +313,8 @@ def test_geometric_condition_dataset_needs_the_validated_calibration(tmp_path, e
         cal = __import__("json").loads(f.attrs["calibration"])
         assert cal[ep] == {"calibrate": "cal-1", "cameras": sorted(store.cameras(ep))}
         assert "camera poses" in f.attrs["extra_inputs"] and "+2 RGB views" in f.attrs["extra_inputs"]
-    base = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}}}
+    base = {"tasks": {"mug-hanging": {"passed": True, "store_episodes": [ep]}},
+            "families": {"mug-hanging": {f: {"passed": True} for f in QA_FAMILIES}}}
     with pytest.raises(RuntimeError, match="calibration hold released"):
         check_dataset_gate(path, base, steps=None)
     hold = lambda build, cams=None: {**base, "calibration_hold": {"mug-hanging": {  # noqa: E731

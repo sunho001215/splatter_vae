@@ -33,6 +33,11 @@ def entry(task: str, i: int, *, status="valid", transfer="verified", pre="done",
     recs = {s: {"status": "done", "input_sha256": sha, "code_version": "v"} for s in stages}
     if "calibrate" in recs:
         recs["calibrate"]["metrics"] = {"build_id": "cal-build-1"}
+    if "train_data" in recs:
+        recs["train_data"]["output_format"] = "s4d.realworld.train/1.1.0"
+    if "qa" in recs:
+        recs["qa"].update(output_format="rwprep-qa/3", metrics={"families": {
+            f: {"passed": True} for f in gate.QA_FAMILIES}})
     if validated:
         recs[gate.CALIBRATION_STAGE] = calibration_record(sha)
     return {"task": task, "episode_index": i, "sha256": sha, "flags": {}, "override": None,
@@ -379,16 +384,44 @@ def test_qa_families_gate_each_consumer_on_its_own_families():
     assert not any("QA family" in p for p in gate.task_problems(rep, "mug-hanging", "dynamo"))
 
 
-def test_family_qa_record_without_families_fails_closed_but_a_pre_family_record_does_not():
+@pytest.mark.parametrize("fmt", [None, "rwprep-qa/1", "rwprep-qa/2", "rwprep-qa/3"])
+@pytest.mark.parametrize("with_families", [False, True])
+def test_only_current_qa_with_explicit_families_can_pass(fmt, with_families):
     m = manifest(validated=True)
-    m["episodes"]["mug-hanging/episode_000010.h5"]["preprocessing"]["stages"]["qa"].update(output_format="rwprep-qa/3")
+    rec = m["episodes"]["mug-hanging/episode_000010.h5"]["preprocessing"]["stages"]["qa"]
+    rec.update(output_format=fmt, code_version="qa@2" if fmt == "rwprep-qa/2" else "qa@3")
+    if not with_families:
+        rec.pop("metrics")
     rep = gate.evaluate(m, ["mug-hanging"])
-    assert not gate.task_passed(rep, "mug-hanging", "dynamo") and not gate.task_passed(rep, "mug-hanging", "ours")
-    m["episodes"]["mug-hanging/episode_000010.h5"]["preprocessing"]["stages"]["qa"].update(output_format="rwprep-qa/2")
-    rep = gate.evaluate(m, ["mug-hanging"])
-    assert gate.task_passed(rep, "mug-hanging", "dynamo") and gate.task_passed(rep, "mug-hanging", "ours")
+    expected = fmt == "rwprep-qa/3" and with_families
+    for consumer in (*gate.CONSUMERS, None, "unknown"):
+        assert gate.task_passed(rep, "mug-hanging", consumer) is expected
     assert gate.consumer_families("unknown") == gate.QA_FAMILIES
     assert set(gate.CONSUMER_FAMILIES) == set(gate.CONSUMERS)  # every classified consumer declares its families
+
+
+@pytest.mark.parametrize("fmt,passed", [(None, False), ("s4d.realworld.train/1", False),
+    ("s4d.realworld.train/1.0.0", False), ("s4d.realworld.train/1.0.99", False), ("unknown/1.1.0", False),
+    ("s4d.realworld.train/1.1", False), ("s4d.realworld.train/1.1.0", True),
+    ("s4d.realworld.train/1.1.1", True), ("s4d.realworld.train/1.2.0", True)])
+def test_every_episode_needs_current_train_data_even_with_current_qa(fmt, passed):
+    m = manifest(validated=True)
+    m["episodes"][KEY]["preprocessing"]["stages"]["train_data"].update(
+        output_format=fmt, code_version="train_data@2" if passed else "train_data@1")
+    # Stage-name overrides cannot waive the minimum evidence formats.
+    rep = gate.evaluate(m, ["drawer-open"], required_stages=("normalized",))
+    for consumer in (*gate.CONSUMERS, None, "unknown"):
+        assert gate.task_passed(rep, "drawer-open", consumer) is passed
+    if not passed:
+        assert KEY in rep["tasks"]["drawer-open"]["problems"][0]
+        assert "train_data output_format" in rep["tasks"]["drawer-open"]["problems"][0]
+
+
+def test_pre_family_gate_reports_cannot_release_consumers():
+    rep = gate.evaluate(manifest(validated=True), ["drawer-open"])
+    rep.pop("families")
+    for consumer in (*gate.CONSUMERS, None):
+        assert not gate.task_passed(rep, "drawer-open", consumer)
 
 
 @pytest.mark.parametrize("families", [[], "passed", {"singleview": True}, {"singleview": {"passed": "true"}}])

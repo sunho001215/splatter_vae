@@ -656,7 +656,7 @@ CO_ID = "e" * 64
 
 
 def _guard(tmp_path, *, apps, cotenant=None, inspect_fails=None, memory_stat=None, gpu_used_mib=40000,
-           available_gib=1000):
+           available_gib=1000, graphics=(), own_pids=(11,), own_declared_gib=5):
     """Runs the generated admission section (from the GPU queries to the last capacity test) against stubbed docker,
     nvidia-smi, df, /proc/meminfo and cgroup files: one scheduler job (s4d-own-a1, pid 11, 5 GiB declared, 4 GiB
     used) is running on the selected GPU; ``cotenant`` is the co-tenant's inspect line (or None)."""
@@ -678,13 +678,15 @@ def _guard(tmp_path, *, apps, cotenant=None, inspect_fails=None, memory_stat=Non
     body = "\n".join(lines[start:end]).replace("/proc/meminfo", str(meminfo)).replace(
         "/sys/fs/cgroup/system.slice", str(cgroup))
     q = shlex.quote
-    own = {"s4d.disk_bytes": str(GIB), "s4d.gpu": gpu, "s4d.mem_bytes": str(5 * GIB), "s4d.ram_bytes": str(GIB)}
+    own = {"s4d.disk_bytes": str(GIB), "s4d.gpu": gpu, "s4d.mem_bytes": str(own_declared_gib * GIB),
+           "s4d.ram_bytes": str(GIB)}
     listing = "printf '%s\\n' " + CO_ID if cotenant is not None else "true"
     stubs = ("docker() {\ncase \"$1\" in\n"
              "ps) case \"$*\" in *s4d.managed=true*) printf '%s\\n' s4d-own-a1;; "
              "*s4d.managed=false*) " + listing + ";; "
              "*) return 97;; esac;;\n"
-             "top) case \"$2\" in s4d-own-a1) printf 'PID\\n11\\n';; " + CO_ID + ") printf 'PID\\n777\\n778\\n';; "
+             "top) case \"$2\" in s4d-own-a1) printf '%s\\n' PID " + " ".join(map(str, own_pids))
+             + ";; " + CO_ID + ") printf 'PID\\n777\\n778\\n';; "
              "*) return 97;; esac;;\n"
              "inspect) case \"$4\" in s4d-own-a1) case \"$3\" in "
              + " ".join(f"*{q(key)}*) printf '%s\\n' {q(value)};;" for key, value in own.items())
@@ -697,7 +699,8 @@ def _guard(tmp_path, *, apps, cotenant=None, inspect_fails=None, memory_stat=Non
              f"*query-compute-apps*) printf '%s\\n' {' '.join(q(row) for row in apps)};;\n"
              f"*index,uuid*) printf '%s\\n' {q('0, ' + gpu)} {q('1, ' + APPROVED_HOST_GPUS['remote'][1])};;\n"
              f"*memory.total*) printf '%s\\n' {q(f'{gpu}, 97887, {gpu_used_mib}')};;\n"
-             "'') printf '%s\\n' 'no graphics';;\n*) return 97;; esac\n}\n"
+             "'') printf '%s\\n' " + " ".join(q(row) for row in graphics or ("no graphics",))
+             + ";;\n*) return 97;; esac\n}\n"
              "df() { printf '1B-blocks Avail\\n%s %s\\n' 6900000000000 2200000000000; }\n")
     script = "\n".join(["set -eu", *head[1:], stubs, body, "printf 'ADMITTED\\n'"])
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
@@ -766,3 +769,33 @@ def test_launch_guard_admits_next_to_a_verified_cotenant_only():
         else:
             assert result.returncode != 0 and "ADMITTED" not in result.stdout, (name, result.stdout)
             assert marker in result.stderr, (name, result.stderr)
+
+
+@pytest.mark.parametrize("cotenant", [False, True])
+@pytest.mark.parametrize("graphics_only", [False, True])
+def test_scheduler_over_declaration_is_charged_with_cotenants(tmp_path, cotenant, graphics_only):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    # 54 GiB measured scheduler job + 34 GiB co-tenant + 6 GiB new job = 94 GiB > 90 GiB cap.
+    apps = [f"{gpu}, 11, {4 * 1024 if graphics_only else 54 * 1024}"]
+    if cotenant:
+        apps += [f"{gpu}, 777, {34 * 1024}"]
+    graphics = ["| 0 N/A N/A 12 G /usr/bin/renderer 51200MiB |"] if graphics_only else []
+    result = _guard(tmp_path, apps=apps, graphics=graphics, own_pids=(11, 12),
+                    cotenant=_co_line() if cotenant else None, gpu_used_mib=88 * 1024)
+    assert (result.returncode == 0) is (not cotenant), result.stderr
+
+
+def test_graphics_duplicate_pid_is_counted_once_and_foreign_gpu_is_ignored(tmp_path):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    result = _guard(tmp_path, apps=[f"{gpu}, 11, {50 * 1024}", f"{gpu}, 777, {34 * 1024}"],
+                    cotenant=_co_line(), gpu_used_mib=84 * 1024,
+                    graphics=["| 0 N/A N/A 11 C+G /usr/bin/train 51200MiB |",
+                              "| 1 N/A N/A 999 G /usr/bin/foreign 51200MiB |"])
+    assert result.returncode == 0 and result.stdout == "ADMITTED\n", result.stderr  # 50 + 34 + 6 == 90
+
+
+def test_no_cotenant_keeps_the_existing_declared_reservation_policy(tmp_path):
+    gpu = APPROVED_HOST_GPUS["remote"][0]
+    # Without a co-tenant, even a managed job exceeding its declaration retains the old admission behavior.
+    result = _guard(tmp_path, apps=[f"{gpu}, 11, {88 * 1024}"], gpu_used_mib=88 * 1024)
+    assert result.returncode == 0 and result.stdout == "ADMITTED\n", result.stderr

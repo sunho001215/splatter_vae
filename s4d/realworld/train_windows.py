@@ -153,6 +153,7 @@ class RealworldWindowDataset(Dataset):
         capacity = 1
         for e, ep in enumerate(self.episodes):
             ef = self.store.episode(ep)
+            ef.require_geometry()
             cams = list(cameras or ef.cameras)
             if self.num_views is None and self.cams and len(cams) != len(self.cams[0]):
                 raise ValueError("every episode must provide the same number of cameras (or set num_views)")

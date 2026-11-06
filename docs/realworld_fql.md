@@ -398,9 +398,25 @@ each consumer's families (`CONSUMER_FAMILIES`: ours / SNeRL / 3D-MVP / SinCro al
 multiview, DynaMo / e2e CNN singleview) on all 100 episodes. Single-view FQL conditions have their own gate identities:
 ReViWo needs singleview; SinCro and 3D-MVP single-view need singleview + geometry. They retain their encoder's
 calibration requirements without requiring cross-camera sets for their observations. These checks apply in addition
-to the base gate and, for geometric consumers, the calibration hold. A `qa` record without families counts as the
-pre-family QA (rwprep-qa/2 required every family) unless it declares rwprep-qa/3 (fail closed). Unknown QA formats and
-malformed family verdicts fail closed.
+to the base gate and, for geometric consumers, the calibration hold. Every episode must have
+`train_data.output_format` `s4d.realworld.train/1.1.0` or later and `qa.output_format` `rwprep-qa/3` with explicit
+per-family results. Missing, older or unknown QA formats and malformed family verdicts fail closed; stage-name
+overrides cannot waive these requirements. Reports without family results cannot release a consumer.
+
+**Calibration-optional stores (2026-11-06 release fix).** When a camera's `calibrate` result is rejected, held or
+missing (including all-camera rejection by the hard 0.05 m motion-coverage gate), `train_data` retains every RGB
+camera's frames, timestamps, recording segments and robot sync/state. Per-camera `calibration` metadata records the
+status and reasons; affected stores also expose `calibration_status` and `geometry_available`. Cameras without
+usable calibration omit extrinsics (`w2c`), world-frame tracks and depth products. Robot FK points and M5 robot-surface
+motion use only robot kinematics and remain available; cross-camera gripper visibility is omitted. Multi-view and
+geometry readers refuse the episode, and contract checks record a multi-view family failure without a server call.
+The independent single-view family can pass all its own recording, frame and robot-sync requirements.
+
+Affected files, stage configs and summaries carry `layout: calibration_optional/1`; `manifest_fields` also carries
+the marker and per-camera calibration statuses. Keep `train_data@2` and schema `1.1.0`: fully accepted episodes retain
+the existing layout, fingerprint and bytes, proven against the frozen pre-change writer on identical synthetic inputs
+with creation time and code provenance pinned. Existing accepted outputs are reused without re-export. Only affected
+episodes acquire the new config marker and are rebuilt if an older export had silently dropped rejected cameras.
 
 ## Review of the decisions branch (Codex gpt-6.1-sol xhigh, read-only, on e4c137f) and what changed
 

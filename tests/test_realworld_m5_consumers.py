@@ -226,6 +226,28 @@ def test_multiview_tooling_error_is_raised_and_preserves_singleview_report(contr
     assert "unexpected loader shape" in report["multiview"]["problems"][0]
 
 
+@pytest.mark.parametrize("all_cameras", [False, True])
+def test_rejected_calibration_is_a_family_failure_without_a_server(contract_episode, monkeypatch, all_cameras):
+    case = contract_episode
+    with h5py.File(case.path, "r+") as f:
+        f.attrs["layout"] = "calibration_optional/1"
+        cameras = json.loads(f.attrs["cameras"])
+        for cam in cameras if all_cameras else cameras[:1]:
+            f[f"cameras/{cam}"].attrs["calibration"] = json.dumps(
+                {"status": "rejected", "reasons": ["motion coverage below 0.05 m"]})
+
+    def no_remote(*a, **kw):
+        pytest.fail("held geometry must produce a family verdict without loading a server")
+
+    monkeypatch.setattr(case.cc.Server, "load", no_remote)
+    assert case.cc.main(case.argv) == 0
+    report = json.loads(case.report.read_text())
+    assert report["singleview"]["passed"] is True
+    assert report["multiview"]["passed"] is False
+    assert "calibration rejected" in report["multiview"]["problems"][0]
+    assert report["dataset"] is None and report["forward"] == [] and report["snerl"] is None
+
+
 @pytest.mark.parametrize("total,loss,passed", [(1.0, 1.0, True), ("nan", 1.0, False), (1.0, "nan", False)])
 def test_contract_snerl_uses_m5_and_checks_losses(contract_episode, monkeypatch, total, loss, passed):
     import torch

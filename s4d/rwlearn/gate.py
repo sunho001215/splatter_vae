@@ -14,6 +14,10 @@ iff
 * no episode of the task is still pending / incomplete / retrying (the set is final), and
 * every valid episode's ``preprocessing.status == "done"`` and each REQUIRED stage is ``done`` for that episode's sha256.
 
+Every episode also needs ``train_data.output_format`` >= ``s4d.realworld.train/1.1.0`` and explicit family verdicts
+from ``qa.output_format == "rwprep-qa/3"``. Stage-name overrides cannot waive these evidence requirements; old
+train_data@1 / qa@2 records and reports without families never release a consumer.
+
 The report lists, per task, the episode keys and the training-store episode ids (manifest key without ``.h5``:
 ``<task>/episode_000123``), which the trainers compare with the store they read (``baseline_data.check_gate``,
 ``check_dataset_gate``). Everything fails closed: an unknown schema or missing field is a failure, not a pass.
@@ -82,14 +86,14 @@ _SHA = re.compile(r"^[0-9a-f]{64}$")
 # singleview = the recording + each camera's own frames and robot sync (every consumer); multiview = the cross-camera M5
 # sets and the multi-view contract family; geometry = per-episode calibration, metric depth and tracks. The ``qa``
 # record's status is the base (single-view) family; a consumer additionally needs ITS families on all ``target``
-# episodes. A ``qa`` record without families is a pre-family QA (rwprep-qa/2, which required every family's gates)
-# unless it declares output_format rwprep-qa/3 or later (then: fail closed).
+# episodes. Only rwprep-qa/3 with explicit family verdicts is current; older records never prove a pass.
 QA_FAMILIES = ("singleview", "multiview", "geometry")
 CONSUMER_FAMILIES = {"ours": QA_FAMILIES, "snerl": QA_FAMILIES, "mvp3d": QA_FAMILIES, "sincro": QA_FAMILIES,
                      "reviwo": ("singleview", "multiview"), "dynamo": ("singleview",), "e2e_cnn": ("singleview",),
                      "fql_reviwo": ("singleview",), "fql_sincro": ("singleview", "geometry"),
                      "mvp3d_single": ("singleview", "geometry")}
-_QA_FORMAT = re.compile(r"^rwprep-qa/(\d+)$")
+_TRAIN_FORMAT = re.compile(r"^s4d\.realworld\.train/(\d+)\.(\d+)\.(\d+)$")
+MIN_TRAIN_VERSION = (1, 1, 0)
 
 
 def consumer_families(name: str | None) -> tuple:
@@ -103,13 +107,9 @@ def qa_families(stages: dict) -> dict | None:
     metrics = rec.get("metrics") or {}
     if not isinstance(metrics, dict):
         return None
-    fmt = rec.get("output_format")
-    m = _QA_FORMAT.fullmatch(str(fmt or ""))
-    if fmt is not None and (m is None or int(m.group(1)) not in (1, 2, 3)):
+    if rec.get("output_format") != "rwprep-qa/3":
         return None
     fam = metrics.get("families")
-    if fam is None:
-        return {f: True for f in QA_FAMILIES} if fmt is None or m and int(m.group(1)) in (1, 2) else None
     if not isinstance(fam, dict):
         return None
     return {f: isinstance(fam.get(f), dict) and fam[f].get("passed") is True for f in QA_FAMILIES}
@@ -274,16 +274,22 @@ def evaluate(manifest: dict, tasks, *, required_stages=REQUIRED_STAGES, target: 
                 problems.append(f"{key}: preprocessing {pre.get('status')!r} (schema {pre.get('schema')!r} "
                                 f"v{pre.get('schema_version')!r}; stages not done: {open_stages})")
                 continue
-            bad = [s for s in required_stages if (stages.get(s) or {}).get("status") != "done"
+            bad = [s for s in dict.fromkeys((*required_stages, "qa", "train_data"))
+                   if (stages.get(s) or {}).get("status") != "done"
                    or (stages.get(s) or {}).get("input_sha256") != sha]
             if bad:
                 problems.append(f"{key}: required stages not done for this file: {bad}")
+                continue
+            fmt = (stages.get("train_data") or {}).get("output_format")
+            match = _TRAIN_FORMAT.fullmatch(str(fmt or ""))
+            if match is None or tuple(map(int, match.groups())) < MIN_TRAIN_VERSION:
+                problems.append(f"{key}: train_data output_format {fmt!r}; requires s4d.realworld.train/1.1.0 or later")
                 continue
             valid.append(key)
             fams = qa_families(stages)
             for f in QA_FAMILIES:
                 if fams is None or not fams[f]:
-                    family_fail[f].append(key if fams is not None else f"{key} (qa record without families)")
+                    family_fail[f].append(key if fams is not None else f"{key} (requires rwprep-qa/3 with families)")
             why = calibration_record_problem(stages, sha)
             if why:
                 hold_problems.append(f"{key}: {why}")
@@ -315,9 +321,8 @@ def task_passed(report: dict, task: str, consumer: str | None) -> bool:
     """Whether ``consumer`` may train on ``task``: the 100-episode gate, plus the calibration hold for geometry-
     dependent consumers."""
     base = bool(((report or {}).get("tasks") or {}).get(task, {}).get("passed"))
-    if "families" in (report or {}):  # a report of the pre-family gate (no "families") passed only all-family QA
-        fams = report["families"].get(task) or {}
-        base = base and all((fams.get(f) or {}).get("passed") is True for f in consumer_families(consumer))
+    fams = ((report or {}).get("families") or {}).get(task) or {}
+    base = base and all((fams.get(f) or {}).get("passed") is True for f in consumer_families(consumer))
     if not consumer_info(consumer).geometry:
         return base
     return base and bool(((report or {}).get("calibration_hold") or {}).get(task, {}).get("passed"))
@@ -329,7 +334,7 @@ def task_problems(report: dict, task: str, consumer: str | None, limit: int = 5)
         return ["not evaluated"]
     out = list(t.get("problems", []))
     fams = ((report or {}).get("families") or {}).get(task) or {}
-    for f in (consumer_families(consumer) if "families" in (report or {}) else ()):
+    for f in consumer_families(consumer):
         x = fams.get(f) or {}
         if x.get("passed") is not True and t.get("passed"):
             out.append(f"QA family {f}: {x.get('failed_count', 'not evaluated')} episodes failed "

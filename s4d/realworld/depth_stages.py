@@ -62,8 +62,8 @@ def store_sets(root, episode_id, streams: list[str] | None = None, max_set_motio
     (``sync/surface_disp_m``; default ``train_store.MAX_SET_MOTION_M``). Columns follow ``streams`` (stream ids, e.g.
     ``<serial>/color``; default: the store's camera order); frame indices are the normalized stream frames (the store
     keeps every frame). Frames in no accepted set are listed in ``unmatched``. Refuses stores without per-set motion
-    (schema < 1.1.0: re-export ``train_data``) and streams the store does not hold (cameras without an accepted
-    calibration are not in the store)."""
+    (schema < 1.1.0: re-export ``train_data``), episodes with held camera geometry, and streams the store does not
+    hold. Calibration-optional stores retain all RGB cameras but cannot supply multi-view sets to consumers."""
     from s4d.realworld.train_store import FILE, MAX_SET_MOTION_M, CompactStore, sync_counts
 
     path = Path(root) / "train_data" / episode_id / FILE
@@ -81,7 +81,7 @@ def store_sets(root, episode_id, streams: list[str] | None = None, max_set_motio
     missing = [s for s in order if s not in col]
     if missing:
         raise ValueError(f"{episode_id}: streams {missing} are not in the training store (its cameras: "
-                         f"{list(col)}; cameras without an accepted calibration are excluded from it)")
+                         f"{list(col)})")
     thr = MAX_SET_MOTION_M if max_set_motion_m is None else float(max_set_motion_m)
     frames, disp = np.asarray(sync["frames"]), np.asarray(sync["surface_disp_m"], np.float64)
     accepted = (frames >= 0).all(1) & (disp <= thr)

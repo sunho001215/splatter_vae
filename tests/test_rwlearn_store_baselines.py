@@ -14,6 +14,7 @@ import yaml
 from s4d.baselines.data import GL_FROM_CV
 from s4d.rwlearn import baseline_data as BD
 from s4d.rwlearn import configs as C
+from s4d.rwlearn.gate import QA_FAMILIES
 from s4d.rwlearn.store import FrameStore, MemoryStore, history, open_store, split_episodes, sync_index
 
 MS = 1_000_000
@@ -209,7 +210,8 @@ def test_gate_evidence_required_beyond_smoke_runs():
     assert BD.check_gate(store, None, steps=100, consumer="dynamo")["smoke"]
     with pytest.raises(RuntimeError, match="no passed full-data gate"):
         BD.check_gate(store, None, steps=300_000, consumer="dynamo")
-    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
+    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+              "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
     assert not BD.check_gate(store, report, steps=None, consumer="dynamo")["smoke"]
     eps = store.episodes()
     good = {"train": eps[:2], "validation": eps[2:]}
@@ -240,7 +242,8 @@ def test_trainer_hook_binds_the_gate_to_the_calling_trainer():
     store = synthetic_store()
     for e in store._eps.values():
         e["upstream"] = {"calibrate": "cal-1"}
-    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
+    report = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+              "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
     iface = {"source": "realworld", "gate_report": report, "target": "drawer-open"}
     assert BD.realworld_classes({**iface, "consumer": "dynamo"}, 10**6, store, consumer="dynamo")["dynamo"]
     with pytest.raises(ValueError, match="conflicts with the trainer"):
@@ -264,7 +267,8 @@ def test_geometry_dependent_consumers_need_the_validated_calibration(consumer):
     store = synthetic_store()
     for e in store._eps.values():
         e["upstream"] = {"calibrate": "cal-1"}
-    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}}}
+    base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+            "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}}}
     with pytest.raises(RuntimeError, match="calibration hold"):  # no hold section: held
         BD.check_gate(store, base, steps=None, consumer=consumer)
     with pytest.raises(RuntimeError, match="calibration hold"):  # short runs too, unless explicitly opted in
@@ -292,6 +296,7 @@ def test_geometry_dependent_consumers_need_the_validated_calibration(consumer):
 def test_non_geometric_consumers_are_not_held_by_the_calibration(consumer):
     store = synthetic_store()
     base = {"passed": True, "tasks": {"drawer-open": {"passed": True, "store_episodes": store.episodes()}},
+            "families": {"drawer-open": {f: {"passed": True} for f in QA_FAMILIES}},
             "calibration_hold": {"drawer-open": {"passed": False, "episodes": {}}}}
     res = BD.check_gate(store, base, steps=None, consumer=consumer)
     assert not res["smoke"] and not res["geometry_dependent"]

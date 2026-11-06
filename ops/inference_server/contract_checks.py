@@ -215,11 +215,12 @@ def main(argv=None) -> int:
             cs = CompactStore([compact])
             try:
                 ef = cs.episode(cs.episodes()[0])
+                mv["problems"].extend(ef.geometry_problems())
                 missing = sorted(set(recording) - set(ef.cameras))
                 if "surface_disp_m" not in ef.sync():
                     mv["problems"].append("store has no per-set robot motion (schema < 1.1.0); re-export train_data "
                                           "for M5; legacy loaders require sync_criterion='time' explicitly")
-                else:
+                elif not mv["problems"]:
                     sets = cs.sync_sets(cs.episodes()[0])
                     mv["sync"] = sync_counts(np.asarray(sets["frames"]),
                                              np.asarray(sets["surface_disp_m"], np.float64))

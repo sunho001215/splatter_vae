@@ -447,12 +447,18 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'table="$(nvidia-smi)"; graphics="$(printf \'%s\\n\' "$table" | awk -v gpu="$selected_index" '
               '\'$1=="|" && $2==gpu && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ {print $5}\')"',
               'owned="$(docker ps --filter label=s4d.managed=true --filter label=s4d.host=remote --format \'{{.Names}}\')"',
+              # Include graphics-only memory; C+G processes can appear in both sources, so use the larger
+              # per-PID reading before summing each container's memory.
+              'graphics_memory="$(printf \'%s\\n\' "$table" | awk -v gpu="$gpu" -v idx="$selected_index" '
+              '\'$1=="|" && $2==idx && $5 ~ /^[0-9]+$/ && $6 ~ /^[CG+]+$/ '
+              '{m=$(NF-1); sub(/MiB$/,"",m); if(m ~ /^[0-9]+$/) print gpu "," $5 "," m}\')"',
               # GPU memory (bytes) used on the selected GPU by the processes in $1 (whitespace-separated PIDs)
-              'gpu_used() { printf \'%s\\n\' "$apps" | awk -F, -v gpu="$gpu" -v pids=" $(printf \'%s \' $1)" '
+              'gpu_used() { printf \'%s\\n\' "$apps" "$graphics_memory" | awk -F, -v gpu="$gpu" -v pids=" $(printf \'%s \' $1)" '
               '\'{gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); '
-              'if ($1==gpu && $3 ~ /^[0-9]+$/ && index(pids, " " $2 " ")) s+=$3} END {printf "%.0f", s*1048576}\'; }',
+              'if ($1==gpu && $3 ~ /^[0-9]+$/ && index(pids, " " $2 " ") && $3>mem[$2]) mem[$2]=$3} '
+              'END {for(p in mem)s+=mem[p]; printf "%.0f", s*1048576}\'; }',
               'owned_pids=""; reserved_disk=0; ramp_ram=0; gpu_jobs=0; gpu_reserved=0; now="$(date +%s)"',
-              'own_pending=0; co_here=0; co_pending=0',
+              'own_pending=0; own_extra=0; co_here=0; co_pending=0',
               'for own in $owned; do case "$own" in s4d-*) ;; *) exit 1;; esac; '
               'pids="$(docker top "$own" -eo pid | awk \'NR>1 && $1 ~ /^[0-9]+$/ {print $1}\')"; '
               'owned_pids="$owned_pids $pids"; '
@@ -463,7 +469,8 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'declared="$(docker inspect --format \'{{index .Config.Labels "s4d.mem_bytes"}}\' "$own")"; '
               'case "$declared" in ""|*[!0-9]*) exit 1;; esac; gpu_reserved=$((gpu_reserved+declared)); '
               'used="$(gpu_used "$pids")"; '
-              'if [ "$declared" -gt "$used" ]; then own_pending=$((own_pending+declared-used)); fi; fi; '
+              'if [ "$declared" -gt "$used" ]; then own_pending=$((own_pending+declared-used)); '
+              'else own_extra=$((own_extra+used-declared)); fi; fi; '
               'started="$(docker inspect --format \'{{.State.StartedAt}}\' "$own")"; start="$(date -d "$started" +%s)"; '
               f'if [ "$((now-start))" -lt {spec["ramp_seconds"]} ]; then '
               'declared="$(docker inspect --format \'{{index .Config.Labels "s4d.ram_bytes"}}\' "$own")"; '
@@ -524,6 +531,8 @@ def build_remote_command(spec: dict, data_identity: str, origin_commit: str, pro
               'available="$(awk \'$1=="MemAvailable:" {printf "%.0f", $2*1024}\' /proc/meminfo)"; test -n "$available"',
               f'test "$((available-ramp_ram-{spec["ram_bytes"]}))" -ge {spec["reserve_bytes"]}',
               f'test "$gpu_jobs" -lt {spec["max_jobs"]}',
+              # Keep admission unchanged without co-tenants; with one, charge max(measured, declared) for own jobs.
+              'if [ "$co_here" -gt 0 ]; then gpu_reserved=$((gpu_reserved+own_extra)); fi',
               f'test "$((gpu_reserved+{spec["gpu_bytes"]}))" -le {spec["gpu_cap_bytes"]}',
               # with co-tenants on the GPU: the measured free memory less every known tenant's declared but not yet
               # allocated reservation must hold this job plus the margin (scheduler.choose_gpu applies the same rule)
